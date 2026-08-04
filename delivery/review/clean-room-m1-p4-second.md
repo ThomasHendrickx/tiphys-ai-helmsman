@@ -590,3 +590,175 @@ literally running it. The round's declared gaps are honest; the two
 additional gaps found here (an untested fail-closed branch and two
 un-singleLine'd but structurally-safe catch blocks) are cosmetic and do
 not block merge.
+
+## Final confirmation (head be7d7eb)
+
+Delta reviewed 5aa9a8e..be7d7eb (round three, addressing N-401 to N-404 and
+the two lows raised above) in a fresh clone, checked out to be7d7eb, `npm
+ci` clean. This is a confirmation pass, not a fresh review; scope was the
+round's own diff plus the two probes above and a hunt for regressions.
+
+### 1. My two original highs, re-run on be7d7eb
+
+Both reproduced live, using the same forcing techniques as my original
+findings, in a fresh scratch fleet built by hand (init, a bare upstream
+with `main` as its symref HEAD, a clone, a spawned ship task).
+
+F-1 (teardown crash after destroy, meta left claiming open): `chattr +i
+tasks/t5/meta.json`, then `teardown --task t5`. Result: exit 1, one
+stderr line, no stack trace:
+```
+tiphys teardown: partial teardown of task id t5: worktree
+.../worktrees/t5 HAS BEEN REMOVED and branch task/t5 was deleted (it was
+145be2a7...), but .../tasks/t5/meta.json could not be marked closed
+(marking task t5 closed failed: EPERM: operation not permitted, open
+'.../tasks/t5/meta.json'); the task record still reads status open
+although its worktree is gone, so repair that file and set "status":
+"closed" by hand
+```
+Worktree confirmed gone, meta.json confirmed still `"status": "open"`.
+Honest partial-teardown report, exactly the shape claimed. CLOSED.
+
+F-2 (throw in spawn's post-pool-create window escapes rollback): the
+original repro (`mkdir -p tasks/tcrash/brief.md` before spawn) is now
+intercepted earlier, by CR-301's occupied-task-dir gate, before pool
+create ever runs, so it no longer reaches the write sequence at all
+(exit 1, "already holds records", nothing created). That gate moving in
+front of the old trigger is itself a sign the fix is holding, not a gap,
+but I re-drove the original failure mode from a different angle to be
+sure the `runStep` wrapper is still live behind it: `chattr +i tasks`
+(the parent, empty of the fresh id `tcrash2`) so the occupied gate passes
+(the id is not yet used) and the task-directory `mkdir` inside `spawnTask`
+throws EPERM after pool create has already made the worktree, branch and
+pool record. Result: exit 1, one stderr line, no stack trace:
+```
+tiphys spawn: creating the task directory .../tasks/tcrash2 failed:
+EPERM: operation not permitted, mkdir '.../tasks/tcrash2'
+```
+Confirmed after the call: no `worktrees/tcrash2`, no
+`worktrees/tcrash2.pool.json`, and `git branch -a` in the project clone
+shows no `task/tcrash2` -- full rollback, nothing orphaned. CLOSED.
+
+Neither reason string, exit code, or rollback/report shape moved from the
+round-two behavior I approved. The only textual change nearby is the
+appended teardown-route clause on the adapter-throw reason (new this
+round, not part of F-1/F-2) and the `singleLine` wrap now also applied to
+the two `loadFleet` catch blocks (a round-two open item, closed here);
+neither touches the F-1 or F-2 code paths themselves.
+
+### 2. The new --deadline validation
+
+Read the change in `src/commands/spawn.ts`: the new check runs inside
+`parseFlags`, entirely before `loadFleet` and therefore before any pool
+create, fleet load, or filesystem write. Confirmed by source order, not
+inference.
+
+Ran the registered test directly and by hand: `--deadline 1e300`,
+`--deadline 1e13`, and `--deadline 8640000000000` all exit 64 with the
+usage line on stderr and create nothing (no task dir, no worktree, no
+pool record) in the registered test's own assertions, which I read and
+which match the parser logic. `--deadline 300` (and by extension any
+ordinary value: minutes, hours, days, even up to roughly the current
+epoch offset short of 8.64e12 seconds) still succeeds; the registered
+test asserts this explicitly as the non-blanket-ban check. I did not find
+a reasonable operator-facing value this rejects: the threshold is the
+actual `Date` representable range, not an invented policy ceiling, and
+the round's own honest-scope note says exactly that (no policy maximum
+was invented). Ruling: the validation is correctly placed (before
+anything is created) and correctly scoped (rejects only what the adapter
+could never have represented anyway).
+
+### 3. Honesty of the structural substitute
+
+Read `test/teardown.test.ts`'s new `teardown-scout-never-forces-branch-delete`
+and the corrected key decision 18 in the work history. The test slices
+`src/teardown.ts` between the scout-branch marker and the ship-branch
+marker and asserts the slice contains `deleteBranchForce: false` and not
+`deleteBranchForce: true`. I sabotaged the source (flipped the scout
+path's flag to `true`) and the test went red immediately; reverted and
+confirmed `git diff --quiet` clean and the full teardown suite green
+again.
+
+The work history's own words: "The structural test guards the source,
+not the behavior, and I am claiming exactly that and nothing more." That
+is exactly what the test does and no more -- it does not exercise
+`teardownTask` at all, it greps compiled intent out of source text. The
+record also states plainly, and I confirmed by reading the CR-304
+pre-check, that the inner flag's value is no longer observable at
+runtime because the outer gate (the committed-scout refusal) intercepts
+every state in which the flag would matter first. Ruling: the claim is
+honestly scoped. It does not overstate a source-text check as a
+behavioral guarantee, which is the exact failure mode this project has
+been bitten by before (T-003). I have no correction to offer here.
+
+### 4. Hunt for new breakage
+
+- Scout path (`src/teardown.ts`): untouched this round (confirmed by
+  `git diff`, zero lines changed in that file). No new risk introduced.
+- Spawn's argument parsing (`src/commands/spawn.ts`): the only change is
+  the deadline representability check, additive and pre-fleet-load as
+  above; the other flags (`--task`, `--project`, `--brief`, `--shape`,
+  `--exec`, `--offline`) are untouched.
+- Both commands' error emitters: `loadFleet`'s catch in both
+  `spawn.ts` and `teardown.ts` now routes through `singleLine`, same as
+  `result.reason` already did. `singleLine` joins non-empty trimmed lines
+  with "; " -- it collapses to one line, it does not drop any line's
+  content, so no message loses information. I found no path where the
+  new validation runs too late (it is the first thing checked, before
+  the fleet is even loaded) and no path that now refuses where it
+  previously, correctly, proceeded: I re-ran the full suite from a
+  removed `dist/` and confirmed no regression outside the two new test
+  files and the two edited command files' diffs.
+- The adapter-throw reason's appended clause
+  ("...close the task with tiphys teardown --task <id>") is additive
+  text at the end of an existing single-line reason; it does not
+  restructure the enumeration that precedes it, and I confirmed by
+  reading and by the registered test that the worktree, pool record and
+  task directory are still all left in place exactly as before, and that
+  plain `teardown --task <id>` (no flags) closes it.
+- No new finding. Nothing this round touched behaves differently for a
+  legitimate caller, and the two things it touched behaviorally
+  (deadline validation, the adapter-throw reason wording) are both
+  additive refusals/clarifications, not narrowings of what succeeds.
+
+### 5. Quick confirmations
+
+- `npm ci`: clean install, EBADENGINE warning only (expected, Node
+  22.22.2 against the >=26 floor).
+- `npm run build` (tsc -b) from a removed `dist/`: exit 0,
+  `git status --porcelain` empty afterward.
+- `node --test` from a removed `dist/`: 106 tests, 104 pass, 0 fail, 2
+  skipped (the same M1-P2 floor-gated pair as every prior round), 0
+  unaccounted -- matches the round's claimed count exactly.
+- Registry check (`test/behaviors.json` against test titles found by
+  regex across `test/*.test.ts`): 107 mappings, 0 missing -- matches the
+  round's claimed "107 mappings, 0 missing, 106 titles" exactly.
+- Scope audit (`git diff --name-status 5aa9a8e..be7d7eb`): exactly
+  `delivery/work-history/m1-p4.md`, `src/commands/spawn.ts`,
+  `src/commands/teardown.ts`, `src/spawn.ts`, `test/behaviors.json`,
+  `test/spawn.test.ts`, `test/teardown.test.ts` -- matches the round's
+  disposition list, and `src/task.ts` is confirmed unchanged (empty
+  diff), matching the round's own "no change" note.
+- ASCII / em-dash scan (`grep -rP '[^\x00-\x7F]'`) over `src/`, `test/`,
+  and the work history: clean (grep exit 1).
+
+### What I could not verify
+
+Same residual gaps as the prior round, both explicitly declared there and
+here, neither blocking: `taskDirOccupied`'s fail-closed catch branch
+(unreadable directory) remains untested, for the reason the round itself
+gives (this suite runs as root, where permission bits do not bite); and I
+did not force a real ENOSPC, relying instead on chattr/EPERM as a
+same-throw-point substitute, as in the prior round.
+
+### VERDICT: APPROVE
+
+F-1 and F-2 remain closed on be7d7eb, reproduced independently with the
+same and with a varied forcing technique; neither the failure mode, the
+exit code, the single-line reason shape, nor the rollback/report behavior
+moved. The new --deadline validation runs before anything is created,
+rejects only genuinely unrepresentable values, and does not narrow any
+reasonable use. The structural substitute for the retired W9 witness is
+honestly described as guarding source text, not behavior, and does no
+more than it claims. Nothing this round touched behaves differently for
+a legitimate caller; no new defect found. Merge.
