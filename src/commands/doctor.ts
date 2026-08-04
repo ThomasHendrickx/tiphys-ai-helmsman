@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
-import { BEACON_FILE, LOCK_FILE, missingLayoutEntries } from "../fleet.ts";
+import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
+import { CADENCE, readBeacon, warnIfWatcherStale } from "../liveness.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -41,7 +42,7 @@ export const PROFILES: Record<string, readonly string[]> = {
   "local-only": [],
   "direct-pr": ["gh-missing"],
   full: ["gh-missing", "remote-missing"],
-  watch: ["beacon-absent"],
+  watch: ["beacon-absent", "beacon-stale"],
 };
 
 /** Locate the kernel's own package.json (same walk as src/version.ts). */
@@ -238,8 +239,20 @@ function checkLock(root: string): CheckResult {
   };
 }
 
+/**
+ * Beacon freshness (R-095, completed by M1-P5). The threshold is the
+ * liveness guard's, so doctor and the guard cannot disagree about what
+ * fresh means. Absent and unreadable are distinguished from merely OLD,
+ * because they send an operator to different places.
+ *
+ * This check is about the beacon alone. The separate "watcher stale"
+ * warning line this command also emits is the GUARD, whose predicate
+ * additionally requires open tasks: a fleet with nothing in flight and
+ * no watcher is untidy, not dangerous.
+ */
 function checkBeacon(root: string): CheckResult {
   const beaconPath = join(root, BEACON_FILE);
+  const thresholdSeconds = Math.round(CADENCE.staleThresholdMs / 1000);
   if (!existsSync(beaconPath)) {
     return {
       name: "beacon",
@@ -248,11 +261,30 @@ function checkBeacon(root: string): CheckResult {
       condition: "beacon-absent",
     };
   }
-  const ageSeconds = (Date.now() - statSync(beaconPath).mtimeMs) / 1000;
+  const beacon = readBeacon(beaconPath);
+  if (beacon === undefined) {
+    return {
+      name: "beacon",
+      status: "FAIL",
+      detail: `beacon file ${beaconPath} does not parse as a beacon record`,
+    };
+  }
+  const ageSeconds = (Date.now() - Date.parse(beacon.writtenAt)) / 1000;
+  const rounded = String(Math.max(0, Math.round(ageSeconds)));
+  if (ageSeconds * 1000 > CADENCE.staleThresholdMs) {
+    return {
+      name: "beacon",
+      status: "WARN",
+      detail:
+        `beacon present but ${rounded}s old, past the ${String(thresholdSeconds)}s ` +
+        `freshness threshold`,
+      condition: "beacon-stale",
+    };
+  }
   return {
     name: "beacon",
     status: "PASS",
-    detail: `beacon present, age ${String(Math.max(0, Math.round(ageSeconds)))}s (freshness threshold lands with the M1-P5 liveness guard)`,
+    detail: `beacon present, age ${rounded}s (freshness threshold ${String(thresholdSeconds)}s)`,
   };
 }
 
@@ -315,6 +347,16 @@ export function cmdDoctor(args: string[]): number {
       `tiphys doctor: unknown profile "${profile}" (profiles: ${Object.keys(PROFILES).join(", ")})\n`,
     );
     return EX_USAGE;
+  }
+
+  // Liveness guard (M1-P5 step 2). It warns and never blocks: doctor's
+  // exit code is decided by its checks exactly as before. Outside a
+  // fleet home there is no guard to run, and the layout check is what
+  // reports that; an advisory must not be the thing that says so.
+  try {
+    warnIfWatcherStale(loadFleet(process.cwd()));
+  } catch {
+    // Not a fleet home: reported by CHECK layout below.
   }
 
   let failed = false;
