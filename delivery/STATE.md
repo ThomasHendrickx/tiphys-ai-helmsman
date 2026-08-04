@@ -33,20 +33,39 @@ is wrong: verify against git and the PR list before trusting it.
 
 ## In flight
 
-**M1-P3 (PR #3) must not merge.** Two high-severity defects were found by
-adversarial verification, both introduced by a fix round, neither visible
-to a green suite. See `delivery/review/verification-m1-p3-fix-round.md`.
+**M1-P3 (PR #3) must not merge yet.** Two high-severity defects were found
+by adversarial verification, both introduced by the first fix round,
+neither visible to a green suite. See
+`delivery/review/verification-m1-p3-fix-round.md`.
 
-- V-1: `pool destroy` force-deletes the task branch, silently discarding
+- V-1: `pool destroy` force-deleted the task branch, silently discarding
   committed unpushed work. Reachable through the public CLI.
-- V-2: the narrowed retry signature no longer matches git's real
-  concurrent ref-update refusal, so parallel `pool create` fails hard.
+- V-2: the narrowed retry signature no longer matched git's real
+  concurrent ref-update refusal, so parallel `pool create` failed hard.
 - Eight unrefuted lower-severity candidates (U-1 to U-8) recorded.
-- A fix round for all of the above is in progress on the phase branch.
-- U-2 is unexplained: two race witnesses failed intermittently on
-  unmodified code, which is either a false witness in the test seam or a
-  hole in the compare-and-swap. An investigation is running. The merge
-  decision waits on it regardless of the fix round.
+
+A second fix round landed at head `20b6a5a`. It closes V-1 (deletion gated
+on tip equalling the recorded baseSha, refusal otherwise unless a distinct
+`--delete-branch-force` flag is passed, deleted sha printed as a recovery
+handle), closes V-2 (widened retry signature, permanent failures still fail
+in one attempt), and closes U-1, U-3, U-5, U-6, U-7, U-8. It also found two
+further concurrency transients, one added to the retry signature and one
+deliberately handled by create-level rollback rather than retry after
+measuring that retrying converts a transient into a permanent error.
+
+Two things gate the merge:
+
+1. A reduced adversarial verification of that fix round is running
+   (`delivery/review/verification-m1-p3-fix-round-2.md` when written).
+   Fix rounds are not merged on green CI alone; see tuition T-003.
+2. U-2 remains unexplained: two race witnesses failed intermittently on
+   unmodified code, which is either a false witness in the test seam or a
+   hole in the compare-and-swap. An investigation is running
+   (`delivery/verification/u2-race-flake-investigation.md` when written).
+   It targets `b475546`; the mutation primitive is unchanged at `20b6a5a`
+   apart from one message string in a branch that returns before the claim
+   is held, so its conclusions transfer. Not observed in 20 post-fix
+   full-suite runs, which is not evidence of absence.
 
 ## Owner decisions
 
