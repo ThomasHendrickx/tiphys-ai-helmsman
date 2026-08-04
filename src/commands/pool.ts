@@ -12,13 +12,14 @@ import type { Fleet } from "../fleet.ts";
 
 const USAGE =
   "usage: tiphys pool <create --task <id> --project <path> [--offline] | " +
-  "list | destroy --task <id> [--discard]>";
+  "list | destroy --task <id> [--discard] [--delete-branch-force]>";
 
 interface PoolArgs {
   task: string | undefined;
   project: string | undefined;
   offline: boolean;
   discard: boolean;
+  deleteBranchForce: boolean;
 }
 
 function usageError(message?: string): number {
@@ -35,6 +36,7 @@ function parseFlags(rest: string[]): PoolArgs | undefined {
     project: undefined,
     offline: false,
     discard: false,
+    deleteBranchForce: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
@@ -48,6 +50,8 @@ function parseFlags(rest: string[]): PoolArgs | undefined {
       parsed.offline = true;
     } else if (flag === "--discard") {
       parsed.discard = true;
+    } else if (flag === "--delete-branch-force") {
+      parsed.deleteBranchForce = true;
     } else {
       return undefined;
     }
@@ -75,7 +79,12 @@ export async function cmdPool(args: string[]): Promise<number> {
 
   switch (subcommand) {
     case "create": {
-      if (flags.task === undefined || flags.project === undefined || flags.discard) {
+      if (
+        flags.task === undefined ||
+        flags.project === undefined ||
+        flags.discard ||
+        flags.deleteBranchForce
+      ) {
         return usageError("create requires --task <id> and --project <path>");
       }
       const result = await poolCreate(fleet, {
@@ -91,7 +100,13 @@ export async function cmdPool(args: string[]): Promise<number> {
       return 0;
     }
     case "list": {
-      if (flags.task !== undefined || flags.project !== undefined || flags.offline || flags.discard) {
+      if (
+        flags.task !== undefined ||
+        flags.project !== undefined ||
+        flags.offline ||
+        flags.discard ||
+        flags.deleteBranchForce
+      ) {
         return usageError("list takes no flags");
       }
       for (const entry of poolList(fleet)) {
@@ -106,12 +121,21 @@ export async function cmdPool(args: string[]): Promise<number> {
       const result = await poolDestroy(fleet, {
         taskId: flags.task,
         discard: flags.discard,
+        deleteBranchForce: flags.deleteBranchForce,
       });
       if (!result.ok) {
         process.stderr.write(`tiphys pool: ${result.reason}\n`);
         return 1;
       }
-      process.stdout.write(`destroyed ${flags.task}\n`);
+      // Name the deleted branch and its tip on success: that sha is the
+      // operator's only recovery handle if the destroy was a mistake
+      // (V-1), and it stays valid until the clone is garbage collected.
+      const { deletedBranch, deletedSha } = result.value;
+      const suffix =
+        deletedBranch === undefined
+          ? ""
+          : ` (deleted branch ${deletedBranch} was ${deletedSha ?? "unknown"})`;
+      process.stdout.write(`destroyed ${flags.task}${suffix}\n`);
       return 0;
     }
     default:

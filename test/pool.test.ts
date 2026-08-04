@@ -43,6 +43,7 @@ const poolLib = (await import(
     },
   ): boolean;
   isTransientGitLockError(stderr: string): boolean;
+  isTransientWorktreeAddError(stderr: string): boolean;
 };
 
 const GIT_IDENTITY = {
@@ -159,6 +160,11 @@ function poolCreate(scratch: Scratch, taskId: string, extra: string[] = []): Cli
   );
 }
 
+/** The reason line without the "tiphys pool: " prefix. */
+function refusalText(stderr: string): string {
+  return stderr.trim().replace(/^tiphys pool: /, "");
+}
+
 function worktreeOf(scratch: Scratch, taskId: string): string {
   return join(scratch.fleet, "worktrees", taskId);
 }
@@ -258,7 +264,11 @@ test("pool create with an already-used task id is refused naming the id", (t) =>
 });
 
 test("two concurrent pool creates for distinct task ids both succeed", async (t) => {
+  // V-2: the tracking ref must be genuinely behind, otherwise every
+  // concurrent fetch is a no-op, no ref transaction is ever opened, and
+  // the test cannot see concurrent-update contention at all.
   const scratch = makeScratch(t);
+  upstreamCommit(scratch.upstream, "advance-before-race");
   const results = await Promise.all([
     spawnCli(["pool", "create", "--task", "t-p1", "--project", scratch.clone], {
       cwd: scratch.fleet,
@@ -273,6 +283,78 @@ test("two concurrent pool creates for distinct task ids both succeed", async (t)
   const list = gitOk(scratch.clone, ["worktree", "list", "--porcelain"]);
   assert.ok(list.includes(worktreeOf(scratch, "t-p1")), list);
   assert.ok(list.includes(worktreeOf(scratch, "t-p2")), list);
+});
+
+test("six concurrent pool creates against a behind tracking ref all succeed", async (t) => {
+  // V-2 regression guard: six overlapping creates all fetch the same
+  // tracking ref while it is behind, so the losers of the ref
+  // transaction get git's concurrent-update refusal. That refusal is
+  // transient (the ref is already at the new value) and must be
+  // retried, not treated as a permanent fetch failure.
+  const scratch = makeScratch(t);
+  upstreamCommit(scratch.upstream, "advance-for-six-way");
+  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
+  const ids = ["t-c1", "t-c2", "t-c3", "t-c4", "t-c5", "t-c6"];
+  const results = await Promise.all(
+    ids.map((id) =>
+      spawnCli(["pool", "create", "--task", id, "--project", scratch.clone], {
+        cwd: scratch.fleet,
+      }),
+    ),
+  );
+  results.forEach((result, index) => {
+    assert.equal(
+      result.status,
+      0,
+      `${ids[index] as string} failed: ${result.stderr}`,
+    );
+    assert.equal(result.stdout.trim(), remoteHead, `${ids[index] as string} wrong base`);
+  });
+  // None of them silently fell back to the offline path: the remote was
+  // reachable throughout, so offline must be false in every record.
+  for (const id of ids) {
+    const record = JSON.parse(readFileSync(recordOf(scratch, id), "utf8")) as {
+      offline: boolean;
+      baseSha: string;
+    };
+    assert.equal(record.offline, false, `${id} recorded a false offline base`);
+    assert.equal(record.baseSha, remoteHead);
+  }
+});
+
+test("concurrent pool creates with --offline never record a false offline base", async (t) => {
+  // V-2 secondary consequence: misclassifying the concurrent-update
+  // refusal as permanent makes --offline take the stale fallback and
+  // record offline: true for a base that fetched fine. M1-P4 copies
+  // that field into meta.json as baseOffline, so the provenance would
+  // be inverted (PR-212).
+  const scratch = makeScratch(t);
+  upstreamCommit(scratch.upstream, "advance-for-offline-race");
+  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
+  const ids = ["t-o1", "t-o2", "t-o3", "t-o4"];
+  const results = await Promise.all(
+    ids.map((id) =>
+      spawnCli(
+        ["pool", "create", "--task", id, "--project", scratch.clone, "--offline"],
+        { cwd: scratch.fleet },
+      ),
+    ),
+  );
+  results.forEach((result, index) => {
+    assert.equal(result.status, 0, `${ids[index] as string}: ${result.stderr}`);
+  });
+  for (const id of ids) {
+    const record = JSON.parse(readFileSync(recordOf(scratch, id), "utf8")) as {
+      offline: boolean;
+      baseSha: string;
+    };
+    assert.equal(
+      record.offline,
+      false,
+      `${id} recorded offline: true although the remote was reachable`,
+    );
+    assert.equal(record.baseSha, remoteHead, `${id} used a stale base`);
+  }
 });
 
 test("pool destroy refuses a dirty worktree and --discard removes it", (t) => {
@@ -397,6 +479,141 @@ test("pool destroy deletes the task branch and the id can then be created again"
   );
 });
 
+test("pool destroy does not discard committed work on the task branch", async (t) => {
+  // V-1 regression guard: committed but unpushed work leaves the
+  // worktree clean, so the dirty guard does not fire. Destroy must not
+  // silently force-delete the branch carrying it. Either it refuses, or
+  // the commit is still reachable afterwards; anything else is data
+  // loss through the ordinary CLI path.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-committed").status, 0);
+  const worktree = worktreeOf(scratch, "t-committed");
+  writeFileSync(join(worktree, "work.md"), "important committed work\n");
+  gitOk(worktree, ["add", "-A"]);
+  gitOk(worktree, ["commit", "-m", "important committed work"]);
+  const sha = gitOk(worktree, ["rev-parse", "HEAD"]);
+  assert.equal(gitOk(worktree, ["status", "--porcelain"]), "", "precondition: clean worktree");
+
+  const destroyed = runCli(["pool", "destroy", "--task", "t-committed"], {
+    cwd: scratch.fleet,
+  });
+  if (destroyed.status === 0) {
+    // If destroy chose to proceed, the commit must still be reachable.
+    const contained = git(scratch.clone, ["for-each-ref", "--contains", sha]);
+    assert.notEqual(
+      contained.stdout.trim(),
+      "",
+      `destroy exited 0 and left commit ${sha} unreachable: silent data loss`,
+    );
+  } else {
+    // The expected outcome: a refusal naming the branch and its tip.
+    assert.match(refusalText(destroyed.stderr), /task\/t-committed/);
+    assert.ok(destroyed.stderr.includes(sha.slice(0, 7)), destroyed.stderr);
+    assert.equal(
+      destroyed.stderr.trim().split("\n").length,
+      1,
+      `expected a single reason line, got: ${destroyed.stderr}`,
+    );
+    // And the work is untouched.
+    assert.equal(
+      gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-committed"]),
+      sha,
+    );
+  }
+});
+
+test("pool destroy deletes a branch carrying commits only with the explicit force flag", (t) => {
+  // V-1: the escape hatch is a distinct flag, never --discard (whose
+  // plan-defined meaning is the dirty-tree override), and the success
+  // path hands back the deleted sha as a recovery handle.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-forced").status, 0);
+  const worktree = worktreeOf(scratch, "t-forced");
+  writeFileSync(join(worktree, "work.md"), "committed work\n");
+  gitOk(worktree, ["add", "-A"]);
+  gitOk(worktree, ["commit", "-m", "committed work"]);
+  const sha = gitOk(worktree, ["rev-parse", "HEAD"]);
+
+  // --discard must NOT be sufficient: it overrides dirtiness, not
+  // branch loss.
+  const viaDiscard = runCli(["pool", "destroy", "--task", "t-forced", "--discard"], {
+    cwd: scratch.fleet,
+  });
+  assert.notEqual(
+    viaDiscard.status,
+    0,
+    "--discard must not authorize deleting a branch carrying commits",
+  );
+  assert.equal(gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-forced"]), sha);
+
+  const forced = runCli(
+    ["pool", "destroy", "--task", "t-forced", "--delete-branch-force"],
+    { cwd: scratch.fleet },
+  );
+  assert.equal(forced.status, 0, forced.stderr);
+  // Recovery handle: the sha the operator would otherwise have to find
+  // through git fsck.
+  assert.ok(
+    forced.stdout.includes(sha),
+    `success output must name the deleted sha, got: ${forced.stdout}`,
+  );
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-forced"]).status,
+    0,
+  );
+});
+
+test("pool destroy with an unreadable pool record fails closed instead of reporting success", async (t) => {
+  // U-3: a corrupt record used to send the branch probe at a deleted
+  // worktree, where git cannot run at all; the ENOENT was read as
+  // "branch absent", so destroy exited 0, dropped the record and left
+  // the branch, wedging the task id permanently.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-corrupt").status, 0);
+  writeFileSync(recordOf(scratch, "t-corrupt"), "{ this is not json\n");
+  const result = runCli(["pool", "destroy", "--task", "t-corrupt"], {
+    cwd: scratch.fleet,
+  });
+  const branchAfter = git(scratch.clone, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    "refs/heads/task/t-corrupt",
+  ]);
+  if (result.status === 0) {
+    assert.notEqual(
+      branchAfter.status,
+      0,
+      "destroy reported success while leaving the task branch behind",
+    );
+  } else {
+    // Failing closed is correct; the id must remain recoverable, so the
+    // record survives for a retry.
+    assert.ok(
+      existsSync(recordOf(scratch, "t-corrupt")),
+      "destroy failed but dropped the record, wedging the task id",
+    );
+  }
+});
+
+test("pool create refuses a task id whose branch path collides with an existing ref", (t) => {
+  // U-7: a branch literally named "task" makes refs/heads/task/<id>
+  // uncreatable (directory/file conflict). The pre-check must catch it
+  // before a full network fetch and a raw git error from worktree add.
+  const scratch = makeScratch(t);
+  gitOk(scratch.clone, ["branch", "task"]);
+  const result = poolCreate(scratch, "dfc");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /task\/dfc|branch task\b/);
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${result.stderr}`,
+  );
+  assert.ok(!existsSync(worktreeOf(scratch, "dfc")));
+  assert.ok(!existsSync(recordOf(scratch, "dfc")));
+});
+
 test("pool destroy refuses with one reason line when the task branch cannot be deleted", (t) => {
   // CR-201 refusal half: the branch is checked out in another worktree,
   // so git refuses the delete and destroy reports one reason line and
@@ -442,6 +659,55 @@ test("only genuine git lock contention is retried", () => {
     "error: cannot lock ref 'refs/remotes/origin/main': Unable to create '/repo/.git/refs/remotes/origin/main.lock': File exists.";
   assert.equal(poolLib.isTransientGitLockError(transientIndex), true);
   assert.equal(poolLib.isTransientGitLockError(transientRef), true);
+  // V-2: the message real racing fetches actually emit, captured
+  // verbatim from concurrent fetches of a behind tracking ref. This
+  // names no lock file, which is exactly why the narrowed signature
+  // missed it and parallel pool create started failing hard.
+  const realConcurrentUpdate =
+    "error: cannot lock ref 'refs/remotes/origin/main': is at f54f9fd2e742e73976eb7a3c6355749b54d6b767 but expected b0afe2c86398e3742ed488117e6110ca0bbd7d4e";
+  assert.equal(
+    poolLib.isTransientGitLockError(realConcurrentUpdate),
+    true,
+    "git's concurrent ref-update refusal must be retried: it is the dominant real transient",
+  );
+  assert.equal(
+    poolLib.isTransientGitLockError(
+      "error: cannot lock ref 'refs/heads/x': reference already exists",
+    ),
+    true,
+  );
+  // A fetch racing another worktree's creation in the same clone; also
+  // captured verbatim, also proved transient by immediate retry.
+  const realWorktreeRace =
+    "fatal: bad object worktrees/t-c5/HEAD\nerror: /tmp/upstream did not send all necessary objects";
+  assert.equal(
+    poolLib.isTransientGitLockError(realWorktreeRace),
+    true,
+    "a fetch tripping over a worktree mid-creation must be retried",
+  );
+  // The anchor is the worktrees/ admin path: a bare bad object is not
+  // a contention signal and must stay permanent.
+  assert.equal(
+    poolLib.isTransientGitLockError("fatal: bad object HEAD"),
+    false,
+  );
+
+  // The concurrent worktree-add collision is classified separately on
+  // purpose: it is transient, but the failed attempt leaves the branch
+  // behind, so it must be rolled back before a retry rather than
+  // retried in place by the generic helper.
+  const realWorktreeAddRace =
+    "Preparing worktree (new branch 'task/t-3')\nfatal: failed to read .git/worktrees/t-4/commondir: Success";
+  assert.equal(poolLib.isTransientWorktreeAddError(realWorktreeAddRace), true);
+  assert.equal(
+    poolLib.isTransientGitLockError(realWorktreeAddRace),
+    false,
+    "the worktree-add collision must not be retried in place by the generic helper",
+  );
+  assert.equal(
+    poolLib.isTransientWorktreeAddError("fatal: could not read commondir"),
+    false,
+  );
   const permanentDirFileConflict =
     "error: cannot lock ref 'refs/remotes/up/main': 'refs/remotes/up/main/deep' exists; cannot create 'refs/remotes/up/main'";
   const permanentExists =

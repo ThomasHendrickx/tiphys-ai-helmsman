@@ -198,9 +198,15 @@ export async function applyLeaseMutation(
         // the CLI appends it from the claimTimeout flag, so the
         // classification is load-bearing at every layer rather than
         // carried along as prose (CR-204).
+        // U-6: an expired lease is not a held one. Saying "lock held"
+        // here contradicted lock status in the same fleet, which calls
+        // the same lease expired, and reads as "the holder is alive"
+        // when the truth is the opposite.
         const holder =
           observed.kind === "present" && observed.lease !== undefined
-            ? `lock held by ${observed.lease.holderId}`
+            ? isExpired(observed.lease, Date.now())
+              ? `expired lease from ${observed.lease.holderId}`
+              : `lock held by ${observed.lease.holderId}`
             : "no lease, no live holder";
         return {
           won: false,

@@ -525,13 +525,29 @@ test("a stuck claim file reports the lease situation and names the claim file", 
   assert.doesNotMatch(noLease.stderr, /lock held/);
   rmSync(claimPath);
 
-  // Lease present: the same timeout names the holder instead.
+  // Lease present and unexpired: the same timeout names the holder.
   const { holderId } = acquire(fleet);
   writeFileSync(claimPath, "planted by a crashed mutation");
   const held = runCli(["lock", "renew", "--holder", holderId], { cwd: fleet });
   assert.notEqual(held.status, 0);
   assert.match(held.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
   assert.ok(held.stderr.includes(claimPath), held.stderr);
+  // U-1: renew is the recurring operation (half-life renewal), so it is
+  // the one most likely to meet a stale claim in production, and it had
+  // no regression guard at all: deleting renew's claimTimeout branch
+  // left the suite green. These two assertions are that guard. The
+  // remedy clause only survives if renewLease propagates the flag, and
+  // the anchored negative catches the re-wrapped "renew <reason>" form.
+  assert.match(
+    held.stderr,
+    /inspect and remove it manually/,
+    "renew lost the claim-file remedy: the claimTimeout flag is not propagating",
+  );
+  assert.doesNotMatch(
+    held.stderr,
+    /^tiphys lock: renew /m,
+    "renew re-wrapped a claim timeout as an ordinary renew failure",
+  );
   rmSync(claimPath);
 });
 
@@ -608,25 +624,49 @@ test("release and takeover also carry the stale-claim classification to the oper
     rmSync(claimPath, { force: true });
   });
 
-  // release with a matching holder reaches the primitive.
-  const { holderId } = acquire(fleet, ["--duration", "1"]);
+  // release with a matching, genuinely unexpired holder reaches the
+  // primitive; the lease really is held, so that is what it says. The
+  // duration must outlast the 5s claim wait, otherwise the lease
+  // expires while the release is blocked and the message correctly
+  // switches to the expired wording asserted below.
+  const held = acquire(fleet, ["--duration", "3600"]);
   writeFileSync(claimPath, "planted by a crashed mutation");
-  const released = runCli(["lock", "release", "--holder", holderId], { cwd: fleet });
+  const released = runCli(["lock", "release", "--holder", held.holderId], { cwd: fleet });
   assert.equal(released.status, 1);
-  assert.match(released.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
+  assert.match(released.stderr, new RegExp(`lock held by ${held.holderId}; stale claim file `));
   assert.match(released.stderr, /inspect and remove it manually/);
   assert.ok(released.stderr.includes(claimPath), released.stderr);
 
-  // takeover of an expired lease likewise reaches the primitive.
+  // U-6: once the lease has expired, the diagnostic must not keep
+  // calling it held. lock status in the same fleet says "expired", and
+  // two commands contradicting each other about the same lease is the
+  // weaker form of exactly what CR-204 was raised about.
+  rmSync(claimPath);
+  assert.equal(runCli(["lock", "release", "--holder", held.holderId], { cwd: fleet }).status, 0);
+  const expiring = acquire(fleet, ["--duration", "1"]);
   await waitPastExpiry(fleet);
+  const status = runCli(["lock", "status"], { cwd: fleet });
+  assert.equal(status.status, 0);
+  assert.match(status.stdout, /^expired holder /m);
+
+  writeFileSync(claimPath, "planted by a crashed mutation");
   const takeover = runCli(["lock", "acquire", "--take-over"], { cwd: fleet });
   assert.equal(takeover.status, 1);
-  assert.match(takeover.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
+  assert.match(
+    takeover.stderr,
+    new RegExp(`expired lease from ${expiring.holderId}; stale claim file `),
+    "an expired lease must not be reported as held while status calls it expired",
+  );
+  assert.doesNotMatch(
+    takeover.stderr,
+    /lock held by/,
+    "the diagnostic contradicts lock status about the same lease",
+  );
   assert.match(takeover.stderr, /inspect and remove it manually/);
   assert.doesNotMatch(takeover.stderr, /lock held \(/, "reason was re-wrapped as a held lease");
 
   // The lease is untouched by either blocked operation.
-  assert.equal(readLease(fleet).lease.holderId, holderId);
+  assert.equal(readLease(fleet).lease.holderId, expiring.holderId);
 });
 
 test("lock subcommand usage errors exit 64", (t) => {

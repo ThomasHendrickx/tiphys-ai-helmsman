@@ -63,5 +63,11 @@
   "pool-destroy-then-recreate": "pool destroy deletes the task branch and the id can then be created again",
   "pool-destroy-branch-refusal": "pool destroy refuses with one reason line when the task branch cannot be deleted",
   "pool-create-foreign-branch-refused": "pool create refuses a pre-existing task branch with a reason naming it",
-  "pool-retry-signature-narrow": "only genuine git lock contention is retried"
+  "pool-retry-signature-narrow": "only genuine git lock contention is retried",
+  "pool-destroy-preserves-commits": "pool destroy does not discard committed work on the task branch",
+  "pool-destroy-branch-force-flag": "pool destroy deletes a branch carrying commits only with the explicit force flag",
+  "pool-destroy-corrupt-record-fails-closed": "pool destroy with an unreadable pool record fails closed instead of reporting success",
+  "pool-create-ref-path-collision-refused": "pool create refuses a task id whose branch path collides with an existing ref",
+  "pool-create-six-way-concurrent": "six concurrent pool creates against a behind tracking ref all succeed",
+  "pool-create-offline-no-false-provenance": "concurrent pool creates with --offline never record a false offline base"
 }
