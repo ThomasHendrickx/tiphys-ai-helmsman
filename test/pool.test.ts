@@ -212,6 +212,40 @@ process.exit(r.status === null ? 1 : r.status);
   return binDir;
 }
 
+/**
+ * A stub `git` that fails the FIRST `worktree add` with real captured
+ * contention stderr, then delegates everything to the real git. The
+ * add-side twin of stubGitFailingFirstFetch.
+ */
+function stubGitFailingFirstWorktreeAdd(
+  t: { after(fn: () => void): void },
+  stderrText: string,
+): string {
+  const binDir = mkdtempSync(join(tmpdir(), "tiphys-p3-stubadd-"));
+  t.after(() => {
+    rmSync(binDir, { recursive: true, force: true });
+  });
+  const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
+    .stdout.trim();
+  assert.ok(realGit !== "", "could not locate the real git");
+  const markerPath = join(binDir, "add-failed-once");
+  const script = `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const marker = ${JSON.stringify(markerPath)};
+if (args.includes("worktree") && args.includes("add") && !fs.existsSync(marker)) {
+  fs.writeFileSync(marker, "");
+  process.stderr.write(${JSON.stringify(stderrText)});
+  process.exit(128);
+}
+const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(r.status === null ? 1 : r.status);
+`;
+  writeFileSync(join(binDir, "git"), script, { mode: 0o755 });
+  return binDir;
+}
+
 test("pool create bases on the fetched remote head when the local default branch is behind", (t) => {
   const scratch = makeScratch(t);
   const remoteHead = upstreamCommit(scratch.upstream, "advance");
@@ -878,6 +912,79 @@ process.exit(r.status === null ? 1 : r.status);
     movedTip,
     "the moved branch was deleted on a stale approval",
   );
+});
+
+test("the remedy printed on a failed create clears a locked partial worktree", (t) => {
+  // F-1: an interrupted git worktree add leaves
+  // .git/worktrees/<id>/locked = "initializing", and a single --force
+  // refuses to remove a locked working tree. The command this kernel
+  // prints on a failed create therefore used to exit 1 and clear
+  // nothing, wedging the task id. No concurrency is needed to reach
+  // that state. This test is red against the LOCKED PARTIAL state, not
+  // against an absent feature.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-locked").status, 0);
+  const worktree = worktreeOf(scratch, "t-locked");
+  // Reproduce exactly what an interrupted add leaves behind.
+  const commonDir = gitOk(scratch.clone, [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
+  const lockedFile = join(commonDir, "worktrees", "t-locked", "locked");
+  writeFileSync(lockedFile, "initializing\n");
+  assert.ok(
+    gitOk(scratch.clone, ["worktree", "list"]).includes("locked"),
+    "precondition: git must see the worktree as locked",
+  );
+
+  // The exact command the failure message tells the operator to run.
+  const remedy = runCli(
+    ["pool", "destroy", "--task", "t-locked", "--discard", "--delete-branch-force"],
+    { cwd: scratch.fleet },
+  );
+  assert.equal(
+    remedy.status,
+    0,
+    `the printed remedy failed against a locked partial worktree: ${remedy.stderr}`,
+  );
+  assert.ok(!existsSync(worktree), "the remedy left the worktree directory behind");
+  assert.ok(!existsSync(recordOf(scratch, "t-locked")), "the remedy left the record behind");
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-locked"]).status,
+    0,
+    "the remedy left the branch behind",
+  );
+  assert.ok(
+    !gitOk(scratch.clone, ["worktree", "list", "--porcelain"]).includes(worktree),
+    "the remedy left the registration behind",
+  );
+  // The id is usable again, which is the point of the remedy.
+  assert.equal(poolCreate(scratch, "t-locked").status, 0, "the task id is still wedged");
+});
+
+test("pool create retries a contended worktree add", (t) => {
+  // F-3: the worktree-add retry lost its only coverage when the two
+  // heavy-concurrency tests were deleted; reducing the add's attempts
+  // to 1 left every pool test green. This is the deterministic guard,
+  // shaped like the two fetch witnesses.
+  const scratch = makeScratch(t);
+  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
+  const binDir = stubGitFailingFirstWorktreeAdd(
+    t,
+    "Preparing worktree (new branch 'task/t-addretry')\nfatal: failed to read .git/worktrees/t-other/commondir: Success\n",
+  );
+  const result = runCli(
+    ["pool", "create", "--task", "t-addretry", "--project", scratch.clone],
+    { cwd: scratch.fleet, env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` } },
+  );
+  assert.equal(
+    result.status,
+    0,
+    `a contended worktree add was not retried: ${result.stderr}`,
+  );
+  assert.equal(result.stdout.trim(), remoteHead);
+  assert.equal(gitOk(worktreeOf(scratch, "t-addretry"), ["rev-parse", "HEAD"]), remoteHead);
 });
 
 test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {

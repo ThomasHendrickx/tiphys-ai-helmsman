@@ -16,7 +16,14 @@ import type { Fleet } from "./fleet.ts";
  * BUILD from the contract (plan decision D-1, FM-026): a clean disposable
  * worktree per task at <fleet>/worktrees/<task-id>, parallel-safe through
  * unique paths, O_EXCL record creation, and git worktree add's own
- * locking. Substrate-neutral: pure filesystem and git (DR-0007).
+ * locking. That safety is claimed only at the width M1 actually uses:
+ * criterion 15's two concurrent creates, which are witnessed. This
+ * phase's own verification measured failures above roughly six-way
+ * concurrency on both the fetch and the worktree add, and hardening
+ * for that width is deferred to M5 (see the deferral list in
+ * delivery/work-history/m1-p3.md). Do not read this as a guarantee at
+ * arbitrary concurrency. Substrate-neutral: pure filesystem and git
+ * (DR-0007).
  *
  * Base resolution is the five binding steps of EXT-F-03: resolve the
  * project's configured remote and its default branch, fetch that branch,
@@ -238,8 +245,17 @@ export interface CreateOptions {
 
 /**
  * pool create (EXT-F-03 five steps; see module doc). Returns the pool
- * record on success. On any failure before completion, nothing is left
- * behind: the record reservation is rolled back and no worktree exists.
+ * record on success.
+ *
+ * On failure NOTHING IS REMOVED. The pool record, the worktree
+ * directory and the task branch may each survive, depending on how far
+ * the attempt got, and the reason line names exactly which of them did
+ * and the command that clears them. The automatic rollback this
+ * docstring used to promise was deleted deliberately: it served a
+ * concurrent-create path M1 never enters (parallelism is off until M5)
+ * and produced four consecutive rounds of defects, including deleting
+ * state it had not validated. Failing loudly and leaving state is the
+ * chosen contract, not an oversight.
  */
 export async function poolCreate(
   fleet: Fleet,
@@ -765,8 +781,18 @@ async function applyDestroy(
   options: DestroyOptions,
 ): Promise<PoolResult<DestroyOutcome>> {
   if (facts.haveWorktree) {
+    // F-1: --discard means "remove anyway" (plan step 3), and git's own
+    // documented way to say that for a LOCKED working tree is a second
+    // --force. An interrupted git worktree add leaves
+    // .git/worktrees/<id>/locked = "initializing", which a single
+    // --force refuses, so the remedy this kernel prints on a failed
+    // create used to exit 1 and clear nothing, wedging the task id. No
+    // concurrency is needed to reach that state: Ctrl-C, a crash, a
+    // full disk or an OOM kill during a large checkout produces it.
+    // The default path is deliberately unchanged: without --discard
+    // nothing here is forced at all.
     const removeArgs = options.discard
-      ? ["worktree", "remove", "--force", facts.worktree]
+      ? ["worktree", "remove", "--force", "--force", facts.worktree]
       : ["worktree", "remove", facts.worktree];
     const removed = await destroyGitStep(facts.contextDir, removeArgs, facts.worktree);
     if (removed.status !== 0) {

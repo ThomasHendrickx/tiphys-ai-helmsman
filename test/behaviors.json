@@ -75,5 +75,7 @@
   "pool-destroy-refusal-is-no-op": "a refused destroy leaves the worktree the record and the branch untouched",
   "pool-destroy-corrupt-record-not-wedged": "an unreadable pool record does not wedge the task id",
   "pool-create-nested-ref-collision-refused": "pool create refuses a task id whose branch path is blocked by a nested ref",
-  "pool-destroy-stale-tip-aborts": "destroy aborts the branch delete if the branch moved after the gate approved it"
+  "pool-destroy-stale-tip-aborts": "destroy aborts the branch delete if the branch moved after the gate approved it",
+  "pool-remedy-clears-locked-partial": "the remedy printed on a failed create clears a locked partial worktree",
+  "pool-add-retries-contention": "pool create retries a contended worktree add"
 }
