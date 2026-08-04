@@ -77,5 +77,12 @@
   "pool-create-nested-ref-collision-refused": "pool create refuses a task id whose branch path is blocked by a nested ref",
   "pool-remedy-clears-locked-partial": "the remedy printed on a failed create clears a locked partial worktree",
   "pool-add-retries-contention": "pool create retries a contended worktree add",
-  "pool-destroy-moved-branch-partial-failure": "a branch that moves mid-destroy is reported as a partial failure enumerating every outcome"
+  "pool-destroy-moved-branch-partial-failure": "a branch that moves mid-destroy is reported as a partial failure enumerating every outcome",
+  "exit-test-harness-usage-errors": "the harness rejects invalid invocations with exit 64",
+  "exit-test-step-registry-covers-section-4": "the harness step registry covers every step of section 4 exactly once",
+  "exit-test-single-harness-identity": "the three exit-test scripts declare one harness identity",
+  "sandbox-seed-idempotent-identified": "seeding a sandbox remote is idempotent and commits as the harness identity",
+  "sandbox-clone-npm-ci-and-test": "a clone of the seeded sandbox passes npm ci and npm test with at least one test",
+  "stub-payload-lands-and-pushes": "the stub payload appends, commits as the harness identity, and pushes the task branch",
+  "stub-payload-refuses-bad-inputs": "the stub payload refuses a bad mode and a working directory that is not a worktree"
 }
