@@ -412,3 +412,188 @@ If the round would rather keep a live witness for the inner gate, the cheapest h
 - My N-403 threshold figures come from evaluating the same arithmetic the adapter performs, not from driving every value through the CLI; I drove `1e300` through the CLI and computed the rest.
 - I did not re-walk the 14 criteria. Criterion 4 is the only one I re-executed, because this round changed which gate issues its refusal. If the round had broken a criterion in a way no test covers and no witness I chose touches, this review would not have caught it.
 - I did not attempt the harder form of the adapter-throw case, an adapter that raises AFTER starting a payload, because no such adapter exists in M1. My ruling that refusing to classify is correct rests on the contract and on the measured recoverability, not on having observed that case.
+
+## Final confirmation (head be7d7eb)
+
+Narrow confirmation of N-401 to N-404 only, by the reviewer who raised them.
+Delta 5aa9a8e..be7d7eb, reviewed in a private clone at be7d7eb, Node v22.22.2.
+Every sabotage below was applied to the shipped source, run three times,
+reverted, and the tree verified clean with `git diff --quiet` before the next.
+
+**VERDICT: APPROVE.** All four findings are closed. The N-401 resolution is
+sound and honestly recorded. The one remaining declared gap is mergeable.
+
+### Per-finding status
+
+| Finding | Status | How confirmed |
+|---|---|---|
+| N-401 witness W9 green while the record claimed it red | CLOSED | Structural guard measured red 3/3 on both dangerous edits; decision 18 corrected in place with the measured truth; W9 explicitly retired, not quietly dropped |
+| N-402 false impossibility, adapter-throw path untested | CLOSED | New test drives the production `ExecutorAdapter` seam; red 3/3 with the `runStep` wrapper removed, failing with the adapter's own error escaping `spawnTask` |
+| N-403 unrepresentable `--deadline` | CLOSED | Executed: exit 64, usage line, nothing created, and the refusal happens before the fleet is loaded; red 3/3 with the guard loosened |
+| N-404 enumeration without a next step | CLOSED | Reason now names `tiphys teardown --task <id>`; the test executes that route through the real CLI and asserts meta reaches `closed`; red 3/3 with the route dropped |
+
+### Ruling on the structural substitute (N-401)
+
+**The claim is correct and the substitute is not premature. I tried to break
+it and could not.**
+
+I attempted to construct a behavioural witness for the inner gate (the scout
+path's `deleteBranchForce: false`) and enumerated every way the outer
+pre-check (src/teardown.ts:370-386) and the pool's own gate
+(src/pool.ts:815-829) could disagree:
+
+- Different repository. Dead. `resolveContext` refuses with a fetch failure
+  (src/teardown.ts:208-220) before the scout branch is ever reached whenever
+  `record.project` is missing or not a git repository, so the pool's
+  `contextDir` fallback to the worktree's git-common-dir is unreachable from
+  teardown.
+- Different ref or different probe. Dead. Both run the identical
+  `rev-parse --verify --quiet refs/heads/<record.branchName>^{commit}`
+  against the identical directory, and both compare against the same
+  `readPoolRecord(...).baseSha`.
+- Different exit-status handling. Dead. Where the pre-check falls through
+  (status 128) the pool classifies the tip `indeterminate` and refuses
+  regardless of the flag.
+- The pool's `baseSha === undefined` arm, and the check-then-act window
+  between the two probes. These are real states the pre-check does not
+  cover, but neither is deterministically forcible from a test without
+  injecting a fault into `src`, and in both the flag being `false` is
+  precisely what keeps the outcome safe. They are an argument FOR keeping
+  the inner gate, not a route to witnessing it.
+
+So the inner gate is genuinely unwitnessable behaviourally while the outer
+gate holds, and a structural guard is the right substitute. It also has this
+repository's own precedent: test/lock.test.ts:534
+(`lock-no-process-probing`) is the same shape over src/lock.ts for C-2.
+
+Measured rates on the pristine head and on three mutations, three runs each:
+
+| State | `teardown-scout-never-forces-branch-delete` (structural) | `teardown-scout-committed-work-preserved` (behavioural) |
+|---|---|---|
+| Pristine be7d7eb | GREEN 3/3 | GREEN 3/3 |
+| Flag flipped to `deleteBranchForce: true` | **RED 3/3** | GREEN 3/3 (confirms my original W9 measurement independently) |
+| Pre-check removed, flag left `false` | GREEN 3/3 | RED 3/3, on the CR-304 assertion only; the work itself was preserved by the inner gate, which is the inner gate doing its job |
+| Pre-check removed AND flag flipped | **RED 3/3** | **RED 3/3**, "committed scout work was destroyed without a word" |
+
+Two things follow that matter more than the bookkeeping. First, the
+structural test does fail on the single dangerous edit, which is the edit
+the finding was raised about. Second, the DANGEROUS STATE itself, committed
+scout work actually destroyed, is still behaviourally witnessed red 3/3
+(row four), so the T-003 stronger form is satisfied: this is not a case of
+a behavioural guarantee being downgraded to a source-text assertion, it is
+a second, inner gate being pinned by source text while the destructive
+outcome stays behaviourally guarded.
+
+The structural test is also fail-closed against refactors: if the scout
+branch cannot be located, if the literal is replaced by a variable, or if
+the `finish` call moves past the `// (b) ship.` marker, it goes red rather
+than silently passing.
+
+**Honestly recorded: yes.** Key decision 18 is corrected in place, in the
+document, naming the measured GREEN 3/3 and saying plainly that the original
+claim "stopped being true the moment the fix round added the CR-304
+pre-check". The honest-scope section states that the structural test "guards
+the source, not the behavior, and I am claiming exactly that and nothing
+more". That is the opposite of a quiet downgrade.
+
+### N-402: the test is real
+
+- Red witness: the `runStep` wrapper around `adapter.launch`
+  (src/spawn.ts:405-414) replaced with a direct call. The named test is RED
+  3/3, failing with `error: 'simulated adapter crash: the payload state is
+  unknown'`, i.e. the raise escapes `spawnTask`. That is the dangerous state,
+  not the absent feature.
+- Production seam, not a mock: the test injects a throwing adapter through
+  `options.adapter`, the same `ExecutorAdapter` type the shipped
+  `subprocessAdapter` satisfies. The classification, the enumeration and the
+  reason text asserted are the shipped ones, and the test then checks the
+  enumeration against the real filesystem (worktree, pool record, task
+  directory and task branch all still present) rather than against itself.
+- The pre-N-403 CLI measurement was taken before the input was closed, as my
+  ordering note asked. Sequenced correctly.
+
+### N-403 and N-404 by execution
+
+- `spawn --task t-x --project <dir> --brief <file> --shape ship --exec
+  /bin/true --deadline 1e300` run from a NON-fleet directory: exit 64, the
+  usage line on stderr, and the directory contents unchanged. Exit 64 rather
+  than 1 proves the refusal precedes `loadFleet`, so the fleet is not even
+  opened. Loosening the guard back to finite-and-positive makes the
+  registered test RED 3/3.
+- The recovery route printed by the adapter-throw reason is executed by the
+  test itself through `runCli(["teardown", "--task", ...])`, the production
+  CLI, and asserted to exit 0 with meta `closed`. Dropping the route from the
+  reason makes the test RED 3/3. I had measured the same route working by
+  hand in the previous round; it still closes the task.
+- N-403 correctly declines to invent a policy maximum. The plan fixes none,
+  and inventing one is not an implementer's call.
+
+### Nothing regressed
+
+- Full suite with `dist/` removed and rebuilt first: exit 0, tests 106, pass
+  104, fail 0, cancelled 0, skipped 2, todo 0, 67.4s and 69.2s on two runs.
+  The work history claims 106/104/0/0/2/0 at 66.8s. Accurate.
+- `npm ci` exit 0. `npm run build` exit 0 from a removed `dist/`, and
+  `git status --porcelain` empty afterwards.
+- Registry: 107 mappings, 106 titles, 0 missing. The three new entries are a
+  pure append; nothing previously registered was modified or removed. Rename
+  probe (one title mutated by one character) correctly reports
+  `missing 1`, so the check is sensitive.
+- Scope audit, three-dot against the merge base 54ceb6e: exactly the same 13
+  paths as the previous round. `src/pool.ts` untouched.
+- Conventions over all 13 changed paths: non-ASCII scan clean (grep exit 1),
+  literal em dash scan clean (grep exit 1). The two new commit messages carry
+  no AI or tool names.
+- C-1: unaffected by this round. C-2: scan over all seven phase sources for
+  `process.kill`, `/proc/`, `SIGKILL`, `SIGTERM`, `detached`, `unref(` and a
+  word-boundary `pid` returns nothing (exit 1). C-3: scan over src/spawn.ts
+  and src/teardown.ts for `spawn(`, `exec(`, `execFile(`, `nohup`, `setsid`
+  returns nothing (exit 1).
+- Two witnesses re-run from earlier rounds, to check this round did not blunt
+  anything the way the fix round blunted W9. W3 (landedness judged against
+  `refs/heads/<default>` instead of the fetched tracking ref): RED 3/3. W7 (a
+  nonzero payload exit routed into `rollback`): RED 3/3. Neither was blunted.
+
+### Ruling on the remaining declared gap
+
+**`taskDirOccupied`'s catch branch untested: ACCEPTABLE. Merge with it.**
+
+The branch is three lines (src/task.ts:227-230) and fails closed: an
+unreadable task directory is treated as occupied, which produces a refusal
+that creates nothing. There is no destructive path behind it, so the worst
+consequence of it being wrong is a spurious refusal, and the worst
+consequence of leaving it untested is that a spurious refusal stops being
+spurious. Forcing it needs a directory that exists and cannot be read, which
+permission bits cannot produce for root, and the round is right that a
+technique that skips on CI is not evidence. The gap is stated with its
+reason and with no measured rate claimed for it, which is the correct
+handling. The non-directory half is now genuinely exercised through the CLI.
+
+### New
+
+One observation, not a finding, and not blocking.
+
+The honest-scope line "no behavioural witness of the inner scout gate exists
+or can exist while the outer gate holds" is an absolute, and I found two
+states it does not strictly cover: the pool gate's `baseSha === undefined`
+arm, and the check-then-act window between teardown's pre-check and the
+pool's own tip probe. Neither is deterministically forcible from a test, and
+in both the flag being `false` is what keeps the outcome safe, so the
+practical claim and the resolution built on it are unaffected. If the record
+is ever revised, "no deterministically forcible behavioural witness" is the
+formulation the measurements support. Recorded here rather than as a finding
+because this document has now corrected two overstatements and I would
+rather leave the third measured than unstated.
+
+### Honest limits of this pass
+
+- This was a narrow confirmation of four findings, as dispatched. I did not
+  re-walk the 14 acceptance criteria and did not re-review the phase.
+- Three runs per sabotage falsifies determinism, not rarity. The full suite
+  ran twice end to end.
+- Node v22.22.2, below the declared floor. CI on Node 26 remains the
+  authority; `gh` is absent here and I observed no CI run.
+- My enumeration of pre-check versus pool-gate divergences is a reading of
+  both call sites plus targeted execution, not an exhaustive search of the
+  state space. I could not construct a behavioural witness; I cannot prove
+  none exists.
