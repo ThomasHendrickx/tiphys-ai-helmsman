@@ -500,15 +500,27 @@ BRIEF
 
   export TIPHYS_EXIT_TEST_MODE="${mode}"
   export TIPHYS_EXIT_TEST_TASK="${TASK_ID}"
+  # Whether spawn forwards the payload's stdout to its own is not a
+  # contract the plan states, so the payload writes its facts to a path
+  # the harness chose rather than the harness assuming an unstated
+  # M1-P4 behavior. spawn's own captured output is still evidence.
+  payload_report="${work}/payload-report.txt"
+  export TIPHYS_EXIT_TEST_REPORT="${payload_report}"
   run_step A6 zero "${fleet}" "tiphys spawn runs the stub payload to completion" -- \
     node "${TIPHYS}" spawn --task "${TASK_ID}" --project "${toy_clone}" \
       --brief "${brief}" --shape ship --exec "${script_dir}/stub-payload.sh"
 
-  task_branch=$(awk '/^payload branch /{ print $3; exit }' "${LAST_OUTPUT}")
-  payload_commit=$(awk '/^payload commit /{ print $3; exit }' "${LAST_OUTPUT}")
-  if [ -z "${task_branch}" ] || [ -z "${payload_commit}" ]; then
-    die "step A6: the stub payload did not report its branch and commit; spawn did not surface the payload stdout"
+  if [ ! -f "${payload_report}" ]; then
+    die "step A6: the stub payload wrote no report at ${payload_report}; it did not run in the spawned worktree"
   fi
+  cp "${payload_report}" "${evidence}/output/payload-report.txt"
+  task_branch=$(awk '/^payload branch /{ print $3; exit }' "${payload_report}")
+  payload_commit=$(awk '/^payload commit /{ print $3; exit }' "${payload_report}")
+  if [ -z "${task_branch}" ] || [ -z "${payload_commit}" ]; then
+    die "step A6: the stub payload reported no branch and commit"
+  fi
+  note_step A6 assertion "stub payload facts captured" \
+    "payload report copied to output/payload-report.txt: branch ${task_branch}, commit ${payload_commit}"
 
   remote_sha=$(git ls-remote "${sandbox_remote}" "refs/heads/${task_branch}" | awk '{ print $1; exit }')
   outcome="fail"
@@ -521,7 +533,7 @@ BRIEF
     "stub payload commit carries the harness identity"
 
   if [ "${mode}" = "full" ]; then
-    pr_url=$(awk '/^payload pr /{ print $3; exit }' "${LAST_OUTPUT}")
+    pr_url=$(awk '/^payload pr /{ print $3; exit }' "${payload_report}")
     if [ -z "${pr_url}" ]; then
       die "step A6: the stub payload did not print a PR URL in full mode"
     fi

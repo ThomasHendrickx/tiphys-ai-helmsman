@@ -17,15 +17,23 @@
 # succeeds on a clean runner with no configured git identity.
 #
 # Environment contract (set by scripts/m1-exit-test.sh):
-#   TIPHYS_EXIT_TEST_MODE   local (default) or full
-#   TIPHYS_EXIT_TEST_TASK   task id recorded in the appended line and the
-#                           commit message (default m1-exit)
+#   TIPHYS_EXIT_TEST_MODE     local (default) or full
+#   TIPHYS_EXIT_TEST_TASK     task id recorded in the appended line and
+#                             the commit message (default m1-exit)
+#   TIPHYS_EXIT_TEST_REPORT   optional path; when set, every reported
+#                             line is written there as well as to stdout
 #
 # stdout, one line per fact, so the harness can capture it as evidence:
 #   payload branch <branch>
 #   payload commit <sha>
 #   payload pushed <remote-url> <branch>
 #   payload pr <url>            (full mode only)
+#
+# The report file exists because whether tiphys spawn forwards the
+# payload's stdout to its own is not a contract the plan states. The
+# payload writes its own facts to a path the harness chose, so the
+# harness never has to assume an unstated M1-P4 behavior; spawn's
+# captured output is still recorded as evidence either way.
 
 set -euo pipefail
 
@@ -37,6 +45,22 @@ HARNESS_EMAIL="exit-test@tiphys.invalid"
 
 mode="${TIPHYS_EXIT_TEST_MODE:-local}"
 task="${TIPHYS_EXIT_TEST_TASK:-m1-exit}"
+report="${TIPHYS_EXIT_TEST_REPORT:-}"
+
+# Report one fact, to stdout and (when the harness asked for one) to the
+# report file. The file is truncated by the first line of a run, so a
+# re-run never appends to a previous run's facts.
+report_line() {
+  echo "$1"
+  if [ -n "${report}" ]; then
+    if [ "${report_started:-}" = "yes" ]; then
+      echo "$1" >>"${report}"
+    else
+      echo "$1" >"${report}"
+      report_started=yes
+    fi
+  fi
+}
 
 case "${mode}" in
   local|full) ;;
@@ -69,7 +93,7 @@ if [ "${branch}" = "HEAD" ]; then
   echo "stub-payload: worktree is at a detached HEAD, expected the task branch" >&2
   exit 1
 fi
-echo "payload branch ${branch}"
+report_line "payload branch ${branch}"
 
 printf 'exit-test %s landed a trivial change on branch %s\n' "${task}" "${branch}" >>README.md
 
@@ -81,16 +105,16 @@ fi
 git_identified commit --quiet -m "exit-test ${task}: trivial change"
 
 commit=$(git rev-parse HEAD)
-echo "payload commit ${commit}"
+report_line "payload commit ${commit}"
 
 remote_url=$(git remote get-url origin)
 git push --quiet origin "HEAD:refs/heads/${branch}"
-echo "payload pushed ${remote_url} ${branch}"
+report_line "payload pushed ${remote_url} ${branch}"
 
 if [ "${mode}" = "full" ]; then
   url=$(gh pr create \
     --head "${branch}" \
     --title "exit-test ${task}: trivial change" \
     --body "Trivial change landed by the Tiphys M1 exit test stub payload (kernel plan v1 section 4, step A6).")
-  echo "payload pr ${url}"
+  report_line "payload pr ${url}"
 fi

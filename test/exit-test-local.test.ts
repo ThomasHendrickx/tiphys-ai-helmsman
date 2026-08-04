@@ -322,10 +322,12 @@ test("the stub payload appends, commits as the harness identity, and pushes the 
   const env = identityLessEnv(root);
   try {
     const staged = stageTaskWorktree(root, env);
+    const reportPath = join(root, "payload-report.txt");
     const payloadEnv = {
       ...env,
       TIPHYS_EXIT_TEST_MODE: "local",
       TIPHYS_EXIT_TEST_TASK: "m1-exit",
+      TIPHYS_EXIT_TEST_REPORT: reportPath,
     };
     const result = run("bash", [stubPayload], {
       cwd: staged.worktree,
@@ -360,6 +362,13 @@ test("the stub payload appends, commits as the harness identity, and pushes the 
       env,
     }).stdout.split("\t")[0];
     assert.equal(pushed, commitLine[1]);
+
+    // The report file is how the harness learns the branch and commit
+    // without assuming tiphys spawn forwards the payload's stdout, an
+    // M1-P4 behavior the plan does not state. It must carry the same
+    // facts as stdout.
+    const report = readFileSync(reportPath, "utf8");
+    assert.equal(report, result.stdout);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
