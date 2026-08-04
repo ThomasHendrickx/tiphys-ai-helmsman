@@ -1,0 +1,31 @@
+import { printVersion } from "./version.ts";
+
+/** Exit code for usage errors, per BSD sysexits EX_USAGE. */
+export const EX_USAGE = 64;
+
+type CommandHandler = (args: string[]) => Promise<number> | number;
+
+/**
+ * The one dispatch table. Subcommands added by later phases register here.
+ */
+const commands = new Map<string, CommandHandler>([["version", printVersion]]);
+
+export function usageLine(): string {
+  const names = [...commands.keys()].sort().join(" | ");
+  return `usage: tiphys <${names}>`;
+}
+
+/**
+ * Dispatch argv (already stripped of the node and script entries) to a
+ * subcommand handler. A missing or unknown subcommand prints the usage
+ * line to stderr and returns EX_USAGE.
+ */
+export async function run(argv: string[]): Promise<number> {
+  const [subcommand, ...rest] = argv;
+  const handler = subcommand === undefined ? undefined : commands.get(subcommand);
+  if (handler === undefined) {
+    process.stderr.write(`${usageLine()}\n`);
+    return EX_USAGE;
+  }
+  return handler(rest);
+}
