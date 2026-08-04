@@ -1,7 +1,7 @@
 # Tiphys Kernel Plan M2: Deterministic gates
 
 - Status: DRAFT, pending adversarial review
-- Baseline commit: 5b8e8aef6e5b21de9f9a919fa01d77e748cc4ee9 (branch claude/state-p4-start; `main` at 54ceb6eb27c7a0fa07ae2b67d09f0dc41d9382e4, M1-P3 merged, M1-P4 in flight)
+- Baseline commit: 5b8e8aef6e5b21de9f9a919fa01d77e748cc4ee9 (branch claude/state-p4-start; `main` at 54ceb6eb27c7a0fa07ae2b67d09f0dc41d9382e4, M1-P3 merged, M1-P4 in flight). Decision record DR-0012 (delegated merge authority) landed at 52e1724 during drafting and is applied in section 3 and section 1.4.
 - Milestone: M2 (deterministic gates), blueprint section 13 row M2
 - Binding rule: "If it is not written here, it is not being made. Unanswered questions go to the orchestrator."
 - Relation to `delivery/plan/kernel-plan-v1.md`: this document expands section 5 of kernel plan v1 (the M2 outline) into full phases in the format of v1 section 3. Kernel plan v1 remains the governing plan for everything else: its header, section 1 (standing context and binding conventions), section 2 (SC dispositions), section 3 (M1 phases, constraints C-1 to C-3, the test accounting rule, the invocation form), sections 6 and 7 (M3 to M5 outlines), section 8 (decisions D-1 to D-19), section 9 (owner decisions), section 11 (parked) and Appendix A (the 115-row coverage table) are unchanged by this document and are not restated except where cited. Where this plan decomposes M2 differently from v1 section 5's seven outline items, the difference is recorded as a numbered decision in section 5 below (M2-D-01). No row of v1's Appendix A moves buckets: all 16 M2 rows stay in M2.
