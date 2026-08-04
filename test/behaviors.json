@@ -55,5 +55,13 @@
   "pool-destroy-clean-removes": "pool destroy removes a clean worktree without flags",
   "pool-list-lines": "pool list prints one line per worktree with task id and HEAD sha",
   "pool-index-lock-failsafe": "a git lock file is treated as stale only under the full fail-safe proof",
-  "pool-usage-errors": "pool subcommand usage errors exit 64 and non-fleet cwd exits 1"
+  "pool-usage-errors": "pool subcommand usage errors exit 64 and non-fleet cwd exits 1",
+  "lock-stale-stage-cleaned": "a stranded stage file is cleaned by the next mutation of any kind",
+  "lock-stuck-claim-diagnostic": "a stuck claim file reports the lease situation and names the claim file",
+  "lock-stale-claim-no-live-holder": "a stale claim with no lease names the claim file and no live holder in every lease operation",
+  "lock-stale-claim-all-operations": "release and takeover also carry the stale-claim classification to the operator",
+  "pool-destroy-then-recreate": "pool destroy deletes the task branch and the id can then be created again",
+  "pool-destroy-branch-refusal": "pool destroy refuses with one reason line when the task branch cannot be deleted",
+  "pool-create-foreign-branch-refused": "pool create refuses a pre-existing task branch with a reason naming it",
+  "pool-retry-signature-narrow": "only genuine git lock contention is retried"
 }

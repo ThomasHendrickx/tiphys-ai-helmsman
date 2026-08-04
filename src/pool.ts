@@ -81,10 +81,24 @@ function runGit(cwd: string, args: string[]): GitRun {
 }
 
 /**
- * Signature of transient git lock contention (a concurrent operation
- * holds a .lock file); retried with backoff. Everything else fails fast.
+ * Signature of transient git lock contention (CR-203). Git reports a
+ * held lock by naming the actual lock path: "Unable to create
+ * '<path>.lock': File exists." (index locks and ref locks alike), so a
+ * genuine transient always carries a .lock path. The previous shape
+ * also matched the bare phrases "File exists" and "cannot lock ref",
+ * which permanent EEXIST-class failures emit too: a directory/file ref
+ * conflict reports "cannot lock ref 'refs/x': 'refs/x/y' exists; cannot
+ * create 'refs/x'" with no lock file involved, and used to buy about a
+ * second of pointless retries before the true error surfaced. Requiring
+ * the .lock path keeps every real transient and fails permanent errors
+ * on the first attempt.
  */
-const LOCK_CONTENTION = /index\.lock|Unable to create .*\.lock|cannot lock ref|File exists/;
+const LOCK_CONTENTION = /index\.lock|Unable to create '[^']*\.lock'/;
+
+/** Exported for the CR-203 classification test. */
+export function isTransientGitLockError(stderr: string): boolean {
+  return LOCK_CONTENTION.test(stderr);
+}
 
 async function runGitRetrying(
   cwd: string,
@@ -207,6 +221,25 @@ export async function poolCreate(
     return { ok: false, reason: `task id already used: ${taskId}` };
   }
 
+  // CR-201: a leftover task branch would otherwise surface as a raw git
+  // error from deep inside worktree add. Destroy now removes the branch
+  // it created, so this only fires when the branch came from elsewhere.
+  const branchName = taskBranchName(taskId);
+  const existing = runGit(project, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branchName}`,
+  ]);
+  if (existing.status === 0) {
+    return {
+      ok: false,
+      reason:
+        `branch ${branchName} already exists in ${project}; the pool creates ` +
+        `it fresh, so delete or rename it before re-using task id ${taskId}`,
+    };
+  }
+
   const remote = resolveRemote(project);
   if (!remote.ok) {
     return remote;
@@ -256,7 +289,7 @@ export async function poolCreate(
     remote: remote.value,
     branch: branch.value,
     baseSha,
-    branchName: taskBranchName(taskId),
+    branchName,
     offline: usedOffline,
     createdAt: new Date().toISOString(),
   };
@@ -479,6 +512,32 @@ export async function poolDestroy(
       return {
         ok: false,
         reason: `git worktree prune failed: ${pruned.stderr.trim()}`,
+      };
+    }
+  }
+
+  // CR-201: remove the task branch the pool created, so a destroyed
+  // task id is fully released and can be created again cleanly. The
+  // branch is deleted with -D (force) on purpose: whether the work is
+  // landed is the teardown guard's judgement (M1-P4), which refuses
+  // before ever calling destroy; the pool's own contract is that
+  // destroy leaves nothing of the task behind. The record is kept when
+  // deletion fails, so the refusal is retryable: a re-run takes the
+  // already-removed-worktree path above and retries the deletion.
+  const branchName = record?.branchName ?? taskBranchName(taskId);
+  const branchExists = runGit(contextDir, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branchName}`,
+  ]);
+  if (branchExists.status === 0) {
+    const deleted = await runGitRetrying(contextDir, ["branch", "-D", branchName]);
+    if (deleted.status !== 0) {
+      const detail = deleted.stderr.trim().split("\n")[0] ?? "";
+      return {
+        ok: false,
+        reason: `cannot delete branch ${branchName}: ${detail}`,
       };
     }
   }

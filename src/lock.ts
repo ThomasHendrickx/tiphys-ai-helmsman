@@ -80,7 +80,19 @@ export type ObservedLease =
 export type LeaseOutcome =
   | { ok: true; lease: Lease }
   | { ok: true; lease: null }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      /**
+       * True when the operation failed because a mutation claim file
+       * was still present after the bounded wait (CR-204). A stale
+       * claim is NOT an active lease: reporting it as "lock held"
+       * sends an operator hunting for a holder that does not exist.
+       * Every lease operation (acquire, renew, release) sets this, and
+       * the CLI consumes it to emit the claim-file remedy.
+       */
+      claimTimeout?: boolean;
+    };
 
 function parseLease(raw: string): Lease | undefined {
   let parsed: unknown;
@@ -148,6 +160,15 @@ export type MutationResult =
   | { won: false; reason: string; claimTimeout?: boolean };
 
 /**
+ * The single staging path a lease rename goes through (CR-202). One
+ * fixed name is safe because staging only ever happens inside the
+ * mutation claim, and it makes strand cleanup deterministic.
+ */
+export function stagePathFor(lockPath: string): string {
+  return `${lockPath}.stage`;
+}
+
+/**
  * The one shared atomic mutation primitive (EXT-F-01). Applies next (new
  * file content, or null to remove the lock) only if the lock file still
  * holds exactly the observed state, and confirms the application by
@@ -170,19 +191,43 @@ export async function applyLeaseMutation(
         throw error;
       }
       if (Date.now() >= deadline) {
+        // CR-204: name the lease situation first, so an operator is not
+        // nudged toward a takeover when the obstacle is a claim file and
+        // there is no lease at all.
+        // The remedy sentence is deliberately NOT part of this reason:
+        // the CLI appends it from the claimTimeout flag, so the
+        // classification is load-bearing at every layer rather than
+        // carried along as prose (CR-204).
+        const holder =
+          observed.kind === "present" && observed.lease !== undefined
+            ? `lock held by ${observed.lease.holderId}`
+            : "no lease, no live holder";
         return {
           won: false,
           claimTimeout: true,
           reason:
-            `stale claim file ${mutexPath} blocking: it stayed held past ` +
-            `${String(MUTEX_WAIT_TOTAL_MS)}ms; if no mutation is in flight ` +
-            `it was left by a crashed one, inspect and remove it manually`,
+            `${holder}; stale claim file ${mutexPath} blocking after ` +
+            `${String(MUTEX_WAIT_TOTAL_MS)}ms`,
         };
       }
       await sleep(MUTEX_WAIT_POLL_MS);
     }
   }
   try {
+    // CR-202: clear any stranded stage left by a mutation that died
+    // between its stage write and its rename. This runs inside the
+    // claim, so it provably cannot race a live mutation (a live one
+    // would hold the claim), which is why no age heuristic is needed
+    // or wanted. It is unconditional because the release path (unlink)
+    // and the absent-lock acquire path (O_EXCL create) never touch the
+    // stage: cleaning only in the rename branch would let a strand
+    // survive a release/acquire-only sequence indefinitely.
+    try {
+      unlinkSync(stagePathFor(lockPath));
+    } catch {
+      // No strand present, which is the normal case.
+    }
+
     const current = readCurrent(lockPath);
     if (observed.kind === "absent") {
       if (current.present) {
@@ -226,15 +271,17 @@ export async function applyLeaseMutation(
         throw error;
       }
     } else {
-      // The stage is ONE fixed path beside the lock (CR-202): mutations
-      // are serialized under the claim, so no two stages can coexist,
-      // and a stage stranded by a crash between write and rename is
-      // simply overwritten by the next mutation and renamed away, so
-      // strands never accumulate (at most one file, never swept by an
-      // age heuristic). A fixed path cannot weaken the CAS: the write
-      // happens inside the claim, the byte-compare and the token
-      // confirmation are unchanged, and the rename stays atomic.
-      const stagePath = `${lockPath}.stage`;
+      // The stage is ONE fixed path beside the lock (CR-202). Every
+      // stage write happens inside the claim, so no two stages can ever
+      // coexist and a fixed name needs no uniqueness to be safe; the
+      // claim-held sweep above then makes cleanup of a crash strand
+      // deterministic (exactly one possible strand path, removed
+      // unconditionally) instead of an age-based guess over a family of
+      // unique names. The CAS is untouched by this choice: the
+      // byte-compare against the observed state and the token
+      // confirmation read both still happen inside the claim, and the
+      // rename remains atomic within one directory.
+      const stagePath = stagePathFor(lockPath);
       writeFileSync(stagePath, next);
       try {
         renameSync(stagePath, lockPath);
@@ -337,6 +384,12 @@ export async function acquireLease(
     lease.token,
   );
   if (!result.won) {
+    // CR-204: a claim-file timeout is not a held lease. Its reason
+    // already states the lease situation, so it is never re-prefixed
+    // with "lock held", and the classification travels to the caller.
+    if (result.claimTimeout === true) {
+      return { ok: false, reason: result.reason, claimTimeout: true };
+    }
     return { ok: false, reason: `lock held (${result.reason})` };
   }
   return { ok: true, lease };
@@ -405,6 +458,9 @@ export async function renewLease(
     lease.token,
   );
   if (!result.won) {
+    if (result.claimTimeout === true) {
+      return { ok: false, reason: result.reason, claimTimeout: true };
+    }
     return { ok: false, reason: `renew ${result.reason}` };
   }
   return { ok: true, lease };
@@ -450,6 +506,9 @@ export async function releaseLease(
     randomUUID(),
   );
   if (!result.won) {
+    if (result.claimTimeout === true) {
+      return { ok: false, reason: result.reason, claimTimeout: true };
+    }
     return { ok: false, reason: `release ${result.reason}` };
   }
   return { ok: true, lease: null };

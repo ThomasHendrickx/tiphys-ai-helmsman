@@ -470,6 +470,165 @@ test("src/lock.ts contains no process probing and no pid identity", () => {
   assert.doesNotMatch(source, /signal/i);
 });
 
+test("a stranded stage file is cleaned by the next mutation of any kind", async (t) => {
+  // CR-202: a mutation that dies between its stage write and its rename
+  // strands the stage path. The claim-held sweep removes it whatever
+  // the next mutation does, including the release and absent-lock
+  // acquire paths, which never touch the stage themselves.
+  const fleet = initFleet(t);
+  const stagePath = `${lockFile(fleet)}.stage`;
+  const strand = "stranded stage content that no mutation wrote\n";
+
+  // Rename-branch mutation (renew).
+  const first = acquire(fleet);
+  writeFileSync(stagePath, strand);
+  const renewed = runCli(["lock", "renew", "--holder", first.holderId], { cwd: fleet });
+  assert.equal(renewed.status, 0, renewed.stderr);
+  assert.ok(!existsSync(stagePath), "strand survived a renew");
+  assert.equal(readLease(fleet).lease.holderId, first.holderId, "renew was affected");
+
+  // Removal-path mutation (release): never writes a stage at all.
+  writeFileSync(stagePath, strand);
+  const released = runCli(["lock", "release", "--holder", first.holderId], { cwd: fleet });
+  assert.equal(released.status, 0, released.stderr);
+  assert.ok(!existsSync(stagePath), "strand survived a release");
+  assert.ok(!existsSync(lockFile(fleet)), "release was affected");
+
+  // Absent-lock O_EXCL path (acquire): likewise never writes a stage.
+  writeFileSync(stagePath, strand);
+  const reacquired = runCli(["lock", "acquire"], { cwd: fleet });
+  assert.equal(reacquired.status, 0, reacquired.stderr);
+  assert.ok(!existsSync(stagePath), "strand survived an acquire");
+  assert.equal(
+    readLease(fleet).lease.holderId,
+    parseAcquired(reacquired.stdout).holderId,
+    "acquire was affected",
+  );
+
+  // The lease never contains strand bytes: a strand is discarded, never
+  // renamed into place.
+  assert.doesNotMatch(readLease(fleet).raw, /stranded stage content/);
+});
+
+test("a stuck claim file reports the lease situation and names the claim file", async (t) => {
+  // CR-204: the timeout diagnostic must not say "lock held" when there
+  // is no lease, and must name the claim file either way.
+  const fleet = initFleet(t);
+  const claimPath = `${lockFile(fleet)}.mutex`;
+
+  // No lease present: acquire blocked by a planted claim file.
+  writeFileSync(claimPath, "planted by a crashed mutation");
+  const noLease = runCli(["lock", "acquire"], { cwd: fleet });
+  assert.notEqual(noLease.status, 0);
+  assert.match(noLease.stderr, /no lease, no live holder; stale claim file /);
+  assert.ok(noLease.stderr.includes(claimPath), noLease.stderr);
+  assert.doesNotMatch(noLease.stderr, /lock held/);
+  rmSync(claimPath);
+
+  // Lease present: the same timeout names the holder instead.
+  const { holderId } = acquire(fleet);
+  writeFileSync(claimPath, "planted by a crashed mutation");
+  const held = runCli(["lock", "renew", "--holder", holderId], { cwd: fleet });
+  assert.notEqual(held.status, 0);
+  assert.match(held.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
+  assert.ok(held.stderr.includes(claimPath), held.stderr);
+  rmSync(claimPath);
+});
+
+test("a stale claim with no lease names the claim file and no live holder in every lease operation", (t) => {
+  // CR-204 (owner reviewer): the claim-timeout classification must
+  // reach the operator through acquire, renew AND release, never as
+  // "lock held", and each must carry the claim-file remedy that the
+  // CLI adds from the classification flag.
+  const fleet = initFleet(t);
+  const claimPath = `${lockFile(fleet)}.mutex`;
+  writeFileSync(claimPath, "planted by a crashed mutation");
+  t.after(() => {
+    rmSync(claimPath, { force: true });
+  });
+
+  // Operations that reach the mutation primitive with no lease: the
+  // stale claim is what blocks them, and that is what they must say.
+  for (const [label, args] of [
+    ["acquire", ["lock", "acquire"]],
+    ["acquire --take-over", ["lock", "acquire", "--take-over"]],
+  ] as [string, string[]][]) {
+    const result = runCli(args, { cwd: fleet });
+    assert.equal(result.status, 1, `${label}: expected exit 1, got ${String(result.status)}`);
+    // The classification, not a phantom holder.
+    assert.match(
+      result.stderr,
+      /no lease, no live holder; stale claim file /,
+      `${label} did not report the stale claim: ${result.stderr}`,
+    );
+    assert.doesNotMatch(result.stderr, /lock held/, `${label} reported a phantom holder`);
+    // The claim file itself, so the operator knows what to inspect.
+    assert.ok(result.stderr.includes(claimPath), `${label} did not name the claim file`);
+    // The remedy the CLI appends from the classification flag.
+    assert.match(
+      result.stderr,
+      /inspect and remove it manually/,
+      `${label} lost the claim-file remedy`,
+    );
+    assert.equal(
+      result.stderr.trim().split("\n").length,
+      1,
+      `${label} emitted more than one reason line: ${result.stderr}`,
+    );
+  }
+
+  // renew and release with no lease refuse before any mutation is
+  // attempted, so a claim file is not what stops them. They must still
+  // never invent a holder; their refusal names the real reason.
+  for (const [label, args] of [
+    ["renew", ["lock", "renew", "--holder", "some-holder"]],
+    ["release", ["lock", "release", "--holder", "some-holder"]],
+  ] as [string, string[]][]) {
+    const result = runCli(args, { cwd: fleet });
+    assert.equal(result.status, 1, `${label}: expected exit 1`);
+    assert.match(result.stderr, /no lease present/, `${label}: ${result.stderr}`);
+    assert.doesNotMatch(result.stderr, /lock held/, `${label} reported a phantom holder`);
+  }
+
+  // The blocked operations changed nothing: still no lease.
+  assert.ok(!existsSync(lockFile(fleet)), "a blocked operation created a lease");
+  const status = runCli(["lock", "status"], { cwd: fleet });
+  assert.equal(status.status, 0);
+  assert.match(status.stdout, /^free$/m);
+});
+
+test("release and takeover also carry the stale-claim classification to the operator", async (t) => {
+  // CR-204 (owner reviewer): renew is witnessed by the diagnostic test
+  // above; this covers the other two operations at the point where
+  // they actually reach the mutation primitive, so all three carry the
+  // classification through their own CLI path.
+  const fleet = initFleet(t);
+  const claimPath = `${lockFile(fleet)}.mutex`;
+  t.after(() => {
+    rmSync(claimPath, { force: true });
+  });
+
+  // release with a matching holder reaches the primitive.
+  const { holderId } = acquire(fleet, ["--duration", "1"]);
+  writeFileSync(claimPath, "planted by a crashed mutation");
+  const released = runCli(["lock", "release", "--holder", holderId], { cwd: fleet });
+  assert.equal(released.status, 1);
+  assert.match(released.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
+  assert.match(released.stderr, /inspect and remove it manually/);
+  assert.ok(released.stderr.includes(claimPath), released.stderr);
+
+  // takeover of an expired lease likewise reaches the primitive.
+  await waitPastExpiry(fleet);
+  const takeover = runCli(["lock", "acquire", "--take-over"], { cwd: fleet });
+  assert.equal(takeover.status, 1);
+  assert.match(takeover.stderr, new RegExp(`lock held by ${holderId}; stale claim file `));
+  assert.match(takeover.stderr, /inspect and remove it manually/);
+  assert.doesNotMatch(takeover.stderr, /lock held \(/, "reason was re-wrapped as a held lease");
+
+  // The lease is untouched by either blocked operation.
+  assert.equal(readLease(fleet).lease.holderId, holderId);
+});
+
 test("lock subcommand usage errors exit 64", (t) => {
   const fleet = initFleet(t);
   assert.equal(runCli(["lock"], { cwd: fleet }).status, 64);

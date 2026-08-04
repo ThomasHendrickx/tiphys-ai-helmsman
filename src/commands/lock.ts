@@ -67,6 +67,23 @@ function usageError(message?: string): number {
   return EX_USAGE;
 }
 
+/**
+ * The one failure emitter for acquire, renew, and release (CR-204).
+ * When the library classified the failure as a stale mutation claim,
+ * the operator is pointed at the claim file rather than at a holder
+ * that may not exist; the remedy text lives here, so a CLI that
+ * ignored the classification would visibly lose it. Operational
+ * failures exit 1 (usage errors alone use EX_USAGE).
+ */
+function failure(outcome: { reason: string; claimTimeout?: boolean }): number {
+  const remedy =
+    outcome.claimTimeout === true
+      ? "; if no mutation is in flight it was left by a crashed one, inspect and remove it manually"
+      : "";
+  process.stderr.write(`tiphys lock: ${outcome.reason}${remedy}\n`);
+  return 1;
+}
+
 function parseFlags(rest: string[]): LockArgs | undefined {
   const parsed: LockArgs = {
     takeover: false,
@@ -125,8 +142,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         nowMs: held?.nowMs,
       });
       if (!outcome.ok) {
-        process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
-        return 1;
+        return failure(outcome);
       }
       const lease = outcome.lease;
       if (lease === null) {
@@ -146,8 +162,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         nowMs: held?.nowMs,
       });
       if (!outcome.ok) {
-        process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
-        return 1;
+        return failure(outcome);
       }
       const lease = outcome.lease;
       if (lease === null) {
@@ -165,8 +180,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         observed: held?.observed,
       });
       if (!outcome.ok) {
-        process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
-        return 1;
+        return failure(outcome);
       }
       process.stdout.write(`released ${flags.holder}\n`);
       return 0;

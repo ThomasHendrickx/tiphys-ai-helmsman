@@ -42,6 +42,7 @@ const poolLib = (await import(
       runLsof?: (path: string) => LsofProbe;
     },
   ): boolean;
+  isTransientGitLockError(stderr: string): boolean;
 };
 
 const GIT_IDENTITY = {
@@ -369,6 +370,85 @@ test("a git lock file is treated as stale only under the full fail-safe proof", 
     poolLib.provablyStaleLock(join(dir, "no-such.lock"), { nowMs, runLsof: noHolders }),
     false,
   );
+});
+
+test("pool destroy deletes the task branch and the id can then be created again", (t) => {
+  // CR-201: destroy leaves nothing of the task behind, so re-creating
+  // the same id succeeds cleanly instead of failing inside git.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-recreate").status, 0);
+  assert.equal(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-recreate"]).status,
+    0,
+    "pool create did not make the task branch",
+  );
+  const destroyed = runCli(["pool", "destroy", "--task", "t-recreate"], { cwd: scratch.fleet });
+  assert.equal(destroyed.status, 0, destroyed.stderr);
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-recreate"]).status,
+    0,
+    "destroy left the task branch behind",
+  );
+  const recreated = poolCreate(scratch, "t-recreate");
+  assert.equal(recreated.status, 0, recreated.stderr);
+  assert.equal(
+    gitOk(worktreeOf(scratch, "t-recreate"), ["rev-parse", "HEAD"]),
+    recreated.stdout.trim(),
+  );
+});
+
+test("pool destroy refuses with one reason line when the task branch cannot be deleted", (t) => {
+  // CR-201 refusal half: the branch is checked out in another worktree,
+  // so git refuses the delete and destroy reports one reason line and
+  // keeps the record, making the refusal retryable.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-stuck").status, 0);
+  const parked = join(scratch.fleet, "parked");
+  gitOk(scratch.clone, ["worktree", "add", "--force", parked, "task/t-stuck"]);
+  const refused = runCli(["pool", "destroy", "--task", "t-stuck"], { cwd: scratch.fleet });
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /cannot delete branch task\/t-stuck: /);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  assert.ok(existsSync(recordOf(scratch, "t-stuck")), "record dropped despite refusal");
+  // Retryable: free the branch and the same command now succeeds.
+  gitOk(scratch.clone, ["worktree", "remove", "--force", parked]);
+  const retried = runCli(["pool", "destroy", "--task", "t-stuck"], { cwd: scratch.fleet });
+  assert.equal(retried.status, 0, retried.stderr);
+  assert.ok(!existsSync(recordOf(scratch, "t-stuck")));
+});
+
+test("pool create refuses a pre-existing task branch with a reason naming it", (t) => {
+  // CR-201: a branch the pool did not create surfaces as a clean
+  // refusal, not a raw git error from inside worktree add.
+  const scratch = makeScratch(t);
+  gitOk(scratch.clone, ["branch", "task/t-foreign"]);
+  const result = poolCreate(scratch, "t-foreign");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /branch task\/t-foreign already exists/);
+  assert.ok(!existsSync(worktreeOf(scratch, "t-foreign")));
+  assert.ok(!existsSync(recordOf(scratch, "t-foreign")));
+});
+
+test("only genuine git lock contention is retried", () => {
+  // CR-203: git names the lock path when a lock is actually held; the
+  // permanent cases below were retried by the previous generic phrases.
+  const transientIndex =
+    "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running";
+  const transientRef =
+    "error: cannot lock ref 'refs/remotes/origin/main': Unable to create '/repo/.git/refs/remotes/origin/main.lock': File exists.";
+  assert.equal(poolLib.isTransientGitLockError(transientIndex), true);
+  assert.equal(poolLib.isTransientGitLockError(transientRef), true);
+  const permanentDirFileConflict =
+    "error: cannot lock ref 'refs/remotes/up/main': 'refs/remotes/up/main/deep' exists; cannot create 'refs/remotes/up/main'";
+  const permanentExists =
+    "fatal: could not create work tree dir 'x': File exists";
+  assert.equal(poolLib.isTransientGitLockError(permanentDirFileConflict), false);
+  assert.equal(poolLib.isTransientGitLockError(permanentExists), false);
+  assert.equal(poolLib.isTransientGitLockError("fatal: 'occupied' already exists"), false);
 });
 
 test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {
