@@ -20,9 +20,9 @@ import {
  * turn-end file only).
  */
 
-type CheckStatus = "PASS" | "WARN" | "FAIL";
+export type CheckStatus = "PASS" | "WARN" | "FAIL";
 
-interface CheckResult {
+export interface CheckResult {
   name: string;
   status: CheckStatus;
   detail: string;
@@ -65,9 +65,15 @@ function readKernelEnginesNode(): string {
   }
 }
 
-function checkNode(): CheckResult {
-  const range = readKernelEnginesNode();
-  const match = /^>=\s*(\d+)/.exec(range);
+/**
+ * Evaluate a running node version against the kernel's engines.node range.
+ * Fails closed (CR-102): only the exact ">=<major>[.<minor>[.<patch>]]"
+ * form is interpreted, compared over the full version tuple; any other
+ * range shape, and any unparseable version, is FAIL with a reason line,
+ * never a silent truncation.
+ */
+export function nodeCheckFor(range: string, version: string): CheckResult {
+  const match = /^>=\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range.trim());
   if (match === null) {
     return {
       name: "node",
@@ -75,20 +81,47 @@ function checkNode(): CheckResult {
       detail: `cannot interpret kernel engines.node range "${range}"`,
     };
   }
-  const floor = Number(match[1]);
-  const major = Number(process.version.slice(1).split(".")[0]);
-  if (Number.isFinite(major) && major >= floor) {
+  const floor = [
+    Number(match[1]),
+    Number(match[2] ?? "0"),
+    Number(match[3] ?? "0"),
+  ];
+  const parts = version.replace(/^v/, "").split(".").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return {
+      name: "node",
+      status: "FAIL",
+      detail: `cannot interpret running node version "${version}"`,
+    };
+  }
+  let satisfied = true;
+  for (let i = 0; i < 3; i += 1) {
+    const have = parts[i] as number;
+    const need = floor[i] as number;
+    if (have > need) {
+      break;
+    }
+    if (have < need) {
+      satisfied = false;
+      break;
+    }
+  }
+  if (satisfied) {
     return {
       name: "node",
       status: "PASS",
-      detail: `${process.version} satisfies kernel engines "${range}"`,
+      detail: `${version} satisfies kernel engines "${range}"`,
     };
   }
   return {
     name: "node",
     status: "FAIL",
-    detail: `${process.version} does not satisfy kernel engines "${range}"`,
+    detail: `${version} does not satisfy kernel engines "${range}"`,
   };
+}
+
+function checkNode(): CheckResult {
+  return nodeCheckFor(readKernelEnginesNode(), process.version);
 }
 
 function toolVersion(cmd: string): string | undefined {
@@ -190,7 +223,14 @@ function checkLock(root: string): CheckResult {
     };
   }
   const expiresMs = Date.parse(lease.expiresAt);
-  const expired = Number.isFinite(expiresMs) && expiresMs <= Date.now();
+  if (Number.isNaN(expiresMs)) {
+    return {
+      name: "lock",
+      status: "FAIL",
+      detail: `lease expiresAt "${lease.expiresAt}" is not a parseable timestamp`,
+    };
+  }
+  const expired = expiresMs <= Date.now();
   return {
     name: "lock",
     status: "PASS",

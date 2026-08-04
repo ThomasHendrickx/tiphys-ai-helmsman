@@ -75,6 +75,19 @@ test("init refuses a non-empty directory that is not a fleet home", (t) => {
   assert.ok(!existsSync(join(dir, "backlog.md")), "init wrote into a refused dir");
 });
 
+test("init on a path that is an existing file exits 1 with a single reason line", (t) => {
+  const filePath = join(makeTempDir(t), "occupied-file");
+  writeFileSync(filePath, "content\n");
+  const result = runCli(["init", filePath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /exists and is not a directory/);
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${result.stderr}`,
+  );
+});
+
 test("init gitignore tracks durable areas and ignores ephemera", (t) => {
   const fleet = join(makeTempDir(t), "fleet");
   assert.equal(runCli(["init", fleet]).status, 0);

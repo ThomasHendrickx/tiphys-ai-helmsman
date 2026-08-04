@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
 import { FLEET_DIRS, FLEET_IGNORED } from "../fleet.ts";
@@ -49,6 +55,12 @@ export function cmdInit(args: string[]): number {
   const root = resolve(dir);
 
   if (existsSync(root)) {
+    if (!statSync(root).isDirectory()) {
+      process.stderr.write(
+        `tiphys init: ${root} exists and is not a directory\n`,
+      );
+      return 1;
+    }
     const entries = readdirSync(root);
     if (entries.length > 0) {
       const fleetMarkers = new Set<string>([...FLEET_DIRS, "backlog.md", ".git"]);
@@ -103,7 +115,7 @@ export function cmdInit(args: string[]): number {
     const result = runGit(root, step.args, step.env);
     if (result.status !== 0) {
       process.stderr.write(
-        `tiphys init: git ${step.args[0]} failed with exit ${String(result.status)}\n${result.stderr}`,
+        `tiphys init: git ${step.args[0]} failed with exit ${String(result.status)}; ${root} is left partially initialized, remove it and re-run init\n${result.stderr}`,
       );
       return 1;
     }

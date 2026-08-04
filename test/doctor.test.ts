@@ -12,6 +12,21 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+/**
+ * Unit import of doctor's exported range evaluator. Loaded through a
+ * computed URL because a literal relative import from test/ into src/
+ * crosses the project-reference boundary and fails the build under
+ * rewriteRelativeImportExtensions (TS2878); the runtime module is the
+ * same source file either way (Node type stripping).
+ */
+interface NodeCheckResult {
+  status: string;
+  detail: string;
+}
+const { nodeCheckFor } = (await import(
+  new URL("../src/commands/doctor.ts", import.meta.url).href
+)) as { nodeCheckFor: (range: string, version: string) => NodeCheckResult };
+
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
 /**
@@ -189,6 +204,31 @@ test("doctor reports CHECK lock FAIL on a corrupt lease file", (t) => {
   const result = runCli(["doctor"], { cwd: fleet });
   assert.notEqual(result.status, 0);
   assert.match(result.stdout, /^CHECK lock FAIL /m);
+});
+
+test("doctor reports CHECK lock FAIL when the lease expiresAt does not parse", (t) => {
+  const fleet = initFleet(t);
+  writeFileSync(
+    join(fleet, "state", "orchestrator.lock"),
+    `${JSON.stringify({ holderId: "h1", expiresAt: "banana" })}\n`,
+  );
+  const result = runCli(["doctor"], { cwd: fleet });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /^CHECK lock FAIL .*not a parseable timestamp/m);
+});
+
+test("node range evaluation compares full versions and fails closed on uninterpretable ranges", () => {
+  assert.equal(nodeCheckFor(">=26.1.0", "v26.0.0").status, "FAIL");
+  assert.equal(nodeCheckFor(">=26.1.0", "v26.1.0").status, "PASS");
+  assert.equal(nodeCheckFor(">=26.1.0", "v27.0.0").status, "PASS");
+  assert.equal(nodeCheckFor(">=26", "v26.6.0").status, "PASS");
+  assert.equal(nodeCheckFor(">=26", "v22.22.2").status, "FAIL");
+  const caret = nodeCheckFor("^26.0.0", "v26.0.0");
+  assert.equal(caret.status, "FAIL");
+  assert.match(caret.detail, /cannot interpret/);
+  const wildcard = nodeCheckFor(">=26.x", "v26.0.0");
+  assert.equal(wildcard.status, "FAIL");
+  assert.match(wildcard.detail, /cannot interpret/);
 });
 
 test("doctor reports holder and expiry for a readable lease", (t) => {

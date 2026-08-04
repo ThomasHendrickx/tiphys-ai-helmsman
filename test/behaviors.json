@@ -17,6 +17,9 @@
   "doctor-remote-fail-full-profile": "doctor --for full promotes remote-missing to FAIL",
   "doctor-beacon-fail-watch-profile": "doctor --for watch promotes beacon-absent to FAIL",
   "doctor-lock-corrupt-fail": "doctor reports CHECK lock FAIL on a corrupt lease file",
+  "doctor-lock-unparseable-expiry-fail": "doctor reports CHECK lock FAIL when the lease expiresAt does not parse",
+  "doctor-node-range-fail-closed": "node range evaluation compares full versions and fails closed on uninterpretable ranges",
+  "init-refuses-file-collision": "init on a path that is an existing file exits 1 with a single reason line",
   "doctor-lock-reports-holder": "doctor reports holder and expiry for a readable lease",
   "doctor-unknown-profile-usage": "doctor --for with an unknown profile exits 64"
 }
