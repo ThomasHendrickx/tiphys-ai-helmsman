@@ -27,61 +27,49 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P1 scaffold and CI | merged | #1 | npm scaffold, TypeScript build chain, gates workflow |
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
-| M1-P4 spawn and teardown | in progress | | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | not started | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
+| M1-P5 watcher and liveness | in progress | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
 | M1-P6 toy sandbox and exit test | built ahead, awaiting P4 and P5 merge plus A-1 | | branch claude/m1-p6-toy-sandbox-exit |
 
 ## In flight
 
-**M1-P4 (PR #6): dual cross-model review done, fix round in flight.** Head
-was 6fca6db. Two independent reviews on different model families both
-returned FIX-ROUND-NEEDED and found different defects: a criteria-walk lens
-found one blocking medium (a surviving task directory lets a new payload
-read the previous incarnation's turn-end record), and a destructive-paths
-lens found two highs neither the implementer nor the first reviewer saw (a
-thrown error between worktree creation and launch bypasses rollback and
-wedges the task id; a thrown write error after destruction leaves the task's
-state authority falsely reporting open). Both reproduced live. Both reviews
-independently upheld the implementer's two declared judgement calls. One
-combined fix round is applying all six findings plus a correction to the
-plan's own step 5 prose, which states an ordering that makes criterion 8
-unsatisfiable for every input.
+**M1-P4 is MERGED** at `6ec0482`, the first merge under DR-0012's delegated
+authority. Its record is deliberately complete: the squash commit carries
+both reviewers' rulings, the one disagreement and how it was arbitrated, and
+the fact that an overstated claim was narrowed before merge rather than
+carried. Five of six M1 phases are now delivered.
 
-**M1-P5 (watcher and liveness): not started.** Inputs it must carry, recorded
-here so they survive:
+What the dual cross-model review found on that phase, recorded because it is
+the evidence for keeping the practice: a criteria-walk lens found a
+state-confusion bug; a destructive-paths lens found two high-severity throw
+paths that skipped rollback entirely and that neither the implementer nor
+the first reviewer had surfaced; a later delta found a red witness that had
+silently gone green when a subsequent change short-circuited it, and a code
+path recorded as untestable that was in fact reachable from the CLI. Each
+was found by measurement rather than argument.
 
-- Ship a flag for the watcher's base and poll interval. The M1-P6 harness
-  cannot configure cadence and therefore uses fixed upper bounds (120s
-  beacon, 180s wake); a cadence flag shortens every CI run.
-- The M1-P6 harness does NOT depend on spawn forwarding the payload's
-  stdout. The plan never specified that contract and M1-P6 deliberately did
-  not invent it, reading payload facts from a harness-chosen report path
-  instead. P5 should not assume stdout forwarding either.
-- Tuition T-002's abandoned-task detection is P5's, and M1-P4 established
-  the shape it should exercise: since M1's only adapter runs the payload to
-  completion in the foreground, "open, no turn-end, dirty worktree" can only
-  arise if the spawn process itself dies, so P5 should witness it against a
-  killed spawn rather than a synthesized file state.
+**M1-P5 (watcher and liveness): implementing.** Branch
+`claude/m1-p5-watcher-liveness` from `main` at 6ec0482. The last unbuilt M1
+phase. Its brief carries the three recorded inputs (a cadence flag so the
+exit harness can stop using fixed upper bounds, no dependence on spawn
+forwarding stdout, and T-002's abandoned-task condition witnessed against a
+genuinely killed spawn rather than a synthesized file state), plus the two
+watcher-specific witness traps: a wake for the wrong reason proves nothing,
+and a liveness check on a fleet with no tasks in flight cannot fail.
 
-**M1-P6: built ahead and pushed, not open as a PR.** Under DR-0011 its PR
-may not open or merge before P4 and P5. Criteria 1 and 6 pass; criteria 2,
-3, 4 and 5 are DEFERRED-TO-VALIDATION, each with its discharging command
-recorded, because they need spawn, teardown and watch to exist. Nine red
-witnesses were run against dangerous states. Full mode remains blocked on
-owner action A-1. Two notes for its reviewer: the harness deliberately
-re-runs the gates as its own precondition, costing roughly two minutes per
-CI leg, and that must not be "fixed" with a skip flag; and the plan gives no
-local-mode mapping for the full doctor profile, so the harness asserts
-either exit 0 with gh present or exactly one gh FAIL line without it, which
-proves the provisioned fleet remote passed honestly.
+**M1-P6: built, pushed, waiting.** Branch `claude/m1-p6-toy-sandbox-exit`.
+Under DR-0011 its PR opens only after P5 merges. Criteria 1 and 6 pass;
+2, 3, 4 and 5 are DEFERRED-TO-VALIDATION with their discharging commands
+recorded. Full mode remains blocked on owner action A-1.
 
-**M2 and M3 detailed plans: DRAFT, written in parallel, unreviewed.** M2 is
-9 phases covering all 16 of its rows; M3 is 10 phases covering all 74 of
-its rows, verified programmatically against the master coverage table. M3
-reconciled itself against M2's real phase ids and contracts and accepted
-all nine of M2's boundary claims. Both need adversarial review before
-either milestone dispatches, and an M2 review that moves the gate manifest
-shape or the coverage input contract lands on three M3 phases.
+**After P5 merges**, P6 opens and the M1 exit test becomes runnable. A-1 is
+then the only thing between the project and a completed milestone, and
+milestone exit evidence goes to the owner regardless of DR-0012.
+
+**M2 and M3 detailed plans: DRAFT, unreviewed**, in PR #7. Both need
+adversarial review before their milestones dispatch. An M2 review that
+moves the gate manifest shape or the coverage input contract lands on three
+M3 phases.
 
 ## Owner decisions
 
