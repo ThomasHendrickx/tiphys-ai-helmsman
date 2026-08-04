@@ -583,12 +583,32 @@ export interface DestroyOutcome {
 /**
  * pool destroy, in three explicit stages.
  *
- * THE INVARIANT, and the reason this function has the shape it has: NO
- * DESTRUCTIVE ACTION MAY HAPPEN BEFORE EVERY GATE HAS PASSED. A refused
- * destroy leaves the worktree, its git registration and the pool record
- * byte-identical, so the refusal is always retryable and the remedy it
- * prints ("land them", "pass --delete-branch-force") is performable in
- * the place it names.
+ * THE INVARIANT, stated narrowly because the broad version was not
+ * true: NO POLICY DECISION MAY BE TAKEN AFTER A DESTRUCTIVE ACTION HAS
+ * BEGUN. That yields two outcomes with two different meanings, and one
+ * word must never cover both:
+ *
+ *   REFUSAL (stage 2). A true no-op. The worktree, its git
+ *   registration, the pool record and the branch are all byte-identical
+ *   afterwards, the refusal is always retryable, and the remedy it
+ *   prints ("land them", "pass --delete-branch-force") is performable in
+ *   the place it names. This is fully enforced: stage 2 performs no IO.
+ *
+ *   PARTIAL FAILURE (stage 3). Stage 3 is destructive and can fail
+ *   partway, and no ordering can make it otherwise: git will not delete
+ *   a branch that is checked out, so the worktree MUST come out before
+ *   the branch can, and a failure after that point cannot un-remove it.
+ *   Such a failure is reported as an operational partial failure that
+ *   enumerates what was removed and what survives, never as a refusal
+ *   and never with any wording implying nothing changed.
+ *
+ * The earlier, broader claim ("a refused destroy leaves everything
+ * byte-identical", full stop) was false for exactly one path: the tip
+ * recheck that used to sit after the worktree removal returned what
+ * looked like a refusal when the worktree was already gone. The fix was
+ * not to move that check, which is impossible, but to stop calling that
+ * outcome a refusal and to make the branch delete's safety claim
+ * enforceable by git itself rather than by a check that races.
  *
  * This was got wrong twice by patching the order of statements, most
  * recently when the branch gate was added after the worktree removal:
@@ -606,8 +626,10 @@ export interface DestroyOutcome {
  *            returns a refusal reason or undefined. Performs no IO, so
  *            it cannot destroy anything even by accident.
  *   stage 3, applyDestroy: DESTRUCTIVE, and reached only when stage 2
- *            returned no refusal. It has no gates left to evaluate; its
- *            only failures are operational (a git command failing).
+ *            returned no refusal. It evaluates no policy; its only
+ *            failures are operational (a git command failing), and it
+ *            reports them as partial failures that enumerate the
+ *            remaining state.
  *
  * Adding a new rule means adding a fact in stage 1 and a clause in
  * stage 2. A rule added to stage 3 is a bug by construction.
@@ -633,6 +655,14 @@ interface DestroyFacts {
   dirtyProbeError: string | undefined;
   branchName: string;
   branchTip: BranchTip;
+  /**
+   * Path of another worktree that has this branch checked out, if any.
+   * git branch -D refuses that case for good reason (it would strand
+   * that worktree on a dangling HEAD), and update-ref does not check
+   * it, so the condition is carried as a FACT and decided in stage 2
+   * where it belongs: it is policy, and its refusal is a true no-op.
+   */
+  branchCheckedOutAt: string | undefined;
 }
 
 /** Stage 1: gather facts. Read only; mutates nothing. */
@@ -705,6 +735,21 @@ async function resolveDestroy(
     };
   }
 
+  let branchCheckedOutAt: string | undefined;
+  const listed = runGit(contextDir, ["worktree", "list", "--porcelain"]);
+  if (listed.status === 0) {
+    let currentPath: string | undefined;
+    for (const line of listed.stdout.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        currentPath = line.slice("worktree ".length).trim();
+      } else if (line.trim() === `branch refs/heads/${branchName}`) {
+        if (currentPath !== undefined && resolve(currentPath) !== resolve(worktree)) {
+          branchCheckedOutAt = currentPath;
+        }
+      }
+    }
+  }
+
   return {
     ok: true,
     value: {
@@ -719,6 +764,7 @@ async function resolveDestroy(
       dirtyProbeError,
       branchName,
       branchTip,
+      branchCheckedOutAt,
     },
   };
 }
@@ -748,6 +794,21 @@ function evaluateDestroy(
       `cannot determine whether branch ${facts.branchName} exists in ` +
       `${facts.contextDir} (${facts.branchTip.detail}); refusing to finish ` +
       `destroy for task id ${facts.taskId}`
+    );
+  }
+
+  if (
+    facts.branchTip.kind === "present" &&
+    facts.branchCheckedOutAt !== undefined
+  ) {
+    // Policy, and therefore a stage-2 refusal: a true no-op. Deleting a
+    // branch another worktree has checked out would strand it on a
+    // dangling HEAD. git branch -D enforces this; update-ref, which
+    // stage 3 uses for its atomic compare-and-delete, does not, so the
+    // rule is enforced here rather than relied on downstream.
+    return (
+      `cannot delete branch ${facts.branchName}: it is checked out at ` +
+      `${facts.branchCheckedOutAt}; remove that worktree first`
     );
   }
 
@@ -813,37 +874,50 @@ async function applyDestroy(
 
   const outcome: DestroyOutcome = {};
   if (facts.branchTip.kind === "present") {
-    // The gate in stage 2 approved a SPECIFIC tip, read in stage 1.
-    // Between that read and this delete the worktree has been removed,
-    // so the decision could be stale by the time it is acted on. Re-read
-    // immediately before the destructive step and abort if the branch
-    // has moved: the approval was for those bytes, not for this name.
-    const recheck = runGit(facts.contextDir, [
-      "rev-parse",
-      "--verify",
-      "--quiet",
-      `refs/heads/${facts.branchName}^{commit}`,
+    // Stage 2 approved a SPECIFIC tip. Rather than re-read the tip and
+    // then delete (two steps with a window between them, which is what
+    // a check-then-act race is), hand the comparison to git: with an
+    // old-value argument, update-ref -d deletes the ref ONLY if it is
+    // still exactly that sha and fails atomically otherwise. The safety
+    // claim is therefore enforced by the ref transaction, not by a
+    // recheck that can be overtaken between checking and acting.
+    // Deliberately NOT runGitRetrying. git reports a failed old-value
+    // comparison as "cannot lock ref '<ref>': is at X but expected Y",
+    // which the contention signature treats as transient because on a
+    // FETCH it means another process already advanced the ref and a
+    // retry succeeds. Here the same text means the branch is no longer
+    // what stage 2 approved, which no amount of retrying will change:
+    // same shape, different call site, different meaning.
+    const deleted = runGit(facts.contextDir, [
+      "update-ref",
+      "-d",
+      `refs/heads/${facts.branchName}`,
+      facts.branchTip.sha,
     ]);
-    const currentTip = recheck.status === 0 ? recheck.stdout.trim() : undefined;
-    if (currentTip !== facts.branchTip.sha) {
+    if (deleted.status !== 0) {
+      // The worktree is already gone by this point and cannot be put
+      // back, so this is a PARTIAL FAILURE, not a refusal. Enumerate
+      // the real remaining state rather than implying nothing changed.
+      const detail = deleted.stderr.trim().split("\n")[0] ?? "";
+      const nowTip = runGit(facts.contextDir, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `refs/heads/${facts.branchName}^{commit}`,
+      ]);
+      const currentTip = nowTip.status === 0 ? nowTip.stdout.trim() : "absent";
+      const worktreeState = facts.haveWorktree
+        ? `worktree ${facts.worktree} HAS BEEN REMOVED (with any git-ignored files in it) and its registration pruned`
+        : `no worktree directory was present`;
       return {
         ok: false,
         reason:
-          `branch ${facts.branchName} changed while this destroy was running ` +
-          `(approved tip ${facts.branchTip.sha}, now ` +
-          `${currentTip ?? "absent"}); the branch was left alone, re-run destroy`,
-      };
-    }
-    const deleted = await runGitRetrying(facts.contextDir, [
-      "branch",
-      "-D",
-      facts.branchName,
-    ]);
-    if (deleted.status !== 0) {
-      const detail = deleted.stderr.trim().split("\n")[0] ?? "";
-      return {
-        ok: false,
-        reason: `cannot delete branch ${facts.branchName}: ${detail}`,
+          `partial destroy of task id ${facts.taskId}: ${worktreeState}; branch ` +
+          `${facts.branchName} was NOT deleted and is left at ${currentTip} ` +
+          `(the delete was approved for ${facts.branchTip.sha} and git refused: ` +
+          `${detail}); the pool record ${facts.recordFile} is left in place; ` +
+          `re-run "tiphys pool destroy --task ${facts.taskId} ` +
+          `--delete-branch-force" to finish once you have checked that branch`,
       };
     }
     outcome.deletedBranch = facts.branchName;

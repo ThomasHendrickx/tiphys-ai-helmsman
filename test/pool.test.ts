@@ -632,6 +632,18 @@ test("pool destroy refuses with one reason line when the task branch cannot be d
     `expected a single reason line, got: ${refused.stderr}`,
   );
   assert.ok(existsSync(recordOf(scratch, "t-stuck")), "record dropped despite refusal");
+  // This is a stage-2 refusal, so it is a true no-op: the worktree and
+  // its registration must both survive, not only the record.
+  assert.ok(
+    existsSync(worktreeOf(scratch, "t-stuck")),
+    "a stage-2 refusal removed the worktree",
+  );
+  assert.ok(
+    gitOk(scratch.clone, ["worktree", "list", "--porcelain"]).includes(
+      worktreeOf(scratch, "t-stuck"),
+    ),
+    "a stage-2 refusal pruned the registration",
+  );
   // Retryable: free the branch and the same command now succeeds.
   gitOk(scratch.clone, ["worktree", "remove", "--force", parked]);
   const retried = runCli(["pool", "destroy", "--task", "t-stuck"], { cwd: scratch.fleet });
@@ -858,21 +870,37 @@ test("pool create refuses a task id whose branch path is blocked by a nested ref
   assert.ok(!existsSync(recordOf(scratch, "foo")));
 });
 
-test("destroy aborts the branch delete if the branch moved after the gate approved it", (t) => {
-  // The branch gate is decided from a tip read in stage 1 but acted on
-  // in stage 3, after the worktree has been removed, so the approval can
-  // be stale by the time it is used. The approval is for a specific tip,
-  // not for a name. The window is opened for real here: a stub git moves
-  // the branch during the "worktree remove" call, which is exactly the
-  // step that sits between the gate and the delete.
+test("a branch that moves mid-destroy is reported as a partial failure enumerating every outcome", (t) => {
+  // The branch delete cannot happen before the worktree removal (git
+  // refuses to delete a checked-out branch), so this path IS
+  // destructive before its last step. It must therefore never be
+  // dressed up as a refusal. This test is red against the DANGEROUS
+  // state: it fails if the outcome is reported as a clean refusal, if
+  // the message implies nothing changed, or if the enumeration
+  // disagrees with the real remaining state. All five outcomes are
+  // asserted, plus a git-ignored file, because that is the cost the
+  // operator actually pays here.
   const scratch = makeScratch(t);
   assert.equal(poolCreate(scratch, "t-moved").status, 0);
-  const base = gitOk(worktreeOf(scratch, "t-moved"), ["rev-parse", "HEAD"]);
+  const worktree = worktreeOf(scratch, "t-moved");
+  const base = gitOk(worktree, ["rev-parse", "HEAD"]);
+  // A git-ignored file: content no git object holds.
+  writeFileSync(join(worktree, ".gitignore"), "build/\n");
+  gitOk(worktree, ["add", "-A"]);
+  gitOk(worktree, ["commit", "-m", "ignore build"]);
+  const committed = gitOk(worktree, ["rev-parse", "HEAD"]);
+  mkdirSync(join(worktree, "build"));
+  const ignoredFile = join(worktree, "build", "env.local");
+  writeFileSync(ignoredFile, "SECRET=1\n");
+  assert.equal(gitOk(worktree, ["status", "--porcelain"]), "", "precondition: clean");
+
   upstreamCommit(scratch.upstream, "moved-on");
   gitOk(scratch.clone, ["fetch", "origin"]);
   const movedTip = gitOk(scratch.clone, ["rev-parse", "refs/remotes/origin/main"]);
-  assert.notEqual(movedTip, base);
+  assert.notEqual(movedTip, committed);
 
+  // Open the window for real: move the branch immediately after the
+  // worktree removal, which is the step between the gate and the delete.
   const binDir = mkdtempSync(join(tmpdir(), "tiphys-p3-movegit-"));
   t.after(() => {
     rmSync(binDir, { recursive: true, force: true });
@@ -887,8 +915,6 @@ const args = process.argv.slice(2);
 const real = ${JSON.stringify(realGit)};
 const r = spawnSync(real, args, { stdio: "inherit" });
 if (args.includes("worktree") && args.includes("remove") && r.status === 0) {
-  // Move the branch immediately AFTER the removal: that is the exact
-  // window between the gate's approval and the branch delete.
   spawnSync(real, ["-C", ${JSON.stringify(scratch.clone)}, "update-ref", "refs/heads/task/t-moved", ${JSON.stringify(movedTip)}], { stdio: "ignore" });
 }
 process.exit(r.status === null ? 1 : r.status);
@@ -896,21 +922,68 @@ process.exit(r.status === null ? 1 : r.status);
     { mode: 0o755 },
   );
 
-  const result = runCli(["pool", "destroy", "--task", "t-moved"], {
-    cwd: scratch.fleet,
-    env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` },
-  });
+  const result = runCli(
+    ["pool", "destroy", "--task", "t-moved", "--delete-branch-force"],
+    {
+      cwd: scratch.fleet,
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` },
+    },
+  );
+
   assert.notEqual(
     result.status,
     0,
     "destroy deleted a branch that moved after the gate approved its tip",
   );
-  assert.match(result.stderr, /changed while this destroy was running/);
-  // The commit the branch moved to must still be reachable.
+  // It must be reported as a partial failure, never as a refusal, and
+  // must never imply that nothing changed.
+  assert.match(
+    result.stderr,
+    /partial destroy/,
+    `a destructive path was reported as something other than a partial failure: ${result.stderr}`,
+  );
+  assert.doesNotMatch(
+    result.stderr,
+    /nothing was (removed|changed)|left alone|was not touched/,
+    `the message implies nothing changed although the worktree is gone: ${result.stderr}`,
+  );
+
+  // Outcome 1: the worktree directory is really gone, and the message says so.
+  assert.ok(!existsSync(worktree), "precondition for this path: the worktree is removed");
+  assert.match(result.stderr, /HAS BEEN REMOVED/, "the message hides the worktree removal");
+  // Outcome 2: the registration is really gone.
+  assert.ok(
+    !gitOk(scratch.clone, ["worktree", "list", "--porcelain"]).includes(worktree),
+    "the registration survived while the message claims the worktree was removed",
+  );
+  // Outcome 3: the record really survives, and the message says so.
+  assert.ok(existsSync(recordOf(scratch, "t-moved")), "the record was dropped on a failed destroy");
+  assert.match(result.stderr, /record .* is left in place/, "the message hides the surviving record");
+  // Outcome 4: the branch really survives, at the moved tip, and the
+  // message names that sha rather than the approved one.
   assert.equal(
     gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-moved"]),
     movedTip,
     "the moved branch was deleted on a stale approval",
+  );
+  assert.ok(
+    result.stderr.includes(movedTip),
+    `the message does not name the sha the branch is actually left at: ${result.stderr}`,
+  );
+  assert.match(result.stderr, /was NOT deleted/, "the message hides that the branch survives");
+  // Outcome 5: the git-ignored file really went with the worktree, which
+  // is the cost this path imposes and must not be papered over.
+  assert.ok(!existsSync(ignoredFile), "precondition: ignored files go with the worktree");
+  // And the next command it names actually finishes the job.
+  const finish = runCli(
+    ["pool", "destroy", "--task", "t-moved", "--delete-branch-force"],
+    { cwd: scratch.fleet },
+  );
+  assert.equal(finish.status, 0, `the printed next command failed: ${finish.stderr}`);
+  assert.ok(!existsSync(recordOf(scratch, "t-moved")));
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-moved"]).status,
+    0,
   );
 });
 
