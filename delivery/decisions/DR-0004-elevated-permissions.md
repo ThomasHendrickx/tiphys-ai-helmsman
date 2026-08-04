@@ -21,9 +21,10 @@ Today nothing stops anyone (including any agent with push access) from pushing s
 
 Timing: run item 1 any time; run items 2 and 3 after the first CI workflow lands on main (the required check name must exist first). Item 4 is optional hardening for M2.
 
-1. Confirm the default branch is main:
+1. Confirm the default branch is main, and flip it if it is not (the repository's first pushed branch was the orchestration branch, so GitHub made that the default; main now exists at the approved plan history and should become the default):
 
    gh api repos/ThomasHendrickx/tiphys-ai-helmsman --jq .default_branch
+   gh api --method PATCH repos/ThomasHendrickx/tiphys-ai-helmsman -f default_branch=main
 
 2. Protect main: require a pull request before merging and require the CI check to pass. Using a ruleset (current GitHub mechanism):
 
