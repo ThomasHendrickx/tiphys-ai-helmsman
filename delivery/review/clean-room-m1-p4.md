@@ -235,3 +235,180 @@ The behavior itself is correct and arguably the only safe one: the leavings are 
 ## Merge recommendation
 
 Do not merge as it stands; run one narrow fix round and merge immediately after it, without a second full review pass. The phase's actual contract is discharged: all 14 criteria are met and I verified the load-bearing ones by hand, both declared judgement calls are correct, C-1, C-2 and C-3 hold in the code as written, the scope and conventions are clean, and the red witnesses are real at the rate claimed. What blocks the merge is CR-301, a destructive path that fires outside the scope its own contract declares and that plants a false completion record under the exact state authority M1-P5 is about to build on; the fix is a single refusal placed before `poolCreate`, plus one registered behavior with a witness red against the dangerous state, and CR-302, CR-303 and CR-304 are message and prose changes that should ride along in the same round. Two things must land alongside the code: the plan-prose correction for step 5 clause (b) given verbatim in the judgement call 1 section, before M1-P5 is dispatched, so the next implementer does not re-derive the ordering the criteria reject; and, per T-003, a delta verification of the fix round itself rather than a merge on green CI, since the round touches the same rollback path this finding is about.
+
+## Delta review of the fix round (head 5aa9a8e)
+
+- Date: 2026-08-04
+- Delta reviewed: 6fca6db..5aa9a8e (two commits: 772ee77 the fix, 5aa9a8e the work-history update). Merge base with origin/main unchanged at 54ceb6eb27c7a0fa07ae2b67d09f0dc41d9382e4.
+- Reviewer: the same criteria-walk reviewer as the round-one section above, now reviewing the round that answers CR-301 to CR-304 and the second reviewer's F-1 to F-3.
+- Scope: a DELTA review. The 14 acceptance criteria were walked and confirmed met on 6fca6db by two independent reviewers; they are not re-walked here. The two questions are whether the six findings are genuinely closed and whether the refactor broke anything that previously worked.
+- Isolation used: a private clone at
+  `/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/p4-delta-opus`
+  at 5aa9a8e, plus a second private clone `.../p4-delta-opus-old` at 6fca6db for the before-and-after reproductions, plus `.../p4-delta-opus-work` for scratch fleets. `npm ci` in both clones. Nothing outside those three directories was written. Every sabotage was applied in the 5aa9a8e clone, reverted with `git checkout --`, and the tree verified clean with `git diff --quiet`; the clone was confirmed clean at the end.
+- Environment: Node v22.22.2 (floor >=26, EBADENGINE expected, CI is the authority), git 2.43.0, gh absent.
+
+### VERDICT
+
+FIX-ROUND-NEEDED, narrowly.
+
+All six findings are genuinely closed. I reproduced F-1 and F-2 on 6fca6db and confirmed each closed on 5aa9a8e, reproduced both CR-301 scenarios and confirmed both closed, executed CR-304's printed route end to end, and confirmed CR-303 structurally and empirically. The three classification decisions are correct, including the refusal to classify a throw out of `adapter.launch`, which I attacked directly and could not break. No behavior regression was found: three of the four round-one witnesses I re-performed are still red 3/3 against the shipped source.
+
+What blocks the merge is not a behavior defect. It is two false statements in the durable record plus the missing witness one of them wrongly declares impossible:
+
+1. **N-401**: witness W9 is now GREEN 3/3 against the fixed source. The CR-304 pre-check short-circuits it, so the phase's only guard on "the scout teardown path must not pass `--delete-branch-force`" no longer exists. Work-history key decision 18 still asserts in the present tense that this decision "has its own test and witness W9 ... is red 3/3". The round re-ran five round-one witnesses "to prove the refactor did not blunt them" and excluded the one witness its own change most directly touched.
+2. **N-402**: the round records the adapter-throw path as untestable because "constructing it needs an adapter injected through the library seam, which the CLI does not expose". That is false. I drove that exact path from the CLI in one command, `spawn ... --deadline 1e300`, and confirmed the prescribed test is red (a 12-line stack trace) against the unwrapped state and green (one reason line) with the fix. The round's most consequential judgement is therefore witnessable and is currently unwitnessed, and the record tells the next reader not to try.
+
+Both are cheap to close. Two further lows (N-403, N-404) should ride along. CLAUDE.md's rule that a work history is never softened, and T-003's rule that a green witness can be worthless, are the reasons these are not "note it and merge".
+
+### What I executed versus what I read
+
+Executed, all in my own clones:
+
+- `npm ci` in both clones (exit 0). At 5aa9a8e: `rm -rf dist && npm run build` exit 0 with `git status --porcelain` empty afterwards; `rm -rf dist && node --test` exit 0, tests 103, pass 101, fail 0, cancelled 0, skipped 2, todo 0, duration 66366ms. The 2 skips are the unchanged M1-P2 floor-gated doctor witnesses.
+- Behavior registry check over a TAP run of that suite: 104 mappings, 103 titles, 0 missing. Rename probe: renaming the title of `spawn-refuses-occupied-task-dir` made the check report exactly `missing: 1 spawn-refuses-occupied-task-dir`; reverted and re-checked clean. The checker is sensitive, not vacuous.
+- F-2 reproduced at 6fca6db and confirmed closed at 5aa9a8e, through the real CLI, with the dangling-symlink forced failure.
+- F-1 reproduced at 6fca6db and confirmed closed at 5aa9a8e, through the real CLI, with the stub-git forced failure, and a second variant of my own that leaves `meta.json` present and reading `open`.
+- CR-301 scenarios A and B re-run at 5aa9a8e through the CLI.
+- Criterion 4 both halves re-run at 5aa9a8e through the CLI.
+- CR-304's printed route executed end to end by hand.
+- CR-303 confirmed by driving a real 5-line git fetch failure through teardown.
+- Four round-one witnesses re-performed against the fixed source, three runs each: W3, W5, W7 (none of which the round re-ran) and W9 (which the round also did not re-run).
+- One new adversarial probe: the adapter-throw classification driven from the CLI, with the recovery route measured, plus a sabotage run proving the prescribed witness is red.
+- Scope audit `git diff --name-status 54ceb6e...HEAD`, convention sweeps, C-1/C-2/C-3 greps.
+
+Read only: the second reviewer's report, the fix-round section of the work history, the plan revision-8 diff, and the parts of `src/pool.ts` and `src/fleet.ts` the delta calls into (both unmodified by this PR).
+
+### Per-finding disposition
+
+| Finding | Status | Evidence I produced |
+|---|---|---|
+| F-1 (HIGH) | CLOSED | At 6fca6db, a stub git that removes `tasks/t-mf/` the instant `git worktree remove` returns 0 gave an 18-line raw stack trace (`Error: ENOENT ... at writeTaskMeta ... at setTaskStatus ... at finish`), exit 1, worktree gone. At 5aa9a8e the same forced failure gives exit 1 and exactly ONE line: `tiphys teardown: partial teardown of task id t-mf: worktree ... HAS BEEN REMOVED and branch task/t-mf was deleted (it was 7b6d392d...), but .../meta.json could not be marked closed (...); the task record still reads status open although its worktree is gone, so repair that file and set "status": "closed" by hand`. I also built the second reviewer's exact surface (a variant stub that replaces `meta.json` with a directory so the file survives): same one-line partial-teardown report, and the surviving record verifiably still reads `"status": "open"`, which is now stated by the message instead of being left for a later reader to discover. |
+| F-2 (HIGH) | CLOSED | At 6fca6db, a dangling symlink at `tasks/t-throw` (reads absent to `existsSync`, makes `mkdirSync` raise ENOENT) gave a raw stack trace and left `worktrees/t-throw`, `worktrees/t-throw.pool.json` and `refs/heads/task/t-throw` all orphaned. At 5aa9a8e the same input gives one line, `tiphys spawn: creating the task directory ... failed: ENOENT ...`, and `ls worktrees` is EMPTY, no task branch, and removing the planted link lets the same id spawn successfully (exit 0). The id is not wedged. |
+| CR-301 (MEDIUM) | CLOSED as specified | Scenario A at 5aa9a8e: spawn `tr` (payload exit 3), teardown, then re-spawn with a nonexistent binary. Exit 1 with the occupied-directory reason naming the directory; `md5sum` over `tasks/tr/*` byte-identical before and after (`diff` clean); `worktrees/` empty. Scenario B: re-spawn with a payload that copies `tasks/tr/turn-end` if it exists. Exit 1, the payload never ran, no copy exists. The refusal is placed after the liveness and holdership checks and before `poolCreate` (src/spawn.ts:274, 278, 293, 303), which is the ordering I asked for and the right one: holdership still speaks first. |
+| CR-302 (LOW) | CLOSED | Prose narrowed in both places (src/teardown.ts module doc, work-history key decision 17) to "every refusal that precedes the salvage step is a true no-op", with the salvage-push-failure exception named. The behavior is now pinned by a registered test (`teardown-salvage-push-failure-local-commit`) that asserts the local commit exists, is labelled, nothing is destroyed, and the reason is one line. |
+| CR-303 (LOW) | CLOSED, and the structural claim is true | I checked the claim rather than accepting it. `singleLine` (src/task.ts) splits the WHOLE string, trims, drops empties and joins with "; ". Both refusal emitters apply it to the entire `result.reason` (src/commands/spawn.ts:137, src/commands/teardown.ts:77), so it does not depend on any individual interpolation being short. The interpolation sites are collapsed too, which is belt and braces, not the load-bearing part. Empirically: a real unreachable-remote fetch failure whose git stderr is 5 lines now emits exactly 1 line. The only stderr path not passing through `singleLine` is the `loadFleet` catch, and `loadFleet` throws a single authored line (src/fleet.ts:86-89), so nothing multi-line reaches it. |
+| CR-304 (LOW) | CLOSED, route executed | The refusal is now teardown's own, one line, names no flag teardown lacks, and quotes the exact remedy. I executed the printed route: `git push origin HEAD:refs/heads/scout-findings` from the scout worktree, then the literal `git -C <project> update-ref refs/heads/task/ts <baseSha>` the message printed, then `teardown --task ts` again. Result: exit 0, `torn down ts`, meta `"status": "closed"`, `worktrees/` empty, and `git -C upstream rev-parse refs/heads/scout-findings` equals the scout's commit sha `2a0df674...`. The findings survive and the task reaches closed, which it could not do before. |
+| F-3 (LOW) | CLOSED | Key decision 11 now carries an explicit correction naming what was and was not exercised, rather than the unconditional "everything or a clean rollback". |
+
+### Ruling on the three classification decisions
+
+These are the substantive engineering of the round and I judged each on its own, not on the argument offered for it.
+
+**1. "A raised launch-record write means the payload provably never ran, so rollback is safe." CORRECT, and provable.**
+
+In the shipped subprocess adapter the record write is the first side effect and precedes `spawnSync` of the payload (src/spawn.ts:159-166 then 172), so within that adapter the claim is not a judgement, it is an ordering fact. For any other adapter the claim rests on the `LaunchOutcome` contract, which states it explicitly at the type: "The distinction between a payload that never started and one that did is load-bearing: only the first authorizes rollback" (src/spawn.ts:121-123). So `launch-failed` means "never started" by contract, and an adapter that returns it after starting a payload has broken the contract, not the kernel. The rollback that follows uses `poolDestroy` with both force flags off, so even a contract-breaking adapter cannot get a non-pristine worktree destroyed: the destroy would refuse. That is the right defensive shape.
+
+**2. "Anything raised after the payload ran is incomplete, and incomplete never rolls back." CORRECT for every state I can reach after the payload ran.**
+
+The post-payload region of the adapter has exactly three exits: a raise from the hook invocation (wrapped, becomes `incomplete`), a hook that errored or exited nonzero (`incomplete`), and success (`completed`). `spawnTask` performs no further writes after `launch` returns, and `incomplete` returns `{ok:false}` without touching `rollback` (src/spawn.ts:432-435). The one place worth checking is the classification of `result.error` from `spawnSync` as `launch-failed`: with `stdio: "inherit"` and no `timeout`, `killSignal` or `maxBuffer` configured, `spawnSync` sets `error` only for failures to start the child (ENOENT, EACCES, EAGAIN), so that classification does not leak a post-payload state into the rollback path. A payload killed by a signal produces `status: null` with `signal` set and no `error`, which becomes `completed` with a 128+n code, not a rollback. I could not construct a post-payload state that reaches `rollback`.
+
+**3. Refusing to classify a throw out of `adapter.launch`. CORRECT. I attacked the argument and it held.**
+
+The implementer's argument is that guessing would recreate the V-1 data-loss shape with a new trigger. I tested it rather than accepting it, and the decisive question is what an operator is actually left with.
+
+I found the path is reachable from the CLI today (see N-402/N-403): `spawn --task td ... --deadline 1e300` makes `new Date(...).toISOString()` raise inside the adapter, before the payload. At 5aa9a8e that produces exit 1 and one line naming the worktree, the task directory and the pool record as left in place. So I could measure the residue rather than reason about it:
+
+- Left behind: `worktrees/td`, `worktrees/td.pool.json`, `refs/heads/task/td`, and `tasks/td/` holding `brief.md`, `meta.json` (status open) and the hook, with no `executor.json` and no `turn-end`.
+- Recovery: `tiphys teardown --task td` exits 0, removes the worktree, deletes the branch and sets meta to `closed`. I ran it. The mess is fully recoverable through the documented CLI, in one command.
+
+So the alternative the implementer rejected buys nothing an operator cannot get in one command, and costs the V-1 outcome whenever a future adapter raises after starting a payload: a destroyed worktree that held real work, with the same "it was only scratch" justification this project has already paid for once. Refusing to guess is right, and it is right for the stated reason, not by luck. The enumerate-and-leave shape is also the one M1-P3 already established for a partial destroy, so it is consistent rather than novel.
+
+One thing the decision does NOT do, and should: the enumeration tells the operator what is left but not what to do about it. That is the exact gap CR-304 was raised for, and this round fixed CR-304 by adopting the standard "print a route you can actually perform". The adapter-throw reason should meet the same standard. That is N-404 below, a message change only.
+
+### Did the wrapper blunt anything?
+
+The round re-ran W1, W2, W5, W6 and W8. I re-performed four witnesses against the shipped source at 5aa9a8e, three of which the round did NOT re-run. Each target test was confirmed green on pristine source first, each sabotage was run three times, then reverted and the tree verified clean.
+
+| ID | Sabotage applied to the fixed source | Test | Measured | Note |
+|---|---|---|---|---|
+| W3 | Landedness judged against `refs/heads/<default>` instead of the fetched tracking ref (applied at the `landedness` call site so the fetch itself is untouched) | teardown-squash-landed | 3/3 RED | Same message as round one: "a squash-landed branch was refused: ... branch task/t-squash is not landed on origin/main" |
+| W5 | Salvage block moved above the landed check | teardown-dirty-and-salvage | 3/3 RED | Same assertion fails: branch tip expected `9fc0a3b6...`, i.e. the refusal had committed |
+| W7 | A nonzero payload exit routed into `rollback` | spawn-turn-end-record | 3/3 RED | The spawn module changed most in this round; the no-rollback-after-the-payload property survives it |
+| W9 | Scout teardown path passing `deleteBranchForce: true` | teardown-scout-committed-work-preserved | **3/3 GREEN** | **Blunted.** See N-401 |
+
+W9 is the failure mode this probe exists to catch. The CR-304 pre-check refuses a committed scout before `finish` is called, so the value of `deleteBranchForce` on that path is no longer observable by any test. I confirmed the sabotage is behaviourally inert under the current code (the pre-check catches every scout state where the branch resolves and its tip differs from the recorded base, which is exactly the set the pool's gate caught), so this is a lost witness rather than a live defect. But the phase's stated live decision 18 is now guarded by one gate, not two, and the record says otherwise.
+
+### The interaction the round self-reported (criterion 4)
+
+Both halves verified by hand at 5aa9a8e, in a fresh fleet.
+
+- Half one, a live duplicate id: `spawn --task t1` a second time exits 1 with the occupied-directory reason (the CR-301 gate, not pool create). `md5sum` over `tasks/t1/*` is byte-identical before and after (`diff` clean) and `ls worktrees` is unchanged. Criterion 4's stated outcome, "exits nonzero, the pre-existing `tasks/<id>/` contents are byte-identical before and after, and the failing invocation created no new files", holds exactly as before.
+- Half two, the pool's own gate: `tiphys pool create --task t-poolonly` directly, then `spawn --task t-poolonly`, exits 1 with `task id already used: t-poolonly` and creates no `tasks/t-poolonly/` at all (`ls tasks` shows only `t1`).
+
+Ruling: the round's self-report is accurate and the handling is right. Criterion 4's parenthetical names a cause ("If pool create fails (duplicate task id already used by a live task)") that is no longer the cause for the live-duplicate case, but the criterion is written as a falsifiable outcome and that outcome is unchanged, while the named cause is still reachable and is now separately witnessed in the same test. Reporting the interaction instead of quietly letting the criterion's assertion migrate is the correct handling, and it is the reason I could check it in one minute.
+
+### Ruling on the declared gaps
+
+**Gap 1, "only the mkdir write site is separately witnessed among several using the same pattern": ACCEPTABLE. Merge with it.**
+
+The four sites (task directory, brief, meta, hook) sit in one function within thirty lines of each other and are literally the same three-line shape, `runStep(...)` then `if (!ok) return rollback(...)`. More to the point, CR-301's own gate makes the other three hard to force from outside: any pre-existing content under `tasks/<id>/` now refuses before pool create, so the EISDIR and pre-existing-directory tricks that would target the brief or meta writes are unreachable by construction. The round states the limit plainly and claims no measured rate for the unwitnessed three. That is the correct handling of a gap.
+
+**Gap 2, "the adapter-throw path has no test because constructing it needs a library seam the CLI does not expose": NOT ACCEPTABLE. Close it before merge.** See N-402. The premise is false, the path is one CLI flag away, and the decision it fails to witness is the one the round itself calls the substantive engineering.
+
+### Suite, scope, conventions
+
+- Full suite from a removed `dist/`: exit 0, tests 103, pass 101, fail 0, cancelled 0, skipped 2, todo 0, 66.4s. The work history claims 103/101/0/0/2/0 and 67.9s. Accurate.
+- Build from a removed `dist/`: exit 0, `git status --porcelain` empty afterwards.
+- Registry: 104 mappings, 103 titles, 0 missing; the work history claims 104/0/103. Accurate. The four new entries are a pure append; nothing previously registered was modified or removed. Rename probe proves the check is sensitive.
+- Scope audit, three-dot against the merge base `54ceb6e`: exactly 13 paths, being the ten files-to-touch paths actually edited, `test/behaviors.json` and the phase work history (standing pre-authorized extras), and `delivery/plan/kernel-plan-v1.md`, the plan correction this round was authorised to make. `src/pool.ts` is untouched, as the phase requires.
+- Conventions over all 13 changed paths: non-ASCII scan clean (grep exit 1), literal em dash scan clean (grep exit 1), pnpm/yarn scan clean apart from the pre-existing rule statement in the plan, commit messages carry no AI or tool names.
+- The plan correction itself is the wording I supplied verbatim in the round-one section, plus a revision 8 header line that states plainly that the prose was corrected to match the criteria and that no criterion, behavior or test changed. Correct handling.
+- C-1: strengthened by this round, not weakened. The stale-turn-end route I found at 6fca6db is closed at the source (no new incarnation can start in an occupied directory), and F-1's fix removes the other route by which the authority could silently disagree with the filesystem.
+- C-2: a grep over all seven phase sources for `process.kill`, `/proc/`, `kill(`, `SIGKILL`, `SIGTERM`, `detached`, `unref(` and a word-boundary `pid` returns nothing (exit 1).
+- C-3: a grep over `src/spawn.ts` and `src/teardown.ts` for `spawn(`, `exec(`, `execFile(`, `nohup`, `setsid` returns nothing (exit 1). Everything is `spawnSync`. W7's 3/3 red confirms the payload-completion property is still guarded after the adapter refactor.
+
+### New findings
+
+#### N-401 (MEDIUM): witness W9 is green against the fixed source, and the work history still presents it as a live guard
+
+**Claim.** The CR-304 pre-check (src/teardown.ts:370-386) refuses a scout whose branch tip differs from its recorded base before `finish` is ever called, so the scout path's `deleteBranchForce: false` (src/teardown.ts:389) is no longer observable by any test. Work-history key decision 18 still reads, in the present tense, "This is a live decision, so it has its own test and witness W9 (scout path forcing the delete) is red 3/3". The fix-round section states that five witnesses were re-run "to prove the refactor did not blunt them" and does not mention W9, the witness the round's own change most directly touched.
+
+**Failure scenario.** A later maintainer reads decision 18, believes the flag choice is test-guarded, and edits the scout path (for instance by copying the ship path's `deleteBranchForce: true`). No test fails. The protection then rests entirely on the pre-check, which has a documented fall-through when the branch ref does not resolve, and the next person to touch that pre-check has no red witness telling them what it is now solely responsible for. This is the T-003 shape exactly: a registered, green, worthless witness, in the component where V-1 happened.
+
+**Evidence.** Measured, not inferred. `deleteBranchForce: false` changed to `true` on the scout path at 5aa9a8e, then `node --test --test-name-pattern "a scout that committed to its scratch branch is refused, not silently discarded" test/teardown.test.ts` three times: `# pass 1 # fail 0` on all three runs. Reverted, `git diff --quiet` clean. For comparison, W3, W5 and W7 were each 3/3 red under the same procedure.
+
+**Concrete fix.** Both halves, neither of which is code:
+
+1. Correct key decision 18 to say that the flag choice is now defended by two gates, that the outer gate (the CR-304 pre-check) is the witnessed one (FW5), and that W9 is green against the fixed source and is therefore retired rather than still claimed. State the measured rate.
+2. Add one sentence to the fix-round section recording that W9 was re-run and found green, and why. The round's blunting check should report what it found, including the one that moved.
+
+If the round would rather keep a live witness for the inner gate, the cheapest honest one is a combined sabotage (pre-check removed AND `deleteBranchForce: true`) registered as its own witness, which does go red on the destroyed-commits assertion. Either resolution is acceptable; leaving decision 18 as written is not.
+
+#### N-402 (MEDIUM): the adapter-throw path is reachable from the CLI, so the declared "no test possible" gap is false and the round's central decision is unwitnessed
+
+**Claim.** The work history records: "The adapter-throw path (spawn refusing to guess whether the payload started) has no test: constructing it needs an adapter injected through the library seam, which the CLI does not expose". The premise is false. `--deadline` is parsed with `Number.isFinite(seconds) && seconds > 0` (src/commands/spawn.ts:81-83) and the adapter then computes `new Date(launchedAt.getTime() + seconds * 1000).toISOString()` (src/spawn.ts:153-156), which raises `RangeError: Invalid time value` for any deadline at or above about 8.64e12 seconds. That raise happens inside `adapter.launch`, before the payload, with no seam involved.
+
+**Failure scenario.** The round's most consequential engineering decision, the one it argues at length and the one I ruled correct above, ships with no test at all, and the record tells the next reader it cannot have one. A future change to the `runStep` wrapper around `adapter.launch`, or to the classification of `launched.ok === false`, breaks the decision silently.
+
+**Evidence.** Executed at 5aa9a8e in a fresh fleet: `spawn --task td ... --deadline 1e300` exits 1 with exactly one line, `tiphys spawn: launching the payload through the subprocess adapter failed: Invalid time value; the subprocess adapter did not report whether the payload started, so nothing was rolled back: the worktree ..., its task directory and the pool record are left in place for inspection`, and the enumerated state is exactly what is on disk (`worktrees/td`, `worktrees/td.pool.json`, `refs/heads/task/td`, `tasks/td/` holding `brief.md`, `meta.json`, `turn-end-hook.mjs`). I then proved the witness is red against the dangerous state: with the `runStep` wrapper around `adapter.launch` removed, the same command produces a 12-line raw stack trace beginning `file:///.../src/spawn.ts:155 ).toISOString();`. Reverted, tree clean.
+
+**Concrete fix.** Register one behavior, for example `spawn-adapter-throw-not-classified`, with a test that drives `spawn ... --deadline 1e300` through the CLI and asserts: exit nonzero; stderr is exactly one line carrying the `tiphys spawn: ` prefix and no stack frame; the reason says nothing was rolled back; and the three enumerated survivors really are present on disk, so the message is checked against reality rather than against itself. Then delete the false gap sentence and replace it with what is actually true after N-403 is applied (see below): the path is reachable through this input, and this is the witness.
+
+#### N-403 (LOW): `--deadline` accepts finite values that cannot be represented, turning a usage error into an orphaned worktree
+
+**Claim.** The parser's only guard is `Number.isFinite(seconds) && seconds > 0`. Any deadline at or above roughly 8.64e12 seconds overflows the Date range and raises inside the adapter, after `poolCreate` has made a worktree, a branch and a pool record, and after the brief, meta and hook have been written.
+
+**Failure scenario.** An operator fat-fingers a deadline, or passes milliseconds where seconds were meant. Instead of a usage error that creates nothing, they get a worktree, a branch, a pool record and a half-written task directory left behind, and, because of CR-301's new gate, the task id cannot be re-spawned until it is cleaned up. Nothing is destroyed and the message is honest, but this is a usage error that should have exited 64 before touching anything.
+
+**Evidence.** Executed at 5aa9a8e: `--deadline 1e300` produced the orphan described in N-402. Threshold probes: `1e13`, `8640000000000` and `99999999999999999999` all raise; `300` does not. Recovery measured: `tiphys teardown --task td` afterwards exits 0, removes the worktree, deletes the branch and sets meta to `closed`, so the state is recoverable, which is why this is a LOW and not a MEDIUM.
+
+**Concrete fix.** In the `--deadline` branch of the parser, reject values whose resulting instant is not representable, for example by requiring `Number.isFinite(seconds) && seconds > 0 && Number.isFinite(new Date(Date.now() + seconds * 1000).getTime())`, or simply by capping at a documented maximum. A rejected deadline is a usage error: exit 64 with the usage line, before the fleet is loaded, creating nothing, which is the shape criterion 3 already establishes. Note the ordering with N-402: write the adapter-throw witness first using this input, or keep it reachable by having the witness inject the throw another way, so that closing N-403 does not silently delete the only route to the witness.
+
+#### N-404 (LOW): the adapter-throw enumeration names what is left but not what to do, which is the standard CR-304 just established
+
+**Claim.** The reason at src/spawn.ts:420-426 ends "left in place for inspection". CR-304's whole lesson, applied in this same round, is that a refusal must print a route the operator can actually perform through the command that printed it.
+
+**Failure scenario.** An operator sees a worktree, a branch and a pool record named as survivors, and a task id that CR-301's gate now refuses to reuse. The route out exists and is one command, but nothing tells them it does; the natural next move is to start deleting directories by hand, which is how a pool record and a git worktree registration get out of step.
+
+**Evidence.** I measured that `tiphys teardown --task <id>` cleanly closes exactly this state (exit 0, worktree removed, branch deleted, meta `closed`). The message does not mention it.
+
+**Concrete fix.** Append the route, in the same style CR-304 now uses: "...left in place for inspection; when you have inspected them, close the task with `tiphys teardown --task <id>`". Message only, no behavior change, no new authority.
+
+### Honest failures of this delta review
+
+- I re-performed four of the ten round-one witnesses (W3, W5, W7, W9) and none of the six fix-round witnesses FW1 to FW6 as sabotages, although I reproduced the underlying failures of FW1, FW2, FW3, FW4 and FW5 directly through the CLI on both heads, which is stronger evidence for those five than a sabotage would have been. I did not independently sabotage FW6.
+- Three runs per sabotage falsifies a claim of determinism but cannot detect a rare flake. The suite as a whole I ran twice end to end (once plain, once with the TAP reporter), not repeatedly.
+- Everything ran on Node v22.22.2, below the declared floor. CI on Node 26 remains the authority and I did not observe a CI run; `gh` is absent here.
+- My N-403 threshold figures come from evaluating the same arithmetic the adapter performs, not from driving every value through the CLI; I drove `1e300` through the CLI and computed the rest.
+- I did not re-walk the 14 criteria. Criterion 4 is the only one I re-executed, because this round changed which gate issues its refusal. If the round had broken a criterion in a way no test covers and no witness I chose touches, this review would not have caught it.
+- I did not attempt the harder form of the adapter-throw case, an adapter that raises AFTER starting a payload, because no such adapter exists in M1. My ruling that refusing to classify is correct rests on the contract and on the measured recoverability, not on having observed that case.
