@@ -52,24 +52,49 @@ From M1 (walking skeleton, plan v1 section 3):
   fan-in job.
 - `delivery/evidence/m1-exit-test/`.
 
-From M2 (deterministic gates, plan v1 section 5), the seven components M3
-consumes by name:
+From M2 (deterministic gates), the eight components M3 consumes by name. Phase
+ids and artifact paths below follow `delivery/plan/kernel-plan-m2.md`, the M2
+detailed plan written concurrently with this one under DR-0011, and not plan
+v1 section 5's outline numbering, which differs (D-M3-17):
 
 | M2 component | What M3 uses it for |
 |---|---|
-| M2-P1 red-witness harness | the implementer brief's red-witness clause and the plan-review and clean-room test-honesty probes cite its evidence file as the accepted proof (R-028a, R-056a) |
-| M2-P2 full-suite wrapper | the report contract's "all green means the wrapper's exit code" field (R-049, R-086) |
-| M2-P3 scope auditor and citation linter | the plan schema's `files-to-touch` field is the auditor's input; the citation linter is the verifier attached to the investigator and plan-writer briefs (R-010a) |
-| M2-P4 coverage checker | accepted reference types phase, decision, parked (D-7) constrain the plan schema's open-questions and parked sections; its finding-to-outcome parity mode validates the final report (R-089b, consumed by R-089a) |
-| M2-P5 gate manifest and gate runner | the seed the canonical gate registry promotes, with its SC-011 precondition semantics (R-094) |
-| M2-P6 deploy and migration verifiers | named stages in the full assurance mode's pipeline definition (R-096) |
-| M2-P7 credential scoping | the structural fact the implementer brief must not contradict (R-008 is M2; the brief clause is M3) |
+| M2-P2 red-witness harness | the implementer brief's red-witness clause and the plan-review and clean-room test-honesty probes cite its evidence file as the accepted proof (R-028a, R-056a) |
+| M2-P3 full-suite wrapper | the report contract's "all green means the wrapper's exit code" field (R-049, R-086) |
+| M2-P4 scope auditor | the plan schema's `files-to-touch` field is the auditor's input, through the phase-declaration projection named below |
+| M2-P5 citation linter | the verifier attached to the investigator and plan-writer briefs (R-010a) |
+| M2-P6 coverage checker | accepted reference types phase, decision, parked (D-7) constrain the plan schema's open-questions and parked sections; its finding-to-outcome parity mode validates the final report (R-089b, consumed by R-089a) |
+| M2-P1 gate manifest and gate runner | the seed the canonical gate registry promotes, with its SC-011 precondition semantics (R-094) |
+| M2-P7 deploy and migration verifiers | named stages in the full assurance mode's pipeline definition (R-096) |
+| M2-P8 credential scoping | the structural fact the implementer brief must not contradict (R-008 is M2; the brief clause is M3) |
 
-Every M3 phase that consumes an M2 artifact must verify its real path and
-shape before editing, and record the verification in its work history. This
-plan deliberately does not guess M2's file names: M2's detailed plan is
-written after M1 exits, so a name written here would be a citation to a file
-that does not exist yet.
+Four M2 artifacts are named by path because the M2 plan names them, and each
+one is a joint this plan has to fit against rather than guess at:
+
+1. `gates.manifest.json`, the per-repository gate manifest with preconditions
+   and applicability (M2-P1). Its schema reserves a `modes` field that the M2
+   runner validates if present and ignores; M3-P2's promotion is therefore
+   additive and not a rewrite (M2 plan section 2 item 1).
+2. `src/gates/schemas/`, where M2's own schema documents live, because
+   `CLAUDE.md` reserves the root `schemas/` for M3. M2 leaves the relocation
+   decision to M3; this plan takes it (D-M3-20).
+3. `delivery/plan/phases/<phase-id>.json`, the phase-declaration projection the
+   M2-P4 scope auditor consumes (id, branch, files-to-touch, extras,
+   citations). The M2 plan recommends that the M3 plan schema's phase object be
+   a superset so the projection becomes a generated view of one source rather
+   than a second source that can drift. This plan accepts that (M3-P1 step 2,
+   D-M3-18).
+4. M2-P6's coverage input contract: a findings inventory plus a coverage table
+   in a declared shape, defined by M2 because the report contract does not
+   exist yet. M3-P4's report and final-report schemas must emit that shape or
+   supersede it deliberately, and M3-P4 has a criterion that runs the real
+   checker rather than reasoning about compatibility.
+
+Everything else is verified before use: every M3 phase that consumes an M2
+artifact confirms its real path and output shape before editing and records the
+confirmation in its work history. The M2 plan is DRAFT and pending its own
+adversarial review, so a path taken from it is a starting point for that
+verification, never a substitute for it.
 
 ### 1.2 What M3 therefore builds
 
@@ -146,7 +171,7 @@ a form not listed here is a review finding.
 | status line | JSON records | fully enumerable; there is no prose field (R-084's whole point is sparseness) |
 | report and final report | YAML; `narrative`, per-finding `analysis`, and honest-failure descriptions are block scalars | R-089a's content is a table of findings to outcomes plus four enumerable lists; the prose is per-finding and lives in fields |
 | work history | YAML; `prompt` (verbatim), per-decision `why`, and deviation text are block scalars | R-052a names three parts, two of which are lists and one of which is verbatim text |
-| gate registry | YAML validated by JSON Schema | fully enumerable; inherits the M2-P5 manifest's shape and its precondition semantics (SC-011) |
+| gate registry | YAML validated by JSON Schema | fully enumerable; inherits the M2-P1 manifest's shape and its precondition semantics (SC-011) |
 | assurance modes | YAML | fully enumerable (mode, stages, gate sets, merge authority) |
 | role-to-model configuration | YAML | fully enumerable |
 | checklists (probe lists) | YAML: a list of `{id, probe, applies-to, evidence-required}` | a probe is a question with an identity and an applicability rule; that is data, and structuring it is what lets a checklist be extended, merged, and orphan-checked. Markdown here would be convenience, which DR-0006 forbids |
@@ -207,7 +232,7 @@ checked by name and never by count. Like `test/behaviors.json`, the clause map
 and the phase work history are standing pre-authorized extras on every M3
 phase's files-to-touch list.
 
-It is deliberately not folded into the M2-P4 coverage checker. Extending a
+It is deliberately not folded into the M2-P6 coverage checker. Extending a
 merged M2 component from an M3 phase would make every M3 phase a potential
 edit of M2's gate surface. If a later milestone wants them merged, that is a
 recorded option, not a debt (Appendix C item 1).
@@ -268,13 +293,13 @@ acceptance criteria:
 - grounding: M2 merged with its exit evidence on `main`. `schemas/` holds only
   the M1-P1 placeholder README; `templates/` and `checklists/` do not exist.
   DR-0006 decided (section 1.5 table is the applied form). DR-0011 (validator
-  implementation, section 7) must be decided before dispatch. M2-P4's coverage
+  implementation, section 7) must be decided before dispatch. M2-P6's coverage
   checker fixes the accepted reference types (phase, decision, parked) that the
   plan schema's open-questions and parked sections must express (D-7).
 - steps:
   1. Verify: `schemas/` contains only `README.md`; `templates/` and
      `checklists/` absent; `package.json` `files` is `["dist"]`. Verify the real
-     paths and output shapes of the M2-P3 citation linter and the M2-P4 coverage
+     paths and output shapes of the M2-P5 citation linter and the M2-P6 coverage
      checker and record them in the work history; later phases cite them.
   2. Create `schemas/plan.schema.json`. Required: header (`status`,
      `baseline-commit`, `binding-rule` as a required const carrying the process
@@ -418,18 +443,18 @@ acceptance criteria:
 
 - id: M3-P2
 - branch: `claude/m3-p2-gate-registry`
-- intent: Promote the M2-P5 gate manifest to the canonical registry that CI and
+- intent: Promote the M2-P1 gate manifest to the canonical registry that CI and
   briefs both read from one source (R-094), carry SC-011's precondition
   semantics over unchanged, and add the two judgment-verified gate entries D-11
   settled (R-043, R-044).
-- grounding: M3-P1 merged (validator and clause map exist). The M2-P5 gate
+- grounding: M3-P1 merged (validator and clause map exist). The M2-P1 gate
   manifest exists at the path M2 established, with its JSON Schema and its
   runner; both are verified before editing and their real paths recorded. SC-011
   is binding: a gate whose precondition is unmet reports not-applicable and
   never green. `CLAUDE.md` line 3 states that this registry replaces its gate
   list, which is an obligation of this phase.
 - steps:
-  1. Verify the M2-P5 manifest path, its schema, and one real captured run of
+  1. Verify the M2-P1 manifest path, its schema, and one real captured run of
      the M2 gate runner (store the capture under `test/fixtures/`; section 2.3
      rule 3 forbids hand-written stand-ins).
   2. Create `schemas/gate-registry.schema.json`, a superset of the M2 manifest
@@ -437,12 +462,12 @@ acceptance criteria:
      requires, "the canonical list of gates per assurance mode"); `verified-by`
      with values `script` or `clean-room-checklist`; `probe` (required exactly
      when `verified-by` is `clean-room-checklist`), naming a checklist probe id
-     that M3-P7 must supply; `precondition` carried over from M2-P5 unchanged.
+     that M3-P7 must supply; `precondition` carried over from M2-P1 unchanged.
   3. Create `gate-registry.yaml` at the package root: the promoted M2 manifest
      with the kernel-generic gates (build, suite wrapper, scope, citations,
      coverage, red-witness) and the project-specific gates
      (deploy, migrations, i18n, analytics, manifest regen, e2e, docs grep) kept
-     declared-but-not-applicable on the kernel exactly as M2-P5 left them
+     declared-but-not-applicable on the kernel exactly as M2-P1 left them
      (scout observation 2), plus the two new entries:
      `unit-tests-for-changed-service-methods` (R-043) and
      `fixtures-for-changed-component-states` (R-044), both
@@ -495,12 +520,12 @@ acceptance criteria:
 - suggested model tier: cheaper tier acceptable. The shape is fixed by the M2
   manifest and by SC-011; the work is promotion plus two entries.
 - citations: R-043, R-044, R-094; D-11; SC-011; blueprint section 5 (gate
-  registry) and section 4; plan v1 section 5 item 5 (M2-P5 seed) and scout
+  registry) and section 4; plan v1 section 5 item 5 (M2-P1 seed) and scout
   observation 2.
 - conflicts-with: M3-P3 (reads the registry's `modes` field), M3-P6 (the
   implementer brief renders its gate list from this registry), M3-P10
   (`package.json` files entry).
-- blocked-by: M3-P1 merged; M2-P5 merged (named dependency).
+- blocked-by: M3-P1 merged; M2-P1 merged (named dependency).
 
 ### M3-P3: Assurance modes and role-to-model configuration
 
@@ -612,9 +637,9 @@ acceptance criteria:
   contract, and the environment-warnings template, so that from here on every
   role brief and checklist has a validated output format to point at instead of
   describing one in prose.
-- grounding: M3-P3 merged. M2-P2's full-suite wrapper exists and its exit code
+- grounding: M3-P3 merged. M2-P3's full-suite wrapper exists and its exit code
   and parity counts are the only meaning of "all green" (R-048, R-086); a real
-  captured wrapper run is stored as a fixture (section 2.3 rule 3). M2-P4's
+  captured wrapper run is stored as a fixture (section 2.3 rule 3). M2-P6's
   coverage checker has a finding-to-outcome parity mode (R-089b) that consumes
   the final report this phase defines; its expected input shape is verified
   before the schema is written, and any mismatch is reported rather than
@@ -698,7 +723,7 @@ acceptance criteria:
      asserts the fixture is a verbatim capture (its recorded command and exit
      code are present) rather than an authored string (section 2.3 rule 3,
      T-003 lesson 4).
-  4. The M2-P4 coverage checker, run in finding-to-outcome parity mode against
+  4. The M2-P6 coverage checker, run in finding-to-outcome parity mode against
      `templates/final-report.example.yaml`, exits 0; against a copy with one
      `input-findings` row deleted it exits nonzero naming the orphaned id
      (R-089b consuming R-089a, both directions).
@@ -723,7 +748,7 @@ acceptance criteria:
   pinning).
 - conflicts-with: M3-P5 and M3-P6 (the briefs reference these types), M3-P7 (the
   verdict schema shares the finding definition), M3-P10 (files entry).
-- blocked-by: M3-P3 merged; M2-P2 and M2-P4 merged (named dependencies).
+- blocked-by: M3-P3 merged; M2-P3 and M2-P6 merged (named dependencies).
 
 ### M3-P5: Authoring-role briefs and the finding format
 
@@ -735,7 +760,7 @@ acceptance criteria:
   from the installed kernel; and correct the process doc's role table so the
   reviewer's settled visibility is stated in one place, not two contradictory
   ones (SC-001).
-- grounding: M3-P4 merged (report and finding evidence shapes exist). M2-P3's
+- grounding: M3-P4 merged (report and finding evidence shapes exist). M2-P5's
   citation linter is the verifier attached to the investigator and plan-writer
   roles (blueprint section 6); its real invocation is verified and recorded.
   `roles/` holds only the M1-P1 placeholder README. `src/brief.ts` exists from
@@ -836,10 +861,10 @@ acceptance criteria:
 - citations: R-004, R-005, R-006, R-010a, R-015a, R-029, R-092; blueprint
   section 6 (role table and attached verifiers) and section 1 (placement rule);
   process doc sections 0, 1a, 1b, 1d, and 8 item 6; SC-001 and plan v1 D-14;
-  T-001; M2-P3 citation linter as the attached verifier.
+  T-001; M2-P5 citation linter as the attached verifier.
 - conflicts-with: M3-P6 (adds two more briefs to the same schema and command),
   M3-P7 (checklists reference the reviewer roles), M3-P10 (files entry).
-- blocked-by: M3-P4 merged; M2-P3 merged (named dependency); M1-P4 merged (for
+- blocked-by: M3-P4 merged; M2-P5 merged (named dependency); M1-P4 merged (for
   `src/brief.ts`, already true by M3).
 
 ### M3-P6: Delivery-role briefs (implementer and clean-room reviewer)
@@ -852,7 +877,7 @@ acceptance criteria:
   leave a stale brief behind.
 - grounding: M3-P5 merged (`schemas/role-brief.schema.json`, `brief compose`).
   `gate-registry.yaml` from M3-P2 is the source of the brief's gate list
-  (R-094's "consumed by CI and briefs"). M2-P1's red-witness harness and M2-P7's
+  (R-094's "consumed by CI and briefs"). M2-P2's red-witness harness and M2-P8's
   credential scoping are the structural facts two clauses cite. T-002 recorded
   a real agent death holding uncommitted work; R-081b's clause is written from
   that record.
@@ -909,7 +934,7 @@ acceptance criteria:
   4. The composed implementer brief contains no instruction to create or merge a
      pull request, asserted by a registered grep test over the composed output
      for `gh pr create`, `pr merge`, and "open the PR" (the brief must not
-     contradict the structural fact M2-P7 enforces; a brief that instructs what
+     contradict the structural fact M2-P8 enforces; a brief that instructs what
      the credentials forbid produces agents that fail confusingly).
   5. The composed brief contains the fleet warnings file's full text when one
      exists and exactly the brief text when none exists (R-083b re-witnessed
@@ -932,10 +957,10 @@ acceptance criteria:
 - citations: R-007, R-009b, R-031, R-033a, R-034, R-037a, R-038, R-039, R-040,
   R-074, R-081b, R-082a, R-087; blueprint section 6; process doc sections 2a,
   2c, 2d, 3, 6, and 7; plan v1 D-9, D-10, and section 11 item 7; T-002;
-  M2-P1 and M2-P7 as the named dependencies.
+  M2-P2 and M2-P8 as the named dependencies.
 - conflicts-with: M3-P7 (verdict schema referenced here), M3-P9 (`AGENTS.md`
   references both briefs), M3-P10 (files entry).
-- blocked-by: M3-P5 merged; M2-P1 and M2-P7 merged (named dependencies).
+- blocked-by: M3-P5 merged; M2-P2 and M2-P8 merged (named dependencies).
 
 ### M3-P7: Review checklists, probe injection, and the verdict contract
 
@@ -946,7 +971,7 @@ acceptance criteria:
   orchestrator injects per-phase probes, and the verdict schema the clean-room
   reviewer outputs.
 - grounding: M3-P6 merged (both review-side briefs exist and reference a verdict
-  type). M2-P1's red-witness harness evidence file is what two probes accept as
+  type). M2-P2's red-witness harness evidence file is what two probes accept as
   proof (R-028a, R-056a); a real captured evidence file is stored as a fixture
   (section 2.3 rule 3). The gate registry's two `verified-by:
   clean-room-checklist` entries from M3-P2 name probe ids this phase must
@@ -960,7 +985,7 @@ acceptance criteria:
      semantic coupling above the file-overlap floor the M5 pre-pass computes;
      R-027 probe every fix shape for the state that can no longer exit, with the
      process doc's zero-amount-rows example carried as the probe's illustration;
-     R-028a test the testability claims, where the accepted evidence is the M2-P1
+     R-028a test the testability claims, where the accepted evidence is the M2-P2
      harness's evidence file and not the plan's assertion).
   3. Create `checklists/clean-room.yaml` (R-053 each acceptance criterion quoted
      with file:line evidence and a met or not-met verdict; R-055 correctness
@@ -1017,7 +1042,7 @@ acceptance criteria:
      (b) a verdict whose `criteria[]` omits an acceptance criterion present in
      the referenced plan phase (a review that quietly skipped a criterion);
      (c) a `FIX-ROUND-NEEDED` finding with no `concrete-fix` (R-060).
-  5. The R-028a and R-056a probes name the M2-P1 evidence file as the accepted
+  5. The R-028a and R-056a probes name the M2-P2 evidence file as the accepted
      proof, and a registered test asserts the fixture used in the tests is a
      real captured harness evidence file (its recorded command and exit code are
      present), not an authored string (section 2.3 rule 3).
@@ -1034,10 +1059,10 @@ acceptance criteria:
 - citations: R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a,
   R-057b, R-059, R-060, R-066, R-093; blueprint sections 5, 6, and 11; process
   doc sections 1d, 2e, 3, 4, and 8 items 4, 5, and 7; D-11 (the two registry
-  probes); M2-P1 as the named dependency.
+  probes); M2-P2 as the named dependency.
 - conflicts-with: M3-P9 (`AGENTS.md` cites the probe-injection duty), M3-P10
   (files entry).
-- blocked-by: M3-P6 merged; M2-P1 merged (named dependency).
+- blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
 
 ### M3-P8: Tuition flow
 
@@ -1411,8 +1436,8 @@ list, or a listed stage with no evidence record, fails the exit test.
 
 E1.4. Plan: a plan instance for the subject change is authored by an agent
 composed from `roles/plan-writer.md` via `tiphys brief compose`;
-`tiphys validate --type plan` exits 0; the M2-P3 citation linter exits 0 over
-it; the M2-P4 coverage checker exits 0 with no orphans.
+`tiphys validate --type plan` exits 0; the M2-P5 citation linter exits 0 over
+it; the M2-P6 coverage checker exits 0 with no orphans.
 
 E1.5. Adversarial plan review: an agent composed from
 `roles/adversarial-plan-reviewer.md` with `checklists/plan-review.yaml`
@@ -1423,7 +1448,7 @@ witnessed as a state change in the plan file, not as an assertion).
 E1.6. Implementation: `tiphys spawn` runs an implementer composed from
 `roles/implementer.md` in a pool worktree; the change lands with its tests; the
 M2 gate runner over `gate-registry.yaml --mode full` exits 0 with no gate green
-whose precondition is unmet; the M2-P1 red-witness harness emits its evidence
+whose precondition is unmet; the M2-P2 red-witness harness emits its evidence
 file for the new behavior, and that file is in the bundle.
 
 E1.7. Clean-room review: an agent composed from `roles/clean-room-reviewer.md`
@@ -1440,7 +1465,7 @@ recorded as not-applicable with the verdict as evidence.
 
 E1.9. Reporting: the phase work history validates against
 `schemas/work-history.schema.json`; the final report validates against
-`schemas/final-report.schema.json`; the M2-P4 coverage checker in
+`schemas/final-report.schema.json`; the M2-P6 coverage checker in
 finding-to-outcome parity mode exits 0 over it.
 
 E1.10. Status: the status records emitted during the run validate against
@@ -1545,7 +1570,7 @@ D-19, which remain in force unchanged.
   R-002 stays in P9 because D-9 decided it as an `AGENTS.md` clause.
 - D-M3-04: The clause map (section 2.2) is the per-subphase orphan check
   EXT-F-07 requires. It is a new repository-level script rather than an
-  extension of the M2-P4 coverage checker, so that no M3 phase has to edit a
+  extension of the M2-P6 coverage checker, so that no M3 phase has to edit a
   merged M2 gate. Merging them later is recorded as an option, not a debt.
 - D-M3-05 (vetoable): the plan, charter, decision-record, report, work-history,
   and tuition artifacts are YAML with prose-bearing fields as block scalars, per
@@ -1693,7 +1718,7 @@ comparison plan v1's own history makes available.
    the M1-P3 shape exactly. The registry has a mode dimension and the modes have
    pipelines, and the kernel executes exactly one of the three modes, once.
    Every line of enforcement written for `direct-pr` or `local-only`, every
-   precondition engine beyond what M2-P5 already shipped, and every mode-aware
+   precondition engine beyond what M2-P1 already shipped, and every mode-aware
    branch-protection coupling is machinery whose first real exercise is M4 at
    the earliest. Mitigation, binding: D-M3-10 makes the two unused modes
    declarative data; M3-P2 promotes the M2 manifest and adds two entries rather
@@ -1766,7 +1791,7 @@ equals plan v1 Appendix A's M3 bucket count of 74.
 | R-006 | M3-P5 | `roles/adversarial-plan-reviewer.md` with the blueprint's widened visibility; process doc role table annotated (SC-001, D-14, D-M3-12) |
 | R-007 | M3-P6 | `roles/implementer.md` clause: never edits the plan, never re-investigates settled questions |
 | R-009b | M3-P6 | `roles/clean-room-reviewer.md`: diff plus acceptance criteria only, edits nothing, posts nothing |
-| R-010a | M3-P5 | verification-pass clause in the investigator and plan-writer briefs; verifier is the M2-P3 citation linter |
+| R-010a | M3-P5 | verification-pass clause in the investigator and plan-writer briefs; verifier is the M2-P5 citation linter |
 | R-011 | M3-P1 | `schemas/plan.schema.json` required section `report-code-disagreement` |
 | R-012 | M3-P1 | plan schema `kind: verification-first` step plus the rule that an unverified claim requires one |
 | R-013 | M3-P9 | `AGENTS.md` dispatch clause: dedicated investigator alongside plan writing; scout task, not a parallel phase |
@@ -1781,7 +1806,7 @@ equals plan v1 Appendix A's M3 bucket count of 74.
 | R-024 | M3-P3 | `assurance-modes.yaml`: adversarial plan review precedes implement, or is declared in `skips[]` |
 | R-026b | M3-P7 | `checklists/plan-review.yaml`: hidden dependencies and semantic coupling above the M5 file-overlap floor |
 | R-027 | M3-P7 | `checklists/plan-review.yaml`: the state that can no longer exit |
-| R-028a | M3-P7 | `checklists/plan-review.yaml`: testability claims checked against the M2-P1 evidence file, not admired |
+| R-028a | M3-P7 | `checklists/plan-review.yaml`: testability claims checked against the M2-P2 evidence file, not admired |
 | R-029 | M3-P5 | `schemas/finding.schema.json`: verdict, severity-ranked findings, concrete plan edits, `produced-by` (T-001) |
 | R-030 | M3-P9 | `AGENTS.md` clause: all plan-review findings applied before execution; witnessed in the exit run at E1.5 |
 | R-031 | M3-P6 | implementer brief clause: one phase, one branch, one pull request, with the M1-P3 naming conventions |
@@ -1800,7 +1825,7 @@ equals plan v1 Appendix A's M3 bucket count of 74.
 | R-053 | M3-P7 | `checklists/clean-room.yaml` plus the verdict schema's `criteria[]` completeness rule |
 | R-054 | M3-P7 | checklist extension mechanism (`tiphys checklist resolve --extra`); the orchestrator duty is an `AGENTS.md` clause (D-M3-03) |
 | R-055 | M3-P7 | `checklists/clean-room.yaml` correctness probes: negatives, zero, empty, unicode, the state that can never exit |
-| R-056a | M3-P7 | `checklists/clean-room.yaml` test-honesty probes; the revert check is the M2-P1 harness |
+| R-056a | M3-P7 | `checklists/clean-room.yaml` test-honesty probes; the revert check is the M2-P2 harness |
 | R-057a | M3-P4 | report contract `deviations[]`, each with `plan-clause` and `why` |
 | R-057b | M3-P7 | `checklists/clean-room.yaml`: each deviation judged against the plan's intent by the reviewer |
 | R-059 | M3-P7 | `checklists/clean-room.yaml` blast-radius probes |
@@ -1825,7 +1850,7 @@ equals plan v1 Appendix A's M3 bucket count of 74.
 | R-086 | M3-P4 | report contract: "all green" means the wrapper's exit code, with parity counts |
 | R-087 | M3-P6 | implementer and clean-room brief clause: false claims in comments and docs corrected loudly in place |
 | R-088 | M3-P4 | report contract `honest-failures[]` requiring cause, exposure window, and structural fix |
-| R-089a | M3-P4 | `schemas/final-report.schema.json`; parity verified by the M2-P4 coverage checker (R-089b) |
+| R-089a | M3-P4 | `schemas/final-report.schema.json`; parity verified by the M2-P6 coverage checker (R-089b) |
 | R-090 | M3-P1 | decision-record `vetoable` and `revert-cost` fields plus the charter escalation contract |
 | R-091 | M3-P8 | `schemas/tuition.schema.json`, the populated `tuition/` feed, `tiphys tuition add` and `list` |
 | R-092 | M3-P5 | investigator brief clause: reproduce before fixing; if it will not reproduce, ship the harness and say so |
@@ -1848,13 +1873,13 @@ blocked phase and not as a surprise at implementation time.
 
 | Phase | M2 components consumed | What breaks without it |
 |---|---|---|
-| M3-P1 | M2-P3 citation linter, M2-P4 coverage checker | the plan schema's open-questions and parked reference types are unconstrained; the briefs later have no verifier to name |
-| M3-P2 | M2-P5 gate manifest, schema, and runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
-| M3-P3 | M2-P5 (gate set references), M2-P6 deploy and migration verifiers | `full` mode's stage list cannot reference the verification stages the process doc requires after merge |
-| M3-P4 | M2-P2 full-suite wrapper, M2-P4 coverage checker | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker |
-| M3-P5 | M2-P3 citation linter | R-010a's verification pass has no attached verifier, which is the whole point of the row |
-| M3-P6 | M2-P1 red-witness harness, M2-P7 credential scoping, M3-P2 registry | the red-witness clause has no evidence artifact; the no-pull-request clause contradicts nothing structural |
-| M3-P7 | M2-P1 red-witness harness | R-028a and R-056a probes have no accepted proof and degrade to opinions |
+| M3-P1 | M2-P5 citation linter, M2-P6 coverage checker | the plan schema's open-questions and parked reference types are unconstrained; the briefs later have no verifier to name |
+| M3-P2 | M2-P1 gate manifest, schema, and runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
+| M3-P3 | M2-P1 (gate set references), M2-P7 deploy and migration verifiers | `full` mode's stage list cannot reference the verification stages the process doc requires after merge |
+| M3-P4 | M2-P3 full-suite wrapper, M2-P6 coverage checker | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker |
+| M3-P5 | M2-P5 citation linter | R-010a's verification pass has no attached verifier, which is the whole point of the row |
+| M3-P6 | M2-P2 red-witness harness, M2-P8 credential scoping, M3-P2 registry | the red-witness clause has no evidence artifact; the no-pull-request clause contradicts nothing structural |
+| M3-P7 | M2-P2 red-witness harness | R-028a and R-056a probes have no accepted proof and degrade to opinions |
 | M3-P8 | none | |
 | M3-P9 | M3-P2, M3-P3, M3-P7 (references only) | the anti-duplication rule has nothing to point at |
 | M3-P10 | the whole M2 gate set, run by the exit test | the exit run's E1.6 cannot assert a full gate pass |
@@ -1865,7 +1890,7 @@ These are not requirement rows and are not deferrals of M3 scope. They are
 things this plan deliberately does not build, recorded so a later reader does
 not mistake absence for oversight.
 
-1. Merging the clause map into the M2-P4 coverage checker. An option for M4 or
+1. Merging the clause map into the M2-P6 coverage checker. An option for M4 or
    later; D-M3-04 states why it is not done now.
 2. L1 enforcement of R-002 (mode-aware branch protection) and R-040 (a
    pre-validation push check). Both are decided as L2 for now (D-9, D-10) and
