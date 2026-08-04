@@ -33,8 +33,8 @@ is wrong: verify against git and the PR list before trusting it.
 
 ## In flight
 
-**M1-P3 (PR #3): implemented, reviewed, APPROVED, awaiting owner merge.**
-Head `bfc0dbc`. States kept distinct on purpose: implemented means pushed
+**M1-P3 (PR #3): implemented, reviewed, APPROVED, one owner re-review finding resolved, awaiting owner merge.**
+Head `bf11f84`, CI green on both checks. States kept distinct on purpose: implemented means pushed
 and gates passing; reviewed means an independent pass attacked it; merged
 means the owner accepted it. The first two are true; the third is not.
 
