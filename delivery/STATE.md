@@ -33,63 +33,56 @@ is wrong: verify against git and the PR list before trusting it.
 
 ## In flight
 
-**M1-P3 (PR #3) must not merge yet.** Three fix rounds so far, each closing
-the previous round's findings and each so far introducing new ones in
-`src/pool.ts`. The pattern is recorded honestly: concurrent git operations
-against a shared clone is a hard surface, and the verification loop is what
-keeps finding the defects rather than the suite, which has been green
-throughout.
+**M1-P3 (PR #3): implemented through fix round 3, head `c06464c`, CI green,
+not yet verified and not merged.** Read the states precisely: implemented
+means the code is pushed and the gates pass; verified means an independent
+pass has attacked it; merged means the owner accepted it. Only the first is
+true here.
+
+History, recorded plainly because it is the point: four rounds have each
+closed the previous round's findings and introduced a new one, all in the
+machinery handling CONCURRENT pool operations. A fifth round is in flight
+that DELETES that machinery rather than hardening it again, on the reasoning
+that the plan keeps parallelism off until M5 and M1 never enters the
+scenario the machinery serves. The lock is untouched by that cut.
 
 Settled and no longer a risk: **the lock's compare-and-swap is sound.**
-Established under heavy attack in `delivery/verification/u2-race-flake-investigation.md`
-(6000 contested cross-process mutations, 4000 claim contests, a process
-parked at each of the six points inside the critical section, 1.76 million
-concurrent reads, zero unaided double winners). U-2 is impeached as evidence
-against the primitive: 0 occurrences in 180 full-suite runs against an
-original 2 in 11. Its trigger is unattributed, with a sibling verification
-lens mutating source in the shared worktree the leading unproven candidate
-(tuition T-004).
+Established under heavy attack in
+`delivery/verification/u2-race-flake-investigation.md`. U-2 is not evidence
+of a defect in the primitive: 0 occurrences in 180 full-suite runs against
+an original 2 in 11. Its trigger is UNATTRIBUTED. Exactly one of two
+possibilities holds, either the test hold seam released early so the
+interleave was never staged, or the tree under test did not contain the byte
+compare (source mutation by a sibling verification lens in a shared
+worktree, tuition T-004, is the leading unproven hypothesis for that second
+branch). Do not restate this as "the failing runs did not execute the
+shipped compare-and-swap", which asserts one branch as fact.
 
 Closed and verified: V-1 (destroy discarding committed work) and V-2 (the
-retry signature dropping git's real contention message), both confirmed
-genuinely closed by `delivery/review/verification-m1-p3-fix-round-2.md`.
+retry signature dropping git's real contention message), both confirmed by
+`delivery/review/verification-m1-p3-fix-round-2.md`.
 
-Open, being fixed in fix round 3 (dispatched, head at dispatch `20b6a5a`):
+Implemented in round 3, not independently verified: V-3, V-4, D-1, D-2,
+D-3, the barrier-witness discriminator, and U-9 to U-12. The third
+verification of that round stalled after one lens of three reported; that
+lens found a new high (an unconditional `rmSync` of a worktree admin
+directory in the U-9 fix) and two mediums (a branch-gate decision read in
+stage 1 and acted on in stage 3, and a rollback with no retry). Those are
+folded into the round now in flight.
 
-- V-3 (high): a refused `pool destroy` is not a no-op. The branch gate is
-  evaluated after the worktree is already removed, and on an unreadable
-  record the task id is permanently wedged, strictly worse than the
-  behavior it replaced. Being fixed by restructuring destroy into resolve,
-  then evaluate every gate, then act.
-- V-4 (high): the commondir transient also strikes the fetch, where nothing
-  retries it, so concurrent `pool create` still fails with the exact V-2
-  refusal and still records a false `offline: true` provenance.
-- D-1 (high, from the investigation): the initial lease is published
-  non-atomically, which intermittently reddens acceptance criterion 3's own
-  witness and can make `lock status` and `doctor` report a healthy fleet as
-  corrupt. M1-P4 builds holdership checks on that read.
-- D-3 (high, from the investigation): the test hold seam cannot distinguish
-  holding from never having held, so two race witnesses can silently
-  degrade into no-op tests.
-- D-2 (medium, reproduced on unmodified code): the claim file is the sole
-  serializer and the CLI's own remedy text instructs operators to delete it,
-  which can produce two live holders. The module comment claiming the token
-  confirmation is a second safety net is false.
-- U-9 to U-12 (medium and low): an unscoped `worktree prune` against the
-  shared clone during rollback, an overstated determinism claim in the work
-  history, a permanent condition matching a retry alternative, and a
-  registry description that over-promises.
+Severity note, so the record is not internally false: the investigation
+records D-1, D-2 and D-3 all as **medium**. The orchestrator escalated D-1
+and D-3 to required-before-merge status, not to high severity, on the
+grounds that D-1 reddens acceptance criterion 3's own witness and can make
+`lock status` and `doctor` report a healthy fleet as corrupt while M1-P4 is
+about to build holdership checks on that same read, and that D-3 leaves two
+race witnesses unable to distinguish holding from never having held. That
+escalation is the orchestrator's, not the investigation's.
 
-Also unresolved and recorded rather than assumed away: three concurrent
-create failures ("branch already exists") that the verification could not
-attribute across 240 creates.
-
-Open scope question with the owner: V-4, U-9 and the unattributed failures
-appear only at 90-way to 120-way concurrency, and the plan keeps parallelism
-off until M5. The dispatched round fixes them now but cheaply, driving
-contention deterministically in tests rather than by running heavy stress in
-the suite. The alternative, if cost is capped, is to take V-3 and the lock
-guards now and park the rest for an M5 hardening phase.
+Deferred to M5 by the round in flight, to be picked up in M5 planning:
+heavy-concurrency create hardening, partial-state rollback on failed
+create, the unattributed "branch already exists" failure, and the
+prune-versus-add hazard.
 
 ## Owner decisions
 

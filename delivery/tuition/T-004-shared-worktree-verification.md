@@ -32,9 +32,15 @@ directory eight minutes earlier. Deleting only the byte-compare branch from
 a pristine clone reproduces the exact failure shape of the original run.
 
 The trigger is not proven, and the investigation deliberately refused to
-award a root cause. What is settled is that the failing runs did not execute
-the shipped compare-and-swap as written, and that a concurrent source
-modification by a sibling lens is the leading candidate.
+award a root cause. What is settled is a disjunction: either the test hold
+seam released early so the interleave was never staged, or the tree under
+test did not contain the byte compare. A concurrent source modification by a
+sibling lens is the leading unproven hypothesis for the second branch, and
+it is the branch this entry is about. Note that under the first branch the
+shipped compare-and-swap executed exactly as written, so this entry must not
+be read as establishing that contaminated source caused the failures; it
+establishes that shared mutable ground makes such a cause possible and
+unfalsifiable after the fact, which is reason enough to forbid it.
 
 ## Lessons
 

@@ -9,7 +9,9 @@
 
 ## VERDICT
 
-**The lock's compare-and-swap is sound. U-2 is not evidence of a kernel defect. The trigger of the two original failures remains UNEXPLAINED, and the honest answer is that the failing runs did not execute the shipped compare-and-swap as written.**
+**The lock's compare-and-swap is sound. U-2 is not evidence of a kernel defect. The trigger of the two original failures remains UNEXPLAINED: exactly one of two possibilities holds, either the hold seam released early so the interleave was never staged, or the tree under test did not contain the byte compare.**
+
+CORRECTION TO THIS LINE (owner review of PR #5, applied by the orchestrator). This verdict originally ended "and the honest answer is that the failing runs did not execute the shipped compare-and-swap as written". That overstated what this report itself establishes. Under possibility (a) below, the hold seam releasing early, the shipped compare-and-swap executes exactly as written and simply has nothing to race; only possibility (b) means the tree under test lacked the byte compare. The disjunction is settled, the branch of it is not, and the original wording asserted one branch as fact. The body of this section stated the disjunction correctly throughout; only this summary sentence was wrong.
 
 In plain language, answering the four questions that were asked:
 
