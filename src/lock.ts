@@ -145,7 +145,7 @@ function readCurrent(lockPath: string): { present: boolean; raw: string } {
 
 export type MutationResult =
   | { won: true }
-  | { won: false; reason: string };
+  | { won: false; reason: string; claimTimeout?: boolean };
 
 /**
  * The one shared atomic mutation primitive (EXT-F-01). Applies next (new
@@ -172,8 +172,9 @@ export async function applyLeaseMutation(
       if (Date.now() >= deadline) {
         return {
           won: false,
+          claimTimeout: true,
           reason:
-            `mutation claim file ${mutexPath} stayed held past ` +
+            `stale claim file ${mutexPath} blocking: it stayed held past ` +
             `${String(MUTEX_WAIT_TOTAL_MS)}ms; if no mutation is in flight ` +
             `it was left by a crashed one, inspect and remove it manually`,
         };
@@ -225,9 +226,26 @@ export async function applyLeaseMutation(
         throw error;
       }
     } else {
-      const stagePath = `${lockPath}.tx-${token}`;
+      // The stage is ONE fixed path beside the lock (CR-202): mutations
+      // are serialized under the claim, so no two stages can coexist,
+      // and a stage stranded by a crash between write and rename is
+      // simply overwritten by the next mutation and renamed away, so
+      // strands never accumulate (at most one file, never swept by an
+      // age heuristic). A fixed path cannot weaken the CAS: the write
+      // happens inside the claim, the byte-compare and the token
+      // confirmation are unchanged, and the rename stays atomic.
+      const stagePath = `${lockPath}.stage`;
       writeFileSync(stagePath, next);
-      renameSync(stagePath, lockPath);
+      try {
+        renameSync(stagePath, lockPath);
+      } catch (error) {
+        try {
+          unlinkSync(stagePath);
+        } catch {
+          // Stage cleanup is best effort; the original error surfaces.
+        }
+        throw error;
+      }
     }
 
     const confirm = readCurrent(lockPath);
