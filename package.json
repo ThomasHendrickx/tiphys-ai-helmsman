@@ -1,0 +1,26 @@
+{
+  "name": "@tiphys/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tiphys kernel: the fleet orchestration toolbelt, delivered as an npm package.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=26"
+  },
+  "bin": {
+    "tiphys": "dist/bin/tiphys.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.src.json tsconfig.test.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2"
+  }
+}
