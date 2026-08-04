@@ -338,6 +338,38 @@ test("a scout that committed to its scratch branch is refused, not silently disc
     "the scout branch was deleted",
   );
   assert.equal(metaStatus(scratch, "t-scoutwork"), "open");
+
+  // CR-304: the advice must be performable through the command that
+  // printed it. Passing the pool's own reason through told the operator
+  // to use --delete-branch-force, which teardown does not accept, so the
+  // task could never reach closed.
+  assert.doesNotMatch(
+    result.stderr,
+    /--delete-branch-force/,
+    `the refusal advises a flag teardown does not accept: ${result.stderr}`,
+  );
+  assert.equal(result.stderr.trim().split("\n").length, 1, result.stderr);
+  const base = JSON.parse(
+    readFileSync(join(scratch.fleet, "worktrees", "t-scoutwork.pool.json"), "utf8"),
+  ) as { baseSha: string };
+  assert.ok(result.stderr.includes(base.baseSha), result.stderr);
+
+  // Follow the printed route exactly, and it must work: push the
+  // findings somewhere durable, release the branch, re-run.
+  gitOk(worktreeOf(scratch, "t-scoutwork"), [
+    "push",
+    "origin",
+    "HEAD:refs/heads/scout-findings",
+  ]);
+  gitOk(scratch.clone, ["update-ref", "refs/heads/task/t-scoutwork", base.baseSha]);
+  const retried = teardown(scratch, "t-scoutwork");
+  assert.equal(retried.status, 0, `the printed route did not work: ${retried.stderr}`);
+  assert.equal(metaStatus(scratch, "t-scoutwork"), "closed");
+  assert.equal(
+    gitOk(scratch.upstream, ["rev-parse", "refs/heads/scout-findings"]),
+    sha,
+    "the rescued findings did not survive",
+  );
 });
 
 test("a successful teardown closes the task meta and unregisters the worktree", (t) => {
@@ -482,8 +514,116 @@ test("teardown refuses when the default branch cannot be fetched", (t) => {
   const result = teardown(scratch, "t-nofetch");
   assert.notEqual(result.status, 0, "teardown judged landedness without a fetch");
   assert.match(result.stderr, /fetch of origin\/main failed/);
+  // CR-303: git's own stderr for an unreachable remote is five lines;
+  // plan step 5 specifies one reason line, and the M1-P6 harness reads it.
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${result.stderr}`,
+  );
   assert.ok(existsSync(worktreeOf(scratch, "t-nofetch")));
   assert.equal(metaStatus(scratch, "t-nofetch"), "open");
+});
+
+test("a meta write that fails after the destroy is a partial teardown, not a crash", (t) => {
+  // F-1, red against the dangerous state: the worktree and branch are
+  // already gone when meta.json is marked closed, so a raised write there
+  // used to crash the CLI with a stack trace and leave the single state
+  // authority (C-1) reading "open" for a task whose worktree no longer
+  // exists. The failure is forced for real, not mocked: a stub git
+  // removes the task directory the instant the worktree removal
+  // succeeds, so the meta write raises ENOENT at exactly that point.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-metafail").status, 0);
+  const worktree = worktreeOf(scratch, "t-metafail");
+  const taskDir = taskDirOf(scratch, "t-metafail");
+
+  const binDir = mkdtempSync(join(tmpdir(), "tiphys-p4-metafail-"));
+  t.after(() => {
+    rmSync(binDir, { recursive: true, force: true });
+  });
+  const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
+    .stdout.trim();
+  assert.ok(realGit !== "", "could not locate the real git");
+  writeFileSync(
+    join(binDir, "git"),
+    `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+if (args.includes("worktree") && args.includes("remove") && r.status === 0) {
+  fs.rmSync(${JSON.stringify(taskDir)}, { recursive: true, force: true });
+}
+process.exit(r.status === null ? 1 : r.status);
+`,
+    { mode: 0o755 },
+  );
+
+  const result = teardown(scratch, "t-metafail", [], {
+    ...baseEnv(),
+    PATH: `${binDir}:${process.env.PATH ?? ""}`,
+  });
+  assert.notEqual(result.status, 0, "teardown reported success without closing the task");
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `a raised error escaped as a stack trace: ${result.stderr}`,
+  );
+  assert.doesNotMatch(result.stderr, /at writeFileSync|at setTaskStatus|node:fs/);
+  assert.ok(
+    result.stderr.startsWith("tiphys teardown: partial teardown of task id t-metafail"),
+    `the outcome was not reported as a partial teardown: ${result.stderr}`,
+  );
+  assert.match(result.stderr, /HAS BEEN REMOVED/, "the message hides the worktree removal");
+  assert.match(
+    result.stderr,
+    /could not be marked closed/,
+    "the message hides that the task record was not updated",
+  );
+  assert.doesNotMatch(result.stderr, /nothing was (removed|changed)|no-op/i);
+  // The enumeration must match the real state.
+  assert.ok(!existsSync(worktree), "precondition for this path: the worktree is removed");
+});
+
+test("a salvage whose push fails reports the local commit and refuses in one line", (t) => {
+  // CR-302 and CR-303 together: this is the ONE nonzero exit that can
+  // leave a change behind, so the claim "a refused teardown never
+  // commits" is narrowed to refusals that precede the salvage step, and
+  // the reason line says what really happened, in one line.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-pushfail").status, 0);
+  const worktree = worktreeOf(scratch, "t-pushfail");
+  commitInWorktree(scratch, "t-pushfail", "one.md");
+  pushTaskBranch(scratch, "t-pushfail");
+  squashLand(scratch, "t-pushfail");
+  writeFileSync(join(worktree, "leavings.txt"), "uncommitted\n");
+  const before = gitOk(worktree, ["rev-parse", "HEAD"]);
+  gitOk(scratch.clone, [
+    "remote",
+    "set-url",
+    "--push",
+    "origin",
+    join(scratch.tmp, "no-such-remote"),
+  ]);
+
+  const result = teardown(scratch, "t-pushfail", ["--salvage"]);
+  assert.notEqual(result.status, 0, "a failed push was reported as success");
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${result.stderr}`,
+  );
+  assert.match(result.stderr, /the commit is local only/);
+  // Nothing destroyed, and the leavings are rescued into a labelled commit.
+  assert.ok(existsSync(worktree), "the failed salvage removed the worktree");
+  assert.equal(metaStatus(scratch, "t-pushfail"), "open");
+  const after = gitOk(worktree, ["rev-parse", "HEAD"]);
+  assert.notEqual(after, before, "the salvage did not commit the leavings");
+  assert.ok(
+    gitOk(worktree, ["log", "-1", "--format=%s"]).startsWith(SALVAGE_PREFIX),
+    "the local salvage commit is not labelled",
+  );
 });
 
 test("teardown usage errors exit 64 and an unknown task exits 1", (t) => {

@@ -7,6 +7,8 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -339,9 +341,29 @@ test("a duplicate task id leaves the existing task byte-identical", (t) => {
 
   const second = spawnCli(scratch, "t-dup", stub);
   assert.notEqual(second.status, 0);
-  assert.match(second.stderr, /task id already used: t-dup/);
+  // A live task also occupies its task directory, so CR-301's gate is
+  // the one that speaks first. The criterion's outcome is unchanged:
+  // nonzero, the existing task byte-identical, nothing new created.
+  assert.match(second.stderr, /already holds records for task id t-dup/);
   assert.deepEqual(snapshot(taskDirOf(scratch, "t-dup")), before);
   assert.deepEqual(readdirSync(join(scratch.fleet, "worktrees")).sort(), worktreesBefore);
+
+  // The pool's own duplicate gate is still reachable and still creates
+  // nothing under tasks/: a pool worktree taken directly, with no task
+  // directory, is exactly the case criterion 5's companion describes.
+  assert.equal(
+    runCli(["pool", "create", "--task", "t-poolonly", "--project", scratch.clone], {
+      cwd: scratch.fleet,
+    }).status,
+    0,
+  );
+  const viaPool = spawnCli(scratch, "t-poolonly", stub);
+  assert.notEqual(viaPool.status, 0);
+  assert.match(viaPool.stderr, /task id already used: t-poolonly/);
+  assert.ok(
+    !existsSync(taskDirOf(scratch, "t-poolonly")),
+    "a refused spawn created a task directory",
+  );
 });
 
 test("a failed executor launch rolls back exactly what that invocation created", (t) => {
@@ -505,6 +527,97 @@ test("spawn does not recompute baseOffline from its own --offline flag", (t) => 
     false,
     "baseOffline was recomputed from the flag instead of copied from the pool record",
   );
+});
+
+test("a write that THROWS after pool create still rolls the task back", (t) => {
+  // F-2, red against the dangerous state: every step in the window
+  // between pool create and the launch signals failure by RAISING, not
+  // by returning, and an unwrapped raise walked straight past rollback()
+  // and out of the process, orphaning the worktree, the branch and the
+  // pool record and wedging the task id forever. The failure here is a
+  // real one forced by the filesystem, not a mock: a dangling symlink at
+  // the task-directory path reads as absent to existsSync and makes
+  // mkdirSync raise.
+  const scratch = makeScratch(t);
+  const stub = writeStub(scratch.tmp, "payload.sh", "#!/bin/sh\nexit 0\n");
+  const taskDirPath = taskDirOf(scratch, "t-throw");
+  symlinkSync(join(scratch.tmp, "nowhere"), taskDirPath);
+  assert.ok(!existsSync(taskDirPath), "precondition: the dangling link reads as absent");
+
+  const result = spawnCli(scratch, "t-throw", stub);
+  assert.notEqual(result.status, 0);
+  // A stack trace is many lines and does not carry the command's prefix.
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `a raised error escaped as a stack trace: ${result.stderr}`,
+  );
+  assert.match(result.stderr, /^tiphys spawn: /);
+  assert.doesNotMatch(result.stderr, /at writeFileSync|at mkdirSync|node:fs/);
+  // The rollback ran: nothing of this invocation survives.
+  assert.ok(!existsSync(worktreeOf(scratch, "t-throw")), "the worktree was orphaned");
+  assert.ok(
+    !existsSync(join(scratch.fleet, "worktrees", "t-throw.pool.json")),
+    "the pool record was orphaned",
+  );
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-throw"]).status,
+    0,
+    "the task branch was orphaned",
+  );
+  // And the id is not wedged: clear the planted link and it works.
+  unlinkSync(taskDirPath);
+  assert.equal(spawnCli(scratch, "t-throw", stub).status, 0, "the task id was wedged");
+});
+
+test("spawn refuses a task id whose task directory already holds records", (t) => {
+  // CR-301, red against the dangerous state: tasks/<id>/ survives every
+  // teardown by design, so a re-used id used to overwrite the closed
+  // task's records, let the rollback delete files it never created, and
+  // leave the previous incarnation's turn-end readable beside a meta
+  // saying open, which is a completion that did not happen sitting under
+  // the C-1 state authority.
+  const scratch = makeScratch(t);
+  const stub = writeStub(scratch.tmp, "payload.sh", "#!/bin/sh\nexit 3\n");
+  assert.equal(spawnCli(scratch, "t-reuse", stub).status, 0);
+  assert.equal(
+    runCli(["teardown", "--task", "t-reuse"], { cwd: scratch.fleet }).status,
+    0,
+    "precondition: the task tears down cleanly",
+  );
+  const before = snapshot(taskDirOf(scratch, "t-reuse"));
+  assert.ok(before["meta.json"] !== undefined && before["turn-end"] !== undefined);
+  assert.match(before["meta.json"] as string, /"status": "closed"/);
+
+  // (a) A re-spawn whose exec fails: the rollback must never reach the
+  // previous incarnation's records.
+  const failing = spawnCli(scratch, "t-reuse", join(scratch.tmp, "no-such-binary"));
+  assert.notEqual(failing.status, 0);
+  assert.match(failing.stderr, /already holds records/);
+  assert.ok(failing.stderr.includes(taskDirOf(scratch, "t-reuse")), failing.stderr);
+  assert.deepEqual(
+    snapshot(taskDirOf(scratch, "t-reuse")),
+    before,
+    "the re-spawn destroyed or rewrote the previous incarnation's records",
+  );
+  assert.ok(!existsSync(worktreeOf(scratch, "t-reuse")), "the refusal created a worktree");
+  assert.ok(!existsSync(join(scratch.fleet, "worktrees", "t-reuse.pool.json")));
+
+  // (b) A re-spawn whose payload reads the task's own turn-end: no
+  // payload of a new incarnation may ever see the previous one's record.
+  const copy = join(scratch.tmp, "seen-turn-end");
+  const reader = writeStub(
+    scratch.tmp,
+    "reader.sh",
+    `#!/bin/sh\nif [ -f ${JSON.stringify(join(taskDirOf(scratch, "t-reuse"), "turn-end"))} ]; then cp ${JSON.stringify(join(taskDirOf(scratch, "t-reuse"), "turn-end"))} ${JSON.stringify(copy)}; fi\nexit 0\n`,
+  );
+  const reused = spawnCli(scratch, "t-reuse", reader);
+  assert.notEqual(reused.status, 0, "spawn re-used an occupied task id");
+  assert.ok(
+    !existsSync(copy),
+    "a new incarnation's payload read the previous incarnation's turn-end record",
+  );
+  assert.deepEqual(snapshot(taskDirOf(scratch, "t-reuse")), before);
 });
 
 test("spawn usage errors exit 64 and a non-fleet cwd exits 1", (t) => {

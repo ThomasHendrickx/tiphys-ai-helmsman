@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
 import { leaseStatus } from "./lock.ts";
@@ -195,4 +195,82 @@ export function checkHoldership(fleet: Fleet): GuardResult {
 /** True when the task directory already exists (spawn's rollback scope). */
 export function taskDirExists(fleet: Fleet, taskId: string): boolean {
   return existsSync(taskDir(fleet, taskId));
+}
+
+/**
+ * True when tasks/<id>/ already holds a previous incarnation of the task
+ * id, which spawn refuses (CR-301).
+ *
+ * The task directory is the DURABLE record: teardown removes the worktree
+ * and the pool record but deliberately leaves tasks/<id>/ behind, so the
+ * id is free from the pool's point of view and occupied from the task
+ * state's. Spawning into it would overwrite the closed task's records,
+ * hand the launch-failure rollback files it did not create, and leave the
+ * previous incarnation's turn-end file readable while the new
+ * incarnation's meta says open, which is a completion that did not happen
+ * sitting under the C-1 state authority.
+ *
+ * A path that exists but is not a directory counts as occupied too: it is
+ * not a state this kernel may write into, and refusing costs the operator
+ * one rename while guessing could cost the record.
+ */
+export function taskDirOccupied(fleet: Fleet, taskId: string): boolean {
+  const dir = taskDir(fleet, taskId);
+  if (!existsSync(dir)) {
+    return false;
+  }
+  try {
+    if (!statSync(dir).isDirectory()) {
+      return true;
+    }
+    return readdirSync(dir).length > 0;
+  } catch {
+    // Unreadable is not empty: fail closed.
+    return true;
+  }
+}
+
+/**
+ * Collapse captured git or error output to ONE line (CR-303). Plan step 5 ends
+ * "every refusal is exit nonzero plus a single reason line", and git's
+ * own stderr is routinely five lines, so any interpolation of it must be
+ * flattened rather than trusted to be short. The M1-P6 harness reads
+ * these reason lines as evidence.
+ */
+export function singleLine(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .join("; ");
+}
+
+export type StepResult<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+/**
+ * Run one step that may signal failure by THROWING, and fold a raised
+ * error into the same ok/reason shape every other step in spawn and
+ * teardown returns (F-1, F-2).
+ *
+ * This exists because the modules were written as a result type end to
+ * end while the Node fs calls underneath them are not: writeFileSync and
+ * mkdirSync raise. Every returned failure was handled correctly and every
+ * THROWN one walked straight past the handler, out of the command, and
+ * onto stderr as a stack trace, taking spawn's rollback and teardown's
+ * state update with it. Wrapping is therefore not defensive decoration
+ * for a state M1 never reaches: it is the difference between a rollback
+ * that runs and an orphaned worktree, and between a task marked closed
+ * and a meta.json that lies about a worktree that is already gone.
+ *
+ * It never swallows: the caller still gets a reason naming the step, and
+ * still decides whether to roll back, report a partial failure, or refuse.
+ */
+export function runStep<T>(what: string, step: () => T): StepResult<T> {
+  try {
+    return { ok: true, value: step() };
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `${what} failed: ${detail}` };
+  }
 }

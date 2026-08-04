@@ -9,8 +9,10 @@ import {
   checkHoldership,
   executorRecordPath,
   metaPath,
+  runStep,
   taskDir,
   taskDirExists,
+  taskDirOccupied,
   writeTaskMeta,
 } from "./task.ts";
 import type { GuardResult, TaskMeta, TaskShape } from "./task.ts";
@@ -35,7 +37,11 @@ import type { GuardResult, TaskMeta, TaskShape } from "./task.ts";
  *   - A failure AFTER pool create and BEFORE the payload starts removes
  *     exactly what this invocation created (the files it wrote, the task
  *     directory when it created it, and the pool worktree) and nothing
- *     else (criterion 5). The worktree is untouched at that point, so
+ *     else (criterion 5). This holds for a step that RETURNS a failure
+ *     and for one that THROWS: every write in that window goes through
+ *     runStep, because an unwrapped raise walked past the rollback
+ *     entirely and orphaned the worktree, the branch and the pool record
+ *     (F-2). The worktree is untouched at that point, so
  *     the removal passes the ordinary pool destroy gates and needs no
  *     force flag: --discard and --delete-branch-force are deliberately
  *     NOT passed, so a worktree that somehow is not pristine refuses and
@@ -148,7 +154,16 @@ export const subprocessAdapter: ExecutorAdapter = {
         launchedAt.getTime() + request.deadlineSeconds * 1000,
       ).toISOString();
     }
-    writeFileSync(request.recordPath, `${JSON.stringify(record, null, 2)}\n`);
+    // The record write happens BEFORE the payload, so a failure here is
+    // provably a launch failure and is safe to roll back. Everything
+    // after the payload starts is reported as incomplete instead, which
+    // never rolls anything back (F-2's fix must not become V-1's defect).
+    const written = runStep(`writing the launch record ${request.recordPath}`, () => {
+      writeFileSync(request.recordPath, `${JSON.stringify(record, null, 2)}\n`);
+    });
+    if (!written.ok) {
+      return { kind: "launch-failed", reason: written.reason };
+    }
 
     const [program, ...args] = request.command;
     if (program === undefined) {
@@ -166,9 +181,24 @@ export const subprocessAdapter: ExecutorAdapter = {
     }
     const exitCode = payloadExitCode(result.status, result.signal);
 
-    const hook = spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
-      stdio: "inherit",
-    });
+    // The payload has run. Every failure below, raised or returned, is
+    // reported as incomplete: the worktree may hold real work now, so
+    // nothing here may lead to a rollback.
+    const hooked = runStep(`invoking the turn-end hook ${request.hookPath}`, () =>
+      spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
+        stdio: "inherit",
+      }),
+    );
+    if (!hooked.ok) {
+      return {
+        kind: "incomplete",
+        reason:
+          `the payload exited ${String(exitCode)} but the turn-end record could not ` +
+          `be written (${hooked.reason}); the worktree and the task directory are ` +
+          `left in place`,
+      };
+    }
+    const hook = hooked.value;
     if (hook.error !== undefined || hook.status !== 0) {
       const detail =
         hook.error === undefined ? `exit ${String(hook.status)}` : String(hook.error);
@@ -255,6 +285,21 @@ export async function spawnTask(
     return { ok: false, reason: "--exec is empty" };
   }
 
+  // CR-301, checked before pool create so the refusal creates nothing and
+  // destroys nothing. tasks/<id>/ survives every teardown by design, so a
+  // reused id would otherwise overwrite a closed task's records, hand the
+  // rollback files it did not create, and leave the previous
+  // incarnation's turn-end readable beside a meta that says open.
+  if (taskDirOccupied(fleet, taskId)) {
+    return {
+      ok: false,
+      reason:
+        `task directory ${taskDir(fleet, taskId)} already holds records for task ` +
+        `id ${taskId}; a task id is spawned once, so choose a fresh id or move ` +
+        `that directory aside before re-using this one`,
+    };
+  }
+
   const created = await poolCreate(fleet, {
     taskId,
     project: options.project,
@@ -301,15 +346,29 @@ export async function spawnTask(
     return { ok: false, reason };
   };
 
+  // From here to the launch, EVERY step goes through runStep: a raised
+  // fs error is folded into the same ok/reason shape a returned failure
+  // uses, so one handler covers both and the rollback cannot be walked
+  // past (F-2).
   if (createdTaskDir) {
-    mkdirSync(dir, { recursive: true });
+    const made = runStep(`creating the task directory ${dir}`, () => {
+      mkdirSync(dir, { recursive: true });
+    });
+    if (!made.ok) {
+      return rollback(made.reason);
+    }
   }
 
-  const brief = assembleBrief(fleet, taskId, options.briefFile);
+  const brief = runStep(`assembling the brief for task ${taskId}`, () =>
+    assembleBrief(fleet, taskId, options.briefFile),
+  );
   if (!brief.ok) {
     return rollback(brief.reason);
   }
-  createdFiles.push(brief.value);
+  if (!brief.value.ok) {
+    return rollback(brief.value.reason);
+  }
+  createdFiles.push(brief.value.value);
 
   const meta: TaskMeta = {
     id: taskId,
@@ -322,24 +381,51 @@ export async function spawnTask(
     status: "open",
     createdAt: new Date().toISOString(),
   };
-  writeTaskMeta(fleet, meta);
+  const wroteMeta = runStep(`writing ${metaPath(fleet, taskId)}`, () => {
+    writeTaskMeta(fleet, meta);
+  });
+  if (!wroteMeta.ok) {
+    return rollback(wroteMeta.reason);
+  }
   createdFiles.push(metaPath(fleet, taskId));
 
-  const hookPath = writeTurnEndHook(fleet, taskId);
+  const hook = runStep(`writing the turn-end hook for task ${taskId}`, () =>
+    writeTurnEndHook(fleet, taskId),
+  );
+  if (!hook.ok) {
+    return rollback(hook.reason);
+  }
+  const hookPath = hook.value;
   createdFiles.push(hookPath);
 
   const recordPath = executorRecordPath(fleet, taskId);
   createdFiles.push(recordPath);
 
   const adapter = options.adapter ?? subprocessAdapter;
-  const outcome = adapter.launch({
-    taskId,
-    worktree,
-    command,
-    hookPath,
-    recordPath,
-    deadlineSeconds: options.deadlineSeconds,
-  });
+  const launched = runStep(`launching the payload through the ${adapter.name} adapter`, () =>
+    adapter.launch({
+      taskId,
+      worktree,
+      command,
+      hookPath,
+      recordPath,
+      deadlineSeconds: options.deadlineSeconds,
+    }),
+  );
+  if (!launched.ok) {
+    // An adapter that THREW rather than returning an outcome cannot tell
+    // us whether the payload started, and this rollback destroys a
+    // worktree. Refusing to guess is the whole lesson of V-1: the state
+    // is left in place and enumerated instead.
+    return {
+      ok: false,
+      reason:
+        `${launched.reason}; the ${adapter.name} adapter did not report whether the ` +
+        `payload started, so nothing was rolled back: the worktree ${worktree}, its ` +
+        `task directory and the pool record are left in place for inspection`,
+    };
+  }
+  const outcome = launched.value;
   if (outcome.kind === "launch-failed") {
     return rollback(`executor launch failed: ${outcome.reason}`);
   }

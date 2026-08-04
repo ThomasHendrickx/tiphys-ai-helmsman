@@ -98,5 +98,9 @@
   "teardown-holdership-both-directions": "teardown refuses without matching holdership and proceeds with it",
   "teardown-partial-destroy-not-refusal": "a destroy that fails partway is reported as a partial failure, never as a refusal",
   "teardown-fetch-failure-refused": "teardown refuses when the default branch cannot be fetched",
+  "spawn-thrown-failure-rolls-back": "a write that THROWS after pool create still rolls the task back",
+  "spawn-refuses-occupied-task-dir": "spawn refuses a task id whose task directory already holds records",
+  "teardown-meta-write-failure-partial": "a meta write that fails after the destroy is a partial teardown, not a crash",
+  "teardown-salvage-push-failure-local-commit": "a salvage whose push fails reports the local commit and refuses in one line",
   "teardown-usage-errors": "teardown usage errors exit 64 and an unknown task exits 1"
 }

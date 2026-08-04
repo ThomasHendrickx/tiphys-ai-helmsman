@@ -1,5 +1,6 @@
 import { EX_USAGE } from "../cli.ts";
 import { loadFleet } from "../fleet.ts";
+import { singleLine } from "../task.ts";
 import { teardownTask } from "../teardown.ts";
 import type { Fleet } from "../fleet.ts";
 
@@ -69,7 +70,11 @@ export async function cmdTeardown(args: string[]): Promise<number> {
     salvage: flags.salvage,
   });
   if (!result.ok) {
-    process.stderr.write(`tiphys teardown: ${result.reason}\n`);
+    // Plan step 5: "every refusal is exit nonzero plus a single reason
+    // line". Enforced here structurally (CR-303) rather than trusted of
+    // every reason string, because reasons interpolate git output and a
+    // raised error message, neither of which is guaranteed to be short.
+    process.stderr.write(`tiphys teardown: ${singleLine(result.reason)}\n`);
     return 1;
   }
   const suffix = result.value.salvaged ? " (leavings salvaged and pushed)" : "";

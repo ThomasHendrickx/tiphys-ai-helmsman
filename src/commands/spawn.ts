@@ -1,6 +1,7 @@
 import { EX_USAGE } from "../cli.ts";
 import { loadFleet } from "../fleet.ts";
 import { spawnTask } from "../spawn.ts";
+import { singleLine } from "../task.ts";
 import type { Fleet } from "../fleet.ts";
 import type { TaskShape } from "../task.ts";
 
@@ -130,7 +131,10 @@ export async function cmdSpawn(args: string[]): Promise<number> {
     offline: flags.offline,
   });
   if (!result.ok) {
-    process.stderr.write(`tiphys spawn: ${result.reason}\n`);
+    // One reason line, structurally (CR-303): a reason may carry a
+    // raised error message or git output, and an operator or the M1-P6
+    // harness reading "the reason line" must get all of it.
+    process.stderr.write(`tiphys spawn: ${singleLine(result.reason)}\n`);
     return 1;
   }
   // The payload's exit code is reported, not adopted: the task's state

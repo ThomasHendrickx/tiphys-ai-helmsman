@@ -6,9 +6,12 @@ import { poolDestroy, readPoolRecord, worktreePath } from "./pool.ts";
 import type { PoolRecord } from "./pool.ts";
 import {
   checkHoldership,
+  metaPath,
   readTaskMeta,
   reportPath,
+  runStep,
   setTaskStatus,
+  singleLine,
 } from "./task.ts";
 import type { TaskMeta } from "./task.ts";
 
@@ -42,15 +45,20 @@ import type { TaskMeta } from "./task.ts";
  *   4. On success: pool destroy, then meta status closed.
  *
  * WHY THE SALVAGE COMMIT HAPPENS AFTER THE LANDED CHECK, not at the
- * point the plan's prose mentions it: a salvage commit is by
+ * point the plan's prose used to mention it: a salvage commit is by
  * construction NOT landed (it introduces content the default branch does
  * not have), so committing it before the landed check would make the
  * check fail for every salvage and criterion 8's "after the branch is
  * landed and the tree is dirty, teardown --salvage exits 0" could never
- * hold. Deciding first and acting afterwards also keeps every refusal a
- * true no-op: a refused teardown never commits, never pushes and never
- * removes anything. --salvage rescues uncommitted leavings; it never
- * overrides the unlanded refusal.
+ * hold. The plan's step 5 clause (b) has since been corrected to this
+ * explicit order. Deciding first and acting afterwards also bounds what a
+ * nonzero exit can leave behind, and the honest form of that claim is
+ * narrow (CR-302): EVERY REFUSAL THAT PRECEDES THE SALVAGE STEP is a
+ * true no-op, making no commit, no push and no removal. The one nonzero
+ * exit that can leave a change behind is a salvage whose push fails: the
+ * leavings are already committed locally, nothing is destroyed, and the
+ * reason line says exactly that. --salvage rescues uncommitted leavings;
+ * it never overrides the unlanded refusal.
  *
  * REFUSAL VERSUS PARTIAL FAILURE. Teardown drives pool destroy, whose
  * two failure kinds mean opposite things (see the destroy contract in
@@ -123,7 +131,7 @@ export function landedness(
   if (ancestor.status !== 1) {
     return {
       kind: "inconclusive",
-      detail: `git merge-base --is-ancestor exited ${String(ancestor.status)}: ${ancestor.stderr.trim()}`,
+      detail: `git merge-base --is-ancestor exited ${String(ancestor.status)}: ${singleLine(ancestor.stderr)}`,
     };
   }
 
@@ -131,7 +139,7 @@ export function landedness(
   if (defaultTree.status !== 0) {
     return {
       kind: "inconclusive",
-      detail: `cannot resolve the tree of ${defaultRef}: ${defaultTree.stderr.trim()}`,
+      detail: `cannot resolve the tree of ${defaultRef}: ${singleLine(defaultTree.stderr)}`,
     };
   }
   const merged = runGit(contextDir, ["merge-tree", "--write-tree", defaultRef, branchRef]);
@@ -142,7 +150,7 @@ export function landedness(
   if (merged.status !== 0) {
     return {
       kind: "inconclusive",
-      detail: `git merge-tree --write-tree exited ${String(merged.status)}: ${merged.stderr.trim()}`,
+      detail: `git merge-tree --write-tree exited ${String(merged.status)}: ${singleLine(merged.stderr)}`,
     };
   }
   const mergedTree = merged.stdout.split("\n")[0]?.trim() ?? "";
@@ -207,7 +215,7 @@ function resolveContext(
       ok: false,
       reason:
         `fetch of ${record.remote}/${record.branch} failed, so landed-ness cannot ` +
-        `be judged against fresh remote state: ${fetched.stderr.trim()}`,
+        `be judged against fresh remote state: ${singleLine(fetched.stderr)}`,
     };
   }
   return { ok: true, value: { meta, record, worktree, defaultRef } };
@@ -219,7 +227,7 @@ function worktreeDirty(worktree: string): { ok: true; dirty: boolean } | { ok: f
   if (status.status !== 0) {
     return {
       ok: false,
-      reason: `cannot verify worktree cleanliness at ${worktree}: ${status.stderr.trim()}`,
+      reason: `cannot verify worktree cleanliness at ${worktree}: ${singleLine(status.stderr)}`,
     };
   }
   return { ok: true, dirty: status.stdout.trim() !== "" };
@@ -230,7 +238,7 @@ function salvageLeavings(context: TeardownContext): { ok: true } | { ok: false; 
   const { worktree, record } = context;
   const added = runGit(worktree, ["add", "-A"]);
   if (added.status !== 0) {
-    return { ok: false, reason: `salvage failed at git add: ${added.stderr.trim()}` };
+    return { ok: false, reason: `salvage failed at git add: ${singleLine(added.stderr)}` };
   }
   const message = `${SALVAGE_PREFIX} leavings salvaged by tiphys teardown for task ${context.meta.id}`;
   // CI runners have no git identity, and the fleet never reads or writes
@@ -246,7 +254,7 @@ function salvageLeavings(context: TeardownContext): { ok: true } | { ok: false; 
   if (committed.status !== 0) {
     return {
       ok: false,
-      reason: `salvage failed at git commit: ${committed.stderr.trim() || committed.stdout.trim()}`,
+      reason: `salvage failed at git commit: ${singleLine(committed.stderr) || singleLine(committed.stdout)}`,
     };
   }
   const pushed = runGit(record.project, [
@@ -259,7 +267,7 @@ function salvageLeavings(context: TeardownContext): { ok: true } | { ok: false; 
       ok: false,
       reason:
         `salvage committed the leavings as "${SALVAGE_PREFIX} ..." but the push of ` +
-        `${record.branchName} failed: ${pushed.stderr.trim()}; the commit is local only`,
+        `${record.branchName} failed: ${singleLine(pushed.stderr)}; the commit is local only`,
     };
   }
   return { ok: true };
@@ -289,7 +297,33 @@ async function finish(
       reason: `pool destroy did not complete: ${destroyed.reason}; task ${context.meta.id} stays open`,
     };
   }
-  setTaskStatus(fleet, context.meta, "closed");
+
+  // F-1. The worktree is GONE by this point, so a raised write here is
+  // not a refusal and must never crash the command: an uncaught throw
+  // left meta.json reading "open" beside a worktree that no longer
+  // exists, which is the single state authority (C-1) telling a later
+  // reader, and the M1-P5 watcher, something false. It is the same
+  // partial-failure shape M1-P3 defined for destroy, reported in the
+  // same vocabulary, with the manual remedy named.
+  const closed = runStep(`marking task ${context.meta.id} closed`, () => {
+    setTaskStatus(fleet, context.meta, "closed");
+  });
+  if (!closed.ok) {
+    const removed =
+      destroyed.value.deletedBranch === undefined
+        ? `worktree ${context.worktree} HAS BEEN REMOVED`
+        : `worktree ${context.worktree} HAS BEEN REMOVED and branch ` +
+          `${destroyed.value.deletedBranch} was deleted (it was ` +
+          `${destroyed.value.deletedSha ?? "unknown"})`;
+    return {
+      ok: false,
+      reason:
+        `partial teardown of task id ${context.meta.id}: ${removed}, but ` +
+        `${metaPath(fleet, context.meta.id)} could not be marked closed ` +
+        `(${closed.reason}); the task record still reads status open although its ` +
+        `worktree is gone, so repair that file and set "status": "closed" by hand`,
+    };
+  }
   return { ok: true, value: { taskId: context.meta.id, salvaged: options.salvaged } };
 }
 
@@ -323,8 +357,33 @@ export async function teardownTask(
     // dirty tree is discarded. --delete-branch-force is deliberately NOT
     // passed: --discard's plan-defined meaning is the dirty-tree
     // override only, and a scout that committed to its scratch branch is
-    // refused by the pool's branch gate rather than having those commits
-    // deleted silently, which is exactly the M1-P3 V-1 defect.
+    // refused rather than having those commits deleted silently, which is
+    // exactly the M1-P3 V-1 defect.
+    //
+    // CR-304: teardown answers that question ITSELF, before calling
+    // destroy, because the pool's own refusal advises passing
+    // --delete-branch-force, a flag teardown does not accept, so the
+    // operator was told to do something impossible through the command
+    // that printed it and the task could never reach closed. This
+    // refusal is a true no-op and names a route that works; the pool's
+    // gate stays behind it as the enforcer.
+    const tip = runGit(record.project, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${record.branchName}^{commit}`,
+    ]);
+    if (tip.status === 0 && tip.stdout.trim() !== record.baseSha) {
+      return {
+        ok: false,
+        reason:
+          `scout task ${options.taskId} has commits on its scratch branch ` +
+          `${record.branchName} (tip ${tip.stdout.trim()}, base ${record.baseSha}) and ` +
+          `teardown never deletes committed work: copy or push them somewhere ` +
+          `durable, then release the branch with "git -C ${record.project} update-ref ` +
+          `refs/heads/${record.branchName} ${record.baseSha}" and re-run teardown`,
+      };
+    }
     return finish(fleet, context, {
       discard: true,
       deleteBranchForce: false,
