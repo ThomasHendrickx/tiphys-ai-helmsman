@@ -1,5 +1,7 @@
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdInit } from "./commands/init.ts";
+import { cmdLock } from "./commands/lock.ts";
+import { cmdPool } from "./commands/pool.ts";
 import { printVersion } from "./version.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
@@ -14,6 +16,8 @@ const commands = new Map<string, CommandHandler>([
   ["version", printVersion],
   ["init", cmdInit],
   ["doctor", cmdDoctor],
+  ["lock", cmdLock],
+  ["pool", cmdPool],
 ]);
 
 export function usageLine(): string {
