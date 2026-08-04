@@ -5,9 +5,13 @@
 - task: stage-1-plan
 - question: Can the owner supply the firstmate source before M1-P3 dispatches? The blueprint marks six toolbelt components as BORROW from firstmate (watcher, liveness guard, session lock, worktree pool, spawn, teardown guard), but no firstmate source is present in this repository (verification report, honest-failures section). The plan defaults these to BUILD from the blueprint's one-line contracts; supplied source could shrink M1 cost.
 - reversibility: reversible (it only sizes M1; the contracts and acceptance criteria are identical either way)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Option 1, source supplied at https://github.com/kunchenguid/firstmate (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner supplied the firstmate source location: https://github.com/kunchenguid/firstmate. Per the dispatch semantics below, the six BORROW components are ported and adapted (to the DR-0005 TypeScript decision and the DR-0007 dual-substrate decision) where the source fits the blueprint contracts; anything that does not fit is built from the contracts as before. A scout reads the firstmate components before the affected phases are revised, so the plan's P3, P4, and P5 shapes are informed by the real source rather than assumptions. If the orchestrator's access to the repository turns out to be blocked by session scoping, the fallback is an owner action item (vendor the relevant files into this repository), and BUILD remains the default in the meantime.
 
 ## Plain-language context (added after owner review round 1)
 

@@ -5,9 +5,13 @@
 - task: stage-1-intake
 - question: Approve and execute the repository protections that require owner-level GitHub access. The orchestrator has no admin access and will never assume it; these are proposed as exact commands for the owner to run.
 - reversibility: reversible (settings can be changed), but their absence during early merges is a process-integrity gap, so they are queued before the first merge to main
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Approved in principle (owner, 2026-08-04); execution by owner right after M1-P1 merges
 - date: 2026-08-04
+
+## Decision
+
+Owner approved the branch protection in principle. The orchestrator re-surfaces the exact commands (proposed owner actions below) the moment M1-P1 has merged and the "gates" check name exists on main; if the delivered job name differs, the substitution will be stated at that moment. Item 4 (implementer token scoping) remains queued for the M2 plan.
 
 ## Plain-language context (added after owner review round 1)
 

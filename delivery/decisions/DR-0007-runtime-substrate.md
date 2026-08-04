@@ -5,9 +5,13 @@
 - task: stage-1-plan
 - question: What substrate does a Tiphys fleet run on: a persistent local machine, reclaimable cloud sessions, or both? Raised by finding SC-007: the blueprint's infrastructure (per-machine fleet/, spawn allocating a "window", per-fleet locks, a resident watcher process) assumes a persistent machine, while the process doc that defines the building environment assumes reclaimable cloud containers. The shape of watcher, spawn, lock, and teardown (most of M1) depends on the answer.
 - reversibility: costly (building M1 for the wrong substrate is milestone-scale rework; the settled thin-adapter decision covers harness integration, not the substrate the fleet lives on)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Dual substrate, local machine and cloud sessions both first-class (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner rejected the local-only recommendation as too tight: the fleet must run both on a machine the owner controls and in reclaimable cloud sessions, and the owner already runs the current process from cloud sessions today. Consequences: the substrate adapter is a v1 requirement with two first-class targets, and M1 component cores must be substrate-neutral (locks use lease semantics with expiry rather than pid-only liveness; the watcher must be runnable both as a resident process and as an externally triggered single pass; spawn's window allocation is one adapter behind which a cloud session mechanism is equally valid). Triggers a plan revision before M1-P2 or any later phase dispatches.
 
 ## Plain-language context (added after owner review round 1)
 
