@@ -5,9 +5,15 @@
 - task: m1-execution
 - question: Binding convention 5 says every M1 phase is sequential and the next phase starts only after the previous PR is merged, with parallelism off until M5. The owner has asked whether phases, or workers inside a phase, can run in parallel now. May that convention be relaxed for the specific cases where the plan's own declared file lists prove disjointness?
 - reversibility: reversible (a parallel phase can be stopped and re-sequenced at any time; the cost of being wrong is merge conflict and rework, not lost work)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Option 2, maximum safe parallelism (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner instruction: "go as much parallel as possible". Applied as option 2 at its widest, with the five conditions below binding. Concurrent streams authorised: M1-P4 implementation (already running), M1-P6 build in parallel on disjoint files, detailed planning of M2, detailed planning of M3. Merge order remains dependency order regardless of work order.
+
+Not done, with the reason recorded rather than silently skipped: M1-P4 and M1-P5 remain sequential because P5's grounding is P4's turn-end contract and P5 edits files P4 creates, so no decision can parallelize them. Intra-phase parallel workers are not used on M1-P4 because it is already mid-flight and splitting a running phase is more disruptive than finishing it; the option remains open for M1-P5 and is judged against the recorded evidence that review throughput, not implementer throughput, has been this project's constraint.
 
 ## Why the convention exists
 
