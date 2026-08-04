@@ -33,39 +33,63 @@ is wrong: verify against git and the PR list before trusting it.
 
 ## In flight
 
-**M1-P3 (PR #3) must not merge yet.** Two high-severity defects were found
-by adversarial verification, both introduced by the first fix round,
-neither visible to a green suite. See
-`delivery/review/verification-m1-p3-fix-round.md`.
+**M1-P3 (PR #3) must not merge yet.** Three fix rounds so far, each closing
+the previous round's findings and each so far introducing new ones in
+`src/pool.ts`. The pattern is recorded honestly: concurrent git operations
+against a shared clone is a hard surface, and the verification loop is what
+keeps finding the defects rather than the suite, which has been green
+throughout.
 
-- V-1: `pool destroy` force-deleted the task branch, silently discarding
-  committed unpushed work. Reachable through the public CLI.
-- V-2: the narrowed retry signature no longer matched git's real
-  concurrent ref-update refusal, so parallel `pool create` failed hard.
-- Eight unrefuted lower-severity candidates (U-1 to U-8) recorded.
+Settled and no longer a risk: **the lock's compare-and-swap is sound.**
+Established under heavy attack in `delivery/verification/u2-race-flake-investigation.md`
+(6000 contested cross-process mutations, 4000 claim contests, a process
+parked at each of the six points inside the critical section, 1.76 million
+concurrent reads, zero unaided double winners). U-2 is impeached as evidence
+against the primitive: 0 occurrences in 180 full-suite runs against an
+original 2 in 11. Its trigger is unattributed, with a sibling verification
+lens mutating source in the shared worktree the leading unproven candidate
+(tuition T-004).
 
-A second fix round landed at head `20b6a5a`. It closes V-1 (deletion gated
-on tip equalling the recorded baseSha, refusal otherwise unless a distinct
-`--delete-branch-force` flag is passed, deleted sha printed as a recovery
-handle), closes V-2 (widened retry signature, permanent failures still fail
-in one attempt), and closes U-1, U-3, U-5, U-6, U-7, U-8. It also found two
-further concurrency transients, one added to the retry signature and one
-deliberately handled by create-level rollback rather than retry after
-measuring that retrying converts a transient into a permanent error.
+Closed and verified: V-1 (destroy discarding committed work) and V-2 (the
+retry signature dropping git's real contention message), both confirmed
+genuinely closed by `delivery/review/verification-m1-p3-fix-round-2.md`.
 
-Two things gate the merge:
+Open, being fixed in fix round 3 (dispatched, head at dispatch `20b6a5a`):
 
-1. A reduced adversarial verification of that fix round is running
-   (`delivery/review/verification-m1-p3-fix-round-2.md` when written).
-   Fix rounds are not merged on green CI alone; see tuition T-003.
-2. U-2 remains unexplained: two race witnesses failed intermittently on
-   unmodified code, which is either a false witness in the test seam or a
-   hole in the compare-and-swap. An investigation is running
-   (`delivery/verification/u2-race-flake-investigation.md` when written).
-   It targets `b475546`; the mutation primitive is unchanged at `20b6a5a`
-   apart from one message string in a branch that returns before the claim
-   is held, so its conclusions transfer. Not observed in 20 post-fix
-   full-suite runs, which is not evidence of absence.
+- V-3 (high): a refused `pool destroy` is not a no-op. The branch gate is
+  evaluated after the worktree is already removed, and on an unreadable
+  record the task id is permanently wedged, strictly worse than the
+  behavior it replaced. Being fixed by restructuring destroy into resolve,
+  then evaluate every gate, then act.
+- V-4 (high): the commondir transient also strikes the fetch, where nothing
+  retries it, so concurrent `pool create` still fails with the exact V-2
+  refusal and still records a false `offline: true` provenance.
+- D-1 (high, from the investigation): the initial lease is published
+  non-atomically, which intermittently reddens acceptance criterion 3's own
+  witness and can make `lock status` and `doctor` report a healthy fleet as
+  corrupt. M1-P4 builds holdership checks on that read.
+- D-3 (high, from the investigation): the test hold seam cannot distinguish
+  holding from never having held, so two race witnesses can silently
+  degrade into no-op tests.
+- D-2 (medium, reproduced on unmodified code): the claim file is the sole
+  serializer and the CLI's own remedy text instructs operators to delete it,
+  which can produce two live holders. The module comment claiming the token
+  confirmation is a second safety net is false.
+- U-9 to U-12 (medium and low): an unscoped `worktree prune` against the
+  shared clone during rollback, an overstated determinism claim in the work
+  history, a permanent condition matching a retry alternative, and a
+  registry description that over-promises.
+
+Also unresolved and recorded rather than assumed away: three concurrent
+create failures ("branch already exists") that the verification could not
+attribute across 240 creates.
+
+Open scope question with the owner: V-4, U-9 and the unattributed failures
+appear only at 90-way to 120-way concurrency, and the plan keeps parallelism
+off until M5. The dispatched round fixes them now but cheaply, driving
+contention deterministically in tests rather than by running heavy stress in
+the suite. The alternative, if cost is capped, is to take V-3 and the lock
+guards now and park the rest for an M5 hardening phase.
 
 ## Owner decisions
 
