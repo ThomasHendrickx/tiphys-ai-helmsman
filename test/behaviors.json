@@ -102,5 +102,8 @@
   "spawn-refuses-occupied-task-dir": "spawn refuses a task id whose task directory already holds records",
   "teardown-meta-write-failure-partial": "a meta write that fails after the destroy is a partial teardown, not a crash",
   "teardown-salvage-push-failure-local-commit": "a salvage whose push fails reports the local commit and refuses in one line",
+  "spawn-deadline-unrepresentable-usage-error": "a deadline the kernel cannot represent is a usage error that creates nothing",
+  "spawn-adapter-throw-not-classified": "a throw out of the executor adapter is reported without rollback and names the route out",
+  "teardown-scout-never-forces-branch-delete": "the scout teardown path never passes the branch-force flag",
   "teardown-usage-errors": "teardown usage errors exit 64 and an unknown task exits 1"
 }

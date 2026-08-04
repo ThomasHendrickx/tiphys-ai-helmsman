@@ -626,6 +626,42 @@ test("a salvage whose push fails reports the local commit and refuses in one lin
   );
 });
 
+test("the scout teardown path never passes the branch-force flag", () => {
+  // N-401. The behavioural witness for this decision (W9: flip the
+  // scout path's deleteBranchForce to true) went GREEN once the CR-304
+  // pre-check landed, because the pre-check refuses a committed scout
+  // before pool destroy is ever called, so the inner flag's value stopped
+  // being observable at runtime. That left the phase's live decision 18
+  // guarded by one gate while the record claimed two, which is the T-003
+  // shape: a registered, green, worthless witness, in the component where
+  // V-1 happened.
+  //
+  // The inner gate is defence in depth and cannot be witnessed
+  // behaviourally while the outer one holds, so it is guarded
+  // structurally instead, the way C-2 is guarded in test/lock.test.ts.
+  // The dangerous edit is precisely a maintainer copying the ship path's
+  // deleteBranchForce: true onto the scout path, and that edit fails
+  // here.
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/teardown.ts", import.meta.url)),
+    "utf8",
+  );
+  const start = source.indexOf('if (meta.shape === "scout") {');
+  const end = source.indexOf("// (b) ship.");
+  assert.ok(start > 0 && end > start, "the scout branch could not be located in src/teardown.ts");
+  const scoutBranch = source.slice(start, end);
+  assert.match(
+    scoutBranch,
+    /deleteBranchForce: false/,
+    "the scout path no longer passes deleteBranchForce: false explicitly",
+  );
+  assert.doesNotMatch(
+    scoutBranch,
+    /deleteBranchForce: true/,
+    "the scout path authorizes deleting a branch that carries commits",
+  );
+});
+
 test("teardown usage errors exit 64 and an unknown task exits 1", (t) => {
   const scratch = makeScratch(t);
   assert.equal(runCli(["teardown"], { cwd: scratch.fleet }).status, 64);

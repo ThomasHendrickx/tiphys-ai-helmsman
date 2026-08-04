@@ -422,7 +422,8 @@ export async function spawnTask(
       reason:
         `${launched.reason}; the ${adapter.name} adapter did not report whether the ` +
         `payload started, so nothing was rolled back: the worktree ${worktree}, its ` +
-        `task directory and the pool record are left in place for inspection`,
+        `task directory and the pool record are left in place for inspection; when ` +
+        `you have inspected them, close the task with "tiphys teardown --task ${taskId}"`,
     };
   }
   const outcome = launched.value;

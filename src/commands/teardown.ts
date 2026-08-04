@@ -61,7 +61,7 @@ export async function cmdTeardown(args: string[]): Promise<number> {
   try {
     fleet = loadFleet(process.cwd());
   } catch (error) {
-    process.stderr.write(`tiphys teardown: ${(error as Error).message}\n`);
+    process.stderr.write(`tiphys teardown: ${singleLine((error as Error).message)}\n`);
     return 1;
   }
 

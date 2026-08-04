@@ -79,7 +79,17 @@ function parseFlags(args: string[]): SpawnArgs | undefined {
       i += 1;
     } else if (flag === "--deadline" && value !== undefined) {
       const seconds = Number(value);
-      if (!Number.isFinite(seconds) || seconds <= 0) {
+      // N-403: finite and positive is not enough. The adapter turns the
+      // deadline into an instant, and any value at or above roughly
+      // 8.64e12 seconds is outside the Date range, so it used to raise
+      // INSIDE the adapter, after pool create had made a worktree, a
+      // branch and a pool record. A deadline this kernel cannot
+      // represent is a usage error, and a usage error creates nothing.
+      if (
+        !Number.isFinite(seconds) ||
+        seconds <= 0 ||
+        !Number.isFinite(new Date(Date.now() + seconds * 1000).getTime())
+      ) {
         return undefined;
       }
       parsed.deadlineSeconds = seconds;
@@ -117,7 +127,7 @@ export async function cmdSpawn(args: string[]): Promise<number> {
   try {
     fleet = loadFleet(process.cwd());
   } catch (error) {
-    process.stderr.write(`tiphys spawn: ${(error as Error).message}\n`);
+    process.stderr.write(`tiphys spawn: ${singleLine((error as Error).message)}\n`);
     return 1;
   }
 

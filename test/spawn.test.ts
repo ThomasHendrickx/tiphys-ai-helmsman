@@ -613,11 +613,104 @@ test("spawn refuses a task id whose task directory already holds records", (t) =
   );
   const reused = spawnCli(scratch, "t-reuse", reader);
   assert.notEqual(reused.status, 0, "spawn re-used an occupied task id");
+  // The fail-closed half: a path that exists but is not a directory is
+  // occupied too, and is refused rather than written into.
+  writeFileSync(taskDirOf(scratch, "t-notadir"), "not a directory\n");
+  const notADir = spawnCli(scratch, "t-notadir", stub);
+  assert.notEqual(notADir.status, 0, "spawn wrote into a non-directory task path");
+  assert.match(notADir.stderr, /already holds records/);
+  assert.ok(!existsSync(worktreeOf(scratch, "t-notadir")));
   assert.ok(
     !existsSync(copy),
     "a new incarnation's payload read the previous incarnation's turn-end record",
   );
   assert.deepEqual(snapshot(taskDirOf(scratch, "t-reuse")), before);
+});
+
+test("a deadline the kernel cannot represent is a usage error that creates nothing", (t) => {
+  // N-403. --deadline used to be guarded only by "finite and positive",
+  // so a value outside the Date range raised inside the adapter AFTER
+  // pool create had made a worktree, a branch and a pool record: a
+  // mistyped flag turned into an orphaned task id that CR-301's gate
+  // then refused to re-use. A deadline this kernel cannot represent is a
+  // usage error, and criterion 3's shape applies: exit 64, usage on
+  // stderr, nothing created.
+  const scratch = makeScratch(t);
+  const stub = writeStub(scratch.tmp, "payload.sh", "#!/bin/sh\nexit 0\n");
+  for (const bad of ["1e300", "1e13", "8640000000000"]) {
+    const result = spawnCli(scratch, "t-deadline", stub, ["--deadline", bad]);
+    assert.equal(result.status, 64, `--deadline ${bad}: ${result.stderr}`);
+    assert.match(result.stderr, /usage: tiphys spawn /);
+    assert.ok(!existsSync(worktreeOf(scratch, "t-deadline")), `--deadline ${bad} created a worktree`);
+    assert.ok(!existsSync(taskDirOf(scratch, "t-deadline")));
+    assert.ok(!existsSync(join(scratch.fleet, "worktrees", "t-deadline.pool.json")));
+  }
+  // The representable case still works, so the guard is not a blanket ban.
+  assert.equal(spawnCli(scratch, "t-deadline", stub, ["--deadline", "300"]).status, 0);
+});
+
+test("a throw out of the executor adapter is reported without rollback and names the route out", async (t) => {
+  // N-402. The round-two record claimed this path could not be tested
+  // because it needs a seam the CLI does not expose. That was false: it
+  // was reachable through --deadline 1e300 until N-403 made that input a
+  // usage error, and it is reachable here through the ExecutorAdapter
+  // seam the production type already defines. This is the phase's most
+  // consequential classification: an adapter that RAISED has told us
+  // nothing about whether the payload started, so guessing "it did not"
+  // and rolling back would destroy a worktree that may hold real work,
+  // which is M1-P3's V-1 defect with a new trigger.
+  const scratch = makeScratch(t);
+  const spawnLib = (await import(new URL("../src/spawn.ts", import.meta.url).href)) as {
+    spawnTask(fleet: unknown, options: Record<string, unknown>): Promise<
+      { ok: true } | { ok: false; reason: string }
+    >;
+  };
+  const fleetLib = (await import(new URL("../src/fleet.ts", import.meta.url).href)) as {
+    loadFleet(dir: string): unknown;
+  };
+  const fleet = fleetLib.loadFleet(scratch.fleet);
+
+  const result = await spawnLib.spawnTask(fleet, {
+    taskId: "t-adapterthrow",
+    project: scratch.clone,
+    briefFile: scratch.briefFile,
+    shape: "ship",
+    exec: "/bin/true",
+    deadlineSeconds: undefined,
+    offline: false,
+    adapter: {
+      name: "throwing-test-adapter",
+      launch(): never {
+        throw new Error("simulated adapter crash: the payload state is unknown");
+      },
+    },
+  });
+
+  assert.equal(result.ok, false, "a raised adapter error escaped spawnTask");
+  const reason = (result as { ok: false; reason: string }).reason;
+  assert.match(reason, /throwing-test-adapter/);
+  assert.match(reason, /did not report whether the payload started/);
+  assert.match(reason, /nothing was rolled back/);
+  // N-404: an enumeration without a next step is half a message, and the
+  // route it names is the one both reviewers measured working.
+  assert.match(
+    reason,
+    /tiphys teardown --task t-adapterthrow/,
+    `the reason enumerates the residue without naming the route out: ${reason}`,
+  );
+  // The enumeration must match reality: nothing was rolled back.
+  assert.ok(existsSync(worktreeOf(scratch, "t-adapterthrow")), "the worktree was rolled back");
+  assert.ok(existsSync(join(scratch.fleet, "worktrees", "t-adapterthrow.pool.json")));
+  assert.ok(existsSync(taskDirOf(scratch, "t-adapterthrow")));
+  assert.equal(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-adapterthrow"]).status,
+    0,
+    "the task branch was deleted by a rollback that should not have run",
+  );
+  // And the printed route really closes it, in one command, with no flags.
+  const closed = runCli(["teardown", "--task", "t-adapterthrow"], { cwd: scratch.fleet });
+  assert.equal(closed.status, 0, `the printed recovery route failed: ${closed.stderr}`);
+  assert.equal(metaOf(scratch, "t-adapterthrow").status, "closed");
 });
 
 test("spawn usage errors exit 64 and a non-fleet cwd exits 1", (t) => {
