@@ -26,63 +26,56 @@ is wrong: verify against git and the PR list before trusting it.
 |---|---|---|---|
 | M1-P1 scaffold and CI | merged | #1 | npm scaffold, TypeScript build chain, gates workflow |
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
-| M1-P3 lock and pool | in review, blocked | #3 | see below |
+| M1-P3 lock and pool | approved, awaiting owner merge | #3 | see below |
 | M1-P4 spawn and teardown | not started | | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | not started | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
 | M1-P6 toy sandbox and exit test | not started | | needs owner action A-1 first |
 
 ## In flight
 
-**M1-P3 (PR #3): implemented through fix round 3, head `c06464c`, CI green,
-not yet verified and not merged.** Read the states precisely: implemented
-means the code is pushed and the gates pass; verified means an independent
-pass has attacked it; merged means the owner accepted it. Only the first is
-true here.
+**M1-P3 (PR #3): implemented, reviewed, APPROVED, awaiting owner merge.**
+Head `bfc0dbc`. States kept distinct on purpose: implemented means pushed
+and gates passing; reviewed means an independent pass attacked it; merged
+means the owner accepted it. The first two are true; the third is not.
 
-History, recorded plainly because it is the point: four rounds have each
-closed the previous round's findings and introduced a new one, all in the
-machinery handling CONCURRENT pool operations. A fifth round is in flight
-that DELETES that machinery rather than hardening it again, on the reasoning
-that the plan keeps parallelism off until M5 and M1 never enters the
-scenario the machinery serves. The lock is untouched by that cut.
+Evidence chain, in order: clean-room review (APPROVE, 4 low), fix round 1,
+adversarial verification (2 high, both introduced by that round), fix round
+2, verification (V-1 and V-2 confirmed closed, 2 new high introduced), fix
+round 3 (structural restructure of destroy), partial verification (1 new
+high, salvaged when the run stalled), round 4 as a surface cut, single
+focused final review (APPROVE with 3 conditions), pre-merge fix. Four rounds
+each closed the previous round's findings and introduced a new one, all in
+machinery serving concurrency M1 never uses; the fifth round DELETED that
+machinery instead, net -293/+188, and the residual failure disappeared with
+it.
 
-Settled and no longer a risk: **the lock's compare-and-swap is sound.**
-Established under heavy attack in
-`delivery/verification/u2-race-flake-investigation.md`. U-2 is not evidence
-of a defect in the primitive: 0 occurrences in 180 full-suite runs against
-an original 2 in 11. Its trigger is UNATTRIBUTED. Exactly one of two
-possibilities holds, either the test hold seam released early so the
-interleave was never staged, or the tree under test did not contain the byte
-compare (source mutation by a sibling verification lens in a shared
-worktree, tuition T-004, is the leading unproven hypothesis for that second
-branch). Do not restate this as "the failing runs did not execute the
-shipped compare-and-swap", which asserts one branch as fact.
+Final review result: **16 of 17 acceptance criteria met with executed
+evidence, 0 not-met, 0 lost to the deletion.** The 17th clause is the plan's
+own named M1-P4 obligation. Criterion 15 executed 10/10 green, the destroy
+group 5/5, the four race criteria 20 runs with 0 red. All three review
+conditions are fixed with measured red witnesses against the dangerous
+state, 5/5 each.
 
-Closed and verified: V-1 (destroy discarding committed work) and V-2 (the
-retry signature dropping git's real contention message), both confirmed by
-`delivery/review/verification-m1-p3-fix-round-2.md`.
+Settled: **the lock's compare-and-swap is sound**, established under heavy
+attack in `delivery/verification/u2-race-flake-investigation.md`. U-2 is not
+evidence of a defect in the primitive; its trigger is UNATTRIBUTED, with
+exactly one of two possibilities holding (the hold seam released early so
+the interleave was never staged, or the tree under test did not contain the
+byte compare). Do not restate this as "the failing runs did not execute the
+shipped compare-and-swap".
 
-Implemented in round 3, not independently verified: V-3, V-4, D-1, D-2,
-D-3, the barrier-witness discriminator, and U-9 to U-12. The third
-verification of that round stalled after one lens of three reported; that
-lens found a new high (an unconditional `rmSync` of a worktree admin
-directory in the U-9 fix) and two mediums (a branch-gate decision read in
-stage 1 and acted on in stage 3, and a rollback with no retry). Those are
-folded into the round now in flight.
+Deferred to M5, to be picked up in M5 planning: heavy-concurrency create
+hardening above roughly six-way; validated partial-state rollback; the
+unattributed "branch already exists" failure (not seen since the rollback
+was removed, which is 10 runs, not a proof); and the prune-versus-add
+hazard, which destroy still carries and which is safe only because M1 never
+runs concurrent destroys.
 
-Severity note, so the record is not internally false: the investigation
-records D-1, D-2 and D-3 all as **medium**. The orchestrator escalated D-1
-and D-3 to required-before-merge status, not to high severity, on the
-grounds that D-1 reddens acceptance criterion 3's own witness and can make
-`lock status` and `doctor` report a healthy fleet as corrupt while M1-P4 is
-about to build holdership checks on that same read, and that D-3 leaves two
-race witnesses unable to distinguish holding from never having held. That
-escalation is the orchestrator's, not the investigation's.
-
-Deferred to M5 by the round in flight, to be picked up in M5 planning:
-heavy-concurrency create hardening, partial-state rollback on failed
-create, the unattributed "branch already exists" failure, and the
-prune-versus-add hazard.
+Next after merge: M1-P4 (spawn and teardown). Carry into its brief the
+criterion-13 meta.json baseOffline clause, P3's holder-identity transport,
+and tuition T-002's request that an abandoned task (open, no turn-end,
+dirty worktree) become a wake condition. F-1's fix should land before P4
+dispatches because P4's teardown drives the same destroy path.
 
 ## Owner decisions
 
