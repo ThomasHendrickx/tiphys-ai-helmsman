@@ -1,4 +1,22 @@
 {
   "version-output": "version prints the package.json version and exits 0",
-  "unknown-subcommand-exit": "unknown subcommand exits 64 and prints usage to stderr"
+  "unknown-subcommand-exit": "unknown subcommand exits 64 and prints usage to stderr",
+  "init-creates-fleet-layout": "init creates the fleet layout and a git repo with a bootstrap commit",
+  "init-refuses-reinit": "init on an initialized fleet exits nonzero and reports already initialized",
+  "init-refuses-non-empty-dir": "init refuses a non-empty directory that is not a fleet home",
+  "init-gitignore-narrowed": "init gitignore tracks durable areas and ignores ephemera",
+  "init-machine-identity-commit": "init bootstrap commit uses the machine identity without global git config",
+  "init-usage-error": "init without a directory argument exits 64",
+  "doctor-per-check-lines": "doctor in a healthy fleet prints one line per check with no unexpected FAIL",
+  "doctor-healthy-exit-zero": "doctor in a healthy fleet exits 0",
+  "doctor-layout-missing-fail": "doctor after deleting decisions reports CHECK layout FAIL naming the missing entry",
+  "doctor-non-fleet-nonzero": "doctor outside a fleet home exits nonzero",
+  "doctor-gh-warn-generic": "doctor reports CHECK gh WARN when gh is absent from PATH",
+  "doctor-gh-absent-generic-exit-zero": "doctor with gh absent exits 0 under the generic profile",
+  "doctor-gh-fail-full-profile": "doctor --for full promotes gh-missing to FAIL",
+  "doctor-remote-fail-full-profile": "doctor --for full promotes remote-missing to FAIL",
+  "doctor-beacon-fail-watch-profile": "doctor --for watch promotes beacon-absent to FAIL",
+  "doctor-lock-corrupt-fail": "doctor reports CHECK lock FAIL on a corrupt lease file",
+  "doctor-lock-reports-holder": "doctor reports holder and expiry for a readable lease",
+  "doctor-unknown-profile-usage": "doctor --for with an unknown profile exits 64"
 }
