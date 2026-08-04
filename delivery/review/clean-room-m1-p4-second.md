@@ -306,3 +306,287 @@ walked in this review, including both declared judgement calls, the
 holdership guard, the C-2 compliance, the no-backgrounding property, the
 scope audit, and the ASCII/behaviors-registry hygiene, held up under
 independent, hands-on testing.
+
+---
+
+# Delta review of the fix round (head 5aa9a8e)
+
+Date: 2026-08-04
+PR: 6, fix delta 6fca6db..5aa9a8e
+Reviewer: same reviewer as above, same lens (destructive paths), narrow
+delta scope per the orchestrator's instructions: are F-1 and F-2 genuinely
+closed, and did the fix introduce anything new.
+Isolation: cloned `/home/user/tiphys-ai-helmsman` at 6fca6db into a second
+scratch clone (`p4-old-head`) purely to reproduce the two findings on the
+pre-fix source, and at 5aa9a8e into `p4-delta-sonnet` for everything else
+(`npm ci`, build, full suite, sabotage-and-revert, and two independent
+hand-driven fleets under `manual-walk-old` and `manual-walk-new`). No
+writes were made to the main repository's working tree or git state by
+any of that work; only this review file's append touches the main
+checkout, per the task's explicit deliverable instruction, and it was not
+committed.
+
+## VERDICT: APPROVE
+
+Both HIGH findings from the first round are closed, reproduced honestly
+against the pre-fix source and confirmed fixed against the post-fix
+source with independent forced failures (not just the round's own named
+witnesses). The single `runStep` wrapper is applied consistently at every
+throw point in the danger windows I reviewed, the three classification
+decisions are sound, the printed scout recovery route works end to end
+exactly as documented, and the round's declared gaps are accurate and are
+not the only two but the additional ones I found are cosmetic, not
+destructive. No new HIGH or MEDIUM finding.
+
+## F-1 and F-2: closed, with independent reproduction
+
+**F-2 (spawn, mkdir-raise orphaning), OLD head 6fca6db:** reproduced with
+a dangling symlink at `tasks/t-throw` (independent of the round's own FW1
+witness, same technique). Result: raw stack trace to stderr
+(`at mkdirSync ... at spawnTask (src/spawn.ts:305:5)`), exit 1, and the
+worktree, `worktrees/t-throw.pool.json`, and branch `task/t-throw` all
+survived, orphaned, exactly as F-1's original report claimed.
+
+**F-2, NEW head 5aa9a8e**, same symlink, same task id: single reason line
+(`tiphys spawn: creating the task directory ... failed: ENOENT: ...`), no
+stack trace, and after clearing the link `worktrees/`, the pool record and
+the branch are gone: `ls worktrees/` empty, `git branch -a` shows no
+`task/t-throw`. Retried the identical spawn immediately afterward: it
+succeeded (exit 0), proving the id was not wedged. **F-2: CLOSED.**
+
+**F-1 (teardown, meta-write-raise leaving a false "open"), OLD head:**
+reproduced with `chattr +i tasks/t5/meta.json` (the technique the original
+review used and the round declined to use for CI-portability reasons; I
+used it here specifically because it is independent of the round's own
+stub-git FW2 witness). Result: raw stack trace
+(`at writeTaskMeta ... at setTaskStatus ... at finish (src/teardown.ts:292:3)`),
+exit 1, `worktrees/t5` gone, `meta.json` still reads `"status": "open"`.
+
+**F-1, NEW head**, same chattr technique on a freshly spawned `t5`: single
+line, no stack trace:
+`tiphys teardown: partial teardown of task id t5: worktree ... HAS BEEN REMOVED and branch task/t5 was deleted (it was <sha>), but .../meta.json could not be marked closed (... EPERM ...); the task record still reads status open although its worktree is gone, so repair that file and set "status": "closed" by hand`.
+This is the honest report F-1 asked for: it does not claim nothing
+changed, it names exactly what changed, and it gives the manual remedy.
+**F-1: CLOSED.**
+
+Both reproductions used a technique different from the one the fix round
+itself used (chattr vs. the round's dangling-symlink and stub-git tricks),
+so this is a genuinely independent confirmation, not a re-run of the same
+script.
+
+## Sabotage-and-revert of the new guards themselves
+
+To make sure the round's own witnesses were not accidentally testing
+something narrower than the fix, I re-sabotaged the fixed source directly
+and re-ran the two new tests:
+
+- Unwrapped the task-directory `mkdirSync` in `src/spawn.ts` (removed the
+  `runStep` around it, called `mkdirSync` bare): `spawn-thrown-failure-
+  rolls-back` (test name "a write that THROWS after pool create still
+  rolls the task back") went red immediately, failing on the line-count
+  assertion with the same raw stack trace signature the original F-2
+  showed. Reverted; `git diff --quiet src/spawn.ts` confirmed clean.
+- Unwrapped the `setTaskStatus` call in `finish()` in `src/teardown.ts`
+  (removed the `runStep`, called `setTaskStatus` bare): `teardown-meta-
+  write-failure-partial` went red immediately, same signature as the
+  original F-1. Reverted; `git diff --quiet` confirmed clean.
+
+Both tests are genuinely red against the reintroduced dangerous state, not
+merely green by construction.
+
+## The three classification decisions
+
+**1. Raised launch-record write treated as launch-failed (rolls back).**
+Sound. The record write happens before the payload's `spawnSync`, so a
+throw there is provably pre-payload; routing it through the existing
+`rollback()` is the same safe class of action the returned-ENOENM
+launch-failure path already used pre-fix. No new risk: `rollback()` never
+force-deletes, so a worktree that is for any reason not pristine still
+refuses via the pool's own gate.
+
+**2. Anything raised after the payload has run treated as incomplete
+(never rolls back).** Sound, and correctly scoped: the turn-end hook
+write is the only unwrapped-by-return, wrapped-by-runStep write after the
+payload starts, and its failure reports "the worktree and the task
+directory are left in place" rather than attempting cleanup. Verified by
+reading; this is exactly the F-2 fix's own stated boundary and matches
+V-1's lesson (never destroy a worktree that might hold real work).
+
+**3. A throw out of `adapter.launch` itself is not classified; nothing
+rolls back.** Sound, and I tested it directly rather than only reading it.
+The CLI cannot inject a custom adapter, so I called `spawnTask` from a
+small script with a throwing adapter (library-level call, same technique
+the round declared it could not reach through the CLI):
+
+```
+result = spawnTask(fleet, { ..., adapter: { name: "throwing-test-adapter",
+  launch() { throw new Error("simulated adapter crash: the payload state
+  is unknown"); } } })
+```
+
+Result: `{ ok: false, reason: "launching the payload through the
+throwing-test-adapter adapter failed: ...; the throwing-test-adapter
+adapter did not report whether the payload started, so nothing was rolled
+back: the worktree ..., its task directory and the pool record are left
+in place for inspection" }`. The worktree, `meta.json` (status "open",
+which is honestly still true), the task directory and the branch were all
+intact afterward, matching the reason exactly.
+
+I then asked the practical question the task raises: what does an
+operator actually do with that state next? I ran plain `tiphys teardown
+--task t-adapterthrow` against it with no special handling. It exited 0
+and closed the task cleanly, because the worktree was in fact untouched
+(clean, branch tip == base) and teardown's ordinary landed/dirty logic
+handled it correctly with no extra machinery. So the recovery route for
+this refusal is exactly "run teardown", which already works today; the
+reason text does not spell this out explicitly (unlike the CR-304 scout
+refusal, which names the exact recovery command), but the omission is
+cosmetic, not a dead end, since the standard command an operator would
+reach for regardless is the one that resolves it. I recommend a follow-up
+of adding one clause to the reason text noting "run tiphys teardown to
+resolve" for a future round, but I am not blocking approval on it: it is
+a documentation nicety, not an unrecoverable state, and I verified the
+state is in fact recoverable through the ordinary command with no
+force flags and no data lost either way.
+
+**Ruling: all three classification decisions are sound as implemented and
+as tested by me independently of the round's own suite.**
+
+## The printed scout recovery route, run by hand end to end
+
+Spawned a fresh scout, had its exec payload create a real commit
+(`findings.txt`) on the scout's scratch branch and write `report.md`, then
+ran teardown. Refused, single line, with the exact printed route:
+```
+tiphys teardown: scout task s-scout1 has commits on its scratch branch
+task/s-scout1 (tip 834655c..., base b00a95a...) and teardown never
+deletes committed work: copy or push them somewhere durable, then release
+the branch with "git -C <project> update-ref refs/heads/task/s-scout1
+b00a95a..." and re-run teardown
+```
+I then followed it literally, by hand, with no adaptation:
+1. `git -C worktrees/s-scout1 push origin HEAD:refs/heads/scout-findings`
+   -- succeeded, new branch created on the bare upstream.
+2. The exact printed `git -C <project> update-ref refs/heads/task/s-scout1
+   <base-sha>` -- succeeded.
+3. `tiphys teardown --task s-scout1` again -- exited 0, "torn down
+   s-scout1".
+
+Confirmed afterward: `meta.json` reads `"status": "closed"`, the worktree
+is gone, and `git -C upstream.git rev-parse refs/heads/scout-findings`
+resolves to the exact commit sha the scout made, with the file content
+intact. The route works exactly as claimed and nothing was lost.
+
+## Honesty of the round's declared gaps
+
+The round declares two gaps: no test for the adapter-throw path (CLI
+cannot inject an adapter), and only the mkdir site among four
+identically-shaped wrapped writes (task dir, brief, meta, hook) is
+separately witnessed. Both are accurate; I independently exercised the
+adapter-throw gap myself (above) using the same "library seam, not CLI"
+route the round named, and it behaved exactly as claimed.
+
+I looked for undeclared gaps and found two, both cosmetic:
+
+- `taskDirOccupied`'s fail-closed branch (an unreadable directory,
+  `statSync`/`readdirSync` throwing for a reason other than "does not
+  exist") has no test. It fails toward refusal (treats unreadable as
+  occupied), which is the safe direction, so this is a coverage gap, not
+  a defect.
+- `process.stderr.write` in the `loadFleet()` catch blocks of both
+  `src/commands/spawn.ts:120` and `src/commands/teardown.ts:64` is not
+  passed through `singleLine`, unlike the main `result.reason` path
+  added under CR-303. I checked whether this can actually produce a
+  multi-line stderr line: `loadFleet`'s only thrown error is
+  `not a fleet home: <dir> is missing <list>`, built by joining an array
+  with `, `, which is single-line by construction, and other fs errors
+  Node raises here (ENOENT/EACCES on `resolve`/`statSync`) are
+  themselves single-line messages. So this is a structural inconsistency
+  worth tidying (LOW, not blocking): the two catch blocks rely on "this
+  particular thrown message happens to be short" rather than the
+  structural guarantee `singleLine` gives everywhere else CR-303 was
+  applied. No failing input exists today that would violate the
+  single-reason-line contract through this path.
+
+Neither of these rises to a finding that should hold up the merge; both
+are one-line hardening items for a future pass.
+
+## What I executed versus what I only read
+
+**Executed:**
+- `npm ci` and a from-clean `npm run build` at 5aa9a8e: exit 0,
+  `git status --porcelain` empty afterward.
+- Full suite from a from-clean `dist/`: 103 tests, 101 pass, 0 fail, 2
+  skipped (the same floor-gated M1-P2 pair), 0 unaccounted, matching the
+  round's claimed count exactly.
+- ASCII/em-dash scan (`grep -rP '[^\x00-\x7F]'`) over `src/`, `test/`, the
+  work history and the plan: clean (grep exit 1).
+- Scope audit (`git diff --name-status 6fca6db..5aa9a8e`): exactly the
+  ten files the round's disposition list names, no more.
+- `test/behaviors.json` mapping count: 104, and spot-checked all six
+  named red-witness test titles (FW1-FW6's registered names) resolve to
+  the correct descriptions.
+- F-1 and F-2 reproduced live on OLD head 6fca6db in an independent
+  hand-built fleet (`manual-walk-old`), using chattr and a dangling
+  symlink, techniques different from the round's own FW1/FW2 forcing
+  mechanisms.
+- F-1 and F-2 confirmed closed live on NEW head 5aa9a8e in an independent
+  hand-built fleet (`manual-walk-new`), same chattr/symlink techniques,
+  plus a same-id retry after each to confirm no wedging.
+- Direct sabotage-and-revert of the shipped `runStep` call sites for both
+  fixes (bare `mkdirSync`, bare `setTaskStatus`), each driven through the
+  actual registered test, confirmed red against the reintroduced danger
+  and confirmed the tree was clean after reverting.
+- A library-level call to `spawnTask` with a throwing custom adapter
+  (bypassing the CLI, which cannot inject one), to test the adapter-throw
+  classification directly rather than only read it, followed by a plain
+  `teardown` against the resulting state to test the real recovery route.
+- The scout committed-work refusal and its printed recovery route, run by
+  hand end to end against a real bare upstream, a real project clone, and
+  a real scout worktree with a real commit, confirming the findings
+  survive on the pushed branch.
+- A live re-check of CR-301's interaction note: spawning a live
+  (never-torn-down) task and immediately re-spawning the same id confirms
+  the new occupied-directory gate refuses before pool create is reached.
+
+**Only read, not independently re-derived:**
+- The five round-one witnesses (W1, W2, W5, W6, W8) the round claims it
+  re-ran against the fixed source at 2/2 each; I did not re-run these
+  myself, this delta review being scoped to F-1/F-2 and new risk.
+- FW3, FW4, FW5, FW6 (CR-301, CR-303, CR-304, CR-302) as registered
+  tests: run as part of the full suite pass above and read in source, but
+  not separately re-sabotaged by me; CR-304's outcome (the scout route)
+  was independently re-verified end to end by hand instead, which is the
+  stronger form of confirmation for that one.
+- CI (Node 26) behavior: not run; this environment is Node 22.22.2 as
+  before, and nothing in the touched files reads the Node version.
+
+## What I could not verify
+
+- Whether a real ENOSPC (as opposed to chattr/EPERM and a dangling
+  symlink/ENOENT) drives exactly the same code path; the throw point is
+  identical regardless of which errno triggers it, so I have no reason to
+  expect divergence, but I did not force an actual full disk.
+- The seven other identical-pattern-but-unwitnessed write sites the round
+  itself flags (brief, meta, hook writes in spawn's window) at rates
+  beyond the one (mkdir) both the round and I independently forced; I
+  read the code and it is the same wrapper shape, but "same shape" is an
+  inference, not a separate measurement, for those three.
+
+## Merge recommendation
+
+APPROVE. F-1 and F-2 are closed, confirmed with reproductions independent
+of the fix round's own named techniques on both the old and the new head.
+The `runStep` wrapper is applied consistently across every throw point I
+checked in spawn's post-create window and teardown's finish(), no path
+now rolls back where it previously refused-and-survived, no path now
+reports success over a real failure, and no raise escapes at any site I
+tested. The three classification decisions, including the deliberately
+unclassified adapter-throw case, are sound and were confirmed by direct
+testing, not just by reading the reasoning; the practical recovery route
+for that unclassified case is the ordinary teardown command and it works.
+The scout recovery route prints a command that works, verified by
+literally running it. The round's declared gaps are honest; the two
+additional gaps found here (an untested fail-closed branch and two
+un-singleLine'd but structurally-safe catch blocks) are cosmetic and do
+not block merge.
