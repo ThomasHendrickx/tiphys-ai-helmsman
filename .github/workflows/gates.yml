@@ -25,6 +25,14 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # The M1 exit-test harness in local mode (kernel plan v1, M1-P6
+      # step 4): the skeleton plumbing is exercised end to end on every
+      # kernel PR from this phase on. It re-runs the three gates above as
+      # its own A1 precondition, which is section 4's procedure and not a
+      # duplication to optimize away. A failure here fails this matrix
+      # leg, which the gates fan-in job below turns red.
+      - name: M1 exit test (local mode)
+        run: scripts/m1-exit-test.sh --mode local "${{ runner.temp }}/m1-exit-evidence"
 
   gates:
     needs: test
