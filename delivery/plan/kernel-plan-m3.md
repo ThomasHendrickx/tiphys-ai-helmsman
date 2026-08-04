@@ -13,12 +13,20 @@
   owner-approved; until then plan v1's outline stands. Every requirement row
   bucketed to M3 by plan v1's Appendix A (74 rows) is assigned to exactly one
   phase here, in Appendix A below.
+- Relationship to `delivery/plan/kernel-plan-m2.md`: that document, DRAFT and
+  written concurrently under DR-0011, expands plan v1 section 5 into M2 phases.
+  It and this one meet at the boundary its section 2 enumerates; every item
+  there is accepted here (D-M3-17), and its phase ids and artifact paths are the
+  ones this document cites. Neither plan moves a requirement row.
 - Precedence unchanged: process doc, plan v1, decision records, then this
-  document, then `CLAUDE.md`.
+  document, then `CLAUDE.md`. Decision records outrank this plan, which is why
+  DR-0011 relaxes section 1.3's parallelism convention and DR-0012 changes who
+  may merge, both after plan v1 was approved and both applied here.
 - Process summary: written as the M3 detailed-planning stage of the current
   orchestrated delivery process, from plan v1, the migration table, the two
-  intake documents, decision records DR-0001 to DR-0010, and tuition entries
-  T-001 to T-004. Ten sequential phases, each one branch and one pull request.
+  intake documents, decision records DR-0001 to DR-0012, and tuition entries
+  T-001 to T-004. Ten phases, each one branch and one pull request, sequential
+  except for the one pair D-M3-19 permits under DR-0011.
   M3-P4 of the v1 outline (the 74-row migration walk) is decomposed by
   artifact family into eight phases, which discharges the binding external
   review finding EXT-F-07.
@@ -115,16 +123,27 @@ Deliverables, all inside the published package:
 - `tuition/`: the cross-project failure-mode log and the flow that feeds it.
 - the release pipeline and v0.1.0.
 
-### 1.3 Conventions inherited without change
+### 1.3 Conventions inherited, and the one that changed
 
 Plan v1 section 1.4 in full: English only; npm only; no em dashes and pure
 ASCII in authored text; falsifiable acceptance criteria only, with the
-register "node --test exits 0 and reports N tests, N > 0"; parallelism OFF
-until M5, so every M3 phase is sequential, one phase equals one branch equals
-one pull request; milestone exit tests are hard gates. The gate list of
-`CLAUDE.md` (npm ci, npm run build, node --test) applies to every M3 phase,
-and M3-P2 is the phase that replaces that list with a pointer to the registry,
-which `CLAUDE.md` line 3 already anticipates.
+register "node --test exits 0 and reports N tests, N > 0"; one phase equals one
+branch equals one pull request; milestone exit tests are hard gates. The gate
+list of `CLAUDE.md` (npm ci, npm run build, node --test) applies to every M3
+phase, and M3-P2 is the phase that replaces that list with a pointer to the
+registry, which `CLAUDE.md` line 3 already anticipates.
+
+Convention 5 changed after plan v1 was approved. DR-0011 (decided 2026-08-04,
+"maximum safe parallelism") relaxes parallelism-off-until-M5 for cases where the
+declared file lists prove disjointness, under five binding conditions: a
+recorded pairwise files-to-touch disjointness check before each parallel
+dispatch; stale `conflicts-with` notes reconciled first; merge order stays
+dependency order regardless of work order; criteria that cannot execute until an
+earlier phase merges are marked deferred and executed in a final validation
+pass, never dropped; and prerequisites the parallel phase needs become urgent
+rather than eventual. This plan therefore declares `parallelizable` per phase
+(section 2.4) instead of asserting a blanket no, and D-M3-19 records which M3
+phases can actually claim it.
 
 The red-witness rule applies in its stronger T-003 form: a test counts only if
 it has been demonstrated red against the DANGEROUS state, not merely against
@@ -262,7 +281,16 @@ acceptance criteria:
 ### 2.4 Shared phase fields, stated once
 
 - migrations: none. This is a library.
-- parallelizable: no. M3 policy, plan v1 section 1.4 convention 5.
+- parallelizable (DR-0011, section 1.3): no for M3-P1 through M3-P3 and for
+  M3-P10, which are the phases everything else grounds on or which close the
+  milestone. Conditionally yes for exactly one pair, M3-P7 (checklists) beside
+  M3-P8 (tuition flow): their files-to-touch lists share only the standing
+  pre-authorized extras and `package.json`'s `files` array, and that overlap is
+  one line each. Any parallel dispatch still requires DR-0011's recorded
+  pairwise disjointness check at dispatch time, over the real lists rather than
+  over this sentence, and merges in dependency order. Every other pair overlaps
+  on `src/cli.ts`, `src/validate.ts`, or an artifact the later phase reads, so
+  the honest declaration is no (D-M3-19).
 - substrate (DR-0007): substrate-neutral for M3-P1 to M3-P9 (all of it is
   files, schemas, and text). M3-P10 is the exception and says so.
 - invocation form (PR-102): `tiphys <cmd>` means `node bin/tiphys.ts <cmd>`;
@@ -292,15 +320,19 @@ acceptance criteria:
   phase lands against a machine gate instead of against prose review alone.
 - grounding: M2 merged with its exit evidence on `main`. `schemas/` holds only
   the M1-P1 placeholder README; `templates/` and `checklists/` do not exist.
-  DR-0006 decided (section 1.5 table is the applied form). DR-0011 (validator
+  DR-0006 decided (section 1.5 table is the applied form). DR-0013 (validator
   implementation, section 7) must be decided before dispatch. M2-P6's coverage
   checker fixes the accepted reference types (phase, decision, parked) that the
   plan schema's open-questions and parked sections must express (D-7).
 - steps:
   1. Verify: `schemas/` contains only `README.md`; `templates/` and
      `checklists/` absent; `package.json` `files` is `["dist"]`. Verify the real
-     paths and output shapes of the M2-P5 citation linter and the M2-P6 coverage
-     checker and record them in the work history; later phases cite them.
+     paths and output shapes of the M2-P5 citation linter, the M2-P6 coverage
+     checker, the M2 validator module and its documented keyword set, the
+     `src/gates/schemas/` location, and the phase-declaration projection
+     `delivery/plan/phases/<phase-id>.json` the M2-P4 scope auditor consumes;
+     record all of it in the work history, because later phases cite these paths
+     and the M2 plan they come from is DRAFT (section 1.1).
   2. Create `schemas/plan.schema.json`. Required: header (`status`,
      `baseline-commit`, `binding-rule` as a required const carrying the process
      doc's exact sentence, R-017; `process-summary`), `standing-context`
@@ -325,6 +357,15 @@ acceptance criteria:
      first branch) is expressed as: the plan is one file, and the commit-position
      check stays parked exactly as plan v1 section 11 item 8 parked it. The
      word "markdown" in R-016 is superseded by DR-0006 and by section 1.5.
+     Projection rule (D-M3-18, accepting the M2 plan's boundary recommendation):
+     the phase object is a strict superset of the M2-P4 scope auditor's
+     phase-declaration projection (`id`, `branch`, `files-to-touch`, `extras`,
+     `citations`), and this phase adds `tiphys plan project --phase-id <id>`
+     emitting exactly that projection from the plan file, so the auditor's input
+     becomes a generated view of one source instead of a second hand-authored
+     source that can drift. `extras` is a required phase field, defaulting to the
+     standing pre-authorized extras, because the auditor already treats it as
+     one.
   3. Create `schemas/charter.schema.json` with blueprint section 7's required
      fields: `identity` (name, repo, kernel-version-pin), `delivery-mode` and
      `assurance-tier` (values constrained to the mode ids M3-P3 defines; this
@@ -361,14 +402,18 @@ acceptance criteria:
      `tiphys validate --type <t> <file>` exits 0 when valid, exits 1 printing
      one line per violation as `INVALID <json-pointer> <message>`, exits 64 on
      usage error. `--type auto` resolves the type from the instance's `kind`
-     field and exits 64 when absent. Implementation per DR-0011.
+     field and exits 64 when absent. Implementation per DR-0013.
   9. Create `delivery/requirements/clause-map.json` and
      `scripts/check-clause-map.mjs` per section 2.2, seeded with this phase's
      twelve rows. Wire the check into `.github/workflows/gates.yml` as a step in
      the existing `test` job (verify the job layout first).
   10. Extend `package.json` `files` to `["dist", "schemas", "templates"]`, so
       the published package carries what M3 ships. Later phases extend it
-      further; M3-P10 asserts the final set.
+      further; M3-P10 asserts the final set. Relocate M2's schema documents from
+      `src/gates/schemas/` to `schemas/` and update the path constant M2 left as
+      the seam (D-M3-20); the M2 plan states this is one move plus one path
+      constant, and this phase verifies that claim before acting on it and
+      reports rather than improvises if it is wrong.
   11. Tests: `test/validate.test.ts`, `test/schemas.test.ts`,
       `test/status.test.ts`, with valid and invalid fixtures under
       `test/fixtures/`.
@@ -378,11 +423,16 @@ acceptance criteria:
   `templates/plan.example.yaml`, `templates/charter.example.yaml`,
   `templates/decision-record.example.yaml`, `src/validate.ts`,
   `src/commands/validate.ts`, `src/status.ts`, `src/commands/status.ts`,
+  `src/plan.ts`, `src/commands/plan.ts`,
   `test/validate.test.ts`, `test/schemas.test.ts`, `test/status.test.ts`,
-  `test/fixtures/**`, `scripts/check-clause-map.mjs`,
+  `test/plan-projection.test.ts`, `test/fixtures/**`,
+  `scripts/check-clause-map.mjs`,
   `delivery/requirements/clause-map.json`, `src/cli.ts` (edit),
-  `package.json` (edit), `package-lock.json` (edit, only if DR-0011 adds a
-  dependency), `.github/workflows/gates.yml` (edit).
+  `package.json` (edit), `package-lock.json` (edit, only if DR-0013 adds a
+  dependency), `.github/workflows/gates.yml` (edit), `src/gates/schemas/**`
+  (move to `schemas/`, per step 10 and D-M3-20; verify the M2 path constant
+  first), the M2 validator module (edit only under DR-0013 option 2, to extend
+  its keyword set; verify first).
 - acceptance criteria:
   1. `npm ci`, then `npm run build` exits 0 and `git status --porcelain` is
      empty afterward; `npm test` exits 0 without a prior build, 0 failing, zero
@@ -419,15 +469,22 @@ acceptance criteria:
   9. `node scripts/check-clause-map.mjs` exits 0 over this phase's twelve rows;
      removing one clause id from its artifact makes it exit nonzero naming the
      row and the artifact, and restoring it returns exit 0.
-  10. `npm pack` produces a tarball whose listing contains `schemas/` and
+  10. `tiphys plan project --phase-id <id>` over `templates/plan.example.yaml`
+      emits a projection the M2-P4 scope auditor accepts as input (run the real
+      auditor against it, exit 0); mutating one `files-to-touch` entry in the
+      plan changes the projection and makes the auditor's verdict change
+      accordingly, so the generated view is demonstrably derived from the plan
+      and not from a copy (both directions).
+  11. `npm pack` produces a tarball whose listing contains `schemas/` and
       `templates/` entries and contains no `delivery/` entry.
-  11. `grep -rP '[^\x00-\x7F]'` over the touched files reports nothing.
+  12. `grep -rP '[^\x00-\x7F]'` over the touched files reports nothing.
 - new behaviors: `validate-valid-instance`, `validate-invalid-pointer-message`,
   `validate-additional-properties`, `validate-auto-type`, `schema-plan-empty-acceptance`,
   `schema-plan-verification-first-required`, `schema-charter-escalation-required`,
   `schema-decision-decided-value-required`, `schema-status-run-required`,
   `status-emit-appends-and-updates-current`, `status-show-ignores-stream`,
-  `status-state-enum-closed`, `clause-map-check-detects-missing-clause`.
+  `status-state-enum-closed`, `clause-map-check-detects-missing-clause`,
+  `plan-projection-feeds-scope-auditor`.
 - suggested model tier: strongest. The schemas are the contract every later M3
   phase and every future kernel consumer is written against; a loose schema here
   is invisible until it has been depended on.
@@ -437,7 +494,7 @@ acceptance criteria:
 - conflicts-with: every later M3 phase (`src/cli.ts`, `package.json` files
   entry, `schemas/README.md`, the clause map, `test/behaviors.json`). Sequential
   ordering absorbs this.
-- blocked-by: M2 exit evidence on `main`; DR-0011 (validator implementation).
+- blocked-by: M2 exit evidence on `main`; DR-0013 (validator implementation).
 
 ### M3-P2: Canonical gate registry
 
@@ -448,22 +505,29 @@ acceptance criteria:
   semantics over unchanged, and add the two judgment-verified gate entries D-11
   settled (R-043, R-044).
 - grounding: M3-P1 merged (validator and clause map exist). The M2-P1 gate
-  manifest exists at the path M2 established, with its JSON Schema and its
-  runner; both are verified before editing and their real paths recorded. SC-011
-  is binding: a gate whose precondition is unmet reports not-applicable and
-  never green. `CLAUDE.md` line 3 states that this registry replaces its gate
+  manifest `gates.manifest.json` exists with its schema and its runner, and its
+  schema reserves a `modes` field that the M2 runner validates if present and
+  ignores (M2 plan section 2 item 1), which is what makes this promotion
+  additive rather than a rewrite. All three are verified before editing and
+  their real paths recorded. SC-011 is binding: a gate whose precondition is
+  unmet reports not-applicable and never green. `CLAUDE.md` line 3 states that this registry replaces its gate
   list, which is an obligation of this phase.
 - steps:
-  1. Verify the M2-P1 manifest path, its schema, and one real captured run of
-     the M2 gate runner (store the capture under `test/fixtures/`; section 2.3
-     rule 3 forbids hand-written stand-ins).
+  1. Verify `gates.manifest.json`, its schema (including the reserved `modes`
+     field's declared shape), and one real captured run of the M2 gate runner
+     (store the capture under `test/fixtures/`; section 2.3 rule 3 forbids
+     hand-written stand-ins). If M2's reserved `modes` shape differs from what
+     step 2 needs, that is an escalation to the orchestrator, not a unilateral
+     change to a merged M2 gate (D-M3-16).
   2. Create `schemas/gate-registry.schema.json`, a superset of the M2 manifest
-     schema adding: `modes[]` per gate entry (the dimension blueprint section 5
-     requires, "the canonical list of gates per assurance mode"); `verified-by`
+     schema that makes the reserved `modes[]` field live per gate entry (the
+     dimension blueprint section 5 requires, "the canonical list of gates per
+     assurance mode"), and adds: `verified-by`
      with values `script` or `clean-room-checklist`; `probe` (required exactly
      when `verified-by` is `clean-room-checklist`), naming a checklist probe id
      that M3-P7 must supply; `precondition` carried over from M2-P1 unchanged.
-  3. Create `gate-registry.yaml` at the package root: the promoted M2 manifest
+  3. Create `gate-registry.yaml` at the package root: the promoted
+     `gates.manifest.json`
      with the kernel-generic gates (build, suite wrapper, scope, citations,
      coverage, red-witness) and the project-specific gates
      (deploy, migrations, i18n, analytics, manifest regen, e2e, docs grep) kept
@@ -525,7 +589,8 @@ acceptance criteria:
 - conflicts-with: M3-P3 (reads the registry's `modes` field), M3-P6 (the
   implementer brief renders its gate list from this registry), M3-P10
   (`package.json` files entry).
-- blocked-by: M3-P1 merged; M2-P1 merged (named dependency).
+- blocked-by: M3-P1 merged; M2-P1 merged (named dependency: `gates.manifest.json`,
+  its schema, and the runner).
 
 ### M3-P3: Assurance modes and role-to-model configuration
 
@@ -545,7 +610,14 @@ acceptance criteria:
      `{id, pipeline[], gate-sets[], merge-authority, skips[], declared-by}`
      where `pipeline[]` entries are stage ids from a closed enum, `gate-sets[]`
      are references resolved against `gate-registry.yaml`, `merge-authority` is
-     an enum of `owner` and `owner-approves-orchestrator-merges` (D-6, SC-008),
+     an enum of `owner`, `owner-approves-orchestrator-merges` (D-6, SC-008), and
+     `delegated-under-conditions`, the last requiring a `conditions[]` list and
+     a `granted-by` decision-record reference. The third value exists because
+     the owner has already granted exactly that regime once, in DR-0012 (dual
+     cross-model clean review, orchestrator merges, grant standing until the
+     owner returns), and a mode vocabulary that cannot express the authority
+     regime actually in force would force the next such grant to live outside
+     the artifacts,
      and `skips[]` lists the stages this mode omits, required to be non-empty
      for any mode that omits a stage `full` contains (blueprint section 8:
      "downgrades are declared, never improvised", expressed as a schema rule).
@@ -601,6 +673,11 @@ acceptance criteria:
      referencing a gate set id absent from `gate-registry.yaml`.
   4. A charter declaring `delivery-mode: yolo` exits 1 naming the enum; a
      charter declaring `full` exits 0 (both directions).
+  4b. A mode with `merge-authority: delegated-under-conditions` and an empty
+     `conditions[]` or a missing `granted-by` exits 1 naming the field; the same
+     mode carrying DR-0012's six conditions and its record reference exits 0
+     (both directions). This is the falsifiable form of "downgrades are declared,
+     never improvised" applied to authority rather than to stages.
   5. Structural constraint check: `assurance-modes.yaml` contains no stage whose
      definition mentions process liveness, pid, or backgrounding, verified by a
      grep over the file and its schema for `pid`, `kill`, `daemon`, `background`
@@ -615,7 +692,8 @@ acceptance criteria:
   definition of the pipeline that all later work is measured against, and the
   one place where a downgrade could be made invisible.
 - citations: R-024, R-075, R-096; blueprint sections 6 and 8; process doc
-  sections 5 and 9; SC-008 and plan v1 D-6; T-001 (review-model-family option);
+  sections 5 and 9; SC-008, plan v1 D-6, and DR-0012 (the delegated authority
+  value and its conditions); T-001 (review-model-family option);
   T-003 (fix-round verification stage); constraints C-2 and C-3.
 - conflicts-with: M3-P6 and M3-P9 (both reference mode ids), M3-P7 (the
   fix-round-verification stage needs a checklist), M3-P10 (files entry).
@@ -640,10 +718,13 @@ acceptance criteria:
 - grounding: M3-P3 merged. M2-P3's full-suite wrapper exists and its exit code
   and parity counts are the only meaning of "all green" (R-048, R-086); a real
   captured wrapper run is stored as a fixture (section 2.3 rule 3). M2-P6's
-  coverage checker has a finding-to-outcome parity mode (R-089b) that consumes
-  the final report this phase defines; its expected input shape is verified
-  before the schema is written, and any mismatch is reported rather than
-  worked around. T-003 and T-004 both name this contract as a structural
+  coverage checker has a finding-to-outcome parity mode (R-089b) and, because
+  the report contract did not exist when M2 was planned, it defines its own
+  input contract: a findings inventory plus a coverage table in a declared shape
+  (M2 plan section 2 item 2, which names this as a real dependency in the M3
+  direction). This phase's schemas must emit that shape or supersede it
+  deliberately; the choice is recorded in the work history and the criteria
+  below run the real checker rather than reasoning about compatibility. T-003 and T-004 both name this contract as a structural
   consequence, and both are applied here by citation.
 - steps:
   1. Create `schemas/report.schema.json`. Required: `kind`, `role`, `task`,
@@ -1190,7 +1271,8 @@ acceptance criteria:
      prompt-only residue ticketed in `tuition/` (R-002, D-9); a genuine unknown
      gets a dedicated investigator dispatched alongside plan writing, with the
      note that this is a scout task and not a parallel phase, so it does not
-     collide with parallelism being off until M5 (R-013); all plan-review
+     collide with the phase-parallelism limits DR-0011 sets (R-013); all
+     plan-review
      findings are applied to the plan before execution starts (R-030); the fix
      round goes back to the same implementer, resumed with context intact
      (R-061); disputes are allowed with evidence and the orchestrator
@@ -1476,9 +1558,17 @@ state from `current.json` (C-1).
 
 E2.1. The owner's approving review on the pull request is recorded, or an
 approval note is captured into the bundle (owner action A-3). The orchestrator
-then merges with a squash merge, as release manager (D-6). Stage E2 has no
-timing requirement; the lease is renewed across the wait and the renewal is
-recorded (PR-203).
+then merges with a squash merge, as release manager (D-6). DR-0012's delegated
+merge grant does not apply here: it holds the orchestrator to "never merge
+across a milestone boundary", and this merge is the milestone boundary, so the
+owner's approval is required and its absence is an exit-test failure rather than
+a delay. Stage E2 has no timing requirement; the lease is renewed across the
+wait and the renewal is recorded (PR-203).
+E2.2. If DR-0012's regime is still in force at the time of the run, the two
+independent cross-model clean reviews it requires are also in the bundle, which
+means E1.7 produced two verdicts rather than one and both validate against
+`schemas/verdict.schema.json`. A run that produces one review under a standing
+two-review grant fails the exit test.
 
 ### 4.3 Stage E3: post-merge witnesses
 
@@ -1539,7 +1629,10 @@ Does not prove, and these are recorded rather than assumed away:
 6. Multi-environment fleet lifecycle. Unchanged from plan v1's PR-201 split: the
    cloud fleet resume story is specified in `AGENTS.md` by M3-P9 and executed by
    M4.
-7. Parallelism. Off until M5. The plan schema's `conflicts-with` and
+7. Parallelism. DR-0011 permits provably disjoint concurrent work, and this
+   milestone uses it for at most one phase pair (D-M3-19); the M5 machinery that
+   makes parallelism safe at scale, the conflict pre-pass and the merge-time
+   witness gate, is not built here. The plan schema's `conflicts-with` and
    `parallelizable` fields are recorded and validated, never load-bearing.
 8. Registry portability. The release is verified against the one registry
    DR-0008 chose, from one environment.
@@ -1551,7 +1644,8 @@ Does not prove, and these are recorded rather than assumed away:
 A fresh series, labelled D-M3-nn, so it never collides with plan v1's D-1 to
 D-19, which remain in force unchanged.
 
-- D-M3-01: M3 is ten sequential phases in the order P1 to P10, and the eight
+- D-M3-01: M3 is ten phases in the order P1 to P10, sequential except as
+  D-M3-19 allows, and the eight
   migration-walk phases (P2 to P9) are ordered by consumption: an artifact is
   built after the artifact it reads from. That is why the gate registry and the
   assurance modes precede the briefs (the implementer brief renders its gate
@@ -1628,10 +1722,42 @@ D-19, which remain in force unchanged.
   (section 4.0 E0.4) with a stated fallback rule, so the run cannot be made easy
   by choosing a change after seeing what the kernel can manage.
 - D-M3-16: no M3 phase edits a merged M2 component except M3-P2's optional
-  extension of the gate runner's selection flags, and that only if M2 did not
-  already provide selection. Any other required M2 change is an escalation to
-  the orchestrator, not an improvisation, because M2's exit evidence is a hard
-  gate that a quiet edit would invalidate.
+  extension of the gate runner's selection flags, M3-P1's relocation of M2's
+  schema documents (D-M3-20), and M3-P1's extension of the M2 validator's
+  keyword set if DR-0013 lands on option 2. Any other required M2 change is an
+  escalation to the orchestrator, not an improvisation, because M2's exit
+  evidence is a hard gate that a quiet edit would invalidate.
+- D-M3-17: this plan follows `delivery/plan/kernel-plan-m2.md`'s phase ids and
+  artifact paths, not plan v1 section 5's outline numbering, which differs (v1's
+  outline put the red-witness harness first; the M2 plan puts the gate contract
+  and runner first). Both documents are DRAFT and concurrent, written under
+  DR-0011's parallel-planning grant, so the orchestrator reconciles them at the
+  boundary the M2 plan's section 2 names. Every boundary item the M2 plan claims
+  or disclaims there is accepted here: M2 builds the manifest and M3 builds the
+  registry and mode selection (item 1); M2 claims only R-089b of the reporting
+  rows (item 2); M2 disclaims the fix-round verification requirement (item 6)
+  and universal-quantifier linting (item 7), both of which this plan carries in
+  M3-P3 and M3-P4 respectively; M2 disclaims the tuition flow and the role
+  briefs (item 8). No requirement row moves in either direction.
+- D-M3-18: the plan schema's phase object is a strict superset of the M2-P4
+  scope auditor's phase-declaration projection, and M3-P1 ships
+  `tiphys plan project` to generate it. This accepts the recommendation the M2
+  plan's boundary item 3 makes to this planner, and it closes the drift risk
+  that plan names, rather than acknowledging it and leaving it open.
+- D-M3-19 (supersedes any reading of section 1.4 convention 5 as absolute, per
+  decided DR-0011): M3 phases declare `parallelizable` individually. Only
+  M3-P7 beside M3-P8 can claim it, and only after DR-0011's recorded pairwise
+  disjointness check at dispatch. The reason so few qualify is not caution: nine
+  of the ten phases edit `src/cli.ts` or `src/validate.ts`, or read an artifact
+  an earlier phase creates, and DR-0011's first condition cancels a parallel
+  start on any overlap. Declaring more would be declaring something the file
+  lists contradict.
+- D-M3-20: M2's schema documents move from `src/gates/schemas/` to the canonical
+  `schemas/` in M3-P1, which is the choice the M2 plan's boundary item 4 leaves
+  to M3. Reason: `CLAUDE.md` reserves the root `schemas/` for exactly these
+  deliverables, two schema locations in one package is a question every future
+  reader has to answer twice, and the M2 plan states the move is one relocation
+  plus one path constant. M3-P1 verifies that claim before acting on it.
 
 ## 6. Open questions
 
@@ -1650,7 +1776,7 @@ free-floating list item. The open questions of this plan are exactly:
    adapter and the current process, and nothing in section 3 or section 4
    targets the primitive. If the owner wants the M3 half decided differently,
    M3-P3 is the phase that changes.
-3. DR-0011 (JSON Schema validation implementation): new, raised by this plan,
+3. DR-0013 (JSON Schema validation implementation): new, raised by this plan,
    open. See section 7.
 
 There are no other open questions.
@@ -1661,45 +1787,57 @@ There are no other open questions.
 |---|---|---|---|
 | DR-0008 | Release registry and package naming (SC-012, SC-006) | open, deferred, due before this plan is approved | M3-P10 in full; the `name` field; the fleet pin; every release criterion |
 | DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work |
-| DR-0011 | How is JSON Schema validation implemented in the kernel | open, raised here, due before M3-P1 dispatches | M3-P1, and transitively every later M3 phase |
+| DR-0013 | How is JSON Schema validation implemented in the kernel | open, raised here, due before M3-P1 dispatches | M3-P1, and transitively every later M3 phase |
 
-DR-0011 in full, to be written up as
-`delivery/decisions/DR-0011-schema-validator-implementation.md` when this plan is
+DR-0013 in full, to be written up as
+`delivery/decisions/DR-0013-schema-validator-implementation.md` when this plan is
 presented:
 
 - Question: DR-0006 decided that artifacts are validated by JSON Schema. The
-  kernel currently ships zero runtime dependencies (`package.json` has
-  `devDependencies` only). Validating full JSON Schema 2020-12 requires either a
-  runtime dependency on an established validator, or restricting the kernel's
-  schemas to a subset a small hand-written checker covers.
+  kernel ships zero runtime dependencies today (`package.json` has
+  `devDependencies` only), and M2 ships a minimal in-repo validator with a
+  closed, documented keyword set that errors loudly on any keyword it does not
+  implement (M2 plan decision M2-D-04, boundary item 5, which explicitly leaves
+  this decision to M3). M3's five artifact schemas exercise far more of the
+  specification than a gate manifest does. Does the kernel extend M2's validator
+  or adopt an external one?
 - Reversibility: costly. A runtime dependency in a published package is
   inherited by every fleet home from M3 onward, enters the EXT-F-09 license
-  gate's inventory, and is a supply-chain surface; removing it later means
-  rewriting every schema that used a keyword the subset lacks.
+  gate's inventory, and is a supply-chain surface. Extending M2's validator is
+  cheaper to reverse but compounds: every schema written against a keyword the
+  subset lacks has to be rewritten if the subset is later abandoned.
 - Options: (1) take one established JSON Schema validator as a runtime
-  dependency, pinned exact, with the license gate covering it; (2) hand-write a
-  checker over a declared subset (`type`, `required`, `enum`, `const`,
-  `properties`, `items`, `additionalProperties`, `minItems`, `pattern`,
-  `oneOf`), and declare the subset in `schemas/README.md` so a schema using a
-  keyword outside it fails loudly rather than silently passing; (3) ship no
-  general validator and hand-write per-type checks in TypeScript, which
+  dependency, pinned exact, with the license gate covering it, and keep M2's
+  validator for M2's own manifest or retire it behind the same interface;
+  (2) extend M2's closed keyword set to cover what M3's schemas need
+  (`type`, `required`, `enum`, `const`, `properties`, `items`,
+  `additionalProperties`, `minItems`, `pattern`, `oneOf`, `if`/`then` for the
+  conditional rules M3-P1 and M3-P4 need), keeping the loud-failure-on-unknown-
+  keyword property that makes the subset safe, and declare the subset in
+  `schemas/README.md`; (3) hand-write per-type checks in TypeScript, which
   contradicts DR-0006's language-neutral intent.
-- Recommendation: option 1, one pinned exact dependency, because option 2's
-  failure mode is a schema keyword that is silently ignored, which is exactly
-  the class of vacuous pass SC-011 and the parity-counting wrapper exist to
-  prevent, and because a hand-written validator is machinery this project would
-  then own and debug forever. Option 2 is a genuine alternative if the owner
-  wants the dependency count to stay at zero, and its cost is the declared
-  subset plus a keyword allowlist check.
-- Note for the owner: this plan's phases assume the recommendation. A different
-  choice changes M3-P1's steps 8 and 11 and its dependency-related criteria,
-  and nothing else.
+- Recommendation: option 2, extending M2's validator, which is a change from
+  what this plan first assumed. The reason is M2's loud-failure property: a
+  keyword outside the set fails the validator rather than being ignored, which
+  removes the failure mode that made option 1 attractive (silently ignored
+  keywords producing vacuous passes, the SC-011 class). With that property in
+  place, option 1 buys specification completeness the kernel's own schemas do
+  not need, at the cost of the first runtime dependency in a package every
+  fleet home installs. Option 1 remains the right answer if the conditional
+  rules M3-P1 step 2 and M3-P4 step 1 require turn out to need more of the
+  specification than the extended subset can carry, and that is a discovery the
+  M3-P1 implementer must escalate rather than work around.
+- Note for the owner: M3-P1's steps 8 and 11 and its dependency-related criteria
+  change with the choice, and nothing else does. Both options keep the schemas
+  themselves standard JSON Schema, so neither locks the artifacts in.
 
 Owner actions (acts, not choices):
 
-- A-3, before section 4 stage E2: approve and merge the exit run's pull request
-  on the kernel repository. Merge authority is the owner's (D-6, SC-008), and
-  the exit run cannot complete without it.
+- A-3, before section 4 stage E2: approve the exit run's pull request on the
+  kernel repository. Merge authority is the owner's (D-6, SC-008). DR-0012's
+  delegated grant does not cover this one: it holds the orchestrator to "never
+  merge across a milestone boundary", and the exit run's merge is the milestone
+  boundary. The exit run cannot complete without the owner.
 - A-4, before M3-P10 dispatches: provide publish credentials for the registry
   DR-0008 decides, and claim the scope or organization that registry requires
   (npmjs scope claim under option 1, or organization creation under option 2).
@@ -1736,9 +1874,9 @@ comparison plan v1's own history makes available.
    M3-P9 criterion 4) at least make an empty clause id impossible; every brief
    and checklist phase is dispatched at the strongest model tier for the clause
    text. Residual risk is real and is not closed by this plan.
-3. **DR-0008 and DR-0011 are undecided and both are load-bearing.** DR-0008
+3. **DR-0008 and DR-0013 are undecided and both are load-bearing.** DR-0008
    blocks M3-P10 completely and is already overdue by its own terms ("due before
-   the M3 plan is approved"). DR-0011 blocks M3-P1, which blocks all nine
+   the M3 plan is approved"). DR-0013 blocks M3-P1, which blocks all nine
    phases after it. A decision that arrives late does not delay one phase, it
    delays the milestone.
 4. **The exit run is circular and supervised.** The kernel's full mode is judged
@@ -1758,12 +1896,21 @@ comparison plan v1's own history makes available.
    Mitigation: section 2.3's DANGEROUS-instance rule with the two-directional
    keyword witness, applied to every schema in every phase. A phase whose
    invalid fixtures are syntax errors has not met its criteria.
-7. **Suite wall time.** M1-P3 measured 63.4 seconds at its head and warned that
+7. **Two plans written concurrently.** M2 and M3 were detail-planned in
+   parallel under DR-0011 by separate agents. The boundary is enumerated in the
+   M2 plan's section 2 and accepted in D-M3-17, which makes disagreement visible
+   rather than silent, but both documents are DRAFT and either can move under
+   adversarial review. Every path this plan takes from the M2 plan is verified
+   by the phase that uses it, and D-M3-16 forbids a quiet edit to a merged M2
+   component. The residual risk is that an M2 review changes the manifest shape,
+   the projection, or the coverage input contract after this plan is approved,
+   which would land on M3-P1, M3-P2, and M3-P4 specifically.
+8. **Suite wall time.** M1-P3 measured 63.4 seconds at its head and warned that
    the figure grows (`CLAUDE.md` warning 11, M1-P3 warnings 6 and 9). M3 adds
    ten phases of schema and CLI tests plus brief composition against the
    filesystem. Budget harness timeouts off the measured figure at each phase's
    head, and do not shorten real waits to compensate.
-8. **Publication is irreversible.** A published name and version cannot be
+9. **Publication is irreversible.** A published name and version cannot be
    cleanly withdrawn, and fleet homes pin it from M3 onward. M3-P10's ordering
    (license gate, pack assertions, install-from-tarball, only then publish)
    exists for that reason, and the phase is dispatched at the strongest tier.
@@ -1873,10 +2020,10 @@ blocked phase and not as a surprise at implementation time.
 
 | Phase | M2 components consumed | What breaks without it |
 |---|---|---|
-| M3-P1 | M2-P5 citation linter, M2-P6 coverage checker | the plan schema's open-questions and parked reference types are unconstrained; the briefs later have no verifier to name |
-| M3-P2 | M2-P1 gate manifest, schema, and runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
+| M3-P1 | M2-P4 scope auditor (the phase-declaration projection), M2-P5 citation linter, M2-P6 coverage checker, the M2 validator module and its keyword set, `src/gates/schemas/` | the plan schema's open-questions and parked reference types are unconstrained; the projection stays a second hand-authored source; DR-0013 option 2 has nothing to extend |
+| M3-P2 | M2-P1 `gates.manifest.json`, its schema with the reserved `modes` field, and the runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
 | M3-P3 | M2-P1 (gate set references), M2-P7 deploy and migration verifiers | `full` mode's stage list cannot reference the verification stages the process doc requires after merge |
-| M3-P4 | M2-P3 full-suite wrapper, M2-P6 coverage checker | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker |
+| M3-P4 | M2-P3 full-suite wrapper, M2-P6 coverage checker and its declared input contract | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker and the two contracts drift apart |
 | M3-P5 | M2-P5 citation linter | R-010a's verification pass has no attached verifier, which is the whole point of the row |
 | M3-P6 | M2-P2 red-witness harness, M2-P8 credential scoping, M3-P2 registry | the red-witness clause has no evidence artifact; the no-pull-request clause contradicts nothing structural |
 | M3-P7 | M2-P2 red-witness harness | R-028a and R-056a probes have no accepted proof and degrade to opinions |
