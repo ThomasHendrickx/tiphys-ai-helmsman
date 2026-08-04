@@ -93,6 +93,7 @@
   "teardown-squash-landed": "teardown recognizes a squash merge as landed against freshly fetched state",
   "teardown-dirty-and-salvage": "teardown refuses a dirty tree and salvage never overrides the unlanded refusal",
   "teardown-scout-report-gate": "teardown refuses a scout without a report and discards its scratch worktree with one",
+  "teardown-scout-committed-work-preserved": "a scout that committed to its scratch branch is refused, not silently discarded",
   "teardown-closes-meta": "a successful teardown closes the task meta and unregisters the worktree",
   "teardown-holdership-both-directions": "teardown refuses without matching holdership and proceeds with it",
   "teardown-partial-destroy-not-refusal": "a destroy that fails partway is reported as a partial failure, never as a refusal",

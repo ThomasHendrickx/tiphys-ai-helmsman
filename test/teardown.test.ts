@@ -318,6 +318,28 @@ test("teardown refuses a scout without a report and discards its scratch worktre
   );
 });
 
+test("a scout that committed to its scratch branch is refused, not silently discarded", (t) => {
+  // The scout carve-out is the DIRTY-TREE override only (--discard).
+  // Passing the branch-force flag here as well would make the scout path
+  // delete commits without a word, which is exactly the M1-P3 V-1
+  // data-loss defect in a new place. The pool's branch gate must be the
+  // one that speaks, and the commit must survive.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-scoutwork", "scout").status, 0);
+  const sha = commitInWorktree(scratch, "t-scoutwork", "found.md");
+  writeFileSync(join(taskDirOf(scratch, "t-scoutwork"), "report.md"), "# Scout report\n");
+
+  const result = teardown(scratch, "t-scoutwork");
+  assert.notEqual(result.status, 0, "committed scout work was destroyed without a word");
+  assert.match(result.stderr, /task\/t-scoutwork/);
+  assert.equal(
+    gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-scoutwork"]),
+    sha,
+    "the scout branch was deleted",
+  );
+  assert.equal(metaStatus(scratch, "t-scoutwork"), "open");
+});
+
 test("a successful teardown closes the task meta and unregisters the worktree", (t) => {
   // Criterion 10, on the simplest landed case: a branch still at its
   // base is an ancestor of the fetched default head.
