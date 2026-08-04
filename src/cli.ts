@@ -1,3 +1,5 @@
+import { cmdDoctor } from "./commands/doctor.ts";
+import { cmdInit } from "./commands/init.ts";
 import { printVersion } from "./version.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
@@ -8,7 +10,11 @@ type CommandHandler = (args: string[]) => Promise<number> | number;
 /**
  * The one dispatch table. Subcommands added by later phases register here.
  */
-const commands = new Map<string, CommandHandler>([["version", printVersion]]);
+const commands = new Map<string, CommandHandler>([
+  ["version", printVersion],
+  ["init", cmdInit],
+  ["doctor", cmdDoctor],
+]);
 
 export function usageLine(): string {
   const names = [...commands.keys()].sort().join(" | ");
