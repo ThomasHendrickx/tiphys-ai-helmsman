@@ -8,7 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Fleet } from "./fleet.ts";
 
@@ -111,6 +111,16 @@ function runGit(cwd: string, args: string[]): GitRun {
  *    performs concurrently): 11 occurrences, and an immediate retry
  *    succeeded in all 11. The anchor is deliberately the worktrees/
  *    admin path, because a bare "bad object" is usually permanent.
+ *    KNOWN TRADE, stated rather than hidden (U-11): this alternative
+ *    also matches a PERMANENT condition, a worktree whose admin HEAD
+ *    holds a nonexistent object, which makes every fetch in the clone
+ *    fail with the identical text. The two are indistinguishable by
+ *    message, so that case now burns all five attempts and fails in
+ *    about 1.25s instead of about 0.29s. The trade is deliberate: a
+ *    bounded delay on an already-failing out-of-contract path, in
+ *    exchange for retrying the transient that otherwise breaks every
+ *    parallel create. It is asserted in the classification test so the
+ *    cost stays visible.
  *
  * A fourth concurrent-worktree failure exists and is deliberately NOT
  * listed here: see WORKTREE_ADD_CONTENTION below. It cannot be retried
@@ -165,10 +175,14 @@ async function runGitRetrying(
   cwd: string,
   args: string[],
   attempts = 5,
+  alsoRetry?: RegExp,
 ): Promise<GitRun> {
+  const retryable = (stderr: string): boolean =>
+    LOCK_CONTENTION.test(stderr) ||
+    (alsoRetry !== undefined && alsoRetry.test(stderr));
   let result = runGit(cwd, args);
   for (let attempt = 1; attempt < attempts; attempt += 1) {
-    if (result.status === 0 || !LOCK_CONTENTION.test(result.stderr)) {
+    if (result.status === 0 || !retryable(result.stderr)) {
       return result;
     }
     await sleep(100 * attempt);
@@ -268,20 +282,68 @@ function rollbackPartialAdd(
   branchName: string,
   worktree: string,
   baseSha: string,
-): void {
+): string[] {
+  const problems: string[] = [];
   if (existsSync(worktree)) {
     rmSync(worktree, { recursive: true, force: true });
   }
-  runGit(project, ["worktree", "prune"]);
+
+  // U-9: remove ONLY this create's own registration. The previous
+  // version ran a bare "git worktree prune" against the shared project
+  // clone, which is a repo-global mutation fired at exactly the moment
+  // other creates are mid-add: prune deletes admin directories that are
+  // empty or whose gitdir points at a not-yet-existing path, and those
+  // are precisely the states an in-flight worktree add passes through,
+  // so this rollback could kill an unrelated concurrent create. Scoping
+  // it to our own admin directory removes that entire interaction.
+  const commonDir = runGit(project, [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
+  if (commonDir.status === 0 && commonDir.stdout.trim() !== "") {
+    const adminDir = join(commonDir.stdout.trim(), "worktrees", basename(worktree));
+    if (existsSync(adminDir)) {
+      rmSync(adminDir, { recursive: true, force: true });
+    }
+  } else {
+    problems.push(
+      `could not resolve the git common dir to clean the worktree registration: ${commonDir.stderr.trim()}`,
+    );
+  }
+
+  // The branch this attempt may have created. Deleting it is provably
+  // lossless only while it still sits at the base commit the attempt
+  // used, which is the only state a failed add can produce; anything
+  // else is reported rather than deleted. Results are checked, not
+  // discarded, because a silent failure here leaves the task id wedged
+  // by its own leftover branch.
   const tip = runGit(project, [
     "rev-parse",
     "--verify",
     "--quiet",
     `refs/heads/${branchName}^{commit}`,
   ]);
-  if (tip.status === 0 && tip.stdout.trim() === baseSha) {
-    runGit(project, ["branch", "-D", branchName]);
+  if (tip.status === 0) {
+    const tipSha = tip.stdout.trim();
+    if (tipSha !== baseSha) {
+      problems.push(
+        `branch ${branchName} is at ${tipSha}, not at the base ${baseSha} this attempt used, so it was left in place`,
+      );
+    } else {
+      const deleted = runGit(project, ["branch", "-D", branchName]);
+      if (deleted.status !== 0) {
+        problems.push(
+          `could not delete the partial branch ${branchName}: ${deleted.stderr.trim().split("\n")[0] ?? ""}`,
+        );
+      }
+    }
+  } else if (tip.status !== 1) {
+    problems.push(
+      `could not determine whether the partial branch ${branchName} exists: ${tip.stderr.trim()}`,
+    );
   }
+  return problems;
 }
 
 export interface CreateOptions {
@@ -328,6 +390,27 @@ export async function poolCreate(
         `it fresh, so delete or rename it before re-using task id ${taskId}`,
     };
   }
+  // U-12: the opposite collision direction. A ref UNDER
+  // refs/heads/task/<id>/ (for example task/foo/bar when creating
+  // task/foo) makes the branch equally uncreatable, and the exact-ref
+  // and strict-prefix checks both miss it, so it used to reach git
+  // worktree add and surface as the raw two-line git error the
+  // pre-check exists to eliminate.
+  const nested = runGit(project, [
+    "for-each-ref",
+    "--count=1",
+    "--format=%(refname)",
+    `refs/heads/${branchName}/`,
+  ]);
+  if (nested.status === 0 && nested.stdout.trim() !== "") {
+    return {
+      ok: false,
+      reason:
+        `ref ${nested.stdout.trim()} already exists in ${project} and blocks ` +
+        `${branchName} (a ref cannot be both a branch and a directory); ` +
+        `delete or rename it before using task id ${taskId}`,
+    };
+  }
   // U-7: the exact ref can be absent while the branch is still
   // uncreatable, because any strict prefix of refs/heads/task/<id>
   // existing as a ref is a directory/file conflict. Catch it here
@@ -365,11 +448,23 @@ export async function poolCreate(
   // EXT-F-03 step 2: fetch the default branch, force-updating exactly
   // the remote-tracking ref (so a rewound remote is still mirrored).
   let usedOffline = false;
-  const fetch = await runGitRetrying(project, [
-    "fetch",
-    remote.value,
-    `+refs/heads/${branch.value}:${trackingRef}`,
-  ]);
+  // V-4: the concurrent worktree-add collision also strikes THIS fetch,
+  // because git fetch enumerates every worktree in the clone while
+  // another create is mid-add. On the fetch the shape is retryable in
+  // place, and that is the whole distinction: at this point the create
+  // has produced nothing (the pool record is written further down, and
+  // no branch or worktree exists yet), so a retry repeats a pure read.
+  // On the worktree-add path the same shape is NOT retryable in place,
+  // because a failed add has already created the task branch; that path
+  // rolls its partial state back first. The shape is therefore passed
+  // here explicitly instead of being added to LOCK_CONTENTION, which
+  // both call sites share.
+  const fetch = await runGitRetrying(
+    project,
+    ["fetch", remote.value, `+refs/heads/${branch.value}:${trackingRef}`],
+    5,
+    WORKTREE_ADD_CONTENTION,
+  );
   if (fetch.status !== 0) {
     if (!offline) {
       return {
@@ -437,11 +532,21 @@ export async function poolCreate(
     worktree,
     baseSha,
   ]);
+  const rollbackProblems: string[] = [];
   for (let attempt = 1; attempt < 5 && add.status !== 0; attempt += 1) {
     if (!WORKTREE_ADD_CONTENTION.test(add.stderr)) {
       break;
     }
-    rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha);
+    // Carry every rollback complaint into the final diagnostic. A
+    // rollback that silently fails to remove the partial branch is what
+    // turns a retryable collision into "a branch named ... already
+    // exists" on the next attempt, and that failure mode went
+    // unattributed once because these results were discarded.
+    rollbackProblems.push(
+      ...rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha).map(
+        (problem) => `attempt ${String(attempt)}: ${problem}`,
+      ),
+    );
     await sleep(100 * attempt);
     add = await runGitRetrying(project, [
       "worktree",
@@ -455,15 +560,20 @@ export async function poolCreate(
   if (add.status !== 0) {
     // Leave nothing of the failed attempt behind: without this the task
     // id is wedged by its own leftover branch on the next create.
-    rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha);
+    const problems = [
+      ...rollbackProblems,
+      ...rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha),
+    ];
     try {
       unlinkSync(record);
     } catch {
       // Rollback is best effort; the reason below names the real failure.
     }
+    const residue =
+      problems.length === 0 ? "" : ` (rollback incomplete: ${problems.join("; ")})`;
     return {
       ok: false,
-      reason: `git worktree add failed: ${add.stderr.trim()}`,
+      reason: `git worktree add failed: ${add.stderr.trim()}${residue}`,
     };
   }
   return { ok: true, value: poolRecord };
@@ -602,34 +712,76 @@ export interface DestroyOutcome {
 }
 
 /**
- * pool destroy: refuse a dirty worktree (unless discard), otherwise
- * remove the directory, prune the git registration, delete the task
- * branch when that is provably lossless (or explicitly forced), and
- * drop the pool record.
+ * pool destroy, in three explicit stages.
+ *
+ * THE INVARIANT, and the reason this function has the shape it has: NO
+ * DESTRUCTIVE ACTION MAY HAPPEN BEFORE EVERY GATE HAS PASSED. A refused
+ * destroy leaves the worktree, its git registration and the pool record
+ * byte-identical, so the refusal is always retryable and the remedy it
+ * prints ("land them", "pass --delete-branch-force") is performable in
+ * the place it names.
+ *
+ * This was got wrong twice by patching the order of statements, most
+ * recently when the branch gate was added after the worktree removal:
+ * a refused destroy then deleted the worktree it was refusing to
+ * destroy, taking every git-ignored file with it, and with an
+ * unreadable record it destroyed the only remaining way to resolve the
+ * git context, wedging the task id permanently. The invariant is
+ * therefore expressed structurally rather than by the statements
+ * happening to be in the right order:
+ *
+ *   stage 1, resolveDestroy: READ ONLY. Gathers every fact a decision
+ *            needs (context directory, record, worktree state,
+ *            cleanliness, branch tip). Mutates nothing.
+ *   stage 2, evaluateDestroy: PURE. Decides over those facts alone and
+ *            returns a refusal reason or undefined. Performs no IO, so
+ *            it cannot destroy anything even by accident.
+ *   stage 3, applyDestroy: DESTRUCTIVE, and reached only when stage 2
+ *            returned no refusal. It has no gates left to evaluate; its
+ *            only failures are operational (a git command failing).
+ *
+ * Adding a new rule means adding a fact in stage 1 and a clause in
+ * stage 2. A rule added to stage 3 is a bug by construction.
  */
-export async function poolDestroy(
+
+/** Branch-tip fact, with "cannot tell" kept distinct from "absent". */
+type BranchTip =
+  | { kind: "absent" }
+  | { kind: "present"; sha: string }
+  | { kind: "indeterminate"; detail: string };
+
+interface DestroyFacts {
+  taskId: string;
+  contextDir: string;
+  record: PoolRecord | undefined;
+  recordFile: string;
+  haveRecord: boolean;
+  worktree: string;
+  haveWorktree: boolean;
+  /** Undefined when there is no worktree to inspect. */
+  dirty: boolean | undefined;
+  /** Set when cleanliness could not be determined. */
+  dirtyProbeError: string | undefined;
+  branchName: string;
+  branchTip: BranchTip;
+}
+
+/** Stage 1: gather facts. Read only; mutates nothing. */
+async function resolveDestroy(
   fleet: Fleet,
-  options: DestroyOptions,
-): Promise<PoolResult<DestroyOutcome>> {
-  const { taskId, discard, deleteBranchForce } = options;
-  if (!TASK_ID_PATTERN.test(taskId)) {
-    return { ok: false, reason: `task id "${taskId}" is not a safe path segment` };
-  }
-  const record = readPoolRecord(fleet, taskId);
+  taskId: string,
+): Promise<PoolResult<DestroyFacts>> {
   const worktree = worktreePath(fleet, taskId);
   const recordFile = recordPath(fleet, taskId);
+  const record = readPoolRecord(fleet, taskId);
   const haveRecord = existsSync(recordFile);
   const haveWorktree = existsSync(worktree);
   if (!haveRecord && !haveWorktree) {
     return { ok: false, reason: `no pool worktree for task id ${taskId}` };
   }
 
-  // The git context for worktree and ref bookkeeping, resolved BEFORE
-  // anything is removed (U-3). Using the worktree path itself as a
-  // fallback was unsound: once the worktree is gone every later git
-  // call there fails to spawn, and an unreadable pool record therefore
-  // produced a destroy that reported success while leaving the branch
-  // behind and wedging the task id.
+  // The git context must be resolved while the worktree still exists,
+  // because the worktree is one of only two ways to find it.
   let contextDir: string | undefined;
   if (record !== undefined && existsSync(record.project)) {
     contextDir = record.project;
@@ -647,37 +799,123 @@ export async function poolDestroy(
     return {
       ok: false,
       reason:
-        `cannot resolve the project repository for task id ${taskId} (pool ` +
-        `record missing or unreadable and no usable worktree); nothing was removed`,
+        `cannot resolve the project repository for task id ${taskId}: the ` +
+        `pool record ${recordFile} is missing or unreadable and there is no ` +
+        `usable worktree. Nothing was removed; repair or delete that record ` +
+        `file to release the id`,
     };
   }
 
+  let dirty: boolean | undefined;
+  let dirtyProbeError: string | undefined;
   if (haveWorktree) {
-    if (!discard) {
-      const status = await destroyGitStep(
-        worktree,
-        ["status", "--porcelain"],
-        worktree,
-      );
-      if (status.status !== 0) {
-        return {
-          ok: false,
-          reason: `cannot verify worktree cleanliness: ${status.stderr.trim()}`,
-        };
-      }
-      if (status.stdout.trim() !== "") {
-        return {
-          ok: false,
-          reason:
-            `worktree ${worktree} has uncommitted changes or untracked ` +
-            `files; commit or land them first, or pass --discard to remove anyway`,
-        };
-      }
+    const status = await destroyGitStep(worktree, ["status", "--porcelain"], worktree);
+    if (status.status !== 0) {
+      dirtyProbeError = status.stderr.trim();
+    } else {
+      dirty = status.stdout.trim() !== "";
     }
-    const removeArgs = discard
-      ? ["worktree", "remove", "--force", worktree]
-      : ["worktree", "remove", worktree];
-    const removed = await destroyGitStep(contextDir, removeArgs, worktree);
+  }
+
+  const branchName = record?.branchName ?? taskBranchName(taskId);
+  const tip = runGit(contextDir, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branchName}^{commit}`,
+  ]);
+  let branchTip: BranchTip;
+  if (tip.status === 0) {
+    branchTip = { kind: "present", sha: tip.stdout.trim() };
+  } else if (tip.status === 1) {
+    branchTip = { kind: "absent" };
+  } else {
+    branchTip = {
+      kind: "indeterminate",
+      detail: tip.stderr.trim() === "" ? `git exited ${String(tip.status)}` : tip.stderr.trim(),
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      taskId,
+      contextDir,
+      record,
+      recordFile,
+      haveRecord,
+      worktree,
+      haveWorktree,
+      dirty,
+      dirtyProbeError,
+      branchName,
+      branchTip,
+    },
+  };
+}
+
+/**
+ * Stage 2: decide. Pure over the facts, no IO, so no gate can destroy
+ * anything. Returns a refusal reason, or undefined to proceed.
+ */
+function evaluateDestroy(
+  facts: DestroyFacts,
+  options: DestroyOptions,
+): string | undefined {
+  if (facts.haveWorktree && !options.discard) {
+    if (facts.dirtyProbeError !== undefined) {
+      return `cannot verify worktree cleanliness: ${facts.dirtyProbeError}`;
+    }
+    if (facts.dirty === true) {
+      return (
+        `worktree ${facts.worktree} has uncommitted changes or untracked ` +
+        `files; commit or land them first, or pass --discard to remove anyway`
+      );
+    }
+  }
+
+  if (facts.branchTip.kind === "indeterminate") {
+    return (
+      `cannot determine whether branch ${facts.branchName} exists in ` +
+      `${facts.contextDir} (${facts.branchTip.detail}); refusing to finish ` +
+      `destroy for task id ${facts.taskId}`
+    );
+  }
+
+  if (facts.branchTip.kind === "present" && !options.deleteBranchForce) {
+    const baseSha = facts.record?.baseSha;
+    if (baseSha === undefined) {
+      return (
+        `cannot verify branch ${facts.branchName} against its recorded base ` +
+        `(pool record missing or unreadable), tip ${facts.branchTip.sha}; land ` +
+        `it or pass --delete-branch-force to delete it anyway`
+      );
+    }
+    if (facts.branchTip.sha !== baseSha) {
+      return (
+        `branch ${facts.branchName} carries commits beyond its base ` +
+        `${baseSha} (tip ${facts.branchTip.sha}); land them or pass ` +
+        `--delete-branch-force to delete it anyway`
+      );
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Stage 3: perform. Reached only with every gate passed, so there is
+ * nothing left to refuse; failures here are operational, not policy.
+ */
+async function applyDestroy(
+  facts: DestroyFacts,
+  options: DestroyOptions,
+): Promise<PoolResult<DestroyOutcome>> {
+  if (facts.haveWorktree) {
+    const removeArgs = options.discard
+      ? ["worktree", "remove", "--force", facts.worktree]
+      : ["worktree", "remove", facts.worktree];
+    const removed = await destroyGitStep(facts.contextDir, removeArgs, facts.worktree);
     if (removed.status !== 0) {
       return {
         ok: false,
@@ -685,8 +923,7 @@ export async function poolDestroy(
       };
     }
   } else {
-    // Directory already gone by hand: prune the stale registration.
-    const pruned = await runGitRetrying(contextDir, ["worktree", "prune"]);
+    const pruned = await runGitRetrying(facts.contextDir, ["worktree", "prune"]);
     if (pruned.status !== 0) {
       return {
         ok: false,
@@ -695,74 +932,54 @@ export async function poolDestroy(
     }
   }
 
-  // CR-201, corrected by V-1: remove the task branch so a destroyed
-  // task id is fully released, but never silently discard commits.
-  // Deleting unconditionally was a data-loss defect: committed but
-  // unpushed work leaves the worktree clean, so the dirty guard does
-  // not fire, and the branch (together with its reflog, which the
-  // worktree removal takes too) was the only thing keeping those
-  // commits reachable. The gate is the pool's own recorded base: a
-  // branch tip still equal to baseSha provably carries no commits, so
-  // deleting it is lossless. Anything else needs explicit
-  // authorization through deleteBranchForce.
-  //
-  // Plain -d is not usable as that gate: the clone's local default ref
-  // may be behind the fetched base, and a squash-landed branch is not
-  // an ancestor of anything, so -d would refuse branches that are in
-  // fact landed. The base comparison answers the narrower question the
-  // pool can actually answer; landedness stays with M1-P4 teardown,
-  // which passes deleteBranchForce once it has made that judgement.
-  const branchName = record?.branchName ?? taskBranchName(taskId);
-  const tip = runGit(contextDir, [
-    "rev-parse",
-    "--verify",
-    "--quiet",
-    `refs/heads/${branchName}^{commit}`,
-  ]);
   const outcome: DestroyOutcome = {};
-  if (tip.status !== 0 && tip.status !== 1) {
-    // Indeterminate probe: fail closed rather than read the failure as
-    // "branch absent" and silently skip the deletion (U-3).
-    return {
-      ok: false,
-      reason:
-        `cannot determine whether branch ${branchName} exists in ` +
-        `${contextDir}; refusing to finish destroy for task id ${taskId}`,
-    };
-  }
-  if (tip.status === 0) {
-    const tipSha = tip.stdout.trim();
-    const baseSha = record?.baseSha;
-    const atBase = baseSha !== undefined && tipSha === baseSha;
-    if (!atBase && !deleteBranchForce) {
-      return {
-        ok: false,
-        reason:
-          baseSha === undefined
-            ? `cannot verify branch ${branchName} against its recorded base ` +
-              `(pool record missing or unreadable), tip ${tipSha}; land it or ` +
-              `pass --delete-branch-force to delete it anyway`
-            : `branch ${branchName} carries commits beyond its base ` +
-              `${baseSha} (tip ${tipSha}); land them or pass ` +
-              `--delete-branch-force to delete it anyway`,
-      };
-    }
-    const deleted = await runGitRetrying(contextDir, ["branch", "-D", branchName]);
+  if (facts.branchTip.kind === "present") {
+    const deleted = await runGitRetrying(facts.contextDir, [
+      "branch",
+      "-D",
+      facts.branchName,
+    ]);
     if (deleted.status !== 0) {
       const detail = deleted.stderr.trim().split("\n")[0] ?? "";
       return {
         ok: false,
-        reason: `cannot delete branch ${branchName}: ${detail}`,
+        reason: `cannot delete branch ${facts.branchName}: ${detail}`,
       };
     }
-    outcome.deletedBranch = branchName;
+    outcome.deletedBranch = facts.branchName;
     // The recovery handle: without it a mistaken destroy leaves the sha
     // discoverable only through git fsck --lost-found, until gc.
-    outcome.deletedSha = tipSha;
+    outcome.deletedSha = facts.branchTip.sha;
   }
 
-  if (haveRecord) {
-    unlinkSync(recordFile);
+  if (facts.haveRecord) {
+    unlinkSync(facts.recordFile);
   }
   return { ok: true, value: outcome };
+}
+
+export async function poolDestroy(
+  fleet: Fleet,
+  options: DestroyOptions,
+): Promise<PoolResult<DestroyOutcome>> {
+  const { taskId } = options;
+  if (!TASK_ID_PATTERN.test(taskId)) {
+    return { ok: false, reason: `task id "${taskId}" is not a safe path segment` };
+  }
+
+  // Stage 1: read only.
+  const resolved = await resolveDestroy(fleet, taskId);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  // Stage 2: pure decision. Every refusal returns here, before stage 3
+  // has touched anything.
+  const refusal = evaluateDestroy(resolved.value, options);
+  if (refusal !== undefined) {
+    return { ok: false, reason: refusal };
+  }
+
+  // Stage 3: destructive, and no longer able to refuse.
+  return applyDestroy(resolved.value, options);
 }

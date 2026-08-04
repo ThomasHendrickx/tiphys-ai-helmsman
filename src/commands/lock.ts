@@ -39,9 +39,23 @@ interface LockArgs {
  * <barrier>.observed as a ready marker, then wait for the barrier file
  * to appear before deciding and applying through the one mutation
  * primitive. A test can thereby interleave two real CLI invocations at
- * the exact compare-and-swap point. Inert unless the variable is set;
- * the wait is bounded so an abandoned barrier cannot hang a command.
+ * the exact compare-and-swap point. Inert unless the variable is set.
+ *
+ * The seam is LOUD about not holding (D-3). It previously had two exits
+ * from its wait and only one of them meant "held": on the other the
+ * command walked into the mutation carrying a stale observation and
+ * told nobody, so a witness could score a compare-and-swap it never
+ * staged and still pass. Both exits are now closed with a throw, the
+ * bound is monotonic (process.hrtime.bigint, not Date.now, because a
+ * realtime bound mixed with monotonic test durations is precisely what
+ * made "it failed fast" look like proof the bound was not reached), and
+ * the reason the wait ended is written to <barrier>.released so the
+ * test can assert the interleave actually happened. This is a test
+ * integrity fix; it is NOT a fix for the unattributed U-2 flake, whose
+ * trigger remains unexplained.
  */
+const HOLD_WAIT_LIMIT_MS = 30_000;
+
 async function maybeHoldForTest(
   lockPath: string,
 ): Promise<{ observed: ObservedLease; nowMs: number } | undefined> {
@@ -49,13 +63,43 @@ async function maybeHoldForTest(
   if (barrier === undefined || barrier === "") {
     return undefined;
   }
+  if (existsSync(barrier)) {
+    throw new Error(
+      `lock test hold point: barrier ${barrier} already existed before the ` +
+        `hold; this interleave was never staged and the run is not evidence`,
+    );
+  }
   const observed = observeLease(lockPath);
   const nowMs = Date.now();
   writeFileSync(`${barrier}.observed`, "");
-  const deadline = Date.now() + 30_000;
-  while (!existsSync(barrier) && Date.now() < deadline) {
+  const startNs = process.hrtime.bigint();
+  const limitNs = BigInt(HOLD_WAIT_LIMIT_MS) * 1_000_000n;
+  let held = false;
+  for (;;) {
+    if (existsSync(barrier)) {
+      held = true;
+      break;
+    }
+    if (process.hrtime.bigint() - startNs >= limitNs) {
+      break;
+    }
     await sleep(10);
   }
+  const waitedMs = Number((process.hrtime.bigint() - startNs) / 1_000_000n);
+  if (!held) {
+    throw new Error(
+      `lock test hold point: barrier ${barrier} never appeared within ` +
+        `${String(HOLD_WAIT_LIMIT_MS)}ms (waited ${String(waitedMs)}ms on the ` +
+        `monotonic clock); this interleave was never staged and the run is ` +
+        `not evidence`,
+    );
+  }
+  // Record that the hold really held, and why the wait ended, so the
+  // witness can assert the interleave rather than assume it.
+  writeFileSync(
+    `${barrier}.released`,
+    `held after ${String(waitedMs)}ms (monotonic), barrier observed\n`,
+  );
   return { observed, nowMs };
 }
 
@@ -76,9 +120,14 @@ function usageError(message?: string): number {
  * failures exit 1 (usage errors alone use EX_USAGE).
  */
 function failure(outcome: { reason: string; claimTimeout?: boolean }): number {
+  // D-2: the claim file is the sole serializer of lock mutations, so
+  // deleting one that is actually live lets a second mutation enter the
+  // critical section and can produce two live holders. The remedy text
+  // therefore states that cost instead of inviting the deletion, and it
+  // names the safe order: make sure no tiphys process is running first.
   const remedy =
     outcome.claimTimeout === true
-      ? "; if no mutation is in flight it was left by a crashed one, inspect and remove it manually"
+      ? "; a crashed mutation can leave this file behind, but deleting it while a mutation is genuinely in flight can produce two lock holders, so confirm no tiphys process is running against this fleet before removing it"
       : "";
   process.stderr.write(`tiphys lock: ${outcome.reason}${remedy}\n`);
   return 1;

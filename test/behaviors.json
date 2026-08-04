@@ -69,5 +69,12 @@
   "pool-destroy-corrupt-record-fails-closed": "pool destroy with an unreadable pool record fails closed instead of reporting success",
   "pool-create-ref-path-collision-refused": "pool create refuses a task id whose branch path collides with an existing ref",
   "pool-create-six-way-concurrent": "six concurrent pool creates against a behind tracking ref all succeed",
-  "pool-create-offline-no-false-provenance": "concurrent pool creates with --offline never record a false offline base"
+  "pool-create-offline-no-false-provenance": "concurrent pool creates with --offline never record a false offline base",
+  "lock-initial-publish-atomic": "an initial acquire never publishes a half-written lease",
+  "lock-hold-seam-loud": "the test hold seam fails loudly when the interleave was never staged",
+  "pool-fetch-retries-contention": "pool create retries a contended fetch instead of refusing",
+  "pool-fetch-retries-worktree-collision": "pool create retries a fetch broken by a concurrent worktree add",
+  "pool-destroy-refusal-is-no-op": "a refused destroy leaves the worktree the record and the branch untouched",
+  "pool-destroy-corrupt-record-not-wedged": "an unreadable pool record does not wedge the task id",
+  "pool-create-nested-ref-collision-refused": "pool create refuses a task id whose branch path is blocked by a nested ref"
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  linkSync,
   readFileSync,
   renameSync,
   unlinkSync,
@@ -44,6 +45,20 @@ import { setTimeout as sleep } from "node:timers/promises";
  * a crashed mutation makes later mutations fail loudly after a bounded
  * wait, naming the file for manual removal; the critical section is a
  * few file operations, so this window is tiny.
+ *
+ * What the token confirmation is and is NOT (corrected per D-2; the
+ * previous wording here claimed a second safety net that does not
+ * exist). The confirmation read asserts only "my bytes are in the file
+ * now". That is last-writer-wins: it catches an intruder who applied
+ * AFTER this mutation, and it does NOT catch one who applied before and
+ * merely lost the race to write last. The O_EXCL claim file is
+ * therefore the sole serializer, and it is advisory: no handle is held
+ * on it and nothing checks ownership when it is unlinked. The apply is
+ * preceded by a second read-and-compare (stillMatches) so that a lost
+ * claim degrades to a clean loss instead of a double win, but that
+ * narrows the window rather than closing it. Deleting a live claim file
+ * can still produce two holders; that is why the CLI's remedy text now
+ * says so instead of inviting it.
  *
  * Exclusion domain (PR-201, DR-0007 stated honestly): the lease excludes
  * within one filesystem and one clock, the fleet home the lock file lives
@@ -155,6 +170,18 @@ function readCurrent(lockPath: string): { present: boolean; raw: string } {
   }
 }
 
+/**
+ * Re-read the lock file and re-compare it against the state a mutation
+ * was decided on. Used immediately before every apply (D-2).
+ */
+function stillMatches(lockPath: string, observed: ObservedLease): boolean {
+  const current = readCurrent(lockPath);
+  if (observed.kind === "absent") {
+    return !current.present;
+  }
+  return current.present && current.raw === observed.raw;
+}
+
 export type MutationResult =
   | { won: true }
   | { won: false; reason: string; claimTimeout?: boolean };
@@ -254,6 +281,22 @@ export async function applyLeaseMutation(
       };
     }
 
+    // D-2: re-read and re-compare immediately before every apply. The
+    // claim file is the ONLY serializer, and it is advisory: no handle
+    // is held on it, and the operator remedy this CLI prints tells a
+    // human to delete it. If a claim is lost that way, another mutation
+    // can enter this section concurrently; without this second compare
+    // both could apply and both could believe they won. With it, the
+    // loser sees changed bytes and degrades to a clean loss. This
+    // narrows the window to the syscall gap; it does not remove it, and
+    // the module docs say so rather than claiming a guarantee.
+    if (!stillMatches(lockPath, observed)) {
+      return {
+        won: false,
+        reason: "lost: the lease changed while this mutation held the claim",
+      };
+    }
+
     if (next === null) {
       unlinkSync(lockPath);
       const confirm = readCurrent(lockPath);
@@ -264,9 +307,26 @@ export async function applyLeaseMutation(
     }
 
     if (observed.kind === "absent") {
-      // O_EXCL creation for acquire on an absent lock file (PR-006).
+      // D-1: publish the initial lease atomically. writeFileSync with
+      // flag "wx" is openSync(O_EXCL) followed by a SEPARATE writeSync,
+      // so the lock file's NAME becomes visible at length zero before
+      // the lease bytes land. observeLease, leaseStatus and doctor all
+      // read outside the claim, so a reader landing in that window sees
+      // an empty file and reports a healthy fleet as corrupt; it turned
+      // acceptance criterion 3's own witness red on pristine code.
+      //
+      // linkSync gives both properties at once: the stage file already
+      // holds the complete lease, and link fails with EEXIST if the
+      // lock path exists, which is exactly the atomic exclusive-create
+      // test PR-006 asks for. So exclusion is preserved and the name
+      // never exists half-published. renew and takeover were already
+      // immune because they stage then rename; this makes the absent
+      // lock path use the same discipline, which is the asymmetry the
+      // module previously left unjustified.
+      const stagePath = stagePathFor(lockPath);
+      writeFileSync(stagePath, next);
       try {
-        writeFileSync(lockPath, next, { flag: "wx" });
+        linkSync(stagePath, lockPath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST") {
           return {
@@ -275,6 +335,12 @@ export async function applyLeaseMutation(
           };
         }
         throw error;
+      } finally {
+        try {
+          unlinkSync(stagePath);
+        } catch {
+          // The stage sweep at the top of the claim also covers this.
+        }
       }
     } else {
       // The stage is ONE fixed path beside the lock (CR-202). Every
@@ -296,6 +362,18 @@ export async function applyLeaseMutation(
           unlinkSync(stagePath);
         } catch {
           // Stage cleanup is best effort; the original error surfaces.
+        }
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          // Another mutation swept this stage, which means it entered
+          // the critical section concurrently, which means this claim
+          // was lost (D-2). Report it as a loss rather than letting a
+          // raw ENOENT stack out of the CLI.
+          return {
+            won: false,
+            reason:
+              "lost: the staged lease disappeared before it was published, " +
+              "which means another mutation held the claim concurrently",
+          };
         }
         throw error;
       }

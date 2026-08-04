@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -171,6 +172,45 @@ function worktreeOf(scratch: Scratch, taskId: string): string {
 
 function recordOf(scratch: Scratch, taskId: string): string {
   return join(scratch.fleet, "worktrees", `${taskId}.pool.json`);
+}
+
+/**
+ * A stub `git` earlier on PATH that fails the FIRST fetch with real
+ * captured contention stderr and then delegates every call to the real
+ * git. This makes the retry path a deterministic end-to-end witness
+ * instead of a probabilistic one: the previous V-2 witnesses depended
+ * on real concurrency and were measured red only 11/20, 8/20 and 6/20
+ * on defective code, so a regression had roughly even odds of shipping
+ * green.
+ */
+function stubGitFailingFirstFetch(
+  t: { after(fn: () => void): void },
+  stderrText: string,
+): string {
+  const binDir = mkdtempSync(join(tmpdir(), "tiphys-p3-stubgit-"));
+  t.after(() => {
+    rmSync(binDir, { recursive: true, force: true });
+  });
+  const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
+    .stdout.trim();
+  assert.ok(realGit !== "", "could not locate the real git");
+  const markerPath = join(binDir, "fetch-failed-once");
+  const script = `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const marker = ${JSON.stringify(markerPath)};
+if (args.includes("fetch") && !fs.existsSync(marker)) {
+  fs.writeFileSync(marker, "");
+  process.stderr.write(${JSON.stringify(stderrText)});
+  process.exit(1);
+}
+const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(r.status === null ? 1 : r.status);
+`;
+  const stubPath = join(binDir, "git");
+  writeFileSync(stubPath, script, { mode: 0o755 });
+  return binDir;
 }
 
 test("pool create bases on the fetched remote head when the local default branch is behind", (t) => {
@@ -708,6 +748,15 @@ test("only genuine git lock contention is retried", () => {
     poolLib.isTransientWorktreeAddError("fatal: could not read commondir"),
     false,
   );
+  // U-11: the bad-object alternative also matches a PERMANENT
+  // condition (a worktree admin HEAD holding a nonexistent object)
+  // that is indistinguishable by message. It is retried, which costs
+  // about a second on an already-failing out-of-contract path. The
+  // trade is deliberate and asserted here so it stays visible.
+  assert.equal(
+    poolLib.isTransientGitLockError("fatal: bad object worktrees/t-dead/HEAD"),
+    true,
+  );
   const permanentDirFileConflict =
     "error: cannot lock ref 'refs/remotes/up/main': 'refs/remotes/up/main/deep' exists; cannot create 'refs/remotes/up/main'";
   const permanentExists =
@@ -715,6 +764,138 @@ test("only genuine git lock contention is retried", () => {
   assert.equal(poolLib.isTransientGitLockError(permanentDirFileConflict), false);
   assert.equal(poolLib.isTransientGitLockError(permanentExists), false);
   assert.equal(poolLib.isTransientGitLockError("fatal: 'occupied' already exists"), false);
+});
+
+test("pool create retries a contended fetch instead of refusing", (t) => {
+  // V-2 and V-4 deterministic witness (U-10): the previous end-to-end
+  // witnesses for this depended on real concurrency and were only
+  // probabilistically red. This one drives the exact captured stderr
+  // through the real CLI with a stub git, so it is red 1/1 whenever the
+  // fetch stops retrying that shape.
+  const scratch = makeScratch(t);
+  upstreamCommit(scratch.upstream, "advance-for-stub");
+  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
+  const binDir = stubGitFailingFirstFetch(
+    t,
+    "error: cannot lock ref 'refs/remotes/origin/main': is at f54f9fd2e742e73976eb7a3c6355749b54d6b767 but expected b0afe2c86398e3742ed488117e6110ca0bbd7d4e\n",
+  );
+  const result = runCli(
+    ["pool", "create", "--task", "t-stub", "--project", scratch.clone],
+    { cwd: scratch.fleet, env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` } },
+  );
+  assert.equal(result.status, 0, `contended fetch was not retried: ${result.stderr}`);
+  assert.equal(result.stdout.trim(), remoteHead);
+  const record = JSON.parse(readFileSync(recordOf(scratch, "t-stub"), "utf8")) as {
+    offline: boolean;
+  };
+  assert.equal(record.offline, false, "a retried fetch recorded a false offline base");
+});
+
+test("pool create retries a fetch broken by a concurrent worktree add", (t) => {
+  // V-4 deterministic witness: the commondir collision also strikes the
+  // fetch, where the create has produced nothing yet, so it must be
+  // retried in place rather than refused.
+  const scratch = makeScratch(t);
+  upstreamCommit(scratch.upstream, "advance-for-commondir");
+  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
+  const binDir = stubGitFailingFirstFetch(
+    t,
+    "fatal: failed to read .git/worktrees/t-other/commondir: Success\nerror: /tmp/upstream did not send all necessary objects\n",
+  );
+  const result = runCli(
+    ["pool", "create", "--task", "t-cd", "--project", scratch.clone],
+    { cwd: scratch.fleet, env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` } },
+  );
+  assert.equal(
+    result.status,
+    0,
+    `the commondir collision was not retried on the fetch path: ${result.stderr}`,
+  );
+  assert.equal(result.stdout.trim(), remoteHead);
+  const record = JSON.parse(readFileSync(recordOf(scratch, "t-cd"), "utf8")) as {
+    offline: boolean;
+  };
+  assert.equal(
+    record.offline,
+    false,
+    "a retried fetch recorded a false offline base (PR-212 provenance inverted)",
+  );
+});
+
+test("a refused destroy leaves the worktree the record and the branch untouched", (t) => {
+  // V-3: the branch gate was added after the worktree removal, so a
+  // refused destroy deleted the worktree it was refusing to destroy,
+  // taking every git-ignored file with it. A refusal must be a no-op.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-noop").status, 0);
+  const worktree = worktreeOf(scratch, "t-noop");
+  writeFileSync(join(worktree, ".gitignore"), "build/\n");
+  gitOk(worktree, ["add", "-A"]);
+  gitOk(worktree, ["commit", "-m", "committed work"]);
+  const sha = gitOk(worktree, ["rev-parse", "HEAD"]);
+  mkdirSync(join(worktree, "build"));
+  writeFileSync(join(worktree, "build", "env.local"), "SECRET=1\n");
+  assert.equal(gitOk(worktree, ["status", "--porcelain"]), "", "precondition: clean");
+  const recordBefore = readFileSync(recordOf(scratch, "t-noop"), "utf8");
+  const registrationBefore = gitOk(scratch.clone, ["worktree", "list", "--porcelain"]);
+
+  const refused = runCli(["pool", "destroy", "--task", "t-noop"], { cwd: scratch.fleet });
+  assert.notEqual(refused.status, 0);
+  // The whole point: nothing was destroyed.
+  assert.ok(existsSync(worktree), "a refused destroy removed the worktree");
+  assert.ok(
+    existsSync(join(worktree, "build", "env.local")),
+    "a refused destroy deleted git-ignored files",
+  );
+  assert.equal(readFileSync(recordOf(scratch, "t-noop"), "utf8"), recordBefore);
+  assert.equal(gitOk(scratch.clone, ["worktree", "list", "--porcelain"]), registrationBefore);
+  assert.equal(gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-noop"]), sha);
+  // And the remedy it printed is performable in the place it names.
+  assert.match(refused.stderr, /--delete-branch-force/);
+});
+
+test("an unreadable pool record does not wedge the task id", (t) => {
+  // V-3: with the gate after the removal, the worktree (the only
+  // remaining way to resolve the git context) was destroyed on the
+  // refusal path, so every later destroy refused and the id could never
+  // be released. The retry must be able to succeed.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-wedge").status, 0);
+  const worktree = worktreeOf(scratch, "t-wedge");
+  writeFileSync(recordOf(scratch, "t-wedge"), "<<<<<<< HEAD\nnot json\n");
+
+  const refused = runCli(["pool", "destroy", "--task", "t-wedge"], { cwd: scratch.fleet });
+  assert.notEqual(refused.status, 0);
+  assert.ok(existsSync(worktree), "the refusal destroyed the worktree it needed to retry");
+
+  // The documented escape must actually work.
+  const forced = runCli(
+    ["pool", "destroy", "--task", "t-wedge", "--delete-branch-force"],
+    { cwd: scratch.fleet },
+  );
+  assert.equal(forced.status, 0, `the task id is wedged: ${forced.stderr}`);
+  assert.ok(!existsSync(recordOf(scratch, "t-wedge")));
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-wedge"]).status,
+    0,
+  );
+  assert.equal(poolCreate(scratch, "t-wedge").status, 0, "the id is still not re-creatable");
+});
+
+test("pool create refuses a task id whose branch path is blocked by a nested ref", (t) => {
+  // U-12: the other collision direction. task/foo/bar blocks task/foo.
+  const scratch = makeScratch(t);
+  gitOk(scratch.clone, ["branch", "task/foo/bar"]);
+  const result = poolCreate(scratch, "foo");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /task\/foo\/bar/);
+  assert.equal(
+    result.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${result.stderr}`,
+  );
+  assert.ok(!existsSync(worktreeOf(scratch, "foo")));
+  assert.ok(!existsSync(recordOf(scratch, "foo")));
 });
 
 test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {
