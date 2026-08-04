@@ -1,7 +1,8 @@
 # Tiphys Kernel Plan v1
 
 - Status: DRAFT, pending adversarial review
-- Baseline commit: db3d870cd32475935a87184d6b1a82bd6fbf4685
+- Revision 1: adversarial review round 1 findings applied (PR-001 to PR-013)
+- Baseline commit: 40ff7dc391c12f5a61ef7d561828b0cc1dbd0fe1
 - Process summary: This plan was produced by the current orchestrated delivery process acting as intake-to-plan stage for the Tiphys kernel project, from two verified intake documents, a 13-finding spec-coherence report, and a 115-row requirements migration table. It fully phases milestone M1 (walking skeleton), outlines M2 and M3, and gives M4 and M5 one paragraph each; every phase lands as one branch and one PR through an adversarial review pipeline, sequentially, with milestone exit tests as hard gates. Owner-reserved questions are never decided here; each one is a decision record in delivery/decisions/ and blocks the phases that depend on it.
 - Binding rule: "If it is not written here, it is not being made. Unanswered questions go to the orchestrator."
 
@@ -43,7 +44,8 @@ The repository at the baseline commit contains only delivery/ documents: two int
 
 The blueprint's topology diagram (a top-level kernel/ beside fleet/ and projects/) predates the settled npm decision and is not built. The corrected picture, binding for all phases:
 
-- Kernel source lives in this repository (tiphys-ai-helmsman), a clone under projects/ on any fleet machine, delivered like any project.
+- Kernel source lives in this repository (tiphys-ai-helmsman), a clone under the fleet home's projects/ directory on any fleet machine, delivered like any project.
+- The projects area is <fleet>/projects/, created by tiphys init and gitignored: clones are recoverable from their remotes and are not durable fleet state (PR-004).
 - The consumed kernel is the pinned npm dependency inside a fleet home's node_modules; a fleet home is a small npm project whose package.json is the pin.
 - No top-level kernel/ directory exists on a fleet machine.
 - The directory names inside the kernel repo (bin/, schemas/, roles/, tuition/) keep the blueprint's names; they are package contents, not fleet-machine topology.
@@ -57,7 +59,7 @@ Every SC finding from delivery/verification/spec-coherence-report.md, dispositio
 | ID | Disposition | Lands in |
 |---|---|---|
 | SC-001 | Follows report (resolve-in-plan) | M3 outline, artifact list item "role briefs": the adversarial plan reviewer brief states the settled visibility (input report + plan + code); the same M3 phase corrects the process doc's role table so both documents agree. See also plan decision D-14. |
-| SC-002 | Follows report (resolve-in-plan) | Phase M1-P2: the fleet home is initialized as a private git repository with push discipline, gitignore narrowed to genuinely ephemeral entries (state/ beacons, locks, worktrees/). Flagged vetoable as plan decision D-4 because decision records may contain material the owner does not want in any remote. |
+| SC-002 | Follows report (resolve-in-plan) | Phase M1-P2: the fleet home is initialized as a private git repository with push discipline, gitignore narrowed to genuinely ephemeral entries (state/ beacons, locks, worktrees/). Flagged vetoable as plan decision D-4 because decision records may contain material the owner does not want in any remote. M1 lands the structure only (repo, narrowed gitignore, remote WARN); the commit/push discipline for post-init fleet state is an M3 AGENTS.md orchestrator duty, named in the M3 outline (PR-012). |
 | SC-003 | Follows report (resolve-in-plan) | Section 1.5 of this plan (binding topology redraw) and phase M1-P2 grounding. Plan decision D-5. |
 | SC-004 | Follows report (escalate-to-owner) | DR-0005 (kernel implementation language and runtime). Blocks every M1 phase; see blocked-by fields. |
 | SC-005 | Follows report (escalate-to-owner) | DR-0006 (schema technology and artifact format). Does not block M1 (plan decision D-3 keeps M1 state files plain JSON); must be decided before M3 detailed planning. |
@@ -88,21 +90,21 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - grounding: Greenfield repo containing only delivery/ (verify: no package.json, no .github/ at branch point). DR-0001, DR-0002, DR-0003, DR-0005 decided.
 - steps:
   1. Verify greenfield: confirm package.json, .github/, bin/ are absent; record the check in the work history.
-  2. Create package.json: name @tiphys/kernel (per DR-0008 recommendation, vetoable until M3 first publish), version 0.0.0, private for now, type module, license per DR-0001, engines.node per DR-0002, bin mapping tiphys to bin/tiphys.js, scripts.test running node --test over test/, scripts.typecheck running tsc --noEmit (checkJs via jsconfig.json or tsconfig with allowJs/checkJs).
+  2. Create package.json: name @tiphys/kernel (per DR-0008 recommendation, vetoable until M3 first publish), version 0.0.0, private for now, type module, license per DR-0001, engines.node per DR-0002, bin mapping tiphys to bin/tiphys.js, scripts.test running node --test over test/, scripts.typecheck running tsc --noEmit (checkJs via jsconfig.json or tsconfig with allowJs/checkJs), devDependencies: typescript at a pinned exact version (PR-003). Generate package-lock.json with npm install and commit it (PR-003).
   3. Create bin/tiphys.js: executable dispatcher; subcommand version prints the package.json version and exits 0; any unknown subcommand prints usage to stderr and exits 64; subcommands added by later phases register in one table in src/cli.js.
   4. Create src/cli.js (dispatch table) and src/version.js.
   5. Create test/cli.test.js with at least: version subcommand exits 0 and output equals package.json version; unknown subcommand exits 64.
   6. Create directory placeholders with one-line READMEs stating which milestone fills them: schemas/README.md (M3, pending DR-0006), roles/README.md (M3), tuition/README.md (directory scaffolded now per migration-table note on R-091; the tuition flow itself is M3).
-  7. Create .github/workflows/gates.yml: single job named gates (the name DR-0004's ruleset requires), triggered on pull_request and on push to the default branch, with a per-ref concurrency group that cancels superseded runs, running npm ci, npm run typecheck, npm test, on a Node matrix per DR-0002's recommendation, on the runner per DR-0003.
+  7. Create .github/workflows/gates.yml: a matrix job named test (Node versions per DR-0002's recommendation, runner per DR-0003) running npm ci (which installs the pinned typescript), npm run typecheck, npm test; plus a non-matrixed fan-in job named exactly gates that needs the test job and fails unless every matrix leg succeeded. The required-check context DR-0004's ruleset names is therefore "gates" verbatim; a matrixed job named gates would report per-leg contexts like "gates (22)" and the required check would never complete (PR-002). Triggers: pull_request and push to the default branch; per-ref concurrency group that cancels superseded runs.
   8. Create .gitignore (node_modules, coverage output) and a minimal CLAUDE.md recording the binding conventions of section 1.4 and the kernel repo's gate list (npm ci, typecheck, node --test) as the agent-rules single source for this repo until the M3 gate registry replaces it.
-- files-to-touch (all create; verify absent first): package.json, jsconfig.json (or tsconfig.json), bin/tiphys.js, src/cli.js, src/version.js, test/cli.test.js, schemas/README.md, roles/README.md, tuition/README.md, .github/workflows/gates.yml, .gitignore, CLAUDE.md.
+- files-to-touch (all create; verify absent first): package.json, package-lock.json, jsconfig.json (or tsconfig.json), bin/tiphys.js, src/cli.js, src/version.js, test/cli.test.js, schemas/README.md, roles/README.md, tuition/README.md, .github/workflows/gates.yml, .gitignore, CLAUDE.md.
 - acceptance criteria:
   1. npm ci then npm test exits 0; node --test reports N tests with N >= 2 and 0 failing.
   2. npm run typecheck exits 0.
   3. node bin/tiphys.js version exits 0 and prints exactly the version field of package.json.
   4. node bin/tiphys.js no-such-command exits with code 64 and writes a usage line to stderr.
   5. package.json contains engines.node matching DR-0002's decided floor and license matching DR-0001's decided license (inspection).
-  6. .github/workflows/gates.yml defines a job whose name is gates, a concurrency group keyed on the ref with cancel-in-progress true, and triggers for pull_request and push to the default branch (inspection).
+  6. .github/workflows/gates.yml defines a matrix job named test and a non-matrixed job named exactly gates that lists the test job in its needs and fails when any matrix leg fails, a concurrency group keyed on the ref with cancel-in-progress true, and triggers for pull_request and push to the default branch (inspection; PR-002).
   7. The phase PR shows the gates check completed successfully (observable on the PR).
   8. Directories bin/, schemas/, roles/, tuition/ exist and each contains at least one tracked file (git ls-files count > 0 per directory).
 - suggested model tier: cheaper tier (layout is fully specified above; the work is mechanical).
@@ -117,16 +119,16 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - intent: Implement tiphys init (create a fleet home) and tiphys doctor (deterministic health checks with per-check PASS/WARN/FAIL lines).
 - grounding: M1-P1 merged (dispatcher, tests, CI exist). Topology per section 1.5. Fleet layout per blueprint section 3 with the SC-002 resolution (plan decision D-4).
 - steps:
-  1. Create src/fleet.js: fleet-home layout constants and helpers (paths for charter/, decisions/, backlog.md, state/, tasks/, worktrees/) and a loadFleet(dir) that validates the layout and returns typed accessors.
-  2. Create src/commands/init.js: tiphys init <dir> creates the layout in an empty or absent directory: charter/, decisions/, state/, tasks/, worktrees/, backlog.md (header only), package.json (fleet-home stub; the kernel dependency pin is added at M3 first publish, a documented placeholder until then), .gitignore ignoring exactly state/ and worktrees/, then git init plus an initial commit. Running init on an already-initialized directory exits nonzero with a message containing "already initialized".
-  3. Create src/commands/doctor.js: tiphys doctor runs in a fleet home and prints one line per check, format "CHECK <name> PASS|WARN|FAIL <detail>", exiting 0 only if no check FAILs. Checks: node version satisfies the kernel's engines range (FAIL), git available (FAIL), gh available (WARN), fleet layout complete (FAIL, names the missing entry), fleet git repo present with a remote configured (WARN, push-discipline per SC-002), lock state readable (FAIL if corrupt, PASS if absent), watcher beacon freshness (WARN "watcher not running" when absent; this check is completed by M1-P5's liveness guard).
+  1. Create src/fleet.js: fleet-home layout constants and helpers (paths for charter/, decisions/, backlog.md, state/, tasks/, worktrees/, projects/) and a loadFleet(dir) that validates the layout and returns typed accessors.
+  2. Create src/commands/init.js: tiphys init <dir> creates the layout in an empty or absent directory: charter/, decisions/, state/, tasks/, worktrees/, projects/ (the projects area, PR-004), backlog.md (header only), package.json (fleet-home stub; the kernel dependency pin is added at M3 first publish, a documented placeholder until then), .gitignore ignoring exactly state/, worktrees/, and projects/, then git init plus an initial commit. Running init on an already-initialized directory exits nonzero with a message containing "already initialized".
+  3. Create src/commands/doctor.js: tiphys doctor runs in a fleet home and prints one line per check, format "CHECK <name> PASS|WARN|FAIL <detail>", exiting 0 only if no check FAILs. Checks: node version satisfies the kernel's engines range (FAIL), git available (FAIL), gh available (WARN), fleet layout complete including projects/ (FAIL, names the missing entry), fleet git repo present with a remote configured (WARN, push-discipline per SC-002), lock state readable (FAIL if corrupt, PASS if absent), watcher beacon freshness (WARN "watcher not running" when absent; this check is completed by M1-P5's liveness guard).
   4. Register both subcommands in src/cli.js.
   5. Tests in test/init.test.js and test/doctor.test.js using temp directories.
 - files-to-touch: src/fleet.js, src/commands/init.js, src/commands/doctor.js, test/init.test.js, test/doctor.test.js (create); src/cli.js (edit, verify dispatch table shape first).
 - acceptance criteria:
-  1. tiphys init <empty tmp dir> exits 0 and creates charter/, decisions/, state/, tasks/, worktrees/, backlog.md, package.json, .gitignore, and a .git directory with at least one commit (git -C <dir> rev-list --count HEAD >= 1).
+  1. tiphys init <empty tmp dir> exits 0 and creates charter/, decisions/, state/, tasks/, worktrees/, projects/, backlog.md, package.json, .gitignore, and a .git directory with at least one commit (git -C <dir> rev-list --count HEAD >= 1).
   2. A second tiphys init on the same directory exits nonzero and stderr contains "already initialized".
-  3. In the initialized fleet home, git check-ignore state/anything and git check-ignore worktrees/anything both exit 0, while git check-ignore decisions/anything and git check-ignore charter/anything both exit 1 (SC-002: durable dirs tracked, ephemera ignored).
+  3. In the initialized fleet home, git check-ignore state/anything, git check-ignore worktrees/anything, and git check-ignore projects/anything all exit 0, while git check-ignore decisions/anything and git check-ignore charter/anything both exit 1 (SC-002: durable dirs tracked, ephemera and clones ignored; PR-004).
   4. tiphys doctor in a healthy fleet home exits 0 and stdout contains one "CHECK <name>" line per check listed in step 3, none of them FAIL.
   5. After deleting decisions/, tiphys doctor exits nonzero and stdout contains "CHECK layout FAIL" naming decisions.
   6. tiphys doctor in a directory that is not a fleet home exits nonzero.
@@ -141,27 +143,28 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - id: M1-P3
 - branch: claude/m1-p3-lock-and-pool
 - intent: Build the one-orchestrator-per-fleet session lock and the clean disposable worktree pool (BUILD from blueprint section 4 contracts, per plan decision D-1).
-- grounding: M1-P2 merged (fleet home exists to hold state/). DR-0009 answered (if firstmate source was supplied, the implementer adapts it to these same acceptance criteria; the criteria do not change either way).
+- grounding: M1-P2 merged (fleet home exists to hold state/). DR-0009 is consulted at dispatch, never blocks (PR-007): if undecided or option 2, BUILD per D-1; if option 1 source was supplied before dispatch, the implementer adapts it to these same acceptance criteria (which do not change either way); an option 1 answer arriving after dispatch is ignored.
 - steps:
-  1. Create src/lock.js: lockfile at state/orchestrator.lock containing JSON {pid, hostname, acquiredAt}. acquire fails if a live lock exists (liveness: same host and process exists, checked via signal 0; different host is always treated as live in v1, DR-0007 substrate is a single machine per fleet). status reports held, stale (holder pid dead), or free. Explicit takeover flag required to replace a stale lock; takeover of a live lock is refused.
+  1. Create src/lock.js: lockfile at state/orchestrator.lock containing JSON {pid, hostname, acquiredAt}. Acquisition is atomic (PR-006): open with O_EXCL; on EEXIST, read the existing lock and evaluate liveness (same host and process exists, checked via signal 0; different host is always treated as live in v1, DR-0007 substrate is a single machine per fleet); a live lock refuses acquire. Takeover is atomic replace: write a temp file and rename it over the lockfile. status reports held, stale (holder pid dead), or free, and always prints acquiredAt so a human takeover decision is informed. Explicit takeover flag required to replace a stale lock; takeover of a live lock is refused. Module docs record the pid-reuse limitation: after a reboot an unrelated live process can occupy the recorded pid, making a dead lock read held; the surfaced acquiredAt is the operator's tiebreaker for a manual takeover.
   2. Create src/commands/lock.js: subcommands lock acquire [--take-over], lock release, lock status.
-  3. Create src/pool.js: worktree pool over a project clone. pool create --task <id> --project <path>: creates a git worktree at <fleet>/worktrees/<task-id> from the project's default branch head, on a new branch named for the task; refuses duplicate task ids; parallel-safe (unique paths, atomic directory creation, git worktree add's own locking). pool list prints one line per worktree with task id and HEAD sha. pool destroy --task <id>: refuses (exit nonzero, reason line) if the worktree has uncommitted changes or untracked files; otherwise removes the directory and prunes the git worktree registration.
+  3. Create src/pool.js: worktree pool over a project clone. pool create --task <id> --project <path>: creates a git worktree at <fleet>/worktrees/<task-id> from the project's default branch head, on a new branch named for the task; refuses duplicate task ids; parallel-safe (unique paths, atomic directory creation, git worktree add's own locking). pool list prints one line per worktree with task id and HEAD sha. pool destroy --task <id>: refuses (exit nonzero, reason line) if the worktree has uncommitted changes or untracked files; otherwise removes the directory and prunes the git worktree registration. A --discard flag overrides the dirty refusal and removes anyway; refusal stays the default, and --discard is documented as reserved for the teardown scout path (PR-010).
   4. Create src/commands/pool.js and register subcommands.
   5. Tests: test/lock.test.js (including a child-process holder that is killed to produce a real stale lock), test/pool.test.js (against a scratch git repo created in the test).
 - files-to-touch: src/lock.js, src/commands/lock.js, src/pool.js, src/commands/pool.js, test/lock.test.js, test/pool.test.js (create); src/cli.js (edit).
 - acceptance criteria:
   1. lock acquire in a fleet home exits 0 and creates state/orchestrator.lock whose JSON parses and contains the acquiring pid.
   2. With the lock held by a live process, a second lock acquire from a different process exits nonzero, stderr contains "lock held", and the lock file content is byte-identical before and after the attempt.
-  3. After the holding process is killed, lock status exits 0 and stdout contains "stale"; lock acquire without the takeover flag still exits nonzero; lock acquire --take-over exits 0 and the lock file now contains the new pid.
-  4. pool create --task t-a against a scratch project repo exits 0; the worktree at worktrees/t-a has empty git status --porcelain output and its HEAD sha equals the scratch repo default branch head sha.
-  5. pool create with an already-used task id exits nonzero and stderr names the id.
-  6. Two pool create invocations for distinct task ids launched concurrently both exit 0 and git worktree list in the project shows both worktrees.
-  7. pool destroy on a worktree with an uncommitted file exits nonzero and the directory still exists; after committing or removing the file, pool destroy exits 0, the directory is gone, and git worktree list no longer shows it.
-  8. node --test exits 0, total test count strictly greater than M1-P2's count, 0 failing.
+  3. Five concurrent lock acquire invocations against a free lock yield exactly one exit 0 and four nonzero exits, and the lock file afterward contains the winner's pid (PR-006: mutual exclusion is atomic, not read-then-write).
+  4. After the holding process is killed, lock status exits 0 and stdout contains "stale" and the acquiredAt timestamp; lock acquire without the takeover flag still exits nonzero; lock acquire --take-over exits 0 and the lock file now contains the new pid.
+  5. pool create --task t-a against a scratch project repo exits 0; the worktree at worktrees/t-a has empty git status --porcelain output and its HEAD sha equals the scratch repo default branch head sha.
+  6. pool create with an already-used task id exits nonzero and stderr names the id.
+  7. Two pool create invocations for distinct task ids launched concurrently both exit 0 and git worktree list in the project shows both worktrees.
+  8. pool destroy on a worktree with an uncommitted file exits nonzero and the directory still exists; the same worktree with --discard exits 0, the directory is gone, and git worktree list no longer shows it (PR-010); a clean worktree is likewise removed by pool destroy without flags.
+  9. node --test exits 0, total test count strictly greater than M1-P2's count, 0 failing.
 - suggested model tier: strongest (concurrency and liveness semantics are correctness-bearing).
 - citations: R-003 (fresh disposable worktree per task), R-080 (locks live under fleet state/); blueprint section 4 (session lock and worktree pool contracts), section 10 point 5 (one orchestrator per fleet); DR-0009.
 - conflicts-with: M1-P4 through M1-P6 (src/cli.js; P4 consumes src/pool.js).
-- blocked-by: DR-0005, DR-0007, DR-0009.
+- blocked-by: DR-0005, DR-0007. (DR-0009 is consulted at dispatch and never blocks; PR-007.)
 
 ### M1-P4: Spawn and teardown guard
 
@@ -173,23 +176,26 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
   1. Create src/task.js: task meta at <fleet>/tasks/<id>/meta.json, plain JSON (plan decision D-3), fields: id, project, shape (ship or scout), branch, worktree, status (open or closed), createdAt. Documented in a docs comment; no schema library (DR-0006 pending).
   2. Create src/brief.js: brief assembly writes tasks/<id>/brief.md from the provided brief file, appending verbatim the fleet's environment-warnings file (state/../warnings.md location: fleet root warnings.md, tracked) when present (R-083b).
   3. Create src/hooks.js: turn-end hook, a generated script placed in the task directory and invoked by the executor when the payload command exits; it writes tasks/<id>/turn-end containing an ISO-8601 timestamp and the payload exit code (R-082b). This file is the watcher's wake signal in M1-P5.
-  4. Create src/spawn.js and src/commands/spawn.js: tiphys spawn --task <id> --project <path> --brief <file> --shape ship|scout [--exec <cmd>] performs, in order: liveness-guard check (completed in P5; in this phase a no-op seam), pool create, brief assembly, meta write, executor launch with cwd set to the worktree and the turn-end hook wired. One command, everything or a clean rollback (a failed step removes what it created and exits nonzero).
-  5. Create src/teardown.js and src/commands/teardown.js: tiphys teardown --task <id> [--salvage]. Refusal rules, checked in order: (a) shape scout: refuse unless tasks/<id>/report.md exists; with a report, scratch changes are discarded and teardown proceeds (scout worktrees are scratch, scouts never push). (b) shape ship: refuse if the worktree is dirty (unless --salvage: commit leavings as a commit whose message starts with "WIP-UNREVIEWED (do not treat as reviewed):" and push the branch, then proceed) and refuse if the task branch has commits not contained in the project default branch (unlanded work; --salvage does not override this, it only rescues uncommitted leavings onto the branch). (c) On success: pool destroy, meta status set to closed. Every refusal is exit nonzero plus a single reason line naming the blocking condition.
+  4. Create src/spawn.js and src/commands/spawn.js: tiphys spawn --task <id> --project <path> --brief <file> --shape ship|scout --exec <cmd> performs, in order: liveness-guard check (completed in P5; in this phase a no-op seam), pool create, brief assembly, meta write, executor launch with cwd set to the worktree and the turn-end hook wired. In M1, --exec is required: spawn without it exits 64 with usage, because the multiplexer-window adapter that would make an exec-less spawn meaningful is M4-era (PR-013). The subprocess executor runs the payload to completion before spawn returns, and the payload exit code is recorded in the turn-end file (PR-013). One command, everything or a clean rollback (a failed step removes what that invocation created, and only that, then exits nonzero).
+  5. Create src/teardown.js and src/commands/teardown.js: tiphys teardown --task <id> [--salvage]. Teardown first fetches the project's default branch from its remote (git fetch); every landed-ness check runs against the fetched ref, never a possibly stale local one (PR-001). Refusal rules, checked in order: (a) shape scout: refuse unless tasks/<id>/report.md exists; with a report, scratch changes are discarded via pool destroy --discard and teardown proceeds (scout worktrees are scratch, scouts never push; PR-010). (b) shape ship: refuse if the worktree is dirty (unless --salvage: commit leavings as a commit whose message starts with "WIP-UNREVIEWED (do not treat as reviewed):" and push the branch, then proceed) and refuse unless the task branch is landed on the fetched default branch. Landed means either (i) the branch head is an ancestor of the fetched default branch head, or (ii) merging the branch into the fetched default branch is a no-op: git merge-tree --write-tree <fetched-default> <branch> reports no conflicts and produces a tree id equal to the fetched default head's tree id. Definition (ii) recognizes squash merges regardless of the branch's commit count, and squash is the process's own merge practice (PR-001). --salvage never overrides the unlanded refusal; it only rescues uncommitted leavings onto the branch. (c) On success: pool destroy, meta status set to closed. Every refusal is exit nonzero plus a single reason line naming the blocking condition.
   6. Register subcommands; tests in test/spawn.test.js and test/teardown.test.js against scratch repos, using a stub payload command.
-- files-to-touch: src/task.js, src/brief.js, src/hooks.js, src/spawn.js, src/teardown.js, src/commands/spawn.js, src/commands/teardown.js, test/spawn.test.js, test/teardown.test.js (create); src/cli.js (edit); src/pool.js (edit only if destroy needs a salvage-aware flag; verify first).
+- files-to-touch: src/task.js, src/brief.js, src/hooks.js, src/spawn.js, src/teardown.js, src/commands/spawn.js, src/commands/teardown.js, test/spawn.test.js, test/teardown.test.js (create); src/cli.js (edit); src/pool.js (no edit expected: the --discard flag the scout teardown path uses ships in M1-P3; verify before touching, PR-010).
 - acceptance criteria:
-  1. spawn with a stub exec that writes its cwd to a file exits 0 and: the written cwd path is under <fleet>/worktrees/<id>; tasks/<id>/meta.json parses with all documented fields and status open; tasks/<id>/brief.md contains both the brief text and the full text of the fleet warnings.md file when one exists (and exactly the brief text when none exists).
+  1. spawn with a stub exec that writes its cwd to a file exits 0 and: the written cwd path is under <fleet>/worktrees/<id>; tasks/<id>/meta.json parses with all documented fields and status open; tasks/<id>/brief.md contains both the brief text and the full text of the fleet warnings.md file when one exists (and exactly the brief text when none exists). spawn returns only after the exec command has exited: the stub sleeps briefly and writes a completion marker, and the marker exists at the moment spawn returns (PR-013).
   2. After the stub exec exits, tasks/<id>/turn-end exists and contains a parseable ISO-8601 timestamp and the exec exit code.
-  3. If pool create fails (duplicate task id), spawn exits nonzero and tasks/<id>/ does not exist afterward (rollback).
-  4. For a ship task whose branch has a pushed commit not on the project default branch, teardown exits nonzero, prints one reason line containing the branch name, and the worktree directory still exists.
-  5. For a ship task with uncommitted changes: teardown without --salvage exits nonzero; teardown --salvage with unlanded commits still exits nonzero (salvage never discards the unlanded-work refusal); after the branch is merged into the default branch in the scratch project and the tree is dirty, teardown --salvage exits 0 and the branch tip commit message starts with "WIP-UNREVIEWED (do not treat as reviewed):".
-  6. For a scout task with a dirty scratch worktree: teardown exits nonzero while tasks/<id>/report.md is absent; after report.md is created, teardown exits 0 and the worktree is removed without any push (the scratch repo's remote refs are unchanged, verified by comparing git ls-remote output before and after).
-  7. After a successful teardown, meta.json status equals closed and git worktree list no longer shows the task worktree.
-  8. node --test exits 0, total test count strictly greater than M1-P3's count, 0 failing.
+  3. spawn without --exec exits 64, prints usage to stderr, and creates nothing: no worktree, no tasks/<id>/ (PR-013).
+  4. If pool create fails (duplicate task id already used by a live task), spawn exits nonzero, the pre-existing tasks/<id>/ contents are byte-identical before and after, and the failing invocation created no new files (PR-005: rollback must never touch another task's artifacts).
+  5. If a step after pool create fails (executor launch failure, simulated with a nonexistent exec binary), spawn exits nonzero and the worktree and tasks/<id>/ entries created by that invocation are removed (PR-005 companion: rollback removes what the failing invocation created, and only that).
+  6. For a ship task whose branch has a pushed commit absent from the fetched default branch, teardown exits nonzero, prints one reason line containing the branch name, and the worktree directory still exists (PR-001: the refusal is evaluated against freshly fetched remote state).
+  7. For a ship task with two commits on its branch that the harness squash-merges into the default branch on the scratch remote (git merge --squash plus a single commit, pushed to the remote), with the teardown-side clone's local default ref deliberately left stale, teardown exits 0: fetch-then-merge-tree recognizes the squash merge as landed (PR-001; two commits, so a per-commit patch-id implementation cannot pass this criterion).
+  8. For a ship task with uncommitted changes: teardown without --salvage exits nonzero; teardown --salvage with unlanded commits still exits nonzero (salvage never overrides the unlanded refusal); after the branch is landed via the squash path of criterion 7 and the tree is dirty, teardown --salvage exits 0 and the branch tip commit message starts with "WIP-UNREVIEWED (do not treat as reviewed):".
+  9. For a scout task with a dirty scratch worktree: teardown exits nonzero while tasks/<id>/report.md is absent; after report.md is created, teardown exits 0 and the worktree is removed via pool destroy --discard without any push (the scratch repo's remote refs are unchanged, verified by comparing git ls-remote output before and after; PR-010).
+  10. After a successful teardown, meta.json status equals closed and git worktree list no longer shows the task worktree.
+  11. node --test exits 0, total test count strictly greater than M1-P3's count, 0 failing.
 - suggested model tier: strongest (most architecture-bearing phase of M1; the executor seam and refusal ordering carry long-lived contracts).
 - citations: R-003 and R-009a (fresh isolated context per task, structural), R-033b (brief assembly is one command), R-052b (teardown refuses without report), R-081a (salvage as labeled WIP commit), R-082b (turn-end hook), R-083b (warnings file into every brief); blueprint section 4 (spawn and teardown contracts), section 9 (scout shape); DR-0007 (executor seam), DR-0009.
 - conflicts-with: M1-P5, M1-P6 (src/cli.js; P5 consumes the turn-end signal contract).
-- blocked-by: DR-0005, DR-0007, DR-0009.
+- blocked-by: DR-0005, DR-0007. (DR-0009 is consulted at dispatch and never blocks; PR-007.)
 
 ### M1-P5: Watcher and liveness guard
 
@@ -199,7 +205,7 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - grounding: M1-P4 merged (turn-end signal files exist as the wake source; spawn/teardown/doctor have guard seams).
 - steps:
   1. Create src/watcher.js and src/commands/watch.js: tiphys watch runs as a plain foreground process (resident under the DR-0007 substrate). Wake sources, each producing a single stdout reason line then exit 0: "signal <task-id> <event>" (a new turn-end file for an open task), "stale <what>" (an open task whose worktree or meta is in a contradictory state, enumerated in the module docs), "check <name>" (a requested one-shot check via a state/check-request file), "heartbeat <n>" only when --max-heartbeats is set and reached. Idle behavior: fs.watch on the fleet state and tasks directories with a polling fallback; heartbeat interval starts at a configurable base and doubles up to a cap; every wake and heartbeat rewrites state/watcher.beacon with an ISO timestamp and the current backoff. The watcher is a plain Node process: it imports no network or LLM client (zero tokens idle is structural).
-  2. Create src/liveness.js: guard(fleet) returns {inFlight, beaconAgeMs, stale} where stale means at least one open task exists and the beacon is absent or older than a threshold (default documented, configurable). Wire the guard into spawn, teardown, and doctor (completing the P2 and P4 seams): a stale result prints one stderr warning line containing "watcher stale" but does not block the command (warn, per blueprint liveness-guard contract).
+  2. Create src/liveness.js: guard(fleet) returns {inFlight, beaconAgeMs, stale} where stale means at least one open task exists and the beacon is absent or older than a threshold (default documented, configurable). Invariant (PR-009): the default stale threshold is strictly greater than the backoff cap plus one poll interval, and liveness.js enforces threshold > cap + poll interval at load; a configuration violating it is an error (load fails with a message naming both values), so a healthy watcher idling at maximum backoff can never read as stale. Wire the guard into spawn, teardown, and doctor (completing the P2 and P4 seams): a stale result prints one stderr warning line containing "watcher stale" but does not block the command (warn, per blueprint liveness-guard contract).
   3. Tests: test/watcher.test.js drives the watcher as a child process against a temp fleet (short base interval), test/liveness.test.js covers fresh, absent, and stale beacons.
 - files-to-touch: src/watcher.js, src/commands/watch.js, src/liveness.js, test/watcher.test.js, test/liveness.test.js (create); src/cli.js, src/commands/spawn.js, src/commands/teardown.js, src/commands/doctor.js (edit: wire the guard; verify seam shape first).
 - acceptance criteria:
@@ -208,12 +214,13 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
   3. With no open tasks and no signals, the watcher does not exit on heartbeats (still running after three intervals) unless --max-heartbeats is set, in which case it exits 0 with the line "heartbeat <n>".
   4. With one open task and a beacon file older than the threshold, tiphys spawn, tiphys teardown, and tiphys doctor each emit one stderr line containing "watcher stale" and still perform their normal function (exit codes unchanged versus the fresh-beacon runs of the same scenarios).
   5. With a fresh beacon, the same three commands emit no "watcher stale" line (falsifiable in both directions).
-  6. grep over src/watcher.js and its imports shows no import of http, https, fetch, or any network client module (structural zero-tokens-idle check, inspection).
-  7. node --test exits 0, total test count strictly greater than M1-P4's count, 0 failing.
+  6. With the watcher idle at maximum backoff, the guard reports fresh (no "watcher stale" line) at every probe across the entire gap between two consecutive heartbeats (PR-009); loading liveness.js with a configuration where the threshold is not strictly greater than the backoff cap plus one poll interval fails with an error naming both values.
+  7. grep over src/watcher.js and its imports shows no import of http, https, fetch, or any network client module (structural zero-tokens-idle check, inspection).
+  8. node --test exits 0, total test count strictly greater than M1-P4's count, 0 failing.
 - suggested model tier: strongest (event semantics, backoff, and child-process test harness are correctness-bearing).
 - citations: R-078 (watcher + liveness guard replace the cron heartbeat; deliberate deviation from process-doc letter, plan decision D-14), R-079 (supervision never silently disappears while work is in flight: beacon plus guard), R-095 (doctor's beacon check completed here); blueprint section 4 (watcher and liveness guard contracts); DR-0007, DR-0009.
 - conflicts-with: M1-P6 (src/cli.js).
-- blocked-by: DR-0005, DR-0007, DR-0009.
+- blocked-by: DR-0005, DR-0007. (DR-0009 is consulted at dispatch and never blocks; PR-007.)
 
 ### M1-P6: Toy sandbox project and exit-test harness
 
@@ -223,19 +230,19 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - grounding: M1-P1 through M1-P5 merged. Owner action A-1 done (toy sandbox GitHub repository exists, see section 7). gh CLI authenticated for full mode.
 - steps:
   1. Create sandbox/ in the kernel repo: the toy project's content (package.json named toy-sandbox, one src file, one node --test test, a README stating its purpose), plus scripts/seed-sandbox.sh that pushes this content to the owner-created toy repo (idempotent: safe to re-run).
-  2. Create scripts/m1-exit-test.sh implementing section 4's procedure verbatim, parameterized by --mode local|full. local mode uses a scratch bare repo as the "remote" and asserts a pushed branch instead of a PR (no credentials, runs in CI); full mode uses the real toy repo and gh to open and verify the PR. Every step appends its command, exit code, and captured output to an evidence directory given as an argument.
+  2. Create scripts/m1-exit-test.sh implementing section 4's procedure verbatim, parameterized by --mode local|full. local mode uses a scratch bare repo as the "remote" and asserts a pushed branch instead of a PR (no credentials, runs in CI); full mode uses the real toy repo and gh to open and verify the PR. Every step appends its command, exit code, and captured output to an evidence directory given as an argument. Local-mode step mapping (PR-008), recorded per step in the evidence: step 1's A-1/seed precondition is replaced by creating the scratch bare repo (recorded); step 6's PR clause is substituted by the pushed branch ref visible in the bare repo's git ls-remote output; step 9's merge is performed by the harness itself as a squash merge into the bare repo's default branch (clone, git merge --squash, commit, push), so the squash path is witnessed in both modes (PR-001); gh-only observations (pr view OPEN and MERGED) are recorded as "mode: full-only, skipped in local". The harness never writes an evidence file for a command it did not execute.
   3. Create the deterministic stub payload script scripts/stub-payload.sh: in the spawned worktree, append one line to the toy README, commit, push the task branch, and in full mode open a PR via gh, printing the PR URL.
   4. Wire scripts/m1-exit-test.sh --mode local into the CI gates workflow as an additional step, so the skeleton plumbing is exercised end to end on every kernel PR from this phase on.
 - files-to-touch: sandbox/ (create, several small files), scripts/seed-sandbox.sh, scripts/m1-exit-test.sh, scripts/stub-payload.sh, test/exit-test-local.test.js (create); .github/workflows/gates.yml (edit: add the local-mode step; verify job layout first).
 - acceptance criteria:
   1. In a clone of the seeded toy repo, npm ci and npm test exit 0 with at least 1 test.
-  2. scripts/m1-exit-test.sh --mode local <evidence-dir> exits 0 on a machine with only git, node, and npm, and the evidence directory afterward contains, for every numbered step of section 4, a file recording the step's command and exit code.
-  3. In local mode the harness's assertions include, verifiably from the evidence files: teardown refusal exit code nonzero while the branch is unmerged, watcher exit line matching "signal <task-id> turn-end", and teardown exit 0 after merge.
+  2. scripts/m1-exit-test.sh --mode local <evidence-dir> exits 0 on a machine with only git, node, and npm, and the evidence directory afterward contains, for every numbered step of section 4, a file recording either the executed command and exit code or the documented local-mode substitution from the step mapping table, "mode: full-only, skipped in local" entries included (PR-008).
+  3. In local mode the harness's assertions include, verifiably from the evidence files: teardown refusal exit code nonzero while the branch is unmerged, watcher exit line matching "signal <task-id> turn-end", and teardown exit 0 after the harness's squash merge (PR-001).
   4. The gates CI job runs the local-mode harness and the phase PR shows the gates check completed successfully.
   5. Deliberately breaking the guard (running the harness with an env override that skips the merge step) makes the harness exit nonzero (the harness is falsifiable, not a script that always passes).
   6. node --test exits 0, total test count strictly greater than M1-P5's count, 0 failing.
 - suggested model tier: cheaper tier acceptable (scripting against contracts fixed by P3 to P5).
-- citations: R-003, R-052b, R-078 (the three exit-test behaviors this harness exercises); blueprint section 13 (M1 contents: toy sandbox project; M1 exit test); process doc section 7 (evidence over claims).
+- citations: R-003 and R-078 (exit-test behaviors this harness exercises: spawned worktree task, watcher wake); blueprint section 4 teardown contract (the unlanded-work refusal exercised by the harness has no R row of its own; R-052b's report-gated scout closure is exercised by M1-P4 criterion 9, not by this harness) (PR-011); blueprint section 13 (M1 contents: toy sandbox project; M1 exit test); blueprint principle 5 and process doc section 7 (evidence over claims).
 - conflicts-with: none remaining (last M1 phase).
 - blocked-by: DR-0005, DR-0007; owner action A-1 (toy repo exists).
 
@@ -250,12 +257,12 @@ Procedure (the harness automates steps 2 to 10 and records every command, exit c
 1. Preconditions: kernel repo at main head; npm ci && npm test exits 0; owner action A-1 done and the toy repo seeded (scripts/seed-sandbox.sh exit 0).
 2. tiphys init <fresh fleet dir> exits 0; tiphys doctor exits 0 with no FAIL lines.
 3. tiphys lock acquire exits 0.
-4. Clone the toy repo under the fleet's projects area.
+4. Clone the toy repo into <fleet>/projects/, the projects area created by tiphys init (PR-004).
 5. Start tiphys watch in the background; within one base interval state/watcher.beacon exists.
 6. tiphys spawn --task m1-exit --project <toy clone> --brief <trivial brief> --shape ship --exec scripts/stub-payload.sh exits 0. The stub payload lands the trivial change: evidence captured is the pushed branch and the PR URL; gh pr view <url> --json state reports OPEN. (This is the "one trivial task lands as a PR on the toy sandbox project via spawn" clause; the payload is a deterministic stub, not an LLM, per plan decision D-2.)
 7. Teardown refusal: tiphys teardown --task m1-exit exits nonzero while the PR is unmerged, with a reason line naming the branch; the worktree still exists.
 8. Watcher wake: the background watcher process has exited 0 with the single stdout line "signal m1-exit turn-end" (captured by the harness), demonstrating wake on completion.
-9. Merge the PR (owner or orchestrator per current-process merge practice); after gh pr view reports MERGED, tiphys teardown --task m1-exit exits 0, the worktree is removed, and meta status is closed.
+9. The PR is merged with gh pr merge --squash (owner approval per current-process merge practice precedes the merge), so the milestone witnesses the squash path (PR-001); after gh pr view reports MERGED, tiphys teardown --task m1-exit exits 0 (teardown fetches the toy clone's default branch before evaluating, and the merge-tree no-op check recognizes the squash merge as landed), the worktree is removed, and meta status is closed.
 10. tiphys lock release exits 0.
 
 Evidence recording: the harness's evidence directory is committed to the kernel repo at delivery/evidence/m1-exit-test/ (transcript per step, exit codes, the PR URL, the watcher stdout line) via a PR under the current process. The M2 milestone may not start before that evidence commit is on main. Nothing in this procedure depends on any M2 or later artifact: no gate registry, no report contract, no status line contract, no tuition flow (scout observation 1 honored).
@@ -294,7 +301,7 @@ Phase list (outline):
 
 Key risks: DR-0006 and DR-0008 must be decided before M3 detailed planning; the self-delivery exit run needs explicit supervision rules written before it starts (which current-process safeguards remain active during the exception); the migration-table walk is the largest single porting surface (74 rows) and must be phased by artifact, not attempted whole.
 
-Artifacts M3 must build: schemas/ (five schemas plus validator), roles/ (six briefs), AGENTS.md, checklists/, the canonical gate registry, tuition flow mechanics, the release pipeline.
+Artifacts M3 must build: schemas/ (five schemas plus validator), roles/ (six briefs), AGENTS.md (including the fleet-state commit/push discipline as an orchestrator duty, the SC-002 residue named by D-4, PR-012), checklists/, the canonical gate registry, tuition flow mechanics, the release pipeline.
 
 ## 7. M4 and M5
 
@@ -306,10 +313,10 @@ M5 (scale-out), one paragraph: parallelism turns ON. The conflict pre-pass scrip
 
 ## 8. Decisions taken in this plan (flag if you disagree)
 
-- D-1: The six firstmate BORROW components (watcher, liveness guard, session lock, worktree pool, spawn, teardown) are planned as BUILD from the blueprint section 4 one-line contracts, because no firstmate source is present in this repository (verification report, honest-failures). BORROW degrades to BUILD unless the owner supplies the source before the relevant phase dispatches; raised in the owner queue as DR-0009 because it may shrink M1 cost. Acceptance criteria are identical either way.
+- D-1: The six firstmate BORROW components (watcher, liveness guard, session lock, worktree pool, spawn, teardown) are planned as BUILD from the blueprint section 4 one-line contracts, because no firstmate source is present in this repository (verification report, honest-failures). BORROW degrades to BUILD unless the owner supplies the source before the relevant phase dispatches; raised in the owner queue as DR-0009 because it may shrink M1 cost. Acceptance criteria are identical either way. DR-0009 is consulted at dispatch and never blocks any phase; an option 1 answer arriving after the relevant phase has dispatched is ignored (PR-007).
 - D-2: M1 is six sequential phases (P1 ground, P2 fleet init + doctor, P3 lock + pool, P4 spawn + teardown, P5 watcher + liveness, P6 sandbox + exit harness); parallelism stays off until M5; the M1 exit test's spawned work is a deterministic stub payload, not an LLM agent, because judgment roles arrive in M3 and the exit test verifies plumbing, not judgment.
 - D-3: M1 state files (task meta, lock, beacon) are plain JSON parsed with Node built-ins, no schema library; DR-0006 governs M2-and-later schema artifacts. This keeps DR-0006 from blocking M1.
-- D-4 (vetoable): The fleet home is a private git repository with push discipline; gitignore narrowed to state/ and worktrees/ only, so charters, backlog, and decision records are durable (SC-002). Vetoable because decision records may contain material the owner wants in no remote.
+- D-4 (vetoable): The fleet home is a private git repository with push discipline; gitignore narrowed to state/, worktrees/, and projects/ only, so charters, backlog, and decision records are durable (SC-002, PR-004). M1 lands the structure only; the commit/push discipline for post-init fleet state is an M3 AGENTS.md orchestrator duty, named in the M3 outline (PR-012). Vetoable because decision records may contain material the owner wants in no remote.
 - D-5: Topology per section 1.5 (SC-003): no top-level kernel/ on fleet machines; kernel source under projects/, consumed kernel in node_modules.
 - D-6 (vetoable): SC-008 resolution: "merge authority: owner" means owner approval per PR is the gate and the orchestrator executes the merge serially as release manager; encoded structurally in M3 (AGENTS.md) and M4 (branch protection requiring an approving owner review).
 - D-7: An open question is represented as a decision record with status open (SC-009); the coverage checker's accepted reference types are exactly phase, decision, parked.
@@ -325,7 +332,7 @@ M5 (scale-out), one paragraph: parallelism turns ON. The conflict pre-pass scrip
 
 ## 9. Owner decisions
 
-Per the process rule, phases touching an undecided owner matter are blocked-by that DR and ship nothing until it is decided.
+Per the process rule, phases touching an undecided owner matter are blocked-by that DR and ship nothing until it is decided. DR-0009 is the declared exception: it sizes work without changing any contract, so it is consulted at dispatch and never blocks (PR-007).
 
 | DR | Question | Blocks |
 |---|---|---|
@@ -337,7 +344,7 @@ Per the process rule, phases touching an undecided owner matter are blocked-by t
 | DR-0006 (open, new) | Schema technology and artifact format (SC-005) | M3 detailed planning (not M1, per D-3) |
 | DR-0007 (open, new) | Orchestration runtime substrate (SC-007) | M1-P2 through M1-P6 |
 | DR-0008 (open, new) | Release registry and package naming (SC-012 + SC-006) | M3 release phase; M1-P1 name field follows its vetoable recommendation |
-| DR-0009 (open, new) | Firstmate source availability | M1-P3, M1-P4, M1-P5 (sizing only; reversible) |
+| DR-0009 (open, new) | Firstmate source availability | None: consult-at-dispatch, never blocks (PR-007). Outcome checked at M1-P3/P4/P5 dispatch; if undecided, proceed as BUILD per D-1; sizing only, reversible |
 
 Owner action A-1 (not a decision record: it is an act, not a choice): create the toy sandbox GitHub repository (or grant the orchestrator repo-creation permission), before M1-P6 dispatches.
 

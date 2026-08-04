@@ -16,7 +16,9 @@
 
 ## Recommendation
 
-Option 1 if the source is trivially at hand, option 2 otherwise; the plan proceeds on option 2 without waiting. Decide before M1-P3 dispatches (the first phase containing BORROW-marked components); a late option 1 after P3 has started buys nothing.
+Option 1 if the source is trivially at hand, option 2 otherwise; the plan proceeds on option 2 without waiting.
+
+Dispatch semantics (unambiguous, per plan review PR-007): this record never blocks any phase. The dispatcher consults it at M1-P3/P4/P5 dispatch time; if it is undecided, the phase proceeds as BUILD (option 2) per plan decision D-1. Decide before M1-P3 dispatches if option 1 is wanted; an option 1 answer arriving after M1-P3 has dispatched is ignored, because a late port buys nothing.
 
 ## Evidence
 
