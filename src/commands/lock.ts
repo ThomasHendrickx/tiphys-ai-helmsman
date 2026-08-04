@@ -1,11 +1,15 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import { EX_USAGE } from "../cli.ts";
 import { loadFleet } from "../fleet.ts";
 import {
   acquireLease,
   leaseStatus,
+  observeLease,
   releaseLease,
   renewLease,
 } from "../lock.ts";
+import type { ObservedLease } from "../lock.ts";
 
 /**
  * tiphys lock <acquire [--take-over] [--duration <seconds>] | renew
@@ -25,6 +29,34 @@ interface LockArgs {
   takeover: boolean;
   holder: string | undefined;
   durationSeconds: number | undefined;
+}
+
+/**
+ * Deterministic race-witness hold point (the plan's test determinism
+ * rule: scripted interleaves over sleep-based timing). When
+ * TIPHYS_LOCK_TEST_HOLD names a barrier path, the mutating subcommands
+ * observe the lease and freeze their decision clock first, write
+ * <barrier>.observed as a ready marker, then wait for the barrier file
+ * to appear before deciding and applying through the one mutation
+ * primitive. A test can thereby interleave two real CLI invocations at
+ * the exact compare-and-swap point. Inert unless the variable is set;
+ * the wait is bounded so an abandoned barrier cannot hang a command.
+ */
+async function maybeHoldForTest(
+  lockPath: string,
+): Promise<{ observed: ObservedLease; nowMs: number } | undefined> {
+  const barrier = process.env.TIPHYS_LOCK_TEST_HOLD;
+  if (barrier === undefined || barrier === "") {
+    return undefined;
+  }
+  const observed = observeLease(lockPath);
+  const nowMs = Date.now();
+  writeFileSync(`${barrier}.observed`, "");
+  const deadline = Date.now() + 30_000;
+  while (!existsSync(barrier) && Date.now() < deadline) {
+    await sleep(10);
+  }
+  return { observed, nowMs };
 }
 
 function usageError(message?: string): number {
@@ -85,9 +117,12 @@ export async function cmdLock(args: string[]): Promise<number> {
       if (flags.holder !== undefined) {
         return usageError("acquire does not take --holder");
       }
+      const held = await maybeHoldForTest(lockPath);
       const outcome = await acquireLease(lockPath, {
         takeover: flags.takeover,
         durationSeconds: flags.durationSeconds,
+        observed: held?.observed,
+        nowMs: held?.nowMs,
       });
       if (!outcome.ok) {
         process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
@@ -104,8 +139,11 @@ export async function cmdLock(args: string[]): Promise<number> {
       if (flags.holder === undefined || flags.takeover) {
         return usageError("renew requires --holder <id>");
       }
+      const held = await maybeHoldForTest(lockPath);
       const outcome = await renewLease(lockPath, flags.holder, {
         durationSeconds: flags.durationSeconds,
+        observed: held?.observed,
+        nowMs: held?.nowMs,
       });
       if (!outcome.ok) {
         process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
@@ -122,7 +160,10 @@ export async function cmdLock(args: string[]): Promise<number> {
       if (flags.holder === undefined || flags.takeover || flags.durationSeconds !== undefined) {
         return usageError("release requires --holder <id> and no other flags");
       }
-      const outcome = await releaseLease(lockPath, flags.holder);
+      const held = await maybeHoldForTest(lockPath);
+      const outcome = await releaseLease(lockPath, flags.holder, {
+        observed: held?.observed,
+      });
       if (!outcome.ok) {
         process.stderr.write(`tiphys lock: ${outcome.reason}\n`);
         return 1;
