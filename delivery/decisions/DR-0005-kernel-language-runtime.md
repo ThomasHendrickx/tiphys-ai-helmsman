@@ -5,9 +5,13 @@
 - task: stage-1-plan
 - question: What language and runtime is the kernel's executable surface (bin/, the toolbelt, the doctor CLI, all M1 and M2 deliverables) written in? Raised by finding SC-004: neither intake document decides this, and the charter schema itself classes "stack, language" as an irreversible decision that blocks realization.
 - reversibility: irreversible in practice (every M1 and M2 deliverable is written in this language; deciding differently later means rewriting the whole toolbelt, which is milestone-scale rework)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Option 2, TypeScript compiled to JavaScript (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner kept the Node.js runtime and chose TypeScript sources compiled to JavaScript, for the typed error checking. Orchestrator note for the record: option 1 provided the same compile-time error check (the TypeScript compiler runs over JSDoc-annotated JavaScript); the owner's choice buys nicer type syntax at the cost of a build step, which the options section already priced in. Recorded as decided. Consequences: plan revision 2 before any dispatch (plan decision D-16); the compiled dist output falls under the process doc's generated-artifact drift gate (regenerate and commit, CI fails on drift or dist is built in CI and never committed, the plan revision picks one and says which).
 
 ## Options
 

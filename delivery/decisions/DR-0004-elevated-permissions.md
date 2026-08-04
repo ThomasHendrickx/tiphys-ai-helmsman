@@ -9,6 +9,10 @@
 - decided: (pending)
 - date: 2026-08-04
 
+## Plain-language context (added after owner review round 1)
+
+Today nothing stops anyone (including any agent with push access) from pushing straight to main on this repository. The blueprint requires the opposite: changes reach main only through a pull request with green CI, enforced by GitHub settings rather than by instructions to agents. Changing repository settings requires admin rights, which the orchestrator does not have and will never assume. So this record asks you to approve three commands (listed below under proposed owner actions) that you run yourself once the first phase has delivered the CI workflow: confirm the default branch, switch on the protection rule requiring a pull request plus a passing check named "gates", and verify it took. The orchestrator will re-surface the exact commands at the moment they become runnable. The question in one line: do you approve turning on this branch protection, to be executed by you right after phase 1 merges?
+
 ## Proposed owner actions
 
 Timing: run item 1 any time; run items 2 and 3 after the first CI workflow lands on main (the required check name must exist first). Item 4 is optional hardening for M2.

@@ -5,9 +5,13 @@
 - task: stage-1-plan
 - question: Which registry does M3's v0.1.0 release publish to, and under what package names? Raised by finding SC-012: the blueprint's M3 exit test names GitHub Packages, which requires a GitHub organization named tiphys to host the settled @tiphys scope and requires authenticated installs in every fleet home; this is in tension with the settled npm-distribution decision's "npm install is the upgrade" path. Folds in finding SC-006 (package names under the settled scope are undecided) as a vetoable recommendation.
 - reversibility: costly (published npm names are effectively permanent once depended on; fleet homes and the plugin pin them from M4 on)
-- status: open
+- status: open (deferred by owner, 2026-08-04; due before the M3 plan is approved)
 - decided: (pending)
 - date: 2026-08-04
+
+## Deferral note
+
+Owner asked whether this must be decided now. It must not: nothing before M3 depends on it except the package.json name field, which is a one-line change at any time before first publish. The plan carries the recommendation as the working assumption; the decision falls due when the M3 plan is presented.
 
 ## Options
 

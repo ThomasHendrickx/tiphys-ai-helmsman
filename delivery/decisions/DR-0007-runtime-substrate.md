@@ -9,6 +9,10 @@
 - decided: (pending)
 - date: 2026-08-04
 
+## Plain-language context (added after owner review round 1)
+
+When Tiphys is live (M4 and later), the orchestrator, its agents, and the watcher have to run somewhere. Two candidate homes exist. First, a machine you control that stays on (laptop, desktop, home server): processes can stay resident, terminal windows can hold agents, a lockfile can point at a live process id. Second, throwaway cloud sessions like the one building Tiphys right now: containers that are reclaimed between uses, where nothing stays resident. The blueprint's M1 components (a watcher that sleeps as a process, spawn allocating a window, pid-based locks) only work as written on the first kind. The recommendation is to build v1 for a machine you control and keep the machine-specific parts behind a small interface so cloud support can be added later without a rewrite. The question in one line: will your fleet run on a machine you control, and is designing v1 for that acceptable?
+
 ## Options
 
 1. Persistent local machine. The fleet home lives on a machine the owner controls; the watcher is a resident process; spawn allocates a terminal-multiplexer window (or equivalent) via a small adapter; locks are per-fleet lockfiles with pid liveness. This is what the blueprint reads as intending.

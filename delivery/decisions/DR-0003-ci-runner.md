@@ -5,9 +5,13 @@
 - task: stage-1-intake
 - question: Which CI system and runner image do the kernel repository's gates run on?
 - reversibility: reversible in principle, but every gate script, the gate registry, and the M1 exit test bind to it, so switching later costs a phase; treated as costly and therefore owner-decided
-- status: open
-- decided: (pending)
+- status: decided
+- decided: GitHub Actions, hosted runners (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner chose GitHub Actions on hosted runners ("this is way too small to have anything else"). Runner image ubuntu-latest, Node matrix per DR-0002 (26 only).
 
 ## Options
 

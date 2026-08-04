@@ -5,9 +5,13 @@
 - task: stage-1-intake
 - question: Which license does the public tiphys-ai-helmsman repository (and the @tiphys npm packages built from it) ship under?
 - reversibility: costly (relicensing published npm versions is practically impossible; the license travels with every installed copy)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Apache-2.0 (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner chose Apache-2.0 over the MIT recommendation. Implementation: M1-P1 ships a LICENSE file with the Apache-2.0 text and sets "license": "Apache-2.0" in package.json. A NOTICE file is added when third-party notices first require one.
 
 ## Options
 

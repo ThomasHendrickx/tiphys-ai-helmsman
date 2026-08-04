@@ -9,6 +9,10 @@
 - decided: (pending)
 - date: 2026-08-04
 
+## Plain-language context (added after owner review round 1)
+
+The blueprint's toolbelt table (section 4) marks six M1 components as BORROW from something called firstmate: the watcher, liveness guard, session lock, worktree pool, spawn, and teardown guard. Firstmate appears to be a prior system of yours (the blueprint's origin line says "selective borrows from firstmate"), but its source code is not in this repository and the orchestrator has no access to it. If you have that code and share it before phase 3 starts, implementers port the six components instead of writing them fresh, which is cheaper and carries proven behavior. If you stay silent or do not have it, everything is built fresh from the blueprint's one-line contracts, which is what the plan already assumes. This decision never blocks anything. The question in one line: do you have the firstmate source, and do you want to hand it over before phase 3?
+
 ## Options
 
 1. Owner supplies the firstmate source (or the relevant files) before M1-P3 dispatches. The six components are ported and adapted: likely cheaper and carries proven behavior, at the cost of adapting to the DR-0005 language choice and the kernel's layout.

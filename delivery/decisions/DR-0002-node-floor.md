@@ -5,9 +5,13 @@
 - task: stage-1-intake
 - question: What is the minimum Node.js version the kernel supports (package.json engines field, and the version every fleet home must run)?
 - reversibility: costly (raising the floor later is a breaking change for every fleet home; setting it too low forbids newer runtime APIs across the whole toolbelt)
-- status: open
-- decided: (pending)
+- status: decided
+- decided: Node >= 26 (owner, 2026-08-04)
 - date: 2026-08-04
+
+## Decision
+
+Owner chose a floor of Node 26, reasoning that 26 is the LTS line entering long-term support in Q4 2026 and that a 22 floor is a 2024 era baseline for a system whose first release lands after 26 is stable. Recorded consequences, stated for honesty not as pushback: as of 2026-08, Node 26 is the Current line and enters LTS in October 2026, so until then every machine running the kernel (including CI and the eventual fleet machine) must run a Current release. CI matrix: Node 26 only. package.json engines: ">=26".
 
 ## Options
 

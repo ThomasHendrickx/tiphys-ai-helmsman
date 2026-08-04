@@ -9,6 +9,10 @@
 - decided: (pending)
 - date: 2026-08-04
 
+## Plain-language context (added after owner review round 1)
+
+The system runs on paperwork: charters you write per project, plans, decision records (files like this one), status lines, reports. The blueprint requires that paperwork to be machine-validated (a charter with a missing field must block work from starting). This decision picks the file format that paperwork is written in and the technology that validates it. The recommendation: markdown documents with a small structured header block (YAML frontmatter) that scripts validate against JSON Schema files, so you write prose and machines check structure. These decision-record files are already shaped that way. Nothing in M1 depends on this; it falls due when M2 gate formats or the M3 schema work is planned. It can be deferred exactly like DR-0008 if preferred.
+
 ## Options
 
 1. Markdown artifacts with YAML frontmatter, frontmatter validated by JSON Schema (schemas/ holds one JSON Schema file per artifact type; a small kernel validator checks frontmatter structure, required prose sections checked by heading presence). Humans read and write prose; scripts validate structure. Matches how the existing decision records are already shaped.
