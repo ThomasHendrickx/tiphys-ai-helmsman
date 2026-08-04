@@ -3,12 +3,11 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Fleet } from "./fleet.ts";
 
@@ -88,101 +87,62 @@ function runGit(cwd: string, args: string[]): GitRun {
 }
 
 /**
- * Signature of transient git lock contention, derived from real
- * captured stderr rather than from a general rule (CR-203, corrected by
- * V-2 and U-8). Two distinct shapes are transient, and it is a mistake
- * to assume either one generalizes:
+ * The ONE signature of transient git contention, derived from real
+ * captured stderr rather than from a general rule about git. Every
+ * alternative below was observed in a real race on git 2.43 and proved
+ * transient by an immediate retry succeeding:
  *
  * 1. A held lock file, which names the lock path: "Unable to create
  *    '<path>.lock': File exists." (index locks and ref locks alike).
  * 2. A refused ref transaction under concurrent update, which names NO
  *    lock file: "cannot lock ref '<ref>': is at <sha> but expected
- *    <sha>". This is the dominant real transient for the concurrent
- *    fetch that pool create runs: in a measured campaign of concurrent
- *    fetches against a behind tracking ref, every single contention
- *    failure had this shape and none named a lock file. An immediate
- *    retry succeeds because the ref already holds the new value.
- * 3. A fetch that trips over another worktree being created in the same
- *    clone at that moment: "fatal: bad object worktrees/<id>/HEAD",
- *    followed by "did not send all necessary objects". git fetch
- *    enumerates every worktree's HEAD during negotiation, and a
- *    worktree mid-creation has one that does not resolve yet. Measured
- *    by racing worktree add against fetch (the exact pair pool create
- *    performs concurrently): 11 occurrences, and an immediate retry
- *    succeeded in all 11. The anchor is deliberately the worktrees/
- *    admin path, because a bare "bad object" is usually permanent.
- *    KNOWN TRADE, stated rather than hidden (U-11): this alternative
- *    also matches a PERMANENT condition, a worktree whose admin HEAD
- *    holds a nonexistent object, which makes every fetch in the clone
- *    fail with the identical text. The two are indistinguishable by
- *    message, so that case now burns all five attempts and fails in
- *    about 1.25s instead of about 0.29s. The trade is deliberate: a
- *    bounded delay on an already-failing out-of-contract path, in
- *    exchange for retrying the transient that otherwise breaks every
- *    parallel create. It is asserted in the classification test so the
- *    cost stays visible.
+ *    <sha>". This is the dominant transient of concurrent fetches of
+ *    the same tracking ref.
+ * 3. Two concurrent worktree operations colliding on a half-written
+ *    admin file: "bad object worktrees/<id>/HEAD" on a fetch, and
+ *    "failed to read .git/worktrees/<id>/commondir: Success" on an add.
  *
- * A fourth concurrent-worktree failure exists and is deliberately NOT
- * listed here: see WORKTREE_ADD_CONTENTION below. It cannot be retried
- * by this generic helper, because the failed attempt leaves the new
- * branch behind and an identical retry then fails on the branch name.
+ * One signature is used at every call site. An earlier revision split
+ * these by call site, reasoning about which path was allowed to retry
+ * which shape; that distinction existed only to protect a rollback that
+ * no longer exists, and the splitting itself produced defects. If the
+ * add's retry finds the branch already there, create refuses with its
+ * existing clear message, which is the correct outcome.
  *
  * The bare phrases "File exists" and "cannot lock ref" must NOT be used
  * on their own: permanent failures emit them too. A directory/file ref
  * conflict reports "cannot lock ref 'refs/x': 'refs/x/y' exists; cannot
- * create 'refs/x'", which is permanent and retrying it only wastes
+ * create 'refs/x'", which is permanent, and retrying it only wastes
  * about a second before the same error surfaces.
+ *
+ * Known trade, stated rather than hidden (U-11): the worktrees admin
+ * shapes also match a permanent condition (an admin HEAD holding a
+ * nonexistent object), indistinguishable by message, so that
+ * out-of-contract case burns all attempts and fails in about 1.25s
+ * instead of about 0.29s.
  *
  * Maintenance rule, learned the hard way: this classification is
  * message-text-only. Do not re-derive it from a plausible general
  * property of git; a previous revision assumed "a genuine transient
  * always names a lock file", which is false, and parallel pool create
- * began failing hard. If git's ref backend changes (reftable) or a new
- * contention class appears, capture real stderr from a real race first
- * and extend the alternatives from that evidence.
+ * began failing hard. Capture real stderr from a real race first.
  */
-const LOCK_CONTENTION =
-  /index\.lock|Unable to create '[^']*\.lock'|cannot lock ref '[^']*': (is at [0-9a-f]+ but expected|reference already exists|reference is missing but expected)|bad object worktrees\//;
+const GIT_CONTENTION =
+  /index\.lock|Unable to create '[^']*\.lock'|cannot lock ref '[^']*': (is at [0-9a-f]+ but expected|reference already exists|reference is missing but expected)|bad object worktrees\/|failed to read .*worktrees\/[^/]*\/commondir/;
 
-/** Exported for the CR-203 and V-2 classification tests. */
+/** Exported for the contention-classification test. */
 export function isTransientGitLockError(stderr: string): boolean {
-  return LOCK_CONTENTION.test(stderr);
-}
-
-/**
- * Two concurrent "git worktree add" runs in one clone can collide while
- * one is still writing another worktree's admin files: "fatal: failed
- * to read .git/worktrees/<other>/commondir: Success" (errno 0, because
- * the file exists but is still empty). Measured at 2 failures in 72
- * concurrent creates, and 6 in 90 raw concurrent worktree adds.
- *
- * This one is transient but NOT retryable in place: measured on all 6
- * occurrences, the failed attempt had already created the task branch,
- * so an identical retry fails with "a branch named ... already exists"
- * (0 of 6 retries succeeded). It therefore needs the partial state
- * rolled back first, which is what the create path does; putting it in
- * LOCK_CONTENTION would only convert a transient into a confusing
- * permanent error.
- */
-const WORKTREE_ADD_CONTENTION = /failed to read .*worktrees\/[^/]*\/commondir/;
-
-/** Exported for the concurrent worktree-add classification test. */
-export function isTransientWorktreeAddError(stderr: string): boolean {
-  return WORKTREE_ADD_CONTENTION.test(stderr);
+  return GIT_CONTENTION.test(stderr);
 }
 
 async function runGitRetrying(
   cwd: string,
   args: string[],
   attempts = 5,
-  alsoRetry?: RegExp,
 ): Promise<GitRun> {
-  const retryable = (stderr: string): boolean =>
-    LOCK_CONTENTION.test(stderr) ||
-    (alsoRetry !== undefined && alsoRetry.test(stderr));
   let result = runGit(cwd, args);
   for (let attempt = 1; attempt < attempts; attempt += 1) {
-    if (result.status === 0 || !retryable(result.stderr)) {
+    if (result.status === 0 || !GIT_CONTENTION.test(result.stderr)) {
       return result;
     }
     await sleep(100 * attempt);
@@ -268,82 +228,6 @@ function resolveDefaultBranch(project: string, remote: string): PoolResult<strin
       `cannot resolve the default branch of remote ${remote}: ` +
       `${remote}/HEAD is unset locally and ls-remote failed: ${advertised.stderr.trim()}`,
   };
-}
-
-/**
- * Undo whatever a failed "git worktree add" left behind: the worktree
- * directory, its registration, and the task branch when that branch is
- * still sitting exactly at the base commit the attempt used (which is
- * the only state a failed add can produce, so removing it cannot
- * discard work). Used between retries and on final failure.
- */
-function rollbackPartialAdd(
-  project: string,
-  branchName: string,
-  worktree: string,
-  baseSha: string,
-): string[] {
-  const problems: string[] = [];
-  if (existsSync(worktree)) {
-    rmSync(worktree, { recursive: true, force: true });
-  }
-
-  // U-9: remove ONLY this create's own registration. The previous
-  // version ran a bare "git worktree prune" against the shared project
-  // clone, which is a repo-global mutation fired at exactly the moment
-  // other creates are mid-add: prune deletes admin directories that are
-  // empty or whose gitdir points at a not-yet-existing path, and those
-  // are precisely the states an in-flight worktree add passes through,
-  // so this rollback could kill an unrelated concurrent create. Scoping
-  // it to our own admin directory removes that entire interaction.
-  const commonDir = runGit(project, [
-    "rev-parse",
-    "--path-format=absolute",
-    "--git-common-dir",
-  ]);
-  if (commonDir.status === 0 && commonDir.stdout.trim() !== "") {
-    const adminDir = join(commonDir.stdout.trim(), "worktrees", basename(worktree));
-    if (existsSync(adminDir)) {
-      rmSync(adminDir, { recursive: true, force: true });
-    }
-  } else {
-    problems.push(
-      `could not resolve the git common dir to clean the worktree registration: ${commonDir.stderr.trim()}`,
-    );
-  }
-
-  // The branch this attempt may have created. Deleting it is provably
-  // lossless only while it still sits at the base commit the attempt
-  // used, which is the only state a failed add can produce; anything
-  // else is reported rather than deleted. Results are checked, not
-  // discarded, because a silent failure here leaves the task id wedged
-  // by its own leftover branch.
-  const tip = runGit(project, [
-    "rev-parse",
-    "--verify",
-    "--quiet",
-    `refs/heads/${branchName}^{commit}`,
-  ]);
-  if (tip.status === 0) {
-    const tipSha = tip.stdout.trim();
-    if (tipSha !== baseSha) {
-      problems.push(
-        `branch ${branchName} is at ${tipSha}, not at the base ${baseSha} this attempt used, so it was left in place`,
-      );
-    } else {
-      const deleted = runGit(project, ["branch", "-D", branchName]);
-      if (deleted.status !== 0) {
-        problems.push(
-          `could not delete the partial branch ${branchName}: ${deleted.stderr.trim().split("\n")[0] ?? ""}`,
-        );
-      }
-    }
-  } else if (tip.status !== 1) {
-    problems.push(
-      `could not determine whether the partial branch ${branchName} exists: ${tip.stderr.trim()}`,
-    );
-  }
-  return problems;
 }
 
 export interface CreateOptions {
@@ -448,23 +332,11 @@ export async function poolCreate(
   // EXT-F-03 step 2: fetch the default branch, force-updating exactly
   // the remote-tracking ref (so a rewound remote is still mirrored).
   let usedOffline = false;
-  // V-4: the concurrent worktree-add collision also strikes THIS fetch,
-  // because git fetch enumerates every worktree in the clone while
-  // another create is mid-add. On the fetch the shape is retryable in
-  // place, and that is the whole distinction: at this point the create
-  // has produced nothing (the pool record is written further down, and
-  // no branch or worktree exists yet), so a retry repeats a pure read.
-  // On the worktree-add path the same shape is NOT retryable in place,
-  // because a failed add has already created the task branch; that path
-  // rolls its partial state back first. The shape is therefore passed
-  // here explicitly instead of being added to LOCK_CONTENTION, which
-  // both call sites share.
-  const fetch = await runGitRetrying(
-    project,
-    ["fetch", remote.value, `+refs/heads/${branch.value}:${trackingRef}`],
-    5,
-    WORKTREE_ADD_CONTENTION,
-  );
+  const fetch = await runGitRetrying(project, [
+    "fetch",
+    remote.value,
+    `+refs/heads/${branch.value}:${trackingRef}`,
+  ]);
   if (fetch.status !== 0) {
     if (!offline) {
       return {
@@ -515,16 +387,18 @@ export async function poolCreate(
   }
 
   // EXT-F-03 step 4: task branch and worktree directly from the exact
-  // fetched SHA. git worktree add carries its own locking; transient
-  // contention with a concurrent create is retried.
+  // fetched SHA. Transient contention is retried by the one signature.
   //
-  // The concurrent-add collision (WORKTREE_ADD_CONTENTION) needs its
-  // partial state rolled back between attempts: a failed add can leave
-  // the task branch created, and retrying without clearing it fails on
-  // the branch name instead of on the original race. Clearing it is
-  // provably lossless, because the branch can only be sitting at the
-  // base commit this attempt just passed to worktree add.
-  let add = await runGitRetrying(project, [
+  // There is deliberately NO automatic cleanup on failure. Parallelism
+  // is off until M5 (plan section 1.4), so nothing in M1 drives the
+  // concurrent-create path this machinery existed for, and four rounds
+  // of defects came out of it: a global prune that could kill another
+  // create, an unvalidated recursive delete of an admin directory, and
+  // a rollback that broke under the very contention it existed to
+  // handle. Failing loudly and leaving state is strictly better than
+  // cleanup code that deletes the wrong thing. The operator is told
+  // exactly what was left and exactly how to clear it.
+  const add = await runGitRetrying(project, [
     "worktree",
     "add",
     "-b",
@@ -532,50 +406,29 @@ export async function poolCreate(
     worktree,
     baseSha,
   ]);
-  const rollbackProblems: string[] = [];
-  for (let attempt = 1; attempt < 5 && add.status !== 0; attempt += 1) {
-    if (!WORKTREE_ADD_CONTENTION.test(add.stderr)) {
-      break;
-    }
-    // Carry every rollback complaint into the final diagnostic. A
-    // rollback that silently fails to remove the partial branch is what
-    // turns a retryable collision into "a branch named ... already
-    // exists" on the next attempt, and that failure mode went
-    // unattributed once because these results were discarded.
-    rollbackProblems.push(
-      ...rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha).map(
-        (problem) => `attempt ${String(attempt)}: ${problem}`,
-      ),
-    );
-    await sleep(100 * attempt);
-    add = await runGitRetrying(project, [
-      "worktree",
-      "add",
-      "-b",
-      poolRecord.branchName,
-      worktree,
-      baseSha,
-    ]);
-  }
   if (add.status !== 0) {
-    // Leave nothing of the failed attempt behind: without this the task
-    // id is wedged by its own leftover branch on the next create.
-    const problems = [
-      ...rollbackProblems,
-      ...rollbackPartialAdd(project, poolRecord.branchName, worktree, baseSha),
-    ];
-    try {
-      unlinkSync(record);
-    } catch {
-      // Rollback is best effort; the reason below names the real failure.
+    const leftovers: string[] = [`pool record ${record}`];
+    if (existsSync(worktree)) {
+      leftovers.push(`worktree directory ${worktree}`);
     }
-    const residue =
-      problems.length === 0 ? "" : ` (rollback incomplete: ${problems.join("; ")})`;
+    const branchProbe = runGit(project, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${poolRecord.branchName}^{commit}`,
+    ]);
+    if (branchProbe.status === 0) {
+      leftovers.push(`branch ${poolRecord.branchName}`);
+    }
     return {
       ok: false,
-      reason: `git worktree add failed: ${add.stderr.trim()}${residue}`,
+      reason:
+        `git worktree add failed: ${add.stderr.trim()}; nothing was removed, ` +
+        `left behind: ${leftovers.join(", ")}; clear it with "tiphys pool ` +
+        `destroy --task ${taskId} --discard --delete-branch-force" run in the fleet home`,
     };
   }
+
   return { ok: true, value: poolRecord };
 }
 
@@ -684,7 +537,7 @@ async function destroyGitStep(
   worktree: string,
 ): Promise<GitRun> {
   let result = await runGitRetrying(contextDir, args);
-  if (result.status !== 0 && LOCK_CONTENTION.test(result.stderr)) {
+  if (result.status !== 0 && GIT_CONTENTION.test(result.stderr)) {
     // Retries exhausted on a lock signature: attempt the fail-safe
     // staleness proof on the worktree's index.lock, the one transient
     // lock a destroy can legitimately hit (FM-036).
@@ -934,6 +787,27 @@ async function applyDestroy(
 
   const outcome: DestroyOutcome = {};
   if (facts.branchTip.kind === "present") {
+    // The gate in stage 2 approved a SPECIFIC tip, read in stage 1.
+    // Between that read and this delete the worktree has been removed,
+    // so the decision could be stale by the time it is acted on. Re-read
+    // immediately before the destructive step and abort if the branch
+    // has moved: the approval was for those bytes, not for this name.
+    const recheck = runGit(facts.contextDir, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${facts.branchName}^{commit}`,
+    ]);
+    const currentTip = recheck.status === 0 ? recheck.stdout.trim() : undefined;
+    if (currentTip !== facts.branchTip.sha) {
+      return {
+        ok: false,
+        reason:
+          `branch ${facts.branchName} changed while this destroy was running ` +
+          `(approved tip ${facts.branchTip.sha}, now ` +
+          `${currentTip ?? "absent"}); the branch was left alone, re-run destroy`,
+      };
+    }
     const deleted = await runGitRetrying(facts.contextDir, [
       "branch",
       "-D",

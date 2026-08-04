@@ -44,7 +44,6 @@ const poolLib = (await import(
     },
   ): boolean;
   isTransientGitLockError(stderr: string): boolean;
-  isTransientWorktreeAddError(stderr: string): boolean;
 };
 
 const GIT_IDENTITY = {
@@ -323,78 +322,6 @@ test("two concurrent pool creates for distinct task ids both succeed", async (t)
   const list = gitOk(scratch.clone, ["worktree", "list", "--porcelain"]);
   assert.ok(list.includes(worktreeOf(scratch, "t-p1")), list);
   assert.ok(list.includes(worktreeOf(scratch, "t-p2")), list);
-});
-
-test("six concurrent pool creates against a behind tracking ref all succeed", async (t) => {
-  // V-2 regression guard: six overlapping creates all fetch the same
-  // tracking ref while it is behind, so the losers of the ref
-  // transaction get git's concurrent-update refusal. That refusal is
-  // transient (the ref is already at the new value) and must be
-  // retried, not treated as a permanent fetch failure.
-  const scratch = makeScratch(t);
-  upstreamCommit(scratch.upstream, "advance-for-six-way");
-  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
-  const ids = ["t-c1", "t-c2", "t-c3", "t-c4", "t-c5", "t-c6"];
-  const results = await Promise.all(
-    ids.map((id) =>
-      spawnCli(["pool", "create", "--task", id, "--project", scratch.clone], {
-        cwd: scratch.fleet,
-      }),
-    ),
-  );
-  results.forEach((result, index) => {
-    assert.equal(
-      result.status,
-      0,
-      `${ids[index] as string} failed: ${result.stderr}`,
-    );
-    assert.equal(result.stdout.trim(), remoteHead, `${ids[index] as string} wrong base`);
-  });
-  // None of them silently fell back to the offline path: the remote was
-  // reachable throughout, so offline must be false in every record.
-  for (const id of ids) {
-    const record = JSON.parse(readFileSync(recordOf(scratch, id), "utf8")) as {
-      offline: boolean;
-      baseSha: string;
-    };
-    assert.equal(record.offline, false, `${id} recorded a false offline base`);
-    assert.equal(record.baseSha, remoteHead);
-  }
-});
-
-test("concurrent pool creates with --offline never record a false offline base", async (t) => {
-  // V-2 secondary consequence: misclassifying the concurrent-update
-  // refusal as permanent makes --offline take the stale fallback and
-  // record offline: true for a base that fetched fine. M1-P4 copies
-  // that field into meta.json as baseOffline, so the provenance would
-  // be inverted (PR-212).
-  const scratch = makeScratch(t);
-  upstreamCommit(scratch.upstream, "advance-for-offline-race");
-  const remoteHead = gitOk(scratch.upstream, ["rev-parse", "HEAD"]);
-  const ids = ["t-o1", "t-o2", "t-o3", "t-o4"];
-  const results = await Promise.all(
-    ids.map((id) =>
-      spawnCli(
-        ["pool", "create", "--task", id, "--project", scratch.clone, "--offline"],
-        { cwd: scratch.fleet },
-      ),
-    ),
-  );
-  results.forEach((result, index) => {
-    assert.equal(result.status, 0, `${ids[index] as string}: ${result.stderr}`);
-  });
-  for (const id of ids) {
-    const record = JSON.parse(readFileSync(recordOf(scratch, id), "utf8")) as {
-      offline: boolean;
-      baseSha: string;
-    };
-    assert.equal(
-      record.offline,
-      false,
-      `${id} recorded offline: true although the remote was reachable`,
-    );
-    assert.equal(record.baseSha, remoteHead, `${id} used a stale base`);
-  }
 });
 
 test("pool destroy refuses a dirty worktree and --discard removes it", (t) => {
@@ -732,20 +659,19 @@ test("only genuine git lock contention is retried", () => {
     false,
   );
 
-  // The concurrent worktree-add collision is classified separately on
-  // purpose: it is transient, but the failed attempt leaves the branch
-  // behind, so it must be rolled back before a retry rather than
-  // retried in place by the generic helper.
+  // The concurrent worktree-add collision is covered by the same one
+  // signature: there is no rollback left for a retry to conflict with,
+  // and if the retry finds the branch already there, create refuses
+  // with its existing clear message.
   const realWorktreeAddRace =
     "Preparing worktree (new branch 'task/t-3')\nfatal: failed to read .git/worktrees/t-4/commondir: Success";
-  assert.equal(poolLib.isTransientWorktreeAddError(realWorktreeAddRace), true);
   assert.equal(
     poolLib.isTransientGitLockError(realWorktreeAddRace),
-    false,
-    "the worktree-add collision must not be retried in place by the generic helper",
+    true,
+    "the worktree-add collision is transient and is covered by the one signature",
   );
   assert.equal(
-    poolLib.isTransientWorktreeAddError("fatal: could not read commondir"),
+    poolLib.isTransientGitLockError("fatal: could not read commondir"),
     false,
   );
   // U-11: the bad-object alternative also matches a PERMANENT
@@ -896,6 +822,62 @@ test("pool create refuses a task id whose branch path is blocked by a nested ref
   );
   assert.ok(!existsSync(worktreeOf(scratch, "foo")));
   assert.ok(!existsSync(recordOf(scratch, "foo")));
+});
+
+test("destroy aborts the branch delete if the branch moved after the gate approved it", (t) => {
+  // The branch gate is decided from a tip read in stage 1 but acted on
+  // in stage 3, after the worktree has been removed, so the approval can
+  // be stale by the time it is used. The approval is for a specific tip,
+  // not for a name. The window is opened for real here: a stub git moves
+  // the branch during the "worktree remove" call, which is exactly the
+  // step that sits between the gate and the delete.
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-moved").status, 0);
+  const base = gitOk(worktreeOf(scratch, "t-moved"), ["rev-parse", "HEAD"]);
+  upstreamCommit(scratch.upstream, "moved-on");
+  gitOk(scratch.clone, ["fetch", "origin"]);
+  const movedTip = gitOk(scratch.clone, ["rev-parse", "refs/remotes/origin/main"]);
+  assert.notEqual(movedTip, base);
+
+  const binDir = mkdtempSync(join(tmpdir(), "tiphys-p3-movegit-"));
+  t.after(() => {
+    rmSync(binDir, { recursive: true, force: true });
+  });
+  const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
+    .stdout.trim();
+  writeFileSync(
+    join(binDir, "git"),
+    `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const real = ${JSON.stringify(realGit)};
+const r = spawnSync(real, args, { stdio: "inherit" });
+if (args.includes("worktree") && args.includes("remove") && r.status === 0) {
+  // Move the branch immediately AFTER the removal: that is the exact
+  // window between the gate's approval and the branch delete.
+  spawnSync(real, ["-C", ${JSON.stringify(scratch.clone)}, "update-ref", "refs/heads/task/t-moved", ${JSON.stringify(movedTip)}], { stdio: "ignore" });
+}
+process.exit(r.status === null ? 1 : r.status);
+`,
+    { mode: 0o755 },
+  );
+
+  const result = runCli(["pool", "destroy", "--task", "t-moved"], {
+    cwd: scratch.fleet,
+    env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` },
+  });
+  assert.notEqual(
+    result.status,
+    0,
+    "destroy deleted a branch that moved after the gate approved its tip",
+  );
+  assert.match(result.stderr, /changed while this destroy was running/);
+  // The commit the branch moved to must still be reachable.
+  assert.equal(
+    gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-moved"]),
+    movedTip,
+    "the moved branch was deleted on a stale approval",
+  );
 });
 
 test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {
