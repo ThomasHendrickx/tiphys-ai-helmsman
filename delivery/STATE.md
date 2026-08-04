@@ -29,40 +29,59 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | in progress | | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | not started | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
-| M1-P6 toy sandbox and exit test | not started | | needs owner action A-1 first |
+| M1-P6 toy sandbox and exit test | built ahead, awaiting P4 and P5 merge plus A-1 | | branch claude/m1-p6-toy-sandbox-exit |
 
 ## In flight
 
-**M1-P4 (spawn and teardown): implementing.** Branch
-`claude/m1-p4-spawn-and-teardown`, based on `main` at 54ceb6e. Running lean
-by owner instruction: implement, CI, one focused review, merge. No
-multi-lens verification workflow unless something high-severity surfaces.
+**M1-P4 (PR #6): dual cross-model review done, fix round in flight.** Head
+was 6fca6db. Two independent reviews on different model families both
+returned FIX-ROUND-NEEDED and found different defects: a criteria-walk lens
+found one blocking medium (a surviving task directory lets a new payload
+read the previous incarnation's turn-end record), and a destructive-paths
+lens found two highs neither the implementer nor the first reviewer saw (a
+thrown error between worktree creation and launch bypasses rollback and
+wedges the task id; a thrown write error after destruction leaves the task's
+state authority falsely reporting open). Both reproduced live. Both reviews
+independently upheld the implementer's two declared judgement calls. One
+combined fix round is applying all six findings plus a correction to the
+plan's own step 5 prose, which states an ordering that makes criterion 8
+unsatisfiable for every input.
 
-Obligations this phase inherits, all of which must appear in its brief:
+**M1-P5 (watcher and liveness): not started.** Inputs it must carry, recorded
+here so they survive:
 
-- Criterion 13's remaining clause: a spawn writes `meta.json` carrying
-  `baseOffline`, the provenance flag M1-P3 records in the pool record.
-- M1-P3's holder-identity transport: `acquire` prints the holderId and
-  renew and release take `--holder`, which is what P4's holdership checks
-  consume.
-- Tuition T-002: an abandoned task (open, no turn-end record, dirty
-  worktree) should become a detectable condition, since salvage is
-  currently a human's job.
-- M1-P3's destroy contract: teardown drives the same path, so it must
-  distinguish a stage-2 refusal (a true no-op) from an operational partial
-  failure, and must not describe the second as the first.
+- Ship a flag for the watcher's base and poll interval. The M1-P6 harness
+  cannot configure cadence and therefore uses fixed upper bounds (120s
+  beacon, 180s wake); a cadence flag shortens every CI run.
+- The M1-P6 harness does NOT depend on spawn forwarding the payload's
+  stdout. The plan never specified that contract and M1-P6 deliberately did
+  not invent it, reading payload facts from a harness-chosen report path
+  instead. P5 should not assume stdout forwarding either.
+- Tuition T-002's abandoned-task detection is P5's, and M1-P4 established
+  the shape it should exercise: since M1's only adapter runs the payload to
+  completion in the foreground, "open, no turn-end, dirty worktree" can only
+  arise if the spawn process itself dies, so P5 should witness it against a
+  killed spawn rather than a synthesized file state.
 
-**M1-P3 is merged** at 54ceb6e after five fix rounds, three verification
-rounds and one investigation. The lock's compare-and-swap is established
-sound. The concurrency rollback machinery was deleted rather than hardened,
-with its requirements deferred to M5 and recorded in the M5 list below.
+**M1-P6: built ahead and pushed, not open as a PR.** Under DR-0011 its PR
+may not open or merge before P4 and P5. Criteria 1 and 6 pass; criteria 2,
+3, 4 and 5 are DEFERRED-TO-VALIDATION, each with its discharging command
+recorded, because they need spawn, teardown and watch to exist. Nine red
+witnesses were run against dangerous states. Full mode remains blocked on
+owner action A-1. Two notes for its reviewer: the harness deliberately
+re-runs the gates as its own precondition, costing roughly two minutes per
+CI leg, and that must not be "fixed" with a skip flag; and the plan gives no
+local-mode mapping for the full doctor profile, so the harness asserts
+either exit 0 with gh present or exactly one gh FAIL line without it, which
+proves the provisioned fleet remote passed honestly.
 
-Deferred to M5, to be picked up in M5 planning: heavy-concurrency create
-hardening above roughly six-way; validated partial-state rollback; the
-unattributed "branch already exists" failure (absent since the cut, which
-is ten runs and not a proof); and the prune-versus-add hazard, which
-destroy still carries and which is safe only because M1 never runs
-concurrent destroys.
+**M2 and M3 detailed plans: DRAFT, written in parallel, unreviewed.** M2 is
+9 phases covering all 16 of its rows; M3 is 10 phases covering all 74 of
+its rows, verified programmatically against the master coverage table. M3
+reconciled itself against M2's real phase ids and contracts and accepted
+all nine of M2's boundary claims. Both need adversarial review before
+either milestone dispatches, and an M2 review that moves the gate manifest
+shape or the coverage input contract lands on three M3 phases.
 
 ## Owner decisions
 
