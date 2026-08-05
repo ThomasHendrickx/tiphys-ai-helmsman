@@ -30,73 +30,44 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | round 4 reviewed, 0 highs, blocked on 2 documentation mediums | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
 | M1-P6 toy sandbox and exit test | built ahead, awaiting P5 merge (A-1 now done) | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
 
 ## In flight
 
-**M1-P5 (PR #8): round four reviewed by both contracts. ZERO highs for the
-first time in this phase. Blocked on two mediums that close with work-history
-edits alone. Owner decides whether that documentation round runs.**
+**M1-P5: MERGED at `58ac964` (PR #8).** Five of six M1 phases are on `main`.
 
-The fix is one implementation of "open a path whose type you have not
-established" in `src/task.ts` (`classifyEntry`, `readRegularFileIfPresent`,
-`refuseOpenForWrite`), with every reader and writer in the phase routed
-through it, plus doctor printing its diagnosis before running the advisory.
+Four fix rounds, six clean-room reviews, zero high findings from either
+contract on the merged code. The dominant defect was one class, reading a file
+whose type has not been established, and the thing that finally closed it was
+fixing at the MECHANISM rather than at the instance: one implementation in
+`src/task.ts` with every reader and writer routed through it, instead of a
+probe at whichever call site the last review named.
 
-Verdicts: hazard contract FIX-ROUND-NEEDED (0 high, 2 medium, 4 low), criteria
-contract APPROVE (0 high, 0 medium, 1 low). Arbitration in
-`delivery/review/arbitration-m1-p5-round4.md`.
+DR-0004's branch protection is LIVE and fired on its first real use: the merge
+was rejected because the branch was one commit behind `main` and the ruleset's
+strict policy requires it current. The branch was updated, CI re-run to green
+on the exact merged head, and only then merged. Recorded because a protection
+that has never refused anything is not known to work.
 
-The hazard contract's judgment on the residual is the load-bearing sentence:
-ACCEPTABLE AS A RESIDUAL, BLOCKING AS RECORDED. `doctor` and both watcher
-modes are now total against this class on every path it could construct, so
-the thing that made CR-520 severe, the guard taking down the safety net that
-would notice every other hang, is gone.
+**What did NOT close, and is now a carried-forward item with its own scope:**
+`teardown`, four `lock` subcommands and `spawn` still block forever on a named
+pipe, through `src/lock.ts`, `src/pool.ts` and `src/brief.ts`. All are M1-P3
+and M1-P4 files. The PR body and the work history both say so rather than
+implying the class is closed everywhere.
 
-The two mediums:
+**M1-P6: unblocked, PR not yet opened.** P5 is merged, so its grounding is
+satisfied and its four DEFERRED-TO-VALIDATION criteria can now be EXECUTED
+rather than deferred again. Its work history names a discharging command per
+deferral, which makes the validation pass mechanical. The branch is three
+commits behind `main` and must be updated first, both to rebase onto the
+delivered P4 and P5 commands its harness drives and because DR-0004's ruleset
+now requires a current branch before any merge.
 
-- **CR-560**: a TWELFTH path. `mkfifo <fleet>/warnings.md` hangs `tiphys
-  spawn` forever with zero output, stranding a worktree, a pool record, a
-  branch and the task id. Verified at the source by the orchestrator:
-  `src/brief.ts:56` is a bare `readFileSync` gated only by `existsSync`, and
-  `src/brief.ts` is not in this phase's diff at all, so it is PRE-EXISTING and
-  out of scope. The cause is the third instance of one pattern: the round
-  scoped its inventory search to `tasks/`, `state/` and `worktrees/`, and
-  `warnings.md` is at the fleet root. A search whose SCOPE is wrong returns an
-  empty result that reads exactly like an absence of defects.
-- **CR-561**: commit `84dfa41`'s subject claims the probe is a property of
-  every read and open. Six unprobed opens remain. Fifth instance of the T-006
-  pattern in this phase.
-
-Neither needs a source change. Recording the twelfth path and correcting the
-record is the honest close; fixing it means editing another phase's file.
-
-Both contracts independently confirmed: the gate numbers on both toolchains
-exactly (Node 26 gives 146/146/0 skipped, Node 22 gives 146/144/2 skipped);
-that the CR-540 replacement test is a SOUND witness and not flaky (12/12 and
-20/20 red under mutation), which settles the question the orchestrator left
-open; the pre-existing `atomicWrite` wake-loss defect against a pristine build
-of the previous head; that `randomUUID` is C-2 clean; and the registry
-off-by-one, found twice independently and verified a third time by the
-orchestrator (145 to 152 keys, so 152 mappings and seven added, not 151 and
-six).
-
-Notable low: CR-563 shows the full suite passes with CR-523's ordering fix
-REVERTED, so a behavior this round fixed is unguarded. A criteria walk could
-not have found that, because no criterion mentions doctor's output ordering.
-That is T-007 demonstrated one round after being filed, and it is why the
-criteria APPROVE is not treated as decisive.
-
-DECLARED RESIDUAL, unchanged and now more precisely enumerated: `teardown`,
-four `lock` subcommands and `spawn` still hang on a FIFO, in `src/lock.ts`,
-`src/pool.ts` and `src/brief.ts`. All are M1-P3 and M1-P4 files outside this
-phase's authorized set, and a call-site patch would repeat CR-521. Completing
-the class across them is real work needing its own scope, not something to
-smuggle into a fourth fix round.
-
-**M1-P6: built, pushed, waiting on P5.** Its PR opens once P5 merges. Owner
-action A-1 is now DONE, so its full mode is unblocked.
+A floor-satisfying Node 26 toolchain is available (environment warning 1), so
+criteria 2, 3 and 5 can be discharged locally rather than only in CI.
+Criterion 5's falsification run is not in the CI workflow at all, so before
+this toolchain existed it had no discharge path.
 
 **M2 and M3 plans: revision 1, reviewed, fix rounds applied.** Neither is
 delta-reviewed, deliberately, because re-grounding at dispatch is already
@@ -173,11 +144,10 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
 
 ## Owner action items
 
-1. **DR-0004 commands, runnable now.** Flip the repository default branch
-   to `main` and enable protection requiring a pull request plus the green
-   `gates` check. Exact commands in
-   `delivery/decisions/DR-0004-elevated-permissions.md`. Until these run,
-   nothing structurally prevents a direct push to `main`.
+1. **DR-0004: DONE (owner, 2026-08-05).** The ruleset is active and was
+   witnessed refusing a merge whose branch was behind `main`, then allowing it
+   after the branch was updated and CI went green on the exact merged head.
+   Item 4 (implementer token scoping) remains queued for M2.
 2. **A-1: DONE (owner, 2026-08-05).** The toy sandbox repository is
    https://github.com/ThomasHendrickx/tiphys-ai-helmsman-sandbox. Both M1-P6
    scripts take the repository URL as an argument, so nothing needs editing;
