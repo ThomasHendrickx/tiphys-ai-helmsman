@@ -58,3 +58,30 @@ If option 2 is taken, these conditions apply and are the substance of the decisi
 - Declared file lists and grounding for M1-P4, M1-P5, M1-P6: delivery/plan/kernel-plan-v1.md, those phase sections.
 - Coverage weighting that makes M3 planning the highest-value parallel work: delivery/plan/kernel-plan-v1.md coverage appendix, counts M1 = 11, M2 = 16, M3 = 74, M4 = 13, M5 = 1.
 - Why intra-phase parallelism is not recommended: delivery/review/verification-m1-p3-fix-round.md and delivery/tuition/T-003-fix-rounds-need-verification.md.
+
+## Recorded consequence, 2026-08-05
+
+Parallel planning bought real time and had a real, measurable cost, recorded
+here so the tradeoff is honest rather than assumed.
+
+The M2 and M3 detailed plans were written concurrently with M1-P5's
+implementation. Both were then adversarially reviewed, and both reviews
+independently found the same structural gap: neither plan incorporates
+tuition T-005, because T-005 did not exist when they were written. T-005 is
+the entry about a lesson failing to propagate from one phase to the next,
+and it is squarely the business of both milestones, M2 because it prescribes
+a mechanism index as a deterministic artifact and M3 because it lands in the
+implementer brief and the tuition flow.
+
+The M3 reviewer put it sharply: as written, the plan would not have caught
+the one M1 failure that is most clearly M3's job to prevent. The M2 reviewer
+found the same shape from the other side, that the plan's grounding stops at
+M1-P4 and M1-P5's critical defect is unread.
+
+This does not argue against the decision. Both gaps are closeable in a fix
+round, which is far cheaper than the serialization it avoided. It argues for
+one procedural addition: **a plan written in parallel with implementation
+must be re-grounded against everything learned since it was started, as an
+explicit step before its adversarial review rather than after.** A plan is a
+snapshot of what was known; if the work it plans for is still producing
+knowledge, the snapshot needs refreshing before anyone attacks it.
