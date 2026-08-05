@@ -1,7 +1,19 @@
 # Tiphys Kernel Plan M3: Judgment Layer
 
-- Status: DRAFT, pending adversarial review
-- Baseline commit: 2e570c7b91cda937790105c40ab0781e3e252be7 (main, M1-P3 merged, M1-P4 in flight)
+- Status: DRAFT, revision 1
+- Revision 1 (2026-08-05): plan-review round 1 findings applied (M3R-001 to
+  M3R-011, `delivery/review/plan-review-m3-r1.md`), and the plan re-grounded
+  against everything the project learned after it was first drafted: tuition
+  T-005, the M1-P4 dual review recorded as T-001's second data point, the
+  M1-P5 reviews, and `delivery/STATE.md`'s carried-forward list. The
+  re-grounding was the round's first step, not its last, because the largest
+  finding (T-005 absent) existed only because the plan was written in parallel
+  with the implementation that produced it.
+- Baseline commit at first drafting: 2e570c7b91cda937790105c40ab0781e3e252be7
+  (main, M1-P3 merged, M1-P4 in flight). State at revision 1: M1-P1 through
+  M1-P4 merged (#1, #2, #3, #6); M1-P5 stopped at PR #8 under DR-0012's
+  stop-rather-than-grind limit, awaiting the owner; M1-P6 built ahead on its
+  branch, waiting on P5 and on owner action A-1.
 - Binding rule: "If it is not written here, it is not being made. Unanswered
   questions go to the orchestrator."
 - Relationship to `delivery/plan/kernel-plan-v1.md`: this document replaces
@@ -25,11 +37,13 @@
 - Process summary: written as the M3 detailed-planning stage of the current
   orchestrated delivery process, from plan v1, the migration table, the two
   intake documents, decision records DR-0001 to DR-0012, and tuition entries
-  T-001 to T-004. Ten phases, each one branch and one pull request, sequential
+  T-001 to T-005. Ten phases, each one branch and one pull request, sequential
   except for the one pair D-M3-19 permits under DR-0011.
   M3-P4 of the v1 outline (the 74-row migration walk) is decomposed by
-  artifact family into eight phases, which discharges the binding external
-  review finding EXT-F-07.
+  artifact family into seven phases (M3-P3 to M3-P9), which discharges the
+  binding external review finding EXT-F-07. The remaining three phases are the
+  v1 outline's other items: M3-P1 (schemas, outline item 1), M3-P2 (gate
+  registry, outline item 3), and M3-P10 (release engineering, outline item 5).
 
 ---
 
@@ -194,7 +208,8 @@ a form not listed here is a review finding.
 | assurance modes | YAML | fully enumerable (mode, stages, gate sets, merge authority) |
 | role-to-model configuration | YAML | fully enumerable |
 | checklists (probe lists) | YAML: a list of `{id, probe, applies-to, evidence-required}` | a probe is a question with an identity and an applicability rule; that is data, and structuring it is what lets a checklist be extended, merged, and orphan-checked. Markdown here would be convenience, which DR-0006 forbids |
-| tuition entries | YAML; `what-happened`, `lesson`, and `structural-consequence[].detail` are block scalars | the header fields and the consequence list are enumerable; the incident narrative is not |
+| tuition entries | YAML; `what-happened`, `lesson`, and `structural-consequence[].detail` are block scalars | the header fields, the consequence list, and the `mechanisms[]` this entry constrains are enumerable; the incident narrative is not |
+| mechanism index | YAML: `{mechanism, rule, evidence[]}` entries keyed by mechanism | T-005 names the form directly ("it is small, it is structured data under DR-0006, and it is checkable"); it is a projection of the tuition feed's `mechanisms[]` field, so it has no prose of its own |
 | role briefs (`roles/*.md`) | markdown with YAML frontmatter | JUSTIFIED EXCEPTION. A brief is instruction prose addressed to a reasoning agent. Its effect comes from argument, ordering, and emphasis, which have no field decomposition that preserves them: splitting a brief into fields produces either one giant string field (structure that carries nothing) or a set of fragments no agent reads as an argument. The frontmatter carries everything that is enumerable (role id, clause ids, mandated reading paths in order, attached verifiers, default model tier, allowed outputs), and that frontmatter is schema-validated. The reason is not that markdown is easier: it is that the remaining content has no structure to express |
 | `AGENTS.md` | markdown with YAML frontmatter | JUSTIFIED EXCEPTION, same reason: it is the orchestrator's brief. Binding: any policy that is expressible as data (gate lists, mode tables, model tiers, stage sequences) is NOT written in `AGENTS.md`; it is referenced by path into the structured artifacts, and M3-P9 has an acceptance criterion that asserts the absence of the duplicated data |
 | fleet environment-warnings file (`warnings.md`) | markdown | JUSTIFIED EXCEPTION. Its only consumer is `src/brief.ts`, which appends it verbatim into instruction prose (R-083b, M1-P4). Structuring it would require a renderer whose only output is the prose form the file already holds, so the structure would have no reader. The reason is absence of a consumer for the structure, not convenience. M3 ships the template (R-083a), not a conversion |
@@ -214,9 +229,9 @@ therefore markdown and is not an instance of the plan schema.
 EXT-F-07 is binding: the v1 outline's M3-P4 (the 74-row migration walk) may not
 be dispatched as one phase, and detailed planning must divide it by artifact
 family into at least six subphases, each with its own requirements coverage
-input and its own orphan check. The division here is eight phases, which covers
-the six named families and splits the two that would otherwise exceed the
-size limit:
+input and its own orphan check. The division here is seven phases covering the
+six named families, because one family (role briefs) is split in two and the
+other five map one to one:
 
 | EXT-F-07 family | Phase here | Rows |
 |---|---|---|
@@ -227,9 +242,19 @@ size limit:
 | tuition flow | M3-P8 | 3 |
 | assurance-mode behaviour | M3-P3 | 3 |
 
-The role-brief family is split because a single phase carrying all twenty
-brief rows would be a catch-all of exactly the shape EXT-F-07 objects to. No
-phase in this plan carries more than thirteen requirement rows.
+Seven phase ids, six families, one split: the role-brief family is divided
+because a single phase carrying all twenty brief rows would be a catch-all of
+exactly the shape EXT-F-07 objects to. The other three phases of this plan
+(M3-P1 schemas, M3-P2 gate registry, M3-P10 release) are the v1 outline's own
+separate items 1, 3, and 5 and are not part of the migration walk, which is why
+they do not appear above. No phase in this plan carries more than thirteen
+requirement rows, and each of the seven has its own coverage input (its row list
+in Appendix A) and its own orphan check (the clause-map criterion in its
+acceptance list), which is what EXT-F-07 requires of each subphase.
+
+Arithmetic note (M3R-006): revision 0 of this plan said "eight phases" here and
+in its process summary, which its own table contradicted. Seven is the number
+the table shows and the number that is true.
 
 ### 2.2 The clause map: the per-phase orphan check
 
@@ -256,27 +281,91 @@ merged M2 component from an M3 phase would make every M3 phase a potential
 edit of M2's gate surface. If a later milestone wants them merged, that is a
 recorded option, not a debt (Appendix C item 1).
 
-### 2.3 What the red-witness rule demands of a schema (T-003)
+### 2.3 Two kinds of check, and what the red-witness rule demands of each
 
-M3 mostly ships schemas and prose. The red-witness rule and its T-003
-strengthening translate as follows, and these are binding on every phase's
-acceptance criteria:
+M3 mostly ships schemas and prose. Revision 0 of this plan applied one witness
+methodology to every validation criterion, and the review found that several of
+those criteria describe properties no JSON Schema keyword can express, under any
+DR-0013 option (M3R-002). Conflating the two kinds is how an implementer arrives
+at a criterion that cannot be met, and then either fakes the demonstration or
+builds an undeclared script. So the two kinds are separated here, by name, and
+every validation criterion in this plan states which kind it is.
+
+**Kind A, schema checks.** Properties of one document that a schema keyword
+expresses: a required field, a closed enum, a value constrained by a sibling
+value through `if`/`then`, an array with a minimum length, a pattern, an
+`additionalProperties: false` boundary, a `contains` requirement on an array.
+These are enforced by the schema and witnessed as in rules 1 and 2 below.
+
+**Kind B, derived checks.** Properties that require comparing array elements to
+each other, resolving a reference into another document, computing arithmetic
+over sibling fields, or touching the filesystem. JSON Schema cannot express
+these, and this plan does not pretend otherwise. They are implemented as named
+derived checks in `src/checks.ts`, registered per artifact type and run by
+`tiphys validate` after schema validation succeeds, each reporting
+`INVALID <json-pointer> <message> (check: <check-id>)` and each contributing to
+the same nonzero exit. `tiphys validate --context <dir>` supplies the directory
+against which cross-document references resolve; a derived check that needs a
+context it was not given reports `SKIPPED <check-id> no context` and the command
+exits nonzero, so a cross-document rule can never pass by not being run. The
+plan already contained one instance of this pattern before the review named the
+class (M3-P1's `dispatchable` boolean, "the validator computes and reports"); the
+review's contribution was noticing that four more criteria needed it and did not
+say so.
+
+The rules, binding on every phase's acceptance criteria:
 
 1. Every schema ships at least one invalid fixture that is well-formed YAML or
    JSON and structurally plausible, and that violates precisely the property the
    schema exists to enforce. A fixture that is merely malformed (a syntax error,
    a missing required field chosen at random) does not count: that is the
    "test against the absent feature" T-003 names as worthless.
-2. Every such fixture is demonstrated in both directions: rejected by the
-   shipped schema, and accepted when the guarding keyword is removed from the
-   schema. Both demonstrations are captured in the work history and reverted.
-3. Where an artifact's content consumes another program's output (the gate
+2. Kind A witness: every such fixture is demonstrated in both directions,
+   rejected by the shipped schema and accepted when the guarding keyword is
+   removed from the schema. Both demonstrations are captured in the work history
+   and reverted.
+3. Kind B witness: the same DANGEROUS-instance discipline applies, but the
+   thing removed and restored is the derived check, not a schema keyword. The
+   fixture is rejected with the check registered and accepted with it
+   deregistered, both captured and reverted. A Kind B criterion that offers a
+   schema-keyword witness has misclassified itself and fails review.
+4. Where an artifact's content consumes another program's output (the gate
    registry consuming the M2 gate runner's report, the report contract
    consuming the M2 full-suite wrapper's exit code and counts, the checklists
    consuming the M2 red-witness harness's evidence file), the fixtures must
    contain real captured output from that program. Hand-written strings shaped
    to match the schema are forbidden by the red-witness rule's last sentence
    and by T-003 lesson 4.
+5. Every derived check is listed in the table below when its phase introduces
+   it, so the class stays auditable rather than being rediscovered per phase.
+
+Derived checks this plan requires, by owning phase. The review's list was
+explicitly representative rather than exhaustive, so this table is the result of
+auditing every validation criterion in the plan for the pattern, and it contains
+three instances the review did not name (`checklist-probe-ids-unique`,
+`tuition-target-exists`, `charter-mode-enum-matches-modes`):
+
+| Check id | Phase | Property, and why no schema keyword reaches it |
+|---|---|---|
+| `plan-verification-first-present` | M3-P1 | matches a `report-code-disagreement[]` entry against a step inside a different array element selected by phase id: a foreign-key lookup across arrays |
+| `plan-dispatchable` | M3-P1 | computes a derived boolean from the `fill-in` slots (already framed this way in revision 0) |
+| `mode-no-undeclared-downgrade` | M3-P3 | compares a mode's `pipeline[]` against the sibling `full` mode's, a cross-object comparison inside one file |
+| `mode-stage-order` | M3-P3 | asserts `adversarial-plan-review` precedes `implement`, a position-of-A-before-position-of-B property |
+| `mode-gate-sets-resolve` | M3-P3 | resolves gate-set references into `gate-registry.yaml`, a different document |
+| `charter-mode-enum-matches-modes` | M3-P3 | asserts the charter schema's mode enum equals the ids in `assurance-modes.yaml`, so the duplication cannot drift |
+| `report-parity-arithmetic` | M3-P4 | asserts `discovered == passed + failed + skipped + did-not-run`, arithmetic over sibling fields |
+| `final-report-finding-parity` | M3-P4 | asserts every id in `inputs[]` appears in `input-findings[]`, a cross-array completeness property. Revision 0 listed this once as a schema witness and once, correctly, as an M2-P6 checker run; the schema framing was wrong and is removed |
+| `gate-probes-resolve` | M3-P7 | resolves `gate-registry.yaml` probe ids into `checklists/clean-room.yaml`, a different document |
+| `checklist-probe-ids-unique` | M3-P7 | `uniqueItems` compares whole array items, not one nested property across items, so probe-id uniqueness is not a keyword property |
+| `verdict-criteria-complete` | M3-P7 | compares a verdict's `criteria[]` against the acceptance criteria of a plan phase in a different document |
+| `verdict-deviations-judged` | M3-P7 | compares a verdict's `deviations-judged[]` against the deviations declared in a work history, a different document (M3R-005) |
+| `dual-review-decorrelation` | M3-P9 | compares two verdict documents' `produced-by` values and their injected probe framings (M3R-004) |
+| `tuition-target-exists` | M3-P8 | resolves an `applied` structural consequence's target path against the filesystem |
+| `mechanism-rule-evidence-resolves` | M3-P8 | resolves each mechanism-index rule's evidence references against real files (T-005's checkability rule) |
+
+Anything an implementer finds that belongs in this table and is not in it is a
+plan defect to escalate, not a script to write quietly: D-M3-22 says so, and the
+M2-P4 scope auditor would fail the undeclared file anyway.
 
 ### 2.4 Shared phase fields, stated once
 
@@ -346,13 +435,16 @@ acceptance criteria:
      rules that make prose rules mechanical:
      - `fill-in` (R-014): an optional phase object with `filled: false` and the
        named slots `root-cause`, `fix-shape`, `files`; a phase whose `fill-in`
-       is present and unfilled is valid for review and invalid for dispatch, and
-       the schema expresses that as a `dispatchable` boolean the validator
-       computes and reports.
+       is present and unfilled is valid for review and invalid for dispatch.
+       Kind B, derived check `plan-dispatchable` (section 2.3): the validator
+       computes and reports it, because it is a function of the slots rather
+       than a property of one field.
      - verification-first (R-012): a step may carry `kind: verification-first`;
        a plan whose `report-code-disagreement` list contains an entry with
        `verified: false` and whose owning phase has no `verification-first` step
-       fails validation.
+       is invalid. Kind B, derived check `plan-verification-first-present`: it
+       matches an element of one array against a step nested inside an element of
+       another, selected by phase id, which no schema keyword expresses (M3R-002).
      R-016's binding content (one artifact, committed as the first commit of the
      first branch) is expressed as: the plan is one file, and the commit-position
      check stays parked exactly as plan v1 section 11 item 8 parked it. The
@@ -398,16 +490,39 @@ acceptance criteria:
      the stream (C-1). Module docs state the constraint and name it.
   7. Create `templates/plan.example.yaml`, `templates/charter.example.yaml`,
      `templates/decision-record.example.yaml`: minimal instances that validate.
-  8. Create `src/validate.ts` and `src/commands/validate.ts`:
-     `tiphys validate --type <t> <file>` exits 0 when valid, exits 1 printing
-     one line per violation as `INVALID <json-pointer> <message>`, exits 64 on
-     usage error. `--type auto` resolves the type from the instance's `kind`
-     field and exits 64 when absent. Implementation per DR-0013.
+  8. Create `src/validate.ts`, `src/checks.ts`, and `src/commands/validate.ts`:
+     `tiphys validate --type <t> [--context <dir>] <file>` exits 0 when the
+     instance passes schema validation and every derived check registered for
+     its type; exits 1 printing one line per violation as
+     `INVALID <json-pointer> <message>` for schema violations and
+     `INVALID <json-pointer> <message> (check: <check-id>)` for derived ones;
+     exits 64 on usage error. `--type auto` resolves the type from the instance's
+     `kind` field and exits 64 when absent. A derived check that needs a context
+     it was not given prints `SKIPPED <check-id> no context` and the command
+     exits nonzero, so a cross-document rule cannot pass by not running.
+     `src/checks.ts` holds the registry of derived checks per type (section 2.3);
+     this phase registers `plan-dispatchable` and
+     `plan-verification-first-present`, and later phases append their own.
+     Schema-validation implementation per DR-0013.
+  8b. Add a top-level error presentation handler in `bin/tiphys.ts`: a thrown
+     error from any subcommand is printed as one diagnostic line and exits 1
+     (or 64 for usage errors), never as a stack trace. This closes the seam
+     `delivery/STATE.md` records as carried-forward and unowned ("clean
+     presentation of a load-time configuration error... a seam no M1 phase
+     owns"). It is owned here rather than left because this phase is the first
+     to add commands whose ordinary input is a hand-authored file that will
+     routinely be malformed: a validator that answers malformed YAML with a
+     stack trace is a validator nobody trusts. Scope is exactly the handler and
+     nothing else in `bin/tiphys.ts` (D-M3-21).
   9. Create `delivery/requirements/clause-map.json` and
      `scripts/check-clause-map.mjs` per section 2.2, seeded with this phase's
      twelve rows. Wire the check into `.github/workflows/gates.yml` as a step in
      the existing `test` job (verify the job layout first).
-  10. Extend `package.json` `files` to `["dist", "schemas", "templates"]`, so
+  10. Register every new artifact type this phase introduces (`plan`,
+      `charter`, `decision-record`, `status-line`) with the validator's `--type`
+      table and the `auto` resolver, and every phase after this one does the same
+      for its own types in its own step (M3R-001).
+  10b. Extend `package.json` `files` to `["dist", "schemas", "templates"]`, so
       the published package carries what M3 ships. Later phases extend it
       further; M3-P10 asserts the final set. Relocate M2's schema documents from
       `src/gates/schemas/` to `schemas/` and update the path constant M2 left as
@@ -415,19 +530,21 @@ acceptance criteria:
       constant, and this phase verifies that claim before acting on it and
       reports rather than improvises if it is wrong.
   11. Tests: `test/validate.test.ts`, `test/schemas.test.ts`,
-      `test/status.test.ts`, with valid and invalid fixtures under
-      `test/fixtures/`.
+      `test/checks.test.ts`, `test/status.test.ts`, with valid and invalid
+      fixtures under `test/fixtures/`.
 - files-to-touch (create unless marked): `schemas/plan.schema.json`,
   `schemas/charter.schema.json`, `schemas/decision-record.schema.json`,
   `schemas/status-line.schema.json`, `schemas/README.md` (edit),
   `templates/plan.example.yaml`, `templates/charter.example.yaml`,
-  `templates/decision-record.example.yaml`, `src/validate.ts`,
+  `templates/decision-record.example.yaml`, `src/validate.ts`, `src/checks.ts`,
   `src/commands/validate.ts`, `src/status.ts`, `src/commands/status.ts`,
   `src/plan.ts`, `src/commands/plan.ts`,
-  `test/validate.test.ts`, `test/schemas.test.ts`, `test/status.test.ts`,
-  `test/plan-projection.test.ts`, `test/fixtures/**`,
+  `test/validate.test.ts`, `test/schemas.test.ts`, `test/checks.test.ts`,
+  `test/status.test.ts`, `test/plan-projection.test.ts`, `test/fixtures/**`,
   `scripts/check-clause-map.mjs`,
   `delivery/requirements/clause-map.json`, `src/cli.ts` (edit),
+  `bin/tiphys.ts` (edit, top-level error handler only, step 8b; verify the
+  dispatcher shape first),
   `package.json` (edit), `package-lock.json` (edit, only if DR-0013 adds a
   dependency), `.github/workflows/gates.yml` (edit), `src/gates/schemas/**`
   (move to `schemas/`, per step 10 and D-M3-20; verify the M2 path constant
@@ -442,17 +559,31 @@ acceptance criteria:
   2. `tiphys validate --type plan templates/plan.example.yaml` exits 0, and the
      same for `charter`, `decision-record`, and a status-line record.
      `tiphys validate --type auto` on each example exits 0.
-  3. DANGEROUS-instance rejection, one fixture per schema, each exiting 1 with a
-     message naming the offending pointer (section 2.3 rule 1): (a) a plan whose
-     phase has `acceptance: []`; (b) a plan with a `report-code-disagreement`
-     entry `verified: false` and no `verification-first` step in the owning
-     phase; (c) a charter with every other field present and no
-     `escalation-contract`; (d) a decision record with `status: decided` and an
-     empty `decided`; (e) a status-line record with `state: done` and no `run`.
-  4. Each of the five fixtures in criterion 3 is accepted when the single
-     schema keyword guarding it is removed, and rejected when it is restored;
-     both runs are captured in the work history and the schema is reverted
-     (section 2.3 rule 2, red witness in both directions).
+  3. Kind A DANGEROUS-instance rejection, each fixture exiting 1 with a message
+     naming the offending pointer (section 2.3 rules 1 and 2): (a) a plan whose
+     phase has `acceptance: []`; (b) a charter with every other field present and
+     no `escalation-contract`; (c) a decision record with `status: decided` and
+     an empty `decided`; (d) a status-line record with `state: done` and no
+     `run`.
+  4. Each of the four fixtures in criterion 3 is accepted when the single schema
+     keyword guarding it is removed, and rejected when it is restored; both runs
+     are captured in the work history and the schema is reverted (Kind A witness,
+     section 2.3 rule 2).
+  4b. Kind B DANGEROUS-instance rejection (section 2.3 rule 3): a plan with a
+     `report-code-disagreement` entry `verified: false` and no
+     `verification-first` step in the owning phase exits 1 with a message
+     carrying `(check: plan-verification-first-present)`; the same fixture exits
+     0 when that check is deregistered from `src/checks.ts` and exits 1 again
+     when it is restored, both captured and reverted. A plan whose `fill-in` is
+     present and unfilled reports `dispatchable: false` and a plan with no
+     `fill-in` reports `dispatchable: true` (check `plan-dispatchable`, both
+     directions).
+  4c. A cross-document derived check invoked without `--context` prints
+     `SKIPPED <check-id> no context` and the command exits nonzero; the same
+     invocation with `--context` exits 0 on a valid instance (both directions).
+     This is the guard against a cross-document rule passing by not running,
+     which is the vacuous-pass shape SC-011 and the parity-counting wrapper both
+     exist to prevent.
   5. An instance identical to a valid example except for one misspelled property
      name exits 1 and the message names that property (every object level sets
      `additionalProperties: false`, so a typo is a failure and not a silently
@@ -477,14 +608,22 @@ acceptance criteria:
       and not from a copy (both directions).
   11. `npm pack` produces a tarball whose listing contains `schemas/` and
       `templates/` entries and contains no `delivery/` entry.
-  12. `grep -rP '[^\x00-\x7F]'` over the touched files reports nothing.
+  12. A subcommand made to throw (a malformed YAML artifact handed to
+      `tiphys validate`, and a plan file that is valid YAML but not a mapping)
+      prints one diagnostic line and exits 1 or 64, and stderr contains no stack
+      frame (`grep -c "    at "` equals 0); removing the step 8b handler makes
+      the same invocation print a stack trace, captured and reverted (D-M3-21,
+      both directions).
+  13. `grep -rP '[^\x00-\x7F]'` over the touched files reports nothing.
 - new behaviors: `validate-valid-instance`, `validate-invalid-pointer-message`,
   `validate-additional-properties`, `validate-auto-type`, `schema-plan-empty-acceptance`,
   `schema-plan-verification-first-required`, `schema-charter-escalation-required`,
   `schema-decision-decided-value-required`, `schema-status-run-required`,
   `status-emit-appends-and-updates-current`, `status-show-ignores-stream`,
   `status-state-enum-closed`, `clause-map-check-detects-missing-clause`,
-  `plan-projection-feeds-scope-auditor`.
+  `plan-projection-feeds-scope-auditor`, `check-plan-verification-first-present`,
+  `check-plan-dispatchable`, `check-missing-context-fails-loudly`,
+  `cli-errors-have-no-stack-trace`.
 - suggested model tier: strongest. The schemas are the contract every later M3
   phase and every future kernel consumer is written against; a loose schema here
   is invisible until it has been depended on.
@@ -546,10 +685,14 @@ acceptance criteria:
      and a pointer to `gate-registry.yaml` (R-094: single source consumed by CI
      and briefs; this is the drift gate that makes "single source" true rather
      than asserted). Wire `--check` into the gates workflow.
-  6. Tests: `test/gate-registry.test.ts`.
+  6. Register the `gate-registry` type with the validator's `--type` table and
+     the `auto` resolver, mirroring M3-P1 step 10 (M3R-001: this phase's
+     criterion 1 cannot be met without this edit, so the edit is declared).
+  7. Tests: `test/gate-registry.test.ts`.
 - files-to-touch: `schemas/gate-registry.schema.json`, `gate-registry.yaml`,
   `scripts/render-agent-rules-gates.mjs`, `test/gate-registry.test.ts`,
-  `test/fixtures/gate-runner-capture.*` (create); `CLAUDE.md` (edit, gate
+  `test/fixtures/gate-runner-capture.*` (create); `src/validate.ts` (edit, type
+  table), `CLAUDE.md` (edit, gate
   section only), `.github/workflows/gates.yml` (edit), `package.json` (edit,
   add `gate-registry.yaml` to `files`), the M2 gate runner source (edit only if
   step 4 requires it; verify first), `src/cli.ts` (edit only if step 4 requires
@@ -565,11 +708,12 @@ acceptance criteria:
      not-applicable, with zero gates reported green whose precondition is unmet
      (SC-011). The assertion consumes the runner's real output, not a fixture
      transcribed by hand.
-  4. DANGEROUS-instance witness: a registry whose `deploy` gate declares no
-     precondition is rejected by the schema (a gate with no precondition can
-     only ever report green or red, which is how a vacuous pass enters). The
-     guarding keyword is removed and the fixture accepted, then restored
-     (section 2.3 rule 2).
+  4. Kind A DANGEROUS-instance witness: a registry whose `deploy` gate declares
+     no precondition is rejected by the schema `required` list (a gate with no
+     precondition can only ever report green or red, which is how a vacuous pass
+     enters). The guarding keyword is removed and the fixture accepted, then
+     restored (section 2.3 rule 2). Criterion 2's probe requirement is likewise
+     Kind A, an `if`/`then` on `verified-by`.
   5. `node scripts/render-agent-rules-gates.mjs --check` exits 0; adding a gate
      to `gate-registry.yaml` without re-rendering makes it exit nonzero naming
      the added gate; re-rendering returns exit 0.
@@ -618,9 +762,18 @@ acceptance criteria:
      owner returns), and a mode vocabulary that cannot express the authority
      regime actually in force would force the next such grant to live outside
      the artifacts,
-     and `skips[]` lists the stages this mode omits, required to be non-empty
-     for any mode that omits a stage `full` contains (blueprint section 8:
-     "downgrades are declared, never improvised", expressed as a schema rule).
+     and `skips[]` lists the stages this mode omits. "Non-empty for any mode that
+     omits a stage `full` contains" (blueprint section 8: "downgrades are
+     declared, never improvised") is Kind B, derived check
+     `mode-no-undeclared-downgrade`: it compares one mode's pipeline against the
+     sibling `full` mode's, which is a cross-object comparison no schema keyword
+     performs (M3R-002). The schema's own share is the field's presence and item
+     type. Stop-rather-than-grind bound: a mode may carry
+     `escalation-bounds: {max-fix-rounds-after-review, recurrence-of-high-in-one-component}`,
+     and `full` carries DR-0012's own two limits, because those limits are being
+     exercised right now (M1-P5 is stopped at PR #8 under exactly them) and a
+     limit that lives only in an orchestrator's discipline is the prompt-only
+     state blueprint principle 6 calls temporary.
   2. Create `assurance-modes.yaml` with `full`, `direct-pr`, `local-only`.
      `full`'s pipeline is the process doc's sequence enumerated (process doc
      section 9 item 3, R-096): intake, verification-pass, plan,
@@ -632,9 +785,15 @@ acceptance criteria:
      orchestrator discretion"); it is cited to T-003 and to
      `delivery/review/verification-m1-p3-fix-round.md`, not asserted as new
      policy. R-024's rule (adversarial plan review happens before anyone builds)
-     is expressed as an ordering constraint the validator checks:
-     `adversarial-plan-review` must precede `implement` in any mode whose
-     pipeline contains both, and a mode omitting it must list it in `skips[]`.
+     is Kind B, derived check `mode-stage-order`: `adversarial-plan-review` must
+     precede `implement` in any mode whose pipeline contains both, and a mode
+     omitting it must list it in `skips[]`. Relative position of two values in a
+     variable-length array is not a schema keyword property (M3R-002). Gate-set
+     references resolve through Kind B check `mode-gate-sets-resolve`, which
+     reads `gate-registry.yaml` from `--context`. `full` requiring a
+     `fix-round-verification` stage is Kind A (`if` on `id`, `then` a `contains`
+     on `pipeline[]`), which is why DR-0013's option 2 keyword list must include
+     `contains`; section 7 records that addition.
   3. Create `schemas/role-model-config.schema.json` and
      `role-model-config.yaml` (R-075): per role id, a `tier` of `strongest` or
      `cheaper` with the process doc's own rule applied (strongest for
@@ -647,16 +806,26 @@ acceptance criteria:
      (blueprint section 6); M3 ships the data and no resolver.
   4. Add `mode` and `assurance-tier` validation to the charter schema's enum
      (edit `schemas/charter.schema.json`: replace M3-P1's declared placeholder
-     enum with references to the mode ids defined here).
+     enum with the mode ids defined here), and register Kind B check
+     `charter-mode-enum-matches-modes`, which asserts the schema's enum equals
+     the ids in `assurance-modes.yaml`. Without it the two lists are a
+     duplication that drifts silently the first time a mode is added, which is
+     the same drift hole M3-P2 closes for the gate list.
   5. Add `tiphys mode show --mode <id>` printing the resolved stage list and
      gate sets, so a brief or a human can read what a declared mode requires
      without parsing YAML by hand.
-  6. Tests: `test/assurance-modes.test.ts`.
+  6. Register the `assurance-modes` and `role-model-config` types with the
+     validator's `--type` table and the `auto` resolver, and register this
+     phase's four derived checks in `src/checks.ts` (M3R-001: criterion 1 cannot
+     be met without the first edit and criteria 3a, 3b, 3d cannot be met without
+     the second).
+  7. Tests: `test/assurance-modes.test.ts`.
 - files-to-touch: `schemas/assurance-modes.schema.json`, `assurance-modes.yaml`,
   `schemas/role-model-config.schema.json`, `role-model-config.yaml`,
   `src/modes.ts`, `src/commands/mode.ts`, `test/assurance-modes.test.ts`
-  (create); `schemas/charter.schema.json` (edit), `src/cli.ts` (edit),
-  `package.json` (edit, files entry).
+  (create); `schemas/charter.schema.json` (edit), `src/validate.ts` (edit, type
+  table), `src/checks.ts` (edit, register this phase's derived checks),
+  `src/cli.ts` (edit), `package.json` (edit, files entry).
 - acceptance criteria:
   1. `tiphys validate --type assurance-modes assurance-modes.yaml` exits 0, and
      the same for `role-model-config.yaml`.
@@ -664,20 +833,34 @@ acceptance criteria:
      ids of step 2 in order; `--mode direct-pr` and `--mode local-only` exit 0
      and each print a `skips` list that is non-empty.
   3. DANGEROUS-instance rejections, each exiting 1 and naming the offending
-     field, each with the two-directional keyword witness of section 2.3 rule 2:
-     (a) a mode whose pipeline omits `clean-room-review` while `skips[]` is
-     empty (an undeclared downgrade, which is exactly the improvisation
-     blueprint section 8 forbids); (b) a mode whose pipeline places
-     `implement` before `adversarial-plan-review` (R-024); (c) a `full` mode
-     definition with no `fix-round-verification` stage (T-003); (d) a mode
-     referencing a gate set id absent from `gate-registry.yaml`.
+     field: (a) a mode whose pipeline omits `clean-room-review` while `skips[]`
+     is empty (an undeclared downgrade, the improvisation blueprint section 8
+     forbids), Kind B, check `mode-no-undeclared-downgrade`; (b) a mode whose
+     pipeline places `implement` before `adversarial-plan-review` (R-024),
+     Kind B, check `mode-stage-order`; (c) a `full` mode definition with no
+     `fix-round-verification` stage (T-003), Kind A, `contains`; (d) a mode
+     referencing a gate set id absent from `gate-registry.yaml`, Kind B, check
+     `mode-gate-sets-resolve`, run with `--context`. Each Kind B fixture carries
+     `(check: <id>)` in its message and is witnessed by deregistering and
+     restoring the check (section 2.3 rule 3); the Kind A fixture is witnessed by
+     removing and restoring the `contains` keyword (rule 2). All witnesses are
+     captured in the work history and reverted.
   4. A charter declaring `delivery-mode: yolo` exits 1 naming the enum; a
-     charter declaring `full` exits 0 (both directions).
+     charter declaring `full` exits 0 (both directions). Adding a fourth mode id
+     to `assurance-modes.yaml` without updating the charter schema's enum makes
+     `charter-mode-enum-matches-modes` exit 1 naming both files; updating the
+     enum returns exit 0 (Kind B, both directions).
   4b. A mode with `merge-authority: delegated-under-conditions` and an empty
      `conditions[]` or a missing `granted-by` exits 1 naming the field; the same
      mode carrying DR-0012's six conditions and its record reference exits 0
-     (both directions). This is the falsifiable form of "downgrades are declared,
-     never improvised" applied to authority rather than to stages.
+     (both directions, Kind A via `if`/`then`). This is the falsifiable form of
+     "downgrades are declared, never improvised" applied to authority rather than
+     to stages.
+  4c. `full`'s `escalation-bounds` carry DR-0012's two limits with values, and a
+     `full` definition missing `escalation-bounds` exits 1 (Kind A, both
+     directions). The bound is data the orchestrator brief cites (M3-P9), not
+     an enforcement engine: nothing in M3 counts fix rounds, and section 4.5
+     records that as unproven rather than implying otherwise.
   5. Structural constraint check: `assurance-modes.yaml` contains no stage whose
      definition mentions process liveness, pid, or backgrounding, verified by a
      grep over the file and its schema for `pid`, `kill`, `daemon`, `background`
@@ -687,7 +870,9 @@ acceptance criteria:
 - new behaviors: `modes-validate`, `mode-show-full-stage-order`,
   `mode-undeclared-downgrade-rejected`, `mode-review-before-implement`,
   `mode-full-requires-fix-round-verification`, `mode-unknown-gate-set-rejected`,
-  `charter-mode-enum-closed`, `modes-no-liveness-vocabulary`.
+  `charter-mode-enum-closed`, `charter-mode-enum-drift-detected`,
+  `mode-delegated-authority-requires-conditions`,
+  `mode-full-requires-escalation-bounds`, `modes-no-liveness-vocabulary`.
 - suggested model tier: strongest. This phase encodes merge authority, the
   definition of the pipeline that all later work is measured against, and the
   one place where a downgrade could be made invisible.
@@ -772,7 +957,13 @@ acceptance criteria:
      1.5, whose reason is that its only consumer appends it verbatim into a
      brief).
   5. Register the four types with the validator's `--type` table and the `auto`
-     resolver.
+     resolver, and register this phase's two derived checks in `src/checks.ts`:
+     `report-parity-arithmetic` (asserts
+     `discovered == passed + failed + skipped + did-not-run`, arithmetic over
+     sibling fields that no schema keyword computes) and
+     `final-report-finding-parity` (asserts every id in `inputs[]` appears in
+     `input-findings[]`, a cross-array completeness property). Revision 0 listed
+     both as schema witnesses, which was wrong (M3R-002).
   6. Tests: `test/report-contract.test.ts`, `test/work-history.test.ts`.
 - files-to-touch: `schemas/report.schema.json`,
   `schemas/final-report.schema.json`, `schemas/work-history.schema.json`,
@@ -780,25 +971,32 @@ acceptance criteria:
   `templates/work-history.example.yaml`, `templates/warnings.md`,
   `test/report-contract.test.ts`, `test/work-history.test.ts`,
   `test/fixtures/wrapper-capture.*` (create); `src/validate.ts` (edit, type
-  table).
+  table), `src/checks.ts` (edit, register this phase's derived checks).
 - acceptance criteria:
   1. `tiphys validate` exits 0 on each of the four new example instances.
-  2. DANGEROUS-instance rejections, each exiting 1 naming the offending pointer,
-     each with the two-directional keyword witness of section 2.3 rule 2:
-     (a) a report with `gate-results[0].result: green` and no
-     `wrapper-exit-code` (the exact shape of a false all-green claim, R-086);
-     (b) a report whose `gate-results[0]` has `wrapper-exit-code: 0` while
-     `discovered` exceeds `passed + failed + skipped + did-not-run` (the
-     silently-dropped-tests case R-048 exists for);
-     (c) a report with an `environmental-claims[0]` and an empty `evidence[]`
-     (R-085); (d) an `honest-failures[0]` with a cause and no
-     `exposure-window` (R-088); (e) a work history with a
+  2. Kind A DANGEROUS-instance rejections, each exiting 1 naming the offending
+     pointer, each witnessed by removing and restoring the guarding keyword
+     (section 2.3 rule 2): (a) a report with `gate-results[0].result: green` and
+     no `wrapper-exit-code` (the exact shape of a false all-green claim, R-086);
+     (b) a report with an `environmental-claims[0]` and an empty `evidence[]`
+     (R-085); (c) an `honest-failures[0]` with a cause and no `exposure-window`
+     (R-088); (d) a work history with a
      `verification-first[0].contradicts-plan: true` and no
-     `stopped-and-reported` reference (R-035); (f) a finding whose `analysis`
-     contains "always" and which carries no `counter-experiment` (T-003);
-     (g) a finding with `source-pinned: true` and no `pinned-evidence` (T-004);
-     (h) a final report whose `input-findings[]` omits an id present in its own
-     `inputs[]` list (R-089a's table has a hole).
+     `stopped-and-reported` reference (R-035); (e) a finding whose `analysis`
+     contains "always" and which carries no `counter-experiment` (T-003, an
+     `if`/`then` over a `pattern` on the same object, so it is Kind A);
+     (f) a finding with `source-pinned: true` and no `pinned-evidence` (T-004).
+  2b. Kind B DANGEROUS-instance rejections, each carrying `(check: <id>)` in the
+     message and each witnessed by deregistering and restoring the check
+     (section 2.3 rule 3): (a) a report whose `gate-results[0]` has
+     `wrapper-exit-code: 0` while `discovered` exceeds
+     `passed + failed + skipped + did-not-run`, the silently-dropped-tests case
+     R-048 exists for, check `report-parity-arithmetic`; (b) a final report whose
+     `input-findings[]` omits an id present in its own `inputs[]` list, check
+     `final-report-finding-parity` (R-089a's table has a hole). The second is
+     deliberately checked twice, here by the kernel's own validator and in
+     criterion 4 by the M2-P6 coverage checker, because the artifact should be
+     self-checking and the independent checker is the one the pipeline runs.
   3. The gate-results fixtures in criterion 2 use the real captured output of
      the M2 full-suite wrapper stored in `test/fixtures/`, and a registered test
      asserts the fixture is a verbatim capture (its recorded command and exit
@@ -919,17 +1117,20 @@ acceptance criteria:
      with the footnote citing SC-001 (inspection plus a registered test that
      greps both files for the same visibility string, so the two documents
      cannot silently diverge again).
-  5. DANGEROUS-instance rejections for `schemas/finding.schema.json`, with the
-     two-directional keyword witness: (a) a finding set with
-     `verdict: APPROVE`-equivalent and a `severity: high` finding carrying no
-     `concrete-edit`; (b) a finding set with `findings: []` and no
-     `no-findings-statement` (a silent empty review is indistinguishable from a
-     thorough one, which is the failure this guards); (c) a finding set with no
-     `produced-by` (T-001).
+  5. Kind A DANGEROUS-instance rejections for `schemas/finding.schema.json`,
+     each witnessed by removing and restoring the guarding keyword: (a) a
+     finding set with a `severity: high` finding carrying no `concrete-edit`
+     (`required` per finding); (b) a finding set with `findings: []` and no
+     `no-findings-statement`, a silent empty review being indistinguishable from
+     a thorough one, which is the failure this guards (`if`/`then` on
+     `minItems`); (c) a finding set with no `produced-by` (T-001, `required`).
+     All three are single-document properties, so none needs a derived check;
+     this phase adds no entry to section 2.3's Kind B table.
   6. `tiphys validate --type report` accepts an investigator report only when a
      `repro` reference is present for a root-cause verdict, and rejects the same
      report with the reference removed (R-015a made mechanical through the
-     report contract rather than left as brief prose; both directions).
+     report contract rather than left as brief prose; Kind A `if`/`then`, both
+     directions).
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; clause map
      resolves this phase's seven rows; earlier mappings still resolve.
 - new behaviors: `role-brief-frontmatter-validates`,
@@ -961,7 +1162,16 @@ acceptance criteria:
   (R-094's "consumed by CI and briefs"). M2-P2's red-witness harness and M2-P8's
   credential scoping are the structural facts two clauses cite. T-002 recorded
   a real agent death holding uncommitted work; R-081b's clause is written from
-  that record.
+  that record. T-005 is the phase's other binding input: a rule M1-P3 paid for in
+  a multi-hour investigation did not reach M1-P5, which reimplemented the same
+  claim-file mechanism silently and produced the most severe defect found in M1.
+  The implementer there had read the plan, the agent-rules file, the constraint
+  list, the accumulated environment warnings and three work histories, and none
+  of them carried the rule. T-005's named structural consequence lands on this
+  brief's mandated-reading section, and its artifact half (the mechanism index)
+  is delivered by M3-P8. Ordering note: the index therefore has to exist before
+  the brief can require reading it, which is why this phase's criterion 8 is
+  conditional and its full witness is completed by M3-P8 (see D-M3-23).
 - steps:
   1. Create `roles/implementer.md` with the six sections R-033a enumerates,
      each carrying a clause id: mandated reading in order; phase scope with
@@ -984,6 +1194,24 @@ acceptance criteria:
      used); never end a turn to wait for builds or CI, wait by doing useful
      steps and then check state directly (R-082a); false claims found in
      comments or docs are corrected loudly in place (R-087).
+  1b. Two clauses this brief carries from T-005, which are not new requirement
+     rows but the applied form of R-033a's "mandated reading in order" and are
+     recorded in the clause map against R-033a (M3R-003):
+     - `mechanism-lookup`: before writing any code that uses a mechanism named
+       in `tuition/mechanism-index.yaml` (claim file, lease, append-only log,
+       worktree removal, force delete, retry classification, and whatever the
+       index has grown by then), the implementer looks the mechanism up and
+       states in the work history which rules it found and how the
+       implementation satisfies each. "The index had no entry" is an acceptable
+       and recorded answer; not looking is not. The mandated-reading section
+       lists the index by path, so `brief compose`'s existing path check
+       (M3-P5 criterion 2) already fails a brief that names a missing index.
+     - `mechanism-sibling`: when a phase establishes a rule about a mechanism,
+       the implementer records it at the mechanism's definition in the source
+       AND names the sibling implementations that share it, then adds the rule
+       to the tuition feed's `mechanisms[]` so the index picks it up. T-005 calls
+       this the cheap interim measure and records that M1-P5's fix round did
+       exactly it; this clause makes it standard rather than a one-off.
   2. Create `roles/clean-room-reviewer.md`: has not seen the implementation
      session, reviews the diff and the plan's acceptance criteria only, edits
      nothing and posts nothing to the pull request (R-009b); carries the same
@@ -998,9 +1226,13 @@ acceptance criteria:
      recorded, not built (the rows are discharged in their decided L2 form).
   5. Tests: `test/implementer-brief.test.ts`, `test/clean-room-brief.test.ts`.
 - files-to-touch: `roles/implementer.md`, `roles/clean-room-reviewer.md`,
-  `scripts/check-brief-drift.mjs`, `test/implementer-brief.test.ts`,
+  `scripts/check-brief-drift.mjs`, `tuition/mechanism-index.yaml` (create as the
+  stub of criterion 8; M3-P8 replaces its contents with the generated
+  projection), `test/implementer-brief.test.ts`,
   `test/clean-room-brief.test.ts` (create); `src/roles.ts` (edit),
-  `src/commands/brief.ts` (edit), `.github/workflows/gates.yml` (edit).
+  `src/commands/brief.ts` (edit), `.github/workflows/gates.yml` (edit),
+  `package.json` (edit, files entry: `tuition` enters the published set here
+  rather than at M3-P8, because the stub ships with this phase).
 - acceptance criteria:
   1. `tiphys validate --type role-brief` exits 0 on both briefs.
   2. `tiphys brief compose --role implementer` output contains all six R-033a
@@ -1028,17 +1260,32 @@ acceptance criteria:
      (a registered test, both directions; this is what stops a clause id from
      being a label with no text behind it, which would make the clause map a
      rubber stamp).
+  8. T-005 clauses (M3R-003): the implementer brief's mandated-reading section
+     names `tuition/mechanism-index.yaml` by path, and its `mechanism-lookup`
+     and `mechanism-sibling` clauses are present as body headings resolving from
+     frontmatter (criterion 7 covers the round trip). Because M3-P8 ships the
+     index, this phase witnesses the clause and the path entry against a
+     committed stub index carrying at least the one entry T-005 itself
+     establishes (mechanism `claim-file`, rule "a claim that cannot be taken
+     fails loudly and names the stuck file", evidence citing
+     `delivery/verification/u2-race-flake-investigation.md` and
+     `delivery/review/clean-room-m1-p5-second.md`), and M3-P8 replaces the stub
+     with the generated projection and re-witnesses the path. Deleting the stub
+     makes `tiphys brief compose --role implementer` exit nonzero naming the
+     missing path (both directions), which is the same mandated-reading check
+     M3-P5 built and is why the clause is not merely advisory.
 - new behaviors: `implementer-brief-six-sections`,
   `implementer-brief-gate-list-drift`, `implementer-brief-no-pr-instruction`,
   `implementer-brief-carries-warnings`, `clean-room-brief-validates`,
-  `brief-clause-ids-round-trip`.
+  `brief-clause-ids-round-trip`, `implementer-brief-requires-mechanism-index`.
 - suggested model tier: strongest for the clause text (it is the instruction
   surface every future implementer runs on), cheaper tier acceptable for the
   drift-check mechanics.
 - citations: R-007, R-009b, R-031, R-033a, R-034, R-037a, R-038, R-039, R-040,
   R-074, R-081b, R-082a, R-087; blueprint section 6; process doc sections 2a,
   2c, 2d, 3, 6, and 7; plan v1 D-9, D-10, and section 11 item 7; T-002;
-  M2-P2 and M2-P8 as the named dependencies.
+  T-005 (the two mechanism clauses, delivered under R-033a); M2-P2 and M2-P8 as
+  the named dependencies.
 - conflicts-with: M3-P7 (verdict schema referenced here), M3-P9 (`AGENTS.md`
   references both briefs), M3-P10 (files entry).
 - blocked-by: M3-P5 merged; M2-P2 and M2-P8 merged (named dependencies).
@@ -1086,43 +1333,102 @@ acceptance criteria:
      (R-050b: byte-identical route, reproduced outside the runner, never waved
      off).
   5. Probe injection (R-054): `tiphys checklist resolve --checklist <id>
-     [--extra <file>]` merges the canonical checklist with a per-phase extra
-     probe file, failing on probe-id collision and on an extra probe missing
-     `evidence-required`. The extension mechanism is data, so a per-phase probe
-     set is reviewable and reusable; the AGENTS.md duty to write them is M3-P9.
+     [--extra <file>] [--framing <id>]` merges the canonical checklist with a
+     per-phase extra probe file, failing on probe-id collision and on an extra
+     probe missing `evidence-required`. The extension mechanism is data, so a
+     per-phase probe set is reviewable and reusable; the AGENTS.md duty to write
+     them is M3-P9. `--framing` exists because of T-001's second, more specific
+     lesson (M3R-004): the M1-P4 dual review found different defects because the
+     two reviewers were given different STARTING QUESTIONS, one walking the
+     acceptance criteria as a contract and one told to start from "where can this
+     destroy something or claim a guarantee it does not have". T-001's own words:
+     "the checklists should vary the entry point rather than only the reviewer".
+     A framing is therefore a first-class field of the checklist artifact
+     (`framings[]`, each `{id, entry-point, orders-probes}`), and
+     `checklist resolve --framing` reorders and re-heads the resolved probe list
+     accordingly. `checklists/clean-room.yaml` ships at least the two framings
+     that were actually exercised, `criteria-contract` and `destructive-paths`,
+     cited to T-001's second data point rather than invented.
   6. Create `schemas/verdict.schema.json` (R-060): `{verdict, findings[],
-     produced-by, criteria[]}` where `verdict` is an enum of exactly `APPROVE`
-     and `FIX-ROUND-NEEDED`; `criteria[]` requires one entry per acceptance
-     criterion with `quote`, `evidence[]`, and `met` (R-053); `findings[]`
-     entries require `severity` and `concrete-fix`; and a verdict of `APPROVE`
-     with any finding of severity `high` is invalid.
+     produced-by, framing, criteria[], deviations-judged[]}` where `verdict` is
+     an enum of exactly `APPROVE` and `FIX-ROUND-NEEDED`; `criteria[]` requires
+     one entry per acceptance criterion with `quote`, `evidence[]`, and `met`
+     (R-053); `deviations-judged[]` requires one entry per deviation declared in
+     the phase's work history, each with `deviation`, `serves-plan-intent`, and
+     `reasoning` (M3R-005: R-057b's "judged... never assumed" had the same shape
+     as criteria completeness and the plan had left it as a bare probe, so a
+     reviewer could silently skip judging one of three declared deviations and
+     every criterion still passed); `findings[]` entries require `severity` and
+     `concrete-fix`; `framing` records which entry point this review was given;
+     and a verdict of `APPROVE` with any finding of severity `high` is invalid
+     (Kind A, `if`/`then` over `contains`).
+  6b. Register the `checklist` and `verdict` types with the validator and
+     register this phase's four derived checks in `src/checks.ts`:
+     `checklist-probe-ids-unique` (uniqueness of a nested property across array
+     items is not what `uniqueItems` compares, so this is Kind B and the review
+     did not name it), `gate-probes-resolve` (registry probe ids into the
+     checklist, cross-document), `verdict-criteria-complete` and
+     `verdict-deviations-judged` (both compare a verdict against a different
+     document, the plan phase and the work history respectively).
   7. Tests: `test/checklists.test.ts`, `test/verdict-schema.test.ts`.
 - files-to-touch: `schemas/checklist.schema.json`, `schemas/verdict.schema.json`,
   `checklists/plan-review.yaml`, `checklists/clean-room.yaml`,
   `checklists/flake-playbook.yaml`, `checklists/env-failure-diagnosis.yaml`,
   `src/checklists.ts`, `src/commands/checklist.ts`, `test/checklists.test.ts`,
   `test/verdict-schema.test.ts`, `test/fixtures/red-witness-evidence.*`
-  (create); `src/cli.ts` (edit), `src/validate.ts` (edit),
+  (create); `src/cli.ts` (edit), `src/validate.ts` (edit, type table),
+  `src/checks.ts` (edit, register this phase's derived checks),
   `package.json` (edit, add `checklists` to files).
 - acceptance criteria:
   1. `tiphys validate --type checklist` exits 0 on all four checklists; a
-     checklist with two probes sharing an id exits 1 naming the id.
+     checklist with two probes sharing an id exits 1 naming the id and carrying
+     `(check: checklist-probe-ids-unique)`, witnessed by deregistering and
+     restoring that check (Kind B, section 2.3 rule 3; `uniqueItems` compares
+     whole items and cannot express this).
   2. `tiphys checklist resolve --checklist clean-room --extra <file>` exits 0 and
      prints the merged probe list; an extra file reusing a canonical probe id
      exits nonzero naming the collision; an extra probe without
      `evidence-required` exits nonzero (R-054, all directions).
-  3. Every probe id named by a `gate-registry.yaml` entry with
+  3. Kind B check `gate-probes-resolve`, run with `--context`: every probe id
+     named by a `gate-registry.yaml` entry with
      `verified-by: clean-room-checklist` resolves to a probe in
-     `checklists/clean-room.yaml`; deleting one probe makes the check exit
-     nonzero naming the gate (this is the join M3-P2 deliberately left open, and
-     it is closed here rather than trusted).
-  4. DANGEROUS-instance rejections for `schemas/verdict.schema.json`, each with
-     the two-directional keyword witness: (a) `verdict: APPROVE` with a finding
-     of severity `high` (the exact shape of a review that says yes while
-     recording a reason to say no, which is how a fix round gets skipped);
-     (b) a verdict whose `criteria[]` omits an acceptance criterion present in
-     the referenced plan phase (a review that quietly skipped a criterion);
-     (c) a `FIX-ROUND-NEEDED` finding with no `concrete-fix` (R-060).
+     `checklists/clean-room.yaml`; deleting one probe makes it exit nonzero
+     naming the gate and the probe id, restoring it returns exit 0, and
+     deregistering the check makes the deleted-probe fixture pass (all three
+     captured). This is the join M3-P2 deliberately left open, closed here
+     rather than trusted.
+  3b. Probe-text specificity (M3R-007), a registered test rather than a schema
+     rule because it is a property of prose: the R-027 probe's text contains the
+     process doc's own illustration (the words "zero" and a reference to the
+     state that can no longer exit); the R-055 probe set contains separate
+     entries naming negative, zero, empty, and unicode rather than one generic
+     "check edge cases" entry; the R-059 and R-093 probes name a consumer-search
+     action rather than asking a bare question; and the R-066 flake-playbook
+     probes name the three-consecutive-reds threshold. Each is witnessed in both
+     directions: weakening the probe text to a generic phrasing makes the test
+     fail, restoring it passes, captured in the work history. This does not prove
+     the probes are good (risk 2 stands), but it does make the specific content
+     the plan's own steps demand non-optional, which is the difference between a
+     checklist and a gesture.
+  4. Kind A DANGEROUS-instance rejections for `schemas/verdict.schema.json`,
+     each witnessed by removing and restoring the guarding keyword:
+     (a) `verdict: APPROVE` with a finding of severity `high` (the exact shape of
+     a review that says yes while recording a reason to say no, which is how a
+     fix round gets skipped); (b) a `FIX-ROUND-NEEDED` finding with no
+     `concrete-fix` (R-060); (c) a verdict with no `produced-by` or no `framing`.
+  4b. Kind B DANGEROUS-instance rejections, each carrying `(check: <id>)` and
+     each witnessed by deregistering and restoring the check: (a) a verdict whose
+     `criteria[]` omits an acceptance criterion present in the referenced plan
+     phase, a review that quietly skipped a criterion, check
+     `verdict-criteria-complete`; (b) a verdict whose `deviations-judged[]` omits
+     a deviation declared in the referenced work history, check
+     `verdict-deviations-judged` (M3R-005: the same completeness shape as (a),
+     which revision 0 left as a bare probe question for no stated reason).
+  4c. `tiphys checklist resolve --checklist clean-room --framing criteria-contract`
+     and `--framing destructive-paths` both exit 0 and emit probe lists whose
+     first probe differs; a `--framing` id absent from the checklist's
+     `framings[]` exits nonzero naming it (T-001's second lesson made
+     executable rather than recorded).
   5. The R-028a and R-056a probes name the M2-P2 evidence file as the accepted
      proof, and a registered test asserts the fixture used in the tests is a
      real captured harness evidence file (its recorded command and exit code are
@@ -1133,113 +1439,214 @@ acceptance criteria:
 - new behaviors: `checklist-validates`, `checklist-duplicate-probe-id-rejected`,
   `checklist-extra-probe-merge`, `checklist-extra-probe-collision`,
   `gate-registry-probes-resolve`, `verdict-approve-with-high-finding-rejected`,
-  `verdict-criteria-completeness`, `verdict-finding-requires-fix`,
+  `verdict-criteria-completeness`, `verdict-deviations-completeness`,
+  `verdict-finding-requires-fix`, `verdict-records-framing`,
+  `checklist-framings-differ`, `checklist-probe-text-specific`,
   `red-witness-fixture-is-captured`.
 - suggested model tier: strongest. Probe quality is the whole value of the
   artifact, and the verdict schema decides what a review is allowed to say.
 - citations: R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a,
   R-057b, R-059, R-060, R-066, R-093; blueprint sections 5, 6, and 11; process
   doc sections 1d, 2e, 3, 4, and 8 items 4, 5, and 7; D-11 (the two registry
-  probes); M2-P2 as the named dependency.
+  probes); T-001 second data point (framings); M2-P2 as the named dependency.
 - conflicts-with: M3-P9 (`AGENTS.md` cites the probe-injection duty), M3-P10
   (files entry).
 - blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
 
-### M3-P8: Tuition flow
+### M3-P8: Tuition flow and the mechanism index
 
 - id: M3-P8
 - branch: `claude/m3-p8-tuition-flow`
 - intent: Start the tuition flow operating (R-091): a validated entry format, the
-  root `tuition/` feed populated with the four failure modes this project has
-  already paid for, the retention duty made checkable (R-098), and the immediate
-  hotfix rule stated where the orchestrator reads it (R-070).
+  root `tuition/` feed populated with the five failure modes this project has
+  already paid for, the mechanism index T-005 asks for as a projection of that
+  feed, the retention duty made checkable (R-098), and the immediate hotfix rule
+  stated where the orchestrator reads it (R-070).
 - grounding: M3-P7 merged. `tuition/README.md` is the M1-P1 placeholder and
-  `tuition/` holds nothing else (`CLAUDE.md`: the root `tuition/` is the future
-  cross-project feed and is not `delivery/tuition/`). The charter schema's
-  `retention` field exists from M3-P1. The M1-P2 doctor is extended here, so its
-  check list and profile table are verified before editing.
+  `tuition/` holds nothing but that and M3-P6's stub `mechanism-index.yaml`
+  (`CLAUDE.md`: the root `tuition/` is the future cross-project feed and is not
+  `delivery/tuition/`). The charter schema's `retention` field exists from
+  M3-P1. The M1-P2 doctor is extended here, so its check list and profile table
+  are verified before editing. T-005 is the phase's second binding input and its
+  own words fix the design: "the tuition flow (M3-P8) should be the writer of
+  that index", and "a tuition entry that constrains a mechanism must name the
+  mechanism, so the index is a projection of the tuition feed rather than a
+  second thing to maintain". `delivery/STATE.md`'s carried-forward list assigns
+  the index to this milestone with no owner; this phase is the owner (M3R-003).
 - steps:
   1. Create `schemas/tuition.schema.json`: `{id, project, date, stage,
-     kernel-relevant, what-happened, lesson[], structural-consequence[],
-     evidence[]}` where `kernel-relevant: true` requires at least one
-     `structural-consequence` entry, each carrying `target` (a kernel artifact
-     path) and `status` (`proposed`, `applied`, `ticketed`). An entry that
-     claims kernel relevance and proposes no change to any kernel artifact is
-     not tuition, it is an anecdote, and the schema says so.
-  2. Populate `tuition/` with the kernel-relevant entries promoted from this
+     kernel-relevant, what-happened, lesson[], mechanisms[],
+     structural-consequence[], evidence[]}` where `kernel-relevant: true`
+     requires at least one `structural-consequence` entry, each carrying
+     `target` (a kernel artifact path) and `status` (`proposed`, `applied`,
+     `ticketed`). An entry that claims kernel relevance and proposes no change
+     to any kernel artifact is not tuition, it is an anecdote, and the schema
+     says so. `mechanisms[]` is the T-005 field: each entry is
+     `{mechanism, rule, evidence[]}` with `evidence[]` required and non-empty,
+     because T-005's checkability rule is that "a rule with no citation to an
+     investigation, review or tuition entry is not a rule".
+  2. Create `schemas/mechanism-index.schema.json` and generate
+     `tuition/mechanism-index.yaml` with
+     `tiphys tuition index [--out <file>] [--check]`: the index is a projection
+     of every entry's `mechanisms[]`, keyed by mechanism, each rule carrying its
+     evidence references and the id of the entry it came from. `--check`
+     compares the committed index against a fresh projection and exits nonzero
+     on drift, so the index cannot rot, and it is a projection rather than a
+     second source exactly as T-005 requires. This phase replaces M3-P6's stub
+     index with the generated file and re-witnesses the implementer brief's
+     mandated-reading path against it.
+  3. Populate `tuition/` with the kernel-relevant entries promoted from this
      build's own log, converted to the schema (R-091's "kernel-relevant tuition
      ships upstream as a kernel PR", performed once, by hand, as the flow's
      first real use): T-001 (cross-model review catch, targeting
-     `role-model-config.yaml`'s `review-model-family`), T-002 (agent death and
+     `role-model-config.yaml`'s `review-model-family` and, from its second data
+     point, `checklists/clean-room.yaml`'s `framings[]`), T-002 (agent death and
      salvage, targeting `roles/implementer.md`'s R-081b clause and the M4
      detection work), T-003 (fix rounds need verification, targeting
      `assurance-modes.yaml`'s `fix-round-verification` stage and
      `schemas/report.schema.json`'s universal-claim rule), T-004 (verification
-     isolation and source pinning, targeting
-     `schemas/report.schema.json`'s `source-pinned` field). Each entry's
+     isolation and source pinning, targeting `schemas/report.schema.json`'s
+     `source-pinned` field), and T-005 (lessons do not propagate between phases,
+     targeting `tuition/mechanism-index.yaml` and `roles/implementer.md`'s
+     `mechanism-lookup` and `mechanism-sibling` clauses). Each entry's
      `structural-consequence[].status` is `applied` with the artifact path, or
      `ticketed` with the record that carries it, and never `proposed` for a
      consequence this milestone already shipped.
-  3. Create the two migration tickets plan v1 section 11 item 7 parked for this
+  4. Populate `mechanisms[]` on the entries that constrain one, which is what
+     makes the index non-empty on day one rather than an empty shell waiting for
+     a future incident. At minimum: `claim-file` from T-005 (a claim that cannot
+     be taken fails loudly and names the stuck file, never absorbs silently;
+     evidence `delivery/verification/u2-race-flake-investigation.md` defect D-3
+     and `delivery/review/clean-room-m1-p5-second.md` finding 1);
+     `retry-classification` from T-003 (a contention signature is built from
+     real captured stderr, never from hand-written examples; evidence
+     `delivery/review/verification-m1-p3-fix-round.md` V-2);
+     `destructive-git-operation` from T-003 (a command that can destroy work
+     states its destructive authority in its own contract and never inherits
+     force semantics from a caller that does not yet exist; evidence V-1 in the
+     same file); `shared-worktree` from T-004 (a verification lens works in its
+     own clone and a run that cannot pin its source is not evidence; evidence
+     `delivery/verification/u2-race-flake-investigation.md`). Each is a rule this
+     project has already paid for, with a citation, which is the only kind of
+     entry the schema accepts.
+  5. Create the two migration tickets plan v1 section 11 item 7 parked for this
      moment as `ticketed` tuition entries: D-9's L1 mode-aware branch-protection
      enforcement of review-never-skipped, and D-10's L1 pre-validation push
      check. Both are recorded here and executed post-M3, which is what section
-     11 item 7 says.
-  4. Create `src/tuition.ts` and `src/commands/tuition.ts`:
+     11 item 7 says. Identifier allocation (M3R-011): kernel-shipped tuition and
+     this build's `delivery/tuition/` share one `T-nnn` space, which `CLAUDE.md`
+     says is never renumbered, so the two ticket numbers are allocated at
+     dispatch as the next two free ids across BOTH directories and recorded in
+     the work history. At the time of writing that is T-006 and T-007, and the
+     files-to-touch list below carries the slug with the number resolved at
+     dispatch rather than a number that may already be taken by then.
+  6. Create `src/tuition.ts` and `src/commands/tuition.ts`:
      `tiphys tuition add --file <entry>` validates and writes an entry into the
      fleet's tuition area; `tiphys tuition list [--kernel-relevant]` prints one
-     line per entry with id, date, and target count. Promotion of a
-     kernel-relevant entry into a kernel pull request is a documented
-     orchestrator procedure (M3-P9's `AGENTS.md`), not machinery: the kernel
-     never opens pull requests, and building a promoter M3 uses once is the
-     M1-P3 mistake.
-  5. R-070 (a pipeline flaw is fixed immediately as a hotfix, not deferred) and
+     line per entry with id, date, and target count; `tiphys tuition index` is
+     step 2's projection. Promotion of a kernel-relevant entry into a kernel
+     pull request is a documented orchestrator procedure (M3-P9's `AGENTS.md`),
+     not machinery: the kernel never opens pull requests, and building a promoter
+     M3 uses once is the M1-P3 mistake.
+  7. R-070 (a pipeline flaw is fixed immediately as a hotfix, not deferred) and
      R-098's retention duty land as: an `AGENTS.md` clause (written in M3-P9,
      clause ids reserved here) plus the checkable half built here, a new
      `tiphys doctor` check `retention` that reads the charter's `retention`
      paths and FAILs when a declared path is absent or is git-ignored in the
      fleet or project repository. Extend the doctor profile table by promoting
      `retention` to FAIL under the `full` profile.
-  6. Tests: `test/tuition.test.ts`, and an extension of `test/doctor.test.ts`
-     for the retention check.
-- files-to-touch: `schemas/tuition.schema.json`, `tuition/T-001.yaml`,
+  8. Register the `tuition` and `mechanism-index` types with the validator's
+     `--type` table and the `auto` resolver, and register this phase's two
+     derived checks in `src/checks.ts`: `tuition-target-exists` and
+     `mechanism-rule-evidence-resolves` (both touch the filesystem, so both are
+     Kind B, and neither was named by the review).
+  9. Tests: `test/tuition.test.ts`, `test/mechanism-index.test.ts`, and an
+     extension of `test/doctor.test.ts` for the retention check.
+- files-to-touch: `schemas/tuition.schema.json`,
+  `schemas/mechanism-index.schema.json`, `tuition/T-001.yaml`,
   `tuition/T-002.yaml`, `tuition/T-003.yaml`, `tuition/T-004.yaml`,
-  `tuition/T-005-review-enforcement-ticket.yaml`,
-  `tuition/T-006-push-before-validation-ticket.yaml`, `src/tuition.ts`,
-  `src/commands/tuition.ts`, `test/tuition.test.ts` (create);
+  `tuition/T-005.yaml`, `tuition/T-<next>-review-enforcement-ticket.yaml`,
+  `tuition/T-<next+1>-push-before-validation-ticket.yaml` (both numbers
+  allocated at dispatch per step 5 and recorded in the work history; the
+  resolved names are what the scope audit sees), `src/tuition.ts`,
+  `src/commands/tuition.ts`, `test/tuition.test.ts`,
+  `test/mechanism-index.test.ts` (create); `tuition/mechanism-index.yaml`
+  (edit: replaces M3-P6's stub with the generated projection),
   `tuition/README.md` (edit), `src/commands/doctor.ts` (edit, verify check list
   and profile table first), `test/doctor.test.ts` (edit), `src/cli.ts` (edit),
-  `src/validate.ts` (edit), `package.json` (edit, add `tuition` to files).
+  `src/validate.ts` (edit, type table), `src/checks.ts` (edit, register this
+  phase's derived checks), `package.json` (edit, files entry).
 - acceptance criteria:
-  1. `tiphys validate --type tuition` exits 0 on all six entries.
-  2. DANGEROUS-instance rejection with the two-directional keyword witness: an
-     entry with `kernel-relevant: true` and an empty
-     `structural-consequence[]` exits 1 naming the field; the same entry with
-     one consequence exits 0.
-  3. An entry whose `structural-consequence[].status` is `applied` and whose
-     `target` path does not exist in the repository exits 1 naming the path
-     (a claim that a fix was applied is checked against the tree, which is
-     exactly the claim T-003 showed a document can carry falsely).
-  4. `tiphys tuition list --kernel-relevant` exits 0 and prints exactly the
+  1. `tiphys validate --type tuition` exits 0 on all seven entries and
+     `tiphys validate --type mechanism-index tuition/mechanism-index.yaml`
+     exits 0.
+  2. Kind A DANGEROUS-instance rejections, each witnessed by removing and
+     restoring the guarding keyword: (a) an entry with `kernel-relevant: true`
+     and an empty `structural-consequence[]` exits 1 naming the field; (b) a
+     `mechanisms[]` entry with a rule and an empty `evidence[]` exits 1 naming
+     the field, which is T-005's own rule ("a rule with no citation to an
+     investigation, review or tuition entry is not a rule") expressed as a
+     schema constraint rather than as advice.
+  3. Kind B rejections, each carrying `(check: <id>)` and witnessed by
+     deregistering and restoring the check: (a) an entry whose
+     `structural-consequence[].status` is `applied` and whose `target` path does
+     not exist in the repository exits 1 naming the path, check
+     `tuition-target-exists` (a claim that a fix was applied is checked against
+     the tree, which is exactly the claim T-003 showed a document can carry
+     falsely); (b) a `mechanisms[]` rule whose evidence reference names a file
+     that does not exist exits 1 naming the reference, check
+     `mechanism-rule-evidence-resolves`.
+  4. `tiphys tuition index --check` exits 0 against the committed index; adding
+     a `mechanisms[]` entry to any tuition file without regenerating makes it
+     exit nonzero naming the mechanism and the entry id; regenerating returns
+     exit 0 (both directions: the index is a projection, and drift is a failure
+     rather than a slow divergence).
+  5. The generated `tuition/mechanism-index.yaml` contains an entry for
+     `claim-file` whose rule is T-005's loud-failure rule and whose evidence
+     resolves to both cited files; deleting T-005's `mechanisms[]` block and
+     regenerating removes that entry, and restoring it brings it back (both
+     directions). This is the specific defect T-005 records: the next
+     implementer reaching for a claim file now gets an answer, and the test
+     proves the answer comes from the feed rather than from a hand-written file.
+  6. `tiphys brief compose --role implementer` output names
+     `tuition/mechanism-index.yaml` in its mandated reading and the path
+     resolves to the generated index (M3-P6 criterion 8 completed against the
+     real artifact rather than the stub).
+  7. `tiphys tuition list --kernel-relevant` exits 0 and prints exactly the
      entries whose `kernel-relevant` is true; `tiphys tuition add` on an invalid
      entry exits nonzero and writes nothing (verified by comparing the tuition
      directory listing before and after).
-  5. `tiphys doctor` in a fleet whose charter declares a `retention` path that
+  8. `tiphys doctor` in a fleet whose charter declares a `retention` path that
      exists and is tracked prints `CHECK retention PASS`; after adding that path
      to `.gitignore`, the same command prints `CHECK retention FAIL` naming the
      path and exits nonzero; under `--for full` the same promotion is witnessed
      (both directions, R-098).
-  6. `node --test` exits 0 with 0 failing and zero unaccounted tests; clause map
+  9. The two migration-ticket ids do not collide with any existing
+     `delivery/tuition/T-nnn` or `tuition/T-nnn` id, asserted by a registered
+     test that scans both directories for duplicate ids and fails on any
+     (M3R-011; the test outlives this phase, which is the point, since the two
+     directories will keep growing independently).
+  10. `node --test` exits 0 with 0 failing and zero unaccounted tests; clause map
      resolves this phase's three rows; earlier mappings still resolve.
 - new behaviors: `tuition-entry-validates`,
   `tuition-kernel-relevant-requires-consequence`,
-  `tuition-applied-target-must-exist`, `tuition-list-filters-kernel-relevant`,
-  `tuition-add-rejects-invalid`, `doctor-retention-check`.
-- suggested model tier: cheaper tier acceptable. The schema is small and the
-  entries are conversions of documents that already exist.
+  `tuition-mechanism-rule-requires-evidence`, `tuition-applied-target-must-exist`,
+  `mechanism-evidence-resolves`, `mechanism-index-projection-drift`,
+  `mechanism-index-contains-claim-file-rule`,
+  `implementer-brief-reads-generated-index`,
+  `tuition-list-filters-kernel-relevant`, `tuition-add-rejects-invalid`,
+  `tuition-ids-unique-across-directories`, `doctor-retention-check`.
+- suggested model tier: strongest, changed from revision 0's "cheaper tier
+  acceptable". The phase is no longer a schema plus four conversions: it now
+  carries the mechanism index, which is the structural answer to the failure
+  T-005 records, and the index's value is entirely in whether its rules are
+  stated precisely enough to be usable by someone who was not there.
 - citations: R-070, R-091, R-098; blueprint section 9 (tuition flow) and section
   2 (kernel PRs); process doc sections 4 and 9 item 5; plan v1 section 11 item 7
-  and the R-091 note (directory scaffolded in M1-P1); T-001 to T-004.
+  and the R-091 note (directory scaffolded in M1-P1); T-001 to T-005, with T-005
+  as the source of the mechanism index and its checkability rule;
+  `delivery/STATE.md` carried-forward item "a mechanism index... belongs with the
+  M3 tuition flow".
 - conflicts-with: M3-P9 (`AGENTS.md` clauses reserved here), M3-P10 (files
   entry).
 - blocked-by: M3-P7 merged.
@@ -1292,12 +1699,37 @@ acceptance criteria:
      specification (what is expected to survive reclamation, what is rebuilt,
      what doctor should report), explicitly marked as specification with the
      machinery deferred to M4.
-  3. Add the three duties this build paid tuition for, each citing its entry:
+  3. Add the four duties this build paid tuition for, each citing its entry:
      salvage discipline, with the exact `WIP-UNREVIEWED (do not treat as
      reviewed):` prefix (T-002); verification dispatch isolation, every lens in
-     its own clone, never a shared worktree (T-004); and per-phase probe
+     its own clone, never a shared worktree (T-004); per-phase probe
      injection into the clean-room review using the M3-P7 extension mechanism
-     (R-054's orchestrator half, whose data mechanism already shipped).
+     (R-054's orchestrator half, whose data mechanism already shipped); and the
+     promotion procedure for kernel-relevant tuition, which is a documented
+     orchestrator act rather than machinery (M3-P8 step 6), including the
+     requirement that an entry constraining a mechanism names it so
+     `tiphys tuition index` picks it up (T-005).
+  3b. Add the decorrelated-review duty (M3R-004), the finding that revision 0
+     recorded as schema fields and never enforced or assigned. Clause
+     `decorrelated-review`, citing DR-0012 and T-001 directly: when the declared
+     mode's `merge-authority` is `delegated-under-conditions`, the orchestrator
+     may merge only after verifying, against the verdict files rather than
+     against memory, that (a) two verdicts exist for the exact head, (b) their
+     `produced-by` model families are distinct, which is DR-0012 condition 1,
+     (c) their `framing` values are distinct, which is T-001's second lesson
+     that "two reviews with different STARTING QUESTIONS find different things"
+     and that "the checklists should vary the entry point rather than only the
+     reviewer", and (d) neither carries an unresolved high or medium finding,
+     which is DR-0012 condition 2. The clause also carries DR-0012's
+     stop-rather-than-grind limit by reference to `full` mode's
+     `escalation-bounds` (M3-P3), rather than restating the numbers, per the
+     anti-duplication rule. Ship `scripts/check-dual-review.mjs` (Kind B derived
+     check `dual-review-decorrelation`, registered in `src/checks.ts`) so the
+     verification is a command with an exit code and not a habit: a kernel that
+     can represent the regime but cannot detect a run that quietly used one
+     model family twice reproduces the exact failure class T-001 exists to
+     prevent, this time invisible because the kernel's own artifacts never
+     looked.
   4. Add a supervision section written in lease and beacon terms only, with an
      explicit statement that liveness is lease freshness and that arming the
      watcher is an explicit foreground step (C-2, C-3).
@@ -1306,9 +1738,11 @@ acceptance criteria:
      mode table, or a model-tier table (the data lives in
      `gate-registry.yaml`, `assurance-modes.yaml`, `role-model-config.yaml`).
      Wire into the gates workflow.
-  6. Tests: `test/agents-policy.test.ts`.
+  6. Tests: `test/agents-policy.test.ts`, `test/dual-review.test.ts`.
 - files-to-touch: `AGENTS.md`, `scripts/check-agents-references.mjs`,
-  `test/agents-policy.test.ts` (create); `.github/workflows/gates.yml` (edit),
+  `scripts/check-dual-review.mjs`, `test/agents-policy.test.ts`,
+  `test/dual-review.test.ts` (create); `src/checks.ts` (edit, register
+  `dual-review-decorrelation`), `.github/workflows/gates.yml` (edit),
   `package.json` (edit, add `AGENTS.md` to files).
 - acceptance criteria:
   1. `tiphys validate --type role-brief AGENTS.md` exits 0 with `role:
@@ -1331,18 +1765,35 @@ acceptance criteria:
   6. The four plan-assigned duties of step 2 are each present with a citation to
      their source record (D-4/PR-012, D-6/SC-008, D-8/SC-010, PR-201), asserted
      by a registered test that greps for the four citation tokens.
-  7. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
+  7. Dual-review decorrelation (M3R-004), all five directions witnessed with
+     verdict fixtures: with `merge-authority: delegated-under-conditions`,
+     `node scripts/check-dual-review.mjs <dir>` exits 0 on two verdicts for one
+     head with distinct `produced-by` and distinct `framing`; exits nonzero
+     naming the duplicated value when the two share a `produced-by`; exits
+     nonzero naming it when the two share a `framing`; exits nonzero when only
+     one verdict exists for the head; and exits 0 for a mode whose
+     `merge-authority` is `owner`, so the check applies exactly where the grant
+     applies. Deregistering `dual-review-decorrelation` makes the shared-family
+     fixture pass, which is the Kind B witness (section 2.3 rule 3).
+  8. `AGENTS.md` cites DR-0012 and T-001 by id in the `decorrelated-review`
+     clause, asserted by a registered grep test (revision 0's `AGENTS.md`
+     citation list contained neither, which is what M3R-004 found).
+  9. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
      mappings still resolve.
 - new behaviors: `agents-frontmatter-validates`,
   `agents-references-resolve`, `agents-no-duplicated-policy-data`,
   `agents-clause-ids-round-trip`, `agents-no-liveness-vocabulary`,
-  `agents-carries-plan-assigned-duties`.
+  `agents-carries-plan-assigned-duties`, `dual-review-distinct-model-families`,
+  `dual-review-distinct-framings`, `dual-review-requires-two-verdicts`,
+  `dual-review-inapplicable-under-owner-authority`.
 - suggested model tier: strongest. This is the document the orchestrator runs
   on, and four of its clauses encode settled owner resolutions.
 - citations: R-001b, R-002, R-013, R-030, R-061, R-062, R-065b, R-067, R-073,
   R-076, R-077; blueprint sections 2, 3, 6, and 10; process doc sections 0, 1b,
   1d, 3, 4, and 5; plan v1 D-4, D-6, D-8, D-9, D-13, PR-012, PR-201, SC-002,
-  SC-008, SC-010; T-002 and T-004; constraints C-2 and C-3.
+  SC-008, SC-010; DR-0012 (the delegated-authority conditions the
+  `decorrelated-review` clause enforces); T-001 (framing distinctness), T-002,
+  T-004, and T-005 (the tuition promotion duty); constraints C-2 and C-3.
 - conflicts-with: M3-P10 (files entry).
 - blocked-by: M3-P8 merged.
 
@@ -1446,7 +1897,22 @@ acceptance criteria:
 - conflicts-with: none remaining (last M3 phase).
 - blocked-by: M3-P9 merged; DR-0008 decided; owner action A-4 (publish
   credentials); owner action A-3 (the exit run's merge approval) falls due
-  inside section 4 stage C.
+  inside section 4 stage E2.
+- fallback if DR-0008 is still open at dispatch (M3R-008): this phase splits at
+  step 5. Steps 1 to 5 dispatch as `M3-P10a`, branch
+  `claude/m3-p10a-release-engineering`, carrying the license gate, the `files`
+  completeness assertions, `release-verify.sh` run against a locally packed
+  tarball, and the `tiphys init` pin written against the working-assumption name
+  `@tiphys/kernel`; every one of criteria 1 to 3 is witnessable without a
+  registry, and criterion 4's published-package half is deferred with a recorded
+  reason. Step 6 and section 4 stage E4 do not dispatch: they become `M3-P10b`,
+  which stays blocked. Section 4 stages E1 to E3 may still run, because nothing
+  in the full-mode delivery of the subject change touches a registry. What the
+  split cannot rescue: the milestone does not exit, because the exit test's E4
+  is half of what blueprint section 13 asks for. The split buys work, not
+  completion, and the plan says so rather than implying a package name can be
+  chosen late for free (published names are permanent, which is why DR-0008 is
+  marked costly).
 
 ---
 
@@ -1528,16 +1994,26 @@ findings are applied to the plan and the amended plan re-validates (R-030's duty
 witnessed as a state change in the plan file, not as an assertion).
 
 E1.6. Implementation: `tiphys spawn` runs an implementer composed from
-`roles/implementer.md` in a pool worktree; the change lands with its tests; the
-M2 gate runner over `gate-registry.yaml --mode full` exits 0 with no gate green
-whose precondition is unmet; the M2-P2 red-witness harness emits its evidence
-file for the new behavior, and that file is in the bundle.
+`roles/implementer.md` in a pool worktree; the composed brief names
+`tuition/mechanism-index.yaml` and the implementer's work history records, per
+the `mechanism-lookup` clause, which mechanisms it used and what the index said
+about each, including "no entry" where that is the answer (T-005, M3R-003); the
+change lands with its tests; the M2 gate runner over
+`gate-registry.yaml --mode full` exits 0 with no gate green whose precondition is
+unmet; the M2-P2 red-witness harness emits its evidence file for the new
+behavior, and that file is in the bundle.
 
 E1.7. Clean-room review: an agent composed from `roles/clean-room-reviewer.md`
 with `checklists/clean-room.yaml` resolved through
 `tiphys checklist resolve` (including at least one injected per-phase probe,
-R-054) produces a verdict; `tiphys validate --type verdict` exits 0 and its
-`criteria[]` covers every acceptance criterion of the plan phase.
+R-054) produces a verdict; `tiphys validate --type verdict --context <plan dir>`
+exits 0, which runs `verdict-criteria-complete` and `verdict-deviations-judged`
+against the plan phase and the work history. If the declared mode's
+`merge-authority` is `delegated-under-conditions`, two reviews run with
+different `--framing` values and different model families, and
+`node scripts/check-dual-review.mjs` exits 0 over the pair (M3R-004); a run that
+produces one review, or two sharing a family or a framing, fails the exit test
+rather than being noted.
 
 E1.8. If the verdict is FIX-ROUND-NEEDED: the fix round runs, and the
 `fix-round-verification` stage that `full` mode requires (T-003) runs after it
@@ -1565,10 +2041,10 @@ owner's approval is required and its absence is an exit-test failure rather than
 a delay. Stage E2 has no timing requirement; the lease is renewed across the
 wait and the renewal is recorded (PR-203).
 E2.2. If DR-0012's regime is still in force at the time of the run, the two
-independent cross-model clean reviews it requires are also in the bundle, which
-means E1.7 produced two verdicts rather than one and both validate against
-`schemas/verdict.schema.json`. A run that produces one review under a standing
-two-review grant fails the exit test.
+independent cross-model clean reviews it requires are also in the bundle, both
+validating against `schemas/verdict.schema.json`, and
+`scripts/check-dual-review.mjs`'s exit-0 record from E1.7 is in the bundle as
+the evidence that they were actually decorrelated rather than declared to be.
 
 ### 4.3 Stage E3: post-merge witnesses
 
@@ -1603,7 +2079,9 @@ through a pull request. M4 may not start before that commit is on `main`.
 
 Proves: the M3 artifact set is internally consistent and machine-validated end
 to end on one real change; every stage `full` mode declares was executed and has
-an evidence record; the kernel's own briefs compose, its checklists resolve, its
+an evidence record; the mechanism index was consulted by the implementer and the
+consultation is in the work history; the two reviews were decorrelated by a
+check with an exit code rather than by assertion; the kernel's own briefs compose, its checklists resolve, its
 schemas accept the artifacts the roles produced and rejected at least one
 deliberately invalid instance; the published package installs from a clean
 environment and its shipped schemas and templates resolve from inside the
@@ -1732,13 +2210,31 @@ D-19, which remain in force unchanged.
   outline put the red-witness harness first; the M2 plan puts the gate contract
   and runner first). Both documents are DRAFT and concurrent, written under
   DR-0011's parallel-planning grant, so the orchestrator reconciles them at the
-  boundary the M2 plan's section 2 names. Every boundary item the M2 plan claims
-  or disclaims there is accepted here: M2 builds the manifest and M3 builds the
-  registry and mode selection (item 1); M2 claims only R-089b of the reporting
-  rows (item 2); M2 disclaims the fix-round verification requirement (item 6)
-  and universal-quantifier linting (item 7), both of which this plan carries in
-  M3-P3 and M3-P4 respectively; M2 disclaims the tuition flow and the role
-  briefs (item 8). No requirement row moves in either direction.
+  boundary the M2 plan's section 2 names. All nine of its boundary items are
+  accepted, each with the place this plan discharges it, so completeness can be
+  read here rather than re-derived from the other document (M3R-010):
+  1. gate registry versus manifest: M2 builds `gates.manifest.json`, M3-P2
+     promotes it and makes the reserved `modes` field live.
+  2. report contract and status line: M3-P1 (status line) and M3-P4 (report),
+     with M3-P4 required to emit or deliberately supersede M2-P6's declared
+     coverage input contract.
+  3. plan-schema superset for the scope auditor's projection: accepted as
+     D-M3-18, built in M3-P1 step 2 with `tiphys plan project`.
+  4. schemas-directory relocation: accepted as D-M3-20, executed in M3-P1
+     step 10b.
+  5. validation technology seam: DR-0013, section 7, whose recommendation is now
+     to extend M2's validator rather than adopt a library.
+  6. fix-round verification as a pipeline requirement: M2 disclaims it, M3-P3
+     carries it as a required `full` stage, cited to T-003.
+  7. universal-quantifier linting: M2 disclaims it, M3-P4 carries it in the
+     report schema as a Kind A `if`/`then` over a `pattern`.
+  8. tuition flow and role briefs: M2 disclaims both, M3-P8 and M3-P5/M3-P6
+     carry them.
+  9. credential scoping: M2-P8 builds the kernel-side half and the owner half is
+     DR-0004 item 4; the M2 plan states there is no M3 overlap and this plan
+     agrees, so no action is required here beyond M3-P6's clause that the
+     implementer brief must not instruct what the credentials forbid.
+  No requirement row moves in either direction.
 - D-M3-18: the plan schema's phase object is a strict superset of the M2-P4
   scope auditor's phase-declaration projection, and M3-P1 ships
   `tiphys plan project` to generate it. This accepts the recommendation the M2
@@ -1758,6 +2254,52 @@ D-19, which remain in force unchanged.
   deliverables, two schema locations in one package is a question every future
   reader has to answer twice, and the M2 plan states the move is one relocation
   plus one path constant. M3-P1 verifies that claim before acting on it.
+- D-M3-21 (re-grounding, not a review finding): M3-P1 owns the top-level error
+  presentation handler in `bin/tiphys.ts` that `delivery/STATE.md` records as
+  carried forward with no owner. It is taken here because M3-P1 is the first
+  phase to add commands whose ordinary input is a hand-authored file, and a
+  validator that answers malformed YAML with a stack trace is one nobody trusts.
+  Scope is the handler and nothing else in that file. The other three
+  carried-forward items stay unowned by M3 and are recorded in Appendix C so the
+  choice is visible rather than silent.
+- D-M3-22 (M3R-002): validation checks are classified as Kind A (schema keyword)
+  or Kind B (validator-computed or cross-document) in section 2.3, every
+  criterion states which it is, and the fifteen Kind B checks are tabulated
+  there. An implementer who finds a check that belongs in that table and is not
+  in it escalates it as a plan defect; writing the check as an undeclared script
+  is forbidden, both because the M2-P4 scope auditor would fail the undeclared
+  file and because the table is what stops this class from being rediscovered
+  once per phase.
+- D-M3-23 (M3R-003): T-005's mechanism index is delivered in two halves that sit
+  in adjacent phases: M3-P6 ships the implementer brief's `mechanism-lookup` and
+  `mechanism-sibling` clauses plus a committed stub index carrying the one rule
+  T-005 itself establishes, and M3-P8 replaces the stub with the generated
+  projection of the tuition feed's `mechanisms[]` field and re-witnesses the
+  brief's path. The split is because the brief cannot require reading a file that
+  does not exist, and reordering the two phases would put the tuition flow before
+  the briefs it is written for. Neither half is a new requirement row: the brief
+  clauses are delivered under R-033a's "mandated reading in order" and the index
+  under R-091's tuition flow, both recorded in the clause map against those rows,
+  so Appendix A's counts are unchanged.
+- D-M3-24 (M3R-004): the dual cross-model review guarantee is enforced by
+  `scripts/check-dual-review.mjs` and cited in `AGENTS.md`, not merely
+  representable in a schema field. Recording a claim without checking it is the
+  unenforced-data shape this project has recorded twice (T-003's false work
+  history, T-004's unpinned finding), and DR-0012 is not hypothetical: it is the
+  regime M1-P3 through M1-P5 were reviewed under.
+- D-M3-25 (M3R-009): the push-cadence trio (R-038 per-step commits, R-039
+  batched pushes, R-074 one-to-two-push fix rounds) stays L2 brief clauses in
+  M3-P6, and the computability question the migration table asked of its six
+  resist-rows but never asked of these three is answered here rather than left
+  unasked. A proxy is computable: commits-per-push from git history, and CI runs
+  per phase from the workflow API, both available post-hoc. It is not built,
+  for two reasons that are about the check rather than about effort. First, the
+  proxy measures the wrong thing at the wrong time: the rule exists to stop a
+  phase burning CI runs, and a post-hoc count tells you it already happened.
+  Second, the numbers are advisory in the process doc's own wording ("every 1 to
+  3 steps"), so a gate would either fail honest work or never fire. Recorded in
+  Appendix C as available-and-declined with these reasons, which is what the
+  placement rule asks for: the question asked and answered, not skipped.
 
 ## 6. Open questions
 
@@ -1765,10 +2307,21 @@ Per D-7, an open question is a decision record with status open, not a
 free-floating list item. The open questions of this plan are exactly:
 
 1. DR-0008 (release registry and package naming): open, deferred by the owner,
-   explicitly due before this plan is approved. Binds M3-P10 entirely and binds
-   `package.json`'s `name` field, the fleet-home pin M3-P10 writes into
-   `tiphys init`, and every release-verification criterion that names the
-   package.
+   with a stated due date ("before the M3 plan is approved") that has now passed:
+   this plan is in adversarial review on 2026-08-05 and the record is still open
+   (M3R-008). Binds M3-P10 entirely and binds `package.json`'s `name` field, the
+   fleet-home pin M3-P10 writes into `tiphys init`, and every
+   release-verification criterion that names the package.
+   What that means for this plan's own approval, stated rather than left to be
+   worked out at dispatch: M3-P1 through M3-P9 may be approved and dispatched
+   with DR-0008 still open, because no acceptance criterion in any of them names
+   a package, a registry, or a version; the reviewer verified this class and this
+   plan re-verified it by searching every criterion in phases 1 to 9 for the
+   package name, the word registry, and a version string. M3-P10 and section 4
+   stage E4 remain blocked, with the split fallback M3-P10 records. The
+   orchestrator re-escalates DR-0008 as overdue at the same moment it presents
+   this plan, rather than presenting the plan and noting the overdue date as a
+   risk afterwards.
 2. DR-0010 (harness-native orchestration primitive): open, recorded as due at
    M4. Its question text explicitly includes an M3 half ("should any
    judgment-layer fan-out (M3 review stages) target it?"). This plan's answer,
@@ -1785,7 +2338,7 @@ There are no other open questions.
 
 | DR | Question | Status | Blocks |
 |---|---|---|---|
-| DR-0008 | Release registry and package naming (SC-012, SC-006) | open, deferred, due before this plan is approved | M3-P10 in full; the `name` field; the fleet pin; every release criterion |
+| DR-0008 | Release registry and package naming (SC-012, SC-006) | open, deferred; the stated due date (before this plan is approved) has passed, re-escalated as overdue with this plan | M3-P10 in full; the `name` field; the fleet pin; every release criterion. M3-P1 to M3-P9 are NOT blocked (section 6 item 1) |
 | DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work |
 | DR-0013 | How is JSON Schema validation implemented in the kernel | open, raised here, due before M3-P1 dispatches | M3-P1, and transitively every later M3 phase |
 
@@ -1812,7 +2365,9 @@ presented:
   (2) extend M2's closed keyword set to cover what M3's schemas need
   (`type`, `required`, `enum`, `const`, `properties`, `items`,
   `additionalProperties`, `minItems`, `pattern`, `oneOf`, `if`/`then` for the
-  conditional rules M3-P1 and M3-P4 need), keeping the loud-failure-on-unknown-
+  conditional rules M3-P1 and M3-P4 need, and `contains`, which M3-P3's
+  `full`-requires-`fix-round-verification` rule and M3-P7's
+  APPROVE-with-a-high-finding rule both need), keeping the loud-failure-on-unknown-
   keyword property that makes the subset safe, and declare the subset in
   `schemas/README.md`; (3) hand-write per-type checks in TypeScript, which
   contradicts DR-0006's language-neutral intent.
@@ -1830,6 +2385,14 @@ presented:
 - Note for the owner: M3-P1's steps 8 and 11 and its dependency-related criteria
   change with the choice, and nothing else does. Both options keep the schemas
   themselves standard JSON Schema, so neither locks the artifacts in.
+- Scope correction from the review (M3R-002): revision 0's note framed
+  "the conditional rules need more of the specification than the subset carries"
+  as a risk confined to M3-P1 and M3-P4, which was wrong. Section 2.3 now
+  separates the checks no schema technology can express (Kind B, fifteen of them,
+  spread across five phases) from the ones a keyword covers (Kind A), so this
+  decision is about Kind A only and its blast radius is bounded. An implementer
+  who finds a Kind A rule the subset cannot carry escalates rather than
+  reclassifying it as Kind B to avoid the conversation (D-M3-22).
 
 Owner actions (acts, not choices):
 
@@ -1865,7 +2428,10 @@ comparison plan v1's own history makes available.
    a criterion that can only be met by code that runs in a mode M3 never enters.
 2. **Prose artifacts cannot be proven good, and the criteria might imply they
    were.** M3-P5, M3-P6, M3-P7, and M3-P9 ship 44 of the 74 rows as clause text
-   and probe questions. The clause map proves a clause id exists and a heading
+   and probe questions. Revision 1 narrows this slightly: M3-P7 criterion 3b now
+   checks that the specific illustrative content the plan's own steps demand is
+   present in the probe text (M3R-007), which converts "the probe exists" into
+   "the probe says the thing", but not into "the probe is the right probe". The clause map proves a clause id exists and a heading
    exists under it. It proves nothing about whether the clause says the right
    thing, and neither does any gate this project has or will have. The only real
    evidence is the exit run, which is one change (section 4.5 item 3).
@@ -1896,7 +2462,25 @@ comparison plan v1's own history makes available.
    Mitigation: section 2.3's DANGEROUS-instance rule with the two-directional
    keyword witness, applied to every schema in every phase. A phase whose
    invalid fixtures are syntax errors has not met its criteria.
-7. **Two plans written concurrently.** M2 and M3 were detail-planned in
+7. **A plan written in parallel with the work it plans goes stale while it is
+   being written.** This is not hypothetical for this document: T-005 was
+   committed under three hours after this plan's first drafting commit, it is
+   squarely about M3's central artifacts, and revision 0 did not mention it. The
+   review found it, and the orchestrator has recorded the procedural fix against
+   DR-0011: a plan written in parallel with implementation is re-grounded against
+   everything learned since it was started, before its review rather than after.
+   Revision 1 performed that re-grounding, and it produced four changes the
+   findings did not ask for (the mechanism-index ownership was already assigned
+   to M3 by `delivery/STATE.md`'s carried-forward list; the top-level error
+   handler, D-M3-21; DR-0012's escalation bounds as mode data, M3-P3 step 1;
+   T-001's framing lesson as a checklist field, M3-P7 step 5). The residual risk
+   is the same shape: M1-P5 is still open, M1-P6 has not run, and the M1 exit
+   test has not happened, so T-006 and T-007 may exist before M3-P1 dispatches.
+   The mitigation is the one that just worked, applied again: re-ground at
+   dispatch, not only at planning. Each phase's grounding line already requires
+   verification of what it consumes; this risk adds the tuition feed to that
+   list, which is exactly what the mechanism index makes cheap.
+8. **Two plans written concurrently.** M2 and M3 were detail-planned in
    parallel under DR-0011 by separate agents. The boundary is enumerated in the
    M2 plan's section 2 and accepted in D-M3-17, which makes disagreement visible
    rather than silent, but both documents are DRAFT and either can move under
@@ -1905,12 +2489,12 @@ comparison plan v1's own history makes available.
    component. The residual risk is that an M2 review changes the manifest shape,
    the projection, or the coverage input contract after this plan is approved,
    which would land on M3-P1, M3-P2, and M3-P4 specifically.
-8. **Suite wall time.** M1-P3 measured 63.4 seconds at its head and warned that
+9. **Suite wall time.** M1-P3 measured 63.4 seconds at its head and warned that
    the figure grows (`CLAUDE.md` warning 11, M1-P3 warnings 6 and 9). M3 adds
    ten phases of schema and CLI tests plus brief composition against the
    filesystem. Budget harness timeouts off the measured figure at each phase's
    head, and do not shorten real waits to compensate.
-9. **Publication is irreversible.** A published name and version cannot be
+10. **Publication is irreversible.** A published name and version cannot be
    cleanly withdrawn, and fleet homes pin it from M3 onward. M3-P10's ordering
    (license gate, pack assertions, install-from-tarball, only then publish)
    exists for that reason, and the phase is dispatched at the strongest tier.
@@ -1928,6 +2512,16 @@ governing decision fixed.
 Per-phase counts: M3-P1 = 12, M3-P2 = 3, M3-P3 = 3, M3-P4 = 9, M3-P5 = 7,
 M3-P6 = 13, M3-P7 = 13, M3-P8 = 3, M3-P9 = 11, M3-P10 = 0. Total = 74, which
 equals plan v1 Appendix A's M3 bucket count of 74.
+
+Revision 1 moved no row and changed no count. The artifacts revision 1 added
+(the mechanism index and the two implementer-brief mechanism clauses from T-005,
+the dual-review decorrelation check from DR-0012 and T-001, checklist framings,
+`deviations-judged[]`, and the derived-check registry) are all delivered under
+rows that already existed: R-091 for the index, R-033a for the brief clauses,
+R-054 and R-060 for the checklist and verdict additions, R-002 and R-061 for the
+`AGENTS.md` review duties. Tuition entries and decision records are not
+requirement rows and never enter this table; adding one does not create a row,
+which is why the count survives a fix round that added real scope.
 
 | Row | Phase | Artifact and note |
 |---|---|---|
@@ -2053,3 +2647,21 @@ not mistake absence for oversight.
    by M4 (PR-201, unchanged).
 8. Artifact renderers, a tuition pull-request promoter, and any mode-enforcement
    engine: D-M3-09 and D-M3-10.
+9. A computable check for the push-cadence trio (R-038, R-039, R-074). The
+   proxy exists (commits per push from git history, CI runs per phase from the
+   workflow API) and is declined with reasons in D-M3-25, rather than the
+   question going unasked as it did in revision 0 (M3R-009).
+10. Three of the four carried-forward items in `delivery/STATE.md` stay unowned
+   by M3, stated so the silence is a choice: the non-atomic `meta.json` write
+   (the M2 plan is where it belongs, and it is a source defect not a layer-2
+   artifact); M1-P4's inert liveness hook, which M3 does not remove because no
+   M3 phase acquires `src/spawn.ts`, and if any phase ends up needing that file
+   it removes the hook in the same change and declares it; and deadline-less
+   abandonment, which plan v1's own not-proven list assigns to M2 or M4. The
+   fourth, the top-level error handler, is owned by M3-P1 under D-M3-21, and the
+   fifth, the mechanism index, is owned by M3-P8 under D-M3-23.
+11. Counting fix rounds. `full` mode carries DR-0012's stop-rather-than-grind
+   limits as `escalation-bounds` data (M3-P3), and nothing in M3 counts rounds
+   or detects recurrence. The bound is a number the orchestrator brief cites,
+   which makes it visible and auditable but not enforced; enforcement needs
+   pipeline history M3 does not have. Recorded rather than implied.
