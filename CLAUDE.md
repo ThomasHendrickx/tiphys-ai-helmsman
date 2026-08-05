@@ -132,10 +132,19 @@ Stable IDs, never renumbered, cited across documents:
 
 ## Delivery protocol
 
-One phase, one branch, one PR, merged by the owner. Branch names are given
-by the plan (`claude/m1-pN-<slug>`). The orchestrator never writes feature
-code and never lets a review be skipped; implementers never open PRs and
-never merge.
+One phase, one branch, one PR. Branch names are given by the plan
+(`claude/m1-pN-<slug>`). The orchestrator never writes feature code and
+never lets a review be skipped; implementers never open PRs and never merge.
+
+Merge authority normally rests with the owner. It is currently DELEGATED to
+the orchestrator under DR-0012, conditional on dual cross-model clean review:
+two independent clean-room reviews of the same head, produced on different
+model families, both APPROVE with no unresolved high or medium finding, CI
+green on that exact head, and the scope audit passing. Read
+`delivery/decisions/DR-0012-delegated-merge-authority.md` before merging
+anything; it also records the limits the orchestrator holds itself to,
+including stopping rather than grinding when a phase needs more than two fix
+rounds or a high-severity finding recurs in one component.
 
 The full procedure is in `.claude/skills/phase-delivery/SKILL.md`. Read it
 before dispatching or implementing a phase.

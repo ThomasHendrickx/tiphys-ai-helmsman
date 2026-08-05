@@ -268,7 +268,7 @@ Shared phase fields, stated once: migrations: none, this is a library (applies t
 - suggested model tier: strongest (event semantics, backoff, and child-process test harness are correctness-bearing).
 - substrate (DR-0007): the entire watcher core and guard predicate are substrate-neutral (files, mtimes, exit codes); resident mode serves the persistent machine, --once serves cloud sessions and external schedulers; the two entry modes are one core and no adapter code exists in this phase.
 - citations: R-078 (watcher + liveness guard replace the cron heartbeat; deliberate deviation from process-doc letter, plan decision D-14), R-079 (supervision never silently disappears while work is in flight: beacon plus guard), R-095 (doctor's beacon check completed here); blueprint section 4 (watcher and liveness guard contracts); DR-0007, DR-0009; firstmate harvest citations for the brief (delivery/requirements/firstmate-scout-report.md): reason-line grammar and backoff protocol FM-002 to FM-006 (bin/fm-watch.sh:13-55, 112-113, 432-460), beacon convention FM-043, liveness predicate FM-014 (bin/fm-supervision-lib.sh:35-89), single-pass enabler FM-045; traps C-1 (FM-052), C-2 (FM-053), C-3 (FM-054), FM-057.
-- conflicts-with: M1-P6 (src/cli.ts).
+- conflicts-with: none (the earlier note naming M1-P6 over src/cli.ts was stale: M1-P6's files-to-touch does not include src/cli.ts; reconciled per DR-0011 condition 2 before parallel dispatch).
 - blocked-by: none remaining (all cited DRs decided; DR-0007 dual substrate applied by revision 4; DR-0009 decided and folded into the brief citations).
 
 ### M1-P6: Toy sandbox project and exit-test harness

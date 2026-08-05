@@ -26,3 +26,31 @@ When the kernel's role-to-model binding lands (M3 role briefs, harness adapter c
 - delivery/review/plan-review-r4-external.md (the external review, verdict and findings)
 - delivery/review/plan-review-r1.md, plan-review-r2.md, plan-review-r3.md (the internal rounds that missed the two defects)
 - Blueprint parking decision: delivery/intake/orchestrated-delivery-v1.md section 6
+
+## Second data point, 2026-08-04, with decorrelation actually in place
+
+After the owner delegated merge authority under DR-0012, requiring two
+clean-room reviews on different model families per pull request, the first
+dual review ran on M1-P4. The two reviews were given deliberately different
+framings: one walked the fourteen acceptance criteria as a contract, the
+other was told to start from "where can this destroy something or claim a
+guarantee it does not have" and work outward.
+
+They found different defects. The criteria walk found one blocking medium
+(a task id whose directory survives teardown lets a new payload read the
+previous incarnation's turn-end record). The destructive-paths lens found
+two highs the first review did not surface at all: a thrown write error
+after the worktree is already gone, leaving the task's state authority
+falsely reporting open, and a thrown error between worktree creation and
+launch that bypasses rollback entirely and wedges the task id. Both were
+reproduced live rather than reasoned about.
+
+Both reviews independently reached the same rulings on the two judgement
+calls the implementer had declared, which is the corroboration half of the
+value.
+
+The lesson is narrower than "use two models". It is that two reviews with
+different STARTING QUESTIONS find different things, and model diversity
+makes that difference harder to collapse. When the M3 role briefs encode
+review, the checklists should vary the entry point rather than only the
+reviewer.
