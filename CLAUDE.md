@@ -76,9 +76,15 @@ artifact behind it is treated as unknown.
    Authored files must be pure ASCII; check with `grep -rP '[^\x00-\x7F]'`.
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
-5. Parallelism is OFF until M5: every M1 phase is sequential, one phase =
-   one branch = one PR, and the next phase starts only after the previous
-   PR is merged.
+5. One phase = one branch = one PR, always. Parallelism is ON where a
+   recorded pre-pass proves the phases disjoint (DR-0011, superseding the
+   original "off until M5"). MERGE order is always dependency order even when
+   work order is concurrent, and the pre-pass must be written down before
+   dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
+   M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
+   The two shared registries (`test/behaviors.json`, `gates.manifest.json`)
+   are append-only and resolved as a union against the merge base; they never
+   re-serialise phases.
 6. Milestone exit tests are hard gates: no milestone starts before the
    previous exit test has passed with recorded evidence.
 7. Commit messages carry no AI model or tool names.
