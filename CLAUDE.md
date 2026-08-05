@@ -194,6 +194,17 @@ One phase, one branch, one PR. Branch names are given by the plan
 (`claude/m1-pN-<slug>`). The orchestrator never writes feature code and
 never lets a review be skipped; implementers never open PRs and never merge.
 
+**When to involve the owner (DR-0016, binding).** Escalate ONLY when two or
+more options are genuinely comparable AND the consequence is high impact and
+costly to reverse. If the analysis yields a recommendation you would defend,
+the options are not comparable and there is nothing to ask: decide, record it
+as a decision record with its reasoning, and report it. Asking the owner a
+question whose answer was already obvious is a FAILURE of the system, because
+it costs them the focus they were spending elsewhere. Write your recommendation
+first; doing so is what reveals whether a question was ever a question.
+Unchanged: anything needing elevated access the agent does not hold, and
+milestone exit-test evidence, which is reported unasked.
+
 Merge authority normally rests with the owner. It is currently DELEGATED to
 the orchestrator under DR-0012, conditional on dual cross-model clean review:
 two independent clean-room reviews of the same head, produced on different
@@ -202,7 +213,13 @@ green on that exact head, and the scope audit passing. Read
 `delivery/decisions/DR-0012-delegated-merge-authority.md` before merging
 anything; it also records the limits the orchestrator holds itself to,
 including stopping rather than grinding when a phase needs more than two fix
-rounds or a high-severity finding recurs in one component.
+rounds or a high-severity finding recurs in one component. **DR-0016 changes
+what "stopping" means**: the phase no longer waits for the owner. A fresh
+implementer plus a third review contract is dispatched immediately and the
+owner is notified asynchronously. Only if THAT round also fails does the phase
+go to the owner. The property being protected is that something different must
+happen, and the measured evidence is that the fresh implementer, not the owner
+decision, is the half that worked.
 
 The full procedure is in `.claude/skills/phase-delivery/SKILL.md`. Read it
 before dispatching or implementing a phase.

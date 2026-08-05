@@ -88,11 +88,12 @@ failure is not traded away; it is obtained from a maintained implementation
 instead of a hand-written one.
 
 What the earlier recommendation correctly identified, and what remains true, is
-that this costs the kernel its first production dependency. That cost is
-accepted, because validation is a central capability of this kernel rather than
-a peripheral convenience: five M3 artifact schemas, the gate registry, the plan
-schema and the report contract all rest on it, and a hand-written subset that
-must grow to meet them is a maintenance surface with no upstream.
+that this costs the kernel its first production dependency. **That cost is
+accepted because validation is a central correctness boundary, and Tiphys
+should not own JSON Schema semantics.** Five M3 artifact schemas, the gate
+registry, the plan schema and the report contract all rest on it, and a
+hand-written subset that must grow to meet them is a maintenance surface with
+no upstream.
 
 ## Consequences for planned work
 
