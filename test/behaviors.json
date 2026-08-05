@@ -143,5 +143,12 @@
   "liveness-future-beacon-recovery-named": "a beacon dated in the future is no evidence that supervision ran",
   "liveness-fifo-record-does-not-block": "a named pipe at a task record is classified without blocking",
   "liveness-unexaminable-entry-reported": "a task entry that cannot be examined is counted and reported",
-  "doctor-beacon-dangling-symlink-fails": "a beacon that is a dangling symlink is a failed check, not an absent one"
+  "doctor-beacon-dangling-symlink-fails": "a beacon that is a dangling symlink is a failed check, not an absent one",
+  "watcher-no-path-blocks-on-a-fifo": "no watcher wake source or state file blocks a pass when it is a named pipe",
+  "watcher-check-request-not-destroyed-unread": "a check request that cannot be consumed is left in place rather than destroyed",
+  "watcher-simultaneous-claim-single-surfacing": "two single passes released together surface one turn-end",
+  "liveness-fifo-beacon-does-not-block": "a named pipe at the beacon does not block the guard or the commands that consult it",
+  "liveness-fifo-record-does-not-block-teardown": "a named pipe at a task record does not block teardown",
+  "doctor-fifo-lease-does-not-block": "a named pipe at the lease file does not block doctor",
+  "watcher-unique-stage-path": "a pass stages its state writes under a name no other pass can collide with"
 }

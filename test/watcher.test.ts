@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -957,4 +958,305 @@ test("watch usage errors exit 64 and a non-fleet cwd exits 1", (t) => {
   const outside = runCli(["watch", "--once"], { cwd: makeTempDir(t) });
   assert.equal(outside.status, 1);
   assert.match(outside.stderr, /^tiphys watch: not a fleet home: /m);
+});
+
+/**
+ * FIX ROUND 4 (CR-520). Bound for every child in the blocking-probe
+ * witnesses below. It is EXPLICIT and enforced by spawnSync with SIGKILL
+ * rather than by the test runner, because the dangerous state these are
+ * red against is an INDEFINITE HANG: a regression must fail naming the
+ * path it blocked on, never as an unexplained CI timeout.
+ */
+const BLOCK_PROBE_TIMEOUT_MS = 15_000;
+
+interface BoundedResult extends CliResult {
+  /** True when this test's own bound killed the child. */
+  timedOut: boolean;
+}
+
+function runCliBounded(
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): BoundedResult {
+  const result = spawnSync(process.execPath, [sourceEntry, ...args], {
+    encoding: "utf8",
+    cwd: opts.cwd,
+    env: opts.env ?? baseEnv(),
+    timeout: BLOCK_PROBE_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    timedOut:
+      (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT",
+  };
+}
+
+/** Whether this machine can create a named pipe, checked by doing it. */
+function fifoUnsupported(): string | false {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-p5-watch-fifo-check-"));
+  try {
+    const made = spawnSync("mkfifo", [join(dir, "probe")]);
+    if (made.status === 0) {
+      return false;
+    }
+    return `mkfifo is unavailable here (${String(made.error ?? made.status)}); the blocking-probe witness runs on CI (ubuntu-latest)`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const fifoSkip = fifoUnsupported();
+
+/** One row of the wake-source and state-file inventory, planted one at a time. */
+interface BlockRow {
+  /** Path relative to the fleet root. */
+  where: string;
+  /** Whether the fleet needs a pending turn-end to reach this open. */
+  needsPendingWake: boolean;
+  /** The reader or writer this path reaches, for the failure message. */
+  reaches: string;
+}
+
+const BLOCK_ROWS: readonly BlockRow[] = [
+  { where: "tasks/t1/turn-end", needsPendingWake: false, reaches: "identityOf -> readIfPresent" },
+  { where: "tasks/t1/executor.json", needsPendingWake: false, reaches: "deadlineOf -> readIfPresent" },
+  { where: "state/check-request", needsPendingWake: false, reaches: "claimCheckRequest -> readIfPresent" },
+  { where: "state/watcher.seen.json", needsPendingWake: false, reaches: "readSeenState -> readIfPresent" },
+  { where: "state/watcher.cadence.json", needsPendingWake: false, reaches: "readCadenceState -> readIfPresent" },
+  { where: "state/watcher.beacon", needsPendingWake: false, reaches: "writeBeacon -> readBeacon and atomicWrite" },
+  { where: "state/last-wake.json", needsPendingWake: true, reaches: "appendWakeRecord openSync append" },
+];
+
+test(
+  "no watcher wake source or state file blocks a pass when it is a named pipe",
+  { skip: fifoSkip },
+  (t) => {
+    // FIX ROUND 4, CR-520 (HIGH), plus state/last-wake.json, which this
+    // round derived and no reviewer inventory listed. The dangerous state
+    // is an indefinite hang, not a wrong answer: open(2) on a named pipe with no peer blocks in the
+    // kernel, for reading AND for writing, and a block is not an
+    // exception, so nothing in the module's raise classification reaches
+    // it. A previous round put the probe at ONE call site, which closed
+    // one of eight paths.
+    //
+    // A path that WAS in this list is deliberately absent: the staged
+    // write used a fixed `${path}.stage` name, and a named pipe there hung
+    // every pass. That name is now unique per write (see atomicWrite), so
+    // nothing can be pre-planted at it. The hazard is eliminated rather
+    // than classified, which is why it carries no row here: a row nothing
+    // can ever make red is the CR-540 mistake, not coverage.
+    //
+    // EVERY ROW GETS ITS OWN WITNESS and the results are COLLECTED rather
+    // than asserted one at a time, so a regression names every path it
+    // blocked on instead of stopping at the first.
+    // One list, three failure kinds, so a regression reports EVERY row it
+    // broke instead of stopping at the first.
+    const failures: string[] = [];
+
+    for (const row of BLOCK_ROWS) {
+      const fleet = initFleet(t);
+      openTask(fleet, "t1");
+      if (row.needsPendingWake) {
+        writeTurnEnd(fleet, "t1");
+      }
+      const target = join(fleet, row.where);
+      mkdirSync(dirname(target), { recursive: true });
+      assert.equal(
+        spawnSync("mkfifo", [target]).status,
+        0,
+        `could not create the named pipe at ${target}`,
+      );
+
+      const watched = runCliBounded(["watch", "--once"], { cwd: fleet });
+      if (watched.timedOut) {
+        failures.push(
+          `BLOCKED IN THE KERNEL, killed after ${String(BLOCK_PROBE_TIMEOUT_MS)}ms: ` +
+            `${row.where} (${row.reaches}) was opened before it was probed`,
+        );
+        continue;
+      }
+      // Loud, and of the same character as the directory case that always
+      // worked: nonzero exit, exactly one reason line, and the line names
+      // the path so an operator knows what to remove.
+      const lines = watched.stderr.trim() === "" ? [] : watched.stderr.trim().split("\n");
+      if (watched.status !== 1 || lines.length !== 1 || watched.stdout !== "") {
+        failures.push(
+          `ABSORBED INSTEAD OF REPORTED: ${row.where}: exit ${String(watched.status)}, ` +
+            `stdout ${JSON.stringify(watched.stdout)}, stderr ${JSON.stringify(watched.stderr)}`,
+        );
+      } else if (!(lines[0] as string).includes(target)) {
+        failures.push(`REASON LINE DID NOT NAME THE PATH: ${row.where}: ${lines[0] as string}`);
+      }
+    }
+
+    assert.deepEqual(
+      failures,
+      [],
+      `a named pipe at a watcher path was not handled loudly and without ` +
+        `blocking:\n  ${failures.join("\n  ")}`,
+    );
+  },
+);
+
+test(
+  "a check request that cannot be consumed is left in place rather than destroyed",
+  { skip: fifoSkip },
+  (t) => {
+    // FIX ROUND 4, CR-520's ordering half. The rename in claimCheckRequest
+    // IS the exclusion, so it is destructive by design: once it has run,
+    // nothing else can find the request. Reading after it and probing
+    // after that meant a named pipe at state/check-request was first
+    // CONSUMED and then blocked forever, so the fleet lost its wake source
+    // and reported nothing at all. The probe now precedes the rename.
+    const fleet = initFleet(t);
+    openTask(fleet, "t1");
+    const request = join(fleet, "state", "check-request");
+    assert.equal(spawnSync("mkfifo", [request]).status, 0, "could not create the named pipe");
+
+    const watched = runCliBounded(["watch", "--once"], { cwd: fleet });
+    assert.equal(
+      watched.timedOut,
+      false,
+      `the watcher blocked on the check request at ${request} and was killed after ` +
+        `${String(BLOCK_PROBE_TIMEOUT_MS)}ms`,
+    );
+    assert.equal(watched.status, 1, watched.stderr);
+    assert.ok(watched.stderr.includes(request), watched.stderr);
+
+    assert.equal(
+      existsSync(request),
+      true,
+      "the wake source was consumed by a pass that could not read it",
+    );
+    assert.equal(
+      existsSync(`${request}.taken`),
+      false,
+      "the request was renamed by a pass that could not read it",
+    );
+  },
+);
+
+test("two single passes released together surface one turn-end", async (t) => {
+  // FIX ROUND 4, CR-540 (MEDIUM). Criterion 7's two registered tests stay
+  // GREEN when claimSignal's claim file loses its exclusive-open flag
+  // ("wx" -> "w"), so neither of them guards the mechanism that actually
+  // implements the criterion for two independent processes. Neither
+  // reaches the window: the deterministic one holds A while B runs to
+  // completion and releases its claim BEFORE A resumes, so A contends
+  // with nothing and is saved by the identity comparison instead; the
+  // probabilistic one is one-sided because the resident is already armed.
+  //
+  // This is the construction that DOES reach it: two --once processes both
+  // parked at the hold seam, then released by ONE file write, so both
+  // attempt the exclusive open at as close to the same instant as the OS
+  // schedules them. The shipped source is correct and needs no change;
+  // what was missing was a test that would notice if it stopped being.
+  //
+  // The two processes wait on DIFFERENT barrier paths so each writes its
+  // own .observed marker and this test can prove BOTH are parked before
+  // releasing either. The second barrier is a symlink to the first, so the
+  // single write that creates the first releases both at once.
+  //
+  // WHY ROUNDS, AND WHAT THAT COSTS. Correct behavior here is
+  // deterministic: with the exclusive open in place exactly one pass can
+  // ever win, whatever the interleave. The FAILURE is not: two passes
+  // duplicate only when both read the seen state before either writes it,
+  // and the hold seam's own 5ms poll spreads their resume times across
+  // that window, so one round catches the weakened flag about a third of
+  // the time (measured: 1 red in 3 runs). Rounds are how the probability
+  // of missing it is driven down; the measured rate for this count is
+  // recorded in the work history rather than asserted here.
+  const rounds = 12;
+  for (let round = 0; round < rounds; round += 1) {
+    const fleet = initFleet(t);
+    openTask(fleet, "t1");
+    writeTurnEnd(fleet, "t1");
+    const barrierA = join(fleet, "state", "dual-barrier");
+    const barrierB = join(fleet, "state", "dual-barrier-link");
+    symlinkSync(barrierA, barrierB);
+
+    const first = startCli(t, ["watch", "--once"], {
+      cwd: fleet,
+      env: { ...baseEnv(), TIPHYS_WATCH_TEST_HOLD: barrierA },
+    });
+    const second = startCli(t, ["watch", "--once"], {
+      cwd: fleet,
+      env: { ...baseEnv(), TIPHYS_WATCH_TEST_HOLD: barrierB },
+    });
+    await waitForFile(`${barrierA}.observed`, 15_000);
+    await waitForFile(`${barrierB}.observed`, 15_000);
+
+    // One write. Both passes are already parked, polling for their own
+    // barrier path, and barrierB resolves to barrierA.
+    writeFileSync(barrierA, "");
+
+    const firstCode = await first.waitForExit(20_000);
+    const secondCode = await second.waitForExit(20_000);
+    assert.equal(
+      readFileSync(`${barrierA}.released`, "utf8").trim(),
+      "barrier appeared",
+      `round ${String(round)}: the first pass was never held, so no release was staged`,
+    );
+    assert.equal(
+      readFileSync(`${barrierB}.released`, "utf8").trim(),
+      "barrier appeared",
+      `round ${String(round)}: the second pass was never held, so no release was staged`,
+    );
+
+    const surfaced = [first.stdout(), second.stdout()].filter(
+      (line) => line === "signal t1 turn-end\n",
+    );
+    assert.equal(
+      surfaced.length,
+      1,
+      `round ${String(round)}: the same turn-end was surfaced ${String(surfaced.length)} ` +
+        `times by two simultaneously released passes: ` +
+        `first=${JSON.stringify(first.stdout())} (exit ${String(firstCode)}, ` +
+        `${JSON.stringify(first.stderr())}) second=${JSON.stringify(second.stdout())} ` +
+        `(exit ${String(secondCode)}, ${JSON.stringify(second.stderr())})`,
+    );
+    const codes = [firstCode, secondCode].sort((a, b) => Number(a) - Number(b));
+    assert.deepEqual(
+      codes,
+      [0, 3],
+      `round ${String(round)}: exactly one pass must win and the other must ` +
+        `report no-wake: ${JSON.stringify(codes)}; first stderr ` +
+        `${JSON.stringify(first.stderr())} second stderr ${JSON.stringify(second.stderr())}`,
+    );
+  }
+});
+
+test("a pass stages its state writes under a name no other pass can collide with", (t) => {
+  // FIX ROUND 4, the defect this round's own CR-540 witness uncovered.
+  // atomicWrite used a FIXED `${path}.stage`, so two concurrent passes
+  // wrote one temporary: the first renamed it away and the second's rename
+  // died with a raw ENOENT. Measured on the pre-round head with two passes
+  // released together onto one pending turn-end, the pass that had ALREADY
+  // advanced the seen state died on its beacon write before anything was
+  // printed, and the other reported no-wake, so NEITHER surfaced the wake
+  // and it was suppressed forever.
+  //
+  // The race itself can only be witnessed probabilistically (the
+  // dual-release test above does that, and the work history records the
+  // measured rate). THIS test witnesses the property that removes it, and
+  // does so deterministically: the old, predictable stage path is no
+  // longer used at all, so an entry sitting there cannot stop a pass.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  const oldStage = join(fleet, "state", "watcher.beacon.stage");
+  mkdirSync(oldStage);
+
+  const watched = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(
+    watched.status,
+    3,
+    `a pass used the predictable stage path ${oldStage}: ${watched.stderr}`,
+  );
+  assert.equal(watched.stderr, "", watched.stderr);
+  assert.notEqual(beaconStampMs(fleet), undefined, "no beacon was written");
+
+  // The stray is left exactly where it was: nothing here reaches for it.
+  assert.equal(existsSync(oldStage), true, "the pass touched the stale stage path");
 });

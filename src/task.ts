@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import type { Stats } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
 import { leaseStatus } from "./lock.ts";
@@ -25,6 +33,172 @@ import { leaseStatus } from "./lock.ts";
  * own injected files. That invariant is absolute: nothing this phase
  * writes may ever land inside <fleet>/worktrees/<id>.
  */
+
+/**
+ * OPEN NOTHING WHOSE TYPE HAS NOT BEEN ESTABLISHED (fix round 4, CR-520).
+ *
+ * THE MECHANISM AND ITS RULE. Opening a path is not a total operation.
+ * open(2) on a named pipe with no peer BLOCKS IN THE KERNEL, for reading
+ * and for writing, until a peer appears. A block is not an exception, so
+ * no try/catch sees it, no "this function never raises" reasoning touches
+ * it, and no error classification reaches it. Every process that reaches
+ * such an open stops forever with no output at all.
+ *
+ * This project has now paid for that mechanism three times in one phase:
+ * once at tasks/<id>/meta.json (delta review NEW-2), then on six further
+ * paths after the first fix was applied at ONE CALL SITE instead of at the
+ * read (CR-520), then on four more this round found by deriving the
+ * inventory again rather than inheriting it. The lesson recorded in
+ * tuition T-005 is that a rule fixed at a call site does not travel; the
+ * rule has to be a property of the operation.
+ *
+ * So the probe lives HERE, in the readers and in one classifier, and every
+ * caller is protected by construction rather than by remembering:
+ *
+ *   - lstat the path (the link itself), then stat (what it resolves to),
+ *     and open ONLY when that is a regular file;
+ *   - a directory, FIFO, socket, device node, or a symlink resolving to
+ *     any of those is classified WITHOUT being opened;
+ *   - nothing at the path is not an error, because absence is the normal
+ *     transient shape of most of this kernel's state files.
+ *
+ * WHY THIS LIVES IN src/task.ts. It is a general filesystem rule and not a
+ * task rule, and a dedicated module would be its right home. This module
+ * is the lowest one in the import graph that the fix round authorized to
+ * touch (src/liveness.ts imports it, src/watcher.ts imports it, and it
+ * imports neither), and it already carries one cross-cutting helper for
+ * the same reason (runStep, below). Moving both to their own module is
+ * recorded as an M2 item rather than done here without authorization.
+ *
+ * RESIDUAL, stated rather than papered over: the probe and the open are
+ * two syscalls, so a path that changes type between them can still be
+ * opened as something other than a regular file. Closing that needs
+ * open(O_NONBLOCK) followed by fstat, which Node's synchronous fs API
+ * does not expose for reads. Nothing in this kernel writes that state, and
+ * the window is now the only way to reach the block rather than the
+ * default path to it.
+ */
+export type EntryClass =
+  /** Nothing at the path. */
+  | { kind: "absent" }
+  /** A link is there and resolves to nothing: it exists, and it is empty of evidence. */
+  | { kind: "dangling" }
+  /** Safe to open. */
+  | { kind: "regular" }
+  /** Present, and opening it is not safe: never opened, always named. */
+  | { kind: "irregular"; reason: string }
+  /** Neither lstat nor stat could answer the question. */
+  | { kind: "unexaminable"; reason: string };
+
+function describeType(stats: Stats): string {
+  if (stats.isDirectory()) {
+    return "a directory";
+  }
+  if (stats.isFIFO()) {
+    return "a named pipe";
+  }
+  if (stats.isSocket()) {
+    return "a socket";
+  }
+  if (stats.isCharacterDevice()) {
+    return "a character device";
+  }
+  if (stats.isBlockDevice()) {
+    return "a block device";
+  }
+  return "an entry of an unrecognized type";
+}
+
+/**
+ * THE ONE ANSWER TO "may this path be opened". Every reader and every
+ * writer of a path this kernel does not itself guarantee to be a regular
+ * file goes through this, so there is one implementation of the question
+ * and not one per call site.
+ */
+export function classifyEntry(path: string): EntryClass {
+  try {
+    lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "absent" };
+    }
+    return {
+      kind: "unexaminable",
+      reason: `${path} could not be examined: ${String(error)}`,
+    };
+  }
+  let stats: Stats;
+  try {
+    stats = statSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "dangling" };
+    }
+    return {
+      kind: "unexaminable",
+      reason: `${path} could not be examined: ${String(error)}`,
+    };
+  }
+  if (stats.isFile()) {
+    return { kind: "regular" };
+  }
+  return {
+    kind: "irregular",
+    reason: `${path} is ${describeType(stats)}, not a regular file, so it was not opened`,
+  };
+}
+
+/**
+ * Refuse an open-for-WRITE of a path that is not a regular file. The
+ * hazard is symmetric: open(2) for writing on a FIFO with no reader blocks
+ * exactly as reading one with no writer does, so a staged write and an
+ * append are as dangerous as a read. Returns the reason, or undefined when
+ * the path may be opened (absent included: creating it is the point).
+ */
+export function refuseOpenForWrite(path: string): string | undefined {
+  const entry = classifyEntry(path);
+  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
+    return entry.reason;
+  }
+  return undefined;
+}
+
+/** What a guarded read of a possibly-absent path produced. */
+export type RegularRead =
+  | { kind: "read"; body: string }
+  | { kind: "absent" }
+  /** Present and not readable, with a reason naming the path. */
+  | { kind: "refused"; reason: string };
+
+/**
+ * THE ONE READ of a file that might not be there and might not be a file.
+ * src/task.ts, src/liveness.ts, src/watcher.ts and src/commands/doctor.ts
+ * all read fleet state through this, so "probe before open" is a property
+ * of the read and cannot be forgotten by a new caller.
+ */
+export function readRegularFileIfPresent(path: string): RegularRead {
+  const entry = classifyEntry(path);
+  if (entry.kind === "absent" || entry.kind === "dangling") {
+    return { kind: "absent" };
+  }
+  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
+    return { kind: "refused", reason: entry.reason };
+  }
+  let body: string;
+  try {
+    body = readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      // Removed between the probe and the read.
+      return { kind: "absent" };
+    }
+    return {
+      kind: "refused",
+      reason: `${path} could not be read: ${String(error)}`,
+    };
+  }
+  return { kind: "read", body };
+}
 
 export type TaskShape = "ship" | "scout";
 export type TaskStatus = "open" | "closed";
@@ -98,11 +272,26 @@ export function writeTaskMeta(fleet: Fleet, meta: TaskMeta): void {
   writeFileSync(metaPath(fleet, meta.id), renderTaskMeta(meta));
 }
 
-/** Read meta.json, or undefined when it is absent or does not parse. */
+/**
+ * Read meta.json, or undefined when it is absent, is not a regular file,
+ * or does not parse. All three mean the same thing to every caller: this
+ * is not a readable record, and it is not evidence that the task finished.
+ *
+ * The type probe is INSIDE this function and not in front of one of its
+ * callers (CR-520, CR-521). There is exactly one implementation of "read a
+ * task record", every caller of it is protected, and adding a caller
+ * cannot reopen the hole: src/teardown.ts reaches this directly, without
+ * going through the liveness classifier, and a named pipe here used to
+ * hang it forever.
+ */
 export function readTaskMeta(fleet: Fleet, taskId: string): TaskMeta | undefined {
+  const read = readRegularFileIfPresent(metaPath(fleet, taskId));
+  if (read.kind !== "read") {
+    return undefined;
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(metaPath(fleet, taskId), "utf8"));
+    parsed = JSON.parse(read.body);
   } catch {
     return undefined;
   }

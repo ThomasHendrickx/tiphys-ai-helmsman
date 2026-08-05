@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   fsyncSync,
   openSync,
-  readFileSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -22,7 +21,14 @@ import {
   surveyTaskRecords,
 } from "./liveness.ts";
 import type { WatchCadence } from "./liveness.ts";
-import { executorRecordPath, runStep, turnEndPath } from "./task.ts";
+import {
+  classifyEntry,
+  executorRecordPath,
+  readRegularFileIfPresent,
+  refuseOpenForWrite,
+  runStep,
+  turnEndPath,
+} from "./task.ts";
 
 /**
  * The watcher (kernel plan v1, M1-P5 step 1; R-078, R-079; DR-0007;
@@ -201,16 +207,27 @@ export function checkRequestPath(fleet: Fleet): string {
   return join(fleet.root, CHECK_REQUEST_FILE);
 }
 
-/** Absent is not an error; anything else is (see the module docs). */
+/**
+ * Absent is not an error; anything else is (see the module docs).
+ *
+ * The read goes through readRegularFileIfPresent (src/task.ts), so the
+ * path's TYPE is established before anything is opened. Every wake source
+ * and every cadence file this module reads arrives here, and each of them
+ * used to block forever on a named pipe: turn-end, executor.json,
+ * check-request, watcher.seen.json and watcher.cadence.json, five of the
+ * paths CR-520 measured. The loud behavior is unchanged in kind, a
+ * nonzero exit with one reason line, and the line now NAMES THE PATH,
+ * which the raw EISDIR it replaces did not.
+ */
 function readIfPresent(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return undefined;
   }
+  if (read.kind === "refused") {
+    throw new Error(read.reason);
+  }
+  return read.body;
 }
 
 function statIfPresent(path: string): Stats | undefined {
@@ -338,11 +355,54 @@ export function nextHeartbeatDueMs(state: CadenceState, cadence: WatchCadence): 
 /**
  * Write a file through a staged rename, so a reader (doctor, the guard,
  * another pass) never sees a half-written state file.
+ *
+ * THE DESTINATION IS PROBED (fix round 4). rename(2) would silently
+ * replace a non-regular entry at the destination. That is not a block, but
+ * it is a SILENT SUCCESS where a directory at the same path is loud
+ * (rename refuses that one), and this module's rule is that an unexpected
+ * entry under state/ is reported rather than absorbed. Absent is fine:
+ * creating the file is the point.
+ *
+ * THE STAGE PATH IS UNIQUE PER WRITE, and that is a defect fix rather than
+ * a tidy-up (fix round 4). It used to be `${path}.stage`, a fixed name, so
+ * two passes writing the same state file raced on one temporary: both
+ * wrote it, the first renamed it away, and the second's rename failed with
+ * a raw ENOENT. Measured on this phase's head before this round, with two
+ * single passes released together onto one pending turn-end: the pass that
+ * had ALREADY advanced the seen state died on its beacon write before
+ * cmdWatch printed anything, and the other reported no-wake, so the wake
+ * was suppressed forever and NEITHER pass surfaced it. That is a drop
+ * where the plan's whole surfacing protocol is built to duplicate rather
+ * than drop (PR-204, FM-046), and it is criterion 7's own failure state.
+ *
+ * A unique name removes the contention instead of guarding it: two passes
+ * now stage into different files and rename(2) settles the order, which is
+ * what makes the write atomic in the first place. The name comes from
+ * randomUUID and deliberately NOT from any process identifier: plan
+ * constraint C-2 bars those, criterion 14 greps these sources for one, and
+ * a temporary filename must not be the one place it turns up. It also
+ * means nothing can pre-plant an entry at a stage path, so the write-side
+ * blocking hazard is eliminated at that path rather than classified there.
  */
 function atomicWrite(path: string, body: string): void {
-  const stage = `${path}.stage`;
+  const refusedTarget = refuseOpenForWrite(path);
+  if (refusedTarget !== undefined) {
+    throw new Error(`the state file could not be rewritten: ${refusedTarget}`);
+  }
+  const stage = `${path}.${randomUUID()}.stage`;
   writeFileSync(stage, body);
-  renameSync(stage, path);
+  try {
+    renameSync(stage, path);
+  } catch (error) {
+    // A unique stage name is invisible to any cleanup, so this pass owns
+    // removing its own leavings before it reports the failure.
+    try {
+      unlinkSync(stage);
+    } catch {
+      // Already gone; nothing to clean.
+    }
+    throw error;
+  }
 }
 
 /**
@@ -501,9 +561,33 @@ export function scanWakeSources(fleet: Fleet, nowMs: number): ScanResult {
  * durability record for a human and for later milestones, never a source
  * of currency: currency comes from meta.json, the turn-end file, the
  * executor record and the seen state.
+ *
+ * WHAT ENQUEUE-BEFORE-SUPPRESS THEREFORE DOES AND DOES NOT BUY (CR-522,
+ * recorded rather than fixed). FM-046 and the plan put this append BEFORE
+ * the seen-state advance so a stop between the two duplicates a wake
+ * rather than dropping it. The at-most-once guarantee is real and is
+ * delivered by the seen state. The DURABILITY half is weaker than it
+ * reads: because nothing reads this file, no code path can restore a wake
+ * from it, and the channel that actually delivers a wake to a consumer is
+ * stdout, written by cmdWatch AFTER claimSignal has already advanced the
+ * seen state and released the claim. A stop inside that window suppresses
+ * the wake permanently, for every later pass and both modes, and the guard
+ * goes on reporting the fleet fresh. The window is small and closing it
+ * means printing inside the claim, which changes the surfacing protocol
+ * the plan fixes; it is carried as an M2 item, not improvised here.
  */
 function appendWakeRecord(fleet: Fleet, nowMs: number, line: string): void {
   const record = `${JSON.stringify({ at: new Date(nowMs).toISOString(), line })}\n`;
+  // Probed before it is opened, for the same reason every read here is
+  // (fix round 4). openSync with "a" is O_WRONLY|O_APPEND|O_CREAT, and on
+  // a named pipe with no reader that BLOCKS. This path is reached only
+  // when a wake is being surfaced, which is why the earlier round's probe
+  // of state/ files missed it, and blocking here hangs the watcher with a
+  // real pending signal, in both modes.
+  const refused = refuseOpenForWrite(lastWakePath(fleet));
+  if (refused !== undefined) {
+    throw new Error(`the wake record could not be appended: ${refused}`);
+  }
   const handle = openSync(lastWakePath(fleet), "a");
   try {
     writeSync(handle, record);
@@ -636,10 +720,25 @@ async function claimSignal(
 /**
  * Take the one-shot check request, atomically: the rename is the
  * exclusion, so two racing passes cannot both surface one request.
+ *
+ * PROBE BEFORE THE RENAME, not just before the read (CR-520). The rename
+ * is DESTRUCTIVE of the wake source: it is the exclusion mechanism, so by
+ * design nothing else can find the request afterwards. Reading second and
+ * probing third meant that a named pipe at state/check-request was first
+ * consumed and then blocked forever, so the fleet lost its wake source AND
+ * reported nothing. Ordering the probe first means a request this pass
+ * cannot consume is left exactly where an operator can see it, and the
+ * pass says so out loud instead.
  */
 function claimCheckRequest(fleet: Fleet): string | undefined {
   const path = checkRequestPath(fleet);
   const taken = `${path}.taken`;
+  const entry = classifyEntry(path);
+  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
+    throw new Error(
+      `the check request could not be taken and was left in place: ${entry.reason}`,
+    );
+  }
   try {
     renameSync(path, taken);
   } catch (error) {

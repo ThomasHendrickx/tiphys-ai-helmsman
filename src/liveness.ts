@@ -1,7 +1,7 @@
-import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
-import { readTaskMeta } from "./task.ts";
+import { classifyEntry, readRegularFileIfPresent, readTaskMeta } from "./task.ts";
 
 /**
  * Liveness guard and the one cadence configuration both halves of this
@@ -58,13 +58,31 @@ import { readTaskMeta } from "./task.ts";
  * WARN, NEVER BLOCK (blueprint liveness-guard contract). The guard's
  * consumers (spawn, teardown, doctor) print one stderr line containing
  * "watcher stale" and then do exactly what they would have done anyway.
- * Because of that, guard() is TOTAL: every filesystem read it performs
- * is wrapped, and a raised error is classified as "this file is not
- * readable", never propagated. A raise inside an advisory must not be
- * able to take down the command it is advising, and this project has
- * already paid twice for raises walking past handlers that only
- * understood returned failures (M1-P4 F-1 and F-2). The classification
- * is deliberate in both directions and is stated where it happens.
+ * A raise inside an advisory must not be able to take down the command it
+ * is advising, and this project has already paid twice for raises walking
+ * past handlers that only understood returned failures (M1-P4 F-1 and
+ * F-2). So guard() classifies rather than propagates: every filesystem
+ * read it performs is wrapped, and a raised error becomes "this file is
+ * not readable".
+ *
+ * WHAT THAT SENTENCE DOES NOT SAY, corrected in place (CR-520). An earlier
+ * version of this paragraph read "guard() is TOTAL: every filesystem read
+ * it performs is wrapped". The wrapping was real and the word TOTAL did
+ * not follow from it. Totality against RAISES is not totality against
+ * BLOCKS, and open(2) on a named pipe with no writer blocks in the kernel
+ * without raising anything. While that sentence stood, a named pipe at
+ * state/watcher.beacon hung guard() forever, and with it doctor, spawn,
+ * teardown and both watcher entry modes, each producing no output at all.
+ * The claim was written without being executed; tuition T-006 is about
+ * exactly that habit.
+ *
+ * What is true now, and only this: guard() reads two kinds of path, task
+ * records and the beacon, and BOTH go through readRegularFileIfPresent in
+ * src/task.ts, which establishes the type before it opens anything. A
+ * non-regular entry at either path is classified as unreadable without
+ * being opened, which the guard already treats as "no evidence", so the
+ * advisory stays loud instead of stopping. Two syscalls remain between the
+ * probe and the open, and that residual is stated at the helper.
  */
 
 /** Cadence and freshness, in milliseconds. One authority for both. */
@@ -192,21 +210,26 @@ export function renderBeacon(record: BeaconRecord): string {
 }
 
 /**
- * Read the beacon, or undefined when it is absent, unreadable, or does
- * not parse. All three are the same thing to the guard: no evidence
- * that supervision ran. That is the fail-toward-warning direction, and
- * for an advisory that never blocks it is the right one.
+ * Read the beacon, or undefined when it is absent, is not a regular file,
+ * cannot be read, or does not parse. All of those are the same thing to
+ * the guard: no evidence that supervision ran. That is the
+ * fail-toward-warning direction, and for an advisory that never blocks it
+ * is the right one.
+ *
+ * The type probe is INSIDE this reader (CR-520). It is not enough for
+ * judgeBeacon to have lstat'ed the path first: that call establishes
+ * PRESENCE, not TYPE, and this reader has a second caller in
+ * src/watcher.ts (writeBeacon) which does not lstat at all. A probe in
+ * front of one caller protects one caller.
  */
 export function readBeacon(beaconPath: string): BeaconRecord | undefined {
-  let raw: string;
-  try {
-    raw = readFileSync(beaconPath, "utf8");
-  } catch {
+  const read = readRegularFileIfPresent(beaconPath);
+  if (read.kind !== "read") {
     return undefined;
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(read.body);
   } catch {
     return undefined;
   }
@@ -293,14 +316,28 @@ export interface TaskSurvey {
  *   by name.
  * - A record that PARSES is authoritative: its status decides open or
  *   closed (plan constraint C-1).
- * - THE RECORD IS PROBED BEFORE IT IS READ. Only a path that resolves to
- *   a REGULAR FILE is ever opened; anything else that exists there (a
- *   directory, a FIFO, a socket, a device node, a symlink resolving to
- *   any of those, a dangling symlink) is classified as a record that
- *   cannot be read WITHOUT opening it. That ordering is load-bearing:
- *   opening a FIFO with no writer blocks in the kernel and is not an
- *   exception, so a classifier that read first would hang instead of
- *   classifying, and would take the guard's three callers down with it.
+ * - THE RECORD IS PROBED BEFORE IT IS READ, AND THE PROBE IS NOT HERE.
+ *   Only a path that resolves to a REGULAR FILE is ever opened; anything
+ *   else that exists there (a directory, a FIFO, a socket, a device node,
+ *   a symlink resolving to any of those, a dangling symlink) is classified
+ *   as a record that cannot be read WITHOUT opening it. That ordering is
+ *   load-bearing: opening a FIFO with no writer blocks in the kernel and
+ *   is not an exception, so a classifier that read first would hang
+ *   instead of classifying, and would take the guard's three callers down
+ *   with it.
+ *
+ *   The ordering is enforced INSIDE readTaskMeta (src/task.ts), not in
+ *   front of the call below. A fix round put it here instead, which
+ *   protected this one call site and left every other caller of
+ *   readTaskMeta exposed; src/teardown.ts is one, and a named pipe at a
+ *   task record hung teardown forever while this classifier reported the
+ *   same file cleanly (CR-520, CR-521). The recorded reason for declining
+ *   to protect the other callers was that it would mean a second reader
+ *   beside readTaskMeta. That reason was wrong: moving the probe INTO
+ *   readTaskMeta is still exactly one implementation of "read a task
+ *   record", and it is the shape now shipped. What this classifier keeps
+ *   is the finer split it genuinely needs, unreadable versus a survey that
+ *   did not complete, computed from the same classifyEntry the reader uses.
  * - A regular file that does not parse is likewise unreadable: it exists
  *   and it is not evidence that the task finished.
  * - NOTHING at the meta.json path is not a record at all: that is the
@@ -308,10 +345,7 @@ export interface TaskSurvey {
  * - Residual, stated rather than papered over: the probe and the read are
  *   two syscalls, so a path that changes type between them could still be
  *   opened as something other than a regular file. Nothing in this kernel
- *   writes that state, closing it would need a second reader (an
- *   open-nonblocking-then-fstat path) beside readTaskMeta, and a second
- *   implementation of "read a task record" is exactly what the previous
- *   round removed.
+ *   writes that state. The residual is stated once, at classifyEntry.
  *
  * Total by construction: it never raises, because one of its two callers
  * is an advisory that must not be able to take down the command it is
@@ -358,53 +392,28 @@ export function surveyTaskRecords(fleet: Fleet): TaskSurvey {
       continue;
     }
 
-    // PROBE BEFORE READ, and this ordering is the whole point rather than
-    // a style choice (delta review NEW-2). Opening a named pipe for
-    // reading with no writer BLOCKS the process in the kernel: it is not
-    // an exception, so no try/catch and no "this function never raises"
-    // reasoning touches it, and a fleet with a FIFO at a task's meta.json
-    // hung guard() and the watcher forever, which live-locks doctor,
-    // spawn and teardown and is the exact opposite of this module's
-    // warn-never-block charter. Nothing below may open the path until the
-    // probe has established it is a REGULAR FILE.
-    //
-    // lstat first (the link itself), then stat (what it resolves to), so
-    // the two questions are answered separately:
-    //   - nothing there: not a record at all;
-    //   - there but not a regular file after resolution (directory, FIFO,
-    //     socket, device, dangling symlink): a record that cannot be
-    //     read, classified WITHOUT reading it;
-    //   - a regular file: safe to read, and only then is it read.
+    // PROBE BEFORE READ, through the shared classifier (src/task.ts
+    // classifyEntry) rather than through a copy of it here. This survey
+    // needs a FINER answer than a reader does, because it distinguishes
+    // "there is something unreadable at this record" from "this survey
+    // could not complete", and those go to different counters. It does not
+    // need a second opinion about what is safe to open, and the round that
+    // wrote the probe here rather than in the reader is why six other
+    // paths kept blocking (CR-520).
     const recordPath = join(fleet.tasksDir, id, "meta.json");
-    let readable: boolean;
-    try {
-      lstatSync(recordPath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        // No record here at all: a spawn in progress, or a rollback
-        // residue.
-        continue;
-      }
-      problems.push(
-        `the task record ${recordPath} could not be examined: ${String(error)}`,
-      );
+    const entry = classifyEntry(recordPath);
+    if (entry.kind === "absent") {
+      // No record here at all: a spawn in progress, or a rollback residue.
       continue;
     }
-    try {
-      readable = statSync(recordPath).isFile();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        // Present as a link, resolving to nothing: it exists, and it is
-        // not evidence that the task finished.
-        unreadable.push(id);
-        continue;
-      }
-      problems.push(
-        `the task record ${recordPath} could not be examined: ${String(error)}`,
-      );
+    if (entry.kind === "unexaminable") {
+      problems.push(`the task record ${entry.reason}`);
       continue;
     }
-    if (!readable) {
+    if (entry.kind === "dangling" || entry.kind === "irregular") {
+      // Present as a link resolving to nothing, or present as something
+      // that is not a file: it exists, and it is not evidence that the
+      // task finished. Classified WITHOUT being opened.
       unreadable.push(id);
       continue;
     }
@@ -455,13 +464,13 @@ export function judgeBeacon(
   nowMs: number = Date.now(),
   cadence: WatchCadence = CADENCE,
 ): BeaconVerdict {
-  let present: boolean;
-  try {
-    present = lstatSync(beaconPath) !== undefined;
-  } catch {
-    present = false;
-  }
-  if (!present) {
+  // Presence and type are two questions and the shared classifier answers
+  // both: absent is the only arm that means "no beacon here". Anything
+  // else present (a dangling symlink per CR-513, a directory, a named
+  // pipe, an entry that cannot even be examined) exists, so it is not
+  // evidence of health, and readBeacon below reduces it to "unreadable"
+  // without opening it.
+  if (classifyEntry(beaconPath).kind === "absent") {
     return { kind: "absent" };
   }
   const beacon = readBeacon(beaconPath);

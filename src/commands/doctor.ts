@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
+import { readRegularFileIfPresent } from "../task.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -196,14 +197,25 @@ function checkRemote(root: string): CheckResult {
   };
 }
 
+/**
+ * Lease presence and shape. The read is guarded (fix round 4, CR-520's
+ * class): doctor is the command an operator runs when a fleet is
+ * misbehaving, and a named pipe at state/orchestrator.lock blocked this
+ * check in the kernel, so doctor produced no diagnosis at all. This check
+ * now classifies such an entry instead of opening it.
+ */
 function checkLock(root: string): CheckResult {
   const lockPath = join(root, LOCK_FILE);
-  if (!existsSync(lockPath)) {
+  const read = readRegularFileIfPresent(lockPath);
+  if (read.kind === "absent") {
     return { name: "lock", status: "PASS", detail: "no lease present" };
+  }
+  if (read.kind === "refused") {
+    return { name: "lock", status: "FAIL", detail: read.reason };
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(lockPath, "utf8"));
+    parsed = JSON.parse(read.body);
   } catch (error) {
     return {
       name: "lock",
@@ -361,16 +373,6 @@ export function cmdDoctor(args: string[]): number {
     return EX_USAGE;
   }
 
-  // Liveness guard (M1-P5 step 2). It warns and never blocks: doctor's
-  // exit code is decided by its checks exactly as before. Outside a
-  // fleet home there is no guard to run, and the layout check is what
-  // reports that; an advisory must not be the thing that says so.
-  try {
-    warnIfWatcherStale(loadFleet(process.cwd()));
-  } catch {
-    // Not a fleet home: reported by CHECK layout below.
-  }
-
   let failed = false;
   for (const result of runChecks(process.cwd())) {
     let status: CheckStatus = result.status;
@@ -388,5 +390,24 @@ export function cmdDoctor(args: string[]): number {
     }
     process.stdout.write(`CHECK ${result.name} ${status} ${detail}\n`);
   }
+
+  // Liveness guard (M1-P5 step 2). It warns and never blocks: doctor's
+  // exit code is decided by its checks exactly as before. Outside a fleet
+  // home there is no guard to run, and the layout check is what reports
+  // that; an advisory must not be the thing that says so.
+  //
+  // THE ADVISORY RUNS LAST, AFTER THE DIAGNOSIS IS PRINTED (CR-523). It
+  // used to run first, so anything wrong with the guard silenced the whole
+  // command: with a named pipe at the beacon, the one tool an operator
+  // runs on a misbehaving fleet produced zero CHECK lines. The guard is
+  // now safe on that path, but the ordering is what made a single defect
+  // in an advisory cost the entire diagnosis, and an advisory belongs
+  // beside a diagnosis rather than in front of it.
+  try {
+    warnIfWatcherStale(loadFleet(process.cwd()));
+  } catch {
+    // Not a fleet home: reported by CHECK layout above.
+  }
+
   return failed ? 1 : 0;
 }

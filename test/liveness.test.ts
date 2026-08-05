@@ -851,3 +851,155 @@ test("an unreadable beacon counts as no supervision", (t) => {
   assert.equal(report.beaconAgeMs, undefined);
   assert.match(report.detail, /watcher stale/);
 });
+
+test(
+  "a named pipe at the beacon does not block the guard or the commands that consult it",
+  { skip: fifoSkip },
+  (t) => {
+    // FIX ROUND 4, CR-520 (HIGH). guard() reads TWO kinds of path and only
+    // one of them was probed. judgeBeacon lstat'ed the beacon to answer
+    // "is anything there" and then handed the path to readBeacon, a bare
+    // readFileSync. A named pipe there blocked guard() itself, and
+    // warnIfWatcherStale is called by doctor, spawn and teardown before
+    // they do anything, so all of them died with no output at all; both
+    // watcher entry modes died too, through writeBeacon's own readBeacon.
+    // That is strictly worse than the record case fixed before it: with
+    // the guard hung, the mechanism that would notice every other hang by
+    // letting the beacon go stale is gone as well.
+    //
+    // Every child here carries an explicit bound, so a regression fails
+    // with the message below instead of making CI look stuck.
+    const fleet = initFleet(t);
+    openTask(fleet, "t1");
+    const beacon = join(fleet, "state", "watcher.beacon");
+    assert.equal(spawnSync("mkfifo", [beacon]).status, 0, "could not create the named pipe");
+    assert.equal(lstatSync(beacon).isFIFO(), true, "the planted beacon is not a named pipe");
+
+    const hung = (what: string): string =>
+      `${what} blocked on the named pipe at ${beacon} and was killed after ` +
+      `${String(BLOCK_PROBE_TIMEOUT_MS)}ms: the beacon was read before it was probed`;
+
+    // doctor is the command an operator runs on a misbehaving fleet, so it
+    // is also the CR-523 witness: the diagnosis is printed even though the
+    // advisory has something to complain about.
+    const doctored = runCli(["doctor"], { cwd: fleet, timeoutMs: BLOCK_PROBE_TIMEOUT_MS });
+    assert.notEqual(doctored.timedOut, true, hung("doctor"));
+    assert.match(doctored.stdout, /^CHECK beacon FAIL /m, doctored.stdout);
+    assert.equal(
+      doctored.stdout.trim().split("\n").filter((line) => line.startsWith("CHECK ")).length,
+      8,
+      `doctor did not print its whole diagnosis: ${doctored.stdout}`,
+    );
+    assert.equal(staleLines(doctored.stderr).length, 1, doctored.stderr);
+
+    const tornDown = runCli(["teardown", "--task", "t1"], {
+      cwd: fleet,
+      timeoutMs: BLOCK_PROBE_TIMEOUT_MS,
+    });
+    assert.notEqual(tornDown.timedOut, true, hung("teardown"));
+    assert.equal(staleLines(tornDown.stderr).length, 1, tornDown.stderr);
+
+    const watched = runCli(["watch", "--once"], {
+      cwd: fleet,
+      timeoutMs: BLOCK_PROBE_TIMEOUT_MS,
+    });
+    assert.notEqual(watched.timedOut, true, hung("watch --once"));
+    assert.equal(watched.status, 1, watched.stderr);
+    assert.ok(watched.stderr.includes(beacon), watched.stderr);
+
+    // The guard runs in a child too, because a hang inside this process
+    // would hang the whole suite rather than failing this test.
+    const probed = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `const { guard } = await import(${JSON.stringify(livenessUrl)});\n` +
+          `const { loadFleet } = await import(${JSON.stringify(
+            new URL("../src/fleet.ts", import.meta.url).href,
+          )});\n` +
+          `process.stdout.write(JSON.stringify(guard(loadFleet(process.argv[1]))));`,
+        fleet,
+      ],
+      { encoding: "utf8", env: baseEnv(), timeout: BLOCK_PROBE_TIMEOUT_MS, killSignal: "SIGKILL" },
+    );
+    assert.notEqual(
+      (probed.error as NodeJS.ErrnoException | undefined)?.code,
+      "ETIMEDOUT",
+      hung("guard()"),
+    );
+    const report = JSON.parse(probed.stdout) as GuardReport;
+    assert.equal(report.stale, true, JSON.stringify(report));
+    assert.equal(report.beaconAgeMs, undefined, JSON.stringify(report));
+  },
+);
+
+test(
+  "a named pipe at a task record does not block teardown",
+  { skip: fifoSkip },
+  (t) => {
+    // FIX ROUND 4, CR-521 (MEDIUM). src/teardown.ts calls readTaskMeta
+    // directly and never goes through the liveness classifier, so the
+    // previous round's probe (placed in surveyTaskRecords rather than in
+    // the reader) left it exposed: the guard advisory printed, and then
+    // teardown hung on the same file two calls later. This is the witness
+    // that the probe now lives in the READER, where a caller cannot miss
+    // it, rather than in front of one caller.
+    const fleet = initFleet(t);
+    openTask(fleet, "healthy");
+    const dir = join(fleet, "tasks", "piped");
+    mkdirSync(dir, { recursive: true });
+    const fifo = join(dir, "meta.json");
+    assert.equal(spawnSync("mkfifo", [fifo]).status, 0, "could not create the named pipe");
+
+    const tornDown = runCli(["teardown", "--task", "piped"], {
+      cwd: fleet,
+      timeoutMs: BLOCK_PROBE_TIMEOUT_MS,
+    });
+    assert.notEqual(
+      tornDown.timedOut,
+      true,
+      `teardown blocked on the named pipe at ${fifo} and was killed after ` +
+        `${String(BLOCK_PROBE_TIMEOUT_MS)}ms: the record was read before it was probed`,
+    );
+    assert.equal(tornDown.status, 1, tornDown.stderr);
+    assert.match(tornDown.stderr, /^tiphys teardown: no readable task meta for task id piped/m);
+  },
+);
+
+test(
+  "a named pipe at the lease file does not block doctor",
+  { skip: fifoSkip },
+  (t) => {
+    // FIX ROUND 4, a row NO reviewer inventory contains. The hazard-lens
+    // review recorded that a named pipe at the lease did NOT hang doctor;
+    // that probe was planted at state/session.lock, and this kernel's lease
+    // is state/orchestrator.lock (src/fleet.ts LOCK_FILE), so the negative
+    // result was vacuous. Planted at the real path, doctor's own lock check
+    // opened it blind and hung with zero output, exactly like CR-520.
+    //
+    // What this test does NOT cover is recorded in the work history: the
+    // same lease file is read by src/lock.ts, which this phase may not
+    // touch, so "tiphys lock status" and "tiphys lock acquire" still block.
+    const fleet = initFleet(t);
+    openTask(fleet, "t1");
+    const lease = join(fleet, "state", "orchestrator.lock");
+    assert.equal(spawnSync("mkfifo", [lease]).status, 0, "could not create the named pipe");
+
+    const doctored = runCli(["doctor"], { cwd: fleet, timeoutMs: BLOCK_PROBE_TIMEOUT_MS });
+    assert.notEqual(
+      doctored.timedOut,
+      true,
+      `doctor blocked on the named pipe at ${lease} and was killed after ` +
+        `${String(BLOCK_PROBE_TIMEOUT_MS)}ms: the lease was read before it was probed`,
+    );
+    assert.equal(
+      doctored.stdout.trim().split("\n").filter((line) => line.startsWith("CHECK ")).length,
+      8,
+      `doctor did not print its whole diagnosis: ${doctored.stdout}`,
+    );
+    assert.match(doctored.stdout, /^CHECK lock FAIL /m, doctored.stdout);
+    assert.ok(doctored.stdout.includes(lease), doctored.stdout);
+    assert.notEqual(doctored.status, 0);
+  },
+);
