@@ -30,69 +30,70 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | round 4 landed at `84dfa41`, dual review in flight | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P5 watcher and liveness | round 4 reviewed, 0 highs, blocked on 2 documentation mediums | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
 | M1-P6 toy sandbox and exit test | built ahead, awaiting P5 merge (A-1 now done) | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
 
 ## In flight
 
-**M1-P5 (PR #8): fourth fix round landed at `84dfa41`, dual review in flight.**
-The owner chose option 1 (fix at the mechanism) with two binding conditions,
-recorded in DR-0012. Both were met and both earned their keep.
+**M1-P5 (PR #8): round four reviewed by both contracts. ZERO highs for the
+first time in this phase. Blocked on two mediums that close with work-history
+edits alone. Owner decides whether that documentation round runs.**
 
 The fix is one implementation of "open a path whose type you have not
-established", in `src/task.ts`: `classifyEntry`, `readRegularFileIfPresent`
-and `refuseOpenForWrite`, with every reader and writer in the phase routed
-through them. Doctor now prints its diagnosis BEFORE running the advisory, so
-a guard problem can no longer silence the whole check list (CR-523).
+established" in `src/task.ts` (`classifyEntry`, `readRegularFileIfPresent`,
+`refuseOpenForWrite`), with every reader and writer in the phase routed
+through it, plus doctor printing its diagnosis before running the advisory.
 
-**Condition 2 (fresh implementer) paid for itself twice.** The implementer
-derived the path inventory independently and found ELEVEN rows where the
-reviewer's table had eight. One of the three additions is procedurally
-important: the third-round hazard review recorded as an honest failure that a
-FIFO at the lease did NOT hang doctor, but it had probed `state/session.lock`
-while the lease is `state/orchestrator.lock`. That negative result was
-VACUOUS, and doctor did hang, with zero output. A reviewer's empty-handed
-probe is only as good as its target.
+Verdicts: hazard contract FIX-ROUND-NEEDED (0 high, 2 medium, 4 low), criteria
+contract APPROVE (0 high, 0 medium, 1 low). Arbitration in
+`delivery/review/arbitration-m1-p5-round4.md`.
 
-It also uncovered a PRE-EXISTING defect while building the CR-540 witness:
-`atomicWrite` staged through a fixed `${path}.stage`, so two concurrent passes
-shared one temporary, the first renamed it away and the second died on raw
-ENOENT AFTER advancing the seen state, losing a pending turn-end in a protocol
-whose rule is duplicate-rather-than-drop. Reproduced identically against a
-pristine archive of `1bdfce5`, so it is not this round's doing. Fixed with a
-per-write `randomUUID` stage name, chosen over a process identifier because of
-constraint C-2.
+The hazard contract's judgment on the residual is the load-bearing sentence:
+ACCEPTABLE AS A RESIDUAL, BLOCKING AS RECORDED. `doctor` and both watcher
+modes are now total against this class on every path it could construct, so
+the thing that made CR-520 severe, the guard taking down the safety net that
+would notice every other hang, is gone.
 
-Independently verified by the orchestrator at the new head: one `mkfifo` at
-`state/watcher.beacon` now gives `doctor` exit 1 with ALL check lines printed
-and `watch --once` exit 1 naming the path and the file type, where both were
-exit 124 with zero output at `1bdfce5`. CI green on `84dfa41`.
+The two mediums:
 
-Reported gates: Node 26 gives 146 tests, 146 pass, 0 skipped; Node 22 gives
-146, 144 pass, 2 skipped. Registry 151 mappings, 145 titles, 0 unresolvable,
-none removed or retitled.
+- **CR-560**: a TWELFTH path. `mkfifo <fleet>/warnings.md` hangs `tiphys
+  spawn` forever with zero output, stranding a worktree, a pool record, a
+  branch and the task id. Verified at the source by the orchestrator:
+  `src/brief.ts:56` is a bare `readFileSync` gated only by `existsSync`, and
+  `src/brief.ts` is not in this phase's diff at all, so it is PRE-EXISTING and
+  out of scope. The cause is the third instance of one pattern: the round
+  scoped its inventory search to `tasks/`, `state/` and `worktrees/`, and
+  `warnings.md` is at the fleet root. A search whose SCOPE is wrong returns an
+  empty result that reads exactly like an absence of defects.
+- **CR-561**: commit `84dfa41`'s subject claims the probe is a property of
+  every read and open. Six unprobed opens remain. Fifth instance of the T-006
+  pattern in this phase.
 
-DECLARED RESIDUAL, escalated rather than papered over: `lock status`,
-`lock acquire` and `teardown` still hang on a FIFO at `state/orchestrator.lock`
-(`src/lock.ts`), and `teardown` still hangs on a FIFO at
-`worktrees/<id>.pool.json` (`src/pool.ts`). Both files are M1-P3 deliverables
-and outside M1-P5's authorized set. The implementer deliberately refused to
-patch at the call site, which is exactly the shape CR-521 was raised about.
-The reviewers are asked to judge whether the residual is acceptable or
-blocking; the orchestrator did not decide it unilaterally.
+Neither needs a source change. Recording the twelfth path and correcting the
+record is the honest close; fixing it means editing another phase's file.
 
-Two further items the reviewers must judge rather than the orchestrator: the
-CR-540 replacement test is PROBABILISTIC (reported as catching its mutation
-about one round in three, run at twelve rounds), which is a candidate flaky CI
-failure as well as a weak witness; and CR-523's fix carries no registered
-witness, the implementer reasoning that with CR-520 fixed the ordering can no
-longer be made to fail and that registering an unfailable test would repeat the
-CR-540 mistake.
+Both contracts independently confirmed: the gate numbers on both toolchains
+exactly (Node 26 gives 146/146/0 skipped, Node 22 gives 146/144/2 skipped);
+that the CR-540 replacement test is a SOUND witness and not flaky (12/12 and
+20/20 red under mutation), which settles the question the orchestrator left
+open; the pre-existing `atomicWrite` wake-loss defect against a pristine build
+of the previous head; that `randomUUID` is C-2 clean; and the registry
+off-by-one, found twice independently and verified a third time by the
+orchestrator (145 to 152 keys, so 152 mappings and seven added, not 151 and
+six).
 
-Both review contracts are dispatched per tuition T-007: one hazard, one
-criteria, on different model families, both instructed to use the Node 26
-toolchain. The DR-0012 limit binds again if this does not come back clean on
-both.
+Notable low: CR-563 shows the full suite passes with CR-523's ordering fix
+REVERTED, so a behavior this round fixed is unguarded. A criteria walk could
+not have found that, because no criterion mentions doctor's output ordering.
+That is T-007 demonstrated one round after being filed, and it is why the
+criteria APPROVE is not treated as decisive.
+
+DECLARED RESIDUAL, unchanged and now more precisely enumerated: `teardown`,
+four `lock` subcommands and `spawn` still hang on a FIFO, in `src/lock.ts`,
+`src/pool.ts` and `src/brief.ts`. All are M1-P3 and M1-P4 files outside this
+phase's authorized set, and a call-site patch would repeat CR-521. Completing
+the class across them is real work needing its own scope, not something to
+smuggle into a fourth fix round.
 
 **M1-P6: built, pushed, waiting on P5.** Its PR opens once P5 merges. Owner
 action A-1 is now DONE, so its full mode is unblocked.
@@ -123,6 +124,13 @@ yet. Recorded here so they are not rediscovered the expensive way.
   it needs an owner in M2 or M4.
 - **A mechanism index** mapping a mechanism to the rules this project has
   established for it, per tuition T-005. Belongs with the M3 tuition flow.
+- **Complete the unprobed-open class across `src/lock.ts`, `src/pool.ts` and
+  `src/brief.ts`.** M1-P5 closed it for the guard, the watcher and doctor on
+  every path a reviewer could construct. `teardown`, four `lock` subcommands
+  and `spawn` still hang forever on a FIFO, and the spawn case strands a
+  worktree, a pool record, a branch and a task id. These are M1-P3 and M1-P4
+  files; patching them from M1-P5's call sites would repeat CR-521. Needs its
+  own scope, and it is a strong candidate for the mechanism index of T-005.
 - **A second review contract per code phase, declared rather than improvised**,
   per tuition T-007. A criteria-walking review cannot find a defect the
   criteria do not describe, which is how a phase met fifteen of fifteen
