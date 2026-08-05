@@ -276,7 +276,23 @@ test("a clone of the seeded sandbox passes npm ci and npm test with at least one
     const ci = run("npm", ["ci"], { cwd: clone, env });
     assert.equal(ci.status, 0, `npm ci failed: ${ci.stderr}`);
 
-    const tested = run("npm", ["test"], { cwd: clone, env });
+    // The toy project's own suite is run with its reporter PINNED, not
+    // with whatever node --test defaults to. The default is ambient and
+    // it moves: Node 22 defaults to the tap reporter on a non-tty, Node
+    // 26 defaults to spec, so a "# pass N" assertion written against the
+    // container's Node 22 was green here and red on the declared ">=26"
+    // floor and in CI. Parsing both formats instead would only widen the
+    // set of ambient formats this test happens to know about, and the
+    // next default would fail it the same way. NODE_OPTIONS carries the
+    // flag because the sandbox's test script owns its own node argv, and
+    // it is scoped to this one invocation. If the pin is ever refused,
+    // node exits nonzero and the exit-code assertion above fires; if it
+    // is silently ignored, the TAP assertions below fail. Neither
+    // failure mode is quiet.
+    const tested = run("npm", ["test"], {
+      cwd: clone,
+      env: { ...env, NODE_OPTIONS: "--test-reporter=tap" },
+    });
     assert.equal(tested.status, 0, `npm test failed: ${tested.stderr}`);
     const passing = /^# pass (\d+)$/m.exec(tested.stdout);
     assert.ok(passing !== null, `no pass count in npm test output: ${tested.stdout}`);
