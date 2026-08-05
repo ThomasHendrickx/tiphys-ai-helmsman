@@ -26,56 +26,100 @@ is wrong: verify against git and the PR list before trusting it.
 |---|---|---|---|
 | M1-P1 scaffold and CI | merged | #1 | npm scaffold, TypeScript build chain, gates workflow |
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
-| M1-P3 lock and pool | approved, awaiting owner merge | #3 | see below |
-| M1-P4 spawn and teardown | not started | | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | not started | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
-| M1-P6 toy sandbox and exit test | not started | | needs owner action A-1 first |
+| M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
+| M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
+| M1-P5 watcher and liveness | in progress | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P6 toy sandbox and exit test | built ahead, awaiting P4 and P5 merge plus A-1 | | branch claude/m1-p6-toy-sandbox-exit |
 
 ## In flight
 
-**M1-P3 (PR #3): implemented, reviewed, APPROVED, one owner re-review finding resolved, awaiting owner merge.**
-Head `bf11f84`, CI green on both checks. States kept distinct on purpose: implemented means pushed
-and gates passing; reviewed means an independent pass attacked it; merged
-means the owner accepted it. The first two are true; the third is not.
+**M1-P5 (PR #8) is STOPPED, not merged, and waits for the owner.** Head
+`98c635e`, CI green, both reviewers approve everything they previously
+raised. The orchestrator is declining to merge under its own limit in
+DR-0012, and the record should show that clearly.
 
-Evidence chain, in order: clean-room review (APPROVE, 4 low), fix round 1,
-adversarial verification (2 high, both introduced by that round), fix round
-2, verification (V-1 and V-2 confirmed closed, 2 new high introduced), fix
-round 3 (structural restructure of destroy), partial verification (1 new
-high, salvaged when the run stalled), round 4 as a surface cut, single
-focused final review (APPROVE with 3 conditions), pre-merge fix. Four rounds
-each closed the previous round's findings and introduced a new one, all in
-machinery serving concurrency M1 never uses; the fifth round DELETED that
-machinery instead, net -293/+188, and the residual failure disappeared with
-it.
+Both clauses of that limit are now met. The phase has had two fix rounds
+after its first dual review, and a high-severity finding has recurred in the
+same component across rounds: a CRITICAL and a HIGH in round one, a MEDIUM
+in round two, and now a HIGH in the final confirmation.
 
-Final review result: **16 of 17 acceptance criteria met with executed
-evidence, 0 not-met, 0 lost to the deletion.** The 17th clause is the plan's
-own named M1-P4 obligation. Criterion 15 executed 10/10 green, the destroy
-group 5/5, the four race criteria 20 runs with 0 red. All three review
-conditions are fixed with measured red witnesses against the dangerous
-state, 5/5 each.
+**The finding (NEW-2, high).** A named pipe at a task's metadata path hangs
+the liveness guard and the watcher's single pass FOREVER, because the
+blocking read runs before the probe that would classify the path. That
+live-locks doctor, spawn and teardown, and directly contradicts the module's
+own charter that the guard warns and never blocks. It predates this delta,
+so it is not a regression, but the fix round's own documentation explicitly
+claims that shape is covered, so the completeness claim is false.
 
-Settled: **the lock's compare-and-swap is sound**, established under heavy
-attack in `delivery/verification/u2-race-flake-investigation.md`. U-2 is not
-evidence of a defect in the primitive; its trigger is UNATTRIBUTED, with
-exactly one of two possibilities holding (the hold seam released early so
-the interleave was never staged, or the tree under test did not contain the
-byte compare). Do not restate this as "the failing runs did not execute the
-shipped compare-and-swap".
+Everything else on the phase is closed and verified by execution on both
+heads: the original critical and high, the duplicate-implementation
+divergence closed at the class rather than the instance, no regression from
+the refactor, and the agreement tests confirmed to bite under both a
+one-sided and a shared-helper sabotage.
 
-Deferred to M5, to be picked up in M5 planning: heavy-concurrency create
-hardening above roughly six-way; validated partial-state rollback; the
-unattributed "branch already exists" failure (not seen since the rollback
-was removed, which is 10 runs, not a proof); and the prune-versus-add
-hazard, which destroy still carries and which is safe only because M1 never
-runs concurrent destroys.
+Two lows from the other reviewer are recorded rather than fixed: a false
+claim in the work history that an arm cannot practically be witnessed, which
+was disproved with a self-referential symlink, and an unnoticed behaviour
+change for a dangling-symlink beacon.
 
-Next after merge: M1-P4 (spawn and teardown). Carry into its brief the
-criterion-13 meta.json baseOffline clause, P3's holder-identity transport,
-and tuition T-002's request that an abandoned task (open, no turn-end,
-dirty worktree) become a wake condition. F-1's fix should land before P4
-dispatches because P4's teardown drives the same destroy path.
+**What the owner decides:** take the fix (the reviewer judges it small,
+probe before read or use a non-blocking read) and let the orchestrator
+continue, or accept the residue with the overclaiming documentation
+corrected to say so honestly, or take the phase back entirely.
+
+**M1 is blocked behind this.** M1-P6 is built and waiting and cannot open
+until P5 merges, so the milestone exit test cannot run either. A-1 remains
+unactioned and is the other thing the exit test needs.
+
+**M2 and M3 detailed plans: revision 1, adversarially reviewed, fix rounds
+applied.** Both were reviewed on different model families and both came back
+FIX-ROUND-NEEDED (M2: 6 high, 14 medium; M3: 4 high, 4 medium). Both rounds
+are applied and committed.
+
+M2 now carries a defect-to-gate traceability table, which is the milestone's
+honest headline: of thirteen recorded M1 defects, seven are caught by an M2
+gate with a named criterion and six are not, every uncovered one routed to a
+named M3 owner. The two most severe defects M1 produced are among the
+uncovered, and the plan says so in its own voice. Its circular-authority
+finding was closed by removing the circularity rather than blessing it: no
+M2 phase edits the agent-rules file, so the delegation clause stays true and
+the gate-list update becomes a non-blocking owner item.
+
+M3 placed tuition T-005 by generating the mechanism index as a projection of
+the tuition schema rather than as a second artifact, seeded with four
+mechanisms this project has already paid for. It fixed the
+impossible-criteria finding at the class: the reviewer named four
+cross-document invariants no schema keyword can express, and its own audit
+found eleven more.
+
+**Neither revision is delta-reviewed, deliberately.** DR-0011's recorded
+consequence already requires re-grounding a parallel-written plan at
+dispatch, and M3 has made that its own risk entry, so a review now would be
+spent twice. The delta reviews are queued for dispatch time, which cannot
+arrive before M1's exit test passes, since milestone exit tests are hard
+gates.
+
+## Carried forward, not yet owned
+
+Items discovered during M1 that belong to a later milestone and have no owner
+yet. Recorded here so they are not rediscovered the expensive way.
+
+- **Non-atomic task metadata write.** `src/task.ts` writes `meta.json` with a
+  plain write, which is the mechanism that produces the torn record the M1-P5
+  guard now has to defend against. Out of scope when found and no reviewer
+  faulted the phase for it. Real M2 item.
+- **Clean presentation of a load-time configuration error.** A malformed
+  watcher cadence environment value fails loudly, which is correct, but
+  presenting it as a usage error rather than a stack trace needs a top-level
+  handler in `bin/tiphys.ts`, a seam no M1 phase owns.
+- **M1-P4's inert liveness hook.** Confirmed dead by two reviewers, left in
+  place because it is not M1-P5's to delete. Remove it when a phase owns
+  `src/spawn.ts`.
+- **Deadline-less abandonment.** A task spawned without a deadline is not
+  auto-detected as abandoned. The plan's own not-proven list says so for M1;
+  it needs an owner in M2 or M4.
+- **A mechanism index** mapping a mechanism to the rules this project has
+  established for it, per tuition T-005. Belongs with the M3 tuition flow.
 
 ## Owner decisions
 
