@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
-import { BEACON_FILE, LOCK_FILE, missingLayoutEntries } from "../fleet.ts";
+import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
+import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
+import { readRegularFileIfPresent } from "../task.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -41,7 +43,7 @@ export const PROFILES: Record<string, readonly string[]> = {
   "local-only": [],
   "direct-pr": ["gh-missing"],
   full: ["gh-missing", "remote-missing"],
-  watch: ["beacon-absent"],
+  watch: ["beacon-absent", "beacon-stale"],
 };
 
 /** Locate the kernel's own package.json (same walk as src/version.ts). */
@@ -195,14 +197,25 @@ function checkRemote(root: string): CheckResult {
   };
 }
 
+/**
+ * Lease presence and shape. The read is guarded (fix round 4, CR-520's
+ * class): doctor is the command an operator runs when a fleet is
+ * misbehaving, and a named pipe at state/orchestrator.lock blocked this
+ * check in the kernel, so doctor produced no diagnosis at all. This check
+ * now classifies such an entry instead of opening it.
+ */
 function checkLock(root: string): CheckResult {
   const lockPath = join(root, LOCK_FILE);
-  if (!existsSync(lockPath)) {
+  const read = readRegularFileIfPresent(lockPath);
+  if (read.kind === "absent") {
     return { name: "lock", status: "PASS", detail: "no lease present" };
+  }
+  if (read.kind === "refused") {
+    return { name: "lock", status: "FAIL", detail: read.reason };
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(lockPath, "utf8"));
+    parsed = JSON.parse(read.body);
   } catch (error) {
     return {
       name: "lock",
@@ -238,9 +251,24 @@ function checkLock(root: string): CheckResult {
   };
 }
 
+/**
+ * Beacon freshness (R-095, completed by M1-P5). THE JUDGEMENT IS NOT MADE
+ * HERE: judgeBeacon in src/liveness.ts decides what the beacon is
+ * evidence of, and this check only decides how to present it. That is
+ * why doctor and the liveness guard can never return two verdicts about
+ * one file in one run, which they did while this check carried its own
+ * copy of the comparison and missed the declared-cadence floor (delta
+ * review CR-508).
+ *
+ * This check is about the beacon alone. The separate "watcher stale"
+ * warning line this command also emits is the GUARD, whose predicate
+ * additionally requires work in flight: a fleet with nothing in flight
+ * and no watcher is untidy, not dangerous.
+ */
 function checkBeacon(root: string): CheckResult {
   const beaconPath = join(root, BEACON_FILE);
-  if (!existsSync(beaconPath)) {
+  const verdict = judgeBeacon(beaconPath);
+  if (verdict.kind === "absent") {
     return {
       name: "beacon",
       status: "WARN",
@@ -248,11 +276,39 @@ function checkBeacon(root: string): CheckResult {
       condition: "beacon-absent",
     };
   }
-  const ageSeconds = (Date.now() - statSync(beaconPath).mtimeMs) / 1000;
+  if (verdict.kind === "unreadable") {
+    return {
+      name: "beacon",
+      status: "FAIL",
+      detail: `beacon file ${beaconPath} does not parse as a beacon record`,
+    };
+  }
+  const thresholdSeconds = String(Math.round(verdict.thresholdMs / 1000));
+  if (verdict.kind === "ahead") {
+    return {
+      name: "beacon",
+      status: "WARN",
+      detail:
+        `beacon present but dated ${String(Math.round(verdict.aheadMs / 1000))}s in ` +
+        `the future, so it is no evidence that supervision ran`,
+      condition: "beacon-stale",
+    };
+  }
+  const rounded = String(Math.max(0, Math.round(verdict.ageMs / 1000)));
+  if (verdict.kind === "stale") {
+    return {
+      name: "beacon",
+      status: "WARN",
+      detail:
+        `beacon present but ${rounded}s old, past the ${thresholdSeconds}s ` +
+        `freshness threshold`,
+      condition: "beacon-stale",
+    };
+  }
   return {
     name: "beacon",
     status: "PASS",
-    detail: `beacon present, age ${String(Math.max(0, Math.round(ageSeconds)))}s (freshness threshold lands with the M1-P5 liveness guard)`,
+    detail: `beacon present, age ${rounded}s (freshness threshold ${thresholdSeconds}s)`,
   };
 }
 
@@ -334,5 +390,24 @@ export function cmdDoctor(args: string[]): number {
     }
     process.stdout.write(`CHECK ${result.name} ${status} ${detail}\n`);
   }
+
+  // Liveness guard (M1-P5 step 2). It warns and never blocks: doctor's
+  // exit code is decided by its checks exactly as before. Outside a fleet
+  // home there is no guard to run, and the layout check is what reports
+  // that; an advisory must not be the thing that says so.
+  //
+  // THE ADVISORY RUNS LAST, AFTER THE DIAGNOSIS IS PRINTED (CR-523). It
+  // used to run first, so anything wrong with the guard silenced the whole
+  // command: with a named pipe at the beacon, the one tool an operator
+  // runs on a misbehaving fleet produced zero CHECK lines. The guard is
+  // now safe on that path, but the ordering is what made a single defect
+  // in an advisory cost the entire diagnosis, and an advisory belongs
+  // beside a diagnosis rather than in front of it.
+  try {
+    warnIfWatcherStale(loadFleet(process.cwd()));
+  } catch {
+    // Not a fleet home: reported by CHECK layout above.
+  }
+
   return failed ? 1 : 0;
 }

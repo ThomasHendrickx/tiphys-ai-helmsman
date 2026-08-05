@@ -1,0 +1,557 @@
+# Tiphys Kernel Plan M2: Deterministic gates
+
+- Status: DRAFT, revision 1 (adversarial review round 1 applied: M2R-001 to M2R-026, `delivery/review/plan-review-m2-r1.md`, verdict FIX-ROUND-NEEDED, 6 high, 14 medium, 6 low)
+- Baseline commit: 6ec048284bb2c56a167629141f69f92146dbf4f1 (`origin/main`, M1-P4 merged). Revision 0 was drafted at 5b8e8ae and is superseded; the re-baseline is finding M2R-005's first edit.
+- Milestone: M2 (deterministic gates), blueprint section 13 row M2
+- Binding rule: "If it is not written here, it is not being made. Unanswered questions go to the orchestrator."
+- Relation to `delivery/plan/kernel-plan-v1.md`: this document expands section 5 of kernel plan v1 (the M2 outline) into full phases in the format of v1 section 3. Kernel plan v1 remains the governing plan for everything else: its header, section 1, section 2, section 3 (M1 phases, constraints C-1 to C-3, the test accounting rule, the invocation form), sections 6 and 7, section 8 (D-1 to D-19), section 9, section 11 and Appendix A are unchanged by this document except as recorded in M2-D-01. No row of v1's Appendix A moves buckets: all 16 M2 rows stay in M2.
+- Process summary: written in parallel with M1 implementation under decided DR-0011 (planning produces documents and touches no source file), from kernel plan v1 section 5, the 16 M2-bucketed rows of `delivery/requirements/migration-table.md`, blueprint sections 1, 4, 10, 11 and 13, the process doc disciplines these gates mechanize, decision records DR-0002 to DR-0012, tuition **T-001 to T-005**, and the M1 review and work-history record **through M1-P5's stopped state** (`delivery/review/clean-room-m1-p1.md` through `clean-room-m1-p5-second.md`, `verification-m1-p3-fix-round*.md`, `final-review-m1-p3.md`, `delivery/work-history/`), read for defects that a gate would have caught mechanically. Section 1.5 records that reading as a table and is the instrument by which this plan is judged.
+- Series note: decisions are numbered M2-D-nn and constraints M2-C-n, so they never collide with v1's D-nn and C-n. The M3 plan is being written concurrently; the orchestrator reconciles at the boundary named in section 2.
+
+---
+
+## 1. Standing context
+
+### 1.1 What M1 delivers, and what of it M2 consumes
+
+M2 starts only after the M1 exit test has passed and its evidence is committed on `main` (v1 section 4). At the time of this revision M1-P4 is merged at 6ec0482, **M1-P5 is stopped at the DR-0012 limit awaiting the owner** (`delivery/STATE.md`), and M1-P6 is built on its branch and unmerged, so the milestone gate is not yet satisfied and no M2 phase may dispatch.
+
+| M1 deliverable | Where (paths verified at 6ec0482 where merged) | Consumed by |
+|---|---|---|
+| npm package skeleton, `tsc -b` build, `node --test` suite, `dist/` never committed (D-17, D-18) | package.json, tsconfig.src.json, tsconfig.test.json | every phase |
+| CLI dispatch table and the `EX_USAGE` 64 contract | src/cli.ts, bin/tiphys.ts | M2-P1 (the only phase that edits src/cli.ts) |
+| CI workflow: matrix job `test`, non-matrixed fan-in job named exactly `gates` (DR-0004's required check context); **no `env:` block anywhere** | .github/workflows/gates.yml | M2-P1 and M2-P9 (steps added inside the `test` job; no new required check name), M2-P8 (the absent `env:` block is why criterion 3 must stage its own dangerous state) |
+| behavior registry, appended by every phase (EXT-F-05) | test/behaviors.json | M2-P3 (makes it executable), every phase (registration) |
+| fleet layout, `doctor` and its readiness profiles with WARN-to-FAIL promotion (EXT-F-08) | src/fleet.ts, src/commands/doctor.ts | M2-P1 (profile promotion is the model for gate applicability; no doctor edit is planned) |
+| executor adapter `subprocessAdapter`, whose `spawnSync(program, args, {cwd, stdio})` passes **no `env` option** so the child inherits everything today, plus the turn-end hook's second `spawnSync` | src/spawn.ts (both call sites), src/hooks.ts, src/task.ts | M2-P8 (both children are scrubbed) |
+| exit-test harness pattern: `--mode local|full`, per-step JSON evidence records, no record for a command not executed, command-scoped git identity, gh-free deterministic PATH | scripts/m1-exit-test.sh, scripts/stub-payload.sh (M1-P6, unmerged) | M2-P9 (same shape), M2-P8 (moves PR creation out of the payload if the delivered shape puts it there) |
+| worktree pool, lease lock, watcher, liveness guard | src/pool.ts, src/lock.ts, src/watcher.ts, src/liveness.ts | not consumed by M2. No M2 phase edits them. |
+
+M1-P5 and M1-P6 are not merged, so their contracts above are as-planned, not as-delivered:
+
+- **M2-C-1 (verify the delivered M1 contract before consuming it).** Any M2 phase consuming an M1 contract performs, as numbered step 1, a verification-first check that the delivered shape matches what this plan assumes, records the finding verbatim in its work history before any code, and stops and escalates if it diverges (process doc section 2b; R-012's verification-first construct). Improvising around a divergence is forbidden (v1 Never list).
+
+### 1.2 What M2 is
+
+M2 mechanizes seven disciplines the current process enforces by prompt and by hand, plus the substrate they need. The placement rule (blueprint section 1) is why each is a script. Where judgment genuinely remains it stays with the L3 reviewer and is named in section 1.5 as NOT COVERED rather than faked in a script.
+
+The blueprint's M2 contents (section 13): red-witness harness (first), full-suite wrapper ported into kernel bin, scope auditor, citation linter, coverage checker, deploy and migration verifiers, credential scoping. All seven are planned below, plus the gate contract and runner they emit into (M2-D-02) and the run-pinning module T-004 requires (M2-D-06).
+
+One property is load-bearing after review round 1: **a gate must not rest on a declaration by the party under suspicion where the same fact can be derived from the diff.** M2R-001 found three such declarations in the red-witness harness, each corresponding to a real M1 defect. The rule now governs M2-P2 step 4 and is stated here because it is general: derive what can be derived, demand evidence for what cannot, and declare the residue in section 1.5.
+
+### 1.3 Conventions and constraints carried forward
+
+All binding conventions of v1 section 1.4 apply unchanged (English only; npm only; no em dashes and pure ASCII; falsifiable criteria only with the register "node --test exits 0 and reports N tests, N > 0"; milestone exit tests are hard gates; commit messages carry no tool names). Parallelism is governed by M2-D-03, which after M2R-013 is a bounded claim, not an appeal to DR-0011.
+
+Constraints C-1, C-2 and C-3 of v1 section 3 carry forward and each bites in M2:
+
+- **C-1 (one current-state authority, never a log tail).** The suite wrapper derives counts from the runner's machine-readable reporter and the process exit code, never from a summary line (M2-P3 criterion 6 stages a counterfeit summary line). The deploy verifier's authority is the parsed API response.
+- **C-2 (no pid, process liveness, signals or /proc for identity or exclusion).** No M2 gate probes a process. Deploy readiness is a polled response with a wall-clock timeout.
+- **C-3 (never auto-background).** The runner runs gates sequentially in the foreground; the deploy verifier polls in the foreground; no gate has a daemonize flag (structural greps are criteria in M2-P1 and M2-P7).
+
+New constraints, binding on every M2 implementer:
+
+- **M2-C-2 (never green by omission).** No gate reports green for work it did not do. Every green record carries `units` strictly greater than zero, the unit declared per gate in section 1.4's table. A gate that exits 0 having examined nothing is `error`. **The runner is not exempt at the aggregate level**: zero applicable gates is an error condition (M2R-012).
+- **M2-C-3 (fail closed).** A check that cannot reach a verdict reports `error`. It never reports `not-applicable` (which asserts a precondition was evaluated and found unmet) and never green. A precondition whose evaluation fails is `error`. A gate whose required invocation parameter (`--base`, `--head`, `--phase`) is absent is `error`, not `not-applicable` (M2R-003). Adopted from the fail-closed rule already in v1 M1-P4 step 5 (FM-035, FM-038).
+- **M2-C-4 (a gate never mutates the caller's working tree).** Gates that must run tests against another state do so in a scratch clone they create and own. After any gate run the caller's repository has an unchanged HEAD and a byte-identical working tree. Grounded in T-004 lesson 1.
+- **M2-C-5 (a run that cannot name what it executed is not evidence).** Any gate that executes a test suite records a pin manifest (file set, sha256, size, mtime) over the source and test roots **of the tree it actually ran**, taken at the start and end of that run, and any difference in any of the four fields makes the record `error`. This discharges T-004 lesson 3. It does **not** reproduce T-004's incident, which was a shared worktree that M2-C-4 abolishes (M2R-009). The mtime field is retained because T-004's forensics describe a byte-identical rewrite, which a content-only pin would pass.
+
+### 1.4 The gate set, stated once
+
+Ten manifest entries. Each phase's registration step is bound to this table; a registration that differs from it is a review finding (M2R-007). "PR bundle" is the exit run on the M2-P9 pull-request head with `--base main --head HEAD --phase M2-P9`; "main bundle" is the weaker second run described in section 4.
+
+| id | Built by | unitLabel | applicability | precondition kind | PR bundle | main bundle |
+|---|---|---|---|---|---|---|
+| `manifest-self-check` | M2-P1 | schema documents validated | required | none | green | green |
+| `red-witness` | M2-P2 | witnesses evaluated | required | `diff-touches` src/, bin/ | green | not run (needs `--base`) |
+| `suite` | M2-P3 | tests reported | required | none | green | green |
+| `scope` | M2-P4 | changed paths audited | required | `branch-matches` phase pattern, plus `--phase` | green | not run (needs `--phase`) |
+| `citations` | M2-P5 | citations resolved | required | `diff-touches` configured documents | green | not run (needs `--base`) |
+| `coverage` | M2-P6 | finding ids checked | required | `file-exists` inventory config | green | green |
+| `deploy` | M2-P7 | deployments polled | conditional | `file-exists` deploy config | not-applicable | not-applicable |
+| `migrations` | M2-P7 | migrations compared | conditional | `file-exists` migrations location | not-applicable | not-applicable |
+| `credential-scrub` | M2-P8 | credential sources probed | required | none | green | green |
+| `credential-token` | M2-P8 | tokens probed | conditional | env `TIPHYS_IMPLEMENTER_TOKEN` present | green with owner action A-3, else not-applicable | same |
+
+Two file-declaration rules follow from building a scope auditor in this milestone:
+
+- **Literal paths only (M2R-016).** Every files-to-touch entry in this plan is a literal path or literal directory, because the phase declaration projection the scope auditor reads is generated from it. A description is not a path.
+- **Shared files (M2R-020).** `gates.manifest.json` and `test/behaviors.json` are appended by nearly every phase and are named in every phase's conflicts-with by construction rather than repeated per phase. `test/behaviors.json` and the phase work history remain the **two** standing pre-authorized extras of CLAUDE.md, unchanged by M2: `gates.manifest.json` and each witness spec appear on the declaring phase's own files-to-touch list, so DR-0012 clause 5 needs no amendment and no M2 phase edits CLAUDE.md (M2-D-12, disposing of M2R-006).
+
+Other shared fields, stated once:
+
+- **migrations: none** for every M2 phase (library).
+- **substrate (DR-0007): substrate-neutral** for every phase. Two gates reach outside the filesystem (`deploy`, `credential-token`); neither is substrate-specific and both are precondition-gated.
+- **Invocation form** (v1 section 3, PR-102): `tiphys <cmd>` means `node bin/tiphys.ts <cmd>`; the exit harness invokes `dist/bin/tiphys.js` after `npm run build`.
+- **Test accounting rule** (EXT-F-05) applies unchanged and becomes executable from M2-P3 onward, which is the gap `clean-room-m1-p1.md` CR-002 recorded as open until M2.
+- **Standing environment warnings** of CLAUDE.md are forwarded in every brief. Four bite M2: warning 1 (local Node 22 versus the >=26 floor; exit-0 assertions are floor-gated locally and witnessed in CI), warning 4 (computed-URL dynamic import from `test/` into `src/`), warning 6 (`gh` absent locally, present in CI), warning 7 (`--test-name-pattern` precedes the positional path, which M2-P2 depends on).
+
+### 1.5 What M1's real defects would have hit (the instrument)
+
+One row per significant defect the project has actually paid for, with the gate that catches it and the criterion demonstrating that capability, or an explicit NOT COVERED naming where the requirement lands. A blank cell is not permitted. This is the cheapest available check on the rest of the plan, and revision 0 not having it is what let M2R-001, M2R-002 and M2R-005 escape its author.
+
+| # | Defect, as recorded | Source | Caught by | Demonstrated by |
+|---|---|---|---|---|
+| 1 | **V-1**: `pool destroy` force-deleted a task branch carrying committed unpushed work; the guarding test destroyed a branch still at its base commit, so it could never observe the loss | `verification-m1-p3-fix-round.md` V-1; T-003 lesson 2 | `red-witness` (M2-P2), dangerous-state rule plus derived destructive class | M2-P2 criteria 2 and 3a |
+| 2 | **V-2**: a retry matcher was narrowed using hand-authored example strings while 312 real captured contention failures existed; the real transient stopped being retried | `verification-m1-p3-fix-round.md` V-2; T-003 lesson 4 | `red-witness` (M2-P2), `consumesExternalOutput` **required by derivation from the diff**, not by opt-in | M2-P2 criteria 5 and 5a |
+| 3 | **U-10**: a work history claimed two deterministic witnesses where only one was; measured 11/20, 8/20, 6/20 | `verification-m1-p3-fix-round-2.md` U-10 | `red-witness` (M2-P2), determinism rule with measured rate | M2-P2 criterion 4 |
+| 4 | **N-401**: witness W9 went silently GREEN 3/3 after a later change in the same component, while the work history still presented it as a live guard | `clean-room-m1-p4.md` N-401 | `red-witness` (M2-P2), durable witness corpus with re-evaluation of stored witnesses whose dangerous state intersects the diff | M2-P2 criterion 9 |
+| 5 | **CR-002**: the behavior-to-test mapping could rot silently; no executable guard existed | `clean-room-m1-p1.md` CR-002 | `suite` (M2-P3), registry resolution by name | M2-P3 criteria 3 and 4 |
+| 6 | **PR-106 class**: a test-selection pattern that silently drops files once subdirectories exist | v1 M1-P1 step 2; `package.json` scripts.test today | `suite` (M2-P3), discovery parity enumerated by walking declared roots, never by expanding the runner's own pattern | M2-P3 criterion 2 |
+| 7 | **F-3**: deleting two tests removed the only coverage of the worktree-add retry, leaving unwitnessed retry logic | `final-review-m1-p3.md` F-3 | `suite` (M2-P3) **in part**: a registered behavior whose test disappears is caught by name; logic that was never registered is not | M2-P3 criterion 4; residue in section 4 not-proven item 8 |
+| 8 | **F-1 / F-2**: a thrown error bypassed rollback, producing an 18-line stack trace and orphaned state, and the printed recovery route was wrong until driven by hand | `clean-room-m1-p4.md` F-1, F-2 | **NOT COVERED by any M2 gate.** Error-path correctness, found by an L3 reviewer driving the CLI with forced failures | Lands at M3: clean-room probe list (R-055, R-059) and the checklist extension mechanism (R-054). Section 4 not-proven item 9 |
+| 9 | **M1-P5 finding 1 (CRITICAL)**: a stranded claim file made every future watcher pass silently and permanently report nothing for a genuinely pending signal, while the beacon stayed fresh so the guard reported the fleet healthy | `clean-room-m1-p5-second.md` finding 1; `STATE.md` | **NOT COVERED by any M2 gate.** A silent-permanent-failure design defect with a green suite throughout | Lands at M3: clean-room probe list, and the mechanism index (section 2 item 10). Section 4 not-proven item 10 |
+| 10 | **M1-P5 duplicate-mechanism divergence**: the claim-file pattern was implemented twice and diverged, because the project has no index from mechanism to rule | T-005 | **NOT COVERED by any M2 gate.** M2 claims only the machine-readable destructive-authority half (section 2 item 11), which is a different list | **Owned by M3**: the mechanism index, delivered by M3-P6 (brief clauses plus stub index) and M3-P8 (generated projection of the tuition feed's `mechanisms[]`), under M3's D-M3-23, seeded with the `claim-file` rule this very defect established. Section 2 item 10 |
+| 11 | **N-402**: a work history declared a path untestable when it was one CLI flag away, telling the next reader not to try | `clean-room-m1-p4.md` N-402 | **NOT COVERED by any M2 gate.** An honesty defect in prose | Lands at M3's reporting and work-history contracts (R-052a, R-057a, T-003's universal-quantifier consequence). Section 4 not-proven item 11 |
+| 12 | **CR-104**: a deviation declaration undercounted its own extras (four declared, five present) | `clean-room-m1-p2.md` CR-104 | **NOT COVERED by any M2 gate.** The scope auditor audits files, not the accuracy of a prose declaration | Lands at M3's report contract (R-057a deviations section). Section 4 not-proven item 11 |
+| 13 | **M1-P5 NEW-2**: a named pipe at a metadata path hangs the guard and the watcher forever, live-locking doctor, spawn and teardown | `STATE.md` in flight; M1-P5 final confirmation | **NOT COVERED by any M2 gate.** Adversarial input probing | Lands at M3's clean-room probe list (R-055 names the state that can never exit). Section 4 not-proven item 10 |
+
+**Verdict of the table: 7 of 13 recorded defects are caught by an M2 gate with a named criterion (6 outright, F-3 in part); 6 are not caught by any M2 gate and are routed to named M3 owners.** Every uncovered row names its owner and appears in section 4's not-proven list, so the milestone's evidence cannot be read as covering it. Two of the six (rows 9 and 10) are the most severe defects M1 produced, which is the honest headline of this milestone: M2 mechanizes test honesty, scope, citations, coverage and credentials; it does not mechanize design-rule violations that leave a green suite, and no script placement under blueprint section 1 makes it able to.
+
+---
+
+## 2. Boundary with M3
+
+The M3 plan is being detail-planned concurrently. These items sit on the boundary and are claimed or disclaimed explicitly. **M3 phase ids move as that plan is revised, so items below name phases by NAME; the orchestrator reconciles ids before M3 dispatch** (M2R-019).
+
+1. **Gate registry versus gate manifest (R-094).** M2 builds a manifest: one file for one repository, with per-gate preconditions and applicability. M3's canonical gate registry phase builds the single source consumed by CI and briefs, keyed per assurance mode. M2 deliberately does not implement assurance modes; the manifest schema reserves a `modes` field, validated if present and ignored by the M2 runner, so the promotion is additive.
+2. **Report contract and status line (R-084 to R-089a).** M3's reporting and work-history contracts phase. M2 claims only R-089b, the machine half. Because the report contract does not exist yet, M2-P6 defines its own input contract and the M3 report schema must emit that shape or supersede it (risk 4).
+3. **Plan schema (R-011, R-018, R-019, R-021).** M3's schema foundation phase. M2's scope auditor consumes a minimal phase declaration projection; the recommendation that the plan schema's phase object be a superset of those fields has been adopted in the M3 draft.
+4. **Schemas directory.** Root `schemas/` is reserved for M3 by CLAUDE.md, so M2's schema documents live under `src/gates/schemas/` (M2-D-05). Relocation is M3's call.
+5. **JSON Schema validation technology.** M2 ships a minimal in-repo validator with a closed keyword set that errors loudly on any keyword it does not implement (M2-D-04). The library question is DR-0013, raised by the M3 plan; M2's module boundary is the seam.
+6. **Fix-round verification as a pipeline requirement** (T-003 structural consequence 1). A pipeline-shape rule, not a gate: no script can tell an honest fix round from a dishonest one. M3's assurance-mode phase. Disclaimed.
+7. **Universal-quantifier linting in work histories** (T-003 structural consequence 3). M3's reporting and work-history contracts phase. Disclaimed.
+8. **Tuition flow (R-070, R-091) and role briefs (R-004 to R-009b).** M3. Disclaimed.
+9. **Credential scoping's owner half.** Branch protection is M4 (R-064); DR-0004 items 2 and 3 are approved owner actions; item 4 is owner action A-3 in section 6.
+10. **Mechanism index (T-005): M2 disclaims it in full, and M3 has claimed it. The orphan M2R-018 raised is closed from both sides.** M3 plan revision 1 owns it in two adjacent phases under its decision D-M3-23: **M3-P6** (delivery-role briefs) ships the implementer brief's `mechanism-lookup` and `mechanism-sibling` clauses plus a committed stub index carrying the rule T-005 itself establishes, and **M3-P8** (tuition flow and the mechanism index) replaces the stub with the index generated as a **projection of the tuition schema's `mechanisms[]` field**, seeded with four mechanisms this project has already paid for, each carrying resolving evidence, because a rule without a citation is not a rule. That is the shape T-005 asks for (one artifact, not two to maintain), and the split exists because a brief cannot require reading a file that does not exist. M2 claims none of it, including the checkable half: the index does not exist for a gate to check during M2, and building a checker before its artifact is machinery for a state this milestone does not reach. **What M2 needs from the index at gate time: nothing.** No M2 gate reads it and no M2 phase is blocked by it. One coupling is worth naming so the two do not drift: M3-P8's seeded `destructive-git-operation` entry and M2's `destructiveCommands` manifest list are two views of one rule, so the index entry should cite the manifest list as its machine-readable form. **The dependency direction is M3 reads M2**, never the reverse, which is the correct order because M2 ships first and the manifest exists before the index does.
+11. **Destructive-authority declaration** (T-003 structural consequence 4: "any kernel command that can destroy work must state its destructive authority explicitly in its contract, and force semantics must never be inherited implicitly"). This splits into three halves, and the split is stated here so none of them falls between the plans:
+    - **The machine-readable list: M2 claims it.** A `destructiveCommands` list in `gates.manifest.json`, delivered by M2-P1 step 6 and consumed by M2-P2 step 4 rule (e), which derives a witness's class rather than trusting the implementer's declaration. It is M2's because it is a gate input: without it the derived-class rule that covers section 1.5 row 1 cannot function. It is a list of commands, not a statement of authority, and it claims nothing about prose.
+    - **The rule text with its evidence: already claimed by M3**, as M3-P8's seeded `destructive-git-operation` mechanism-index entry citing V-1. M2 disclaims it.
+    - **The enforcement that a new destructive command states its authority in its own contract: unclaimed by either plan, and M2 concludes it is M3's, not a gate concern.** No script can judge whether a contract states an authority; the checkable part (does this command appear on the `destructiveCommands` list) is already M2's list, and the judgeable part is a brief clause plus a review probe. **Ask to the M3 planner: place it in M3-P6's implementer brief, adjacent to the `mechanism-lookup` clause, as the obligation that an implementer adding or extending a command that can destroy work states its destructive authority in the command's own contract, never inherits force semantics from a caller, and adds the command to the manifest's `destructiveCommands` list.** That last conjunct is what keeps M2's machine half and M3's prose half from diverging, and it is the clause that would have caught V-1 at authoring time rather than at verification time.
+
+---
+
+## 3. Phases
+
+Nine phases, branches `claude/m2-pN-<slug>`. One phase, one branch, one PR. Merge authority: decided DR-0012 delegates merging to the orchestrator conditional on two independent clean-room reviews on different model families, no unresolved high or medium finding, CI green on the exact head, and a passing scope audit, with its limits intact (milestone exit tests stay hard gates; more than two fix rounds or a recurring high in one component stops the phase for the owner, which is where M1-P5 currently sits).
+
+**No M2 phase edits CLAUDE.md.** Revision 0 had M2-P1 and M2-P3 amending the record of the binding conventions while merging under an authority whose clause 5 they redefined, with orchestrator self-authorization as the fallback; M2R-006 is right that this is circular and that the beneficiary cannot rule on its own authority. The circularity is removed at the source rather than blessed: `gates.manifest.json` and witness specs are declared on each phase's own files-to-touch list instead of being added to CLAUDE.md's standing extras, so DR-0012 clause 5 remains true as written. The one remaining CLAUDE.md change, updating the human-facing gate list once M2's gates exist, is a documentation pull request listed in section 6 as owner item O-2 and blocks no phase.
+
+Phase declarations for the scope auditor are authored by the orchestrator from this document before dispatch and committed to `main`, never authored on the phase branch (M2-P4 step 4).
+
+### M2-P1: Gate contract, manifest, runner, and run pinning
+
+- id: M2-P1
+- branch: claude/m2-p1-gate-contract-and-runner
+- intent: Establish how a gate is declared, invoked and reported, so the gates that follow emit one comparable record type and the exit test can count them. Deliver the runner with its diff and phase parameters, the manifest including the destructive-command list, the result record and schema, the pin module, precondition semantics, and CI wiring that measures something real from its first run.
+- grounding: M1 merged with exit evidence on `main`. DR-0006 (lintable-schema-first governs gate output formats). SC-011 (unmet precondition reports not-applicable, never green). Blueprint section 4 and FM-060 as adopted in v1 M1-P4 (every toolbelt boundary is a subprocess with an exit code). T-004 lesson 3 (a run that cannot name what it executed is not evidence). Verify absent first: `src/gates/`, `gates.manifest.json`.
+- steps:
+  1. M2-C-1 verification: confirm the delivered `src/cli.ts` dispatch shape and `EX_USAGE`, and the delivered workflow job layout. Confirm that a step added inside the `test` job introduces no new check-run name, because DR-0004's ruleset names the context `gates` verbatim.
+  2. Create `src/gates/result.ts`: the `GateResult` record. Fields `gate`, `status` (exactly `green`, `red`, `not-applicable`, `error`), `units`, `unitLabel`, `startedAt`, `endedAt`, `precondition` ({id, met, reason, evidence}) when declared, `pin` (start and end manifests, for gates bound by M2-C-5), `detail`, `evidence` (relative paths). Constructor rule: a record with status `green` and `units` 0 is rewritten to `error` naming M2-C-2 and cannot be constructed otherwise.
+  3. Create `src/gates/pin.ts` (moved here from M2-P2 per M2R-010, because two gates consume it and a phase cannot depend on a module another phase owns): `takePin(roots)` returns `{roots, takenAt, files: [{path, sha256, size, mtimeMs}]}`; `comparePins(a, b)` returns differences including added and removed paths. Any difference of any kind, including a byte-identical rewrite that changes only mtime, is a difference.
+  4. Create `src/gates/schemas/gate-result.schema.json` and `gate-manifest.schema.json`, and `src/gates/validate.ts`: a validator over a closed keyword set (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minimum`, `minItems`, `pattern`, `const`, local `$ref`). Any keyword outside the set encountered while loading a schema is a load error naming the keyword, never a silent pass.
+  5. Verification-first sub-step, then implement: determine empirically whether `tsc -b` at the pinned compiler emits `src/gates/schemas/*.json` into `dist/`, or whether an explicit copy step is required; record which, implement that one, extend the package `files` allowlist if needed. Criterion 10 witnesses the outcome from `npm pack`.
+  6. Create `src/gates/manifest.ts` and `gates.manifest.json`. Fields: `version`; `gates[]` with `id`, `command` (argv array), `unitLabel`, `applicability` (`required` or `conditional`), `precondition` ({id, kind, ...}) with `kind` in the closed set `file-exists`, `file-absent`, `branch-matches`, `diff-touches`, `command-exit-zero`; reserved and validated but unused in M2, `modes`; and top-level `destructiveCommands`, a list of CLI commands and module paths whose operations can destroy work (section 2 item 11), seeded with `pool destroy`, `teardown`, and any command accepting `--discard`, `--force` or `--delete-branch-force`. The initial manifest carries one gate, `manifest-self-check`, which validates every schema document and the manifest against its own schema, so the first CI run measures something real (M2R-012).
+  7. Create `src/gates/run.ts` and `src/commands/gates.ts`; register `gates` in `src/cli.ts` (the only M2 edit to that file). Signature: `tiphys gates run --manifest <file> --evidence <dir> [--base <ref>] [--head <ref>] [--phase <id>] [--only <id>...]`. Gates run sequentially in the foreground as subprocesses (C-3), stdout and stderr captured into the evidence directory. Rules: a gate whose precondition kind is `diff-touches` or `branch-matches`, or whose command requires `--phase`, reports `error` when that parameter is absent, never `not-applicable` (M2-C-3, M2R-003); a gate subprocess exiting nonzero **without writing a result record** is `error`, not `red`, because Node exits 1 on an uncaught exception and that collides with the red code; zero applicable gates is `error` with reason `no applicable gate` (M2-C-2 at the aggregate level). Exit codes: `0` green, `1` red, `20` not-applicable, `21` gate error, `64` usage.
+  8. Write `summary.json`: manifest path and sha256, per-gate status, and counts `declared`, `applicable`, `green`, `red`, `not-applicable`, `error`, `vacuous`, where **`vacuous` is a strict subset of `error` and `error` is the total** (M2R-021). No record is written for a gate that was not executed.
+  9. Wire `node dist/bin/tiphys.js gates run` into the existing `test` job of `.github/workflows/gates.yml`, passing `--base ${{ github.event.pull_request.base.sha }} --head ${{ github.sha }}` on pull requests. No CLAUDE.md edit (section 3 preamble). M2-P9 later replaces this step with the exit harness so the set runs once (M2R-026).
+  10. Tests in `test/gates.test.ts` and `test/pin.test.ts`; register behaviors.
+- files-to-touch: src/gates/result.ts, src/gates/pin.ts, src/gates/validate.ts, src/gates/manifest.ts, src/gates/run.ts, src/gates/schemas/gate-result.schema.json, src/gates/schemas/gate-manifest.schema.json, src/commands/gates.ts, gates.manifest.json, test/gates.test.ts, test/pin.test.ts (create); src/cli.ts (edit), .github/workflows/gates.yml (edit), package.json (edit only if step 5 requires a build or files change).
+- acceptance criteria:
+  1. `npm ci`, `npm run build`, `npm test` each exit 0; after the build `git status --porcelain` is empty.
+  2. Against a fixture manifest of four gates (one exiting 0 with units 3, one exiting 1 with a red record, one whose `file-exists` precondition names an absent file, one exiting 21 with an error record), the evidence contains exactly four records with statuses `green`, `red`, `not-applicable`, `error` in that mapping; `summary.json` reports declared 4, applicable 3, green 1, red 1, not-applicable 1, error 1, vacuous 0, with `error` equal to the number of error-status records; the runner exits nonzero.
+  3. Against a manifest containing only the green gate, the runner exits 0 with applicable 1, green 1, vacuous 0.
+  4. A fixture gate exiting 0 with `units` 0 is recorded `error`, counted in both `vacuous` (1) and `error` (1), and the runner exits nonzero; with `units` 1 it is `green` and the runner exits 0 (both directions).
+  5. A `required` gate whose precondition is unmet is `not-applicable` and the runner exits nonzero naming it; declared `conditional`, the runner exits 0 (both directions).
+  6. A `command-exit-zero` precondition whose command does not exist yields `error`, never `not-applicable` and never `green` (M2-C-3).
+  7. A fixture gate that throws an uncaught exception (exit 1, no record) is `error`, not `red`.
+  8. A manifest whose only gate declares precondition kind `diff-touches`, invoked **without** `--base`, yields `error` for that gate and a nonzero runner exit; the same invocation with `--base` yields the gate's real verdict (both directions, M2R-003).
+  9. A manifest with zero gate entries, and separately a manifest whose every gate is not-applicable, both make the runner exit nonzero with reason `no applicable gate` (M2R-012).
+  10. Schema validation: a manifest missing `id` is rejected naming the field; a record with a status outside the enum is rejected; loading a schema containing a keyword outside the closed set fails naming the keyword rather than validating anything. `npm pack` output contains both schema documents, and criterion 3's fixture re-run through `dist/` behaves identically (the compiled entry resolves its schemas).
+  11. `takePin` over a fixture root, then a byte-identical rewrite of one file (content hash unchanged, mtime changed), then a second pin: `comparePins` reports exactly one difference naming the path and the `mtimeMs` field; with no rewrite it reports none (both directions).
+  12. `tiphys gates run` with an unknown flag exits 64 with usage on stderr.
+  13. Structural: grep over `src/gates/` shows no `detached: true`, no `unref`, no `process.kill`, no `/proc`, no pid usage (C-2, C-3).
+  14. Split observation (M2R-023): (a) the check-run list on the phase PR contains exactly the contexts it contained before this phase, `test (26)` and `gates`, evidenced from the check-runs API; (b) the ruleset's required contexts are unchanged, evidenced by `gh api repos/.../rulesets` recorded in the work history, or marked CI-deferred with the reason that `gh` is absent locally (warning 6).
+  15. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: strongest (the record shape, status vocabulary, exit codes and pin are consumed by every later phase and promoted by M3).
+- citations: SC-011, DR-0006, DR-0004 (required check context), blueprint section 4 and section 1, v1 M1-P4 (FM-060), T-004 lesson 3, T-003 structural consequence 4 (`destructiveCommands`). Rows discharged: none (Appendix A note).
+- conflicts-with: M2-P3 and M2-P9 (`package.json`, `.github/workflows/gates.yml`), plus the shared files of section 1.4.
+- blocked-by: M1 exit test passed and its evidence on `main`.
+- parallelizable: no.
+
+### M2-P2: Red-witness harness
+
+- id: M2-P2
+- branch: claude/m2-p2-red-witness-harness
+- intent: Make red-witness discipline mechanical and not self-certified: a test guards a behavior only when demonstrated red against a dangerous state that intersects the phase diff, green at head, in a pinned isolated run, with the witness class and the captured-output obligation derived from the diff rather than declared by the implementer, and with stored witnesses re-evaluated so one cannot silently go green later.
+- grounding: M2-P1 merged (record, manifest, pin, `destructiveCommands`). Blueprint section 4 (input test IDs plus baseline SHA; red on baseline, green on head; emits an evidence file) and section 10 point 4 (target latest `main`, re-verified at merge; the merge-time gate is M5). CLAUDE.md's strengthened red-witness rule; T-003 (dangerous state, hand-authored fixtures); `clean-room-m1-p4.md` N-401 (a registered witness that went green); `verification-m1-p3-fix-round-2.md` U-10 (overstated determinism). Section 1.5 rows 1 to 4 are this phase's contract.
+- steps:
+  1. M2-C-1 verification of M2-P1's record, manifest, pin and `destructiveCommands` contracts.
+  2. Create `src/gates/schemas/witness-spec.schema.json` and `src/witness/spec.ts`. A witness spec is one JSON document per behavior at `witness/<behavior-id>.json`, **durable and repository-level, not phase-scoped** (M2R-002, M2-D-14). Fields: `id`; `behavior` (must resolve in `test/behaviors.json`); `tests` (names, run with `--test-name-pattern` before the positional path); `class` (`additive`, `destructive`, `classification`); `dangerousState` ({kind: `baseline-ref` | `patch` | `mutation`, plus ref, patch path, or file and substitution}); `deterministic` and `repeats` (default 5); optional `consumesExternalOutput` ({program, captures[], provenance}).
+  3. Create `src/witness/run.ts`. Per witness: create a scratch clone the harness owns, never writing to the caller's tree (M2-C-4); fetch `origin` and resolve the baseline from the fetched remote, never a stale local ref; take the start pin over the clone's source and test roots; apply the dangerous state; run the named tests and require a nonzero exit with each named test reported failing; repeat `repeats` times when `deterministic` is declared, recording each run; restore head; run green; take the end pin; write the record including the applied mutation or patch diff verbatim.
+  4. Refusal rules, evaluated before any test runs, each producing `red` with a reason naming its source. Rules (a) to (c) are as reviewed; (d) to (f) are the M2R-001 additions that stop the gate resting on the implementer's own declaration (M2-D-15):
+     - (a) `class` `destructive` or `classification` with `dangerousState.kind` `baseline-ref`: a bare absent-feature baseline is not the dangerous state (T-003).
+     - (b) `behavior` does not resolve in `test/behaviors.json`.
+     - (c) `consumesExternalOutput` declared but no capture cited, or a cited capture missing or empty, or no cited capture's basename referenced from the named tests' sources.
+     - (d) **Diff intersection**: a `patch` or `mutation` dangerous state must touch at least one file changed in the phase diff, and for `mutation` at least one line inside a changed hunk; otherwise `red` with reason "declared dangerous state does not intersect the phase diff". The applied mutation diff is recorded verbatim so a reviewer can judge it.
+     - (e) **Derived class**: a witness whose named tests invoke a command on the manifest's `destructiveCommands` list, or whose behavior name resolves to a module on that list, must be `destructive`; a declaration weaker than the derived class is `red`. The class is derived, not only declared.
+     - (f) **Derived capture obligation**: `consumesExternalOutput` is required, not optional, when the phase diff touches a module that spawns a subprocess or parses another program's output, decided by a deterministic `child_process`, `execFile`, `spawnSync`, `execSync` grep over the changed files; a witness in that state without the field is `red`.
+  5. Determinism rule: when `deterministic` is true every repetition must be red; k of n red with k < n is `red` and the record carries the measured rate. When false, the rate is recorded and 0/n is still `red`.
+  6. **Re-evaluation of stored witnesses** (M2R-002): after evaluating the phase's own witnesses, the gate re-runs every stored witness whose declared dangerous state touches a file in the current diff. A stored witness now GREEN against its own dangerous state is `red` with reason "witness no longer guards its behavior", naming the witness and the measured rate. The phase **measures and records the wall-clock cost** of this re-evaluation over the kernel's witness corpus and states it in the work history; if it exceeds five minutes on the corpus at that time, the implementer stops and the orchestrator decides the scoping rather than the implementer narrowing it silently (the review's honest failure 6 declines to guess the ceiling, and so does this plan).
+  7. Register `red-witness` per section 1.4. Applicability `required`, precondition `diff-touches` on `src/` or `bin/`; source changed with no witness spec covering it is `red`, never `not-applicable`; `--base` absent is `error` (M2-C-3). Merge-time re-verification (blueprint section 10 point 4) is a parameter (`--baseline <ref>`), not an enforcement: M2 runs no parallel phases and has no merge-time hook, and building the enforcement now is machinery for a state this milestone does not reach (M2-D-08).
+  8. Tests in `test/witness.test.ts` against scratch git repositories with command-scoped git identity (warning 5).
+- files-to-touch: src/witness/spec.ts, src/witness/run.ts, src/gates/red-witness.ts, src/gates/schemas/witness-spec.schema.json, test/witness.test.ts, witness/ (create; each spec this phase adds is listed as a literal path in the phase declaration); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. On a scratch repository where the named test is red at the declared dangerous state and green at head, the harness exits 0, status `green`, `units` equals witnesses evaluated, both pins recorded and equal, and the applied dangerous-state diff appears verbatim in the record.
+  2. A witness whose test is **green against its declared dangerous state** (staged as the V-1 shape: a destroy exercised against a branch carrying no commits) is red naming the witness; with the fixture corrected so the branch carries a commit, the same spec exits 0 (section 1.5 row 1, both directions).
+  3. A `destructive` witness with `dangerousState.kind` `baseline-ref` is red before any test runs, citing T-003; with `kind` `mutation` and a real substitution it is evaluable (both directions).
+     3a. **Derived class**: a witness whose named tests invoke a command on `destructiveCommands` but declares `class: additive` is red naming the derived class; declaring `destructive` makes the same witness evaluable (both directions; this is the escape M2R-001 found, and section 1.5 row 1 depends on it).
+  4. A witness declaring `deterministic` true whose test is red in 3 of 5 repetitions is red carrying the rate 3/5; declared false, it is green with the rate recorded (section 1.5 row 3, both directions).
+  5. `consumesExternalOutput` declared with no capture cited is red; with a capture that exists, is non-empty and is referenced by the named tests' sources, it is evaluable, and the record carries the capture's sha256 and provenance (both directions).
+     5a. **Derived capture obligation**: a phase diff touching a module that calls `spawnSync`, with a witness that omits `consumesExternalOutput`, is red naming the derivation; supplying the field with the **real captured git contention stderr recorded in `delivery/review/verification-m1-p3-fix-round.md`** as the capture makes it evaluable (section 1.5 row 2, both directions, using real captured output rather than a fixture string).
+  6. A `mutation` dangerous state naming a file outside the phase diff is red; moving the same mutation into a changed hunk makes it evaluable (both directions, M2R-001 edit d).
+  7. **Pin witness** (M2R-009, a mechanism witness, not a reproduction of T-004's incident): with a documented in-harness hook that rewrites one file in the scratch clone with byte-identical content between the start and end pins, the record is `error` and the reason names the path and the `mtimeMs` field; a content-hash-only pin cannot pass this criterion.
+  8. After every run in criteria 1 to 7, the caller's repository HEAD is unchanged and `git status --porcelain` is empty (M2-C-4).
+  9. **Stored-witness re-evaluation** (section 1.5 row 4, the N-401 shape): a stored witness from an earlier fixture phase, made green by a later change in the same run, is red naming the witness and its measured rate; reverting the later change returns exit 0 (both directions). The work history records the measured wall-clock cost of re-evaluation over the kernel's corpus.
+  10. With the scratch repository's local `main` behind its remote, the recorded baseline SHA equals the fetched remote head, not the local ref.
+  11. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: strongest (this gate judges every other test; a false witness here is invisible everywhere else).
+- citations: R-015b, R-028b, R-036, R-037b, R-056b; blueprint section 4 and section 10 point 4; CLAUDE.md red-witness rule; T-003; `verification-m1-p3-fix-round.md` V-1 and V-2; `verification-m1-p3-fix-round-2.md` U-10; `clean-room-m1-p4.md` N-401.
+- conflicts-with: the shared files of section 1.4.
+- blocked-by: M2-P1 merged.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P3: Full-suite wrapper with parity counting
+
+- id: M2-P3
+- branch: claude/m2-p3-suite-wrapper
+- intent: Replace "the suite is green" with a machine-countable claim: discovery parity measured independently of the runner's own selection pattern, registry resolution, skip accounting, pinning, and the wrapper's exit code as the only truth.
+- grounding: M2-P1 merged (result contract and `src/gates/pin.ts`). Process doc section 2e item 8. Blueprint section 4. v1 section 5's note that the EXISTS wrapper lives in a project not present here, so it is BUILT from the contract under D-1's degradation rule. `clean-room-m1-p1.md` CR-002. Constraint C-1 and M2-C-5.
+- steps:
+  1. M2-C-1 verification: confirm the delivered `test/behaviors.json` shape and `npm test` script, and record which machine-readable reporters the pinned Node emits and which is chosen. Parsing a human-facing summary line is forbidden (C-1).
+  2. Create `src/gates/suite.ts`: run the suite with the chosen machine-readable reporter into the evidence directory; parse counts from the structured stream and the process exit code only.
+  3. **Discovery parity by independent enumeration** (M2R-008): enumerate candidate tests by walking the declared test **roots** (`test/`) for the declared filename suffix (`.test.ts`), never by expanding the runner's own selection pattern, and compare that set with the reporter's file set. A file found by the walk but absent from the reporter is a parity failure. This is what makes the PR-106 hazard visible, because the pattern is the thing that can be wrong and an enumeration sharing it cannot see that.
+  4. Registry resolution: every behavior in `test/behaviors.json` resolves by name to a test in the run, and every behavior registered at the merge base is still present (name comparison against the merge-base copy; `--base` absent is `error`).
+  5. Skip accounting: a skipped test carries a non-empty reason; a skip without one is a parity failure (the executable form of EXT-F-05).
+  6. Parity term mapping (M2R-022): R-048's identity is `passed + failed + skipped + did-not-run == discovered`. Record the mapping explicitly: `pass`, `fail` and `skipped` map directly; `cancelled` carries `did-not-run`; `todo` is recorded and counted; `discovered` is step 3's independent walk, not the reporter's `total`. A test that never registers appears in neither side of the reporter's arithmetic, and the compensating control for that bucket is step 4's registry resolution, stated as such.
+  7. Pin (M2-C-5): the record carries start and end pins over the declared source and test roots.
+  8. Exit-code truth: the wrapper's own exit code is the gate; if the runner exits 0 while any parity check fails, the wrapper exits nonzero. `units` equals tests reported.
+  9. Register `suite` per section 1.4. Add an `npm run gate:suite` script; `npm test` stays a bare `node --test` so the suite is always runnable without the gate and a wrapper defect cannot make it unrunnable (M2-D-09). No CLAUDE.md edit; the human-facing gate list is owner item O-2.
+  10. Tests in `test/suite-gate.test.ts` against fixture suites in scratch directories.
+- files-to-touch: src/gates/suite.ts, test/suite-gate.test.ts (create); package.json (edit, add the gate script); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. On this repository the wrapper exits 0, status `green`, `units` equals tests reported, and the recorded arithmetic satisfies step 6's mapping with `discovered` taken from the independent walk.
+  2. A test file placed at `test/sub/x.test.ts` that the configured runner pattern fails to select leaves the bare runner at exit 0 and makes the wrapper exit nonzero naming the file; correcting the pattern returns exit 0 (section 1.5 row 6, both directions; the wrapper's enumeration cannot share the defect because it walks roots rather than expanding the pattern).
+  3. With a registered behavior's test renamed in a fixture suite, the bare runner exits 0 and the wrapper exits nonzero naming the behavior; restoring the name returns exit 0 (section 1.5 row 5, both directions).
+  4. With a behavior present in the merge-base registry deleted from the head registry, the wrapper exits nonzero naming it (section 1.5 row 7).
+  5. A fixture test skipped without a reason makes the wrapper exit nonzero; with a reason it stays at exit 0 (both directions).
+  6. A fixture test whose body prints a counterfeit summary line (for example "pass 999") changes no recorded count and does not affect the verdict; the line is captured verbatim in the evidence (C-1).
+  7. A fixture suite where the runner exits 0 but the reporter stream is truncated mid-run is `error`, not `green` (M2-C-3).
+  8. The record carries equal start and end pins over the declared roots; a byte-identical rewrite of one source file between them makes the record `error` naming the path and `mtimeMs` (M2-C-5, both directions).
+  9. Invoked without `--base`, the gate is `error`, not `not-applicable`, because the merge-base registry comparison cannot be performed.
+  10. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: strongest (the failure mode is a silently smaller suite, which the process doc calls the most dangerous output a suite can produce).
+- citations: R-048; process doc section 2e item 8; blueprint section 4; C-1; M2-C-5; `clean-room-m1-p1.md` CR-002; v1 M1-P1 step 2 (PR-106).
+- conflicts-with: M2-P1 (`package.json`), plus the shared files of section 1.4.
+- blocked-by: M2-P1 merged (both the result contract and `src/gates/pin.ts`).
+- parallelizable: no by default (M2-D-03).
+
+### M2-P4: Scope auditor
+
+- id: M2-P4
+- branch: claude/m2-p4-scope-auditor
+- intent: Make "every changed file is on the phase's list or a declared extra" a check with an exit code, read from the merge-base copy of the declaration so it cannot be widened from inside the phase.
+- grounding: M2-P1 merged. Blueprint section 4 and section 11. Process doc sections 1c and 3. CLAUDE.md's two standing pre-authorized extras. `clean-room-m1-p2.md` deviation 1, a real case: `test/behaviors.json` was edited while absent from the phase list and was correctly judged a clerical gap in the plan rather than scope creep, which is the distinction the standing-extras rule encodes.
+- steps:
+  1. M2-C-1 verification of the M2-P1 contracts.
+  2. Create `src/gates/schemas/phase-declaration.schema.json` and the loader: `{id, branch, filesToTouch: [literal paths], declaredExtras: [literal paths], citations: [ids]}`.
+  3. Create `src/gates/scope.ts`: resolve the merge base of `--head` against `--base`; compute changed paths with `git diff --name-status`, counting renames as both paths and counting deletions; compare against the declaration plus the two standing extras, with the work-history extra scoped to `delivery/work-history/<phase-id>.md`.
+  4. Read the declaration from the **merge base**, not the head, so an implementer editing it on their own branch cannot widen the audited scope. Record the declaration path and its merge-base blob sha256.
+  5. `units` equals changed paths audited. A listed file not touched is not a violation and is recorded as an under-touch count in the detail line.
+  6. Register `scope` per section 1.4: `required`, precondition `branch-matches` the phase pattern `claude/m[0-9]+-p[0-9]+-*` plus a supplied `--phase`. Branch matches with no declaration at the merge base: `red`. Branch does not match (paperwork branches): `not-applicable` with the reason recorded. `--phase` or `--base` absent: `error` (M2-C-3).
+  7. Tests in `test/scope-gate.test.ts` against scratch repositories.
+- files-to-touch: src/gates/scope.ts, src/gates/schemas/phase-declaration.schema.json, test/scope-gate.test.ts (create); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. A declaration listing A and B with a diff touching A and B exits 0 with `units` 2; adding undeclared C exits nonzero naming C (both directions).
+  2. A diff touching `test/behaviors.json` and `delivery/work-history/<this-phase>.md` without declaring them is green; touching `delivery/work-history/<another-phase>.md` is red naming it.
+  3. Renaming a declared file to an undeclared path is red naming the new path; renaming to another declared path is green (both directions).
+  4. Deleting a declared file is green; deleting an undeclared file is red naming it.
+  5. A declaration modified on the head branch to add C does not change the verdict for a diff touching C: the gate stays red and the record's declaration sha256 equals the merge-base blob (the anti-widening property, staged against the dangerous state).
+  6. A branch matching the phase pattern with no merge-base declaration is red naming the branch; a non-matching branch is `not-applicable` with the reason recorded; `--phase` omitted on a matching branch is `error` (three directions).
+  7. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: cheaper tier acceptable (diff arithmetic against a specified declaration).
+- citations: R-020 (enforcement half; the verify-before-editing half is an M3 implementer-brief duty, Appendix A residue), R-058; blueprint section 4 and section 11; process doc sections 1c and 3; CLAUDE.md standing extras; `clean-room-m1-p2.md` deviation 1.
+- conflicts-with: the shared files of section 1.4.
+- blocked-by: M2-P1 merged.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P5: Citation linter
+
+- id: M2-P5
+- branch: claude/m2-p5-citation-linter
+- intent: Make every file:line citation checkable, with an explicit root-matching rule so a citation into a repository this checkout does not contain is classified deterministically rather than guessed.
+- grounding: M2-P1 merged. Blueprint section 4 and section 11. Process doc sections 1a and 1d. The real case in this repository: v1 M1-P3 step 1 and M1-P4 step 5 cite `bin/fm-lock.sh:47-85` and `bin/fm-teardown.sh:678-712` as **bare relative paths**, and this repository has its own `bin/` directory, so without a stated matching rule the same string resolves two ways (M2R-014).
+- steps:
+  1. M2-C-1 verification of the M2-P1 contracts.
+  2. Create `src/gates/citations.ts` and its config schema: `roots` and `externalRoots`, **each carrying an explicit `match` list of path globs**; `documents` (the configured set); `citationRequired` (the subset in which a document with zero citations is red); and the recognized grammars (`path:line`, `path:start-end`, and the optional content-hash suffix, documented in the module). External roots match first and their globs are stated in the config (`bin/fm-*.sh`, `bin/fm-session-lock-lib.sh`); a path matching more than one root is a **config error reported as `error`, never guessed**.
+  3. Resolution: a citation under a local root must name an existing file and a line or range within its line count, else `red` naming the citation and the file's actual line count. A citation under a declared external root is recorded `unverifiable-external` with provenance, counted separately, and never counted as a resolved unit. A citation matching no declared root is `red`.
+  4. Vacuous guard, narrowed (M2R-014): a document in the `citationRequired` subset (plans, reviews, verifications) with zero recognized citations is `red`; other configured documents with zero citations contribute zero units and are recorded, not red, because `delivery/STATE.md`, tuition entries and work histories legitimately carry none. The `documents` and `citationRequired` globs are committed configuration and narrowing them is a scope-audited change.
+  5. Scope (M2-D-10): the kernel entry lints configured documents **changed in the diff**; `--base` absent is `error`. The phase additionally performs a one-shot inventory over every existing `delivery/**` document, records the full result in its work history, and **reports** stale citations without editing any other document.
+  6. Register `citations` per section 1.4; tests in `test/citation-gate.test.ts` against fixtures and real files.
+  7. Second call site (R-025): the same executable is what a plan review runs; documented in the module. No second implementation.
+- files-to-touch: src/gates/citations.ts, src/gates/schemas/citation-config.schema.json, test/citation-gate.test.ts (create); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. A fixture citing `src/cli.ts:1` is green with `units` equal to citations resolved; `src/cli.ts:<lineCount+1>` is red naming the citation and the line count; `src/nope.ts:1` is red naming the missing file (three directions).
+  2. A range `path:12-40` inside a file of at least 40 lines is green; a range whose end exceeds the file is red naming the end line (both directions).
+  3. A citation carrying the content-hash suffix is green when the cited lines still hash to the recorded value and red when one character changes (both directions).
+  4. Against the real text of `delivery/plan/kernel-plan-v1.md`, with the firstmate external root declared as `match: ["bin/fm-*.sh", "bin/fm-session-lock-lib.sh"]`, the firstmate citations are counted `unverifiable-external` with provenance and the gate does not red on them; removing that root from the config makes the same citations red as unmatched (both directions, on a real document, with the matching mechanism stated rather than assumed).
+  5. A path glob listed under two roots makes the gate `error` naming the ambiguous glob, never a guessed resolution.
+  6. A `citationRequired` document with zero citations is red; the same document with one valid citation is green; a configured but not `citationRequired` document with zero citations contributes zero units and is not red (three directions).
+  7. The one-shot inventory over `delivery/**` is recorded in the work history with per-document counts (resolved, unresolved, unverifiable-external), and the diff shows no document modified other than this phase's own files.
+  8. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: cheaper tier acceptable.
+- citations: R-010b, R-025; blueprint section 4 and section 11; process doc sections 1a and 1d.
+- conflicts-with: the shared files of section 1.4.
+- blocked-by: M2-P1 merged.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P6: Coverage checker
+
+- id: M2-P6
+- branch: claude/m2-p6-coverage-checker
+- intent: Make "no orphans" a check with an exit code: every finding lands in exactly one accepted bucket, parked buckets carry a reason, phantom coverage fails, milestone totals are computed rather than assumed, and every finding in a final report has exactly one non-empty outcome.
+- grounding: M2-P1 merged. Blueprint section 4 and section 11. Process doc sections 1c and 7. SC-009 and D-7 (accepted reference types are exactly phase, decision, parked; an open question is a decision record with status open).
+- steps:
+  1. M2-C-1 verification of the M2-P1 contracts.
+  2. Create `src/gates/coverage.ts` and a config schema declaring the `inventory` source, the `coverage` table source, and `bucketKinds`: a named set of regexes, each with a `requiresNote` flag **and a `milestone` extraction (a capture group)**, so the record reports counts per milestone as well as per kind (M2R-015: v1 Appendix A writes M1 rows as `M1-P1` to `M1-P5` and M2 to M5 rows as bare milestones, so kind counts alone cannot produce the stated totals). The kernel config declares phase (`M([0-9]+)-P[0-9]+`), milestone (`M([0-9]+)`), decision (`DR-[0-9]{4}`, `D-[0-9]+`, `M2-D-[0-9]+`), and `parked` with `requiresNote` true.
+  3. Checks: an inventory id with no bucket row (orphan); with more than one bucket row (double-bucketed); a bucket row whose id is absent from the inventory (phantom coverage, which is how a renumbering is caught); a bucket value matching no declared kind; a `parked` row with an empty note.
+  4. Finding-to-outcome parity (R-089b): given a report's findings table and the same inventory, every finding has exactly one non-empty outcome; missing, duplicated or empty fails naming the id. The input shape is declared here and is the contract M3's report schema must satisfy or supersede (section 2 item 2).
+  5. `units` equals inventory ids checked; an empty inventory is `error`, never green (M2-C-2).
+  6. Register `coverage` per section 1.4; tests against fixtures and this repository's real artifacts.
+- files-to-touch: src/gates/coverage.ts, src/gates/schemas/coverage-config.schema.json, test/coverage-gate.test.ts (create); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. Against the real pair (`delivery/requirements/migration-table.md` as inventory, `delivery/plan/kernel-plan-v1.md` Appendix A as coverage table), the gate exits 0 with `units` 115 and reports per-milestone counts M1 11, M2 16, M3 74, M4 13, M5 1, parked 0, alongside per-kind counts phase 11 and milestone 104 (two different views, both recorded; this is the arithmetic M2R-015 found unproducible without the extraction rule).
+  2. A bucket value `M1-P3` is counted under milestone M1 and kind phase; a row whose bucket matches no declared kind is red naming the row (both directions).
+  3. With one appendix row deleted in a scratch copy, the gate exits nonzero naming that row id as an orphan; restoring it returns exit 0 (both directions).
+  4. A row duplicated into two buckets is red naming the id as double-bucketed.
+  5. A bucket row whose id is absent from the inventory is red naming it as phantom coverage.
+  6. A `parked` row with an empty note is red; with a non-empty note it is green (both directions).
+  7. An empty inventory is `error` with `units` 0, counted vacuous rather than green.
+  8. Finding-to-outcome parity: a fixture report covering 5 of 6 inventory ids is red naming the sixth; an empty outcome cell is red naming that id; all six covered and non-empty is green with `units` 6 (three directions).
+  9. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: cheaper tier acceptable.
+- citations: R-023, R-089b; blueprint section 4 and section 11; process doc sections 1c and 7; SC-009, D-7.
+- conflicts-with: the shared files of section 1.4.
+- blocked-by: M2-P1 merged.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P7: Deploy verifier and migration verifier
+
+- id: M2-P7
+- branch: claude/m2-p7-deploy-and-migration-verifiers
+- intent: Build the two post-merge verifiers to contract, precondition-gated, so that on this repository they report not-applicable with a named unmet precondition, with the deploy poller's response semantics grounded in a real captured platform response or else deferred rather than invented.
+- grounding: M2-P1 merged. Blueprint section 4 and section 11. Process doc section 4 (both recorded incidents: deploys silently not spawning, migrations skipped by a flake while the code deployed anyway). SC-011. C-2 and C-3. T-003 lesson 4, applied here and not only to the GitHub API (M2R-017).
+- steps:
+  1. Verification-first: confirm and record that this repository declares no deploy target, no migrations and no charter. This is the phase whose subject the milestone does not reach, and that record is part of its evidence.
+  2. **Captured-response rule** (M2R-017, the same rule M2-P8 step 7 carries): at least one real captured response from a real deployment platform, recorded verbatim with provenance in the work history, is the source of the `statusPath`, `readyValue` and `failureValues` defaults and of the parser fixtures. **If no platform is reachable at implementation time, the phase ships the record shape, the configuration schema and the preconditions only, and the poller's response semantics move to M4 with the pilot**; the phase records which branch it took. Assertions invented against a self-written stub are what T-003 lesson 4 forbids, and the asymmetry with M2-P8 in revision 0 was unjustified.
+  3. Create `src/gates/deploy.ts`: configuration `{endpoint, headersFromEnv (names only), statusPath, readyValue, failureValues, timeoutSeconds, pollSeconds}`. Poll in the foreground (C-3) until ready, a failure value, or timeout; record every poll with timestamp, HTTP status and extracted value; green with `units` 1 on ready; red on a failure value or timeout naming the last observed value and elapsed seconds; `error` when the response cannot be parsed or the status pointer is absent (M2-C-3).
+  4. Create `src/gates/migrations.ts`: configuration `{repoInventory (directory and pattern, or command), appliedInventory (command)}`. Compare sorted id lists: red on any repo migration not applied, red on any applied migration absent from the repository. **Content drift** (M2R-017): where the applied inventory exposes a checksum or hash per migration, compare it and red on a mismatch with equal ids; where it does not, record `detail: id-comparison only, content drift not detectable with this inventory command` and carry that limitation into section 4's not-proven list. `units` equals migrations compared. A declared migrations location containing zero migrations is `not-applicable` with that reason, never green with units 0.
+  5. R-032's blocking half: the deploy verifier writes a verdict record keyed to the verified commit sha and documents the consumption contract ("the next dispatch requires a green verdict record for the merged sha"). The enforcement is wired at M4 with the pilot (M2-D-11); M2 adds no dispatch block to `spawn`.
+  6. Register both per section 1.4 as `conditional` with `file-exists` preconditions.
+  7. Tests in `test/deploy-gate.test.ts` (in-process `node:http` stub on loopback, ephemeral port, no external network; the stub replays the captured response of step 2 where one exists) and `test/migration-gate.test.ts` (fixture inventory commands).
+- files-to-touch: src/gates/deploy.ts, src/gates/migrations.ts, src/gates/schemas/verifier-config.schema.json, test/deploy-gate.test.ts, test/migration-gate.test.ts (create); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. Against a stub returning a non-ready value twice then ready, the verifier exits 0 with `units` 1 and exactly three recorded polls; against a stub that never returns ready it exits nonzero at the timeout with elapsed at least the configured timeout and the last observed value named (both directions).
+  2. Against a stub returning a declared failure value on the first poll, it exits nonzero after exactly one poll and names the failure value.
+  3. Against a stub whose body lacks the configured status pointer, the record is `error`, never green and never red-by-guess (M2-C-3).
+  4. Where step 2 obtained a captured real response, the parser fixtures are byte-derived from it and the record cites its provenance; where no platform was reachable, the phase ships no poller semantics, criteria 1 to 3 are marked deferred to M4 with that reason recorded, and the phase states which branch it took (both branches are auditable, neither is silent).
+  5. Structural: grep over both modules shows no `detached`, no `unref`, no `process.kill`, no pid usage; the run is synchronous, asserted by the command having returned before the assertion executes (C-2, C-3).
+  6. Migration verifier: repository [001, 002] with applied [001] is red naming 002; applied [001, 002, 003] is red naming 003 as drift; equal lists are green with `units` 2; equal ids with a differing checksum, where the inventory exposes checksums, is red naming the migration (four directions).
+  7. A declared migrations location containing zero migrations is `not-applicable` with that reason, counted not-applicable rather than green.
+  8. On this repository both gates are `not-applicable`, each naming its unmet precondition and the evidence of evaluation. With a fabricated deploy configuration in a scratch copy pointing at an unreachable endpoint, the deploy gate becomes applicable and reports `red`; **with a fabricated migrations location containing two migrations and an applied inventory returning one, the migration gate becomes applicable and reports `red`** (M2R-017 edit 3: both verifiers carry the not-hardcoded witness, in both directions).
+  9. No secret value appears in any evidence record: the record names environment variable names only, and a test setting a token-shaped value in a configured header variable asserts the value appears nowhere under the evidence directory.
+  10. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: strongest (fail-closed semantics, a network boundary, and the highest risk of building for a state that does not exist; risk 1).
+- citations: R-032 (residue at M4 per M2-D-11), R-068, R-069; blueprint section 4 and section 11; process doc section 4; SC-011; C-2, C-3; T-003 lesson 4.
+- conflicts-with: the shared files of section 1.4.
+- blocked-by: M2-P1 merged.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P8: Credential scoping
+
+- id: M2-P8
+- branch: claude/m2-p8-credential-scoping
+- intent: Make "implementers never create PRs" structural rather than instructional: the executor hands each child a redirected, allowlisted environment in which **no pull-request-capable credential can be resolved from any source**, and the gate proves that by probing the sources rather than by counting variable names.
+- grounding: M2-P1 merged; M1-P4's `subprocessAdapter` merged at 6ec0482 with `spawnSync(program, args, {cwd, stdio})` and no `env` option, plus a second `spawnSync` for the turn-end hook, so both children inherit everything today. Blueprint section 4 and section 11. Process doc sections 0 and 2a. DR-0004 item 4, whose exact setup this plan proposes as owner action A-3. M2R-004 is the security-relevant finding this phase answers: an environment-only scrub leaves the credential stores in place, and dropping the store pointers restores the default paths.
+- steps:
+  1. M2-C-1 verification: read the delivered adapter and both `spawnSync` call sites and record how each child environment is constructed; read the delivered `scripts/stub-payload.sh` and `scripts/m1-exit-test.sh` and record whether the stub payload opens the pull request itself.
+  2. Create `src/exec/env.ts`. The child environment is built from an **allowlist** (M2-D-13): PATH, LANG and locale variables, TMPDIR, the `TIPHYS_*` variables spawn needs, the command-scoped git identity variables (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`, preserving the EXT-F-02 discipline), and nothing else by default.
+  3. **Redirect, never drop, the credential-store pointers** (M2R-004 edit 1). `HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are set to harness-owned empty paths inside the task directory. Dropping them is forbidden and the module records why: dropping a redirection returns the child to the default credential path (`$HOME/.config/gh/hosts.yml`, `~/.gitconfig` credential helpers, `~/.netrc`, `~/.git-credentials`), and dropping `GIT_CONFIG_GLOBAL` would additionally undo v1 M1-P2's EXT-F-02 discipline by handing the child the user's real global git configuration.
+  4. Wire the allowlist into **both** child launches: the payload adapter and the turn-end hook invocation (M2R-004 edit 4).
+  5. Consequence for the M1 exit-test harness: if the delivered stub payload opens the pull request itself, move pull-request creation out of the payload and into the harness, so the M1 exit test passes under the scrub and the exercised shape matches R-008 instead of contradicting it. If the harness already creates it, record that and change nothing.
+  6. Create `src/gates/credentials.ts` with two registered entries. **`credential-scrub` (required, offline, capability-based rather than name-based)**: from inside the constructed child environment, assert that no pull-request-capable credential can be resolved from any probed source: environment, gh configuration (`gh auth status` reports no authenticated host), git global and system configuration (`git config --get-all credential.helper` is empty), `~/.netrc`, `~/.git-credentials`. `units` equals the number of credential **sources probed**, not names checked, because under an allowlist no excluded name can survive by construction and a name count measures a tautology that grows by adding names (M2R-004). **`credential-token` (conditional)**: when `TIPHYS_IMPLEMENTER_TOKEN` is present, run the safe negative probe; when absent, `not-applicable` naming owner action A-3, never green.
+  7. Verification-first for the token probe, before writing any assertion: capture the real API responses for the scoped implementer token and for an orchestrator token, record both verbatim in the work history, and derive the assertion from them. If the observed status codes differ from expectation, stop and escalate rather than reshaping the assertion to fit (T-003 lesson 4).
+  8. Tests in `test/credentials-gate.test.ts`; the token probe is skipped locally with a recorded reason (owner-held) and witnessed once during the M2 exit test.
+- files-to-touch: src/exec/env.ts, src/gates/credentials.ts, test/credentials-gate.test.ts (create); src/spawn.ts (edit: the subprocess adapter's child environment and the turn-end hook invocation; verify the seam first), src/hooks.ts (edit only if the generated hook script needs the same redirection), scripts/stub-payload.sh (edit only if step 1 finds the payload creates the PR), scripts/m1-exit-test.sh (edit only in that same case); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. A spawn whose stub exec dumps its environment shows none of the credential variables the parent had set, and shows `HOME`, `GH_CONFIG_DIR`, `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` pointing at harness-owned paths inside the task directory; with `--allow-pr-credentials` the parent's values are present (both directions).
+  2. The scrub is an allowlist: `TIPHYS_UNRELATED_SECRET` set in the parent does not reach the child; an allowlisted variable does (both directions; a denylist implementation cannot satisfy this).
+  3. **Capability check with its own dangerous state staged** (M2R-004 edit 3, replacing revision 0's criterion that relied on an ambient `GITHUB_TOKEN` the CI workflow does not export): the test writes a token-shaped `hosts.yml` into a fake `HOME` and a credential helper into a fake global git config, then asserts from inside the constructed child environment that neither is resolvable and that `credential-scrub` is green with `units` equal to the sources probed; removing the redirection so the child sees the fake `HOME` makes the gate red naming the resolvable source (both directions, and this criterion cannot pass while the thing it guards is broken).
+  4. The same scrub and the same assertions hold for the turn-end hook child (the second `spawnSync`), witnessed separately.
+  5. No regression: the M1 exit-test harness in local mode exits 0 after this phase, with the stub payload's commit and push succeeding under the redirected environment through the command-scoped git identity (witnessed end to end, not asserted).
+  6. `credential-token` is `not-applicable` naming owner action A-3 when no implementer token is present, counted not-applicable rather than green.
+  7. `credential-token`, witnessed once with the owner-provisioned token: the probe records the captured HTTP status and body verbatim and is green; with an unscoped token it is red (both directions). Pull-request list counts are identical before and after every probe run, so the probe creates nothing.
+  8. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: strongest (credentials, an external API contract, and an edit to a merged M1 seam).
+- citations: R-008; blueprint section 4 and section 11; process doc sections 0 and 2a; DR-0004 item 4; v1 M1-P2 criterion 7 (EXT-F-02, the discipline the redirection preserves); T-003 lesson 4.
+- conflicts-with: M2-P9 (`scripts/`), plus the shared files of section 1.4.
+- blocked-by: M2-P1 merged; M1-P6 merged (the harness scripts step 5 may edit). The `credential-token` witness is blocked by owner action A-3; nothing else in the phase is.
+- parallelizable: no by default (M2-D-03).
+
+### M2-P9: M2 exit-test harness and evidence
+
+- id: M2-P9
+- branch: claude/m2-p9-exit-test
+- intent: Turn "all gates run green in CI on the kernel repo itself" into a scripted, falsifiable procedure producing a committed evidence bundle, run in the state where every gate can actually evaluate, and prove the assertion code fails without shipping any switch that makes a production gate lie.
+- grounding: M2-P1 to M2-P8 merged. Blueprint section 13 row M2 as amended by SC-011. The M1-P6 harness pattern. M2R-003 (the exit run needs a base, a head and a phase) and M2R-011 (falsifiability must not ship an override).
+- steps:
+  1. Create `scripts/m2-exit-test.sh <evidence-dir>`: run `npm ci`, `npm run build`, then `node dist/bin/tiphys.js gates run --manifest gates.manifest.json --evidence <dir> --base main --head HEAD --phase M2-P9`; then evaluate the assertions of step 2. Every step appends a JSON evidence record; no record is written for a command not executed.
+  2. Assertions over the bundle, made against **section 1.4's expected-status table for the PR bundle** rather than against a bare count (M2R-003 edit 3): every gate in the table has exactly one record with the expected status; every `required` gate is green; every `not-applicable` record names its unmet precondition and the evidence of evaluation; zero `error`; zero vacuous; recomputed counts equal `summary.json`.
+  3. **Falsifiability without a production override** (M2R-011): `scripts/m2-exit-test.sh --self-test <dir>` runs the same assertion code over a **fixture** manifest containing (a) a fixture gate that writes its own record with status `green` and `units` 0, and (b) a `required` fixture gate whose `file-exists` precondition names an absent file. Under each the harness exits nonzero naming the gate. No production gate carries an override flag, and because M2-D-07 makes gates subprocesses that author their own records, a hand-written record file is the realistic dangerous state rather than a synthetic one.
+  4. Add the second, explicitly weaker **main bundle**: `gates run --manifest gates.manifest.json --evidence <dir-main> --only manifest-self-check,suite,coverage,credential-scrub,deploy,migrations`, whose expected statuses are section 1.4's main-bundle column. The three diff-scoped gates are **not run** in this bundle and therefore have no record, which the assertions state explicitly rather than reading their absence as success.
+  5. **CI wiring, single caller** (M2R-026): the workflow's `test` job invokes the exit harness only, and the harness is the single caller of `gates run`; M2-P1's direct `gates run` step is replaced, not duplicated, so the gate set runs once per pull request. No new required check name.
+  6. Commit the milestone bundle at `delivery/evidence/m2-exit-test/` through a paperwork pull request.
+- files-to-touch: scripts/m2-exit-test.sh, test/m2-exit-test.test.ts (create); .github/workflows/gates.yml (edit, replacing M2-P1's step with the harness invocation); gates.manifest.json, test/behaviors.json.
+- acceptance criteria:
+  1. `scripts/m2-exit-test.sh <dir>` on the phase pull-request head exits 0 on a machine with only git, Node at the floor, and npm, and the evidence contains one record per PR-bundle gate plus `summary.json`, each validating against the gate-result schema.
+  2. The bundle matches section 1.4's PR-bundle column exactly: seven required gates green, `deploy` and `migrations` not-applicable with their unmet preconditions named, `credential-token` green or not-applicable per A-3, zero `error`, zero vacuous.
+  3. `--self-test` exits nonzero naming the vacuous fixture gate, and in its second fixture exits nonzero naming the required not-applicable fixture gate; no environment variable exists anywhere in the package whose effect is to change a production gate's reported status (grep evidence recorded).
+  4. The main bundle exits 0 with exactly the six gates of step 4 recorded and no record for the three diff-scoped gates; the harness's assertion states that their absence is expected in this bundle and would be a failure in the PR bundle (the two bundles are distinguishable, not conflatable).
+  5. The CI `gates` check completes successfully on the phase PR, the check-run list contains exactly the contexts it contained before this phase, and the gate set is invoked exactly once per run (evidenced by one `summary.json` per job).
+  6. The committed bundle contains the counts and the manifest sha256, and that sha256 matches `gates.manifest.json` at the evidenced commit.
+  7. `node --test` exits 0 with 0 failing and zero unaccounted tests; the behavior registry criterion of section 1.4 holds.
+- suggested model tier: cheaper tier acceptable (scripting against contracts fixed by M2-P1 to M2-P8).
+- citations: blueprint section 13 as amended by SC-011; v1 section 5; v1 M1-P6 (harness pattern and falsifiability criterion).
+- conflicts-with: M2-P1 and M2-P8 (`.github/workflows/gates.yml`, `scripts/`), plus the shared files of section 1.4.
+- blocked-by: M2-P1 to M2-P8 merged.
+- parallelizable: no.
+
+---
+
+## 4. M2 exit test
+
+Run by the orchestrator under the current process after M2-P8 has merged, **on the M2-P9 pull-request head with `--base main --head HEAD --phase M2-P9`**, with the owner present for the one owner-held step. Revision 0 ran it on `main`, where the runner has no base, no head and no phase, so the three diff-scoped gates could not evaluate at all and section 4's own claim about how many gates this repository cannot satisfy was wrong (M2R-003). The blueprint's exit condition, "all gates run green in CI on the kernel repo itself", is satisfied by the CI run of a phase pull request; `main` is not that state.
+
+Procedure:
+
+- E1. Preconditions: the M2-P9 head with M2-P1 to M2-P8 merged; `npm ci` and `npm run build` exit 0. Recorded with exit codes.
+- E2. `scripts/m2-exit-test.sh <dir>` runs the PR bundle and exits 0.
+- E3. Bundle assertions against section 1.4's PR-bundle column: every listed gate has exactly one record with the expected status; every required gate is green; every not-applicable record names its unmet precondition and its evaluation evidence; zero `error`; zero vacuous; recomputed counts equal `summary.json`.
+- E4. The weaker main bundle is run and recorded, with the three diff-scoped gates explicitly not run rather than reported not-applicable.
+- E5. Owner-held step: with the A-3 implementer token supplied for the duration, `credential-token` executes and is recorded green, with the captured API response verbatim and evidence that no pull request was created. If A-3 has not been provisioned, it is recorded `not-applicable` naming A-3, the milestone exits **with one owner-side clause outstanding** carried in `delivery/STATE.md`, and it is never recorded green.
+- E6. `--self-test` is exercised and exits nonzero on both fixtures. Recorded.
+- E7. The evidence bundle is committed at `delivery/evidence/m2-exit-test/` and reaches `main` through a pull request. M3 may not start before that commit is on `main` (hard milestone gate).
+
+What this exit test proves: that on the M2-P9 head, ten manifest entries are declared, invoked as subprocesses and reported in one validated record shape; that every required gate examined at least one unit and returned green; that the two gates whose preconditions this repository cannot meet said so explicitly with the unmet precondition named and were counted separately; that no gate reported green having examined nothing; that the assertion code fails on both injected failure shapes; and that seven of the thirteen defects in section 1.5 now have a mechanical guard with a named criterion.
+
+What it does not prove, recorded rather than assumed away:
+
+1. Nothing about a project with a deploy target or migrations. Both verifiers are exercised against stubs and against this repository's not-applicable path; first contact with a real platform is M4's pilot wiring. Where M2-P7 step 2 found no reachable platform, the poller's response semantics are not delivered at all and move to M4 with that recorded. Where the applied-migration inventory exposes no checksum, content drift is undetectable and the record says so per run.
+2. Nothing about assurance modes; mode selection and the registry that carries it are M3's registry phase.
+3. Nothing about merge-time red-witness re-verification; the harness takes a baseline parameter and the merge-time gate is M5.
+4. The credential-scoping proof is two-part: the capability check runs on every pull request; the token's own incapacity is witnessed once, by the owner. Branch protection is DR-0004 items 2 and 3 plus M4's R-064.
+5. A scope audit is only as good as the declaration it reads. The auditor refuses a phase branch with no merge-base declaration, but a branch not matching the phase pattern is not-applicable, which paperwork branches need and which is the one path by which source could reach a pull request unaudited.
+6. Citation linting is diff-scoped (M2-D-10); a stale citation in an untouched document is found by M2-P5's one-shot inventory, not by the standing gate.
+7. Gate behavior on a codebase unlike this one is unwitnessed until M4.
+8. **Section 1.5 row 7 residue**: the suite wrapper catches a *registered* behavior losing its test, not logic that was never witnessed in the first place. F-3's class is only partly mechanized.
+9. **Section 1.5 row 8**: error-path correctness (a thrown error bypassing rollback, an inaccurate printed recovery route) is caught by no M2 gate and stays with the L3 clean-room reviewer until M3's probe lists.
+10. **Section 1.5 rows 9 and 13**: silent permanent failure with a green suite and a fresh beacon, and hostile-input hangs, are caught by no M2 gate. These are the two most severe defects M1 produced, and no script placement under blueprint section 1 makes M2 able to catch them. Their nearest structural answer, the mechanism index that would have carried M1-P3's loud-failure rule to M1-P5, is M3's and is delivered by M3-P6 and M3-P8 (section 2 item 10); the M2 evidence bundle says nothing about it either way.
+11. **Section 1.5 rows 11 and 12**: honesty defects in prose (a false untestability claim, a deviation undercount) are caught by no M2 gate and land with M3's report and work-history contracts.
+
+---
+
+## 5. Decisions taken in this plan (flag if you disagree)
+
+- **M2-D-01 (phase decomposition).** v1 section 5 outlines seven M2 items; this plan delivers nine phases: the gate contract and runner are separated (M2-D-02), the scope auditor and citation linter are separated (distinct inputs and failure modes), and the exit harness is its own phase as in M1-P6. No requirement row moves and no outline item is dropped. **v1 Appendix A's parenthetical M2-Pn notes refer to v1 section 5's outline numbering and are superseded by this plan's Appendix A (R-015b's "(M2-P1)" is now M2-P2, R-048's "(M2-P2)" is now M2-P3, R-020's "(M2-P3)" is now M2-P4, R-023's "(M2-P4)" is now M2-P6, R-008's "(M2-P7)" is now M2-P8, and R-094's "manifest seed M2-P5" is now M2-P1); the orchestrator updates those parentheticals in the same revision that approves this plan** (M2R-019).
+- **M2-D-02 (a spine phase before the gates).** The gates must emit comparable records for the exit test to count them, and the runner and pin must exist before the first gate is wired. M2-P1 delivers the contract, manifest, runner, pin, exit codes and CI wiring. The blueprint's "red-witness harness (first)" is honoured where it matters: red-witness is the first gate.
+- **M2-D-03 (parallelism: sequential by default).** Revision 0 claimed DR-0011 authorizes seven parallel M2 phases. It does not: DR-0011's decision section authorizes M1-P4 implementation, M1-P6 in parallel on disjoint files, and detailed planning of M2 and M3, with the recommendation "scoped to M1-P6 only"; and its condition 1 cancels a parallel start on **any** files-to-touch overlap, which `gates.manifest.json` and `test/behaviors.json` create on every pair (M2R-013). **M2 therefore runs sequentially.** Two costs make that the right default anyway: DR-0012 requires two cross-model reviews per pull request, so N concurrent phases is 2N concurrent reviews, and DR-0011's own evidence says review throughput is this project's constraint. What further authorization would be needed for concurrency, stated plainly: a new owner decision extending DR-0011 to M2 implementation phases with an explicit append-only carve-out for the two shared files, bounded at two phases in flight, with the pairwise check recorded per pair as condition 1 requires. This plan does not assume that decision (section 6 item 4).
+- **M2-D-04 (schema validation technology).** A minimal in-repo validator over a closed keyword set that fails loudly on any keyword it does not implement. M1 shipped zero runtime dependencies (D-3); the library question is DR-0013 at M3's schema work, with M2's module boundary as the seam.
+- **M2-D-05 (where M2 schemas live).** Under `src/gates/schemas/`, because CLAUDE.md reserves root `schemas/` for M3.
+- **M2-D-06 (run pinning is Layer 1, delivered in M2-P1).** T-004's structural consequence is deterministic and scriptable. Revision 0 placed it in M2-P2; M2R-010 is right that two gates consume it and that a phase cannot depend on a module another phase owns, so it is spine. It discharges T-004 lesson 3 and does not reproduce T-004's incident, which M2-C-4 abolishes.
+- **M2-D-07 (gates are subprocesses named by the manifest).** Only M2-P1 edits `src/cli.ts`; each later phase adds its own module with a main guard and one manifest entry. This follows the blueprint's framing that every toolbelt boundary is a subprocess with an exit code, and it is what makes a hand-written record file the realistic dangerous state for M2-P9's self-test.
+- **M2-D-08 (no merge-time witness gate in M2).** The latest-main target is a harness parameter, not an enforcement: M2 runs no parallel phases and has no merge-time hook, so building the enforcement now is machinery for a state this milestone does not reach. The enforcement is M5's.
+- **M2-D-09 (`npm test` stays a bare runner).** The wrapper becomes the gate and gets `npm run gate:suite`; `npm test` stays `node --test` so a wrapper defect cannot make the suite unrunnable.
+- **M2-D-10 (citation linting is diff-scoped).** A whole-corpus gate would red the merged history on day one and tempt an implementer to edit documents outside its phase. The corpus is inventoried once, in M2-P5's work history, and findings go to the orchestrator.
+- **M2-D-11 (R-032's enforcement half lands at M4).** M2 builds the verifier and its verdict record; the dispatch block is wired where a dispatch loop and a real deployment exist. Recorded as residue in Appendix A, following v1's PR-201 precedent.
+- **M2-D-12 (no M2 phase edits CLAUDE.md).** Revision 0 had M2-P1 and M2-P3 amending the binding-conventions record while merging under DR-0012, whose clause 5 they redefined, with orchestrator self-authorization as the fallback. M2R-006 is correct that this is circular: the beneficiary cannot rule on its own authority, and CLAUDE.md's Never list forbids reopening a decided record. The circularity is removed at the source: `gates.manifest.json` and witness specs are declared per phase rather than added to CLAUDE.md's standing extras, so DR-0012 clause 5 stays true as written and the standing extras remain two. The human-facing gate list update is owner item O-2 and blocks no phase.
+- **M2-D-13 (credential scoping is an allowlist, and pointers are redirected, not dropped).** A denylist fails the first time a credential arrives under an unenumerated name. Dropping `HOME`, `GH_CONFIG_DIR` or `GIT_CONFIG_GLOBAL` is worse than useless because it returns the child to the default credential stores and undoes v1 M1-P2's EXT-F-02 discipline; they are redirected to harness-owned empty paths instead (M2R-004).
+- **M2-D-14 (witness specs are durable, repository-level, and declared per phase).** They live at `witness/<behavior-id>.json` so a witness can be re-evaluated after the phase that wrote it (M2R-002), and each phase lists the specs it adds as literal paths in its own files-to-touch rather than growing the standing-extras list, which keeps the scope audit tight and DR-0012 clause 5 intact.
+- **M2-D-15 (a gate does not rest on a declaration where the fact can be derived).** Witness class and the captured-output obligation are derived from the diff and from the manifest's `destructiveCommands`, and the dangerous state must intersect the diff. Where a fact genuinely cannot be derived (the `deterministic` claim), the gate demands measurement rather than accepting the assertion. This is the general form of M2R-001 and it is why section 1.5 rows 1 and 2 are covered rather than opt-in.
+
+---
+
+## 6. Open questions and owner decisions
+
+Per D-7 an open question is a decision record with status open. None of these blocks M2-P1's dispatch; the milestone gate (M1 exit evidence on `main`) does.
+
+1. **Owner action A-3 (DR-0004 item 4): provision the scoped implementer token.** Proposed setup: a fine-grained personal access token, repository-scoped to `ThomasHendrickx/tiphys-ai-helmsman` only; repository permissions Contents read and write, Metadata read, **Pull requests: no access**, Actions, Workflows, Administration and Secrets: no access; shortest expiry covering M2; supplied to the exit run as `TIPHYS_IMPLEMENTER_TOKEN` and **not** placed in CI secrets, because CI witnesses the capability check rather than the token. Confirm alongside it that the DR-0004 ruleset is active with **no bypass actors**, since a token that cannot open a pull request but can push to `main` defeats the point. Blocks the E5 clause of the exit test and M2-P8 criterion 7; nothing else.
+2. **Owner item O-2 (documentation, non-blocking): CLAUDE.md's human-facing gate list.** Once M2's gates exist, CLAUDE.md's three-gate list is stale. No M2 phase edits it (M2-D-12). The orchestrator raises it as a documentation pull request for owner sanction, because CLAUDE.md is the record of the binding conventions and DR-0012's limits reserve that class. If the owner is unreachable, the manifest remains the machine truth and the stale prose is recorded in `delivery/STATE.md` rather than edited under delegated authority.
+3. **A decision record to be raised at the next free number after DR-0013 (open): which platform the deploy verifier's first concrete adapter targets.** DR-0012 and DR-0013 are claimed, so the orchestrator assigns the number at reconciliation and two concurrent plans do not collide (M2R-024). M2-P7 step 2 makes this consequential rather than cosmetic: with a reachable platform the poller ships with captured-response semantics; without one it does not ship at all and moves to M4. Blueprint owner action 2 (pick the pilot) is what would answer it.
+4. **A decision record, only if the orchestrator wants concurrency (open, not recommended): extend DR-0011 to M2 implementation phases** with an explicit append-only carve-out for `gates.manifest.json` and `test/behaviors.json`, bounded at two phases in flight (M2-D-03, M2R-013). Absent that decision, M2 is sequential.
+5. **DR-0008** (release registry and package naming, deferred, due before the M3 plan is approved) and **DR-0010** (harness orchestration primitive, due at M4) are open and block nothing in M2.
+6. **Vetoable plan decisions**: none remaining. Revision 0's M2-D-12 was vetoable because it edited CLAUDE.md; it no longer does.
+
+---
+
+## 7. Risks
+
+Ordered by the question the M1-P3 lesson forces: does M2 reach the state this component guards, and can its tests be red against the dangerous state?
+
+1. **M2-P7 remains the component most likely to repeat M1-P3.** The milestone never reaches the state it guards: no deploy target, no migrations, no charter, and no project will have any until M4. Revision 0's mitigation was that the fixtures exercise failure directions, which M2R-017 correctly judged insufficient, because a self-written stub asserts what the stub does. The mitigation is now the captured-response rule with an explicit deferral branch: with no reachable platform, the poller's semantics are not delivered at all. The migration verifier stays in M2 because its inputs are local and its drift semantics are checkable, now including content drift where checksums exist.
+2. **M2-P2 is the gate that judges every other test.** Revision 0's version could be defeated by omitting a field, which is the same shape as the defects it is named after; rules (d) to (f) close that. Residual: the derived-capture rule uses a grep over changed files, which is deterministic but coarse and will demand a capture in cases where a module spawns a subprocess unrelated to the behavior under test. That cost is accepted deliberately, because the alternative is the opt-in that let V-2 through, and the implementer's recourse is a real capture or an escalation, never a quiet omission. The stored-witness re-evaluation has a cost this plan refuses to guess: step 6 measures it and escalates rather than narrowing it silently.
+3. **M2-P8 is the security-relevant phase and it edits a merged M1 seam.** Its token assertion depends on external API status codes captured at build time, which can rot; step 7 requires capture and escalation rather than reshaping. Redirecting `HOME` for spawned children is a real behavior change for the M1 exit-test payload, which is why criterion 5 witnesses the harness end to end rather than asserting no regression. Note also that the phase is where an implementer is most tempted to satisfy a red gate by widening the allowlist; the allowlist is enumerated in the module and is on the scope-audited file list.
+4. **Input-shape duplication with M3** (phase declaration, coverage inventory, findings table). If M3 invents different shapes, M2's gates need rework in M3. Mitigation is procedural: the orchestrator reconciles before M3 dispatch, with section 2 as the flag. The M3 draft has already adopted the plan-schema superset recommendation, which is the largest of the three.
+5. **Every pull request now runs ten manifest entries**, two of which execute suites, with M2-P9 making the harness the single caller so the set runs once rather than twice (M2R-026). CI time and review time both grow, and a flaky gate taxes every future run.
+6. **The exit test could pass vacuously**, which would be the most ironic failure available. Mitigations are structural: M2-C-2 makes a units-0 green an error, `required` applicability makes a silently not-applicable gate a failure, zero applicable gates is an error, and `--self-test` exercises the assertion code against fixtures rather than against a shipped override.
+7. **Planning against an unfinished M1.** M1-P5 is stopped for the owner and M1-P6 is unmerged, so M2-P8's and M2-P9's grounding is partly as-planned. M2-C-1 converts that into a verification-first step in every affected phase, but a large divergence in the delivered executor seam or exit harness forces a plan revision before those phases dispatch. Revision 0 was written before M1-P4 merged and before T-005 existed, which is exactly how the section 1.5 gaps got in; the same exposure remains for M1-P5 and M1-P6 and should be re-checked at dispatch.
+8. **Six of thirteen recorded defects are not mechanized by this milestone** (section 1.5), including the two most severe. The risk is not that M2 fails to catch them; it is that a later reader treats a green gate bundle as coverage. Section 4's not-proven items 8 to 11 exist to make that misreading cost something, and the M3 plan must claim each named owner or they become orphans. One of the two M2R-018 raised is now closed from both sides: M3 revision 1 claims the mechanism index at M3-P6 and M3-P8 under D-M3-23 (section 2 item 10). The residue still open is the third half of the destructive-authority declaration, the implementer-brief clause, which section 2 item 11 hands to M3-P6 explicitly rather than assuming.
+
+---
+
+## Appendix A: Requirements coverage
+
+Every row v1's Appendix A places in the M2 bucket, mapped to exactly one M2 phase. Sixteen rows, sixteen mappings, zero orphans, zero parked. Counts by phase: **M2-P1 = 0, M2-P2 = 5, M2-P3 = 1, M2-P4 = 2, M2-P5 = 2, M2-P6 = 2, M2-P7 = 3, M2-P8 = 1, M2-P9 = 0. Total = 16.** Unchanged by revision 1.
+
+| Row | Rule (abbreviated from the migration table) | Phase |
+|---|---|---|
+| R-008 | Implementer never creates PRs; enforced by token scope or branch protection | M2-P8 |
+| R-010b | Citations in verification output must be real (file exists, line in range) | M2-P5 |
+| R-015b | Repro redness is verified, not asserted | M2-P2 |
+| R-020 | Files-to-touch is verified before editing and enforced after | M2-P4 |
+| R-023 | Every input finding lands in a phase, decision, open question or parked-with-reason | M2-P6 |
+| R-025 | Plan review re-verifies every file:line citation (same artifact, second call site) | M2-P5 |
+| R-028b | Red-on-baseline proven mechanically at implementation | M2-P2 |
+| R-032 | Next phase starts only after the previous merged and its deploy verified | M2-P7 |
+| R-036 | Red-witness: red on baseline, green after, evidence emitted | M2-P2 |
+| R-037b | The fake-repair red/green demonstration is mechanical | M2-P2 |
+| R-048 | Full-suite wrapper with discovery-count parity; exit code is the truth | M2-P3 |
+| R-056b | The revert check is computable | M2-P2 |
+| R-058 | Scope audit: every changed file on the list or a declared extra | M2-P4 |
+| R-068 | Verify migrations actually applied after every merge | M2-P7 |
+| R-069 | Verify the production deploy reached READY before the next phase starts | M2-P7 |
+| R-089b | Every-finding-has-an-outcome is checkable | M2-P6 |
+
+Phases discharging no row: M2-P1 delivers the contract, manifest, runner and pin that all sixteen rows' components emit into and are invoked by; M2-P9 delivers the milestone's exit procedure. Neither corresponds to a rule extracted from the process doc, because the process doc has no rule about how its own gates are wired together; both are implied by blueprint section 13's M2 exit condition and justified in M2-D-02.
+
+Residue notes (partial discharge, recorded rather than hidden, following v1's PR-201 precedent):
+
+| Row | Discharged in M2 | Residue, and where it lands |
+|---|---|---|
+| R-020 | the enforcement half ("enforced after"), by the scope auditor | the "verified before editing" half is an implementer-brief duty at M3's delivery-role briefs phase (M2R-025) |
+| R-032 | the deploy verifier, its verdict record keyed to the verified sha, and the documented consumption contract | the enforcement that blocks the next dispatch, wired at M4 with the pilot (M2-D-11) |
+| R-068 | id-level comparison always, and content-drift comparison where the applied inventory exposes checksums | content drift where the inventory command exposes no checksum, recorded per run and in section 4 not-proven item 1 (M2R-017) |
+| R-069 | the poller, its record shape and its preconditions, with response semantics from a captured real response | where no platform is reachable at implementation time, the response semantics move to M4 with the pilot (M2-P7 step 2) |
+| R-089b | the parity checker plus its declared input contract | binding that input contract to the report schema at M3's reporting phase (section 2 item 2) |
+| R-008 | the executor environment redirection and the capability check, plus the token probe | branch protection (DR-0004 items 2 and 3; R-064 at M4) and the token itself (owner action A-3) |
+
+Cross-check against v1 Appendix A: the sixteen rows above are exactly the rows v1 marks M2. No row is added, removed, or moved to another milestone by this document, so v1's bucket totals (M1 11, M2 16, M3 74, M4 13, M5 1, parked 0) are unchanged. The one change this plan asks of v1 is textual and is stated in M2-D-01: the parenthetical phase ids in v1 Appendix A's M2 notes and its R-094 note refer to superseded outline numbering.

@@ -2,6 +2,9 @@ import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdInit } from "./commands/init.ts";
 import { cmdLock } from "./commands/lock.ts";
 import { cmdPool } from "./commands/pool.ts";
+import { cmdSpawn } from "./commands/spawn.ts";
+import { cmdTeardown } from "./commands/teardown.ts";
+import { cmdWatch } from "./commands/watch.ts";
 import { printVersion } from "./version.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
@@ -18,6 +21,9 @@ const commands = new Map<string, CommandHandler>([
   ["doctor", cmdDoctor],
   ["lock", cmdLock],
   ["pool", cmdPool],
+  ["spawn", cmdSpawn],
+  ["teardown", cmdTeardown],
+  ["watch", cmdWatch],
 ]);
 
 export function usageLine(): string {

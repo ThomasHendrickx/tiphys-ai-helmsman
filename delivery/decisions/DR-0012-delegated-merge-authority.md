@@ -1,0 +1,48 @@
+# DR-0012: Delegated merge authority under dual cross-model review
+
+- id: DR-0012
+- project: tiphys-kernel
+- task: m1-execution
+- question: The owner is unavailable to review pull requests. May the orchestrator merge, and under what standing conditions?
+- reversibility: reversible (the owner can revoke at any time; every merge remains a squash commit on a public branch with its full evidence chain in the repository)
+- status: decided
+- decided: Yes, conditional on dual cross-model clean review passing (owner, 2026-08-04)
+- date: 2026-08-04
+
+## Decision
+
+Owner instruction, verbatim in substance: run two clean reviewers per pull request that understand what is being built but come to it with clean eyes, on different models (one Opus, one Sonnet) so that two genuinely different views are represented; when the back and forth comes back clean, the orchestrator has permission to merge. The grant stands until the owner returns.
+
+This supersedes, for the duration, the plan's standing rule that merge authority rests with the owner (blueprint section 8, assurance mode full). Nothing else about the pipeline changes: the orchestrator still writes no feature code, still lets no review be skipped, and implementers still neither open pull requests nor merge.
+
+## What "clean" means, defined here so it cannot be softened later
+
+A pull request may be merged only when ALL of the following hold:
+
+1. Two independent clean-room reviews exist for the current head, produced on different model families, each written to `delivery/review/` and committed.
+2. Neither review carries an unresolved finding at high or medium severity. Low findings may be merged with, provided each is either fixed or explicitly recorded as a tracked item with a reason.
+3. Both reviewers were given the phase's acceptance criteria as their contract, and both walked or executed them. A review that only read is not sufficient for a code phase.
+4. CI is green on the exact head being merged, not on an earlier one.
+5. The scope audit passes: changed files are on the phase's files-to-touch list plus the two standing pre-authorized extras.
+6. Where the reviews disagree, the orchestrator arbitrates with evidence and records the arbitration in the merge commit or in the review file. A disagreement is never resolved by preferring the more convenient verdict.
+
+## Limits the orchestrator holds itself to
+
+These are not owner instructions; they are the orchestrator's own guardrails on delegated authority, recorded so they are auditable.
+
+- **Documentation-only pull requests** (`delivery/**`, `CLAUDE.md`, `.claude/**` with no source, test or workflow change) require one review rather than two. The reason is proportionality, not convenience, and the distinction is recorded rather than exercised silently.
+- **Stop and wait rather than grind.** If a phase needs more than two fix rounds after its first dual review, or if a high-severity finding recurs in the same component across rounds, the orchestrator stops merging that phase and leaves it for the owner with the evidence. That pattern is exactly what M1-P3 cost, and delegated authority is not a licence to repeat it unsupervised.
+- **Never merge across a milestone boundary.** Milestone exit tests remain hard gates and their evidence is presented to the owner regardless of this grant.
+- **Never merge anything that changes an owner-reserved matter**: a decision record, the plan's binding conventions, merge authority itself, or anything requiring elevated access.
+- **Never merge on a green suite alone.** Every defect that mattered in this project so far was invisible to a green suite.
+
+## Why cross-model review specifically
+
+Tuition T-001 records that an external review on a different model family found two defects that had survived three same-family review rounds, and notes that the blueprint parked reviewer decorrelation "until tuition records a miss that survived every review stage". That condition was met. This decision enacts the parked mitigation as standing practice for the duration of the delegation, and the M3 role briefs should carry the option forward as a charter-level setting.
+
+## Evidence
+
+- Merge authority in full assurance mode: delivery/intake/orchestrated-delivery-v1.md section 8.
+- Reviewer decorrelation parked, and the condition for reopening it: delivery/intake/orchestrated-delivery-v1.md section 6.
+- The recorded miss that met that condition: delivery/tuition/T-001-cross-model-review-catches.md and delivery/review/plan-review-r4-external.md.
+- Why a green suite is not sufficient evidence: delivery/tuition/T-003-fix-rounds-need-verification.md.
