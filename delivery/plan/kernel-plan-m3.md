@@ -8,7 +8,10 @@
   M1-P5 reviews, and `delivery/STATE.md`'s carried-forward list. The
   re-grounding was the round's first step, not its last, because the largest
   finding (T-005 absent) existed only because the plan was written in parallel
-  with the implementation that produced it.
+  with the implementation that produced it. Also folded in: the M2 planner's
+  boundary reconciliation items 10 and 11, which close the mechanism-index
+  ownership question from both sides and hand this plan the third part of
+  T-003's destructive-authority consequence (D-M3-26).
 - Baseline commit at first drafting: 2e570c7b91cda937790105c40ab0781e3e252be7
   (main, M1-P3 merged, M1-P4 in flight). State at revision 1: M1-P1 through
   M1-P4 merged (#1, #2, #3, #6); M1-P5 stopped at PR #8 under DR-0012's
@@ -361,7 +364,7 @@ three instances the review did not name (`checklist-probe-ids-unique`,
 | `verdict-deviations-judged` | M3-P7 | compares a verdict's `deviations-judged[]` against the deviations declared in a work history, a different document (M3R-005) |
 | `dual-review-decorrelation` | M3-P9 | compares two verdict documents' `produced-by` values and their injected probe framings (M3R-004) |
 | `tuition-target-exists` | M3-P8 | resolves an `applied` structural consequence's target path against the filesystem |
-| `mechanism-rule-evidence-resolves` | M3-P8 | resolves each mechanism-index rule's evidence references against real files (T-005's checkability rule) |
+| `mechanism-rule-evidence-resolves` | M3-P8 | resolves each mechanism-index rule's evidence references, and any `machine-readable-form` path and key, against real files (T-005's checkability rule, extended by D-M3-26 to the M2 manifest coupling) |
 
 Anything an implementer finds that belongs in this table and is not in it is a
 plan defect to escalate, not a script to write quietly: D-M3-22 says so, and the
@@ -1212,6 +1215,19 @@ M2-P4 scope auditor would fail the undeclared file anyway.
        to the tuition feed's `mechanisms[]` so the index picks it up. T-005 calls
        this the cheap interim measure and records that M1-P5's fix round did
        exactly it; this clause makes it standard rather than a one-off.
+     - `destructive-authority`, adjacent to the two above and delivered under
+       the same row (T-003 structural consequence 4; M2 plan section 2 item 11,
+       whose three-way split this plan accepts, D-M3-26): an implementer adding
+       or extending a command that can destroy work states that destructive
+       authority explicitly in the command's own contract, never inherits force
+       semantics from a caller, and adds the command to the
+       `destructiveCommands` list in M2's `gates.manifest.json`. The third
+       conjunct is what keeps M2's machine half and this prose half from
+       diverging, and it is what would have caught V-1 at authoring time: that
+       defect's entire justification was a guarantee living in a phase that did
+       not exist yet, which the M1-P3 environment warnings already record as
+       "a safety argument that depends on a component not yet built is not a
+       safety argument".
   2. Create `roles/clean-room-reviewer.md`: has not seen the implementation
      session, reviews the diff and the plan's acceptance criteria only, edits
      nothing and posts nothing to the pull request (R-009b); carries the same
@@ -1274,18 +1290,28 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      makes `tiphys brief compose --role implementer` exit nonzero naming the
      missing path (both directions), which is the same mandated-reading check
      M3-P5 built and is why the clause is not merely advisory.
+  8b. The `destructive-authority` clause is present as a body heading resolving
+     from frontmatter (criterion 7 covers the round trip), names all three of its
+     conjuncts, and names `gates.manifest.json`'s `destructiveCommands` list by
+     path; the path is checked to exist by the same `brief compose` mandated-
+     reading resolution, so a brief pointing at a manifest M2 moved fails loudly
+     rather than instructing an implementer to edit a file that is not there
+     (both directions, D-M3-26).
 - new behaviors: `implementer-brief-six-sections`,
   `implementer-brief-gate-list-drift`, `implementer-brief-no-pr-instruction`,
   `implementer-brief-carries-warnings`, `clean-room-brief-validates`,
-  `brief-clause-ids-round-trip`, `implementer-brief-requires-mechanism-index`.
+  `brief-clause-ids-round-trip`, `implementer-brief-requires-mechanism-index`,
+  `implementer-brief-destructive-authority-clause`.
 - suggested model tier: strongest for the clause text (it is the instruction
   surface every future implementer runs on), cheaper tier acceptable for the
   drift-check mechanics.
 - citations: R-007, R-009b, R-031, R-033a, R-034, R-037a, R-038, R-039, R-040,
   R-074, R-081b, R-082a, R-087; blueprint section 6; process doc sections 2a,
   2c, 2d, 3, 6, and 7; plan v1 D-9, D-10, and section 11 item 7; T-002;
-  T-005 (the two mechanism clauses, delivered under R-033a); M2-P2 and M2-P8 as
-  the named dependencies.
+  T-005 (the two mechanism clauses, delivered under R-033a); T-003 structural
+  consequence 4 and finding V-1 (the `destructive-authority` clause, delivered
+  under the same row, D-M3-26); M2-P1 as the owner of the `destructiveCommands`
+  list the clause writes to; M2-P2 and M2-P8 as the named dependencies.
 - conflicts-with: M3-P7 (verdict schema referenced here), M3-P9 (`AGENTS.md`
   references both briefs), M3-P10 (files entry).
 - blocked-by: M3-P5 merged; M2-P2 and M2-P8 merged (named dependencies).
@@ -1325,7 +1351,18 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      implementer; R-059 blast-radius probes, the single best question in the
      process; R-093 the shared-consumer probe, "a field that renders and decides
      is two fields"; plus the two probes the gate registry's R-043 and R-044
-     entries name).
+     entries name). One further probe under R-055's correctness list, pairing the
+     M3-P6 `destructive-authority` clause with a check so the clause is judged
+     rather than merely written (D-M3-26): probe `destructive-authority-declared`
+     asks, for any command in the diff that can destroy work, whether its own
+     contract states that authority, whether force semantics are inherited from a
+     caller rather than declared, and whether the command appears in
+     `gates.manifest.json`'s `destructiveCommands` list. The third question is
+     answerable from the diff and the manifest, so the probe carries
+     `evidence-required: true`. It is a probe rather than a gate because no
+     script can judge whether a contract states an authority; the computable part
+     is M2's list, and this probe's third question is the reviewer reading that
+     list rather than re-deriving it.
   4. Create `checklists/flake-playbook.yaml` (R-066: extract the failure, judge
      fail-pattern against a local run, known signature means re-kick, unknown
      means investigate first, because a real bug looks identical to a flake
@@ -1402,7 +1439,9 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      process doc's own illustration (the words "zero" and a reference to the
      state that can no longer exit); the R-055 probe set contains separate
      entries naming negative, zero, empty, and unicode rather than one generic
-     "check edge cases" entry; the R-059 and R-093 probes name a consumer-search
+     "check edge cases" entry; the `destructive-authority-declared` probe names
+     all three of its questions and cites `destructiveCommands` by name, so a
+     reviewer cannot answer it without opening the manifest; the R-059 and R-093 probes name a consumer-search
      action rather than asking a bare question; and the R-066 flake-playbook
      probes name the three-consecutive-reds threshold. Each is witnessed in both
      directions: weakening the probe text to a generic phrasing makes the test
@@ -1442,13 +1481,15 @@ M2-P4 scope auditor would fail the undeclared file anyway.
   `verdict-criteria-completeness`, `verdict-deviations-completeness`,
   `verdict-finding-requires-fix`, `verdict-records-framing`,
   `checklist-framings-differ`, `checklist-probe-text-specific`,
-  `red-witness-fixture-is-captured`.
+  `checklist-destructive-authority-probe`, `red-witness-fixture-is-captured`.
 - suggested model tier: strongest. Probe quality is the whole value of the
   artifact, and the verdict schema decides what a review is allowed to say.
 - citations: R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a,
   R-057b, R-059, R-060, R-066, R-093; blueprint sections 5, 6, and 11; process
   doc sections 1d, 2e, 3, 4, and 8 items 4, 5, and 7; D-11 (the two registry
-  probes); T-001 second data point (framings); M2-P2 as the named dependency.
+  probes); T-001 second data point (framings); T-003 structural consequence 4
+  and V-1 (the `destructive-authority-declared` probe, delivered under R-055,
+  D-M3-26); M2-P2 as the named dependency.
 - conflicts-with: M3-P9 (`AGENTS.md` cites the probe-injection duty), M3-P10
   (files entry).
 - blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
@@ -1485,8 +1526,10 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      `{mechanism, rule, evidence[]}` with `evidence[]` required and non-empty,
      because T-005's checkability rule is that "a rule with no citation to an
      investigation, review or tuition entry is not a rule".
-  2. Create `schemas/mechanism-index.schema.json` and generate
-     `tuition/mechanism-index.yaml` with
+  2. Create `schemas/mechanism-index.schema.json` (a rule may carry an optional
+     `machine-readable-form`, a path plus a key naming where the same rule exists
+     as data, which is the field the `destructive-git-operation` entry uses) and
+     generate `tuition/mechanism-index.yaml` with
      `tiphys tuition index [--out <file>] [--check]`: the index is a projection
      of every entry's `mechanisms[]`, keyed by mechanism, each rule carrying its
      evidence references and the id of the entry it came from. `--check`
@@ -1524,7 +1567,10 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      `destructive-git-operation` from T-003 (a command that can destroy work
      states its destructive authority in its own contract and never inherits
      force semantics from a caller that does not yet exist; evidence V-1 in the
-     same file); `shared-worktree` from T-004 (a verification lens works in its
+     same file, and `machine-readable-form` citing the `destructiveCommands`
+     list in M2's `gates.manifest.json`, which is the same rule's checkable view
+     and is what M2-P2's derived-class rule consumes: two views of one rule, and
+     the citation is what stops them drifting, M2 plan section 2 item 10); `shared-worktree` from T-004 (a verification lens works in its
      own clone and a run that cannot pin its source is not evidence; evidence
      `delivery/verification/u2-race-flake-investigation.md`). Each is a rule this
      project has already paid for, with a citation, which is the only kind of
@@ -1601,6 +1647,15 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      exit nonzero naming the mechanism and the entry id; regenerating returns
      exit 0 (both directions: the index is a projection, and drift is a failure
      rather than a slow divergence).
+  4b. The `destructive-git-operation` entry carries a `machine-readable-form`
+     naming `gates.manifest.json` and the key `destructiveCommands`, and that
+     path and key both resolve (Kind B, check
+     `mechanism-rule-evidence-resolves` extended to cover the field); renaming
+     the key in a fixture manifest makes it exit nonzero naming the key, and
+     restoring it returns exit 0 (both directions). This is the anti-drift
+     coupling M2 asked for: the prose rule and the machine list are two views of
+     one thing and the index says which (D-M3-26). Dependency direction is M3
+     reads M2, never the reverse.
   5. The generated `tuition/mechanism-index.yaml` contains an entry for
      `claim-file` whose rule is T-005's loud-failure rule and whose evidence
      resolves to both cited files; deleting T-005's `mechanisms[]` block and
@@ -1633,6 +1688,7 @@ M2-P4 scope auditor would fail the undeclared file anyway.
   `tuition-mechanism-rule-requires-evidence`, `tuition-applied-target-must-exist`,
   `mechanism-evidence-resolves`, `mechanism-index-projection-drift`,
   `mechanism-index-contains-claim-file-rule`,
+  `mechanism-machine-readable-form-resolves`,
   `implementer-brief-reads-generated-index`,
   `tuition-list-filters-kernel-relevant`, `tuition-add-rejects-invalid`,
   `tuition-ids-unique-across-directories`, `doctor-retention-check`.
@@ -1644,12 +1700,16 @@ M2-P4 scope auditor would fail the undeclared file anyway.
 - citations: R-070, R-091, R-098; blueprint section 9 (tuition flow) and section
   2 (kernel PRs); process doc sections 4 and 9 item 5; plan v1 section 11 item 7
   and the R-091 note (directory scaffolded in M1-P1); T-001 to T-005, with T-005
-  as the source of the mechanism index and its checkability rule;
+  as the source of the mechanism index and its checkability rule; T-003
+  structural consequence 4 and V-1, with M2-P1's `destructiveCommands` list as
+  the cited machine-readable form (D-M3-26, M2 plan section 2 items 10 and 11);
   `delivery/STATE.md` carried-forward item "a mechanism index... belongs with the
   M3 tuition flow".
 - conflicts-with: M3-P9 (`AGENTS.md` clauses reserved here), M3-P10 (files
   entry).
-- blocked-by: M3-P7 merged.
+- blocked-by: M3-P7 merged; M2-P1 merged (named dependency: the
+  `destructiveCommands` list the seeded entry cites; the citation is read-only,
+  so nothing here edits a merged M2 artifact, D-M3-16).
 
 ### M3-P9: Orchestrator policy (AGENTS.md)
 
@@ -2234,6 +2294,11 @@ D-19, which remain in force unchanged.
      DR-0004 item 4; the M2 plan states there is no M3 overlap and this plan
      agrees, so no action is required here beyond M3-P6's clause that the
      implementer brief must not instruct what the credentials forbid.
+  10. mechanism index: M2 disclaims it in full and cites this plan's D-M3-23 as
+     its owner, closing the orphan from both sides; the one coupling it names is
+     discharged by D-M3-26's `machine-readable-form` citation.
+  11. destructive-authority declaration: split three ways and accepted as
+     D-M3-26, with M3 taking the rule text and the authoring-time enforcement.
   No requirement row moves in either direction.
 - D-M3-18: the plan schema's phase object is a strict superset of the M2-P4
   scope auditor's phase-declaration projection, and M3-P1 ships
@@ -2287,6 +2352,25 @@ D-19, which remain in force unchanged.
   unenforced-data shape this project has recorded twice (T-003's false work
   history, T-004's unpinned finding), and DR-0012 is not hypothetical: it is the
   regime M1-P3 through M1-P5 were reviewed under.
+- D-M3-26 (routed from the M2 planner's boundary reconciliation, M2 plan
+  section 2 items 10 and 11): T-003's fourth structural consequence splits three
+  ways, and this plan accepts M2's split and takes two of the three parts. The
+  machine-readable `destructiveCommands` list is M2's, because it is a gate input
+  that lets M2-P2 derive a witness's class instead of trusting an implementer's
+  declaration. The rule text with its evidence is M3-P8's seeded
+  `destructive-git-operation` index entry, which now cites the manifest list as
+  its `machine-readable-form` so the two views cannot drift; the dependency
+  direction is M3 reads M2, never the reverse, because M2 ships first. The third
+  part, enforcing that a NEW destructive command states its authority in its own
+  contract, is M3's and is agreed rather than merely accepted: no script can
+  judge whether a contract states an authority, the computable half is already
+  M2's list, and what remains is exactly a brief clause plus a review probe,
+  which is where the placement rule sends a judgeable rule. It lands as M3-P6's
+  `destructive-authority` clause and M3-P7's `destructive-authority-declared`
+  probe, both under existing rows (R-033a and R-055), so no row moves and no
+  count changes. The clause's third conjunct, add the command to the manifest
+  list, is the seam that keeps the two plans' halves joined at authoring time,
+  which is when V-1 would have been caught rather than at verification time.
 - D-M3-25 (M3R-009): the push-cadence trio (R-038 per-step commits, R-039
   batched pushes, R-074 one-to-two-push fix rounds) stays L2 brief clauses in
   M3-P6, and the computability question the migration table asked of its six
