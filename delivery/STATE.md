@@ -31,7 +31,7 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
-| M1-P6 toy sandbox and exit test | built ahead, awaiting P5 merge (A-1 now done) | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
+| M1-P6 toy sandbox and exit test | unblocked, PR not opened; needs branch update then deferred-criteria validation | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
 
 ## In flight
 
@@ -130,7 +130,7 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
 | DR-0001 license | decided: Apache-2.0 |
 | DR-0002 Node floor | decided: >=26 |
 | DR-0003 CI runner | decided: GitHub Actions, hosted |
-| DR-0004 branch protection | approved in principle, commands not yet run |
+| DR-0004 branch protection | DONE 2026-08-05: ruleset active, witnessed refusing a merge on a stale branch. Item 4 (token scoping) queued for M2 |
 | DR-0005 language | decided: TypeScript compiled to JavaScript |
 | DR-0006 schema technology | decided: lintable schema first, markdown as justified exception |
 | DR-0007 substrate | decided: dual, local machine and cloud sessions |
