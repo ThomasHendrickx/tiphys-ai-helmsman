@@ -28,7 +28,7 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | in progress | | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P5 watcher and liveness | fix round in flight | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
 | M1-P6 toy sandbox and exit test | built ahead, awaiting P5 merge (A-1 now done) | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
 
 ## In flight
