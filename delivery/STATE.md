@@ -101,7 +101,7 @@ yet. Recorded here so they are not rediscovered the expensive way.
 with M1-P5 and predate T-005 and T-006. DR-0011's recorded consequence makes
 re-grounding an explicit step before their delta review. The specific inputs
 they have not absorbed are T-005 (mechanism index), T-006 (work-history
-contract), DR-0013 (release verification becomes a pluggable interface, which
+contract), DR-0014 (release verification becomes a pluggable interface, which
 moves M2-P7's centre of gravity), and M1-P5's own defect record.
 
 ## Owner decisions
@@ -120,7 +120,8 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
 | DR-0010 harness orchestration primitive | open, due at M4 adapter planning |
 | DR-0011 early parallelism | decided: maximum safe parallelism, five conditions binding |
 | DR-0012 delegated merge authority | decided: delegated under dual cross-model clean review; stop fired once on M1-P5 and was lifted for that phase only |
-| DR-0013 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface shape under investigation |
+| DR-0013 schema validator implementation | open, raised by the M3 plan, due before M3-P1 dispatches; recommendation is to extend M2's closed-keyword validator |
+| DR-0014 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface design investigated, report in `delivery/verification/release-verification-interface.md` |
 
 ## Owner action items
 

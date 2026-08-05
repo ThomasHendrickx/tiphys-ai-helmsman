@@ -158,12 +158,21 @@ code survives and its proof does not.
 
 Each of these bit someone once. Forward them to every implementer.
 
-1. Local Node is 22.x while the declared floor is `>=26`. EBADENGINE
-   warnings on every npm operation are expected. Never lower the floor and
-   never set engine-strict. Node 22.18+ runs TypeScript natively so the
-   suite works locally, but CI on Node 26 is the authority. Any assertion
-   that depends on the floor being met (for example doctor exiting 0) must
-   be floor-gated locally and witnessed in CI.
+1. The container's default Node is 22.x while the declared floor is `>=26`.
+   EBADENGINE warnings on every npm operation are expected. Never lower the
+   floor and never set engine-strict. Node 22.18+ runs TypeScript natively so
+   the suite works on the default toolchain, and CI on Node 26 remains the
+   authority. Tests must still be floor-gated, because the default toolchain
+   is below the floor.
+   A floor-satisfying toolchain CAN be fetched, which removes "witnessed in
+   CI" as the only way to discharge a floor-dependent assertion. Measured
+   2026-08-05: `curl -O https://nodejs.org/dist/v26.6.0/node-v26.6.0-linux-x64.tar.xz`
+   then `tar -xJf` into a scratch prefix and put its `bin` first on PATH.
+   Against `main` at `bcefc98` that toolchain gave npm 11.18.0, `npm ci`
+   exit 0 with no EBADENGINE line, `npm run build` exit 0, a clean
+   `git status` after build, and `npm test` exit 0 with 106 tests, 106 pass,
+   0 fail and 0 SKIPPED, where the default toolchain skips the floor-gated
+   ones. Install to a scratch prefix, never over the system Node.
 2. `typescript` is pinned exact. Do not remove `"types": ["node"]` from
    either tsconfig; the strict build cannot resolve Node builtins without it.
 3. `*.tsbuildinfo` is gitignored deliberately; `tsc -b` writes one at the

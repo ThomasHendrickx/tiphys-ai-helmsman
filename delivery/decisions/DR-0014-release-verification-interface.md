@@ -1,6 +1,6 @@
-# DR-0013: Release verification is a pluggable interface, not a fixed selector list
+# DR-0014: Release verification is a pluggable interface, not a fixed selector list
 
-- id: DR-0013
+- id: DR-0014
 - project: tiphys-kernel
 - task: m2-planning
 - question: Raised by the M2 planner as "which platform does the deploy verifier's first concrete adapter target". The owner rejected the framing and replaced it with a broader one: what is the right shape for post-merge release verification, given that different projects verify release in fundamentally different ways?
@@ -8,6 +8,21 @@
 - status: decided in principle, interface design under investigation
 - decided: Pluggable interface with kernel-shipped reference adapters (owner, 2026-08-05)
 - date: 2026-08-05
+
+## Numbering note
+
+This record was first written as DR-0013. That number was already claimed, by
+the M3 plan, for the JSON Schema validator implementation question, in a
+document merged to `main` before this record existed
+(`delivery/plan/kernel-plan-m3.md`, section 7, which names the intended
+filename `delivery/decisions/DR-0013-schema-validator-implementation.md`). The
+M2 plan's open-question 3 carries the same reservation ("DR-0012 and DR-0013
+are claimed"). The orchestrator assigned the number without checking those
+claims. This record is renumbered to DR-0014 rather than the plans being
+edited, because the plans' citations are the older and more numerous ones, and
+because this record had not yet reached `main`. The identifier rule that stable
+IDs are never renumbered is not broken by this: DR-0013 keeps the meaning it
+was first given, and this record takes the next free number.
 
 ## Decision
 
