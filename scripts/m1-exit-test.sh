@@ -67,14 +67,18 @@
 #      An exit-code-only check passes on a sandbox with zero tests,
 #      because node --test over a glob matching nothing exits 0.
 #
-# Lease timing (PR-203, CR-608): A3 renews once at the end of stage A,
-# which buys the default 900 second lease. Section 4 says stage B has no
-# timing requirement, so an owner approval slower than that leaves the
-# lease expired during stage C. That does not fail the run (expiry does
-# not block a release, src/lock.ts), but the fleet is takeover-able in
-# the middle of a certification run. If the approval will be slow, renew
-# manually: node dist/bin/tiphys.js lock renew --holder <holderId from
-# session.json>.
+# Lease timing (PR-203, CR-608, CR-645, decided by DR-0015). A3 acquires
+# with an EXPLICIT --duration of CERTIFICATION_LEASE_SECONDS rather than
+# the kernel's 900 second default, because with the owner out of the
+# approval path the stage B wait is the review pipeline's wall time and
+# is measured in hours. Stage C then OBSERVES the lease state and records
+# it either way, so a lapse is reported rather than silent. That
+# observation never fails the run: an expired lease cannot be renewed, so
+# dying there would fail a certification run for a slow approval, which
+# is the outcome the CR-608 decline protected and DR-0015 did not
+# overturn. If a wait longer than the sized lease is expected, renew
+# before it: node dist/bin/tiphys.js lock renew --holder <holderId from
+# session.json> --duration <seconds>.
 
 set -euo pipefail
 
@@ -97,6 +101,22 @@ EX_USAGE=64
 # healthy run may take, not expected durations.
 BEACON_TIMEOUT_SECONDS=120
 WATCHER_WAKE_TIMEOUT_SECONDS=180
+
+# The lease duration a CERTIFICATION run acquires, in seconds (DR-0015,
+# which adopted "size the lease for the wait" and removed the owner from
+# the approval path). The kernel default is 900 seconds and stays 900 for
+# ordinary use; this run is the declared exception and says so at the
+# point of acquisition.
+#
+# Sized from measured evidence rather than guessed, per DR-0015: a single
+# clean-room review of a code phase ran 24 to 45 minutes, two run
+# concurrently, and a phase needing a fix round took hours end to end.
+# With the owner out of the path the stage B wait IS the review
+# pipeline's wall time, so 900 seconds covers none of it. Four hours
+# covers the measured range with room, and is bounded rather than
+# indefinite so an abandoned certification run still frees the fleet the
+# same day.
+CERTIFICATION_LEASE_SECONDS=14400
 
 USAGE="usage: scripts/m1-exit-test.sh --mode local|full [--stage a|c|all] [--sandbox-remote <url>] [--approval <file>] <evidence-dir>
        scripts/m1-exit-test.sh --list-steps"
@@ -356,6 +376,43 @@ note_step() {
   echo "m1-exit-test: ${step} recorded (${kind}: ${label})"
 }
 
+# observe_step <step> <cwd> <label> <command...>
+# Runs a command and records its exit code and captured output WITHOUT
+# ever failing the run, for facts worth reporting whose absence is not
+# itself a failure (DR-0015's lease-state report). Deliberately writes no
+# outcome field: an observation has no pass or fail, and validate_bundle
+# treats any outcome that is not "pass" as a problem.
+observe_step() {
+  local step="$1" cwd="$2" label="$3"
+  shift 3
+  record_seq=$((record_seq + 1))
+  local seq
+  seq=$(printf '%03d' "${record_seq}")
+  local out_rel="output/${seq}-${step}.out"
+  local out_path="${evidence}/${out_rel}"
+  local rc=0
+  ( cd "${cwd}" && "$@" ) >"${out_path}" 2>&1 || rc=$?
+  local joined
+  joined=$(printf '%s\x1f' "$@")
+  joined=${joined%$'\x1f'}
+  json_object \
+    step "${step}" \
+    stage "$(step_field "${step}" 2)" \
+    mode "${mode}" \
+    kind observation \
+    localDisposition "$(step_field "${step}" 3)" \
+    label "${label}" \
+    'command[' "${joined}" \
+    cwd "${cwd}" \
+    'exitCode#' "${rc}" \
+    outputFile "${out_rel}" \
+    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    >"${evidence}/records/${seq}-${step}.json"
+  LAST_OUTPUT="${out_path}"
+  LAST_EXIT="${rc}"
+  echo "m1-exit-test: ${step} observed (${label}: exit ${rc})"
+}
+
 # ---------------------------------------------------------------------------
 # git helpers
 # ---------------------------------------------------------------------------
@@ -495,7 +552,12 @@ stage_a() {
   fi
 
   # --- A3 lock --------------------------------------------------------------
-  run_step A3 zero "${fleet}" "tiphys lock acquire" -- node "${TIPHYS}" lock acquire
+  # The duration is EXPLICIT (DR-0015). Relying on the 900 second default
+  # meant the lease expired during any stage B wait longer than fifteen
+  # minutes, and with the owner out of the approval path that wait is the
+  # review pipeline's wall time, measured in hours.
+  run_step A3 zero "${fleet}" "tiphys lock acquire" -- \
+    node "${TIPHYS}" lock acquire --duration "${CERTIFICATION_LEASE_SECONDS}"
   holder=$(awk '/^acquired /{ print $2; exit }' "${LAST_OUTPUT}")
   if [ -z "${holder}" ]; then
     die "step A3: could not read a holder id from the acquire output"
@@ -503,7 +565,7 @@ stage_a() {
   export TIPHYS_HOLDER_ID="${holder}"
   lease_expiry=$(awk '/^acquired /{ print $4; exit }' "${LAST_OUTPUT}")
   note_step A3 assertion "lease recorded" \
-    "holderId ${holder}, expiresAt ${lease_expiry}, configured lease duration 900 seconds (the M1-P3 default; the harness passes no --duration)"
+    "holderId ${holder}, expiresAt ${lease_expiry}, lease duration ${CERTIFICATION_LEASE_SECONDS} seconds passed explicitly as --duration (DR-0015; the kernel default of 900 is not used for a certification run)"
 
   run_step A3 zero "${fleet}" "tiphys lock status" -- node "${TIPHYS}" lock status
 
@@ -526,7 +588,15 @@ stage_a() {
   # no termination condition of its own: one leaked probe was still
   # running two and a half minutes after its harness exited. The trap is
   # cleared once the wait has reaped the child.
-  trap 'kill "${watch_pid:-}" 2>/dev/null || true' EXIT
+  #
+  # watchdog_pid is in the same trap and not only watch_pid (CR-642). It
+  # is unset until A8 spawns it, which ${watchdog_pid:-} handles. Without
+  # it, a harness exit inside the wait at A8, which a SIGTERM or a Ctrl-C
+  # can cause at any point in a window up to WATCHER_WAKE_TIMEOUT_SECONDS,
+  # orphans the watchdog subshell to init, and 30 seconds later it signals
+  # a pid the trap already killed and wait already reaped. Signalling a
+  # reaped pid is the pid-as-identity shape constraint C-2 forbids.
+  trap 'kill "${watch_pid:-}" "${watchdog_pid:-}" 2>/dev/null || true' EXIT
   note_step A5 started "harness-owned resident watcher started" \
     "the harness owns this process, the kernel never backgrounds it (C-3); stdout captured to watch.out; an EXIT trap kills it on every harness exit path"
 
@@ -555,6 +625,16 @@ stage_a() {
     "watch.out empty at the end of A5" \
     "$(wc -c <"${watch_out}" | tr -d ' ') bytes in watch.out" \
     "$([ ! -s "${watch_out}" ] && echo pass || echo fail)"
+  # What this pair of records does NOT establish, said here so a bundle
+  # reader does not over-read it (CR-647). A5-empty plus A8-has-the-line
+  # rules out a watcher that emits the wake line at STARTUP. It does not
+  # rule out a watcher that can never detect a turn-end and emits the
+  # line on a delay: that mutation passes both, and dies instead at A1,
+  # in the M1-P5 unit suite. Causation is guarded by the unit suite A1
+  # runs, not by this end-to-end witness. That is the reason A1 runs the
+  # kernel suite and the reason it must not be optimised away.
+  note_step A5 observation "what the watch.out assertions do and do not witness" \
+    "A5-empty and A8-exactly-one-line together exclude a wake line printed at watcher startup. They do NOT exclude a blind watcher that emits the line on a timer without observing any turn-end; that case is caught by the M1-P5 unit suite run in A1, not here. Do not read the A8 records as proof of causation."
 
   # --- A6 spawn -------------------------------------------------------------
   brief="${work}/brief.md"
@@ -755,6 +835,25 @@ stage_b_full_pending() {
 # ---------------------------------------------------------------------------
 
 stage_c() {
+  # --- lease state across the stage B wait (DR-0015) ------------------------
+  # OBSERVATIONAL, never fatal. DR-0015 requires stage C to record the
+  # observed lease state either way, so a lapse is reported rather than
+  # silent. It deliberately does not die: an expired lease cannot be
+  # renewed (lock-renew-expired-refused), so failing here would fail a
+  # certification run for a slow approval, which is the outcome the
+  # CR-608 decline was protecting and which DR-0015 did not overturn. The
+  # explicit --duration at A3 is what PREVENTS the lapse; this only
+  # reports whether that worked.
+  observe_step A3 "${fleet}" "lease state after the stage B wait" \
+    node "${TIPHYS}" lock status
+  if grep -q "^held holder ${TIPHYS_HOLDER_ID} " "${LAST_OUTPUT}"; then
+    note_step A3 observation "the lease survived stage B" \
+      "still held by this run: $(head -n 1 "${LAST_OUTPUT}")"
+  else
+    note_step A3 observation "THE LEASE DID NOT SURVIVE STAGE B" \
+      "lock status reported: $(head -n 1 "${LAST_OUTPUT}"); expected holder ${TIPHYS_HOLDER_ID}. The fleet was takeover-able during the approval wait, so this certification run cannot claim exclusive use of the fleet across stage B (DR-0015). The run continues, because an expired lease does not block a release and failing here would fail the run for a slow approval; this record is the report."
+  fi
+
   # --- C1 the squash commit is on the sandbox default branch ----------------
   if [ "${mode}" = "full" ]; then
     run_step C1 zero "${work}" "gh pr view reports MERGED" -- gh pr view "${pr_url}" --json state,mergeCommit
@@ -777,6 +876,16 @@ stage_c() {
   # taking the record's word for it (CR-602). Without the copy the
   # captured output for this step is empty, because git clone --quiet is
   # silent, and the record was unfalsifiable from the bundle alone.
+  # The absent-README case must stay DIAGNOSABLE. An unguarded cp here
+  # aborts under set -e with a bare "cp: cannot stat", no FAILED line, no
+  # evidence pointer and no C1 record, on exactly the path criterion 5 is
+  # about (CR-641). Fail through assert_step instead, which records the
+  # verdict and dies with a diagnostic.
+  if [ ! -f "${check}/README.md" ]; then
+    assert_step C1 "the payload's change is on the sandbox default branch" \
+      "README.md present at ${sandbox_default} head ${head_sha}" \
+      "no README.md at all at ${sandbox_default} head ${head_sha}" fail
+  fi
   cp "${check}/README.md" "${evidence}/output/c1-sandbox-default-README.md"
   if grep -q "exit-test ${TASK_ID} landed a trivial change" "${check}/README.md"; then
     assert_step C1 "the payload's change is on the sandbox default branch" \
@@ -851,10 +960,14 @@ validate_bundle() {
     // asserts nothing satisfies presence while witnessing nothing, and
     // CR-600 showed that a step can lose its executing record and keep a
     // note. So every step must also carry at least one record with an
-    // outcome. B1 is the one deliberate exception: stage B is an owner
-    // authorization that the harness must not pretend to have executed,
-    // so in full mode its only records are the pending-owner-action note
-    // and the approval note, neither of which carries an outcome.
+    // outcome. B1 in FULL MODE is the one deliberate exception: stage B
+    // is an owner authorization that the harness must not pretend to
+    // have executed, so its only records there are the
+    // pending-owner-action note and the approval note, neither of which
+    // carries an outcome. The exemption is conditioned on the mode
+    // (CR-643): in local mode B1 is a real executed substitution with
+    // five run_step calls and an identity assertion, and exempting it
+    // there handed back exactly the coverage hole CR-607 closed.
     const withOutcome = new Set(
       records.filter((r) => r.data.outcome !== undefined && r.data.outcome !== null)
         .map((r) => r.data.step),
@@ -862,7 +975,7 @@ validate_bundle() {
     for (const step of expectedSteps.trim().split(/\s+/)) {
       if (!seen.has(step)) {
         problems.push(`no evidence record for step ${step}`);
-      } else if (step !== "B1" && !withOutcome.has(step)) {
+      } else if ((mode !== "full" || step !== "B1") && !withOutcome.has(step)) {
         problems.push(`step ${step} has records but none carrying an outcome`);
       }
     }
@@ -882,7 +995,7 @@ validate_bundle() {
     }
     let tiphysInvocations = 0;
     for (const { file, data } of records) {
-      if (data.kind === "executed" && Array.isArray(data.command)) {
+      if ((data.kind === "executed" || data.kind === "observation") && Array.isArray(data.command)) {
         for (const part of data.command) {
           if (/tiphys\.js$|(^|\/)tiphys$/.test(part)) {
             tiphysInvocations += 1;
@@ -992,7 +1105,26 @@ if [ "${stage}" = "c" ]; then
   pr_url=$(json_field "${session_file}" prUrl)
   TIPHYS_HOLDER_ID=$(json_field "${session_file}" holderId)
   export TIPHYS_HOLDER_ID
-  record_seq=$(json_field "${session_file}" recordSeq)
+  # The record sequence is DERIVED FROM THE BUNDLE, not merely restored
+  # from the session file (CR-644). Restoring a stale sequence is the
+  # MECHANISM that produced CR-600; writing the session later closed the
+  # one instance, but only because the handoff note happened to be the
+  # last record stage A wrote, and that would be silently lost the day a
+  # record is appended after it. Taking the maximum of what is on disk
+  # and what the session claims makes an overwrite impossible regardless
+  # of which of the two is stale.
+  session_seq=$(json_field "${session_file}" recordSeq)
+  disk_seq=$(ls "${evidence}/records" 2>/dev/null \
+    | sed -n 's/^\([0-9][0-9]*\)-.*\.json$/\1/p' | sort -n | tail -n 1)
+  if [ -z "${disk_seq}" ]; then disk_seq=0; fi
+  disk_seq=$((10#${disk_seq}))
+  session_seq=$((10#${session_seq}))
+  record_seq="${disk_seq}"
+  if [ "${session_seq}" -gt "${record_seq}" ]; then record_seq="${session_seq}"; fi
+  if [ "${session_seq}" -ne "${disk_seq}" ]; then
+    note_step C3 observation "the stage A record sequence disagreed with the bundle" \
+      "session.json recordSeq ${session_seq}, highest record on disk ${disk_seq}; resuming from ${record_seq} so no existing record is overwritten (CR-644)"
+  fi
   note_step B1 assertion "stage B owner authorization artifact supplied" \
     "approval artifact: ${approval}"
 fi

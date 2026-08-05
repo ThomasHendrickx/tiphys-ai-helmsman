@@ -34,12 +34,22 @@ import { fileURLToPath } from "node:url";
  *
  *   1. Recursion. A1's `npm test` runs the whole suite, this file
  *      included: the captured output of record 003-A1 contains the
- *      titles of tests defined here. A test in this file that invoked
- *      the harness would be re-entered by the harness it invoked.
+ *      titles of tests defined here, and its reported test total is the
+ *      whole suite's. A test in this file that invoked the harness would
+ *      be re-entered by the harness it invoked.
  *   2. Concurrent destruction. A1's `npm ci` (record 001-A1, cwd = the
  *      repository root) removes and reinstalls node_modules. node --test
  *      runs test files in parallel, so that would delete dependencies
- *      out from under the other files of the running suite.
+ *      out from under the other files of the running suite. Witnessed by
+ *      a reviewer with a sentinel file under node_modules, which `npm
+ *      ci` removed.
+ *
+ * Deliberately NO test count is quoted here. An earlier version cited
+ * "tests 153" from the bundle it was measured against; the suite grew
+ * and the number went stale while the argument stayed true, which is a
+ * citation that decays on its own (CR-646). The checkable claim is that
+ * A1 runs the whole suite at the repository root, and the records named
+ * above are where to check it.
  *
  * So the falsifiability property is guarded in three places instead:
  * the CI step above runs the real red path end to end; the test below
@@ -273,32 +283,137 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
   }
 });
 
-test("the gates workflow runs the harness falsifiability guard and fails when it exits 0", () => {
-  // The end-to-end red path lives in CI (see the header for why it
-  // cannot live here). This is the guard on that guard: if the workflow
-  // step is deleted or defanged, nothing else in the repository would
-  // notice, and criterion 5 would silently lose its only automated
-  // witness.
+/**
+ * Extract one step's `run:` script out of the gates workflow, by the
+ * text of its `name:`. Hand-rolled rather than parsed with a YAML
+ * library because this project takes no dependencies; it only has to
+ * handle the one file in this repository, and it fails loudly if that
+ * file's shape changes rather than silently returning nothing.
+ */
+function workflowStep(nameFragment: string): { block: string; script: string } {
   const workflow = readFileSync(
     fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
     "utf8",
   );
-  assert.match(
-    workflow,
-    /TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts\/m1-exit-test\.sh --mode local/,
-    "the gates workflow no longer runs the harness with the stage B skip",
+  const lines = workflow.split("\n");
+  const start = lines.findIndex(
+    (l) => /^ {6}- /.test(l) && l.toLowerCase().includes(nameFragment.toLowerCase()),
   );
-  // It must run it as a NEGATIVE assertion: exiting 0 has to fail the
-  // job. A step that merely ran the command would pass whatever it did.
-  assert.match(
-    workflow,
-    /if TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts\/m1-exit-test\.sh[^\n]*\n\s*echo "FALSIFIABILITY GUARD BROKEN/,
-    "the workflow runs the skip path but does not fail the job when the harness exits 0",
-  );
-  // And it must check WHERE it failed, so an unrelated early abort
-  // cannot masquerade as the guard firing.
-  assert.match(workflow, /-C2\.json/);
-  assert.match(workflow, /no C2 record showing a nonzero teardown exit with outcome fail/);
+  assert.notEqual(start, -1, `no workflow step whose name contains ${nameFragment}`);
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (/^ {6}- /.test(line) || (/^\s*\S/.test(line) && !/^ {7,}/.test(line))) {
+      end = i;
+      break;
+    }
+  }
+  const block = lines.slice(start, end).join("\n");
+  const runAt = lines.slice(start, end).findIndex((l) => /^ {8}run: \|/.test(l));
+  assert.notEqual(runAt, -1, `step ${nameFragment} has no "run: |" block`);
+  const script = lines
+    .slice(start + runAt + 1, end)
+    .map((l) => (l.startsWith(" ".repeat(10)) ? l.slice(10) : l))
+    .join("\n");
+  assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
+  return { block, script };
+}
+
+test("the gates falsifiability guard fails the job when the harness cannot fail", () => {
+  // BEHAVIOURAL, not textual. The previous version of this test asserted
+  // that certain strings were present in the workflow. It caught
+  // deletion of the step and one shape of defang, and three other
+  // realistic defangs left it green: `exit 1` changed to `exit 0`,
+  // `continue-on-error: true` on the step, and dropping the C2 arm's
+  // `process.exit(1)`. Every one of those preserves the text.
+  //
+  // So the workflow step's own shell script is extracted and EXECUTED
+  // against stub harnesses whose behaviour is known, and the step's exit
+  // code is the assertion. A mutation that preserves the text but
+  // inverts the meaning now reddens this test, because the meaning is
+  // what is measured.
+  const { block, script: stepScript } = workflowStep("falsifiability guard");
+  const root = scratch();
+  try {
+    // A stub harness standing in for scripts/m1-exit-test.sh. `exit` is
+    // its exit code; `c2` is the C2 record it leaves behind, or "none".
+    const stub = (exitCode: number, c2: string): string => `#!/usr/bin/env bash
+evidence="$3"
+mkdir -p "\${evidence}/records"
+${
+  c2 === "none"
+    ? ""
+    : `cat >"\${evidence}/records/043-C2.json" <<'JSON'\n${c2}\nJSON`
+}
+exit ${String(exitCode)}
+`;
+
+    const runStep = (name: string, stubBody: string): number => {
+      const dir = join(root, name);
+      mkdirSync(join(dir, "scripts"), { recursive: true });
+      const harnessPath = join(dir, "scripts", "m1-exit-test.sh");
+      writeFileSync(harnessPath, stubBody, { mode: 0o755 });
+      // The one GitHub expression in the script, substituted exactly as
+      // the runner would substitute it.
+      const substituted = stepScript.replaceAll("${{ runner.temp }}", join(dir, "temp"));
+      mkdirSync(join(dir, "temp"), { recursive: true });
+      const result = run("bash", ["-c", substituted], { cwd: dir, env: identityLessEnv(dir) });
+      return result.status ?? -1;
+    };
+
+    const genuineRed = JSON.stringify(
+      { step: "C2", kind: "executed", exitCode: 1, outcome: "fail" },
+      null,
+      2,
+    );
+    const c2Passed = JSON.stringify(
+      { step: "C2", kind: "executed", exitCode: 0, outcome: "pass" },
+      null,
+      2,
+    );
+
+    // 1. The regression the guard exists for: a harness that cannot fail
+    //    exits 0 on the red path. The step MUST fail the job.
+    assert.notEqual(
+      runStep("always-green", stub(0, genuineRed)),
+      0,
+      "the guard passed a harness that exited 0 on the skip-stage-B path",
+    );
+
+    // 2. A genuinely falsifiable harness: nonzero, failing at C2. The
+    //    step must PASS, or the guard is useless in the other direction
+    //    and would redden every honest run.
+    assert.equal(
+      runStep("genuine-red", stub(1, genuineRed)),
+      0,
+      "the guard rejected a harness that failed correctly at C2",
+    );
+
+    // 3. Nonzero, but NOT at C2: an unrelated early abort must not be
+    //    accepted as the guard firing. This is the arm that a dropped
+    //    process.exit(1) silently removes.
+    assert.notEqual(
+      runStep("red-elsewhere", stub(1, "none")),
+      0,
+      "the guard accepted a nonzero run with no failing C2 record",
+    );
+    assert.notEqual(
+      runStep("c2-passed", stub(1, c2Passed)),
+      0,
+      "the guard accepted a nonzero run whose C2 record passed",
+    );
+
+    // 4. `continue-on-error: true` is YAML semantics, not shell: no exit
+    //    code from the script can witness it, so it is asserted
+    //    structurally against the step's own block.
+    assert.doesNotMatch(
+      block,
+      /continue-on-error/,
+      "the falsifiability step is marked continue-on-error, so its failure cannot fail the job",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the three exit-test scripts declare one harness identity", () => {

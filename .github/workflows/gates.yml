@@ -64,7 +64,16 @@ jobs:
               console.error(JSON.stringify(c2, null, 2));
               process.exit(1);
             }
-            console.log("falsifiability guard witnessed at C2: exitCode " + failing[0].exitCode);
+            // Total on purpose: it must NOT throw when failing is empty.
+            // While this line read failing[0].exitCode, deleting the
+            // process.exit(1) above still produced a nonzero exit, via
+            // an unhandled TypeError rather than via the check. That
+            // made the explicit exit look load-bearing when it was not,
+            // and hid the deletion from the test that guards this step.
+            console.log(
+              "falsifiability guard witnessed at C2: exitCode " +
+                failing.map((r) => String(r.exitCode)).join(","),
+            );
           ' "${evidence}"
 
   gates:
