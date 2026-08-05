@@ -71,6 +71,34 @@ corrected to say so honestly, or take the phase back entirely.
 until P5 merges, so the milestone exit test cannot run either. A-1 remains
 unactioned and is the other thing the exit test needs.
 
+**M2 and M3 detailed plans: revision 1, adversarially reviewed, fix rounds
+applied.** Both were reviewed on different model families and both came back
+FIX-ROUND-NEEDED (M2: 6 high, 14 medium; M3: 4 high, 4 medium). Both rounds
+are applied and committed.
+
+M2 now carries a defect-to-gate traceability table, which is the milestone's
+honest headline: of thirteen recorded M1 defects, seven are caught by an M2
+gate with a named criterion and six are not, every uncovered one routed to a
+named M3 owner. The two most severe defects M1 produced are among the
+uncovered, and the plan says so in its own voice. Its circular-authority
+finding was closed by removing the circularity rather than blessing it: no
+M2 phase edits the agent-rules file, so the delegation clause stays true and
+the gate-list update becomes a non-blocking owner item.
+
+M3 placed tuition T-005 by generating the mechanism index as a projection of
+the tuition schema rather than as a second artifact, seeded with four
+mechanisms this project has already paid for. It fixed the
+impossible-criteria finding at the class: the reviewer named four
+cross-document invariants no schema keyword can express, and its own audit
+found eleven more.
+
+**Neither revision is delta-reviewed, deliberately.** DR-0011's recorded
+consequence already requires re-grounding a parallel-written plan at
+dispatch, and M3 has made that its own risk entry, so a review now would be
+spent twice. The delta reviews are queued for dispatch time, which cannot
+arrive before M1's exit test passes, since milestone exit tests are hard
+gates.
+
 ## Carried forward, not yet owned
 
 Items discovered during M1 that belong to a later milestone and have no owner
