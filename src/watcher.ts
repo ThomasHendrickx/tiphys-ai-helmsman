@@ -36,7 +36,8 @@ import { executorRecordPath, readTaskMeta, runStep, turnEndPath } from "./task.t
  * that would make it outlive its caller, this module launches no child
  * process of any kind, and arming is explicit: the operator starts it
  * and the beacon is what proves it ran (FM-054, where about 30 minutes
- * of supervision were lost to a shell that helpfully detached one).
+ * of supervision were lost to a shell that helpfully moved one out of
+ * sight).
  *
  * C-2: nothing here has any notion of a running program. Wake sources
  * are FILES, currency comes from files, and the only clock question ever
