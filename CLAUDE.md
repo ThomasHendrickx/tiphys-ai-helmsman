@@ -115,6 +115,64 @@ worthless. Where the behavior under test consumes another program's output,
 assertions must include real captured output from that program, not
 hand-written strings chosen to match the implementation.
 
+## Fix-round contract (measured, 2026-08-05)
+
+A throughput analysis of M1 measured sixteen completed fix rounds. Thirteen
+were re-reviewed and TWELVE of those thirteen produced a new finding
+attributable to the round itself. The dominant cause, roughly a third of the
+milestone's elapsed time, is a single shape: **the fix addressed the instance
+the reviewer named, when the defect was the mechanism.** M1-P3 chained four
+rounds that way, M1-P5 chained four, M1-P6 chained two.
+
+Every avoidable instance had a counterfactual that was a COMMAND or a DECLARED
+SCOPE, never a judgment call. So this is mechanical, and it is binding on every
+fix round from now on.
+
+A fix round is not done, and a work history is not acceptable, without all
+three of these:
+
+1. **Name the MECHANISM, not the finding.** "A FIFO at the beacon hangs the
+   guard" is a finding. "Reading a path whose type has not been established"
+   is the mechanism. The round fixes the second.
+2. **Publish the derivation.** The exact command that enumerates every call
+   site of that mechanism, and its full output. Not a summary of it.
+3. **State what the derivation did NOT cover.** The regions the search
+   excluded, and why. A search whose scope is wrong returns an empty result
+   that is indistinguishable from an absence of defects, and this project has
+   been bitten by that three times: `state/session.lock` probed when the lease
+   is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and
+   `worktrees/` while the missed path sat at the fleet root; a usage error
+   read as a clean result.
+
+**The reviewer's FIRST check is item 3**, before examining any row.
+
+This is proven inside this repository rather than imported. M1-P5's fourth
+round used exactly this method and derived eleven call sites where the review
+had listed eight, closing in one round a class that three prior rounds had each
+closed one path at a time.
+
+### The claim grep, also binding
+
+Before submitting any work history, run:
+
+```
+grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/<phase>.md
+```
+
+Every hit must carry an adjacent captured command that settles it, or be
+restated as an open question. "I did not find a way to force this arm" is a
+true sentence; "this arm cannot be forced here" is a false one, and the first
+invites the next reader to try. Tuition T-006 records seven instances of this
+across M1, one of them the orchestrator's own, and notes that the pattern
+survived being documented as a norm. A grep is mechanical; a reminder is not.
+
+### One witness is not a class
+
+A witness for a CLASS must redden under at least TWO structurally different
+members of it. M1-P6 produced two consecutive mediums from this alone: one
+defang reddened a guard test, three others left it green, and the round after
+it repeated the mistake one abstraction up.
+
 ## Identifier schemes
 
 Stable IDs, never renumbered, cited across documents:
