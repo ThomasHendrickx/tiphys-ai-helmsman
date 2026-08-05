@@ -137,5 +137,8 @@
   "liveness-future-beacon-not-evidence": "a beacon dated in the future is no evidence that supervision ran",
   "doctor-beacon-future-warn": "a beacon dated in the future is no evidence that supervision ran",
   "liveness-declared-cadence-floor": "the freshness floor follows the cadence the watcher itself declared",
-  "liveness-malformed-cadence-refused": "a malformed cadence value is refused, never silently defaulted"
+  "liveness-malformed-cadence-refused": "a malformed cadence value is refused, never silently defaulted",
+  "liveness-task-record-classification-shared": "the watcher and the guard agree on every task-record shape",
+  "liveness-beacon-verdict-shared": "doctor and the guard return one verdict about one beacon",
+  "liveness-future-beacon-recovery-named": "a beacon dated in the future is no evidence that supervision ran"
 }

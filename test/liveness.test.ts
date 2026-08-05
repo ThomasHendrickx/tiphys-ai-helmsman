@@ -1,6 +1,13 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -72,11 +79,14 @@ function baseEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function runCli(args: string[], opts: { cwd?: string } = {}): CliResult {
+function runCli(
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): CliResult {
   const result = spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
     cwd: opts.cwd,
-    env: baseEnv(),
+    env: opts.env ?? baseEnv(),
   });
   return {
     status: result.status,
@@ -437,6 +447,12 @@ test("a beacon dated in the future is no evidence that supervision ran", (t) => 
   assert.equal(report.beaconAgeMs, undefined);
   assert.match(report.detail, /watcher stale/);
   assert.match(report.detail, /FUTURE/);
+  // CR-510: the remediation must name the action that actually clears
+  // this. Restarting the watcher does not, because writeBeacon keeps a
+  // beacon that is ahead of the clock ahead of it, so a detail line that
+  // only said "start tiphys watch" would be advice that cannot work.
+  assert.match(report.detail, /remove that file/);
+  assert.match(report.detail, /restarting the watcher alone will not clear it/);
 
   const doctored = runCli(["doctor"], { cwd: fleet });
   assert.equal(
@@ -520,6 +536,157 @@ test("a malformed cadence value is refused, never silently defaulted", (t) => {
   assert.notEqual(load.status, 0, "a malformed cadence value loaded successfully");
   assert.match(load.stderr ?? "", /TIPHYS_WATCH_STALE_SECONDS="twenty"/);
   assert.match(load.stderr ?? "", /is not a positive number of seconds/);
+});
+
+test("the watcher and the guard agree on every task-record shape", (t) => {
+  // FINAL ROUND, NEW-1. The dangerous state is the two modules
+  // classifying one task record differently: a meta.json that exists as
+  // a directory used to surface in the watcher and count as nothing in
+  // the guard, which is a counterexample to the property the fix round
+  // declared. The assertion is AGREEMENT, so a future edit to either
+  // side alone fails this test rather than passing quietly.
+  const shapes: Array<{ id: string; plant: (dir: string) => void }> = [
+    {
+      id: "torn",
+      plant: (dir) => {
+        writeFileSync(join(dir, "meta.json"), '{"id":"torn","status":"open"');
+      },
+    },
+    {
+      id: "dirmeta",
+      plant: (dir) => {
+        mkdirSync(join(dir, "meta.json"));
+      },
+    },
+    {
+      id: "danglemeta",
+      plant: (dir) => {
+        symlinkSync(join(dir, "nowhere.json"), join(dir, "meta.json"));
+      },
+    },
+    {
+      id: "emptymeta",
+      plant: (dir) => {
+        writeFileSync(join(dir, "meta.json"), "");
+      },
+    },
+  ];
+
+  for (const shape of shapes) {
+    const fleet = initFleet(t);
+    const fleetPaths = loadFleet(fleet);
+    const dir = join(fleet, "tasks", shape.id);
+    mkdirSync(dir, { recursive: true });
+    shape.plant(dir);
+
+    // Unsupervised (no beacon yet): the guard counts the record as work
+    // it cannot show this fleet is free of, and says so.
+    const before = guard(fleetPaths);
+    assert.equal(
+      before.inFlight,
+      1,
+      `${shape.id}: the guard did not count the record: ${before.detail}`,
+    );
+    assert.equal(before.unreadable, 1, shape.id);
+    assert.equal(before.stale, true, `${shape.id}: ${before.detail}`);
+
+    // The watcher surfaces the very same record, by the same
+    // classification.
+    const seen = runCli(["watch", "--once"], { cwd: fleet });
+    assert.equal(seen.status, 0, `${shape.id}: ${seen.stderr}`);
+    assert.equal(seen.stdout, `stale ${shape.id} meta\n`, shape.id);
+
+    // And after that pass the record is still counted: the wake was
+    // surfaced, not resolved. Only the beacon changed, so the fleet is
+    // in flight and freshly supervised at the same time.
+    const after = guard(fleetPaths);
+    assert.equal(
+      after.inFlight,
+      1,
+      `${shape.id}: the guard and the watcher disagree: ${after.detail}`,
+    );
+    assert.equal(after.unreadable, 1, shape.id);
+    assert.equal(after.stale, false, `${shape.id}: ${after.detail}`);
+  }
+
+  // And the agreement holds in the quiet direction too: a task directory
+  // with no meta.json at all is a record to neither of them.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  mkdirSync(join(fleet, "tasks", "nometa"), { recursive: true });
+  const quiet = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(quiet.status, 3, quiet.stderr);
+  assert.equal(quiet.stdout, "");
+  assert.equal(guard(fleetPaths).inFlight, 0);
+});
+
+test("doctor and the guard return one verdict about one beacon", (t) => {
+  // FINAL ROUND, CR-508. The dangerous state is the freshness floor
+  // applied by one caller and not the other, which produced two
+  // contradictory verdicts about the same file in a single doctor run
+  // and failed a healthy watcher under --for watch. The assertion is
+  // agreement in BOTH directions, so applying the floor in only one
+  // place fails this test.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  openTask(fleet, "t1");
+  // A beacon a healthy watcher on a 900s cadence would have written 13s
+  // ago, read by a process configured for a 12s threshold.
+  writeFileSync(
+    fleetPaths.beaconPath,
+    `${JSON.stringify(
+      {
+        writtenAt: new Date(Date.now() - 13_000).toISOString(),
+        backoffStreak: 6,
+        intervalMs: 900_000,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  const shortEnv = {
+    TIPHYS_WATCH_BACKOFF_CAP_SECONDS: "10",
+    TIPHYS_WATCH_POLL_SECONDS: "1",
+    TIPHYS_WATCH_STALE_SECONDS: "12",
+  };
+
+  const doctored = runCli(["doctor"], { cwd: fleet, env: { ...baseEnv(), ...shortEnv } });
+  assert.equal(
+    staleLines(doctored.stderr).length,
+    0,
+    `the guard called a healthy watcher stale: ${doctored.stderr}`,
+  );
+  assert.match(
+    doctored.stdout,
+    /^CHECK beacon PASS beacon present, age 13s \(freshness threshold 901s\)$/m,
+    `doctor disagreed with the guard about one beacon: ${doctored.stdout}`,
+  );
+  const promoted = runCli(["doctor", "--for", "watch"], {
+    cwd: fleet,
+    env: { ...baseEnv(), ...shortEnv },
+  });
+  assert.match(promoted.stdout, /^CHECK beacon PASS /m, "the watch profile failed a healthy watcher");
+
+  // The other direction: genuinely past the declared cadence, both say so.
+  writeFileSync(
+    fleetPaths.beaconPath,
+    `${JSON.stringify(
+      {
+        writtenAt: new Date(Date.now() - 902_000).toISOString(),
+        backoffStreak: 6,
+        intervalMs: 900_000,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  const late = runCli(["doctor"], { cwd: fleet, env: { ...baseEnv(), ...shortEnv } });
+  assert.equal(staleLines(late.stderr).length, 1, `the guard stayed quiet: ${late.stderr}`);
+  assert.match(
+    late.stdout,
+    /^CHECK beacon WARN beacon present but 902s old, past the 901s freshness threshold$/m,
+    late.stdout,
+  );
 });
 
 test("an unreadable beacon counts as no supervision", (t) => {

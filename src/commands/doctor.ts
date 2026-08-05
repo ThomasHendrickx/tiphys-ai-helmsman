@@ -4,12 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
-import {
-  BEACON_FUTURE_TOLERANCE_MS,
-  CADENCE,
-  readBeacon,
-  warnIfWatcherStale,
-} from "../liveness.ts";
+import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -245,20 +240,23 @@ function checkLock(root: string): CheckResult {
 }
 
 /**
- * Beacon freshness (R-095, completed by M1-P5). The threshold is the
- * liveness guard's, so doctor and the guard cannot disagree about what
- * fresh means. Absent and unreadable are distinguished from merely OLD,
- * because they send an operator to different places.
+ * Beacon freshness (R-095, completed by M1-P5). THE JUDGEMENT IS NOT MADE
+ * HERE: judgeBeacon in src/liveness.ts decides what the beacon is
+ * evidence of, and this check only decides how to present it. That is
+ * why doctor and the liveness guard can never return two verdicts about
+ * one file in one run, which they did while this check carried its own
+ * copy of the comparison and missed the declared-cadence floor (delta
+ * review CR-508).
  *
  * This check is about the beacon alone. The separate "watcher stale"
  * warning line this command also emits is the GUARD, whose predicate
- * additionally requires open tasks: a fleet with nothing in flight and
- * no watcher is untidy, not dangerous.
+ * additionally requires work in flight: a fleet with nothing in flight
+ * and no watcher is untidy, not dangerous.
  */
 function checkBeacon(root: string): CheckResult {
   const beaconPath = join(root, BEACON_FILE);
-  const thresholdSeconds = Math.round(CADENCE.staleThresholdMs / 1000);
-  if (!existsSync(beaconPath)) {
+  const verdict = judgeBeacon(beaconPath);
+  if (verdict.kind === "absent") {
     return {
       name: "beacon",
       status: "WARN",
@@ -266,36 +264,31 @@ function checkBeacon(root: string): CheckResult {
       condition: "beacon-absent",
     };
   }
-  const beacon = readBeacon(beaconPath);
-  if (beacon === undefined) {
+  if (verdict.kind === "unreadable") {
     return {
       name: "beacon",
       status: "FAIL",
       detail: `beacon file ${beaconPath} does not parse as a beacon record`,
     };
   }
-  const ageSeconds = (Date.now() - Date.parse(beacon.writtenAt)) / 1000;
-  // CR-501: a beacon dated in the future is not fresh, it is unusable,
-  // and rounding its age up to zero was this check telling an operator
-  // "age 0s, PASS" about a file that proves nothing. The age is now
-  // reported as it is, and the guard classifies it the same way.
-  if (ageSeconds * 1000 < -BEACON_FUTURE_TOLERANCE_MS) {
+  const thresholdSeconds = String(Math.round(verdict.thresholdMs / 1000));
+  if (verdict.kind === "ahead") {
     return {
       name: "beacon",
       status: "WARN",
       detail:
-        `beacon present but dated ${String(Math.round(-ageSeconds))}s in the future, ` +
-        `so it is no evidence that supervision ran`,
+        `beacon present but dated ${String(Math.round(verdict.aheadMs / 1000))}s in ` +
+        `the future, so it is no evidence that supervision ran`,
       condition: "beacon-stale",
     };
   }
-  const rounded = String(Math.max(0, Math.round(ageSeconds)));
-  if (ageSeconds * 1000 > CADENCE.staleThresholdMs) {
+  const rounded = String(Math.max(0, Math.round(verdict.ageMs / 1000)));
+  if (verdict.kind === "stale") {
     return {
       name: "beacon",
       status: "WARN",
       detail:
-        `beacon present but ${rounded}s old, past the ${String(thresholdSeconds)}s ` +
+        `beacon present but ${rounded}s old, past the ${thresholdSeconds}s ` +
         `freshness threshold`,
       condition: "beacon-stale",
     };
@@ -303,7 +296,7 @@ function checkBeacon(root: string): CheckResult {
   return {
     name: "beacon",
     status: "PASS",
-    detail: `beacon present, age ${rounded}s (freshness threshold ${String(thresholdSeconds)}s)`,
+    detail: `beacon present, age ${rounded}s (freshness threshold ${thresholdSeconds}s)`,
   };
 }
 

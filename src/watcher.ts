@@ -4,7 +4,6 @@ import {
   fsyncSync,
   openSync,
   readFileSync,
-  readdirSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -16,15 +15,14 @@ import type { FSWatcher, Stats } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Fleet } from "./fleet.ts";
-import { CADENCE, renderBeacon, readBeacon } from "./liveness.ts";
-import type { WatchCadence } from "./liveness.ts";
 import {
-  executorRecordPath,
-  metaPath,
-  readTaskMeta,
-  runStep,
-  turnEndPath,
-} from "./task.ts";
+  CADENCE,
+  readBeacon,
+  renderBeacon,
+  surveyTaskRecords,
+} from "./liveness.ts";
+import type { WatchCadence } from "./liveness.ts";
+import { executorRecordPath, runStep, turnEndPath } from "./task.ts";
 
 /**
  * The watcher (kernel plan v1, M1-P5 step 1; R-078, R-079; DR-0007;
@@ -218,17 +216,6 @@ function readIfPresent(path: string): string | undefined {
 function statIfPresent(path: string): Stats | undefined {
   try {
     return statSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-function listIfPresent(dir: string): string[] | undefined {
-  try {
-    return readdirSync(dir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return undefined;
@@ -438,35 +425,20 @@ function deadlineOf(fleet: Fleet, taskId: string): number | undefined {
  * is the correct behavior for something nobody has dealt with yet.
  */
 function scanUnsafe(fleet: Fleet, nowMs: number): Wake | undefined {
-  const ids = (listIfPresent(fleet.tasksDir) ?? []).sort();
-  const open: string[] = [];
-  const unreadable: string[] = [];
-  for (const id of ids) {
-    // A task is a DIRECTORY under tasks/. Anything else there (init's
-    // own .gitkeep, an operator's note) is not a task record and must
-    // not be reported as one: the loud-on-unknown rule below applies to
-    // task records, and calling every stray file a broken task would be
-    // the cry-wolf failure in the other direction.
-    const entry = statIfPresent(join(fleet.tasksDir, id));
-    if (entry === undefined || !entry.isDirectory()) {
-      continue;
-    }
-    const meta = readTaskMeta(fleet, id);
-    if (meta !== undefined) {
-      if (meta.status === "open") {
-        open.push(id);
-      }
-      continue;
-    }
-    // No health from an absence of evidence: a meta.json that EXISTS and
-    // does not parse leaves this module unable to say whether the task is
-    // open, so it is surfaced rather than skipped. An ABSENT meta.json is
-    // a different state (a spawn in progress, or a rollback residue) and
-    // is not a task record in a contradictory state.
-    if (statIfPresent(metaPath(fleet, id)) !== undefined) {
-      unreadable.push(id);
-    }
+  // ONE classifier of task records, shared with the liveness guard
+  // (src/liveness.ts surveyTaskRecords). This module does not carry a
+  // second opinion about what a task record is or about what an
+  // unreadable one means: two implementations of one property disagreed
+  // once already (delta review NEW-1, tuition T-005).
+  const survey = surveyTaskRecords(fleet);
+  const problem = survey.problems[0];
+  if (problem !== undefined) {
+    // A survey that did not complete is not an idle fleet. Raising here
+    // reaches runStep, which turns it into the module's loud outcome: a
+    // nonzero exit with one reason line, and no beacon write.
+    throw new Error(problem);
   }
+  const open = survey.open;
 
   const seen = readSeenState(fleet);
   for (const id of open) {
@@ -491,7 +463,7 @@ function scanUnsafe(fleet: Fleet, nowMs: number): Wake | undefined {
     }
   }
 
-  const firstUnreadable = unreadable[0];
+  const firstUnreadable = survey.unreadable[0];
   if (firstUnreadable !== undefined) {
     return { kind: "stale", taskId: firstUnreadable, what: "meta" };
   }

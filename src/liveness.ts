@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
 import { readTaskMeta } from "./task.ts";
@@ -253,62 +253,190 @@ export interface GuardReport {
 export const BEACON_FUTURE_TOLERANCE_MS = 5000;
 
 export interface TaskSurvey {
-  open: number;
-  unreadable: number;
+  /** Task ids whose meta.json parses and says open, sorted. */
+  open: string[];
+  /**
+   * Task ids where SOMETHING EXISTS at tasks/<id>/meta.json, by any file
+   * type, and cannot be read as a task record. Sorted.
+   */
+  unreadable: string[];
+  /**
+   * Things this survey could not establish at all (the tasks directory
+   * could not be listed, an entry could not be stat'ed), one reason line
+   * each. NEITHER CALLER MAY READ AN EMPTY RESULT AS "no work": the
+   * watcher reports these loudly and the guard counts them as in flight,
+   * because a survey that did not complete is not evidence of an idle
+   * fleet.
+   */
+  problems: string[];
 }
 
 /**
- * Survey the fleet's tasks. TWO counts, because they are two different
- * facts and collapsing them is how the guard learned to reassure:
+ * THE ONE CLASSIFIER OF TASK RECORDS. src/watcher.ts and this module both
+ * call it, and neither has a second opinion about what a task record is.
  *
- * - open: meta.json parses and says open. The C-1 state authority.
- * - unreadable: meta.json EXISTS and does not parse. This is NOT
- *   evidence that the task is closed, and the original implementation
- *   dropped it from the count, so a fleet with a torn meta.json (which
- *   src/task.ts can produce, since it writes meta with a plain
- *   writeFileSync) reported "nothing is in flight to supervise" while a
- *   real task sat open and unsupervised. Counted as in flight now: the
- *   guard warns about work it cannot prove is finished.
+ * This exists because the fix round wrote the same classification twice
+ * with different conditions, and the copies disagreed: one asked whether
+ * the meta path was a regular FILE, the other only that a stat succeeded,
+ * so a meta.json that existed as a directory was surfaced by the watcher
+ * and reported by the guard as nothing in flight, which is a
+ * counterexample to the very property that round declared (delta review
+ * NEW-1, and tuition T-005 on rules that fail to propagate). One property
+ * gets one implementation; two that agree today drift the moment someone
+ * edits one of them.
  *
- * A task directory with NO meta.json is neither: there is no record to
- * be torn, and that is the normal transient shape of a spawn in progress
- * or a rollback residue.
+ * The rules, in one place:
+ *
+ * - A TASK IS A DIRECTORY under tasks/. The entry is resolved with stat,
+ *   so a symlink to a real task directory is a task; init's own .gitkeep
+ *   and any other stray file is not, which is checked by TYPE and never
+ *   by name.
+ * - A record that PARSES is authoritative: its status decides open or
+ *   closed (plan constraint C-1).
+ * - A record that does not parse while SOMETHING EXISTS at the meta.json
+ *   path is unreadable, whatever that something is. The existence probe
+ *   is lstat, so a directory, a FIFO, a device node and a dangling
+ *   symlink all count: each is an entry a person or a script put there,
+ *   and none of them is evidence that the task finished.
+ * - NOTHING at the meta.json path is not a record at all: that is the
+ *   normal transient shape of a spawn in progress or a rollback residue.
+ *
+ * Total by construction: it never raises, because one of its two callers
+ * is an advisory that must not be able to take down the command it is
+ * advising. It does not swallow either: what it could not establish comes
+ * back in problems, and both callers are required to act on that.
  */
-export function surveyTasks(fleet: Fleet): TaskSurvey {
+export function surveyTaskRecords(fleet: Fleet): TaskSurvey {
+  const open: string[] = [];
+  const unreadable: string[] = [];
+  const problems: string[] = [];
+
   let entries: string[];
   try {
     entries = readdirSync(fleet.tasksDir);
-  } catch {
-    return { open: 0, unreadable: 0 };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      // No tasks directory at all. loadFleet refuses a fleet home
+      // missing one, so this is only reachable if it vanished under us,
+      // and an absent directory holds no tasks.
+      return { open, unreadable, problems };
+    }
+    problems.push(
+      `the task directory ${fleet.tasksDir} could not be listed: ${String(error)}`,
+    );
+    return { open, unreadable, problems };
   }
-  let open = 0;
-  let unreadable = 0;
-  for (const id of entries) {
-    // A task is a DIRECTORY under tasks/; init's own .gitkeep and any
-    // other stray file there is not a task record.
+
+  for (const id of entries.sort()) {
+    let isTask: boolean;
     try {
-      if (!statSync(join(fleet.tasksDir, id)).isDirectory()) {
+      isTask = statSync(join(fleet.tasksDir, id)).isDirectory();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // Removed under us (a concurrent teardown), or a dangling
+        // symlink: no task directory here.
         continue;
       }
-    } catch {
+      problems.push(
+        `the task entry ${join(fleet.tasksDir, id)} could not be examined: ${String(error)}`,
+      );
       continue;
     }
+    if (!isTask) {
+      continue;
+    }
+
     const meta = readTaskMeta(fleet, id);
     if (meta !== undefined) {
       if (meta.status === "open") {
-        open += 1;
+        open.push(id);
       }
       continue;
     }
     try {
-      if (statSync(join(fleet.tasksDir, id, "meta.json")).isFile()) {
-        unreadable += 1;
+      lstatSync(join(fleet.tasksDir, id, "meta.json"));
+      unreadable.push(id);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
       }
-    } catch {
-      // No meta.json at all, or unstattable: not a torn record.
+      problems.push(
+        `the task record ${join(fleet.tasksDir, id, "meta.json")} could not be ` +
+          `examined: ${String(error)}`,
+      );
     }
   }
-  return { open, unreadable };
+  return { open, unreadable, problems };
+}
+
+/**
+ * THE ONE FRESHNESS THRESHOLD. The configured threshold, raised to the
+ * cadence the WATCHER ITSELF declared in the beacon it wrote plus one
+ * poll interval (CR-503). Every consumer of beacon freshness calls this,
+ * so a single run cannot produce two verdicts about one file.
+ */
+export function effectiveThresholdMs(
+  beacon: BeaconRecord | undefined,
+  cadence: WatchCadence,
+): number {
+  const declaredFloorMs =
+    beacon === undefined ? 0 : beacon.intervalMs + cadence.pollIntervalMs;
+  return Math.max(cadence.staleThresholdMs, declaredFloorMs);
+}
+
+/**
+ * What a beacon file is evidence of. THE ONE BEACON VERDICT: the guard
+ * and doctor's own beacon check both call this, so they cannot disagree
+ * about the same file in the same run (delta review CR-508, where they
+ * did). Each caller decides how to PRESENT the verdict; neither decides
+ * what it is.
+ */
+export type BeaconVerdict =
+  | { kind: "absent" }
+  | { kind: "unreadable" }
+  | { kind: "ahead"; aheadMs: number; thresholdMs: number }
+  | { kind: "fresh"; ageMs: number; thresholdMs: number }
+  | { kind: "stale"; ageMs: number; thresholdMs: number };
+
+export function judgeBeacon(
+  beaconPath: string,
+  nowMs: number = Date.now(),
+  cadence: WatchCadence = CADENCE,
+): BeaconVerdict {
+  let present: boolean;
+  try {
+    present = lstatSync(beaconPath) !== undefined;
+  } catch {
+    present = false;
+  }
+  if (!present) {
+    return { kind: "absent" };
+  }
+  const beacon = readBeacon(beaconPath);
+  if (beacon === undefined) {
+    return { kind: "unreadable" };
+  }
+  const thresholdMs = effectiveThresholdMs(beacon, cadence);
+  const ageMs = nowMs - Date.parse(beacon.writtenAt);
+  if (ageMs < -BEACON_FUTURE_TOLERANCE_MS) {
+    return { kind: "ahead", aheadMs: -ageMs, thresholdMs };
+  }
+  if (ageMs > thresholdMs) {
+    return { kind: "stale", ageMs, thresholdMs };
+  }
+  return { kind: "fresh", ageMs, thresholdMs };
+}
+
+/** Counts, for the guard. The classification itself is not repeated. */
+export function surveyTasks(fleet: Fleet): { open: number; unreadable: number } {
+  const survey = surveyTaskRecords(fleet);
+  return {
+    open: survey.open.length,
+    // A survey that could not complete is counted with the records it
+    // could not read: both mean "work this fleet cannot be shown to be
+    // free of".
+    unreadable: survey.unreadable.length + survey.problems.length,
+  };
 }
 
 /**
@@ -317,10 +445,10 @@ export function surveyTasks(fleet: Fleet): TaskSurvey {
  *
  * NO HEALTH FROM AN ABSENCE OF EVIDENCE. "Not stale" is only said when
  * this function can point at the evidence for it: either nothing is in
- * flight, or a beacon whose recorded instant is in the past and recent
- * enough. A beacon that is absent, unreadable or dated in the future is
- * the same thing here, no evidence that supervision ran, and it is
- * reported as stale whenever work is in flight.
+ * flight, or a beacon judged fresh. What counts as work in flight comes
+ * from surveyTaskRecords and what a beacon is evidence of comes from
+ * judgeBeacon; this function decides neither of those questions itself,
+ * so doctor and the guard cannot answer them differently.
  */
 export function guard(
   fleet: Fleet,
@@ -329,25 +457,14 @@ export function guard(
 ): GuardReport {
   const survey = surveyTasks(fleet);
   const inFlight = survey.open + survey.unreadable;
-  const beacon = readBeacon(fleet.beaconPath);
-  const rawAgeMs =
-    beacon === undefined ? undefined : nowMs - Date.parse(beacon.writtenAt);
-  const ahead = rawAgeMs !== undefined && rawAgeMs < -BEACON_FUTURE_TOLERANCE_MS;
-  const beaconAgeMs = ahead ? undefined : rawAgeMs;
-
-  /**
-   * CR-503: the watcher's OWN declared cadence, recorded in the beacon it
-   * wrote, sets the floor for what counts as stale. Without this the
-   * threshold is whatever the READING process happens to be configured
-   * with, so a guard configured for a short cadence can call a healthy
-   * watcher running at a long one stale, which trains an operator to
-   * ignore the warning and ends in the same place as a guard that never
-   * warns at all.
-   */
-  const declaredFloorMs =
-    beacon === undefined ? 0 : beacon.intervalMs + cadence.pollIntervalMs;
-  const thresholdMs = Math.max(cadence.staleThresholdMs, declaredFloorMs);
-  const thresholdSeconds = Math.round(thresholdMs / 1000);
+  const verdict = judgeBeacon(fleet.beaconPath, nowMs, cadence);
+  const beaconAgeMs =
+    verdict.kind === "fresh" || verdict.kind === "stale" ? verdict.ageMs : undefined;
+  const thresholdSeconds = Math.round(
+    (verdict.kind === "absent" || verdict.kind === "unreadable"
+      ? cadence.staleThresholdMs
+      : verdict.thresholdMs) / 1000,
+  );
   const flight =
     survey.unreadable === 0
       ? `${String(inFlight)} open task(s)`
@@ -363,24 +480,37 @@ export function guard(
       detail: "no open tasks: nothing is in flight to supervise",
     };
   }
-  if (beaconAgeMs === undefined) {
-    const why =
-      ahead
-        ? `the beacon at ${fleet.beaconPath} is dated ` +
-          `${String(Math.round(-(rawAgeMs as number) / 1000))}s in the FUTURE, so it is ` +
-          `no evidence that supervision ran (the clock moved backwards under it)`
-        : `no readable beacon at ${fleet.beaconPath}`;
+  if (verdict.kind === "absent" || verdict.kind === "unreadable") {
     return {
       inFlight,
       unreadable: survey.unreadable,
       beaconAgeMs,
       stale: true,
       detail:
-        `watcher stale: ${flight} in flight and ${why}; start "tiphys watch" or ` +
-        `schedule "tiphys watch --once" at least every ${String(thresholdSeconds)}s`,
+        `watcher stale: ${flight} in flight and no readable beacon at ` +
+        `${fleet.beaconPath}; start "tiphys watch" or schedule ` +
+        `"tiphys watch --once" at least every ${String(thresholdSeconds)}s`,
     };
   }
-  if (beaconAgeMs > thresholdMs) {
+  if (verdict.kind === "ahead") {
+    // CR-510: the remediation names the action that actually clears this.
+    // Restarting the watcher does not: writeBeacon keeps a beacon that is
+    // already ahead of the clock ahead of it, one millisecond per
+    // evaluation, so a healthy watcher cannot walk it back.
+    return {
+      inFlight,
+      unreadable: survey.unreadable,
+      beaconAgeMs,
+      stale: true,
+      detail:
+        `watcher stale: ${flight} in flight and the beacon at ${fleet.beaconPath} is ` +
+        `dated ${String(Math.round(verdict.aheadMs / 1000))}s in the FUTURE, so it is ` +
+        `no evidence that supervision ran (the clock moved backwards under it); ` +
+        `remove that file and let the next evaluation write it from the present, ` +
+        `because restarting the watcher alone will not clear it`,
+    };
+  }
+  if (verdict.kind === "stale") {
     return {
       inFlight,
       unreadable: survey.unreadable,
@@ -388,7 +518,7 @@ export function guard(
       stale: true,
       detail:
         `watcher stale: ${flight} in flight and ` +
-        `${fleet.beaconPath} is ${String(Math.round(beaconAgeMs / 1000))}s old ` +
+        `${fleet.beaconPath} is ${String(Math.round(verdict.ageMs / 1000))}s old ` +
         `(threshold ${String(thresholdSeconds)}s); supervision may have stopped`,
     };
   }
@@ -399,7 +529,7 @@ export function guard(
     stale: false,
     detail:
       `watcher fresh: ${flight} in flight, beacon ` +
-      `${String(Math.round(beaconAgeMs / 1000))}s old`,
+      `${String(Math.round(verdict.ageMs / 1000))}s old`,
   };
 }
 
