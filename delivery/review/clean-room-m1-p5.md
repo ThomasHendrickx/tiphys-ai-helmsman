@@ -1488,3 +1488,297 @@ Merge subject to the standing conditions this review cannot supply: CI
 green on 1807951 on Node 26, which is the authority for every floor-gated
 assertion above, and the second reviewer's own delta pass on their two
 blocking findings.
+
+## Final confirmation (head 98c635e)
+
+Criteria lens, narrow confirmation of the final round. Delta
+1807951..98c635e: six files (src/liveness.ts, src/watcher.ts,
+src/commands/doctor.ts, test/liveness.test.ts, test/behaviors.json,
+delivery/work-history/m1-p5.md). Private clone at 98c635e, npm ci from
+clean, every claim below is my own execution unless marked as read.
+
+### VERDICT: APPROVE
+
+The round closed my four lows, and it closed the two structural ones by
+factoring rather than by correcting duplicates, which is the disposition
+that survives a later one-sided edit. No criterion regressed under
+re-execution. Two new lows, neither blocking, both documentation-shaped
+and both of the same class as CR-509: a sentence a later phase will read
+as instruction and act on.
+
+### Per-finding status
+
+| ID | Status | Evidence |
+|---|---|---|
+| CR-508 | CLOSED, by execution and by reading | control against 1807951 below |
+| CR-509 | CLOSED, corrected form rebuilt and measured | exit 78 vs exit 1, below |
+| CR-510 | CLOSED as to the message half; decline of the repair half upheld | advisory text asserted, below |
+| CR-511 | CLOSED | warning 9 now prescribes a 120s budget, all figures labelled floors |
+| NEW-1 (failure lens) | closed as read, not re-walked, outside my lens | shared classifier, tests present |
+
+### Probe 1: CR-508 closed structurally
+
+By reading: src/commands/doctor.ts contains no comparison against a
+threshold. The only arithmetic left in checkBeacon is millisecond to
+second presentation (lines 274, 280, 285); the verdict and the threshold
+both arrive from judgeBeacon in src/liveness.ts, which computes the floor
+through effectiveThresholdMs. So the CR-503 declared-cadence floor now
+applies wherever beacon freshness is judged, by construction rather than
+by two sites agreeing.
+
+By execution, one fleet, one open task, one beacon written 300s ago by a
+watcher declaring a 900s cadence, read by a process configured for a 12s
+threshold. Same fleet shape against both heads:
+
+    1807951  CHECK beacon WARN beacon present but 300s old, past the
+             12s freshness threshold
+             guard advisory lines on stderr: 0
+    98c635e  CHECK beacon PASS beacon present, age 300s
+             (freshness threshold 901s)
+             guard advisory lines on stderr: 0
+
+The pre-round contradiction (doctor warning about a file the guard in the
+same run reports nothing about) is gone, and it is gone in the direction
+that keeps the healthy watcher healthy. Under `doctor --for watch` the
+new head returns the identical PASS line, so the watch profile no longer
+promotes a fabricated staleness to a failure.
+
+Independent red witness for the shared verdict, my own sabotage rather
+than the implementer's: I gave checkBeacon back its own comparison
+(`verdict.ageMs > CADENCE.staleThresholdMs` plus a threshold string read
+from CADENCE) and ran the registered behavior three times. Red 3/3
+("doctor disagreed with the guard about one beacon"). Source restored
+byte-for-byte, `git diff --stat src/` empty afterwards. G3b is real.
+
+### Probe 2: regression sweep across the refactored sites
+
+Full suite from a removed dist/: exit 0, tests 136, pass 134, fail 0,
+cancelled 0, skipped 2, todo 0. The two skips are the unchanged M1-P2
+floor-gated pair (doctor exits 0 in a healthy fleet; doctor exits 0 with
+gh absent), both carrying the local-Node reason string. Wall time 80.1s,
+inside the 120s budget warning 9 now prescribes.
+
+Re-executed directly, not merely inherited from the green suite:
+
+- Both entry modes. `watch --once` on an open task with no signal: exit
+  3, empty stdout, beacon present afterwards. `watch --once` on a torn
+  meta: `stale torn meta`, exit 0. Resident `watch` under a 1s poll:
+  started, wrote a beacon (`backoffStreak 0`, `intervalMs 60000`), exited
+  silently on SIGINT with empty stdout and stderr. Unchanged.
+- Guard freshness boundary. Injected clock, default cadence
+  (poll 15s, backoff cap 900s, stale threshold 1200s). At 1199999ms
+  fresh, at exactly 1200000ms fresh, at 1200001ms stale: the comparison
+  is still strictly greater-than, so the boundary did not move under the
+  refactor. Worst-case gap (backoff cap plus poll) is 915000ms, still
+  well inside the 1200000ms threshold, and with the beacon declaring the
+  backoff cap the effective threshold stays 1200000ms. Future tolerance
+  boundary unchanged: -4999ms and -5000ms are fresh with a negative age
+  reported, -5001ms flips to stale with beaconAgeMs undefined, which is
+  byte-for-byte the pre-round behavior.
+- Advisory line counts and exit codes, five beacon states on a fleet with
+  one open task. fresh: 0 advisory lines, 0 stderr lines total. stale,
+  absent, unreadable, future: exactly 1 advisory line each, 1 stderr line
+  total each, no doubling. In every one of the five the CHECK line and
+  the advisory agree about the same file. The future case carries the
+  CR-510 text.
+- Load-time invariant failure. `TIPHYS_WATCH_STALE_SECONDS=abc` still
+  exits 1 with a 13-line raw trace at src/liveness.ts:116. Unchanged, and
+  correctly still recorded as the seam this phase does not own.
+- doctor per-check output shape. Eight CHECK lines, same names, same
+  order (node, git, gh, layout, remote, lock, beacon, identity), same
+  `CHECK <name> <STATUS> <detail>` form. Nothing this round produces a
+  line doctor's own tests do not already pin.
+
+Nothing I had confirmed on the previous head stopped holding.
+
+### Probe 3: CR-509
+
+The corrected guidance prescribes exactly the form I proved works, and it
+states why the original cannot. I rebuilt both forms again from this head
+and re-measured against the same input:
+
+    static  `import { run }` at top, try/catch in the body:
+            exit 1, raw stack trace at src/liveness.ts
+    dynamic `await import("../src/cli.ts")` inside the try:
+            exit 78, one line, `tiphys:
+            TIPHYS_WATCH_STALE_SECONDS="abc" is not a positive number
+            of seconds`
+
+Warning 7 now names the dynamic import inside the try, quotes both
+measurements, and says plainly that the earlier sentence was worse than
+no advice because the two sentences before it rule it out. That is the
+right correction and it is aimed at the readers who will act on it.
+CLOSED.
+
+### Probe 4: the half-decline on CR-510
+
+Message half: taken and asserted. The guard advisory now reads `remove
+that file and let the next evaluation write it from the present, because
+restarting the watcher alone will not clear it`, and the registered
+behavior liveness-future-beacon-recovery-named pins both clauses.
+
+Repair half: DECLINING IS RIGHT, and I would have escalated the same way.
+Making writeBeacon resynchronise when the previous stamp is more than the
+tolerance ahead is not a bug fix, it is a change to the beacon's advance
+invariant, and criterion 8 asserts strict advance. An implementer who
+took it would be reinterpreting an owner-approved acceptance criterion
+inside a fix round for a LOW, which is the improvisation CLAUDE.md
+forbids. The round did the three things that make a decline legitimate:
+it named the repair, it named the criterion the repair collides with, and
+it stated the residual state plainly (loud, correctly classified by both
+consumers, names its own recovery, still cannot self-heal). One request
+to the orchestrator, not a finding: the decline currently lives only in a
+work history. Carry it into the M2 backlog or an owner decision record,
+because a limitation recorded only in a phase's own paperwork is a
+limitation that gets rediscovered.
+
+### Probe 5: rulings on the two greens
+
+G3 (0 of 3, concluded a bad sabotage rather than a weak test): RULING,
+the round is correct and the reasoning is sound. The sabotage set
+`backoffCapMs: 0` on the cadence passed to judgeBeacon, but
+effectiveThresholdMs reads the BEACON's declared intervalMs plus the
+reader's pollIntervalMs and never touches backoffCapMs, so the sabotage
+did not alter any value on the path under test. That is a no-op sabotage
+by construction, not a blind test, and G3b (doctor given back its own
+comparison) is the same property staged correctly and is red 3/3 under my
+own hands as well as theirs. Keeping the failed attempt in the record
+with its diagnosis is the behavior the red-witness rule wants.
+
+G5 (the `problems` arm reported unwitnessed, with a stated reason):
+RULING, the disposition is honest but THE STATED REASON IS WRONG, and
+that is a new finding (CR-512 below). The round says forcing the arm
+needs a stat or readdir failure that is neither ENOENT nor a permission
+bit, and that the suite runs as root where permission bits do not bite.
+Both halves of that are true; the conclusion drawn from them is not. A
+self-referential symlink at tasks/<id> makes statSync raise ELOOP, which
+is neither ENOENT nor a permission bit, needs no privileges, and is three
+lines to plant.
+
+### CR-512 (LOW, NEW): the `problems` arm is witnessable, and the record says it is not
+
+The arm is correct. I verified both directions myself.
+
+Reachable, with the construction the record says does not exist:
+
+    symlinkSync(join(fleet, "tasks", "loop"), join(fleet, "tasks", "loop"))
+
+    surveyTaskRecords -> problems: ["the task entry .../tasks/loop could
+      not be examined: Error: ELOOP: too many symbolic links
+      encountered, stat '.../tasks/loop'"]
+    surveyTasks       -> { open: 0, unreadable: 1 }
+    guard             -> inFlight 1, stale true
+    watch --once      -> exit 1, empty stdout, one reason line on stderr
+                         ("tiphys watch: scanning the watcher wake
+                         sources failed: ... ELOOP ...")
+
+And the dangerous state is real and uncaught. I applied G5's sabotage
+(surveyTasks stops adding problems.length; scanUnsafe stops raising) and
+re-ran the same fleet:
+
+    surveyTasks -> { open: 0, unreadable: 0 }
+    guard       -> inFlight 0, stale FALSE
+    watch --once -> exit 3, empty stdout, silent
+
+That is a fleet with a task entry nobody can examine, reported as idle
+and needing no supervision, which is the exact false-reassurance class
+this phase spent three rounds removing. Under that sabotage
+test/liveness.test.ts and test/watcher.test.ts both stay green (30 pass,
+0 fail), confirming the round's own 0/3 measurement. Sources restored;
+`git diff --stat src/` empty.
+
+So: the code is right, the gap is real, and the gap is cheap to close.
+Not blocking, because the behavior is correct and fails toward loudness.
+It is a LOW for the same reason CR-509 was: the work history tells a
+later phase that this arm cannot practically be witnessed, and a later
+phase will believe it. Ask for either the ELOOP witness plus a registered
+behavior, or a corrected sentence that says the arm is witnessable and
+was not witnessed in this round.
+
+### CR-513 (LOW, NEW): doctor's beacon status changed for a dangling symlink, unremarked
+
+judgeBeacon probes presence with `lstat`, where doctor's checkBeacon
+previously used `existsSync`. `existsSync` follows the link and
+`lstat` does not, so a beacon path that is a dangling symlink changed
+category. Same fleet against both heads, beacon replaced by a symlink to
+a nonexistent file:
+
+    1807951  CHECK beacon WARN watcher not running or not scheduled
+             (condition beacon-absent, promotable)
+    98c635e  CHECK beacon FAIL beacon file ... does not parse as a
+             beacon record (no condition, terminal)
+
+A FAIL makes `tiphys doctor` exit nonzero. Locally both heads exit 1
+because the Node floor check FAILs, so the difference is masked here; on
+CI at Node 26, where that check passes, the old head exits 0 on this
+fleet and the new head exits 1. doctor's exit code is an M1-P2
+acceptance criterion, so this is a criterion-visible change introduced as
+a side effect of a refactor and mentioned nowhere.
+
+I am not asking for it to be reverted. The new answer is the better one
+and it is the same rule the shared classifier applies to task records
+(something exists at the path, so it is not evidence of health), which is
+an argument for consistency rather than against the change. What is
+missing is that it was not noticed. Ask for a sentence in the work
+history recording the changed category and the exit-code consequence, and
+ideally a registered behavior pinning it, so a later phase does not meet
+it first in CI.
+
+### Sweep
+
+1. Suite from a removed dist/: exit 0; 136 tests, 134 pass, 0 fail, 0
+   cancelled, 2 skipped (floor-gated pair), 0 todo. Wall time 80.1s.
+2. Build from clean: `npm run build` exit 0, `git status --porcelain`
+   empty afterwards (tsbuildinfo gitignored as designed).
+3. Registry over that live run: 142 mappings, 136 distinct titles, 0
+   unresolvable. Nothing registered at 1807951 was removed or retitled
+   (removed: none; retitled: none).
+4. Rename probe: renaming the title of the test behind
+   liveness-beacon-verdict-shared makes exactly that behavior
+   unresolvable by name, so the registry is load-bearing rather than
+   decorative. Test file restored.
+5. Scope: the six changed paths are the phase's own source and test
+   files plus test/behaviors.json and the phase work history, both
+   standing pre-authorized extras. No file outside the phase.
+6. Conventions: non-ASCII scan over all six changed files, grep exit 1
+   (clean). Em-dash scan, grep exit 1 (clean). English only.
+7. C-1: state is read from tasks/<id>/meta.json through readTaskMeta and
+   from the beacon record, never from a log tail. The refactor moved the
+   read into one classifier and did not change what it reads.
+8. C-2: no pid, no process liveness, no signals, no /proc anywhere in the
+   three changed source files (grep exit 1). Liveness is still beacon
+   freshness, and the new judgeBeacon is the only place that decides it.
+9. C-3: no detached spawn and no unref in the changed sources (grep exit
+   1). The resident watcher still runs in the foreground.
+
+### Regressions
+
+None. Every criterion I re-executed returns what it returned on 1807951,
+including the two the refactor most endangered (the criterion-12 boundary
+sweep, whose comparison moved into a shared helper, and the criteria
+10/11 advisory line counts, whose detail strings were rewritten). The
+dangling-symlink change in CR-513 is a category change in the safe
+direction on a state no criterion pins, which is why it is a new low
+rather than a regression.
+
+### Merge recommendation
+
+MERGE. The round's disposition is the correct one: it read two findings
+of the same shape as one property enforced in two places and removed the
+second place, rather than making the two copies agree. doctor now judges
+nothing about freshness, the watcher classifies nothing about task
+records, and both tests assert agreement between callers rather than each
+caller separately, which is what makes a future one-sided edit fail
+loudly. My four lows are closed, three of them under my own execution.
+The half-decline on CR-510 is correct and correctly documented.
+
+CR-512 and CR-513 are both single sentences of work history plus, if the
+orchestrator wants them, one cheap test each. Neither blocks merge.
+CR-512 is the one I would actually take, because it converts a stated
+impossibility into a three-line test over a genuinely dangerous silent
+state, and because leaving a false limitation in the record is how the
+gap becomes permanent.
+
+Merge subject to the standing condition this review cannot supply: CI
+green on 98c635e on Node 26, which is the authority for the two
+floor-gated skips and for the exit-code question in CR-513.
