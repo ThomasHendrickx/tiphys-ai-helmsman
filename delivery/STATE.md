@@ -10,7 +10,10 @@ is wrong: verify against git and the PR list before trusting it.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
-  review. Milestone exit-test evidence still goes to the owner regardless.
+  review, and DR-0015 extends that to milestone boundaries too: the owner is
+  not an approval step anywhere in execution. Exit tests remain HARD GATES and
+  their evidence is presented to the owner regardless, which is a reporting
+  obligation and not a click.
 
 ## How to resume cold
 
@@ -141,6 +144,7 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
 | DR-0012 delegated merge authority | decided: delegated under dual cross-model clean review; stop fired once on M1-P5 and was lifted for that phase only |
 | DR-0013 schema validator implementation | open, raised by the M3 plan, due before M3-P1 dispatches; recommendation is to extend M2's closed-keyword validator |
 | DR-0014 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface design investigated, report in `delivery/verification/release-verification-interface.md` |
+| DR-0015 owner out of the merge path | decided: dual clean review is the approval, at milestone boundaries too; exit tests stay hard gates and their evidence still goes to the owner |
 
 ## Owner action items
 

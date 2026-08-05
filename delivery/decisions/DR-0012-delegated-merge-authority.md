@@ -32,7 +32,11 @@ These are not owner instructions; they are the orchestrator's own guardrails on 
 
 - **Documentation-only pull requests** (`delivery/**`, `CLAUDE.md`, `.claude/**` with no source, test or workflow change) require one review rather than two. The reason is proportionality, not convenience, and the distinction is recorded rather than exercised silently.
 - **Stop and wait rather than grind.** If a phase needs more than two fix rounds after its first dual review, or if a high-severity finding recurs in the same component across rounds, the orchestrator stops merging that phase and leaves it for the owner with the evidence. That pattern is exactly what M1-P3 cost, and delegated authority is not a licence to repeat it unsupervised.
-- **Never merge across a milestone boundary.** Milestone exit tests remain hard gates and their evidence is presented to the owner regardless of this grant.
+- **Never merge across a milestone boundary.** SUPERSEDED 2026-08-05 by
+  DR-0015, which takes the owner out of the merge path everywhere including
+  milestone boundaries. Half of this limit survives and is not superseded:
+  milestone exit tests remain hard gates and their evidence is presented to
+  the owner regardless. Only the requirement for an owner click is removed.
 - **Never merge anything that changes an owner-reserved matter**: a decision record, the plan's binding conventions, merge authority itself, or anything requiring elevated access.
 - **Never merge on a green suite alone.** Every defect that mattered in this project so far was invisible to a green suite.
 
