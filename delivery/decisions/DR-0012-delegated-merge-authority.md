@@ -40,6 +40,23 @@ These are not owner instructions; they are the orchestrator's own guardrails on 
 
 Tuition T-001 records that an external review on a different model family found two defects that had survived three same-family review rounds, and notes that the blueprint parked reviewer decorrelation "until tuition records a miss that survived every review stage". That condition was met. This decision enacts the parked mitigation as standing practice for the duration of the delegation, and the M3 role briefs should carry the option forward as a charter-level setting.
 
+## Limit reached and lifted, 2026-08-05
+
+The stop-rather-than-grind limit fired on M1-P5. Both clauses were met: two
+fix rounds after the first dual review, and a high-severity finding recurring
+in the same component across rounds (a critical and a high, then a medium,
+then a high). The orchestrator stopped and handed the phase to the owner with
+the evidence and three options rather than taking a third round.
+
+The owner chose to take the fix on 2026-08-05. That lifts the stop for this
+phase only. The limit itself is unchanged and applies again from the next
+phase, and it applies again to M1-P5 if this round does not come back clean
+on both reviews.
+
+Recording this because a limit that is lifted silently is not a limit. The
+sequence that matters is: the limit fired, the orchestrator did not merge,
+the owner decided, and the decision is written down.
+
 ## Evidence
 
 - Merge authority in full assurance mode: delivery/intake/orchestrated-delivery-v1.md section 8.
