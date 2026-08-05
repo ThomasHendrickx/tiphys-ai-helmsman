@@ -51,7 +51,30 @@
 # Falsifiability guard (M1-P6 criterion 5): running local mode with
 # TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 skips the stub squash merge, which must
 # make the harness exit nonzero at C2, where teardown correctly refuses a
-# task whose branch never landed.
+# task whose branch never landed. That guard is itself guarded: the gates
+# workflow runs this path and fails the job if the harness exits 0, and
+# test/exit-test-local.test.ts asserts both that the workflow still wires
+# it and that a failing step is fatal to a run. If you change the failure
+# machinery, expect those to go red; that is their entire purpose.
+#
+# Two couplings that are easy to "optimise away" and must not be:
+#
+#   1. A1 runs the kernel's own npm ci, build and test. That is not
+#      duplication of the CI job's steps: several properties of this
+#      harness's end-to-end witnesses are actually guarded by the unit
+#      suite A1 runs, not by the end-to-end assertions themselves.
+#   2. A1 parses the seeded project's test COUNT with a pinned reporter.
+#      An exit-code-only check passes on a sandbox with zero tests,
+#      because node --test over a glob matching nothing exits 0.
+#
+# Lease timing (PR-203, CR-608): A3 renews once at the end of stage A,
+# which buys the default 900 second lease. Section 4 says stage B has no
+# timing requirement, so an owner approval slower than that leaves the
+# lease expired during stage C. That does not fail the run (expiry does
+# not block a release, src/lock.ts), but the fleet is takeover-able in
+# the middle of a certification run. If the approval will be slow, renew
+# manually: node dist/bin/tiphys.js lock renew --holder <holderId from
+# session.json>.
 
 set -euo pipefail
 
@@ -382,7 +405,13 @@ stage_a() {
   if [ ! -f "${TIPHYS}" ]; then
     die "step A1: ${TIPHYS} does not exist after npm run build"
   fi
-  assert_step A1 "compiled CLI entry present" "${TIPHYS} exists" "${TIPHYS} exists" pass
+  # observed carries a MEASURED fact (the built file's size), not a
+  # restatement of expected: a record whose observed is a literal copy of
+  # its expected asserts its own conclusion and cannot be checked by a
+  # later reader of the bundle (CR-602).
+  assert_step A1 "compiled CLI entry present" \
+    "${TIPHYS} exists and is a non-empty regular file" \
+    "$(wc -c <"${TIPHYS}" | tr -d ' ') bytes at ${TIPHYS}" pass
 
   if [ "${mode}" = "local" ]; then
     toy_remote_path="${work}/toy-sandbox.git"
@@ -399,7 +428,23 @@ stage_a() {
   run_step A1 zero "${work}" "clone the seeded sandbox repository" -- \
     git clone --quiet "${sandbox_remote}" "${seed_clone}"
   run_step A1 zero "${seed_clone}" "seeded project npm ci" -- npm ci
-  run_step A1 zero "${seed_clone}" "seeded project npm test" -- npm test
+  # The reporter is PINNED so the count can be parsed on any toolchain,
+  # and the count is then asserted, because node --test over a glob that
+  # matches nothing EXITS 0: an exit-code-only check passes on a sandbox
+  # with no tests at all, and criterion 1 says "with at least 1 test"
+  # (CR-604). Do not reduce this back to an exit-code check.
+  run_step A1 zero "${seed_clone}" "seeded project npm test" -- \
+    env NODE_OPTIONS=--test-reporter=tap npm test
+  seeded_pass=$(sed -n 's/^# pass \([0-9][0-9]*\)$/\1/p' "${LAST_OUTPUT}" | head -n 1)
+  seeded_fail=$(sed -n 's/^# fail \([0-9][0-9]*\)$/\1/p' "${LAST_OUTPUT}" | head -n 1)
+  outcome="fail"
+  if [ -n "${seeded_pass}" ] && [ "${seeded_pass}" -ge 1 ] && [ "${seeded_fail}" = "0" ]; then
+    outcome="pass"
+  fi
+  assert_step A1 "the seeded project ran at least one passing test and none failing" \
+    "at least 1 passing, 0 failing" \
+    "${seeded_pass:-no} passing, ${seeded_fail:-no} failing (pinned tap reporter)" \
+    "${outcome}"
   assert_commit_identity A1 "${seed_clone}" HEAD "seed commit carries the harness identity"
 
   sandbox_default=$(git -C "${seed_clone}" rev-parse --abbrev-ref HEAD)
@@ -420,7 +465,11 @@ stage_a() {
   if grep -q " FAIL " "${LAST_OUTPUT}"; then
     die "step A2: tiphys doctor exited 0 but printed a FAIL line"
   fi
-  assert_step A2 "doctor printed no FAIL line" "no CHECK line with FAIL" "no CHECK line with FAIL" pass
+  # Measured counts, not a restatement of the expectation (CR-602). The
+  # CHECK-line total is recorded alongside the FAIL total so a bundle
+  # reader can tell "no FAIL lines" from "no output at all".
+  assert_step A2 "doctor printed no FAIL line" "0 FAIL lines" \
+    "$(grep -c " FAIL " "${LAST_OUTPUT}" || true) FAIL lines out of $(grep -c "^CHECK " "${LAST_OUTPUT}" || true) CHECK lines" pass
 
   # doctor --for full promotes gh-missing and remote-missing to FAIL. The
   # fleet remote provisioned above is what makes remote-missing pass
@@ -470,8 +519,16 @@ stage_a() {
   watch_out="${work}/watch.out"
   ( cd "${fleet}" && exec node "${TIPHYS}" watch ) >"${watch_out}" 2>&1 &
   watch_pid=$!
-  note_step A5 executed "harness-owned resident watcher started" \
-    "the harness owns this process, the kernel never backgrounds it (C-3); stdout captured to watch.out"
+  # Owning the process means owning its TERMINATION, on every exit path
+  # and not only the two timeout paths below (CR-601). die() and every
+  # set -e abort between here and the wait at A8 leave this child running
+  # otherwise, and a resident watcher polling an abandoned /tmp fleet has
+  # no termination condition of its own: one leaked probe was still
+  # running two and a half minutes after its harness exited. The trap is
+  # cleared once the wait has reaped the child.
+  trap 'kill "${watch_pid:-}" 2>/dev/null || true' EXIT
+  note_step A5 started "harness-owned resident watcher started" \
+    "the harness owns this process, the kernel never backgrounds it (C-3); stdout captured to watch.out; an EXIT trap kills it on every harness exit path"
 
   beacon="${fleet}/state/watcher.beacon"
   waited=0
@@ -486,6 +543,18 @@ stage_a() {
   done
   assert_step A5 "the resident watcher wrote state/watcher.beacon" \
     "beacon within ${BEACON_TIMEOUT_SECONDS}s" "beacon after ${waited}s" pass
+
+  # A8 asserts that watch.out eventually holds exactly one wake line. On
+  # its own that witnesses a LINE, not a WAKE: a watcher that printed the
+  # line at startup, before any task existed, would satisfy it (CR-603).
+  # Pinning watch.out empty here, after the beacon and before the spawn,
+  # is what makes A8's later content mean "this appeared because the task
+  # ran". A reviewer constructed the unconditional-emit mutation and it
+  # passed A5 to C3; this closes the end-to-end half of that hole.
+  assert_step A5 "the watcher has printed nothing before the task exists" \
+    "watch.out empty at the end of A5" \
+    "$(wc -c <"${watch_out}" | tr -d ' ') bytes in watch.out" \
+    "$([ ! -s "${watch_out}" ] && echo pass || echo fail)"
 
   # --- A6 spawn -------------------------------------------------------------
   brief="${work}/brief.md"
@@ -587,6 +656,8 @@ BRIEF
   rc=0
   wait "${watch_pid}" || rc=$?
   kill "${watchdog_pid}" 2>/dev/null || true
+  # The child is reaped; the CR-601 safety net has nothing left to guard.
+  trap - EXIT
 
   cp "${watch_out}" "${evidence}/output/watch.out"
   record_seq=$((record_seq + 1))
@@ -615,6 +686,17 @@ BRIEF
   run_step A3 zero "${fleet}" "tiphys lock renew before the stage B wait (PR-203)" -- \
     node "${TIPHYS}" lock renew --holder "${TIPHYS_HOLDER_ID}"
 
+  write_session
+}
+
+# The stage A to stage C handoff. recordSeq is what --stage c resumes the
+# record numbering from, so this MUST be written after the last record of
+# the invocation, not merely at the end of stage_a: stage_b_full_pending
+# writes one more record after stage_a returns, and a session file
+# captured before it made --stage c restart at that record's number and
+# overwrite it, destroying the only evidence that stage B was handed to
+# the owner rather than scripted (CR-600).
+write_session() {
   json_object \
     mode "${mode}" \
     work "${work}" \
@@ -689,10 +771,17 @@ stage_c() {
   rm -rf "${check}"
   run_step C1 zero "${work}" "clone the sandbox default branch to inspect the merge" -- \
     git clone --quiet --branch "${sandbox_default}" "${sandbox_remote}" "${check}"
+  # The README this step greps is copied INTO the bundle, and observed
+  # carries the real matched line rather than a copy of expected, so a
+  # later reader can re-derive the verdict from the evidence instead of
+  # taking the record's word for it (CR-602). Without the copy the
+  # captured output for this step is empty, because git clone --quiet is
+  # silent, and the record was unfalsifiable from the bundle alone.
+  cp "${check}/README.md" "${evidence}/output/c1-sandbox-default-README.md"
   if grep -q "exit-test ${TASK_ID} landed a trivial change" "${check}/README.md"; then
     assert_step C1 "the payload's change is on the sandbox default branch" \
-      "the exit-test line present at ${sandbox_default} head ${head_sha}" \
-      "the exit-test line present at ${sandbox_default} head ${head_sha}" pass
+      "a line matching \"exit-test ${TASK_ID} landed a trivial change\" in README.md at ${sandbox_default} head ${head_sha}" \
+      "$(grep -m1 "exit-test ${TASK_ID} landed a trivial change" "${check}/README.md") (copied to output/c1-sandbox-default-README.md)" pass
   elif [ "${TIPHYS_EXIT_TEST_SKIP_STAGE_B:-}" = "1" ]; then
     # Under the falsifiability guard nothing was merged. That is recorded
     # here rather than failing here, so the failure lands on C2, where
@@ -701,8 +790,8 @@ stage_c() {
       "expected under TIPHYS_EXIT_TEST_SKIP_STAGE_B=1; the run must now fail at C2"
   else
     assert_step C1 "the payload's change is on the sandbox default branch" \
-      "the exit-test line present at ${sandbox_default} head ${head_sha}" \
-      "the exit-test line absent at ${sandbox_default} head ${head_sha}" fail
+      "a line matching \"exit-test ${TASK_ID} landed a trivial change\" in README.md at ${sandbox_default} head ${head_sha}" \
+      "no such line in the $(wc -l <"${check}/README.md" | tr -d ' ')-line README.md at ${sandbox_default} head ${head_sha} (copied to output/c1-sandbox-default-README.md)" fail
   fi
   note_step C1 assertion "merged sha recorded" "${sandbox_default} head is ${head_sha}"
 
@@ -758,9 +847,37 @@ validate_bundle() {
     }));
     const problems = [];
     const seen = new Set(records.map((r) => r.data.step));
+    // A step is not covered merely by HAVING a record: a note that
+    // asserts nothing satisfies presence while witnessing nothing, and
+    // CR-600 showed that a step can lose its executing record and keep a
+    // note. So every step must also carry at least one record with an
+    // outcome. B1 is the one deliberate exception: stage B is an owner
+    // authorization that the harness must not pretend to have executed,
+    // so in full mode its only records are the pending-owner-action note
+    // and the approval note, neither of which carries an outcome.
+    const withOutcome = new Set(
+      records.filter((r) => r.data.outcome !== undefined && r.data.outcome !== null)
+        .map((r) => r.data.step),
+    );
     for (const step of expectedSteps.trim().split(/\s+/)) {
       if (!seen.has(step)) {
         problems.push(`no evidence record for step ${step}`);
+      } else if (step !== "B1" && !withOutcome.has(step)) {
+        problems.push(`step ${step} has records but none carrying an outcome`);
+      }
+    }
+    // Full mode must be able to PROVE it stopped and handed stage B to
+    // the owner. That record is the only thing distinguishing a staged
+    // run from one that scripted the authorization, and a sequence bug
+    // silently deleted it while this validator reported success (CR-600).
+    if (mode === "full") {
+      const pending = records.filter(
+        (r) => r.data.step === "B1" && r.data.kind === "pending-owner-action",
+      );
+      if (pending.length === 0) {
+        problems.push(
+          "full mode bundle has no B1 pending-owner-action record: the stage A owner handoff evidence is missing",
+        );
       }
     }
     let tiphysInvocations = 0;
@@ -796,9 +913,20 @@ validate_bundle() {
     if (identityAssertions.length < 2) {
       problems.push(`only ${identityAssertions.length} commit-identity assertions recorded`);
     }
+    // records.length counts what exists at validation time; the C3
+    // record for this very validation is written immediately afterwards,
+    // so the bundle ends up with one more file than this loop saw. Both
+    // numbers are reported, because the single number disagreed with the
+    // file count of the records directory and cost a reader an hour
+    // (CR-606).
     process.stdout.write(
       JSON.stringify(
-        { records: records.length, tiphysInvocations, problems },
+        {
+          recordsValidated: records.length,
+          recordsInBundle: records.length + 1,
+          tiphysInvocations,
+          problems,
+        },
         null,
         2,
       ) + "\n",
@@ -875,6 +1003,9 @@ if [ "${mode}" = "local" ]; then
   echo "m1-exit-test: local mode complete, evidence in ${evidence}"
 elif [ "${stage}" = "a" ]; then
   stage_b_full_pending
+  # Re-write the session AFTER the pending-owner-action record, so
+  # --stage c resumes past it instead of overwriting it (CR-600).
+  write_session
   echo "m1-exit-test: stage A complete. Stage B is the owner's: record the approval, run gh pr merge ${pr_url} --squash, then re-run with --stage c --approval <file>."
 else
   stage_c

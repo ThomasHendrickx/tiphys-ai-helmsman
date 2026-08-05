@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,14 +17,35 @@ import { fileURLToPath } from "node:url";
 /**
  * Tests for the M1 exit-test harness scripts (kernel plan v1, M1-P6).
  *
- * What these tests can and cannot reach: the harness's stages A and C
- * drive tiphys spawn, teardown and watch, which are M1-P4 and M1-P5
- * deliverables. Until those merge, the end-to-end local-mode run cannot
- * execute, and the criteria that depend on it are recorded as deferred
- * in delivery/work-history/m1-p6.md rather than asserted here. What is
- * exercised here is everything the harness owns that does not need those
- * commands: its argument surface, its step registry against section 4,
- * the sandbox seeder, and the stub payload.
+ * What this file covers and what covers the rest. These tests exercise
+ * the harness's own surface: its argument handling, its step registry
+ * against section 4, its failure machinery, the sandbox seeder, and the
+ * stub payload. The end-to-end local-mode run is covered by the gates
+ * workflow, which runs the harness twice per leg: once on the green path
+ * and once with TIPHYS_EXIT_TEST_SKIP_STAGE_B=1, where it must exit
+ * nonzero. Both M1-P4 and M1-P5 are merged and all six acceptance
+ * criteria are discharged in delivery/work-history/m1-p6.md.
+ *
+ * Why the end-to-end run is NOT invoked from this suite, since that is
+ * the obvious thing to reach for (CR-605). The harness's step A1 runs
+ * `npm ci`, `npm run build` and `npm test` with the LIVE repository root
+ * as its working directory. Both consequences were measured against a
+ * real evidence bundle rather than reasoned about:
+ *
+ *   1. Recursion. A1's `npm test` runs the whole suite, this file
+ *      included: the captured output of record 003-A1 contains the
+ *      titles of tests defined here. A test in this file that invoked
+ *      the harness would be re-entered by the harness it invoked.
+ *   2. Concurrent destruction. A1's `npm ci` (record 001-A1, cwd = the
+ *      repository root) removes and reinstalls node_modules. node --test
+ *      runs test files in parallel, so that would delete dependencies
+ *      out from under the other files of the running suite.
+ *
+ * So the falsifiability property is guarded in three places instead:
+ * the CI step above runs the real red path end to end; the test below
+ * asserts the workflow still wires it; and a second test asserts that a
+ * failing step is fatal to a run, which is the general regression the
+ * always-green failure mode would have to pass through.
  *
  * Every test runs git with HOME pointed at an empty directory and
  * GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM pointed at paths that do not
@@ -190,6 +219,86 @@ test("the harness step registry covers every step of section 4 exactly once", ()
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a failed harness step is fatal to the run and is recorded as failed", () => {
+  // The always-green regression is the failure mode this harness is most
+  // exposed to, and the end-to-end red path cannot run from this suite
+  // (see the header). What CAN run here is the machinery that red path
+  // depends on: a step whose observed exit code does not match its
+  // expectation must abort the harness, name the step, and leave a
+  // record whose outcome is "fail".
+  //
+  // The failure is induced from OUTSIDE the harness, by giving it a
+  // repository root whose `npm ci` cannot succeed, rather than by
+  // editing the script. That keeps the test honest about what it
+  // guards: the harness as shipped.
+  const root = scratch();
+  const env = identityLessEnv(root);
+  try {
+    const fakeRepo = join(root, "broken-repo");
+    mkdirSync(join(fakeRepo, "scripts"), { recursive: true });
+    // A package.json with no package-lock.json beside it: `npm ci`
+    // refuses, deterministically and in about a second.
+    writeFileSync(
+      join(fakeRepo, "package.json"),
+      JSON.stringify({ name: "broken", version: "0.0.0", private: true }) + "\n",
+    );
+    copyFileSync(harness, join(fakeRepo, "scripts", "m1-exit-test.sh"));
+
+    const evidence = join(root, "evidence");
+    const result = run("bash", [join(fakeRepo, "scripts", "m1-exit-test.sh"), "--mode", "local", evidence], {
+      cwd: root,
+      env,
+    });
+
+    assert.notEqual(result.status, 0, "the harness exited 0 with a failing step");
+    // Naming the step matters: an abort somewhere else downstream would
+    // also be nonzero, and would not witness the step machinery.
+    assert.match(result.stderr, /FAILED: step A1 \(kernel npm ci\)/);
+
+    const records = readdirSync(join(evidence, "records"))
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => JSON.parse(readFileSync(join(evidence, "records", f), "utf8")) as Record<string, unknown>);
+    const failed = records.filter(
+      (r) => r["step"] === "A1" && r["outcome"] === "fail" && r["exitCode"] !== 0,
+    );
+    assert.equal(
+      failed.length,
+      1,
+      `expected exactly one failing A1 record, got ${JSON.stringify(records, null, 2)}`,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the gates workflow runs the harness falsifiability guard and fails when it exits 0", () => {
+  // The end-to-end red path lives in CI (see the header for why it
+  // cannot live here). This is the guard on that guard: if the workflow
+  // step is deleted or defanged, nothing else in the repository would
+  // notice, and criterion 5 would silently lose its only automated
+  // witness.
+  const workflow = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts\/m1-exit-test\.sh --mode local/,
+    "the gates workflow no longer runs the harness with the stage B skip",
+  );
+  // It must run it as a NEGATIVE assertion: exiting 0 has to fail the
+  // job. A step that merely ran the command would pass whatever it did.
+  assert.match(
+    workflow,
+    /if TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts\/m1-exit-test\.sh[^\n]*\n\s*echo "FALSIFIABILITY GUARD BROKEN/,
+    "the workflow runs the skip path but does not fail the job when the harness exits 0",
+  );
+  // And it must check WHERE it failed, so an unrelated early abort
+  // cannot masquerade as the guard firing.
+  assert.match(workflow, /-C2\.json/);
+  assert.match(workflow, /no C2 record showing a nonzero teardown exit with outcome fail/);
 });
 
 test("the three exit-test scripts declare one harness identity", () => {

@@ -33,6 +33,39 @@ jobs:
       # leg, which the gates fan-in job below turns red.
       - name: M1 exit test (local mode)
         run: scripts/m1-exit-test.sh --mode local "${{ runner.temp }}/m1-exit-evidence"
+      # The falsifiability guard of M1-P6 criterion 5, run as a gate
+      # rather than trusted to a work history (CR-605). The single most
+      # important property of a certification harness is that it CAN
+      # fail; before this step, a regression to unconditionally-green
+      # would have turned nothing red anywhere, because CI ran only the
+      # green path. This costs a second full harness run per leg and that
+      # is the price of the property. Do not delete it to save minutes.
+      - name: M1 exit test falsifiability guard (the harness must be able to fail)
+        run: |
+          set -u
+          evidence="${{ runner.temp }}/m1-exit-falsify"
+          if TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts/m1-exit-test.sh --mode local "${evidence}"; then
+            echo "FALSIFIABILITY GUARD BROKEN: the harness exited 0 with stage B skipped." >&2
+            echo "Nothing was merged, so C2 teardown should have refused and the run should have failed." >&2
+            exit 1
+          fi
+          # Exiting nonzero is necessary but not sufficient: it must fail
+          # at C2 on teardown refusing unlanded work, not somewhere else.
+          node -e '
+            const fs = require("node:fs");
+            const dir = process.argv[1] + "/records";
+            const c2 = fs.readdirSync(dir)
+              .filter((f) => f.endsWith("-C2.json"))
+              .map((f) => JSON.parse(fs.readFileSync(dir + "/" + f, "utf8")))
+              .filter((r) => r.kind === "executed");
+            const failing = c2.filter((r) => r.exitCode !== 0 && r.outcome === "fail");
+            if (failing.length === 0) {
+              console.error("no C2 record showing a nonzero teardown exit with outcome fail");
+              console.error(JSON.stringify(c2, null, 2));
+              process.exit(1);
+            }
+            console.log("falsifiability guard witnessed at C2: exitCode " + failing[0].exitCode);
+          ' "${evidence}"
 
   gates:
     needs: test
