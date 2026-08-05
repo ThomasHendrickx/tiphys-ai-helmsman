@@ -71,6 +71,28 @@ adversarial review before their milestones dispatch. An M2 review that
 moves the gate manifest shape or the coverage input contract lands on three
 M3 phases.
 
+## Carried forward, not yet owned
+
+Items discovered during M1 that belong to a later milestone and have no owner
+yet. Recorded here so they are not rediscovered the expensive way.
+
+- **Non-atomic task metadata write.** `src/task.ts` writes `meta.json` with a
+  plain write, which is the mechanism that produces the torn record the M1-P5
+  guard now has to defend against. Out of scope when found and no reviewer
+  faulted the phase for it. Real M2 item.
+- **Clean presentation of a load-time configuration error.** A malformed
+  watcher cadence environment value fails loudly, which is correct, but
+  presenting it as a usage error rather than a stack trace needs a top-level
+  handler in `bin/tiphys.ts`, a seam no M1 phase owns.
+- **M1-P4's inert liveness hook.** Confirmed dead by two reviewers, left in
+  place because it is not M1-P5's to delete. Remove it when a phase owns
+  `src/spawn.ts`.
+- **Deadline-less abandonment.** A task spawned without a deadline is not
+  auto-detected as abandoned. The plan's own not-proven list says so for M1;
+  it needs an owner in M2 or M4.
+- **A mechanism index** mapping a mechanism to the rules this project has
+  established for it, per tuition T-005. Belongs with the M3 tuition flow.
+
 ## Owner decisions
 
 | Record | State |
