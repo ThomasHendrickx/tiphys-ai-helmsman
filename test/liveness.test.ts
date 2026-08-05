@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -71,6 +72,8 @@ interface CliResult {
   status: number | null;
   stdout: string;
   stderr: string;
+  /** True when the child was killed by this test's own explicit bound. */
+  timedOut: boolean;
 }
 
 function baseEnv(): NodeJS.ProcessEnv {
@@ -81,17 +84,24 @@ function baseEnv(): NodeJS.ProcessEnv {
 
 function runCli(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ): CliResult {
   const result = spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
     cwd: opts.cwd,
     env: opts.env ?? baseEnv(),
+    // An explicit bound where the caller asks for one, killed hard, so a
+    // command that blocks in the kernel cannot hang the suite.
+    ...(opts.timeoutMs === undefined
+      ? {}
+      : { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const }),
   });
   return {
     status: result.status,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+    timedOut:
+      (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT",
   };
 }
 
@@ -687,6 +697,148 @@ test("doctor and the guard return one verdict about one beacon", (t) => {
     /^CHECK beacon WARN beacon present but 902s old, past the 901s freshness threshold$/m,
     late.stdout,
   );
+});
+
+/**
+ * Bound for every child process in the blocking-probe witness. It is
+ * EXPLICIT and it is enforced by spawnSync rather than by the test
+ * runner, because the dangerous state this witness is red against is an
+ * indefinite hang: a regression must fail with a reason line naming the
+ * FIFO, never as an unexplained CI timeout.
+ */
+const BLOCK_PROBE_TIMEOUT_MS = 15_000;
+
+/** Whether this machine can create a named pipe, checked by doing it. */
+function fifoUnsupported(): string | false {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-p5-fifo-check-"));
+  try {
+    const made = spawnSync("mkfifo", [join(dir, "probe")]);
+    if (made.status === 0) {
+      return false;
+    }
+    return `mkfifo is unavailable here (${String(made.error ?? made.status)}); the blocking-probe witness runs on CI`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const fifoSkip = fifoUnsupported();
+
+test("a named pipe at a task record is classified without blocking", { skip: fifoSkip }, (t) => {
+  // FINAL ROUND, NEW-2 (HIGH). The dangerous state is an indefinite hang,
+  // not a wrong answer: opening a FIFO with no writer blocks in the
+  // kernel, it is not an exception, and the classifier used to read
+  // before it probed. That hung guard() and the watcher forever, which
+  // live-locks doctor, spawn and teardown.
+  //
+  // Every child here carries an explicit bound, so a regression fails
+  // with the message below instead of making CI look stuck.
+  const fleet = initFleet(t);
+  openTask(fleet, "healthy");
+  const dir = join(fleet, "tasks", "piped");
+  mkdirSync(dir, { recursive: true });
+  const fifo = join(dir, "meta.json");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0, "could not create the named pipe");
+  assert.equal(lstatSync(fifo).isFIFO(), true, "the planted record is not a named pipe");
+
+  const watched = runCli(["watch", "--once"], {
+    cwd: fleet,
+    timeoutMs: BLOCK_PROBE_TIMEOUT_MS,
+  });
+  assert.notEqual(
+    watched.timedOut,
+    true,
+    `the watcher blocked on the named pipe at ${fifo} and was killed after ` +
+      `${String(BLOCK_PROBE_TIMEOUT_MS)}ms: the record was read before it was probed`,
+  );
+  assert.equal(watched.status, 0, watched.stderr);
+  assert.equal(watched.stdout, "stale piped meta\n");
+
+  // The guard runs in a child too, because a hang inside this process
+  // would hang the whole suite rather than failing this test.
+  const probed = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const { guard } = await import(${JSON.stringify(livenessUrl)});\n` +
+        `const { loadFleet } = await import(${JSON.stringify(
+          new URL("../src/fleet.ts", import.meta.url).href,
+        )});\n` +
+        `process.stdout.write(JSON.stringify(guard(loadFleet(process.argv[1]))));`,
+      fleet,
+    ],
+    { encoding: "utf8", env: baseEnv(), timeout: BLOCK_PROBE_TIMEOUT_MS, killSignal: "SIGKILL" },
+  );
+  assert.notEqual(
+    (probed.error as NodeJS.ErrnoException | undefined)?.code,
+    "ETIMEDOUT",
+    `the guard blocked on the named pipe at ${fifo} and was killed after ` +
+      `${String(BLOCK_PROBE_TIMEOUT_MS)}ms: the record was read before it was probed`,
+  );
+  const report = JSON.parse(probed.stdout) as GuardReport;
+  // Two records in flight: the healthy open task and the pipe, which is
+  // not evidence that anything finished.
+  assert.equal(report.inFlight, 2, JSON.stringify(report));
+  assert.equal(report.unreadable, 1, JSON.stringify(report));
+});
+
+test("a task entry that cannot be examined is counted and reported", (t) => {
+  // FINAL ROUND, CR-512. The reviewer disproved this phase's claim that
+  // the incomplete-survey arm could not practically be witnessed: a
+  // self-referential symlink raises ELOOP, which is neither a missing
+  // file nor a permission bit and needs no privileges. The dangerous
+  // state is a fleet holding an entry nobody can examine being reported
+  // as idle and needing no supervision.
+  const fleet = initFleet(t);
+  const loop = join(fleet, "tasks", "loop");
+  symlinkSync(loop, loop);
+
+  const report = guard(loadFleet(fleet));
+  assert.equal(report.inFlight, 1, `an unexaminable entry was read as an idle fleet: ${report.detail}`);
+  assert.equal(report.unreadable, 1);
+  assert.equal(report.stale, true, report.detail);
+
+  const watched = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(watched.status, 1, `the watcher stayed quiet: ${JSON.stringify(watched)}`);
+  assert.equal(watched.stdout, "");
+  assert.equal(
+    watched.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${watched.stderr}`,
+  );
+  assert.match(watched.stderr, /ELOOP/);
+  assert.ok(watched.stderr.includes(loop), watched.stderr);
+});
+
+test("a beacon that is a dangling symlink is a failed check, not an absent one", (t) => {
+  // FINAL ROUND, CR-513. judgeBeacon probes presence with lstat where
+  // doctor's check previously used existsSync, so a beacon path that is a
+  // dangling symlink moved from "absent" (WARN, promotable) to
+  // "unreadable" (FAIL, terminal), which changes doctor's exit code on a
+  // floor-satisfying runner. The new answer is the one the shared rule
+  // requires: something exists at that path, so it is not evidence of
+  // health. Pinned here so it is a decision rather than an accident.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  openTask(fleet, "t1");
+  symlinkSync(join(fleet, "state", "nowhere.beacon"), fleetPaths.beaconPath);
+
+  const doctored = runCli(["doctor"], { cwd: fleet });
+  assert.match(
+    doctored.stdout,
+    /^CHECK beacon FAIL beacon file .* does not parse as a beacon record$/m,
+    doctored.stdout,
+  );
+  // A FAIL is terminal: no profile promotion applies, and doctor exits
+  // nonzero on any runner.
+  assert.notEqual(doctored.status, 0);
+  assert.match(doctored.stdout, /^CHECK beacon FAIL /m);
+
+  // The guard reads the same file through the same verdict: no evidence
+  // that supervision ran, so work in flight is stale.
+  const report = guard(fleetPaths);
+  assert.equal(report.stale, true, report.detail);
+  assert.equal(report.beaconAgeMs, undefined);
 });
 
 test("an unreadable beacon counts as no supervision", (t) => {

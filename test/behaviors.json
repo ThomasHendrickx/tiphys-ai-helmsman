@@ -140,5 +140,8 @@
   "liveness-malformed-cadence-refused": "a malformed cadence value is refused, never silently defaulted",
   "liveness-task-record-classification-shared": "the watcher and the guard agree on every task-record shape",
   "liveness-beacon-verdict-shared": "doctor and the guard return one verdict about one beacon",
-  "liveness-future-beacon-recovery-named": "a beacon dated in the future is no evidence that supervision ran"
+  "liveness-future-beacon-recovery-named": "a beacon dated in the future is no evidence that supervision ran",
+  "liveness-fifo-record-does-not-block": "a named pipe at a task record is classified without blocking",
+  "liveness-unexaminable-entry-reported": "a task entry that cannot be examined is counted and reported",
+  "doctor-beacon-dangling-symlink-fails": "a beacon that is a dangling symlink is a failed check, not an absent one"
 }

@@ -293,13 +293,25 @@ export interface TaskSurvey {
  *   by name.
  * - A record that PARSES is authoritative: its status decides open or
  *   closed (plan constraint C-1).
- * - A record that does not parse while SOMETHING EXISTS at the meta.json
- *   path is unreadable, whatever that something is. The existence probe
- *   is lstat, so a directory, a FIFO, a device node and a dangling
- *   symlink all count: each is an entry a person or a script put there,
- *   and none of them is evidence that the task finished.
+ * - THE RECORD IS PROBED BEFORE IT IS READ. Only a path that resolves to
+ *   a REGULAR FILE is ever opened; anything else that exists there (a
+ *   directory, a FIFO, a socket, a device node, a symlink resolving to
+ *   any of those, a dangling symlink) is classified as a record that
+ *   cannot be read WITHOUT opening it. That ordering is load-bearing:
+ *   opening a FIFO with no writer blocks in the kernel and is not an
+ *   exception, so a classifier that read first would hang instead of
+ *   classifying, and would take the guard's three callers down with it.
+ * - A regular file that does not parse is likewise unreadable: it exists
+ *   and it is not evidence that the task finished.
  * - NOTHING at the meta.json path is not a record at all: that is the
  *   normal transient shape of a spawn in progress or a rollback residue.
+ * - Residual, stated rather than papered over: the probe and the read are
+ *   two syscalls, so a path that changes type between them could still be
+ *   opened as something other than a regular file. Nothing in this kernel
+ *   writes that state, closing it would need a second reader (an
+ *   open-nonblocking-then-fstat path) beside readTaskMeta, and a second
+ *   implementation of "read a task record" is exactly what the previous
+ *   round removed.
  *
  * Total by construction: it never raises, because one of its two callers
  * is an advisory that must not be able to take down the command it is
@@ -346,24 +358,64 @@ export function surveyTaskRecords(fleet: Fleet): TaskSurvey {
       continue;
     }
 
-    const meta = readTaskMeta(fleet, id);
-    if (meta !== undefined) {
-      if (meta.status === "open") {
-        open.push(id);
-      }
-      continue;
-    }
+    // PROBE BEFORE READ, and this ordering is the whole point rather than
+    // a style choice (delta review NEW-2). Opening a named pipe for
+    // reading with no writer BLOCKS the process in the kernel: it is not
+    // an exception, so no try/catch and no "this function never raises"
+    // reasoning touches it, and a fleet with a FIFO at a task's meta.json
+    // hung guard() and the watcher forever, which live-locks doctor,
+    // spawn and teardown and is the exact opposite of this module's
+    // warn-never-block charter. Nothing below may open the path until the
+    // probe has established it is a REGULAR FILE.
+    //
+    // lstat first (the link itself), then stat (what it resolves to), so
+    // the two questions are answered separately:
+    //   - nothing there: not a record at all;
+    //   - there but not a regular file after resolution (directory, FIFO,
+    //     socket, device, dangling symlink): a record that cannot be
+    //     read, classified WITHOUT reading it;
+    //   - a regular file: safe to read, and only then is it read.
+    const recordPath = join(fleet.tasksDir, id, "meta.json");
+    let readable: boolean;
     try {
-      lstatSync(join(fleet.tasksDir, id, "meta.json"));
-      unreadable.push(id);
+      lstatSync(recordPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // No record here at all: a spawn in progress, or a rollback
+        // residue.
         continue;
       }
       problems.push(
-        `the task record ${join(fleet.tasksDir, id, "meta.json")} could not be ` +
-          `examined: ${String(error)}`,
+        `the task record ${recordPath} could not be examined: ${String(error)}`,
       );
+      continue;
+    }
+    try {
+      readable = statSync(recordPath).isFile();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // Present as a link, resolving to nothing: it exists, and it is
+        // not evidence that the task finished.
+        unreadable.push(id);
+        continue;
+      }
+      problems.push(
+        `the task record ${recordPath} could not be examined: ${String(error)}`,
+      );
+      continue;
+    }
+    if (!readable) {
+      unreadable.push(id);
+      continue;
+    }
+
+    const meta = readTaskMeta(fleet, id);
+    if (meta === undefined) {
+      unreadable.push(id);
+      continue;
+    }
+    if (meta.status === "open") {
+      open.push(id);
     }
   }
   return { open, unreadable, problems };
