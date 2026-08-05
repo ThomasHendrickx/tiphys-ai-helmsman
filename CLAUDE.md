@@ -222,8 +222,10 @@ Each of these bit someone once. Forward them to every implementer.
    (`env -i bash -c`, and some subagent or hook contexts) resolves it to
    **v20.20.2** via `/usr/local/bin/node`, a symlink to `/opt/node20`. Node 20
    has no TypeScript type stripping, so the suite fails there in a way that
-   does not look like a version problem. Always check `node --version` in the
-   shell you are actually using, and prefer an absolute path or an explicit
+   does not look like a version problem. A second trap in the same family: an
+   exported PATH survives for the rest of a shell invocation, so a run intended
+   to measure the default toolchain can silently measure the floor one. Always
+   check `node --version` in the shell that actually runs the command, and prefer an absolute path or an explicit
    PATH prefix over trusting the ambient one. A reviewer hit this and had to
    run the default-toolchain gates through `bash -lc`.
    The container's default Node is 22.x while the declared floor is `>=26`.
@@ -259,7 +261,12 @@ Each of these bit someone once. Forward them to every implementer.
 7. `--test-name-pattern` must precede the positional test path, or it is
    silently ignored.
 8. `git checkout --` wipes uncommitted sibling edits. Copy before
-   experimenting.
+   experimenting. SHARPER FORM, paid for twice: ANY `git checkout --` in a
+   tree holding uncommitted work is destructive, INCLUDING when it names a
+   single path, and especially the path you have been editing. An implementer
+   used it to clean up one control probe and silently lost four rounds' worth
+   of uncommitted harness edits, having read this warning beforehand. Commit or
+   copy out of tree first; there is no safe narrow form.
 9. `git remote set-url` resolves relative paths against the repository, not
    the current working directory. Use absolute paths in test staging.
 10. Concurrent git operations against one clone contend on ref locks, and
