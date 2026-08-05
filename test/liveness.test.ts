@@ -29,6 +29,7 @@ interface FleetPaths {
 
 interface GuardReport {
   inFlight: number;
+  unreadable: number;
   beaconAgeMs: number | undefined;
   stale: boolean;
   detail: string;
@@ -379,6 +380,146 @@ test("the guard is silent when nothing is in flight and loud when something is",
   const closed = guard(fleetPaths);
   assert.equal(closed.inFlight, 0);
   assert.equal(closed.stale, false);
+});
+
+test("a task whose record cannot be read still counts as in flight", (t) => {
+  // FIX ROUND, second reviewer finding 2 (HIGH), guard half. The
+  // dangerous state is a genuinely open, unsupervised task whose
+  // meta.json was left torn by an interrupted write: the guard used to
+  // drop it from the count and announce "nothing is in flight to
+  // supervise", which is the T-002 shape with the guard manufacturing
+  // the "nobody noticed" half itself.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  openTask(fleet, "torn");
+  writeFileSync(
+    join(fleet, "tasks", "torn", "meta.json"),
+    '{"id":"torn","status":"open", "branch": "task/torn"',
+  );
+
+  const report = guard(fleetPaths);
+  assert.equal(report.inFlight, 1, "an unreadable task record was treated as absent");
+  assert.equal(report.unreadable, 1);
+  assert.equal(report.stale, true, "an unsupervised unreadable task read as healthy");
+  assert.match(report.detail, /watcher stale/);
+  assert.match(report.detail, /unreadable meta\.json/);
+
+  // A task directory with no meta.json at all is not a torn record.
+  rmSync(join(fleet, "tasks", "torn", "meta.json"));
+  const empty = guard(fleetPaths);
+  assert.equal(empty.inFlight, 0);
+  assert.equal(empty.stale, false);
+});
+
+test("a beacon dated in the future is no evidence that supervision ran", (t) => {
+  // FIX ROUND, CR-501. The dangerous state is a clock that moved
+  // backwards under a watcher that has since stopped: a negative age is
+  // never greater than the threshold, so the fleet used to read as
+  // healthy forever, and doctor rounded the age up to a reassuring 0s.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  openTask(fleet, "t1");
+  writeFileSync(
+    fleetPaths.beaconPath,
+    `${JSON.stringify(
+      {
+        writtenAt: new Date(Date.now() + 86_400_000).toISOString(),
+        backoffStreak: 4,
+        intervalMs: CADENCE.backoffCapMs,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  const report = guard(fleetPaths);
+  assert.equal(report.stale, true, "a future-dated beacon silenced the guard");
+  assert.equal(report.beaconAgeMs, undefined);
+  assert.match(report.detail, /watcher stale/);
+  assert.match(report.detail, /FUTURE/);
+
+  const doctored = runCli(["doctor"], { cwd: fleet });
+  assert.equal(
+    staleLines(doctored.stderr).length,
+    1,
+    `doctor did not warn: ${JSON.stringify(doctored.stderr)}`,
+  );
+  assert.match(
+    doctored.stdout,
+    /^CHECK beacon WARN beacon present but dated \d+s in the future, so it is no evidence that supervision ran$/m,
+  );
+  const promoted = runCli(["doctor", "--for", "watch"], { cwd: fleet });
+  assert.match(promoted.stdout, /^CHECK beacon FAIL beacon present but dated /m);
+
+  // Small clock jitter is not a future-dated beacon.
+  writeFileSync(
+    fleetPaths.beaconPath,
+    `${JSON.stringify(
+      {
+        writtenAt: new Date(Date.now() + 1000).toISOString(),
+        backoffStreak: 0,
+        intervalMs: 60_000,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  assert.equal(guard(fleetPaths).stale, false, "ordinary clock jitter read as stale");
+});
+
+test("the freshness floor follows the cadence the watcher itself declared", (t) => {
+  // FIX ROUND, CR-503, the cry-wolf direction of the same class. The
+  // dangerous state is a guard configured for a short cadence reading a
+  // beacon written by a healthy watcher running a long one: before the
+  // fix it called that watcher stale, and a guard that cries wolf is
+  // ignored exactly like one that never warns.
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  openTask(fleet, "t1");
+  const writtenMs = Date.now();
+  writeFileSync(
+    fleetPaths.beaconPath,
+    `${JSON.stringify(
+      { writtenAt: new Date(writtenMs).toISOString(), backoffStreak: 6, intervalMs: 900_000 },
+      null,
+      2,
+    )}\n`,
+  );
+  const shortCadence = {
+    baseIntervalMs: 1000,
+    pollIntervalMs: 1000,
+    backoffCapMs: 10_000,
+    staleThresholdMs: 12_000,
+  };
+
+  // 13s old: past the reader's own 12s threshold, well inside the 900s
+  // cadence the beacon says the watcher is running.
+  const report = guard(fleetPaths, writtenMs + 13_000, shortCadence);
+  assert.equal(report.stale, false, `a healthy watcher read as stale: ${report.detail}`);
+
+  // Past the watcher's OWN declared interval plus one poll, it is stale
+  // under the same configuration, so the floor is not a blanket silence.
+  const past = guard(fleetPaths, writtenMs + 900_000 + 1000 + 1, shortCadence);
+  assert.equal(past.stale, true, "the declared-cadence floor never expires");
+});
+
+test("a malformed cadence value is refused, never silently defaulted", (t) => {
+  // FIX ROUND, CR-502. The dangerous state is an operator or harness
+  // whose TIPHYS_WATCH_* value is a typo: falling back to the default
+  // would leave them believing a threshold applies that does not. The
+  // failure is loud, and it names the variable and the value.
+  void t;
+  const load = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", `await import(${JSON.stringify(livenessUrl)});`],
+    {
+      encoding: "utf8",
+      env: { ...baseEnv(), TIPHYS_WATCH_STALE_SECONDS: "twenty" },
+    },
+  );
+  assert.notEqual(load.status, 0, "a malformed cadence value loaded successfully");
+  assert.match(load.stderr ?? "", /TIPHYS_WATCH_STALE_SECONDS="twenty"/);
+  assert.match(load.stderr ?? "", /is not a positive number of seconds/);
 });
 
 test("an unreadable beacon counts as no supervision", (t) => {

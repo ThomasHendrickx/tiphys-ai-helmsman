@@ -129,5 +129,13 @@
   "liveness-fresh-at-maximum-backoff": "the guard reports fresh across the whole gap between two heartbeats",
   "liveness-cadence-invariant-enforced": "a cadence that would make a healthy watcher stale fails at load",
   "liveness-in-flight-required": "the guard is silent when nothing is in flight and loud when something is",
-  "liveness-unreadable-beacon-stale": "an unreadable beacon counts as no supervision"
+  "liveness-unreadable-beacon-stale": "an unreadable beacon counts as no supervision",
+  "watcher-stuck-claim-loud": "a stranded seen-state claim fails loudly instead of reporting no-wake",
+  "watcher-unreadable-meta-surfaced": "a task record that cannot be read is surfaced, not skipped",
+  "watcher-heartbeat-ordinal-from-disk": "the heartbeat ordinal is recomputed from the cadence file",
+  "liveness-unreadable-meta-in-flight": "a task whose record cannot be read still counts as in flight",
+  "liveness-future-beacon-not-evidence": "a beacon dated in the future is no evidence that supervision ran",
+  "doctor-beacon-future-warn": "a beacon dated in the future is no evidence that supervision ran",
+  "liveness-declared-cadence-floor": "the freshness floor follows the cadence the watcher itself declared",
+  "liveness-malformed-cadence-refused": "a malformed cadence value is refused, never silently defaulted"
 }

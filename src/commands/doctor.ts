@@ -4,7 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
-import { CADENCE, readBeacon, warnIfWatcherStale } from "../liveness.ts";
+import {
+  BEACON_FUTURE_TOLERANCE_MS,
+  CADENCE,
+  readBeacon,
+  warnIfWatcherStale,
+} from "../liveness.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -270,6 +275,20 @@ function checkBeacon(root: string): CheckResult {
     };
   }
   const ageSeconds = (Date.now() - Date.parse(beacon.writtenAt)) / 1000;
+  // CR-501: a beacon dated in the future is not fresh, it is unusable,
+  // and rounding its age up to zero was this check telling an operator
+  // "age 0s, PASS" about a file that proves nothing. The age is now
+  // reported as it is, and the guard classifies it the same way.
+  if (ageSeconds * 1000 < -BEACON_FUTURE_TOLERANCE_MS) {
+    return {
+      name: "beacon",
+      status: "WARN",
+      detail:
+        `beacon present but dated ${String(Math.round(-ageSeconds))}s in the future, ` +
+        `so it is no evidence that supervision ran`,
+      condition: "beacon-stale",
+    };
+  }
   const rounded = String(Math.max(0, Math.round(ageSeconds)));
   if (ageSeconds * 1000 > CADENCE.staleThresholdMs) {
     return {

@@ -39,6 +39,38 @@ import { fileURLToPath } from "node:url";
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 const srcDir = fileURLToPath(new URL("../src/", import.meta.url));
 
+/**
+ * Library-level probes for the fix round. Imported through computed URLs
+ * because a literal relative import from test/ into src/ fails the build
+ * under rewriteRelativeImportExtensions (TS2878, inherited warning 4).
+ */
+interface CadenceSnapshot {
+  lastHeartbeatAt: string;
+  backoffStreak: number;
+}
+interface FleetPaths {
+  root: string;
+  beaconPath: string;
+  tasksDir: string;
+  stateDir: string;
+}
+const { heartbeatTick } = (await import(
+  new URL("../src/watcher.ts", import.meta.url).href
+)) as {
+  heartbeatTick: (
+    fleet: FleetPaths,
+    state: CadenceSnapshot,
+    cadence: unknown,
+    nowMs: number,
+  ) => number;
+};
+const { CADENCE: cadence } = (await import(
+  new URL("../src/liveness.ts", import.meta.url).href
+)) as { CADENCE: unknown };
+const { loadFleet } = (await import(
+  new URL("../src/fleet.ts", import.meta.url).href
+)) as { loadFleet: (dir: string) => FleetPaths };
+
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: "Watcher Test",
   GIT_AUTHOR_EMAIL: "watcher-test@tiphys.invalid",
@@ -777,6 +809,130 @@ test("the watcher has no process identity and no way to outlive its caller", (t)
     [...new Set(flags)].sort(),
     ["--backoff-cap", "--interval", "--max-heartbeats", "--once", "--poll"],
   );
+});
+
+test("a stranded seen-state claim fails loudly instead of reporting no-wake", async (t) => {
+  // FIX ROUND, second reviewer finding 1 (CRITICAL). The dangerous state
+  // is a claim file left behind by a pass that stopped inside the window:
+  // before the fix every later pass, resident or --once, reported the
+  // ordinary no-wake exit 3 for a genuinely pending turn-end, forever,
+  // while the beacon kept advancing so the guard saw a healthy fleet.
+  //
+  // Real-clock wait, bounded and stated: each pass below spends the
+  // claim's own 5s bounded wait before it can conclude the claim is
+  // stuck, so this test costs about ten seconds.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeTurnEnd(fleet, "t1");
+  const claimPath = join(fleet, "state", "watcher.seen.json.mutex");
+
+  // Arm the fleet first, so there IS a beacon to compare against.
+  assert.equal(runCli(["watch", "--once"], { cwd: fleet }).status, 0);
+  writeTurnEnd(fleet, "t1", 3);
+  const armedBeacon = beaconStampMs(fleet) as number;
+
+  writeFileSync(claimPath, "");
+  const stuck = runCli(["watch", "--once"], { cwd: fleet });
+  assert.notEqual(stuck.status, 0, "a stuck claim was reported as a wake");
+  assert.notEqual(
+    stuck.status,
+    3,
+    `a stuck claim was reported as an ordinary no-wake: ${JSON.stringify(stuck.stderr)}`,
+  );
+  assert.equal(stuck.stdout, "");
+  assert.equal(
+    stuck.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${stuck.stderr}`,
+  );
+  assert.match(stuck.stderr, /supervision is stuck/);
+  assert.ok(
+    stuck.stderr.includes(claimPath),
+    `the reason does not name the claim file: ${stuck.stderr}`,
+  );
+
+  // The turn-end is still pending and the seen state was not advanced,
+  // so nothing was consumed by the failure.
+  assert.ok(existsSync(join(fleet, "tasks", "t1", "turn-end")));
+
+  // And the beacon did NOT advance: supervision did not execute, so the
+  // guard must be able to see it stop. This is the half that makes the
+  // failure reachable by an operator who never reads the watcher's
+  // stderr.
+  assert.equal(
+    beaconStampMs(fleet),
+    armedBeacon,
+    "a pass that could not supervise still refreshed the beacon",
+  );
+
+  // Resident mode behaves the same way rather than looping in silence.
+  const resident = startCli(t, ["watch", "--interval", "30", "--poll", "0.1"], {
+    cwd: fleet,
+  });
+  const residentCode = await resident.waitForExit(20_000);
+  assert.notEqual(residentCode, 0, "the resident watcher treated a stuck claim as a wake");
+  assert.notEqual(residentCode, 3);
+  assert.equal(resident.stdout(), "");
+  assert.match(resident.stderr(), /supervision is stuck/);
+
+  // Removing the debris (the remedy the reason line prints) restores the
+  // pending wake: nothing was lost, it was blocked.
+  rmSync(claimPath);
+  const recovered = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(recovered.status, 0, recovered.stderr);
+  assert.equal(recovered.stdout, "signal t1 turn-end\n");
+});
+
+test("a task record that cannot be read is surfaced, not skipped", (t) => {
+  // FIX ROUND, second reviewer finding 2 (HIGH), watcher half. A
+  // meta.json that exists and does not parse used to make the task
+  // invisible to the watcher: its turn-end would never be surfaced and
+  // nothing said so.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeFileSync(
+    join(fleet, "tasks", "t1", "meta.json"),
+    '{"id":"t1","status":"open", "branch": "task/t1"',
+  );
+
+  const pass = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(pass.status, 0, pass.stderr);
+  assert.equal(pass.stdout, "stale t1 meta\n");
+
+  // A task directory with NO meta.json at all is a different state (a
+  // spawn in progress or a rollback residue) and is not surfaced.
+  rmSync(join(fleet, "tasks", "t1"), { recursive: true, force: true });
+  mkdirSync(join(fleet, "tasks", "t2"), { recursive: true });
+  const quiet = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(quiet.status, 3, quiet.stderr);
+  assert.equal(quiet.stdout, "");
+});
+
+test("the heartbeat ordinal is recomputed from the cadence file", async (t) => {
+  // FIX ROUND, CR-505. The dangerous state is a resident watcher ticking
+  // from a cadence snapshot taken before its wait, which overwrites a
+  // backoff reset written inside that window by a concurrent single
+  // pass. Staged at the library level because the window is
+  // sub-millisecond wide in a real resident loop (see the work history).
+  const fleet = initFleet(t);
+  const fleetPaths = loadFleet(fleet);
+  const cadencePath = join(fleet, "state", "watcher.cadence.json");
+
+  // The snapshot a resident loop would be holding.
+  const snapshot = { lastHeartbeatAt: new Date(Date.now() - 60_000).toISOString(), backoffStreak: 5 };
+  writeFileSync(cadencePath, `${JSON.stringify(snapshot, null, 2)}\n`);
+
+  // A concurrent pass surfaces a wake and resets the backoff.
+  writeFileSync(
+    cadencePath,
+    `${JSON.stringify({ lastHeartbeatAt: new Date().toISOString(), backoffStreak: 0 }, null, 2)}\n`,
+  );
+
+  // The resident then ticks, holding the stale snapshot.
+  const n = heartbeatTick(fleetPaths, snapshot, cadence, Date.now());
+  assert.equal(n, 1, "the heartbeat ordinal was computed from a stale snapshot");
+  const after = JSON.parse(readFileSync(cadencePath, "utf8")) as { backoffStreak: number };
+  assert.equal(after.backoffStreak, 1, "a concurrent backoff reset was overwritten");
 });
 
 test("watch usage errors exit 64 and a non-fleet cwd exits 1", (t) => {

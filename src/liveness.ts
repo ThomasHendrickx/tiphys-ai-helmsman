@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
 import { readTaskMeta } from "./task.ts";
 
@@ -17,12 +18,29 @@ import { readTaskMeta } from "./task.ts";
  *
  * WHAT THE GUARD IS FOR (R-079). Supervision must never silently
  * disappear while work is in flight. So the predicate has TWO halves and
- * both are load-bearing: at least one OPEN task (read from the C-1 state
+ * both are load-bearing: work in flight (read from the C-1 state
  * authority, tasks/<id>/meta.json status, never from a log tail) AND a
- * beacon that is absent or older than the threshold. A fleet with no
+ * beacon that is not evidence of recent supervision. A fleet with no
  * open task cannot be stale, because there is nothing to supervise; a
  * fleet with open tasks and a silent watcher is exactly the T-002
  * incident shape, and the guard says so.
+ *
+ * NO HEALTH FROM AN ABSENCE OF EVIDENCE (fix round). Both halves are
+ * evaluated so that the QUIET outcome is the one that needs evidence,
+ * never the loud one:
+ *
+ *   - in flight counts open tasks AND tasks whose meta.json exists and
+ *     cannot be read, because an unreadable record is not evidence that
+ *     a task finished (second reviewer, finding 2);
+ *   - a beacon that is absent, unparseable, or dated in the FUTURE are
+ *     one class, no evidence that supervision ran (CR-501);
+ *   - the freshness threshold is at least the cadence the watcher itself
+ *     declared in the beacon it wrote, so a differently configured
+ *     reader cannot call a healthy watcher stale (CR-503).
+ *
+ * The first draft of this module got each of these the other way round,
+ * and every one of them turned into a fleet that reported health it
+ * could not support.
  *
  * THE PR-009 INVARIANT, enforced at load. A healthy resident watcher
  * writes the beacon on its heartbeat schedule, which backs off by
@@ -206,9 +224,15 @@ export function readBeacon(beaconPath: string): BeaconRecord | undefined {
 
 /** What the guard reports (the plan's shape, M1-P5 step 2). */
 export interface GuardReport {
-  /** Open tasks, counted from meta.json status only (C-1). */
+  /**
+   * Work this fleet cannot be shown to be free of: tasks whose meta.json
+   * says open, PLUS tasks whose meta.json exists and cannot be read (see
+   * surveyTasks).
+   */
   inFlight: number;
-  /** Beacon age in milliseconds, or undefined when there is no beacon. */
+  /** How many of inFlight are unreadable records rather than open tasks. */
+  unreadable: number;
+  /** Beacon age in milliseconds, or undefined when there is no evidence. */
   beaconAgeMs: number | undefined;
   /** Open work exists and supervision has not been witnessed recently. */
   stale: boolean;
@@ -217,81 +241,164 @@ export interface GuardReport {
 }
 
 /**
- * Count open tasks. A meta.json that does not exist or does not parse is
- * NOT counted: meta.json status is the single current-state authority
- * (C-1) and a file that does not parse carries no status, so counting it
- * would be inventing state. The cost of that choice is bounded (a
- * corrupt meta suppresses an advisory warning, it never suppresses a
- * refusal), and doctor is where an unreadable fleet file is reported.
+ * How far a beacon may sit in the FUTURE before it stops counting as
+ * evidence. Nothing legitimate puts it there: writeBeacon stamps the
+ * current time and only ever bumps by a millisecond to keep the advance
+ * strict. A beacon well ahead of the local clock means the clock moved
+ * backwards under a running watcher (an NTP step, a suspend and resume,
+ * a session resumed on another host), and until it is rewritten from the
+ * present it proves nothing about whether supervision is still running.
+ * The allowance absorbs ordinary jitter and the monotonic bump.
  */
-function countOpenTasks(fleet: Fleet): number {
+export const BEACON_FUTURE_TOLERANCE_MS = 5000;
+
+export interface TaskSurvey {
+  open: number;
+  unreadable: number;
+}
+
+/**
+ * Survey the fleet's tasks. TWO counts, because they are two different
+ * facts and collapsing them is how the guard learned to reassure:
+ *
+ * - open: meta.json parses and says open. The C-1 state authority.
+ * - unreadable: meta.json EXISTS and does not parse. This is NOT
+ *   evidence that the task is closed, and the original implementation
+ *   dropped it from the count, so a fleet with a torn meta.json (which
+ *   src/task.ts can produce, since it writes meta with a plain
+ *   writeFileSync) reported "nothing is in flight to supervise" while a
+ *   real task sat open and unsupervised. Counted as in flight now: the
+ *   guard warns about work it cannot prove is finished.
+ *
+ * A task directory with NO meta.json is neither: there is no record to
+ * be torn, and that is the normal transient shape of a spawn in progress
+ * or a rollback residue.
+ */
+export function surveyTasks(fleet: Fleet): TaskSurvey {
   let entries: string[];
   try {
     entries = readdirSync(fleet.tasksDir);
   } catch {
-    return 0;
+    return { open: 0, unreadable: 0 };
   }
   let open = 0;
+  let unreadable = 0;
   for (const id of entries) {
+    // A task is a DIRECTORY under tasks/; init's own .gitkeep and any
+    // other stray file there is not a task record.
+    try {
+      if (!statSync(join(fleet.tasksDir, id)).isDirectory()) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
     const meta = readTaskMeta(fleet, id);
-    if (meta !== undefined && meta.status === "open") {
-      open += 1;
+    if (meta !== undefined) {
+      if (meta.status === "open") {
+        open += 1;
+      }
+      continue;
+    }
+    try {
+      if (statSync(join(fleet.tasksDir, id, "meta.json")).isFile()) {
+        unreadable += 1;
+      }
+    } catch {
+      // No meta.json at all, or unstattable: not a torn record.
     }
   }
-  return open;
+  return { open, unreadable };
 }
 
 /**
  * The guard predicate (plan step 2). Total: it never raises, whatever
  * the filesystem does, because its callers use it as an advisory.
+ *
+ * NO HEALTH FROM AN ABSENCE OF EVIDENCE. "Not stale" is only said when
+ * this function can point at the evidence for it: either nothing is in
+ * flight, or a beacon whose recorded instant is in the past and recent
+ * enough. A beacon that is absent, unreadable or dated in the future is
+ * the same thing here, no evidence that supervision ran, and it is
+ * reported as stale whenever work is in flight.
  */
 export function guard(
   fleet: Fleet,
   nowMs: number = Date.now(),
   cadence: WatchCadence = CADENCE,
 ): GuardReport {
-  const inFlight = countOpenTasks(fleet);
+  const survey = surveyTasks(fleet);
+  const inFlight = survey.open + survey.unreadable;
   const beacon = readBeacon(fleet.beaconPath);
-  const beaconAgeMs =
+  const rawAgeMs =
     beacon === undefined ? undefined : nowMs - Date.parse(beacon.writtenAt);
-  const thresholdSeconds = Math.round(cadence.staleThresholdMs / 1000);
+  const ahead = rawAgeMs !== undefined && rawAgeMs < -BEACON_FUTURE_TOLERANCE_MS;
+  const beaconAgeMs = ahead ? undefined : rawAgeMs;
+
+  /**
+   * CR-503: the watcher's OWN declared cadence, recorded in the beacon it
+   * wrote, sets the floor for what counts as stale. Without this the
+   * threshold is whatever the READING process happens to be configured
+   * with, so a guard configured for a short cadence can call a healthy
+   * watcher running at a long one stale, which trains an operator to
+   * ignore the warning and ends in the same place as a guard that never
+   * warns at all.
+   */
+  const declaredFloorMs =
+    beacon === undefined ? 0 : beacon.intervalMs + cadence.pollIntervalMs;
+  const thresholdMs = Math.max(cadence.staleThresholdMs, declaredFloorMs);
+  const thresholdSeconds = Math.round(thresholdMs / 1000);
+  const flight =
+    survey.unreadable === 0
+      ? `${String(inFlight)} open task(s)`
+      : `${String(inFlight)} task(s) (${String(survey.unreadable)} with an ` +
+        `unreadable meta.json, which is not evidence they are finished)`;
 
   if (inFlight === 0) {
     return {
       inFlight,
+      unreadable: survey.unreadable,
       beaconAgeMs,
       stale: false,
       detail: "no open tasks: nothing is in flight to supervise",
     };
   }
   if (beaconAgeMs === undefined) {
+    const why =
+      ahead
+        ? `the beacon at ${fleet.beaconPath} is dated ` +
+          `${String(Math.round(-(rawAgeMs as number) / 1000))}s in the FUTURE, so it is ` +
+          `no evidence that supervision ran (the clock moved backwards under it)`
+        : `no readable beacon at ${fleet.beaconPath}`;
     return {
       inFlight,
+      unreadable: survey.unreadable,
       beaconAgeMs,
       stale: true,
       detail:
-        `watcher stale: ${String(inFlight)} open task(s) in flight and no readable ` +
-        `beacon at ${fleet.beaconPath}; start "tiphys watch" or schedule ` +
-        `"tiphys watch --once" at least every ${String(thresholdSeconds)}s`,
+        `watcher stale: ${flight} in flight and ${why}; start "tiphys watch" or ` +
+        `schedule "tiphys watch --once" at least every ${String(thresholdSeconds)}s`,
     };
   }
-  if (beaconAgeMs > cadence.staleThresholdMs) {
+  if (beaconAgeMs > thresholdMs) {
     return {
       inFlight,
+      unreadable: survey.unreadable,
       beaconAgeMs,
       stale: true,
       detail:
-        `watcher stale: ${String(inFlight)} open task(s) in flight and ` +
+        `watcher stale: ${flight} in flight and ` +
         `${fleet.beaconPath} is ${String(Math.round(beaconAgeMs / 1000))}s old ` +
         `(threshold ${String(thresholdSeconds)}s); supervision may have stopped`,
     };
   }
   return {
     inFlight,
+    unreadable: survey.unreadable,
     beaconAgeMs,
     stale: false,
     detail:
-      `watcher fresh: ${String(inFlight)} open task(s) in flight, beacon ` +
+      `watcher fresh: ${flight} in flight, beacon ` +
       `${String(Math.round(beaconAgeMs / 1000))}s old`,
   };
 }

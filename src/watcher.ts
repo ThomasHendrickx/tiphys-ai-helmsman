@@ -18,7 +18,13 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Fleet } from "./fleet.ts";
 import { CADENCE, renderBeacon, readBeacon } from "./liveness.ts";
 import type { WatchCadence } from "./liveness.ts";
-import { executorRecordPath, readTaskMeta, runStep, turnEndPath } from "./task.ts";
+import {
+  executorRecordPath,
+  metaPath,
+  readTaskMeta,
+  runStep,
+  turnEndPath,
+} from "./task.ts";
 
 /**
  * The watcher (kernel plan v1, M1-P5 step 1; R-078, R-079; DR-0007;
@@ -63,15 +69,32 @@ import { executorRecordPath, readTaskMeta, runStep, turnEndPath } from "./task.t
  * completion signals were weak; a proposal to add classification here is
  * a signal-design red flag, not a feature request).
  *
- * THE STALE ENUMERATION IS EXACTLY ONE ENTRY IN M1, deliberately. The
- * plan adds "stale <task-id> deadline" (PR-207) and the plan's own
- * not-proven list states that abandonment of a task launched WITHOUT a
- * deadline is not auto-detected in M1 (recovery is manual teardown).
+ * THE STALE ENUMERATION, and why it has exactly two entries in M1. The
+ * plan's grammar is "stale <what>" for "an open task whose worktree or
+ * meta is in a contradictory state, enumerated in the module docs", and
+ * PR-207 names the first entry:
+ *
+ *   stale <task-id> deadline   the executor record's deadline passed and
+ *                              no turn-end arrived (PR-207)
+ *   stale <task-id> meta       tasks/<id>/meta.json EXISTS and does not
+ *                              parse, so this module cannot establish
+ *                              whether the task is open (fix round,
+ *                              second reviewer finding 2)
+ *
+ * The second entry is the plan's own "meta is in a contradictory state"
+ * clause, not an invention: a record that exists and cannot be read is
+ * the one case where staying quiet would mean asserting "nothing to
+ * supervise here" from evidence this module does not have. A task
+ * directory with NO meta.json at all is a different thing (a spawn in
+ * progress or a rollback residue) and is not surfaced.
+ *
  * Tuition T-002 asked for "task open, no turn-end, worktree dirty" as a
  * wake condition; the declared-deadline half of that is what this module
  * detects, from file evidence alone, and it is witnessed against a spawn
  * that was genuinely stopped mid-payload rather than against a
- * hand-built file state. The deadline-less half is not invented here.
+ * hand-built file state. The deadline-less half is not invented here,
+ * because the plan's own not-proven list states that abandonment of a
+ * task launched WITHOUT a deadline is not auto-detected in M1.
  *
  * WHAT AN EVALUATION IS, and why it matters for the beacon (PR-206,
  * PR-009). An EVALUATION is a pass over the wake sources that also
@@ -105,6 +128,38 @@ import { executorRecordPath, readTaskMeta, runStep, turnEndPath } from "./task.t
  * stop between the two duplicates a wake rather than dropping it). Two
  * passes racing on the same turn-end therefore resolve to exactly one
  * surfacing; the loser reports no-wake.
+ *
+ * NO HEALTH FROM AN ABSENCE OF EVIDENCE (fix round, the property both
+ * reviewers' blocking findings share). Silence from this module means
+ * "there is nothing to surface", and it may only be said about states
+ * this module has POSITIVELY ESTABLISHED. Wherever it cannot establish
+ * one, the output is the loud one, never the quiet one:
+ *
+ *   - a seen-state claim it could not take within the bounded wait is a
+ *     STUCK CLAIM, not ordinary contention: nonzero exit, one reason
+ *     line naming the file, and NO beacon write, so the guard sees
+ *     supervision stop. This is src/lock.ts's rule, adopted verbatim
+ *     rather than reinvented (see the note below).
+ *   - a meta.json that exists and does not parse is surfaced as
+ *     "stale <task-id> meta" rather than skipped.
+ *   - any other raise ends the pass loudly (see the classification
+ *     below).
+ *
+ * WHERE THE STUCK-CLAIM RULE COMES FROM, recorded because it should have
+ * reached this module the first time and did not: src/lock.ts's
+ * applyLeaseMutation has used the identical O_EXCL claim-file pattern
+ * since M1-P3, and its module doc (src/lock.ts, "No steal protocol
+ * exists on purpose (FM-058)") states the rule this module now follows:
+ * a claim file left behind by a mutation that stopped makes later
+ * mutations FAIL LOUDLY after a bounded wait, naming the file for manual
+ * removal, and no code ever breaks someone else's claim. That behavior
+ * was established by M1-P3's CR-204 after the U-2 race investigation
+ * (delivery/verification/u2-race-flake-investigation.md,
+ * delivery/review/clean-room-m1-p3.md). The first draft of this module
+ * copied the mechanism and dropped the loudness, which the second
+ * M1-P5 reviewer reproduced as a permanent, silent loss of every future
+ * turn-end wake. Anyone adding a third claim-file user should read
+ * src/lock.ts first.
  *
  * HOW A RAISED ERROR IS CLASSIFIED, decided once and applied
  * structurally, because this module does filesystem work in a loop and
@@ -333,7 +388,7 @@ export function writeBeacon(
 /** A surfaced wake, or the heartbeat that stands in for one. */
 export type Wake =
   | { kind: "signal"; taskId: string; event: "turn-end"; identity: SignalIdentity }
-  | { kind: "stale"; taskId: string; what: "deadline" }
+  | { kind: "stale"; taskId: string; what: "deadline" | "meta" }
   | { kind: "check"; name: string };
 
 export function wakeLine(wake: Wake): string {
@@ -385,10 +440,31 @@ function deadlineOf(fleet: Fleet, taskId: string): number | undefined {
 function scanUnsafe(fleet: Fleet, nowMs: number): Wake | undefined {
   const ids = (listIfPresent(fleet.tasksDir) ?? []).sort();
   const open: string[] = [];
+  const unreadable: string[] = [];
   for (const id of ids) {
+    // A task is a DIRECTORY under tasks/. Anything else there (init's
+    // own .gitkeep, an operator's note) is not a task record and must
+    // not be reported as one: the loud-on-unknown rule below applies to
+    // task records, and calling every stray file a broken task would be
+    // the cry-wolf failure in the other direction.
+    const entry = statIfPresent(join(fleet.tasksDir, id));
+    if (entry === undefined || !entry.isDirectory()) {
+      continue;
+    }
     const meta = readTaskMeta(fleet, id);
-    if (meta !== undefined && meta.status === "open") {
-      open.push(id);
+    if (meta !== undefined) {
+      if (meta.status === "open") {
+        open.push(id);
+      }
+      continue;
+    }
+    // No health from an absence of evidence: a meta.json that EXISTS and
+    // does not parse leaves this module unable to say whether the task is
+    // open, so it is surfaced rather than skipped. An ABSENT meta.json is
+    // a different state (a spawn in progress, or a rollback residue) and
+    // is not a task record in a contradictory state.
+    if (statIfPresent(metaPath(fleet, id)) !== undefined) {
+      unreadable.push(id);
     }
   }
 
@@ -413,6 +489,11 @@ function scanUnsafe(fleet: Fleet, nowMs: number): Wake | undefined {
     if (deadlineMs !== undefined && deadlineMs <= nowMs) {
       return { kind: "stale", taskId: id, what: "deadline" };
     }
+  }
+
+  const firstUnreadable = unreadable[0];
+  if (firstUnreadable !== undefined) {
+    return { kind: "stale", taskId: firstUnreadable, what: "meta" };
   }
 
   const request = statIfPresent(checkRequestPath(fleet));
@@ -501,10 +582,24 @@ async function maybeHoldForTest(): Promise<void> {
 }
 
 /**
+ * Outcome of the seen-state claim. The STUCK arm is the whole point of
+ * the distinction: a claim that never becomes available is debris from a
+ * pass that stopped inside the window, and treating it as ordinary
+ * contention makes every future pass report no-wake for a genuinely
+ * pending turn-end, forever, while the beacon keeps advancing. That is
+ * the exact failure src/lock.ts refuses to have (no steal protocol,
+ * FM-058: fail loudly after a bounded wait and name the file).
+ */
+type ClaimOutcome =
+  | { kind: "won" }
+  | { kind: "lost" }
+  | { kind: "stuck"; reason: string };
+
+/**
  * Advance the seen state for one surfaced turn-end, under a claim file,
- * stage-then-rename, confirmed by reading it back. Returns false when
- * another pass got there first, which is the loser's cue to report
- * no-wake (PR-204).
+ * stage-then-rename, confirmed by reading it back. "lost" means another
+ * pass got there first, which is the loser's cue to report no-wake
+ * (PR-204). "stuck" means the claim could not be taken at all.
  */
 async function claimSignal(
   fleet: Fleet,
@@ -512,7 +607,7 @@ async function claimSignal(
   identity: SignalIdentity,
   nowMs: number,
   line: string,
-): Promise<boolean> {
+): Promise<ClaimOutcome> {
   const claimPath = `${seenPath(fleet)}.mutex`;
   const deadline = Date.now() + CLAIM_WAIT_TOTAL_MS;
   for (;;) {
@@ -524,12 +619,19 @@ async function claimSignal(
         throw error;
       }
       if (Date.now() >= deadline) {
-        // A claim we could not take means another pass is inside the
-        // window right now, or one stopped inside it. Both resolve the
-        // same way: do not surface, leave the seen state alone, and let
-        // the next pass see the turn-end still pending. Duplicate rather
-        // than drop, never a wake invented on top of an unknown state.
-        return false;
+        // Whether another pass is inside the window right now or one
+        // stopped inside it, this pass cannot establish anything about
+        // this wake, so it says so instead of reporting quiet. No steal
+        // protocol: the file is named for a human to remove, exactly as
+        // src/lock.ts does, and nothing here breaks someone else's claim.
+        return {
+          kind: "stuck",
+          reason:
+            `supervision is stuck: the seen-state claim ${claimPath} was still ` +
+            `present after ${String(CLAIM_WAIT_TOTAL_MS)}ms, so the turn-end of ` +
+            `task ${taskId} could not be surfaced and no wake was reported; if no ` +
+            `other watcher is running, remove that file and re-run`,
+        };
       }
       await sleep(CLAIM_WAIT_POLL_MS);
     }
@@ -538,7 +640,7 @@ async function claimSignal(
     const current = readSeenState(fleet);
     const previous = current[taskId];
     if (previous !== undefined && sameIdentity(previous, identity)) {
-      return false;
+      return { kind: "lost" };
     }
     // Enqueue before suppress (FM-046): the wake record is durable
     // before anything can suppress the wake.
@@ -547,9 +649,9 @@ async function claimSignal(
     atomicWrite(seenPath(fleet), `${JSON.stringify(next, null, 2)}\n`);
     const confirmed = readSeenState(fleet)[taskId];
     if (confirmed === undefined || !sameIdentity(confirmed, identity)) {
-      return false;
+      return { kind: "lost" };
     }
-    return true;
+    return { kind: "won" };
   } finally {
     try {
       unlinkSync(claimPath);
@@ -585,13 +687,15 @@ function claimCheckRequest(fleet: Fleet): string | undefined {
 }
 
 export type SurfaceResult =
-  | { surfaced: true; line: string }
-  | { surfaced: false };
+  | { kind: "surfaced"; line: string }
+  | { kind: "lost" }
+  | { kind: "stuck"; reason: string };
 
 /**
  * Surface a wake: make it durable, suppress repeats where the plan says
- * repeats are wrong, and return the line to print. A false result means
- * another pass owns this wake and this one must report no-wake.
+ * repeats are wrong, and return the line to print. "lost" means another
+ * pass owns this wake and this one must report no-wake; "stuck" means
+ * this pass could not establish anything and must say so out loud.
  */
 export async function surfaceWake(
   fleet: Fleet,
@@ -601,20 +705,26 @@ export async function surfaceWake(
   const line = wakeLine(wake);
   if (wake.kind === "signal") {
     await maybeHoldForTest();
-    const won = await claimSignal(fleet, wake.taskId, wake.identity, nowMs, line);
-    return won ? { surfaced: true, line } : { surfaced: false };
+    const claimed = await claimSignal(fleet, wake.taskId, wake.identity, nowMs, line);
+    if (claimed.kind === "won") {
+      return { kind: "surfaced", line };
+    }
+    if (claimed.kind === "stuck") {
+      return { kind: "stuck", reason: claimed.reason };
+    }
+    return { kind: "lost" };
   }
   if (wake.kind === "check") {
     const name = claimCheckRequest(fleet);
     if (name === undefined) {
-      return { surfaced: false };
+      return { kind: "lost" };
     }
     const named = wakeLine({ kind: "check", name });
     appendWakeRecord(fleet, nowMs, named);
-    return { surfaced: true, line: named };
+    return { kind: "surfaced", line: named };
   }
   appendWakeRecord(fleet, nowMs, line);
-  return { surfaced: true, line };
+  return { kind: "surfaced", line };
 }
 
 export interface WatchOptions {
@@ -670,9 +780,11 @@ async function runStepAsync<T>(
 
 /**
  * Scan and, if there is something to surface, surface it. Returns
- * undefined when there was nothing to surface, which includes losing the
- * race for a wake another pass owns. It writes the beacon ONLY when it
- * surfaces (see the module docs on what an evaluation is).
+ * undefined ONLY when nothing was surfaced and that is a fact this pass
+ * established: no wake pending, or a wake another live pass owns. A
+ * stuck claim returns a loud outcome instead, and the beacon is written
+ * ONLY when a wake is surfaced (see the module docs on what an
+ * evaluation is, and on health from an absence of evidence).
  */
 async function scanAndSurface(
   fleet: Fleet,
@@ -694,7 +806,13 @@ async function scanAndSurface(
     return { code: 1, line: "", reason: surfaced.reason };
   }
   const result = surfaced.value;
-  if (!result.surfaced) {
+  if (result.kind === "stuck") {
+    // Loud, and deliberately WITHOUT a beacon write: supervision did not
+    // execute, so the beacon must be allowed to go stale and the guard
+    // must be allowed to notice.
+    return { code: 1, line: "", reason: result.reason };
+  }
+  if (result.kind === "lost") {
     return undefined;
   }
   // Any surfaced non-heartbeat wake resets the backoff (plan step 1).
@@ -711,13 +829,19 @@ async function scanAndSurface(
  * beacon. Returns the heartbeat ordinal since the last cadence reset,
  * which is the n in "heartbeat <n>".
  */
-function heartbeatTick(
+export function heartbeatTick(
   fleet: Fleet,
   state: CadenceState,
   cadence: WatchCadence,
   nowMs: number,
 ): number {
-  const n = state.backoffStreak + 1;
+  // CR-505: the ordinal is recomputed from the cadence file, never from
+  // the caller's snapshot. A resident watcher reads the cadence before
+  // its wait and ticks after it, so a concurrent single pass that reset
+  // the backoff inside that window would otherwise have its reset
+  // overwritten by snapshot + 1.
+  const current = readCadenceState(fleet) ?? state;
+  const n = current.backoffStreak + 1;
   writeCadenceState(fleet, {
     lastHeartbeatAt: new Date(nowMs).toISOString(),
     backoffStreak: n,
