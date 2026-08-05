@@ -76,11 +76,17 @@
 #   default, because with the owner out of the approval path the stage B
 #   wait is the review pipeline's wall time and is measured in hours.
 #
-#   RECOVERY. Stage C observes the lease and records it either way. If it
-#   lapsed, stage C RECLAIMS it with `lock acquire --take-over --duration
-#   ${CERTIFICATION_LEASE_SECONDS}`, re-exports TIPHYS_HOLDER_ID from the
-#   take-over output, rewrites session.json, and continues. The lapse
-#   record stays in the bundle; recovery does not erase it.
+#   RECOVERY, WHICH IS ATTEMPTED AND NOT GUARANTEED (CR-725). Stage C
+#   observes the lease and records WHICH state it found, by name. If the
+#   fleet is not this run's, stage C ATTEMPTS to reclaim it with `lock
+#   acquire --take-over --duration ${CERTIFICATION_LEASE_SECONDS}`. On
+#   success it re-exports TIPHYS_HOLDER_ID from the take-over output,
+#   rewrites session.json and continues. The kernel REFUSES a take-over
+#   of a live foreign lease ("takeover refused: lock held by <id>,
+#   unexpired until <t>") and of a corrupt lease file, and there the run
+#   stops at A3 with the holder named and the fleet unmutated. The lapse
+#   record stays in the bundle either way; recovery does not erase it,
+#   and the record does not claim it.
 #
 # What each command actually does on an EXPIRED lease, measured, because
 # the previous version of this comment asserted one fact about all three:
@@ -872,8 +878,62 @@ stage_c() {
     note_step A3 observation "the lease survived stage B" \
       "still held by this run: $(head -n 1 "${LAST_OUTPUT}")"
   else
-    note_step A3 observation "THE LEASE DID NOT SURVIVE STAGE B" \
-      "lock status reported: $(head -n 1 "${LAST_OUTPUT}"); expected holder ${TIPHYS_HOLDER_ID}. The fleet was takeover-able during the approval wait, so this run cannot claim exclusive use of the fleet across stage B (DR-0015). Recovering by taking the lease over; the lapse is not erased by the recovery and this record is the report of it."
+    # CR-725. Two defects in the record this branch used to write, both
+    # of them the CR-680 lesson one turn further on ("do not record a
+    # reassurance the run can contradict"):
+    #
+    #   1. It announced the outcome of a take-over that had not been
+    #      attempted yet ("Recovering by taking the lease over"). Against
+    #      a live foreign holder the kernel REFUSES the take-over and the
+    #      run then dies at the very next step, with the bundle carrying
+    #      the announcement. Whether the take-over succeeded is the next
+    #      step's own record; this record's job is to report the state it
+    #      observed, and to say what will be attempted.
+    #   2. It called every state "the lease did not survive stage B".
+    #      This branch fires on FOUR distinct `lock status` outputs and
+    #      three of them are not that: a live foreign holder is a lease
+    #      that survived and was taken, `free` is no lease at all, and
+    #      `corrupt` is an unreadable file. Naming the state observed is
+    #      the difference between a record an operator can act on and a
+    #      record they have to re-derive.
+    #
+    # `lock status` prints exactly one of these first lines (src/commands/lock.ts):
+    #   "held holder <id> acquired <t> expires <t>"
+    #   "expired holder <id> acquired <t> expires <t>"
+    #   "free"
+    #   "corrupt <detail>"
+    local status_line status_state lapse_label lapse_state
+    status_line=$(head -n 1 "${LAST_OUTPUT}")
+    status_state=${status_line%% *}
+    case "${status_state}" in
+      expired)
+        if grep -q "^expired holder ${TIPHYS_HOLDER_ID} " "${LAST_OUTPUT}"; then
+          lapse_label="THIS RUN'S LEASE EXPIRED DURING STAGE B"
+          lapse_state="the lease is still this run's (holder ${TIPHYS_HOLDER_ID}) but expired while stage B was waiting, so the fleet was takeover-able by anyone for part of that wait"
+        else
+          lapse_label="THE LEASE CHANGED HANDS DURING STAGE B AND HAS SINCE EXPIRED"
+          lapse_state="the lease is held by ${status_line#expired holder }, not by this run's holder ${TIPHYS_HOLDER_ID}, and has expired; something else acquired the fleet while stage B was waiting"
+        fi
+        ;;
+      free)
+        lapse_label="THE LEASE WAS GONE AFTER STAGE B"
+        lapse_state="lock status reports no lease at all; this run's lease (holder ${TIPHYS_HOLDER_ID}) was released or the lock file was removed while stage B was waiting"
+        ;;
+      held)
+        lapse_label="THE FLEET IS HELD BY ANOTHER RUN"
+        lapse_state="the lease is live and held by ${status_line#held holder }, not by this run's holder ${TIPHYS_HOLDER_ID}. This is not an expiry: another run holds the fleet right now"
+        ;;
+      corrupt)
+        lapse_label="THE LEASE FILE IS UNREADABLE AFTER STAGE B"
+        lapse_state="lock status reports: ${status_line}. This is not an expiry; the file needs a human before anything is inferred from it"
+        ;;
+      *)
+        lapse_label="THE LEASE STATE AFTER STAGE B WAS NOT RECOGNISED"
+        lapse_state="lock status printed a first line this harness does not classify: ${status_line}"
+        ;;
+    esac
+    note_step A3 observation "${lapse_label}" \
+      "${lapse_state}. Expected: held by holder ${TIPHYS_HOLDER_ID}. Either way this run cannot claim exclusive use of the fleet across stage B (DR-0015), and nothing that follows erases that; this record is the report of it. The NEXT step ATTEMPTS a take-over. It is an attempt, not a result: the kernel refuses a take-over of a live foreign lease and of a corrupt lease file, and in those cases this run stops at that step with the holder named and the fleet unmutated. Whether the attempt succeeded is that step's own record, not this one's claim."
     # --duration is passed EXPLICITLY. A take-over without it silently
     # reverts to the kernel default of 900 seconds, which would re-open
     # the same lapse for the remainder of the run (measured by the

@@ -284,89 +284,373 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
 });
 
 /**
- * Extract one step's `run:` script out of the gates workflow, by the
- * text of its `name:`. Hand-rolled rather than parsed with a YAML
- * library because this project takes no dependencies; it only has to
- * handle the one file in this repository, and it fails loudly if that
- * file's shape changes rather than silently returning nothing.
+ * READING gates.yml: WHAT THIS FILE CAN AND CANNOT ESTABLISH
+ * (rewritten in fix round 4; read this before adding an assertion below)
+ *
+ * The mechanism that cost this phase three rounds: DECIDING WHAT ANOTHER
+ * PROGRAM WILL DO BY PATTERN-MATCHING THE TEXT OF A FILE IT CONSUMES.
+ * Rounds 2 and 3 each answered a review by adding assertions over the
+ * text of `.github/workflows/gates.yml`, and each time the next review
+ * found more ways for the text and GitHub Actions' evaluation of it to
+ * come apart: the same key one node over (CR-721), the same key on a
+ * node the scan never visits (CR-720), the same key spelled with quotes
+ * (CR-722), a value that changes the meaning without changing the
+ * presence (CR-723). By round 3 the whitelist had also started
+ * REJECTING ordinary edits, including `needs: [test, lint]`, which
+ * strengthens the very property being guarded (CR-724).
+ *
+ * A guard that both misses real defangs and blocks ordinary work is
+ * evidence about the approach, not about the whitelist's length. So this
+ * round stops trying to reimplement GitHub's evaluator and states the
+ * boundary instead. Three tiers, each labelled by what actually enforces
+ * it:
+ *
+ *   TIER 1, BEHAVIOUR (sound, executed here). The step's `run:` script is
+ *     extracted and EXECUTED against stub harnesses whose behaviour is
+ *     known, and its exit code is the assertion. This is the only tier
+ *     that measures meaning rather than shape.
+ *
+ *   TIER 2, PINNED STRUCTURE (sound within a pinned file shape). A small
+ *     set of facts that follow from the file itself rather than from
+ *     Actions' evaluation rules: the guard step exists exactly once, it
+ *     is INSIDE the `test` job, and the `gates` fan-in names that job in
+ *     `needs`. The reader below PINS the shapes it accepts and FAILS
+ *     LOUDLY on anything else, which is this project's established
+ *     answer to parsing another program's format (MECHANISMS.md, "PIN
+ *     the format as a controlled input rather than widening the parse").
+ *     Failing closed is why a quoted key can no longer walk past it.
+ *
+ *   TIER 3, THE TWO NEUTRALISING KEYS (bounded, NOT closed). GitHub
+ *     documents exactly two keys that stop a failing step from failing
+ *     its job: `if:` and `continue-on-error:`. Both are refused on the
+ *     guard step, on the `test` job, and on the `gates` job's own step,
+ *     and `continue-on-error:` is refused on the `gates` job. This is a
+ *     DENYLIST over a documented vocabulary, and round 3's argument
+ *     against denylists ("a whitelist fails on any key nobody thought
+ *     of") is answered by measurement rather than by rhetoric: the
+ *     whitelist did not close the class (CR-720, CR-721, CR-722) and did
+ *     reject four legitimate edits (CR-724). A denylist's residual is
+ *     nameable; a whitelist's false positives are paid every edit.
+ *
+ * WHAT IS NOT GUARDED HERE AT ALL, stated so nobody re-derives it:
+ *
+ *   a. Which check branch protection REQUIRES. That is GitHub repository
+ *      configuration, not workflow YAML, and is not readable from the
+ *      tree. It is DR-0004's territory. If `gates` is dropped from the
+ *      required set, every assertion in this file still passes and no
+ *      pull request is gated.
+ *   b. This file. Any assertion below can be deleted, and adding a layer
+ *      that guards it only moves the regress. What catches that is the
+ *      pull-request diff and the scope audit.
+ *   c. A neutralising key outside {`if`, `continue-on-error`}. Bounded by
+ *      GitHub's documented workflow syntax, not measured on a runner.
+ *   d. Actions' `needs` semantics themselves. Tier 2 asserts the fan-in
+ *      NAMES the job; that naming it means consuming its result is read
+ *      from the documentation.
+ *
+ * WHAT ENFORCES (a) AND (c) INSTEAD, empirically and per run: the guard
+ * step prints one distinctive line on its success path, asserted in tier
+ * 1 so it cannot be quietly dropped:
+ *
+ *     falsifiability guard witnessed at C2: exitCode <n>
+ *
+ * A step that did not run prints nothing. So on any head, the live check
+ * is the job log itself, which needs no assumption about YAML at all:
+ *
+ *     gh run view <run-id> --log --job <test job id> | grep -F \
+ *       "falsifiability guard witnessed at C2"
+ *
+ * WHAT REDDENS THIS TEST ON PURPOSE (CR-724: an obstruction that is not
+ * written down reads as a broken test, and the cheap way out of a red
+ * gate is to delete the assertion). Each of these is a decision, not an
+ * accident, and each failure message below says so:
+ *
+ *   - renaming the guard step so "falsifiability guard" no longer
+ *     matches it, or adding a second step whose name also matches;
+ *   - putting `if:` or `continue-on-error:` on the guard step, the
+ *     `test` job, the `gates` job's step, or (for continue-on-error)
+ *     the `gates` job;
+ *   - moving the guard step out of the `test` job, or dropping that job
+ *     from the `gates` fan-in's `needs`;
+ *   - filtering the `pull_request:` trigger;
+ *   - changing the `gates` job's `if:` to anything but `always()`;
+ *   - changing the witness line quoted above.
+ *
+ * Everything else is free. `permissions:`, `timeout-minutes:`, `env:`,
+ * `defaults:`, extra steps, extra jobs, and `needs: [test, lint]` in any
+ * of its three spellings all pass, which is the CR-724 regression this
+ * round is repaying.
  */
-function gatesWorkflow(): string {
-  return readFileSync(
-    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
-    "utf8",
-  );
+
+const WORKFLOW_PATH = fileURLToPath(
+  new URL("../.github/workflows/gates.yml", import.meta.url),
+);
+
+/** The witness line the guard prints on its success path. See above. */
+const GUARD_WITNESS = "falsifiability guard witnessed at C2";
+
+function gatesWorkflowLines(): string[] {
+  return readFileSync(WORKFLOW_PATH, "utf8").split("\n");
 }
 
-/** The block of one job, by name, and the top-level keys it declares. */
-function workflowJob(name: string): { block: string; keys: string[] } {
-  const lines = gatesWorkflow().split("\n");
-  const start = lines.findIndex((l) => l === `  ${name}:`);
+interface Block {
+  /** Index of the block's first line in the whole file. */
+  start: number;
+  /** Index one past the block's last line. */
+  end: number;
+  lines: string[];
+  /** Mapping entries declared at the block's own key indent. */
+  keys: Map<string, string>;
+}
+
+/**
+ * The mapping entries a slice declares at exactly `indent` spaces.
+ *
+ * PINNED, not pattern-matched (CR-722). Round 3 collected keys with
+ * /^ {8}([\w-]+):/ and a YAML-quoted key was simply invisible to it,
+ * which re-opened the two members that round claimed to have closed. The
+ * lesson is not "add quotes to the character class": a name regex
+ * silently returns nothing for every shape it does not know, and an
+ * empty result is indistinguishable from an absence of keys.
+ *
+ * So every line at the key indent must match ONE accepted shape, and
+ * anything else fails the test with the line quoted. Unquoted, double-
+ * quoted and single-quoted keys are all read as the same key. A shape
+ * nobody anticipated (a flow mapping, an anchor, a tab) reddens instead
+ * of passing.
+ */
+function declaredKeys(lines: string[], indent: number, what: string): Map<string, string> {
+  const keys = new Map<string, string>();
+  for (const line of lines) {
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      continue;
+    }
+    assert.doesNotMatch(
+      line,
+      /\t/,
+      `${what}: gates.yml line contains a tab, which this reader will not guess at: ${JSON.stringify(line)}`,
+    );
+    const lead = (/^ */.exec(line)?.[0] ?? "").length;
+    if (lead !== indent) {
+      // Deeper lines belong to some key's value; shallower lines cannot
+      // occur inside an already-sliced block.
+      continue;
+    }
+    const entry = /^ *(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.-]+)) *:(?: +(.*))?$/.exec(line);
+    assert.ok(
+      entry,
+      `${what}: gates.yml has a line at the key indent that this test cannot read as ` +
+        `a single "key: value" entry: ${JSON.stringify(line)}. This test pins the ` +
+        "shapes it accepts and refuses to guess at the rest, because a reader that " +
+        "guesses returns nothing for a shape it does not know and reports that as " +
+        "an absence of keys (CR-722). Either write the entry in the pinned shape or " +
+        "extend this reader deliberately.",
+    );
+    const name = (entry[1] ?? entry[2] ?? entry[3]) as string;
+    keys.set(name, (entry[4] ?? "").trim());
+  }
+  return keys;
+}
+
+/** One top-level job, by name. */
+function workflowJob(name: string): Block {
+  const lines = gatesWorkflowLines();
+  const start = lines.findIndex((l) => /^ {2}(?:"([^"]*)"|'([^']*)'|[A-Za-z0-9_.-]+) *:/.test(l) && declaredKeys([l], 2, "jobs").has(name));
   assert.notEqual(start, -1, `no job named ${name} in gates.yml`);
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i += 1) {
-    if (/^ {2}\S/.test(lines[i] ?? "") || /^\S/.test(lines[i] ?? "")) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      continue;
+    }
+    if ((/^ */.exec(line)?.[0] ?? "").length <= 2) {
       end = i;
       break;
     }
   }
-  const block = lines.slice(start, end).join("\n");
-  const keys = lines
-    .slice(start + 1, end)
-    .map((l) => /^ {4}([\w-]+):/.exec(l))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => m[1] as string);
-  return { block, keys };
+  const slice = lines.slice(start + 1, end);
+  return { start, end, lines: slice, keys: declaredKeys(slice, 4, `job ${name}`) };
 }
 
-function workflowStep(nameFragment: string): {
-  block: string;
-  script: string;
-  keys: string[];
-} {
-  const workflow = gatesWorkflow();
-  const lines = workflow.split("\n");
-  const matches = lines
+/**
+ * One step of one job, by a fragment of its `name:`, together with its
+ * `run:` script.
+ *
+ * The scan looks for the NAME KEY wherever it sits in the list item, not
+ * only as the item's first key. Anchoring on `^ {6}- ` alone (round 3)
+ * meant a step whose first key was something else disappeared from the
+ * scan entirely, and disappearing is the failure mode this whole file
+ * exists to prevent.
+ */
+function workflowStep(
+  job: Block,
+  nameFragment: string,
+): Block & { script: string } {
+  const lines = gatesWorkflowLines();
+  const named = lines
     .map((l, i) => ({ l, i }))
     .filter(
-      ({ l }) => /^ {6}- /.test(l) && l.toLowerCase().includes(nameFragment.toLowerCase()),
+      ({ l }) =>
+        /^ {6}- name:|^ {8}name:/.test(l) &&
+        l.toLowerCase().includes(nameFragment.toLowerCase()),
     );
   // Exactly one, never "the first" (CR-682). A decoy step whose name also
   // matches would be validated in place of the one CI runs, leaving the
   // real step free to be defanged. This is not hypothetical: a full-mode
   // falsifiability guard is a natural thing to add above this one.
   assert.equal(
-    matches.length,
+    named.length,
     1,
-    `expected exactly 1 workflow step matching ${nameFragment}, found ${matches.length}`,
+    `expected exactly 1 workflow step named for "${nameFragment}", found ${named.length}. ` +
+      "Renaming this step, or adding a second step whose name also matches, is a " +
+      "deliberate change: this test identifies the guard by its name and has no " +
+      "other handle on it.",
   );
-  const start = matches[0]?.i ?? -1;
-  assert.notEqual(start, -1, `no workflow step whose name contains ${nameFragment}`);
+  let start = named[0]?.i ?? -1;
+  while (start >= 0 && !/^ {6}- /.test(lines[start] ?? "")) {
+    start -= 1;
+  }
+  assert.ok(
+    start >= 0,
+    `the step named for "${nameFragment}" is not inside a "      - " list item`,
+  );
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i += 1) {
     const line = lines[i] ?? "";
-    if (/^ {6}- /.test(line) || (/^\s*\S/.test(line) && !/^ {7,}/.test(line))) {
+    if (line.trim() === "") {
+      continue;
+    }
+    const lead = (/^ */.exec(line)?.[0] ?? "").length;
+    if (/^ {6}- /.test(line) || lead <= 6) {
       end = i;
       break;
     }
   }
-  const block = lines.slice(start, end).join("\n");
-  const runAt = lines.slice(start, end).findIndex((l) => /^ {8}run: \|/.test(l));
+  const slice = lines.slice(start, end);
+  // The item's first line carries "- name:"; the rest are indent-8 keys.
+  const keys = declaredKeys(
+    [(slice[0] ?? "").replace(/^ {6}- /, " ".repeat(8))].concat(slice.slice(1)),
+    8,
+    `step "${nameFragment}"`,
+  );
+  const runAt = slice.findIndex((l) => /^ {8}(?:"run"|'run'|run) *: *\|/.test(l));
   assert.notEqual(runAt, -1, `step ${nameFragment} has no "run: |" block`);
-  const script = lines
-    .slice(start + runAt + 1, end)
+  const script = slice
+    .slice(runAt + 1)
     .map((l) => (l.startsWith(" ".repeat(10)) ? l.slice(10) : l))
     .join("\n");
   assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
-  // Keys the step declares: "name" comes from the "- name:" line itself,
-  // the rest are the indent-8 keys of the block.
-  const keys = ["name"].concat(
-    lines
-      .slice(start + 1, end)
-      .map((l) => /^ {8}([\w-]+):/.exec(l))
-      .filter((m): m is RegExpExecArray => m !== null)
-      .map((m) => m[1] as string),
+  // CR-720: a step that scans as present anywhere in the file proves
+  // nothing about the job whose result the fan-in consumes. "Extract the
+  // expensive guard into its own job to parallelise" is an ordinary edit
+  // that breaks the chain while leaving every other assertion green.
+  assert.ok(
+    start > job.start && end <= job.end,
+    `the "${nameFragment}" step is not inside the job this test was asked about ` +
+      `(step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). ` +
+      "A guard in a job the required check does not consume gates nothing.",
   );
-  return { block, script, keys };
+  return { start, end, lines: slice, keys, script };
+}
+
+/**
+ * The job names one job depends on, in all three spellings YAML gives
+ * for a sequence: `needs: test`, `needs: [test, lint]`, and a block
+ * sequence on the following lines.
+ *
+ * CR-724 F3: round 3 matched /^\s{4}needs: test$/ and therefore reddened
+ * `needs: [test, lint]`, an edit that makes the fan-in consume MORE jobs
+ * and so STRENGTHENS the property this test exists to protect. Rejecting
+ * it taught the next maintainer that the guard is wrong.
+ */
+function needsOf(job: Block, jobName: string): string[] {
+  const raw = job.keys.get("needs");
+  assert.ok(
+    raw !== undefined,
+    `the ${jobName} job declares no needs:, so no other job's result reaches it`,
+  );
+  const unquote = (s: string): string => s.trim().replace(/^["']|["']$/g, "");
+  if (raw === "") {
+    const at = job.lines.findIndex((l) => /^ {4}(?:"needs"|'needs'|needs) *: *$/.test(l));
+    const out: string[] = [];
+    for (let i = at + 1; i < job.lines.length; i += 1) {
+      const line = job.lines[i] ?? "";
+      if (line.trim() === "" || /^\s*#/.test(line)) {
+        continue;
+      }
+      const item = /^ {6}- +(.*)$/.exec(line);
+      if (!item) {
+        break;
+      }
+      out.push(unquote(item[1] as string));
+    }
+    assert.ok(
+      out.length > 0,
+      `the ${jobName} job's needs: is empty, so no other job's result reaches it`,
+    );
+    return out;
+  }
+  if (raw.startsWith("[")) {
+    return raw
+      .replace(/^\[/, "")
+      .replace(/\]$/, "")
+      .split(",")
+      .map(unquote)
+      .filter((s) => s.length > 0);
+  }
+  return [unquote(raw)];
+}
+
+/**
+ * The keys refused, DERIVED rather than guessed.
+ *
+ * The derivation is published in delivery/work-history/m1-p6.md, fix
+ * round 4: GitHub's workflow syntax is a CLOSED, documented vocabulary,
+ * so the thirteen documented step keys and the nineteen documented job
+ * keys were each asked one question, "can this decouple a failing guard
+ * from a failing required check", and the ones that can are these. That
+ * is what makes a denylist defensible here and a denylist over an
+ * open-world vocabulary indefensible. What the derivation does NOT cover
+ * is written at the top of this section and in the work history.
+ *
+ * `if` and `continue-on-error` were already known. The derivation added
+ * `working-directory`, which decouples differently: it does not stop the
+ * failure propagating, it points the step at a different tree, so the
+ * step can certify a harness that is not this repository's. `shell` is
+ * handled separately and file-wide, below, because the same hole exists
+ * at three levels (step, job `defaults`, workflow `defaults`).
+ */
+const REFUSED_STEP_KEYS = ["if", "continue-on-error", "working-directory"] as const;
+const REFUSED_JOB_KEYS = ["if", "continue-on-error"] as const;
+
+const WHY_REFUSED: Record<string, string> = {
+  if: "An `if:` there can stop the guard's failure ever being evaluated.",
+  "continue-on-error": "A `continue-on-error:` there stops a failure failing anything.",
+  "working-directory":
+    "A `working-directory:` there runs the step against a different tree, so it can " +
+    "certify a harness that is not the one in this repository.",
+};
+
+function refuseKeys(
+  keys: Map<string, string>,
+  refused: readonly string[],
+  what: string,
+  allow: readonly string[] = [],
+): void {
+  for (const key of refused) {
+    if (allow.includes(key)) {
+      continue;
+    }
+    assert.ok(
+      !keys.has(key),
+      `${what} declares ${key}: ${JSON.stringify(keys.get(key))}. ` +
+        `${WHY_REFUSED[key] ?? ""} ` +
+        `Exactly ${String(refused.length)} keys are refused here and every other key ` +
+        "(permissions, env, timeout-minutes, defaults, shell, id, with, ...) is " +
+        "allowed. If you need this one, that is a decision about whether the " +
+        "milestone certification is still gated, not a test to relax.",
+    );
+  }
 }
 
 test("the gates falsifiability guard fails the job when the harness cannot fail", () => {
@@ -382,7 +666,7 @@ test("the gates falsifiability guard fails the job when the harness cannot fail"
   // code is the assertion. A mutation that preserves the text but
   // inverts the meaning now reddens this test, because the meaning is
   // what is measured.
-  const { block, script: stepScript } = workflowStep("falsifiability guard");
+  const { script: stepScript } = workflowStep(workflowJob("test"), "falsifiability guard");
   const root = scratch();
   try {
     // A stub harness standing in for scripts/m1-exit-test.sh. `exit` is
@@ -404,7 +688,7 @@ exit ${String(exitCode)}
 exit 1
 `;
 
-    const runStep = (name: string, stubBody: string): number => {
+    const runStep = (name: string, stubBody: string): RunResult => {
       const dir = join(root, name);
       mkdirSync(join(dir, "scripts"), { recursive: true });
       const harnessPath = join(dir, "scripts", "m1-exit-test.sh");
@@ -415,7 +699,7 @@ exit 1
       mkdirSync(join(dir, "temp"), { recursive: true });
       const result = run("bash", ["-c", substituted], { cwd: dir, env: identityLessEnv(dir) });
       writeFileSync(join(dir, "stderr.txt"), result.stderr);
-      return result.status ?? -1;
+      return result;
     };
 
     const genuineRed = JSON.stringify(
@@ -432,7 +716,7 @@ exit 1
     // 1. The regression the guard exists for: a harness that cannot fail
     //    exits 0 on the red path. The step MUST fail the job.
     assert.notEqual(
-      runStep("always-green", stub(0, genuineRed)),
+      runStep("always-green", stub(0, genuineRed)).status,
       0,
       "the guard passed a harness that exited 0 on the skip-stage-B path",
     );
@@ -440,22 +724,38 @@ exit 1
     // 2. A genuinely falsifiable harness: nonzero, failing at C2. The
     //    step must PASS, or the guard is useless in the other direction
     //    and would redden every honest run.
+    const genuine = runStep("genuine-red", stub(1, genuineRed));
     assert.equal(
-      runStep("genuine-red", stub(1, genuineRed)),
+      genuine.status,
       0,
       "the guard rejected a harness that failed correctly at C2",
+    );
+
+    // 2b. And it must SAY SO on stdout. Branch protection and Actions'
+    //     evaluation rules are not readable from this tree (see the top
+    //     of this section); the one empirical check available on any head
+    //     is that this line appears in the test job's log. A step that
+    //     did not run prints nothing, so the line's presence is the
+    //     evidence and its absence is the alarm. Changing the wording is
+    //     a decision: the work history and the block comment above both
+    //     quote it as the thing to grep for.
+    assert.match(
+      genuine.stdout,
+      new RegExp(GUARD_WITNESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      `the guard no longer prints "${GUARD_WITNESS}" on its success path, which is ` +
+        "the only per-run evidence that the step actually executed in CI",
     );
 
     // 3. Nonzero, but NOT at C2: an unrelated early abort must not be
     //    accepted as the guard firing. This is the arm that a dropped
     //    process.exit(1) silently removes.
     assert.notEqual(
-      runStep("red-elsewhere", stub(1, "none")),
+      runStep("red-elsewhere", stub(1, "none")).status,
       0,
       "the guard accepted a nonzero run with no failing C2 record",
     );
     assert.notEqual(
-      runStep("c2-passed", stub(1, c2Passed)),
+      runStep("c2-passed", stub(1, c2Passed)).status,
       0,
       "the guard accepted a nonzero run whose C2 record passed",
     );
@@ -465,7 +765,7 @@ exit 1
     //    exception is indistinguishable from firing by its check, and
     //    hides the removal of the check (CR-683).
     assert.notEqual(
-      runStep("no-records-dir", stubNoRecords()),
+      runStep("no-records-dir", stubNoRecords()).status,
       0,
       "the guard accepted a nonzero run that left no records directory",
     );
@@ -479,78 +779,155 @@ exit 1
   }
 });
 
-test("a failure of the falsifiability guard reaches the required check", () => {
-  // WHAT CLASS THIS CLOSES, stated because naming one member and calling
-  // it the class is the mistake that produced CR-681 (and, one level up,
-  // CR-640 and CR-644: instance closed, mechanism left open).
+test("the falsifiability guard sits inside the job the required check consumes", () => {
+  // TIER 2 and TIER 3 of the boundary set out at the top of this section.
+  // Read it before adding anything here, and in particular before adding
+  // a key whitelist: this test HAD one, it did not close the class, and
+  // it reddened four legitimate edits (CR-720 to CR-724).
   //
-  // The class is: an edit to gates.yml that leaves the falsifiability
-  // step's `run:` script intact and extractable, so every behavioural
-  // probe in the test above still passes, yet stops the step's failure
-  // from failing the required check. A step's failure reaches that check
-  // only if EVERY link below holds, so the class is exactly "break any
-  // one link without touching the script".
+  // A failing step reaches the required check only if every link holds:
   //
   //   1. the workflow runs on the event that gates a pull request
-  //   2. the step executes            (no step-level `if:`)
-  //   3. its failure fails the step   (no step-level `continue-on-error:`)
-  //   4. that fails the job           (no job-level `if:`/`continue-on-error:`)
-  //   5. the job's result is consumed (the `gates` fan-in needs it)
+  //   2. the guard step is in a job, and executes           (tier 3)
+  //   3. its failure fails the step                          (tier 3)
+  //   4. that fails the job                                  (tier 3)
+  //   5. the fan-in job consumes THAT job's result       (tier 2, CR-720)
   //
-  // BEHAVIOURAL vs STRUCTURAL, enumerated rather than implied. The test
-  // above witnesses link 3's shell half by executing the script. NO exit
-  // code from that script can witness links 1, 2, 4 or 5, because they
-  // are properties of the YAML around it, not of the script: they are
-  // asserted structurally here. That is a statement about the whole YAML
-  // class, which is the correction CR-681 asked for.
-  //
-  // Links 2 and 3 use a WHITELIST rather than a list of forbidden keys.
-  // A denylist has to be re-extended every time someone finds another
-  // key; a whitelist fails on any key nobody thought of, which is the
-  // only shape that closes a class instead of enumerating members.
-  const workflow = gatesWorkflow();
-  const { keys: stepKeys } = workflowStep("falsifiability guard");
+  // Link 3's shell half is witnessed by executing the script in the test
+  // above. The rest are properties of the YAML around it, asserted here
+  // within the bound the comment above names.
+  const lines = gatesWorkflowLines();
   const testJob = workflowJob("test");
   const gatesJob = workflowJob("gates");
+  const step = workflowStep(testJob, "falsifiability guard");
 
-  // 1. The workflow runs on pull requests at all.
+  // 1. The workflow runs on pull requests, UNFILTERED.
+  //
+  // CR-723: round 3 asserted only that the token appeared under `on:`.
+  // `pull_request: {paths-ignore: ['**']}` leaves it present while no
+  // pull request produces a run, so presence was never the property. The
+  // property is that the trigger carries no filter at all, which is a
+  // fact about this file and needs no model of how Actions evaluates the
+  // filters it does not have.
+  const onAt = lines.findIndex((l) => /^(?:"on"|'on'|on) *:/.test(l));
+  assert.notEqual(onAt, -1, "gates.yml declares no on: trigger");
+  let onEnd = lines.length;
+  for (let i = onAt + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      continue;
+    }
+    if (!/^ /.test(line)) {
+      onEnd = i;
+      break;
+    }
+  }
+  const triggers = declaredKeys(lines.slice(onAt + 1, onEnd), 2, "on:");
+  assert.ok(
+    triggers.has("pull_request"),
+    "gates.yml no longer runs on pull_request, so no pull request is gated by it",
+  );
+  assert.equal(
+    triggers.get("pull_request"),
+    "",
+    "the pull_request: trigger carries an inline value; this test only accepts the " +
+      "unfiltered form, because a filter decides which pull requests are gated and " +
+      "that is a decision to record, not a detail",
+  );
+  const prAt = lines
+    .slice(onAt + 1, onEnd)
+    .findIndex((l) => /^ {2}(?:"pull_request"|'pull_request'|pull_request) *: *$/.test(l));
+  const afterPr = lines
+    .slice(onAt + 1 + prAt + 1, onEnd)
+    .find((l) => l.trim() !== "" && !/^\s*#/.test(l));
+  assert.ok(
+    afterPr === undefined || (/^ */.exec(afterPr)?.[0] ?? "").length <= 2,
+    `the pull_request: trigger is filtered by ${JSON.stringify(afterPr)}; a filter such ` +
+      "as paths-ignore or types can leave the trigger present while no pull request " +
+      "produces a run (CR-723). Adding one is a decision about what is gated.",
+  );
+
+  // 2, 3. The guard step carries none of the derived step keys. Every
+  //       other documented step key is allowed: `env:`, `timeout-minutes:`,
+  //       `id:`, `with:` and the rest cannot decouple the guard from the
+  //       check, and round 3 reddened them for no property (CR-724 F4).
+  refuseKeys(step.keys, REFUSED_STEP_KEYS, "the falsifiability guard step");
+
+  // 4. Nor does the job containing it. `permissions:`, `timeout-minutes:`
+  //    and friends are fine here too (CR-724 F1, F2).
+  refuseKeys(testJob.keys, REFUSED_JOB_KEYS, "the test job");
+
+  // 4b. The shell hole, closed once for the whole file rather than three
+  //     times. A CUSTOM shell is a command template carrying `{0}`, the
+  //     placeholder Actions substitutes the script path into; it can be
+  //     written so the script is never executed at all
+  //     (`shell: bash -c "exit 0" {0}`), which turns any step green
+  //     without touching that step's `run:`. The same key exists at the
+  //     step, at a job's `defaults.run`, and at the workflow's
+  //     `defaults.run`, so the assertion is over every `shell:` in the
+  //     file at any indent. A plain interpreter name (`shell: bash`) is
+  //     not a template and stays green: this refuses the template form
+  //     only.
+  for (const [i, line] of lines.entries()) {
+    const shell = /^ *(?:"shell"|'shell'|shell) *: +(.*)$/.exec(line);
+    if (!shell) {
+      continue;
+    }
+    assert.doesNotMatch(
+      shell[1] as string,
+      /\{0\}/,
+      `gates.yml line ${String(i + 1)} sets a custom shell command template ` +
+        `(${JSON.stringify(shell[1])}). A template decides whether the step's script ` +
+        "runs at all, so it can turn this guard green without changing its run: " +
+        "block. A plain interpreter name such as `shell: bash` is accepted.",
+    );
+  }
+
+  // 5. The fan-in job names the job the guard is in. workflowStep has
+  //    already asserted the step is inside `testJob`; this closes the
+  //    other half of CR-720.
+  assert.ok(
+    needsOf(gatesJob, "gates").includes("test"),
+    `the gates job needs ${JSON.stringify(gatesJob.keys.get("needs"))}, which does not ` +
+      "include the test job, so the guard's failure reaches nothing",
+  );
+
+  // 5b. And the fan-in still fails when that job did not succeed. These
+  //     two are assertions about a shell script's text, the same
+  //     character as the ones tier 1 executes, not about YAML semantics.
   assert.match(
-    workflow.slice(0, workflow.indexOf("jobs:")),
-    /^on:\n(?:.*\n)*?\s{2}pull_request:/m,
-    "gates.yml no longer runs on pull_request, so no PR is gated by it",
-  );
-
-  // 2 and 3. The step declares nothing but a name and a script.
-  assert.deepEqual(
-    [...stepKeys].sort(),
-    ["name", "run"],
-    `the falsifiability step declares keys beyond name and run (${stepKeys.join(", ")}); ` +
-      "`if:` would stop it running and `continue-on-error:` would stop its failure failing the step",
-  );
-
-  // 4. The job that contains it declares nothing that could swallow or
-  //    skip a failed step.
-  assert.deepEqual(
-    [...testJob.keys].sort(),
-    ["runs-on", "steps", "strategy"],
-    `the test job declares keys beyond runs-on, strategy and steps (${testJob.keys.join(", ")}); ` +
-      "`if:` or `continue-on-error:` there would decouple a failed step from the job result",
-  );
-
-  // 5. The required check consumes that job's result and fails unless it
-  //    succeeded. `gates` legitimately carries `if: always()`, so it is
-  //    asserted by property rather than by whitelist.
-  assert.match(gatesJob.block, /^\s{4}needs: test$/m, "the gates job no longer needs the test job");
-  assert.match(
-    gatesJob.block,
+    gatesJob.lines.join("\n"),
     /needs\.test\.result\s*\}\}"\s*!=\s*"success"/,
     "the gates job no longer fails when the test job did not succeed",
   );
-  assert.match(gatesJob.block, /exit 1/, "the gates job no longer exits nonzero on a failed test job");
-  assert.doesNotMatch(
-    gatesJob.block,
-    /continue-on-error/,
-    "the gates job is marked continue-on-error",
+  assert.match(
+    gatesJob.lines.join("\n"),
+    /exit 1/,
+    "the gates job no longer exits nonzero on a failed test job",
+  );
+
+  // 5c. CR-721: the fan-in's OWN step was checked by nothing. A step-level
+  //     `if: false` there leaves `needs: test`, the `!= "success"`
+  //     comparison and the `exit 1` all in place and turns the required
+  //     check green with zero executed steps, which defangs every gate in
+  //     the workflow at once and not just this guard.
+  const fanIn = workflowStep(gatesJob, "fail unless every matrix leg succeeded");
+  refuseKeys(fanIn.keys, REFUSED_STEP_KEYS, "the gates fan-in step");
+
+  // 5d. The fan-in job legitimately carries `if: always()`; that is what
+  //     makes it run after a FAILED test job, which is the whole point of
+  //     it. So `if:` is allowed there and pinned to that one value rather
+  //     than refused, and `continue-on-error:` is refused as everywhere
+  //     else.
+  refuseKeys(gatesJob.keys, REFUSED_JOB_KEYS, "the gates job", ["if"]);
+  assert.equal(
+    gatesJob.keys.get("if"),
+    "always()",
+    `the gates job's if: is ${JSON.stringify(gatesJob.keys.get("if"))}, not always(). ` +
+      "always() is what makes the fan-in run after a failed test job; any other " +
+      "condition can skip the required check instead of failing it, and whether a " +
+      "skipped required check blocks a merge is branch-protection configuration " +
+      "this test cannot read.",
   );
 });
 

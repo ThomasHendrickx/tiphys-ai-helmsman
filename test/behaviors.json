@@ -160,5 +160,5 @@
   "stub-payload-refuses-bad-inputs": "the stub payload refuses a bad mode and a working directory that is not a worktree",
   "exit-test-step-failure-is-fatal": "a failed harness step is fatal to the run and is recorded as failed",
   "exit-test-falsifiability-guard-wired": "the gates falsifiability guard fails the job when the harness cannot fail",
-  "exit-test-guard-failure-reaches-required-check": "a failure of the falsifiability guard reaches the required check"
+  "exit-test-guard-inside-gated-job": "the falsifiability guard sits inside the job the required check consumes"
 }
