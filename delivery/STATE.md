@@ -89,7 +89,9 @@ yet. Recorded here so they are not rediscovered the expensive way.
 - **Clean presentation of a load-time configuration error.** A malformed
   watcher cadence environment value fails loudly, which is correct, but
   presenting it as a usage error rather than a stack trace needs a top-level
-  handler in `bin/tiphys.ts`, a seam no M1 phase owns.
+  handler in `bin/tiphys.ts`, a seam no M1 phase owns. **Promoted from cosmetic
+  to load-bearing by DR-0013**: YAML parse failures must present through this
+  same policy, so M3 depends on it existing.
 - **M1-P4's inert liveness hook.** Confirmed dead by two reviewers, left in
   place because it is not M1-P5's to delete. Remove it when a phase owns
   `src/spawn.ts`.
@@ -142,7 +144,7 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
 | DR-0010 harness orchestration primitive | open, due at M4 adapter planning |
 | DR-0011 early parallelism | decided: maximum safe parallelism, five conditions binding |
 | DR-0012 delegated merge authority | decided: delegated under dual cross-model clean review; stop fired once on M1-P5 and was lifted for that phase only |
-| DR-0013 schema validator implementation | open, raised by the M3 plan, due before M3-P1 dispatches; recommendation is to extend M2's closed-keyword validator |
+| DR-0013 schema validator implementation | decided 2026-08-05: Ajv 8.20.0 exact, Draft 2020-12, strict mode; plus `yaml` 2.9.0 for the parser the plan had omitted. M2's validator retired as an engine at M3-P1. Supersedes D-3 from M3 onward |
 | DR-0014 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface design investigated, report in `delivery/verification/release-verification-interface.md` |
 | DR-0015 owner out of the merge path | decided: dual clean review is the approval, at milestone boundaries too; exit tests stay hard gates and their evidence still goes to the owner |
 
