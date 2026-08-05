@@ -67,18 +67,33 @@
 #      An exit-code-only check passes on a sandbox with zero tests,
 #      because node --test over a glob matching nothing exits 0.
 #
-# Lease timing (PR-203, CR-608, CR-645, decided by DR-0015). A3 acquires
-# with an EXPLICIT --duration of CERTIFICATION_LEASE_SECONDS rather than
-# the kernel's 900 second default, because with the owner out of the
-# approval path the stage B wait is the review pipeline's wall time and
-# is measured in hours. Stage C then OBSERVES the lease state and records
-# it either way, so a lapse is reported rather than silent. That
-# observation never fails the run: an expired lease cannot be renewed, so
-# dying there would fail a certification run for a slow approval, which
-# is the outcome the CR-608 decline protected and DR-0015 did not
-# overturn. If a wait longer than the sized lease is expected, renew
-# before it: node dist/bin/tiphys.js lock renew --holder <holderId from
-# session.json> --duration <seconds>.
+# Lease timing (PR-203, CR-608, CR-645, CR-680; decided by DR-0015 and by
+# the owner's choice of option A). Two mechanisms, prevention and
+# recovery, because the first alone was a hope:
+#
+#   PREVENTION. A3 acquires with an EXPLICIT --duration of
+#   CERTIFICATION_LEASE_SECONDS instead of the kernel's 900 second
+#   default, because with the owner out of the approval path the stage B
+#   wait is the review pipeline's wall time and is measured in hours.
+#
+#   RECOVERY. Stage C observes the lease and records it either way. If it
+#   lapsed, stage C RECLAIMS it with `lock acquire --take-over --duration
+#   ${CERTIFICATION_LEASE_SECONDS}`, re-exports TIPHYS_HOLDER_ID from the
+#   take-over output, rewrites session.json, and continues. The lapse
+#   record stays in the bundle; recovery does not erase it.
+#
+# What each command actually does on an EXPIRED lease, measured, because
+# the previous version of this comment asserted one fact about all three:
+#
+#   lock release --holder <id>   exit 0   expiry does not block a release
+#   lock renew   --holder <id>   exit 1   an expired lease cannot be renewed
+#   teardown     --task <id>     exit 1   "re-acquire or take over before
+#                                          mutating tasks"
+#
+# It is teardown at C2 that made "the run continues" false before CR-680,
+# and teardown is why the take-over is required rather than optional.
+# Always pass --duration to the take-over: without it the lease silently
+# reverts to 900 seconds and the lapse re-opens for the rest of the run.
 
 set -euo pipefail
 
@@ -835,15 +850,22 @@ stage_b_full_pending() {
 # ---------------------------------------------------------------------------
 
 stage_c() {
-  # --- lease state across the stage B wait (DR-0015) ------------------------
-  # OBSERVATIONAL, never fatal. DR-0015 requires stage C to record the
-  # observed lease state either way, so a lapse is reported rather than
-  # silent. It deliberately does not die: an expired lease cannot be
-  # renewed (lock-renew-expired-refused), so failing here would fail a
-  # certification run for a slow approval, which is the outcome the
-  # CR-608 decline was protecting and which DR-0015 did not overturn. The
-  # explicit --duration at A3 is what PREVENTS the lapse; this only
-  # reports whether that worked.
+  # --- lease state across the stage B wait (DR-0015, CR-680) ----------------
+  # Observed and recorded either way, and RECOVERED FROM if it lapsed.
+  #
+  # The previous shape only reported the lapse and continued, on the
+  # stated ground that continuing was safe. That ground was false and a
+  # reviewer constructed it: `lock release` on an expired lease exits 0,
+  # but `tiphys teardown` exits 1 with "re-acquire or take over before
+  # mutating tasks", so the run died at C2 anyway, sixteen records after
+  # a record claiming it would not. Recording a reassurance that the run
+  # then contradicts is worse than recording nothing.
+  #
+  # The owner chose recovery over both alternatives (option A): stage C
+  # reclaims its own lease and continues, and the lapse stays in the
+  # evidence. Failing loudly was rejected because a slow approval must
+  # not destroy a certification run; a longer duration alone was rejected
+  # because "never happens" is a hope, not a guarantee.
   observe_step A3 "${fleet}" "lease state after the stage B wait" \
     node "${TIPHYS}" lock status
   if grep -q "^held holder ${TIPHYS_HOLDER_ID} " "${LAST_OUTPUT}"; then
@@ -851,7 +873,30 @@ stage_c() {
       "still held by this run: $(head -n 1 "${LAST_OUTPUT}")"
   else
     note_step A3 observation "THE LEASE DID NOT SURVIVE STAGE B" \
-      "lock status reported: $(head -n 1 "${LAST_OUTPUT}"); expected holder ${TIPHYS_HOLDER_ID}. The fleet was takeover-able during the approval wait, so this certification run cannot claim exclusive use of the fleet across stage B (DR-0015). The run continues, because an expired lease does not block a release and failing here would fail the run for a slow approval; this record is the report."
+      "lock status reported: $(head -n 1 "${LAST_OUTPUT}"); expected holder ${TIPHYS_HOLDER_ID}. The fleet was takeover-able during the approval wait, so this run cannot claim exclusive use of the fleet across stage B (DR-0015). Recovering by taking the lease over; the lapse is not erased by the recovery and this record is the report of it."
+    # --duration is passed EXPLICITLY. A take-over without it silently
+    # reverts to the kernel default of 900 seconds, which would re-open
+    # the same lapse for the remainder of the run (measured by the
+    # reviewer: acquire --take-over at 14:45:11 expired at 15:00:11).
+    run_step A3 zero "${fleet}" "reclaim the lease by take-over after the stage B lapse" -- \
+      node "${TIPHYS}" lock acquire --take-over --duration "${CERTIFICATION_LEASE_SECONDS}"
+    local reclaimed
+    reclaimed=$(awk '/^acquired /{ print $2; exit }' "${LAST_OUTPUT}")
+    if [ -z "${reclaimed}" ]; then
+      die "step A3: could not read a holder id from the take-over output"
+    fi
+    # Every later step must use the NEW id. teardown refuses a stale
+    # TIPHYS_HOLDER_ID with a different message than it uses for expiry,
+    # so a take-over that did not propagate fails just as hard as no
+    # take-over at all, one step further on.
+    export TIPHYS_HOLDER_ID="${reclaimed}"
+    write_session
+    assert_step A3 "the reclaimed lease is held by this run" \
+      "lock status reports held holder ${reclaimed}" \
+      "$(cd "${fleet}" && node "${TIPHYS}" lock status | head -n 1)" \
+      "$(cd "${fleet}" && node "${TIPHYS}" lock status | grep -q "^held holder ${reclaimed} " && echo pass || echo fail)"
+    note_step A3 observation "the holder id changed mid-run after the take-over" \
+      "subsequent steps, including C2 teardown and C3 lock release, use holderId ${reclaimed}; session.json was rewritten so a later invocation resumes with the same id"
   fi
 
   # --- C1 the squash commit is on the sandbox default branch ----------------
@@ -1104,6 +1149,14 @@ if [ "${stage}" = "c" ]; then
   payload_commit=$(json_field "${session_file}" payloadCommit)
   pr_url=$(json_field "${session_file}" prUrl)
   TIPHYS_HOLDER_ID=$(json_field "${session_file}" holderId)
+  # An empty holderId is not survivable and must not be allowed to look
+  # like something else (CR-684). It collapses the lease check below to
+  # `grep -q "^held holder "`, a pattern with two spaces that matches
+  # nothing, which would report a FALSE lapse and take over a perfectly
+  # healthy lease.
+  if [ -z "${TIPHYS_HOLDER_ID}" ]; then
+    die "stage C: ${session_file} carries no holderId; stage A did not complete, or the session file has been edited"
+  fi
   export TIPHYS_HOLDER_ID
   # The record sequence is DERIVED FROM THE BUNDLE, not merely restored
   # from the session file (CR-644). Restoring a stale sequence is the
@@ -1117,11 +1170,29 @@ if [ "${stage}" = "c" ]; then
   disk_seq=$(ls "${evidence}/records" 2>/dev/null \
     | sed -n 's/^\([0-9][0-9]*\)-.*\.json$/\1/p' | sort -n | tail -n 1)
   if [ -z "${disk_seq}" ]; then disk_seq=0; fi
+  # The same emptiness guard disk_seq already has (CR-684). json_field
+  # returns "" for both a missing and a null recordSeq, and $((10#))
+  # then errors; under set -euo pipefail that does NOT abort, so the run
+  # continued with three bare bash errors, no FAILED framing, no evidence
+  # pointer, and the disagreement note below silently skipped. The
+  # MECHANISM survived that (record_seq is assigned from disk_seq
+  # unconditionally, so a failing test can only leave it at the disk
+  # maximum, never below), but the diagnosis did not, and a certification
+  # harness that loses its diagnosis is the CR-641 shape again.
+  if [ -z "${session_seq}" ]; then
+    session_seq=0
+    malformed_session=1
+  else
+    malformed_session=0
+  fi
   disk_seq=$((10#${disk_seq}))
   session_seq=$((10#${session_seq}))
   record_seq="${disk_seq}"
   if [ "${session_seq}" -gt "${record_seq}" ]; then record_seq="${session_seq}"; fi
-  if [ "${session_seq}" -ne "${disk_seq}" ]; then
+  if [ "${malformed_session}" = "1" ]; then
+    note_step C3 observation "the stage A record sequence was missing or unreadable" \
+      "session.json carried no usable recordSeq; the highest record on disk is ${disk_seq} and the run resumes from ${record_seq}, so no existing record is overwritten. The sequence mechanism is intact; what was lost is the cross-check against stage A (CR-644, CR-684)"
+  elif [ "${session_seq}" -ne "${disk_seq}" ]; then
     note_step C3 observation "the stage A record sequence disagreed with the bundle" \
       "session.json recordSeq ${session_seq}, highest record on disk ${disk_seq}; resuming from ${record_seq} so no existing record is overwritten (CR-644)"
   fi

@@ -290,15 +290,56 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
  * handle the one file in this repository, and it fails loudly if that
  * file's shape changes rather than silently returning nothing.
  */
-function workflowStep(nameFragment: string): { block: string; script: string } {
-  const workflow = readFileSync(
+function gatesWorkflow(): string {
+  return readFileSync(
     fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
     "utf8",
   );
+}
+
+/** The block of one job, by name, and the top-level keys it declares. */
+function workflowJob(name: string): { block: string; keys: string[] } {
+  const lines = gatesWorkflow().split("\n");
+  const start = lines.findIndex((l) => l === `  ${name}:`);
+  assert.notEqual(start, -1, `no job named ${name} in gates.yml`);
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^ {2}\S/.test(lines[i] ?? "") || /^\S/.test(lines[i] ?? "")) {
+      end = i;
+      break;
+    }
+  }
+  const block = lines.slice(start, end).join("\n");
+  const keys = lines
+    .slice(start + 1, end)
+    .map((l) => /^ {4}([\w-]+):/.exec(l))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => m[1] as string);
+  return { block, keys };
+}
+
+function workflowStep(nameFragment: string): {
+  block: string;
+  script: string;
+  keys: string[];
+} {
+  const workflow = gatesWorkflow();
   const lines = workflow.split("\n");
-  const start = lines.findIndex(
-    (l) => /^ {6}- /.test(l) && l.toLowerCase().includes(nameFragment.toLowerCase()),
+  const matches = lines
+    .map((l, i) => ({ l, i }))
+    .filter(
+      ({ l }) => /^ {6}- /.test(l) && l.toLowerCase().includes(nameFragment.toLowerCase()),
+    );
+  // Exactly one, never "the first" (CR-682). A decoy step whose name also
+  // matches would be validated in place of the one CI runs, leaving the
+  // real step free to be defanged. This is not hypothetical: a full-mode
+  // falsifiability guard is a natural thing to add above this one.
+  assert.equal(
+    matches.length,
+    1,
+    `expected exactly 1 workflow step matching ${nameFragment}, found ${matches.length}`,
   );
+  const start = matches[0]?.i ?? -1;
   assert.notEqual(start, -1, `no workflow step whose name contains ${nameFragment}`);
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i += 1) {
@@ -316,7 +357,16 @@ function workflowStep(nameFragment: string): { block: string; script: string } {
     .map((l) => (l.startsWith(" ".repeat(10)) ? l.slice(10) : l))
     .join("\n");
   assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
-  return { block, script };
+  // Keys the step declares: "name" comes from the "- name:" line itself,
+  // the rest are the indent-8 keys of the block.
+  const keys = ["name"].concat(
+    lines
+      .slice(start + 1, end)
+      .map((l) => /^ {8}([\w-]+):/.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => m[1] as string),
+  );
+  return { block, script, keys };
 }
 
 test("the gates falsifiability guard fails the job when the harness cannot fail", () => {
@@ -348,6 +398,12 @@ ${
 exit ${String(exitCode)}
 `;
 
+    // A harness that fails before it ever creates records/, which every
+    // other stub hides by creating the directory unconditionally.
+    const stubNoRecords = (): string => `#!/usr/bin/env bash
+exit 1
+`;
+
     const runStep = (name: string, stubBody: string): number => {
       const dir = join(root, name);
       mkdirSync(join(dir, "scripts"), { recursive: true });
@@ -358,6 +414,7 @@ exit ${String(exitCode)}
       const substituted = stepScript.replaceAll("${{ runner.temp }}", join(dir, "temp"));
       mkdirSync(join(dir, "temp"), { recursive: true });
       const result = run("bash", ["-c", substituted], { cwd: dir, env: identityLessEnv(dir) });
+      writeFileSync(join(dir, "stderr.txt"), result.stderr);
       return result.status ?? -1;
     };
 
@@ -403,17 +460,98 @@ exit ${String(exitCode)}
       "the guard accepted a nonzero run whose C2 record passed",
     );
 
-    // 4. `continue-on-error: true` is YAML semantics, not shell: no exit
-    //    code from the script can witness it, so it is asserted
-    //    structurally against the step's own block.
+    // 5. A harness that exits nonzero leaving NO records directory at
+    //    all. The guard must DECIDE, not crash: firing by unhandled
+    //    exception is indistinguishable from firing by its check, and
+    //    hides the removal of the check (CR-683).
+    assert.notEqual(
+      runStep("no-records-dir", stubNoRecords()),
+      0,
+      "the guard accepted a nonzero run that left no records directory",
+    );
     assert.doesNotMatch(
-      block,
-      /continue-on-error/,
-      "the falsifiability step is marked continue-on-error, so its failure cannot fail the job",
+      readFileSync(join(root, "no-records-dir", "stderr.txt"), "utf8"),
+      /node:fs|readdirSync|ENOENT/,
+      "the guard crashed on a missing records directory instead of deciding",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a failure of the falsifiability guard reaches the required check", () => {
+  // WHAT CLASS THIS CLOSES, stated because naming one member and calling
+  // it the class is the mistake that produced CR-681 (and, one level up,
+  // CR-640 and CR-644: instance closed, mechanism left open).
+  //
+  // The class is: an edit to gates.yml that leaves the falsifiability
+  // step's `run:` script intact and extractable, so every behavioural
+  // probe in the test above still passes, yet stops the step's failure
+  // from failing the required check. A step's failure reaches that check
+  // only if EVERY link below holds, so the class is exactly "break any
+  // one link without touching the script".
+  //
+  //   1. the workflow runs on the event that gates a pull request
+  //   2. the step executes            (no step-level `if:`)
+  //   3. its failure fails the step   (no step-level `continue-on-error:`)
+  //   4. that fails the job           (no job-level `if:`/`continue-on-error:`)
+  //   5. the job's result is consumed (the `gates` fan-in needs it)
+  //
+  // BEHAVIOURAL vs STRUCTURAL, enumerated rather than implied. The test
+  // above witnesses link 3's shell half by executing the script. NO exit
+  // code from that script can witness links 1, 2, 4 or 5, because they
+  // are properties of the YAML around it, not of the script: they are
+  // asserted structurally here. That is a statement about the whole YAML
+  // class, which is the correction CR-681 asked for.
+  //
+  // Links 2 and 3 use a WHITELIST rather than a list of forbidden keys.
+  // A denylist has to be re-extended every time someone finds another
+  // key; a whitelist fails on any key nobody thought of, which is the
+  // only shape that closes a class instead of enumerating members.
+  const workflow = gatesWorkflow();
+  const { keys: stepKeys } = workflowStep("falsifiability guard");
+  const testJob = workflowJob("test");
+  const gatesJob = workflowJob("gates");
+
+  // 1. The workflow runs on pull requests at all.
+  assert.match(
+    workflow.slice(0, workflow.indexOf("jobs:")),
+    /^on:\n(?:.*\n)*?\s{2}pull_request:/m,
+    "gates.yml no longer runs on pull_request, so no PR is gated by it",
+  );
+
+  // 2 and 3. The step declares nothing but a name and a script.
+  assert.deepEqual(
+    [...stepKeys].sort(),
+    ["name", "run"],
+    `the falsifiability step declares keys beyond name and run (${stepKeys.join(", ")}); ` +
+      "`if:` would stop it running and `continue-on-error:` would stop its failure failing the step",
+  );
+
+  // 4. The job that contains it declares nothing that could swallow or
+  //    skip a failed step.
+  assert.deepEqual(
+    [...testJob.keys].sort(),
+    ["runs-on", "steps", "strategy"],
+    `the test job declares keys beyond runs-on, strategy and steps (${testJob.keys.join(", ")}); ` +
+      "`if:` or `continue-on-error:` there would decouple a failed step from the job result",
+  );
+
+  // 5. The required check consumes that job's result and fails unless it
+  //    succeeded. `gates` legitimately carries `if: always()`, so it is
+  //    asserted by property rather than by whitelist.
+  assert.match(gatesJob.block, /^\s{4}needs: test$/m, "the gates job no longer needs the test job");
+  assert.match(
+    gatesJob.block,
+    /needs\.test\.result\s*\}\}"\s*!=\s*"success"/,
+    "the gates job no longer fails when the test job did not succeed",
+  );
+  assert.match(gatesJob.block, /exit 1/, "the gates job no longer exits nonzero on a failed test job");
+  assert.doesNotMatch(
+    gatesJob.block,
+    /continue-on-error/,
+    "the gates job is marked continue-on-error",
+  );
 });
 
 test("the three exit-test scripts declare one harness identity", () => {

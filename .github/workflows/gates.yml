@@ -54,6 +54,16 @@ jobs:
           node -e '
             const fs = require("node:fs");
             const dir = process.argv[1] + "/records";
+            // Decide, do not crash. readdirSync throws when the harness
+            // exited nonzero without creating records/, and the guard
+            // would then "fire" by unhandled exception rather than by
+            // its own check. Same lesson as the C2 arm below; this was
+            // the last instance of it in these twelve lines.
+            if (!fs.existsSync(dir)) {
+              console.error("the harness left no records directory: " + dir);
+              console.error("it exited nonzero, but not by failing a recorded step, so the guard cannot confirm it failed at C2");
+              process.exit(1);
+            }
             const c2 = fs.readdirSync(dir)
               .filter((f) => f.endsWith("-C2.json"))
               .map((f) => JSON.parse(fs.readFileSync(dir + "/" + f, "utf8")))
