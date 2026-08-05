@@ -119,6 +119,12 @@ yet. Recorded here so they are not rediscovered the expensive way.
   it needs an owner in M2 or M4.
 - **A mechanism index** mapping a mechanism to the rules this project has
   established for it, per tuition T-005. Belongs with the M3 tuition flow.
+- **A second review contract per code phase, declared rather than improvised**,
+  per tuition T-007. A criteria-walking review cannot find a defect the
+  criteria do not describe, which is how a phase met fifteen of fifteen
+  executed criteria while live-locking every supervision command. The plan
+  schema should carry a phase's hazard classes beside its acceptance criteria
+  so the second contract is derivable. M3 role briefs and M3-P1 plan schema.
 - **Work-history contract must cover impossibility, coverage and remedy
   claims**, not only universal quantifiers, per tuition T-006. T-003 already
   routed the universal-quantifier rule to M3's report contract; T-006 records
