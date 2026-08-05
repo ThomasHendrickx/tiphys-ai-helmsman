@@ -152,7 +152,21 @@ moves M2-P7's centre of gravity), and M1-P5's own defect record.
    https://github.com/ThomasHendrickx/tiphys-ai-helmsman-sandbox. Both M1-P6
    scripts take the repository URL as an argument, so nothing needs editing;
    the URL is supplied at dispatch. M1-P6's full mode is unblocked.
-3. **A-2, before M4.** Provide or approve a private remote per real fleet
+3. **A-6, NEW and blocking one criterion.** Grant this session PUSH access to
+   `ThomasHendrickx/tiphys-ai-helmsman-sandbox`. The repository was attached to
+   the session and READ works (`git clone` exit 0, `git ls-remote` exit 0), but
+   the write path is refused: `git push --dry-run` exits 128 with HTTP 403 on
+   `git-receive-pack`, while the same dry-run against the kernel repository in
+   the same shell exits 0. The refusal arrives before any ref is proposed, so
+   it is an authorization asymmetry, not branch protection and not anything the
+   push could be adjusted to satisfy. Re-calling the attach with push access
+   returns already-present and does not upgrade an attached repository.
+   Likely the GitHub App is not installed on the sandbox repository, or
+   workspace policy excludes it; an admin can grant it in the Claude GitHub
+   settings. What it unblocks: M1-P6 criterion 1's real-repository form, its
+   commit-identity assertion, and the idempotence half, plus the M1 exit test's
+   FULL mode. Local mode is unaffected and passes.
+4. **A-2, before M4.** Provide or approve a private remote per real fleet
    home, for fleet-state durability.
 
 ## Standing reminders

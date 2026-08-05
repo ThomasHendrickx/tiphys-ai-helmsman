@@ -94,6 +94,43 @@ verified, which means the gap is procedural rather than a matter of effort.
   open only a regular file. It should be indexed there so the next component
   that reads an untrusted path finds it.
 
+## The orchestrator did it too, 2026-08-05, which settles what kind of gap this is
+
+Filing this entry did not prevent the person who filed it from repeating it
+the same day.
+
+M1-P6's criterion 1 needed a push to the toy sandbox repository, and an
+implementer reported it blocked by the git proxy. The orchestrator attached
+the repository to the session, ran `git clone` and `git ls-remote`, saw both
+exit 0, and told the implementer the block was cleared and verified.
+
+Both commands are READ operations. Neither touches the `git-receive-pack`
+endpoint that a push authenticates against. The implementer re-ran the
+discharge, got the identical 403, and established the real shape with a
+non-mutating `git push --dry-run`: upload-pack succeeds and receive-pack is
+refused, an authorization asymmetry. The orchestrator then reproduced that
+with a control, pushing dry-run to the kernel repository (exit 0) and to the
+sandbox (exit 128) in the same shell at the same moment.
+
+The claim was "access is verified". The evidence was that reading worked. The
+property concluded was not the property tested, which is this entry's whole
+subject.
+
+Two things follow, and the second is the reason this is recorded rather than
+quietly fixed:
+
+- **The cheap check existed and was not run.** `git push --dry-run`
+  authenticates against receive-pack and updates no ref. It is the check that
+  distinguishes read access from write access, it costs one command, and it
+  is now the recorded way to verify a push target before claiming one.
+- **This is a process gap, not a personal habit.** The pattern has now been
+  produced by three different implementers and by the orchestrator, across
+  four rounds, with this entry already written and in front of at least two of
+  them. Something that survives its own documentation is not fixed by better
+  intentions. It needs the structural answer already routed to M3: a record
+  contract that rejects a coverage or verification claim whose cited evidence
+  does not exercise the property claimed.
+
 ## What went right, recorded because it is the part worth reproducing
 
 The implementer wrote the pattern down against itself, in the artifact a later
