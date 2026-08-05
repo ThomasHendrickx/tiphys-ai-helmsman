@@ -158,7 +158,17 @@ code survives and its proof does not.
 
 Each of these bit someone once. Forward them to every implementer.
 
-1. The container's default Node is 22.x while the declared floor is `>=26`.
+1. THREE Node versions are installed and which one you get depends on how
+   the shell was started. Measured 2026-08-05: a login shell resolves `node`
+   to v22.22.2 via `/opt/node22/bin`, but a STRIPPED environment
+   (`env -i bash -c`, and some subagent or hook contexts) resolves it to
+   **v20.20.2** via `/usr/local/bin/node`, a symlink to `/opt/node20`. Node 20
+   has no TypeScript type stripping, so the suite fails there in a way that
+   does not look like a version problem. Always check `node --version` in the
+   shell you are actually using, and prefer an absolute path or an explicit
+   PATH prefix over trusting the ambient one. A reviewer hit this and had to
+   run the default-toolchain gates through `bash -lc`.
+   The container's default Node is 22.x while the declared floor is `>=26`.
    EBADENGINE warnings on every npm operation are expected. Never lower the
    floor and never set engine-strict. Node 22.18+ runs TypeScript natively so
    the suite works on the default toolchain, and CI on Node 26 remains the
