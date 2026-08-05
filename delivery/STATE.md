@@ -33,43 +33,43 @@ is wrong: verify against git and the PR list before trusting it.
 
 ## In flight
 
-**M1-P4 is MERGED** at `6ec0482`, the first merge under DR-0012's delegated
-authority. Its record is deliberately complete: the squash commit carries
-both reviewers' rulings, the one disagreement and how it was arbitrated, and
-the fact that an overstated claim was narrowed before merge rather than
-carried. Five of six M1 phases are now delivered.
+**M1-P5 (PR #8) is STOPPED, not merged, and waits for the owner.** Head
+`98c635e`, CI green, both reviewers approve everything they previously
+raised. The orchestrator is declining to merge under its own limit in
+DR-0012, and the record should show that clearly.
 
-What the dual cross-model review found on that phase, recorded because it is
-the evidence for keeping the practice: a criteria-walk lens found a
-state-confusion bug; a destructive-paths lens found two high-severity throw
-paths that skipped rollback entirely and that neither the implementer nor
-the first reviewer had surfaced; a later delta found a red witness that had
-silently gone green when a subsequent change short-circuited it, and a code
-path recorded as untestable that was in fact reachable from the CLI. Each
-was found by measurement rather than argument.
+Both clauses of that limit are now met. The phase has had two fix rounds
+after its first dual review, and a high-severity finding has recurred in the
+same component across rounds: a CRITICAL and a HIGH in round one, a MEDIUM
+in round two, and now a HIGH in the final confirmation.
 
-**M1-P5 (watcher and liveness): implementing.** Branch
-`claude/m1-p5-watcher-liveness` from `main` at 6ec0482. The last unbuilt M1
-phase. Its brief carries the three recorded inputs (a cadence flag so the
-exit harness can stop using fixed upper bounds, no dependence on spawn
-forwarding stdout, and T-002's abandoned-task condition witnessed against a
-genuinely killed spawn rather than a synthesized file state), plus the two
-watcher-specific witness traps: a wake for the wrong reason proves nothing,
-and a liveness check on a fleet with no tasks in flight cannot fail.
+**The finding (NEW-2, high).** A named pipe at a task's metadata path hangs
+the liveness guard and the watcher's single pass FOREVER, because the
+blocking read runs before the probe that would classify the path. That
+live-locks doctor, spawn and teardown, and directly contradicts the module's
+own charter that the guard warns and never blocks. It predates this delta,
+so it is not a regression, but the fix round's own documentation explicitly
+claims that shape is covered, so the completeness claim is false.
 
-**M1-P6: built, pushed, waiting.** Branch `claude/m1-p6-toy-sandbox-exit`.
-Under DR-0011 its PR opens only after P5 merges. Criteria 1 and 6 pass;
-2, 3, 4 and 5 are DEFERRED-TO-VALIDATION with their discharging commands
-recorded. Full mode remains blocked on owner action A-1.
+Everything else on the phase is closed and verified by execution on both
+heads: the original critical and high, the duplicate-implementation
+divergence closed at the class rather than the instance, no regression from
+the refactor, and the agreement tests confirmed to bite under both a
+one-sided and a shared-helper sabotage.
 
-**After P5 merges**, P6 opens and the M1 exit test becomes runnable. A-1 is
-then the only thing between the project and a completed milestone, and
-milestone exit evidence goes to the owner regardless of DR-0012.
+Two lows from the other reviewer are recorded rather than fixed: a false
+claim in the work history that an arm cannot practically be witnessed, which
+was disproved with a self-referential symlink, and an unnoticed behaviour
+change for a dangling-symlink beacon.
 
-**M2 and M3 detailed plans: DRAFT, unreviewed**, in PR #7. Both need
-adversarial review before their milestones dispatch. An M2 review that
-moves the gate manifest shape or the coverage input contract lands on three
-M3 phases.
+**What the owner decides:** take the fix (the reviewer judges it small,
+probe before read or use a non-blocking read) and let the orchestrator
+continue, or accept the residue with the overclaiming documentation
+corrected to say so honestly, or take the phase back entirely.
+
+**M1 is blocked behind this.** M1-P6 is built and waiting and cannot open
+until P5 merges, so the milestone exit test cannot run either. A-1 remains
+unactioned and is the other thing the exit test needs.
 
 ## Carried forward, not yet owned
 
