@@ -707,3 +707,276 @@ test/teardown.test.ts is sound and should be kept as-is; it is not a
 reason to hold the PR. Everything else I exercised (the test suite, the
 C-1/C-2/C-3 structural claims, the resident/once race mechanism, and the
 teardown scope-extension's own guarding tests) held up under direct attack.
+
+## Final confirmation (head 98c635e)
+
+Date: 2026-08-05
+Delta confirmed: 1807951..98c635e
+Reviewer: same as above, failure-lens reviewer, narrow confirmation only (not
+a fresh review).
+
+Isolation: worked in a private clone at
+/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/p5-final-sonnet
+(head 98c635e) and a second read-only clone at
+.../scratchpad/p5-final-sonnet-old (head 1807951) for old/new comparison.
+`npm ci` in both. All sabotage was applied and reverted inside the first
+clone; `git status --porcelain` was empty there before this file was
+touched. Nothing was written under /home/user/tiphys-ai-helmsman by this
+pass except this section. Both scratch clones and /tmp/fifo-repro* and
+/tmp/cr510test were deleted at the end of this session.
+
+### VERDICT: FIX-ROUND-NEEDED (one new finding, HIGH; NEW-1 as originally
+raised is closed)
+
+NEW-1 is closed at the class, not merely the instance, for every task-record
+shape that reaches classification at all. In closing it the round exposed a
+distinct, more serious hazard in the same code path: a FIFO planted at
+`tasks/<id>/meta.json` (a shape the round's own module doc names as covered)
+does not get classified as unreadable by either caller. It hangs both
+callers forever, because `readTaskMeta`'s `readFileSync` blocks on opening an
+unopened FIFO for reading, and that call runs before `surveyTaskRecords`
+ever reaches the `lstat` existence probe that would otherwise catch it. This
+pre-dates the delta (present identically on 1807951) but the round's own
+prose makes an explicit, false completeness claim about its brand-new shared
+classifier, and the hazard is a live-lock of doctor, spawn and teardown, the
+exact "warn, never block" contract this module states as its own charter.
+See Finding NEW-2 below.
+
+### NEW-1: CLOSED at the class
+
+Reproduced the original divergence directly against both heads with a
+throwaway fleet (task dir a real directory, `meta.json` replaced with a
+directory):
+
+- Old head (1807951), `guard()`: `{"inFlight":0,...,"stale":false,"detail":
+  "no open tasks: nothing is in flight to supervise"}`. Same fleet,
+  `watch --once`: stdout `"stale probe meta\n"`, exit 0. This is the exact
+  disagreement NEW-1 reported: the watcher surfaces a wake for a record the
+  guard reports as nothing in flight.
+- New head (98c635e), same fleet: `guard()` returns `{"inFlight":1,
+  "unreadable":1,"stale":true,"detail":"watcher stale: 1 task(s) (1 with an
+  unreadable meta.json, which is not evidence they are finished) in flight
+  and no readable beacon..."}`. `watch --once` on the same fleet: stdout
+  `"stale probe meta\n"`, exit 0. Both callers now agree the record is in
+  flight and unreadable.
+
+Traced the fix to its structural cause, not just its symptom: old
+`src/liveness.ts` classified meta.json existence with
+`statSync(...).isFile()` (follows symlinks, requires a regular file), while
+old `src/watcher.ts` classified it with a bare `statIfPresent(...) !==
+undefined` (follows symlinks, accepts any type). A directory passes the
+watcher's test and fails the guard's `isFile()`, which is precisely the
+asymmetry NEW-1 named. New head deletes both copies and replaces them with
+one function, `surveyTaskRecords` in `src/liveness.ts`, called by both
+`guard`/`surveyTasks` and `scanUnsafe`, using `lstatSync` (not `statSync` and
+not `.isFile()`) for the existence probe. Ran the class of neighbours the
+round claims are now covered, each independently against the new head:
+
+- Directory at meta.json: unreadable (shown above).
+- Dangling symlink at meta.json (`symlinkSync` to a nonexistent target):
+  `guard()` and `watch --once` agree, unreadable/`stale probe meta`.
+- Empty file at meta.json: same agreement, unreadable.
+- Torn/truncated JSON at meta.json: same agreement, unreadable.
+- A task entry that is itself a symlink to a real task directory (the
+  round's other named case, "a symlink to a real task directory is a task"):
+  confirmed counted as a task by both callers, because the entry probe is
+  `statSync(...).isDirectory()` (follows symlinks) rather than `lstatSync`.
+- A task directory with no meta.json at all: confirmed quiet on both sides
+  (`inFlight` 0, `watch --once` exit 3, no stdout), which is the claimed
+  quiet-direction agreement.
+
+The dedicated regression test, `the watcher and the guard agree on every
+task-record shape` (test/liveness.test.ts:541, registered as
+`liveness-task-record-classification-shared`), independently walks torn,
+directory, dangling-symlink and empty-file shapes plus the no-meta quiet
+case and passed on a clean run (see suite evidence below). This is the same
+set I reproduced by hand above; I did not find a shape among these that the
+new classifier still gets wrong.
+
+### NEW-2 (HIGH, new): a FIFO at tasks/<id>/meta.json hangs guard() and
+scanUnsafe() forever instead of being classified, contradicting the
+classifier's own stated coverage and the module's "warn, never block"
+charter
+
+The round's module doc for `surveyTaskRecords` (src/liveness.ts:296-300)
+states as one of its three governing rules: "The existence probe is lstat,
+so a directory, a FIFO, a device node and a dangling symlink all count."
+The work history repeats the same claim (delivery/work-history/m1-p5.md:936-
+938). Both are false for a FIFO in practice, because the existence probe is
+never reached.
+
+Reproduction, new head (98c635e), `tiphys init` fleet, `tasks/probe/` a real
+directory, `mkfifo tasks/probe/meta.json` (no writer ever opens it):
+
+- `guard(fleet)` called directly: `timeout 5 node ...` exits 124 (killed by
+  timeout) after printing "calling guard..." and never returning.
+- `tiphys watch --once` in that fleet: `timeout 5 ...` also exits 124, no
+  stdout, no stderr; the process is still blocked when killed.
+- Same reproduction against the old head (1807951): identical hang, exit
+  124 for both `guard()` and `watch --once`. This is not a regression
+  introduced by 1807951..98c635e; the underlying blocking call
+  (`readTaskMeta` in src/task.ts, unchanged by this phase) pre-dates the
+  phase.
+
+Root cause: `surveyTaskRecords` calls `readTaskMeta(fleet, id)` (which does
+`readFileSync(metaPath, "utf8")`) before it ever falls through to the
+`lstatSync` existence probe on the failure path. Opening a FIFO for reading
+with no writer present blocks the calling process indefinitely at the
+kernel level; it is not a raised exception, so none of the module's
+`try`/`catch` wrapping (and none of the "guard is TOTAL, never raises"
+reasoning in the docstring) touches it. This hangs `guard()`, which is
+called synchronously by every one of `warnIfWatcherStale`'s three callers
+(spawn, teardown, doctor per the module doc's own description of its call
+sites), and `scanUnsafe`, called by both `watch` and `watch --once`. A
+malformed or attacker-placed FIFO at a task's meta.json path therefore
+live-locks every one of the kernel's operator-facing commands that touch
+that fleet, which is a strictly worse outcome than the misclassification
+NEW-1 originally reported (silent wrong answer vs. permanent hang), and is
+the opposite of the explicit "WARN, NEVER BLOCK" contract stated at the top
+of src/liveness.ts.
+
+This is not covered by `the watcher and the guard agree on every
+task-record shape`: that test's four shapes (torn, directory, dangling
+symlink, empty file) do not include a FIFO, so the suite's green run gives
+no evidence either way, and the round's own honesty section (the G5
+discussion) does not mention this gap. I judge this a real, previously
+unnoticed gap rather than a contrived edge case, because the round's own
+prose affirmatively claims FIFO coverage as a design property, which makes
+the gap a false claim about delivered behavior, not merely an unhandled
+corner nobody promised.
+
+Recommendation: either have the classifier probe existence (`lstatSync`)
+before attempting to parse the record, so a non-regular file is classified
+without ever calling `readTaskMeta`, or have `readTaskMeta` (or a wrapper
+used from this path) open with a non-blocking flag and treat "would block"
+the same as "does not parse." Either fix is small and local to
+src/liveness.ts / src/task.ts. Given the severity (indefinite hang of
+doctor, spawn and teardown), I would not wave this through silently even
+though it predates this delta; at minimum it needs an owner-visible
+decision or a fix round, not silent acceptance, given the project's own
+rule that an unwitnessed claim is treated as unknown and a false claim of
+coverage is worse than no claim.
+
+### Refactor regression check (watcher losing its own loop)
+
+Ran test/watcher.test.ts alone on the new head: 19/19 pass, including the
+turn-end signal test ("a resident watcher wakes on a turn-end file with one
+signal line"), the stale-deadline test ("an open task past its executor
+deadline with no turn-end is stale"), the torn-metadata test ("a task
+record that cannot be read is surfaced, not skipped"), the at-most-once
+turn-end tests, the stranded-claim loud-failure test, and the abandoned-spawn
+detection test. Diffed `scanUnsafe` line by line against the old head: the
+only change is that the old function's own directory-walk-and-classify block
+is replaced by a single call to `surveyTaskRecords`, then continues to use
+`survey.open` and `survey.unreadable` exactly where the old local `open` and
+`unreadable` arrays were used (turn-end scan, deadline scan, `stale <id>
+meta` wake). No wake type, priority order, or seen-state suppression rule
+changed. No regression found in the refactor itself.
+
+### Agreement-test probes (probe 3)
+
+Edited `src/watcher.ts` only (added a line dropping `survey.unreadable` to
+empty inside `scanUnsafe`, simulating a one-sided watcher change): the named
+test `the watcher and the guard agree on every task-record shape` went red
+("torn: ... 3 !== 0"), all other tests unaffected. Reverted, confirmed
+`git status --porcelain` clean.
+
+Edited the shared helper only (`src/liveness.ts`, reintroduced
+`statSync(...).isFile()` in `surveyTaskRecords`'s existence probe, the exact
+old bug): the same named test went red, with a clear, on-point message
+("dirmeta: the guard did not count the record: no open tasks: nothing is in
+flight to supervise", "0 !== 1"), pointing straight at the reintroduced
+defect rather than an unrelated or confusing assertion. Reverted, confirmed
+clean.
+
+A third attempt (editing only the `problems`-vs-`unreadable` folding inside
+`surveyTasks`, distinct from `surveyTaskRecords`'s per-record classification)
+did not fail this test, because no existing test drives `problems` non-
+empty; this is consistent with, and independently confirms, the round's own
+G5 admission (below) rather than being a new gap in the agreement test's
+design.
+
+### G3 / G3b / G5 (probe 4)
+
+G3 (0/3, called a bad sabotage): confirmed by reading `effectiveThresholdMs`
+(src/liveness.ts:378-385). It computes `declaredFloorMs` from
+`beacon.intervalMs + cadence.pollIntervalMs` and never reads
+`cadence.backoffCapMs` at all. Setting `backoffCapMs: 0` in the cadence
+passed to `judgeBeacon`, as G3 did, therefore cannot change anything this
+function reads. The round's characterization ("the sabotage changed nothing
+the code reads") is verified true by inspection, not merely asserted; this
+was a sabotage-design error, not a weak test, and G3b (which mutates
+doctor's own beacon-comparison logic directly, not an unread cadence field)
+is the correct witness and is red 3/3 by my own re-run of
+`test/liveness.test.ts`.
+
+G5 (0/3, the `problems` arm unwitnessed): confirmed the suite runs as root
+(`id` -> uid=0) and confirmed directly that root bypasses permission bits
+relevant here (`chmod 000` on a directory, `readdirSync` on it as root still
+succeeds and returns `[]` rather than raising EACCES). The claim that
+forcing a non-ENOENT, non-permission `readdirSync`/`statSync` failure is
+hard under this suite's execution model is correct as far as I could push
+it in the time available. The round reports the gap rather than papering
+over it with a fabricated assertion, which is the right call given the
+project's red-witness rule; I did not find a cheap way to force this arm
+either, so I record it as an honest, still-open gap rather than a defect in
+the round's own honesty.
+
+### CR-510 half-decline (probe 5)
+
+Built a fleet with one open task and a beacon dated 24h in the future, then:
+`tiphys doctor` reports `watcher stale: ... dated 86400s in the FUTURE ...
+remove that file and let the next evaluation write it from the present,
+because restarting the watcher alone will not clear it`. Ran `tiphys watch
+--once` WITHOUT removing the beacon: the beacon is still read as ahead
+afterward (86399s, one millisecond less, matching the docstring's own
+description of `writeBeacon`'s behavior against an already-ahead stamp) --
+confirms "restarting the watcher alone will not clear it" is literally true,
+not just plausible. Then removed the beacon file and ran `tiphys watch
+--once` again: `tiphys doctor` immediately reports `CHECK beacon PASS
+beacon present, age 0s (freshness threshold 1200s)`. The stated remediation
+works exactly as described. The declined self-heal (auto-resynchronizing
+`writeBeacon` when the previous stamp is far enough ahead) is correctly
+identified as touching the strict-advance invariant a separate acceptance
+criterion depends on, which makes it an irreversible-ish design tradeoff
+the plan is silent on, not a bug fix; declining it as an owner call rather
+than improvising it is the right call under this repository's own "never
+improvise an irreversible choice the plan is silent on" rule. I judge the
+half-decline sound and its stated remediation truthful.
+
+### Sweep (probe 6)
+
+- `npm ci`, `rm -rf dist && npm run build`: exit 0, `git status --porcelain`
+  empty afterward (D-17/D-18 satisfied).
+- `node --test`: 136 tests, 134 pass, 0 fail, 2 skipped (the unchanged
+  floor-gated pair), matching the work history's own count.
+- Registry check, independently computed (not copied from the work
+  history): 142 name-to-title mappings in test/behaviors.json, all 142
+  resolve to an actual `test(...)` title somewhere under test/, 0 missing,
+  136 distinct titles referenced (some titles carry more than one
+  registered behavior name, consistent with existing pre-round entries).
+- Scope: changed files are exactly delivery/work-history/m1-p5.md,
+  src/commands/doctor.ts, src/liveness.ts, src/watcher.ts,
+  test/behaviors.json, test/liveness.test.ts -- all within the phase's
+  files-to-touch plus the standing work-history/behaviors.json extras, no
+  surprises.
+- ASCII / em-dash: `grep -rP '[^\x00-\x7F]'` over every file in the delta's
+  diff found nothing; no em dashes found.
+
+### Merge recommendation (final)
+
+NEW-1 is closed correctly and by construction (one classifier, not two
+patched copies), and the refactor that closed it introduced no regression
+in the watcher's other wake types. The two reported-green witnesses (G3/G3b)
+and the one reported-gap (G5) both hold up under independent re-derivation.
+The CR-510 half-decline is the right call and its remedy is real. However,
+NEW-2 (the FIFO hang) is a genuine, reproduced, severe hazard directly
+adjacent to and partly enabled by this round's own explicit ("a FIFO ...
+all count") but false completeness claim about the very classifier this
+round introduced. It predates the delta and is not a regression, so it does
+not retroactively reopen NEW-1, but I would not approve this PR to merge
+silently on top of a stated design property that is false the moment it is
+tested. Recommend either a small, local fix (probe existence before parse,
+or a non-blocking read) in a short follow-up round, or an explicit owner-
+visible decision to accept the residue with the docstring's overclaim
+corrected to say so honestly.
