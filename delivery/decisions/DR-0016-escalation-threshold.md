@@ -106,6 +106,24 @@ The split is instructive. Every question the owner genuinely needed was about
 something irreversible or about access. Every question that wasted their time
 was about how hard to push on a defect.
 
+## The one standing exception, added 2026-08-05
+
+The owner has instructed a HARD STOP at the M1 milestone boundary: when M1 is
+completely done (P6 merged, exit test passed with evidence, evidence presented),
+stop and wait for explicit confirmation before continuing, because the model in
+use is going to change and the owner wants that to land at the boundary.
+
+Recorded here rather than only in `delivery/STATE.md` because this rule is what
+a future session would otherwise read to conclude it should NOT wait. An
+exception that lives only in the file the exception contradicts is not durable.
+
+It is not an escalation and it does not weaken this decision. The rule above
+governs QUESTIONS the agent could answer itself. This is an instruction to
+pause at a named point for a reason outside the agent's ability to evaluate,
+given in advance rather than requested at the moment. Those are different
+things, and conflating them is how a standing instruction gets optimised away
+by an agent applying a throughput rule.
+
 ## Evidence
 
 - Owner's rule, 2026-08-05, recorded above in their terms.

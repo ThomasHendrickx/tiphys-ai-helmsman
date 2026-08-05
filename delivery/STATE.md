@@ -15,6 +15,32 @@ is wrong: verify against git and the PR list before trusting it.
   their evidence is presented to the owner regardless, which is a reporting
   obligation and not a click.
 
+## HARD STOP AT THE M1 BOUNDARY (owner instruction, 2026-08-05)
+
+**When M1 is COMPLETELY done, STOP and wait for the owner's explicit
+confirmation before continuing. Do not dispatch M2. The owner intends to change
+the model being used, and wants that change to land at the milestone boundary.**
+
+"Completely done" means all three, not the first two:
+
+1. M1-P6 merged to `main`.
+2. The M1 exit test executed and PASSED, with its evidence recorded.
+3. That evidence presented to the owner.
+
+Then stop. Do not dispatch M2-P1. Do not start anything that grounds on M1.
+
+**This overrides DR-0015 and DR-0016 at this one point, deliberately.** Both of
+those say the owner is not an approval step and that recommendation-backed
+questions are the agent's to take. That remains true everywhere EXCEPT here.
+This is not a question with an obvious answer, and it is not an escalation: it
+is a standing instruction to pause at a boundary the owner named in advance,
+for a reason the agent cannot evaluate.
+
+Work already in flight that produces DOCUMENTS rather than dispatches (the M2
+and M3 plan re-grounding) may complete, because a re-grounded plan stays valid
+across a model change and costs nothing if it waits. Nothing that dispatches an
+implementer against M2 may start.
+
 ## How to resume cold
 
 1. Read `CLAUDE.md`, then this file.
