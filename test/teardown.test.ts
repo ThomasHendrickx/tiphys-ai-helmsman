@@ -33,7 +33,10 @@ const GIT_IDENTITY = {
 interface CliResult {
   status: number | null;
   stdout: string;
+  /** The command's own stderr, with the guard advisory separated out. */
   stderr: string;
+  /** The liveness guard's advisory line, if it fired (M1-P5). */
+  advisory: string;
 }
 
 function baseEnv(): NodeJS.ProcessEnv {
@@ -42,6 +45,17 @@ function baseEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * M1-P5 wired the liveness guard into teardown, and every scratch fleet
+ * in this file is exactly the state the guard fires on: work in flight
+ * and no watcher, so no beacon. The plan mandates BOTH that advisory
+ * line (M1-P5 criterion 10) and teardown's own single-reason-line
+ * contract (CR-303), so this helper separates them: stderr carries the
+ * command's own output, which is what the assertions in this file are
+ * about, and advisory carries the guard's line. The separation cannot
+ * hide anything, because the helper asserts the guard produced at most
+ * one line and everything else still lands in stderr.
+ */
 function runCli(
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
@@ -51,10 +65,18 @@ function runCli(
     cwd: opts.cwd,
     env: opts.env ?? baseEnv(),
   });
+  const raw = result.stderr ?? "";
+  const lines = raw.split("\n");
+  const advisory = lines.filter((line) => line.includes("watcher stale"));
+  assert.ok(
+    advisory.length <= 1,
+    `the liveness guard wrote ${String(advisory.length)} lines: ${raw}`,
+  );
   return {
     status: result.status,
     stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
+    stderr: lines.filter((line) => !line.includes("watcher stale")).join("\n"),
+    advisory: advisory.join("\n"),
   };
 }
 
@@ -67,6 +89,7 @@ function git(dir: string, args: string[]): CliResult {
     status: result.status,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+    advisory: "",
   };
 }
 

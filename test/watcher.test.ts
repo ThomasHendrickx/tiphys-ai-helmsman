@@ -1,0 +1,804 @@
+import { strict as assert } from "node:assert";
+import { spawn, spawnSync } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Watcher tests (kernel plan v1, M1-P5 criteria 1 to 9, 13 and 14), plus
+ * the tuition T-002 abandoned-task witness.
+ *
+ * TIMING. The watcher's behavior IS timing, so the cadence flags this
+ * phase ships (--interval, --poll, --backoff-cap) are used to run it at
+ * test timescales. Where a real clock wait is unavoidable it is stated
+ * at the test and bounded; everything else is staged deterministically
+ * (a barrier file for the concurrency witness, a pre-dated deadline for
+ * the stale witness, a pre-dated beacon for the guard).
+ *
+ * WHY THIS FILE STOPS A PROCESS. The T-002 witness has to produce the
+ * state "task open, no turn-end, worktree dirty", and M1-P4 established
+ * that in M1 it can arise in exactly one way: the spawn process itself
+ * stops while the payload is running. So the test stops a real spawn
+ * mid-payload rather than writing the resulting files by hand. That is
+ * the TEST creating a failure state; nothing in the kernel asks the
+ * operating system about any running program, which criterion 14's
+ * structural test asserts over the shipped sources.
+ */
+
+const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
+const srcDir = fileURLToPath(new URL("../src/", import.meta.url));
+
+const GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: "Watcher Test",
+  GIT_AUTHOR_EMAIL: "watcher-test@tiphys.invalid",
+  GIT_COMMITTER_NAME: "Watcher Test",
+  GIT_COMMITTER_EMAIL: "watcher-test@tiphys.invalid",
+};
+
+interface CliResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+function baseEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.TIPHYS_HOLDER_ID;
+  delete env.TIPHYS_WATCH_TEST_HOLD;
+  return env;
+}
+
+function runCli(
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): CliResult {
+  const result = spawnSync(process.execPath, [sourceEntry, ...args], {
+    encoding: "utf8",
+    cwd: opts.cwd,
+    env: opts.env ?? baseEnv(),
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+interface RunningCli {
+  proc: ChildProcess;
+  stdout: () => string;
+  stderr: () => string;
+  exitCode: () => number | null;
+  waitForExit: (limitMs: number) => Promise<number | null>;
+  stop: () => void;
+}
+
+/** Start the CLI as a child process the TEST owns (plan constraint C-3). */
+function startCli(
+  t: { after(fn: () => void): void },
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): RunningCli {
+  const proc = spawn(process.execPath, [sourceEntry, ...args], {
+    cwd: opts.cwd,
+    env: opts.env ?? baseEnv(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  let err = "";
+  let code: number | null = null;
+  proc.stdout?.setEncoding("utf8");
+  proc.stderr?.setEncoding("utf8");
+  proc.stdout?.on("data", (chunk: string) => {
+    out += chunk;
+  });
+  proc.stderr?.on("data", (chunk: string) => {
+    err += chunk;
+  });
+  proc.on("exit", (exit) => {
+    code = exit;
+  });
+  const stop = (): void => {
+    if (proc.exitCode === null) {
+      proc.kill();
+    }
+  };
+  t.after(stop);
+  return {
+    proc,
+    stdout: () => out,
+    stderr: () => err,
+    exitCode: () => code,
+    async waitForExit(limitMs: number): Promise<number | null> {
+      const deadline = Date.now() + limitMs;
+      while (Date.now() < deadline) {
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          await sleep(20);
+          return code;
+        }
+        await sleep(10);
+      }
+      return null;
+    },
+    stop,
+  };
+}
+
+function git(dir: string, args: string[]): CliResult {
+  const result = spawnSync("git", ["-C", dir, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...GIT_IDENTITY },
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function gitOk(dir: string, args: string[]): string {
+  const result = git(dir, args);
+  assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function makeTempDir(t: { after(fn: () => void): void }): string {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-p5-watch-"));
+  t.after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return dir;
+}
+
+function initFleet(t: { after(fn: () => void): void }): string {
+  const fleet = join(makeTempDir(t), "fleet");
+  const result = runCli(["init", fleet]);
+  assert.equal(result.status, 0, result.stderr);
+  return fleet;
+}
+
+/** An open task record, which is what makes a fleet worth supervising. */
+function openTask(fleet: string, taskId: string): void {
+  const dir = join(fleet, "tasks", taskId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "meta.json"),
+    `${JSON.stringify(
+      {
+        id: taskId,
+        project: join(fleet, "projects", "demo"),
+        shape: "ship",
+        branch: `task/${taskId}`,
+        worktree: join(fleet, "worktrees", taskId),
+        baseSha: "0".repeat(40),
+        baseOffline: false,
+        status: "open",
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function writeTurnEnd(fleet: string, taskId: string, exitCode = 0): void {
+  writeFileSync(
+    join(fleet, "tasks", taskId, "turn-end"),
+    `${JSON.stringify({ endedAt: new Date().toISOString(), exitCode }, null, 2)}\n`,
+  );
+}
+
+function beaconStampMs(fleet: string): number | undefined {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(fleet, "state", "watcher.beacon"), "utf8"),
+    ) as { writtenAt?: string };
+    return parsed.writtenAt === undefined ? undefined : Date.parse(parsed.writtenAt);
+  } catch {
+    return undefined;
+  }
+}
+
+async function waitForBeacon(fleet: string, limitMs: number): Promise<number> {
+  const deadline = Date.now() + limitMs;
+  while (Date.now() < deadline) {
+    const stamp = beaconStampMs(fleet);
+    if (stamp !== undefined) {
+      return stamp;
+    }
+    await sleep(10);
+  }
+  throw new Error(`no beacon within ${String(limitMs)}ms`);
+}
+
+async function waitForFile(path: string, limitMs: number): Promise<void> {
+  const deadline = Date.now() + limitMs;
+  while (Date.now() < deadline) {
+    if (existsSync(path)) {
+      return;
+    }
+    await sleep(10);
+  }
+  throw new Error(`${path} did not appear within ${String(limitMs)}ms`);
+}
+
+test("a resident watcher keeps running and backs off with growing beacon gaps", async (t) => {
+  // Criterion 1. Real-clock wait, bounded: base 0.5s doubling to a 10s
+  // cap, sampled for 4.2s, which is the shortest run that yields three
+  // successive gaps (0.5, 1.0, 2.0).
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  const watcher = startCli(
+    t,
+    ["watch", "--interval", "0.5", "--poll", "0.1", "--backoff-cap", "10"],
+    { cwd: fleet },
+  );
+
+  const stamps: number[] = [];
+  const deadline = Date.now() + 4200;
+  while (Date.now() < deadline) {
+    const stamp = beaconStampMs(fleet);
+    if (stamp !== undefined && !stamps.includes(stamp)) {
+      stamps.push(stamp);
+    }
+    await sleep(20);
+  }
+
+  assert.equal(watcher.exitCode(), null, `watcher exited: ${watcher.stderr()}`);
+  assert.equal(watcher.stdout(), "", "an idle watcher printed something");
+  assert.ok(
+    stamps.length >= 4,
+    `expected at least 4 beacon writes, saw ${String(stamps.length)}`,
+  );
+  const gaps: number[] = [];
+  for (let i = 1; i < stamps.length; i += 1) {
+    assert.ok(
+      (stamps[i] as number) > (stamps[i - 1] as number),
+      "beacon timestamps are not strictly increasing",
+    );
+    gaps.push((stamps[i] as number) - (stamps[i - 1] as number));
+  }
+  for (let i = 1; i < gaps.length; i += 1) {
+    const previous = gaps[i - 1] as number;
+    const current = gaps[i] as number;
+    assert.ok(
+      current >= previous,
+      `beacon gap shrank: ${gaps.join(",")}`,
+    );
+    // The criterion's letter is ">= the previous gap"; the doubling is
+    // what makes it a backoff rather than a flat cadence, so the
+    // measurement asserts the shape too.
+    assert.ok(
+      current >= previous * 1.5,
+      `beacon gaps are not doubling: ${gaps.join(",")}`,
+    );
+  }
+  watcher.stop();
+});
+
+test("a resident watcher wakes on a turn-end file with one signal line", async (t) => {
+  // Criterion 2. The reason is asserted, not merely the wake: a watcher
+  // that exited for any other cause fails this test.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  const watcher = startCli(
+    t,
+    ["watch", "--interval", "30", "--poll", "0.1", "--backoff-cap", "60"],
+    { cwd: fleet },
+  );
+  await waitForBeacon(fleet, 5000);
+
+  writeTurnEnd(fleet, "t1");
+  const code = await watcher.waitForExit(5000);
+  assert.equal(code, 0, `watcher did not exit 0: ${watcher.stderr()}`);
+  assert.equal(watcher.stdout(), "signal t1 turn-end\n");
+  assert.equal(watcher.stderr(), "");
+});
+
+test("a resident watcher is silent on heartbeats unless bounded", async (t) => {
+  // Criterion 3. Real-clock wait, bounded: three 0.4s base intervals
+  // with doubling is 2.8s, sampled to 3.0s.
+  const fleet = initFleet(t);
+  const idle = startCli(
+    t,
+    ["watch", "--interval", "0.4", "--poll", "0.1", "--backoff-cap", "10"],
+    { cwd: fleet },
+  );
+  await sleep(3000);
+  assert.equal(idle.exitCode(), null, `watcher exited: ${idle.stderr()}`);
+  assert.equal(idle.stdout(), "", "an unbounded watcher exited on a heartbeat");
+  idle.stop();
+
+  // The bound is on THIS RUN, and the schedule it reports is the fleet's
+  // on-disk one: this second run continues the streak the idle run left
+  // behind (FM-006) while still stopping after one tick of its own.
+  const continued = startCli(
+    t,
+    [
+      "watch",
+      "--interval",
+      "0.3",
+      "--poll",
+      "0.1",
+      "--backoff-cap",
+      "10",
+      "--max-heartbeats",
+      "1",
+    ],
+    { cwd: fleet },
+  );
+  const continuedCode = await continued.waitForExit(20_000);
+  assert.equal(continuedCode, 0, `bounded watcher did not exit 0: ${continued.stderr()}`);
+  assert.match(
+    continued.stdout(),
+    /^heartbeat ([2-9]|\d\d+)\n$/,
+    "the heartbeat ordinal restarted instead of continuing the fleet's schedule",
+  );
+
+  const virgin = initFleet(t);
+  const bounded = startCli(
+    t,
+    [
+      "watch",
+      "--interval",
+      "0.3",
+      "--poll",
+      "0.1",
+      "--backoff-cap",
+      "10",
+      "--max-heartbeats",
+      "2",
+    ],
+    { cwd: virgin },
+  );
+  const code = await bounded.waitForExit(8000);
+  assert.equal(code, 0, `bounded watcher did not exit 0: ${bounded.stderr()}`);
+  assert.equal(bounded.stdout(), "heartbeat 2\n");
+});
+
+test("watch --once on a virgin fleet is silent and single-pass parity holds", (t) => {
+  // Criterion 4, both halves.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+
+  const virgin = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(virgin.status, 3, virgin.stderr);
+  assert.equal(virgin.stdout, "");
+  assert.equal(virgin.stderr, "");
+
+  writeTurnEnd(fleet, "t1");
+  const pending = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(pending.status, 0, pending.stderr);
+  assert.equal(pending.stdout, "signal t1 turn-end\n");
+});
+
+test("the heartbeat schedule is on disk and shared by single passes", async (t) => {
+  // Criterion 5. Real-clock wait, bounded at 0.5s: the schedule is what
+  // is under test, so the interval has to actually elapse.
+  const fleet = initFleet(t);
+  const init = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(init.status, 3, init.stderr);
+
+  await sleep(500);
+  const due = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(due.status, 0, due.stderr);
+  assert.equal(due.stdout, "heartbeat 1\n");
+
+  const immediate = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(immediate.status, 3, immediate.stderr);
+  assert.equal(immediate.stdout, "");
+
+  // The schedule survived three separate processes, so it is not in
+  // process memory (FM-006, FM-045).
+  const cadence = JSON.parse(
+    readFileSync(join(fleet, "state", "watcher.cadence.json"), "utf8"),
+  ) as { backoffStreak: number };
+  assert.equal(cadence.backoffStreak, 1);
+});
+
+test("a surfaced turn-end is not surfaced again by the next pass", (t) => {
+  // Criterion 6.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeTurnEnd(fleet, "t1");
+
+  const first = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(first.stdout, "signal t1 turn-end\n");
+
+  const second = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(second.status, 3, second.stderr);
+  assert.equal(second.stdout, "");
+
+  // The suppression is the seen record, and it carries the identity of
+  // the file that was surfaced: a NEW turn-end for the same task is a
+  // new wake, not a duplicate.
+  writeTurnEnd(fleet, "t1", 7);
+  const third = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(third.status, 0, third.stderr);
+  assert.equal(third.stdout, "signal t1 turn-end\n");
+});
+
+test("two passes racing on one turn-end surface it exactly once", async (t) => {
+  // Criterion 7, in two parts.
+  //
+  // Part A stages the interleave deterministically with the hold seam:
+  // pass A stops after deciding to surface and before touching the seen
+  // state, pass B runs to completion inside that window, and A is then
+  // released. This is the only way to place the two passes inside the
+  // window on purpose rather than by luck.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeTurnEnd(fleet, "t1");
+  const barrier = join(fleet, "state", "race-barrier");
+
+  const held = startCli(t, ["watch", "--once"], {
+    cwd: fleet,
+    env: { ...baseEnv(), TIPHYS_WATCH_TEST_HOLD: barrier },
+  });
+  await waitForFile(`${barrier}.observed`, 10_000);
+
+  const other = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(other.status, 0, other.stderr);
+  assert.equal(other.stdout, "signal t1 turn-end\n");
+
+  writeFileSync(barrier, "");
+  const heldCode = await held.waitForExit(10_000);
+  assert.equal(
+    readFileSync(`${barrier}.released`, "utf8").trim(),
+    "barrier appeared",
+    "the hold seam did not actually hold, so no interleave was staged",
+  );
+  assert.equal(heldCode, 3, `the loser did not report no-wake: ${held.stderr()}`);
+  assert.equal(held.stdout(), "", "the same turn-end was surfaced twice");
+});
+
+test("a resident watcher and a concurrent single pass never both surface a wake", async (t) => {
+  // Criterion 7, part B: the plan's literal shape, a resident watcher
+  // and a concurrent --once. This one is a real race and its result is
+  // reported as a rate, not as a proof.
+  const rounds = 5;
+  let residentWins = 0;
+  let onceWins = 0;
+  for (let round = 0; round < rounds; round += 1) {
+    const fleet = initFleet(t);
+    openTask(fleet, "t1");
+    const watcher = startCli(
+      t,
+      ["watch", "--interval", "30", "--poll", "0.05", "--backoff-cap", "60"],
+      { cwd: fleet },
+    );
+    await waitForBeacon(fleet, 5000);
+
+    writeTurnEnd(fleet, "t1");
+    const once = runCli(["watch", "--once"], { cwd: fleet });
+    const residentCode = await watcher.waitForExit(3000);
+    const residentLine = watcher.stdout();
+    watcher.stop();
+
+    const onceSurfaced = once.stdout === "signal t1 turn-end\n";
+    const residentSurfaced = residentLine === "signal t1 turn-end\n";
+    assert.ok(
+      onceSurfaced !== residentSurfaced,
+      `round ${String(round)}: once=${JSON.stringify(once.stdout)} (exit ` +
+        `${String(once.status)}) resident=${JSON.stringify(residentLine)} (exit ` +
+        `${String(residentCode)})`,
+    );
+    if (onceSurfaced) {
+      onceWins += 1;
+      assert.equal(once.status, 0, once.stderr);
+    } else {
+      residentWins += 1;
+      assert.equal(once.status, 3, once.stderr);
+      assert.equal(residentCode, 0);
+    }
+  }
+  assert.equal(residentWins + onceWins, rounds);
+});
+
+test("a no-wake single pass strictly advances the beacon", (t) => {
+  // Criterion 8, including two passes inside the same millisecond: the
+  // advance is strict, so a reader can always compare two beacons.
+  const fleet = initFleet(t);
+  const first = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(first.status, 3, first.stderr);
+  const firstStamp = beaconStampMs(fleet);
+  assert.notEqual(firstStamp, undefined);
+
+  for (let i = 0; i < 3; i += 1) {
+    const previous = beaconStampMs(fleet) as number;
+    const pass = runCli(["watch", "--once"], { cwd: fleet });
+    assert.equal(pass.status, 3, pass.stderr);
+    assert.equal(pass.stdout, "");
+    const current = beaconStampMs(fleet) as number;
+    assert.ok(
+      current > previous,
+      `no-wake pass did not advance the beacon: ${String(previous)} then ${String(current)}`,
+    );
+  }
+});
+
+test("an open task past its executor deadline with no turn-end is stale", (t) => {
+  // Criterion 9, staged deterministically: the deadline is written in
+  // the past, so no wait is needed.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeFileSync(
+    join(fleet, "tasks", "t1", "executor.json"),
+    `${JSON.stringify(
+      {
+        adapter: "subprocess",
+        launchedAt: new Date(Date.now() - 120_000).toISOString(),
+        deadline: new Date(Date.now() - 60_000).toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  const pass = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(pass.status, 0, pass.stderr);
+  assert.equal(pass.stdout, "stale t1 deadline\n");
+
+  // A deadline in the FUTURE is not stale, so the detector is not just
+  // reporting on the presence of a launch record.
+  writeFileSync(
+    join(fleet, "tasks", "t1", "executor.json"),
+    `${JSON.stringify(
+      {
+        adapter: "subprocess",
+        launchedAt: new Date().toISOString(),
+        deadline: new Date(Date.now() + 600_000).toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  const future = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(future.status, 3, future.stderr);
+  assert.equal(future.stdout, "");
+
+  // A turn-end outranks the deadline: a task that finished late is
+  // finished, not abandoned.
+  writeFileSync(
+    join(fleet, "tasks", "t1", "executor.json"),
+    `${JSON.stringify(
+      {
+        adapter: "subprocess",
+        launchedAt: new Date(Date.now() - 120_000).toISOString(),
+        deadline: new Date(Date.now() - 60_000).toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeTurnEnd(fleet, "t1");
+  const finished = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(finished.status, 0, finished.stderr);
+  assert.equal(finished.stdout, "signal t1 turn-end\n");
+});
+
+test("a spawn stopped mid-payload is detected as an abandoned task", async (t) => {
+  // Tuition T-002, and the plan's designed route for it (PR-207). The
+  // state under test is the real one, not a hand-built file set: a real
+  // spawn is stopped while its payload is running, which in M1 is the
+  // only way a task can be left open with no turn-end and a dirty
+  // worktree (M1-P4's own note to this phase).
+  const tmp = makeTempDir(t);
+  const fleet = join(tmp, "fleet");
+  assert.equal(runCli(["init", fleet]).status, 0);
+  const upstream = join(tmp, "upstream");
+  gitOk(tmp, ["init", "--initial-branch=main", upstream]);
+  writeFileSync(join(upstream, "readme.md"), "upstream\n");
+  gitOk(upstream, ["add", "-A"]);
+  gitOk(upstream, ["commit", "-m", "commit one"]);
+  const clone = join(fleet, "projects", "demo");
+  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+  const briefFile = join(tmp, "brief.md");
+  writeFileSync(briefFile, "# Brief\n\nDo the thing.\n");
+
+  const marker = join(tmp, "payload-started");
+  const payload = join(tmp, "payload.sh");
+  writeFileSync(
+    payload,
+    `#!/bin/sh
+# Leave real uncommitted work in the worktree, announce that the payload
+# is running, then stay alive long enough to be stopped with it.
+echo "half-done work" > leavings.txt
+: > ${JSON.stringify(marker)}
+sleep 5
+`,
+    { mode: 0o755 },
+  );
+
+  const spawning = startCli(
+    t,
+    [
+      "spawn",
+      "--task",
+      "ab1",
+      "--project",
+      clone,
+      "--brief",
+      briefFile,
+      "--shape",
+      "ship",
+      "--exec",
+      payload,
+      "--deadline",
+      "1",
+    ],
+    { cwd: fleet },
+  );
+  await waitForFile(marker, 30_000);
+
+  // Stop the spawn process itself, which is the T-002 incident shape:
+  // the work is on disk, no turn-end was ever written, and nothing in
+  // the fleet knows the task will never finish.
+  spawning.proc.kill("SIGKILL");
+  await spawning.waitForExit(10_000);
+
+  const taskDir = join(fleet, "tasks", "ab1");
+  const worktree = join(fleet, "worktrees", "ab1");
+  assert.ok(!existsSync(join(taskDir, "turn-end")), "a turn-end file was written");
+  const meta = JSON.parse(readFileSync(join(taskDir, "meta.json"), "utf8")) as {
+    status: string;
+  };
+  assert.equal(meta.status, "open", "the task is not open");
+  const dirty = gitOk(worktree, ["status", "--porcelain"]);
+  assert.notEqual(dirty, "", "the worktree carries no uncommitted work");
+  const record = JSON.parse(readFileSync(join(taskDir, "executor.json"), "utf8")) as {
+    deadline?: string;
+  };
+  assert.notEqual(record.deadline, undefined, "the launch record carries no deadline");
+
+  // Real-clock wait, bounded: the deadline was one second out and it has
+  // to actually pass before the condition exists.
+  const deadlineMs = Date.parse(record.deadline as string);
+  while (Date.now() <= deadlineMs) {
+    await sleep(50);
+  }
+
+  const pass = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(pass.status, 0, pass.stderr);
+  assert.equal(pass.stdout, "stale ab1 deadline\n");
+});
+
+test("a requested one-shot check is surfaced once and consumed", (t) => {
+  const fleet = initFleet(t);
+  writeFileSync(join(fleet, "state", "check-request"), "gates\n");
+
+  const first = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(first.stdout, "check gates\n");
+  assert.ok(
+    !existsSync(join(fleet, "state", "check-request")),
+    "the request was not consumed",
+  );
+
+  const second = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(second.status, 3, second.stderr);
+  assert.equal(second.stdout, "");
+});
+
+test("watcher currency never comes from the wake log", (t) => {
+  // Plan constraint C-1. The wake log is append-only and is written by
+  // every surfaced wake; if any decision were read off its tail, garbage
+  // in it would change the outcome. It does not.
+  const fleet = initFleet(t);
+  openTask(fleet, "t1");
+  writeTurnEnd(fleet, "t1");
+  const lastWake = join(fleet, "state", "last-wake.json");
+  writeFileSync(lastWake, "not json at all\n{\"line\":\"signal t1 turn-end\"}\n");
+
+  const surfaced = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(surfaced.status, 0, surfaced.stderr);
+  assert.equal(surfaced.stdout, "signal t1 turn-end\n");
+
+  // And with the log deleted, the SUPPRESSION still holds, because it
+  // lives in the seen state and not in the log.
+  rmSync(lastWake);
+  const suppressed = runCli(["watch", "--once"], { cwd: fleet });
+  assert.equal(suppressed.status, 3, suppressed.stderr);
+  assert.equal(suppressed.stdout, "");
+});
+
+test("the watcher imports no network client anywhere in its graph", (t) => {
+  // Criterion 13: zero tokens idle is structural, not a promise.
+  void t;
+  const graph = new Set<string>();
+  const queue = [join(srcDir, "watcher.ts")];
+  while (queue.length > 0) {
+    const file = queue.pop() as string;
+    if (graph.has(file)) {
+      continue;
+    }
+    graph.add(file);
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/from\s+"(\.[^"]+)"/g)) {
+      queue.push(resolve(dirname(file), match[1] as string));
+    }
+  }
+  // Anti-vacuity: the walk really did follow the imports.
+  assert.ok(graph.size >= 4, `import graph too small: ${[...graph].join(", ")}`);
+  assert.ok(graph.has(join(srcDir, "liveness.ts")));
+  assert.ok(graph.has(join(srcDir, "task.ts")));
+
+  for (const file of graph) {
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(
+      source,
+      /from\s+"node:(http|https|http2|net|tls|dgram|dns)"/,
+      `${file} imports a network module`,
+    );
+    assert.doesNotMatch(source, /\bfetch\s*\(/, `${file} calls fetch`);
+    assert.doesNotMatch(source, /XMLHttpRequest|WebSocket/, `${file} opens a socket`);
+    assert.doesNotMatch(
+      source,
+      /require\(\s*["'](node:)?(http|https|net|tls|undici|axios|node-fetch)/,
+      `${file} requires a network client`,
+    );
+  }
+});
+
+test("the watcher has no process identity and no way to outlive its caller", (t) => {
+  // Criterion 14: C-2 and C-3, structural inspection over the shipped
+  // sources of this phase.
+  void t;
+  for (const name of ["watcher.ts", "liveness.ts", join("commands", "watch.ts")]) {
+    const file = join(srcDir, name);
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(source, /\bpid\b/i, `${name} carries a process identity`);
+    assert.doesNotMatch(source, /process\.kill/, `${name} probes a process`);
+    assert.doesNotMatch(source, /\bkill\s*\(/, `${name} probes a process`);
+    assert.doesNotMatch(source, /\/proc\b/, `${name} reads /proc`);
+    assert.doesNotMatch(source, /signal\s*0/, `${name} probes with signal 0`);
+    assert.doesNotMatch(source, /SIG[A-Z]{3,}/, `${name} uses a process signal`);
+    assert.doesNotMatch(source, /detached\s*:/, `${name} detaches a process`);
+    assert.doesNotMatch(source, /\.unref\s*\(/, `${name} unrefs a handle`);
+    assert.doesNotMatch(source, /daemon/i, `${name} mentions a daemon flag`);
+    assert.doesNotMatch(source, /background/i, `${name} mentions a background flag`);
+  }
+  // The command's own flag surface: exactly the documented five.
+  const command = readFileSync(join(srcDir, "commands", "watch.ts"), "utf8");
+  const flags = [...command.matchAll(/flag === "(--[a-z-]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(
+    [...new Set(flags)].sort(),
+    ["--backoff-cap", "--interval", "--max-heartbeats", "--once", "--poll"],
+  );
+});
+
+test("watch usage errors exit 64 and a non-fleet cwd exits 1", (t) => {
+  const fleet = initFleet(t);
+  const unknown = runCli(["watch", "--tail"], { cwd: fleet });
+  assert.equal(unknown.status, 64);
+  assert.match(unknown.stderr, /^usage: tiphys watch /m);
+
+  const bothModes = runCli(["watch", "--once", "--max-heartbeats", "2"], { cwd: fleet });
+  assert.equal(bothModes.status, 64);
+
+  const badInterval = runCli(["watch", "--once", "--interval", "0"], { cwd: fleet });
+  assert.equal(badInterval.status, 64);
+
+  // A cadence that would make a healthy watcher read as stale is refused
+  // with both values named (criterion 12, through the flags).
+  const badCadence = runCli(["watch", "--once", "--backoff-cap", "36000"], { cwd: fleet });
+  assert.equal(badCadence.status, 64);
+  assert.match(badCadence.stderr, /36000000ms/);
+  assert.match(badCadence.stderr, /not strictly greater/);
+
+  const outside = runCli(["watch", "--once"], { cwd: makeTempDir(t) });
+  assert.equal(outside.status, 1);
+  assert.match(outside.stderr, /^tiphys watch: not a fleet home: /m);
+});

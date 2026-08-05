@@ -92,7 +92,7 @@ import { executorRecordPath, readTaskMeta, runStep, turnEndPath } from "./task.t
  * and surfaces no heartbeat; the first heartbeat falls due one base
  * interval later (PR-205).
  *
- * SIGNAL CURRENCY (PR-204). A turn-end wake is surfaced at most once
+ * Turn-end currency (PR-204). A turn-end wake is surfaced at most once
  * across both modes. state/watcher.seen.json records, per task, the
  * identity of the last surfaced turn-end (size, modification time and a
  * content signature, FM-005). The record is advanced under a claim file,
@@ -618,7 +618,15 @@ export async function surfaceWake(
 
 export interface WatchOptions {
   cadence: WatchCadence;
-  /** Resident mode only: exit with a heartbeat line after this many. */
+  /**
+   * Resident mode only: exit with a heartbeat line after this many
+   * heartbeats HAVE TICKED IN THIS RUN. It is a bound on the run, not a
+   * position in the schedule, so a bounded run behaves the same way on a
+   * fleet that has been supervised for hours as on a virgin one. The
+   * schedule itself stays on disk (FM-006), which is why the number the
+   * line reports is the cadence ordinal and can be larger than this
+   * bound.
+   */
   maxHeartbeats: number | undefined;
   /** Injectable clock; tests use the real one, this is for determinism. */
   now?: () => number;
@@ -805,6 +813,7 @@ export async function runResident(
   }
   writeBeacon(fleet, now(), startupState.backoffStreak, options.cadence);
 
+  let ticksThisRun = 0;
   for (;;) {
     const state = readCadenceState(fleet) ?? loadOrInitCadence(fleet, now());
     const dueMs = nextHeartbeatDueMs(state, options.cadence);
@@ -818,10 +827,11 @@ export async function runResident(
 
     if (now() >= dueMs) {
       const n = heartbeatTick(fleet, state, options.cadence, now());
+      ticksThisRun += 1;
       // Resident mode is SILENT on heartbeats unless the caller asked for
       // a bounded run: a supervisor that exited every heartbeat would be
       // no supervisor at all (criterion 3).
-      if (options.maxHeartbeats !== undefined && n >= options.maxHeartbeats) {
+      if (options.maxHeartbeats !== undefined && ticksThisRun >= options.maxHeartbeats) {
         appendWakeRecord(fleet, now(), heartbeatLine(n));
         return { code: 0, line: heartbeatLine(n) };
       }
