@@ -30,65 +30,52 @@ is wrong: verify against git and the PR list before trusting it.
 | M1-P2 fleet init and doctor | merged | #2 | init as private git repo, doctor with readiness profiles |
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
-| M1-P5 watcher and liveness | STOPPED at the DR-0012 limit, second time; owner decides | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
+| M1-P5 watcher and liveness | fourth fix round in flight (owner chose option 1) | PR 8 | tuition T-002 asks that "task open, no turn-end, worktree dirty" become a wake reason |
 | M1-P6 toy sandbox and exit test | built ahead, awaiting P5 merge (A-1 now done) | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
 
 ## In flight
 
-**M1-P5 (PR #8): STOPPED at the DR-0012 limit for the second time. Not
-merged. The owner decides.** The third-round fix at `1bdfce5` closed the
-instance NEW-2 named (a FIFO at a task record) and not the class it described.
-Six read paths remain unprobed, and one of them is `state/watcher.beacon`,
-which blocks `guard()` itself and so takes `doctor`, `spawn`, `teardown` and
-both watcher entry modes down with no output at all. Reproduced by the hazard
-reviewer and again independently by the orchestrator on the declared Node
-floor: one `mkfifo` turns `doctor` exit 0 with four `CHECK` lines into exit 124
-with zero output
+**M1-P5 (PR #8): owner chose option 1, fix round in flight at the mechanism.**
+The third round's fix closed the instance NEW-2 named (a FIFO at a task
+record) and not the class it described. Six further read paths block on a
+FIFO, and one of them is `state/watcher.beacon`, which blocks `guard()`
+itself and so takes `doctor`, `spawn`, `teardown` and both watcher entry
+modes down with zero output. Reproduced by the hazard reviewer and again
+independently by the orchestrator on the declared Node floor
 (`delivery/verification/cr-520-orchestrator-reproduction.md`).
 
-The two reviews disagreed and the arbitration is recorded in
-`delivery/review/arbitration-m1-p5-third-round.md`. The criteria lens returned
-APPROVE but never probed the beacon read path, because no acceptance criterion
-covers a non-regular file in `state/`; its APPROVE is silence on CR-520, not a
-refutation. The hazard lens returned FIX-ROUND-NEEDED. The FIX-ROUND-NEEDED
-verdict stands.
+The two reviews split and the arbitration is recorded in
+`delivery/review/arbitration-m1-p5-third-round.md`: the criteria lens returned
+APPROVE but never probed the beacon path, because no acceptance criterion
+covers a non-regular file in `state/`, so its APPROVE is silence on CR-520
+rather than a refutation.
 
-Everything else about the head is sound and was checked hard by both lenses:
-all fifteen criteria met by direct execution, gates green (139 tests, 137 pass,
-2 floor-gated skips), registry 145 mappings all resolving, scope audit exact,
-constraint and convention scans clean, work history honest under aggressive
-sampling. CR-509, CR-512 and CR-513 are all confirmed resolved.
+DR-0012's stop fired for the second time on this phase and the owner lifted it
+for this round only, choosing the fix with two binding conditions: acceptance
+is a witnessed red test PER READ PATH rather than a coverage claim, and the
+round goes to a fresh implementer. Both are recorded in DR-0012.
 
-TWO findings block merge under DR-0012 clause 2:
+The fix is at the mechanism this time, which is what the previous two rounds
+got wrong: the type probe becomes a property of the READ, applied at the three
+entry points every path already funnels through (`readTaskMeta` in
+`src/task.ts`, `readBeacon` in `src/liveness.ts`, `readIfPresent` in
+`src/watcher.ts`), rather than at one classifier two callers happen to use.
+That is one implementation and it covers all eight rows of the reviewer's
+inventory including `src/teardown.ts`, which CR-521 found reading a record the
+classifier never cleared.
 
-- **CR-520 (HIGH)**: the unprobed blocking read, live on six paths.
-- **CR-540 (MEDIUM)**: criterion 7's two registered tests stay green when the
-  claim file's exclusive-open flag is removed. The reviewer established the
-  shipped code is nonetheless correct by building a genuine dual-release race,
-  so this is a test-coverage defect needing one test and no source change. It
-  is a red-witness failure of the shape tuition T-003 lesson 2 describes.
+Also in the round: CR-540's missing test (criterion 7's two registered tests
+stay green with the claim file's exclusive-open flag removed; the shipped code
+is correct, proved by the reviewer with a dual-release race, so this is a
+test-coverage defect needing no source change), and correction of the two
+false claims (the module doc's "guard() is TOTAL" and commit `e0d4fce`'s "a
+named pipe cannot hang supervision").
 
-THE OWNER'S THREE OPTIONS:
-
-1. **Take the fix, at the mechanism rather than the instance.** Move the
-   type probe to the file-reading boundary every path shares, so all seven
-   inherit it, rather than to one classifier two callers happen to use. Add
-   CR-540's test. Correct the two false claims (the module doc's "guard() is
-   TOTAL" and commit `e0d4fce`'s "a named pipe cannot hang supervision").
-   Binding condition if this is chosen: the round's acceptance is a witnessed
-   red test PER READ PATH, seven witnesses, not a claim of coverage. This is
-   the orchestrator's recommendation, with the round going to a fresh
-   implementer.
-2. **Accept the class explicitly and merge.** Requires the two false claims
-   corrected first and the limitation recorded, because a record asserting
-   supervision cannot hang is worse than no record when it can. The argument
-   for it is that nothing in a normally operated fleet creates a FIFO in
-   `state/`.
-3. **Stop the phase and give the component a design pass.** This is the third
-   high in `src/liveness.ts` in three consecutive rounds, and the recurrence
-   has a nameable cause: the project has no mechanism index to look up what it
-   has already learned about reading a file of unestablished type, which is
-   tuition T-005 exactly.
+Everything else on the head is sound and was checked hard by both lenses: all
+fifteen criteria met by direct execution, gates green (139 tests, 137 pass, 2
+floor-gated skips), registry 145 mappings all resolving, scope audit exact,
+conventions clean, work history honest under aggressive sampling. CR-509,
+CR-512 and CR-513 all confirmed resolved.
 
 **M1-P6: built, pushed, waiting on P5.** Its PR opens once P5 merges. Owner
 action A-1 is now DONE, so its full mode is unblocked.

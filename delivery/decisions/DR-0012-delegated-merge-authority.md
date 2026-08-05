@@ -57,6 +57,37 @@ Recording this because a limit that is lifted silently is not a limit. The
 sequence that matters is: the limit fired, the orchestrator did not merge,
 the owner decided, and the decision is written down.
 
+## Limit reached and lifted a second time, 2026-08-05
+
+The stop-and-wait limit fired again on M1-P5, on both clauses again: a third
+fix round after the first dual review, and a high-severity finding recurring
+in the same component across consecutive rounds (`src/liveness.ts`, unprobed
+blocking read, NEW-2 then CR-520). The orchestrator stopped, arbitrated the
+disagreement between the two reviews with evidence rather than by preference,
+reproduced the finding independently, and handed the owner three options.
+
+The owner chose option 1 on 2026-08-05: take the fix, at the mechanism rather
+than at the instance. Two conditions attach, proposed by the orchestrator and
+adopted with the choice:
+
+1. The round's acceptance is a witnessed red test PER READ PATH, one witness
+   for each of the paths in the reviewer's inventory, not a claim of coverage.
+   This phase has now produced three false coverage claims, so a coverage
+   claim is not acceptable currency here.
+2. The round goes to a FRESH implementer, with the reviews and the
+   reproduction as its input. This is not a judgement on the previous
+   implementer, whose work history is honest and whose self-reporting is what
+   made the pattern visible. It is that three rounds of accumulated context
+   about why the current shape is right is the wrong starting position for a
+   round whose whole point is that the shape was too narrow.
+
+The limit itself is unchanged and applies again from the next phase, and again
+to M1-P5 if this round does not come back clean on both reviews. Recording the
+second lift for the same reason as the first: a limit that is lifted silently
+is not a limit, and this is now the second consecutive lift on one phase,
+which is itself a fact the owner should be able to see without reading a
+transcript.
+
 ## Evidence
 
 - Merge authority in full assurance mode: delivery/intake/orchestrated-delivery-v1.md section 8.
