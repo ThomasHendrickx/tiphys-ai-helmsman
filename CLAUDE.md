@@ -281,6 +281,16 @@ Each of these bit someone once. Forward them to every implementer.
    option B) and must never touch user or global config.
 6. `gh` is absent locally and present in CI. Use a deterministic gh-free
    PATH in tests rather than assuming either.
+   MEASURED 2026-08-05, and it matters for the M1 exit test's FULL mode: `gh`
+   CAN be installed here (release tarball from github.com, same pattern as the
+   Node 26 toolchain) and `gh api user` does authenticate as the owner. But it
+   is NOT usable for the exit test. `gh auth status` reports the GH_TOKEN
+   invalid, `permissions.push` reads FALSE even on the kernel repository where
+   git pushes demonstrably succeed, and GraphQL is refused with "only the
+   pinned set of PR-review operations is served". So the API path and the git
+   path have different authorities in this container, and `gh pr create`,
+   `gh pr merge` and `gh pr view` cannot be relied on. Full mode needs a real
+   runner or the owner's machine; local mode is the form that runs here.
 7. `--test-name-pattern` must precede the positional test path, or it is
    silently ignored.
 8. `git checkout --` wipes uncommitted sibling edits. Copy before
