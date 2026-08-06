@@ -25,6 +25,66 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # The M1 exit-test harness in local mode (kernel plan v1, M1-P6
+      # step 4): the skeleton plumbing is exercised end to end on every
+      # kernel PR from this phase on. It re-runs the three gates above as
+      # its own A1 precondition, which is section 4's procedure and not a
+      # duplication to optimize away. A failure here fails this matrix
+      # leg, which the gates fan-in job below turns red.
+      - name: M1 exit test (local mode)
+        run: scripts/m1-exit-test.sh --mode local "${{ runner.temp }}/m1-exit-evidence"
+      # The falsifiability guard of M1-P6 criterion 5, run as a gate
+      # rather than trusted to a work history (CR-605). The single most
+      # important property of a certification harness is that it CAN
+      # fail; before this step, a regression to unconditionally-green
+      # would have turned nothing red anywhere, because CI ran only the
+      # green path. This costs a second full harness run per leg and that
+      # is the price of the property. Do not delete it to save minutes.
+      - name: M1 exit test falsifiability guard (the harness must be able to fail)
+        run: |
+          set -u
+          evidence="${{ runner.temp }}/m1-exit-falsify"
+          if TIPHYS_EXIT_TEST_SKIP_STAGE_B=1 scripts/m1-exit-test.sh --mode local "${evidence}"; then
+            echo "FALSIFIABILITY GUARD BROKEN: the harness exited 0 with stage B skipped." >&2
+            echo "Nothing was merged, so C2 teardown should have refused and the run should have failed." >&2
+            exit 1
+          fi
+          # Exiting nonzero is necessary but not sufficient: it must fail
+          # at C2 on teardown refusing unlanded work, not somewhere else.
+          node -e '
+            const fs = require("node:fs");
+            const dir = process.argv[1] + "/records";
+            // Decide, do not crash. readdirSync throws when the harness
+            // exited nonzero without creating records/, and the guard
+            // would then "fire" by unhandled exception rather than by
+            // its own check. Same lesson as the C2 arm below; this was
+            // the last instance of it in these twelve lines.
+            if (!fs.existsSync(dir)) {
+              console.error("the harness left no records directory: " + dir);
+              console.error("it exited nonzero, but not by failing a recorded step, so the guard cannot confirm it failed at C2");
+              process.exit(1);
+            }
+            const c2 = fs.readdirSync(dir)
+              .filter((f) => f.endsWith("-C2.json"))
+              .map((f) => JSON.parse(fs.readFileSync(dir + "/" + f, "utf8")))
+              .filter((r) => r.kind === "executed");
+            const failing = c2.filter((r) => r.exitCode !== 0 && r.outcome === "fail");
+            if (failing.length === 0) {
+              console.error("no C2 record showing a nonzero teardown exit with outcome fail");
+              console.error(JSON.stringify(c2, null, 2));
+              process.exit(1);
+            }
+            // Total on purpose: it must NOT throw when failing is empty.
+            // While this line read failing[0].exitCode, deleting the
+            // process.exit(1) above still produced a nonzero exit, via
+            // an unhandled TypeError rather than via the check. That
+            // made the explicit exit look load-bearing when it was not,
+            // and hid the deletion from the test that guards this step.
+            console.log(
+              "falsifiability guard witnessed at C2: exitCode " +
+                failing.map((r) => String(r.exitCode)).join(","),
+            );
+          ' "${evidence}"
 
   gates:
     needs: test

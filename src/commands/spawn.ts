@@ -1,5 +1,6 @@
 import { EX_USAGE } from "../cli.ts";
 import { loadFleet } from "../fleet.ts";
+import { warnIfWatcherStale } from "../liveness.ts";
 import { spawnTask } from "../spawn.ts";
 import { singleLine } from "../task.ts";
 import type { Fleet } from "../fleet.ts";
@@ -130,6 +131,13 @@ export async function cmdSpawn(args: string[]): Promise<number> {
     process.stderr.write(`tiphys spawn: ${singleLine((error as Error).message)}\n`);
     return 1;
   }
+
+  // Liveness guard (M1-P5 step 2), completing the seam this phase left.
+  // It WARNS and never blocks: one stderr line when work is in flight
+  // and supervision has gone quiet, and the command then does exactly
+  // what it would have done anyway (blueprint liveness-guard contract,
+  // criteria 10 and 11).
+  warnIfWatcherStale(fleet);
 
   const result = await spawnTask(fleet, {
     taskId: flags.task,

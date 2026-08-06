@@ -1,5 +1,6 @@
 import { EX_USAGE } from "../cli.ts";
 import { loadFleet } from "../fleet.ts";
+import { warnIfWatcherStale } from "../liveness.ts";
 import { singleLine } from "../task.ts";
 import { teardownTask } from "../teardown.ts";
 import type { Fleet } from "../fleet.ts";
@@ -64,6 +65,12 @@ export async function cmdTeardown(args: string[]): Promise<number> {
     process.stderr.write(`tiphys teardown: ${singleLine((error as Error).message)}\n`);
     return 1;
   }
+
+  // Liveness guard (M1-P5 step 2): one stderr warning line when work is
+  // in flight and supervision has gone quiet, and then the teardown
+  // proceeds exactly as it would have. It never blocks and never changes
+  // an exit code (criteria 10 and 11).
+  warnIfWatcherStale(fleet);
 
   const result = await teardownTask(fleet, {
     taskId: flags.task,
