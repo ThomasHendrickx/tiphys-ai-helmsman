@@ -20,6 +20,7 @@ import {
   readTestFilesAtHead,
   removeScratchRoot,
   resolveRepoRoot,
+  shellSpawnsAndParses,
 } from "../witness/run.ts";
 import type {
   EvaluationInputs,
@@ -217,14 +218,23 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
 
   // Rule (f)'s derivation: the spawn grep over the changed files' head
   // contents (deleted files have no head content and cannot be touched by a
-  // member either).
+  // member either). Shell scripts (*.sh) are screened by the shell
+  // spawn-and-parse derivation instead of the JS token grep (CR-H2), so a
+  // bin/ shell script that classifies another program's output (the V-2
+  // shape) is not invisible to the capture obligation.
   const spawningChangedFiles: string[] = [];
   for (const [path, file] of diff.files) {
     if (file.status === "D") {
       continue;
     }
     const shown = gitIn(repoRoot, ["show", `${diff.headSha}:${path}`]);
-    if (shown.ok && SPAWN_GREP.test(shown.stdout)) {
+    if (!shown.ok) {
+      continue;
+    }
+    const spawns = path.endsWith(".sh")
+      ? shellSpawnsAndParses(shown.stdout)
+      : SPAWN_GREP.test(shown.stdout);
+    if (spawns) {
       spawningChangedFiles.push(path);
     }
   }

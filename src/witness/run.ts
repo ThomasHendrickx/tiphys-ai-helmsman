@@ -265,6 +265,30 @@ export function computePhaseDiff(
  */
 export const SPAWN_GREP = /child_process|execFile|spawnSync|execSync/;
 
+/**
+ * The shell form of rule (f)'s derivation (CR-H2). A POSIX shell script that
+ * spawns another program and PARSES its output contains none of the four JS
+ * tokens, so `SPAWN_GREP` is blind to exactly where M1's V-2 lived
+ * (`bin/fm-*.sh` classifying git contention output). A shell spawn-and-parse
+ * is derived as the conjunction of two signals over the script text:
+ *   - SPAWN: another program's output is captured (a pipeline `|`, a command
+ *     substitution `$(...)` or backticks, or stdin consumed by `read`/`while
+ *     read`);
+ *   - PARSE: that output is classified or transformed (`grep`, `awk`, `sed`,
+ *     `cut`, `tr`, a `case` branch, or a `[[ ... =~ ... ]]` regex test).
+ * The conjunction is deliberately narrow: a script that only runs a command
+ * for its exit status, with no capture and no classifier, is not "in that
+ * state" and is not burdened with a capture obligation. What this does NOT
+ * cover is stated in the work history (rule (f), shell residue).
+ */
+export const SHELL_SPAWN = /\|[^|]|\$\(|`|(?:^|\s)read\s/m;
+export const SHELL_PARSE = /(?:^|[\s|(])(?:grep|awk|sed|cut|tr)\b|(?:^|\s)case\s|=~/m;
+
+/** True when the shell script text both spawns a program and parses its output. */
+export function shellSpawnsAndParses(text: string): boolean {
+  return SHELL_SPAWN.test(text) && SHELL_PARSE.test(text);
+}
+
 export interface TapTestPoint {
   name: string;
   ok: boolean;
@@ -325,49 +349,203 @@ export interface TextAssertionDerivation {
   patterns: string[];
 }
 
-const READ_CALL = /readFileSync?\s*\(([^)]*)\)/g;
 const STRING_LITERAL = /(["'`])((?:(?!\1)[^\\]|\\.)*)\1/g;
-const ASSERT_FORMS = [/assert\.match\s*\(/, /assert\.doesNotMatch\s*\(/, /\.includes\s*\(/, /assert\.ok\s*\(/];
-const MATCH_PATTERN = /assert\.match\s*\([^,]+,\s*\/((?:[^/\\]|\\.)+)\//g;
-const INCLUDES_LITERAL = /\.includes\s*\(\s*(["'`])((?:(?!\1)[^\\]|\\.)*)\1/g;
+// A read call whose result is bound to a name, so the assertions ON that
+// name can be found: `const body = readFileSync(...)`, `let body = await
+// readFile(...)`. Sync AND async are covered (CR-H1: async readFile from
+// node:fs/promises is a first-class API, not an alias of the sync one, so
+// restricting to readFileSync shipped a text-asserting witness green). A
+// trailing `.trim()` or similar leaves the binding intact.
+const READ_BINDING =
+  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?readFile(?:Sync)?\s*\(([^)]*)\)/g;
+// A bare-string binding, so a read whose path is held in a variable
+// (`readFileSync(P)` with `const P = "....yml"`, CR-H1 member F) resolves to
+// the document rather than vanishing.
+const STRING_BINDING =
+  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])((?:(?!\2)[^\\]|\\.)*)\2\s*;?/g;
+const EQUAL_FORMS =
+  "(?:equal|strictEqual|deepEqual|deepStrictEqual|notEqual|notStrictEqual|notDeepEqual)";
+
+/** A document read the CR-661 class cares about: a path outside src/ and test/. */
+function isDocumentPathLiteral(value: string): boolean {
+  if (!value.includes("/") && !value.includes(".")) {
+    return false;
+  }
+  if (value.startsWith("src/") || value.startsWith("test/")) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The document path a read call targets, or undefined when it is not
+ * statically resolvable to a document literal. A string literal in the
+ * call's arguments wins; failing that, a bare identifier bound earlier to a
+ * string literal (member F). A runtime path (a `join(...)`, a `mkdtemp`
+ * result) resolves to undefined ON PURPOSE: it cannot be told apart from a
+ * scratch temp read, so flagging it would redden legitimate behaviour
+ * witnesses (the atomic determinism fixture reads a temp `state.json`).
+ */
+function documentPathFromArgs(
+  args: string,
+  varToPath: Map<string, string>,
+): string | undefined {
+  for (const literal of args.matchAll(STRING_LITERAL)) {
+    const value = literal[2] as string;
+    if (isDocumentPathLiteral(value)) {
+      return value;
+    }
+  }
+  const ident = /^\s*([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(args);
+  if (ident !== null) {
+    return varToPath.get(ident[1] as string);
+  }
+  return undefined;
+}
+
+/**
+ * Whether a read-result variable is TEXT-ASSERTED directly, and any
+ * statically extractable pattern. Tied to the variable so a read passed to a
+ * project function (`isTransient(body)`, the retry witness) is behaviour, not
+ * a text assertion, and does not falsely redden. Covers the assert forms the
+ * plan names: `assert.match`/`assert.doesNotMatch` (regex over the body),
+ * `body.includes`/`body.indexOf` (membership, `assert.ok` wrapper included by
+ * matching the method call itself), and the equality family over the whole
+ * body (CR-H1: `assert.equal` over a document is among the strongest text
+ * assertions). A form the detector recognises but cannot extract a literal
+ * from (a variable regex, `assert.match(body, wanted)`) still marks
+ * text-asserting, with no pattern: fail conservative (CR-H1).
+ */
+function textAssertionsOnVar(
+  source: string,
+  varName: string,
+): { asserted: boolean; patterns: string[] } {
+  const v = escapeRegExp(varName);
+  const patterns: string[] = [];
+  let asserted = false;
+  const matchLiteral = new RegExp(
+    `assert\\.(?:match|doesNotMatch)\\s*\\(\\s*${v}\\s*,\\s*/((?:[^/\\\\]|\\\\.)+)/`,
+    "g",
+  );
+  for (const m of source.matchAll(matchLiteral)) {
+    asserted = true;
+    patterns.push(m[1] as string);
+  }
+  if (new RegExp(`assert\\.(?:match|doesNotMatch)\\s*\\(\\s*${v}\\s*,`).test(source)) {
+    asserted = true;
+  }
+  const membershipLiteral = new RegExp(
+    `\\b${v}\\s*\\.\\s*(?:includes|indexOf)\\s*\\(\\s*(["'\`])((?:(?!\\1)[^\\\\]|\\\\.)*)\\1`,
+    "g",
+  );
+  for (const m of source.matchAll(membershipLiteral)) {
+    asserted = true;
+    patterns.push(escapeRegExp(m[2] as string));
+  }
+  if (new RegExp(`\\b${v}\\s*\\.\\s*(?:includes|indexOf)\\s*\\(`).test(source)) {
+    asserted = true;
+  }
+  const equalLiteral = new RegExp(
+    `assert\\.${EQUAL_FORMS}\\s*\\(\\s*${v}\\s*,\\s*(["'\`])((?:(?!\\1)[^\\\\]|\\\\.)*)\\1`,
+    "g",
+  );
+  for (const m of source.matchAll(equalLiteral)) {
+    asserted = true;
+    patterns.push(escapeRegExp(m[2] as string));
+  }
+  if (new RegExp(`assert\\.${EQUAL_FORMS}\\s*\\(\\s*${v}\\s*,`).test(source)) {
+    asserted = true;
+  }
+  return { asserted, patterns };
+}
+
+/**
+ * An inline read asserted without an intermediate variable:
+ * `assert.equal(readFileSync(path), EXPECTED)`,
+ * `assert.match(readFileSync(path), /re/)`. Only flags when the path
+ * resolves to a document literal, so an inline temp read stays behaviour.
+ */
+function inlineTextAssertedReads(
+  source: string,
+  varToPath: Map<string, string>,
+): Array<{ doc: string; patterns: string[] }> {
+  const found: Array<{ doc: string; patterns: string[] }> = [];
+  const inline = new RegExp(
+    `assert\\.(?:match|doesNotMatch|${EQUAL_FORMS})\\s*\\(\\s*(?:await\\s+)?readFile(?:Sync)?\\s*\\(([^)]*)\\)\\s*,\\s*([^)]*)\\)`,
+    "g",
+  );
+  for (const m of source.matchAll(inline)) {
+    const doc = documentPathFromArgs(m[1] as string, varToPath);
+    if (doc === undefined) {
+      continue;
+    }
+    const patterns: string[] = [];
+    const rest = m[2] as string;
+    const regexLiteral = /^\s*\/((?:[^/\\]|\\.)+)\//.exec(rest);
+    if (regexLiteral !== null) {
+      patterns.push(regexLiteral[1] as string);
+    } else {
+      const stringLiteral = /^\s*(["'`])((?:(?!\1)[^\\]|\\.)*)\1/.exec(rest);
+      if (stringLiteral !== null) {
+        patterns.push(escapeRegExp(stringLiteral[2] as string));
+      }
+    }
+    found.push({ doc, patterns });
+  }
+  return found;
+}
 
 /**
  * Rule (g)'s text-assertion detection, DERIVED from the named tests'
- * sources rather than declared: a source that reads a file from a path
+ * sources rather than declared: a source that reads a document from a path
  * outside `src/` and `test/` (a workflow, a manifest, a configuration
- * document) and applies one of the four assertion forms is text-asserting.
- * Path detection is syntactic over string literals inside the read call's
- * parentheses; the derivation's limits are stated in the work history.
+ * document) and ASSERTS THAT DOCUMENT'S TEXT is text-asserting. The
+ * assertion is tied to the read result (a variable binding or an inline
+ * read), never a free-floating assert form, so a read consumed by a project
+ * function stays behaviour. Detection is syntactic and fails CONSERVATIVELY:
+ * a recognised assert form whose pattern is not statically extractable still
+ * marks the witness text-asserting (subject to rule (g)) rather than
+ * returning false. The derivation's limits are stated in the work history.
  */
 export function deriveTextAssertions(sources: string[]): TextAssertionDerivation {
   const documents = new Set<string>();
   const patterns = new Set<string>();
-  let anyAssertForm = false;
+  let textAsserting = false;
   for (const source of sources) {
-    for (const readMatch of source.matchAll(READ_CALL)) {
-      const args = readMatch[1] as string;
-      for (const literal of args.matchAll(STRING_LITERAL)) {
-        const value = literal[2] as string;
-        if (!value.includes("/") && !value.includes(".")) {
-          continue;
-        }
-        if (value.startsWith("src/") || value.startsWith("test/")) {
-          continue;
-        }
-        documents.add(value);
+    const varToPath = new Map<string, string>();
+    for (const m of source.matchAll(STRING_BINDING)) {
+      const value = m[3] as string;
+      if (isDocumentPathLiteral(value)) {
+        varToPath.set(m[1] as string, value);
       }
     }
-    if (ASSERT_FORMS.some((form) => form.test(source))) {
-      anyAssertForm = true;
+    for (const bind of source.matchAll(READ_BINDING)) {
+      const varName = bind[1] as string;
+      const doc = documentPathFromArgs(bind[2] as string, varToPath);
+      const forms = textAssertionsOnVar(source, varName);
+      if (!forms.asserted) {
+        continue;
+      }
+      // The result is text-asserted. Flag only when the document path is a
+      // resolvable non-src/test literal (a runtime path cannot be told from
+      // a scratch read); patterns are recorded regardless, for the
+      // preservation check.
+      if (doc !== undefined) {
+        textAsserting = true;
+        documents.add(doc);
+        for (const p of forms.patterns) {
+          patterns.add(p);
+        }
+      }
     }
-    for (const match of source.matchAll(MATCH_PATTERN)) {
-      patterns.add(match[1] as string);
-    }
-    for (const match of source.matchAll(INCLUDES_LITERAL)) {
-      patterns.add(escapeRegExp(match[2] as string));
+    for (const hit of inlineTextAssertedReads(source, varToPath)) {
+      textAsserting = true;
+      documents.add(hit.doc);
+      for (const p of hit.patterns) {
+        patterns.add(p);
+      }
     }
   }
-  const textAsserting = documents.size > 0 && anyAssertForm && patterns.size > 0;
   return {
     textAsserting,
     documents: [...documents].sort(),
@@ -905,8 +1083,9 @@ function evaluateRefusalRules(
   if (spawningTouched.length > 0 && spec.consumesExternalOutput === undefined) {
     reasons.push(
       `rule (f): the phase diff touches ${spawningTouched.join(", ")}, which ` +
-        `the spawn grep (${SPAWN_GREP.source}) matched, so consumesExternalOutput ` +
-        `is required and this witness omits it`,
+        `the spawn/parse derivation (JS: ${SPAWN_GREP.source}; shell *.sh: ` +
+        `spawn-and-parse) matched, so consumesExternalOutput is required and ` +
+        `this witness omits it`,
     );
   }
 

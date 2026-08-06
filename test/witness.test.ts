@@ -126,12 +126,16 @@ function fixtureSpec(spec: Record<string, unknown>): string {
 
 /**
  * Restore the contiguous read call inside fixture sources. The templates
- * carry READ_DOC instead of the real callee so that THIS file's own source
- * never contains a document read the text-assertion derivation would see;
- * the self-guard test below holds that property red-green.
+ * carry READ_DOC (sync) and READ_DOC_ASYNC (node:fs/promises) instead of the
+ * real callee so that THIS file's own source never contains a document read
+ * the text-assertion derivation would see; the self-guard test below holds
+ * that property red-green. READ_DOC_ASYNC is replaced FIRST because READ_DOC
+ * is a prefix of it.
  */
 function fixRead(template: string): string {
-  return template.replaceAll("READ_DOC", "readFileSync");
+  return template
+    .replaceAll("READ_DOC_ASYNC", "await readFile")
+    .replaceAll("READ_DOC", "readFileSync");
 }
 
 function runGate(
@@ -710,6 +714,126 @@ test("two members mutating the same line are red naming the collapse", () => {
 });
 
 // ---------------------------------------------------------------------------
+// CR-H1 (fix round 1): rule (g) detection must not be bypassed by the
+// standard read/assert idioms the plan names. Each idiom below is a member of
+// the "detection escape" class; the detection must redden under at least two
+// structurally different members (async read; a variable pattern; a variable
+// path), each as a single-member collapse (green under the narrow detection,
+// red once broadened) and, where the pattern is extractable, under a
+// text-preserving meaning-inverting member.
+// ---------------------------------------------------------------------------
+
+// Idiom 1: an async read (node:fs/promises), with LITERAL regex assertions so
+// the preservation arm is exercised too.
+const GUARD_ASYNC_TEXT_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import { readFile } from "node:fs/promises";',
+    "",
+    'test("the falsifiability guard step is wired", async () => {',
+    '  const body = READ_DOC_ASYNC(".github/workflows/guard.yml", "utf8");',
+    "  assert.match(body, /falsifiability guard/);",
+    "  assert.match(body, /FALSIFIABILITY GUARD BROKEN/);",
+    '  assert.ok(body.includes("scripts/harness.sh"));',
+    "});",
+    "",
+  ].join("\n"),
+);
+
+// Idiom 2: a sync read but a VARIABLE regex (assert.match(body, wanted)), so
+// no pattern is statically extractable and the detector must fail
+// conservatively on the read+assert signal.
+const GUARD_VAR_REGEX_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import { readFileSync } from "node:fs";',
+    "",
+    "const wanted = /falsifiability guard/;",
+    "const alsoWanted = /FALSIFIABILITY GUARD BROKEN/;",
+    'test("the falsifiability guard step is wired", () => {',
+    '  const body = READ_DOC(".github/workflows/guard.yml", "utf8");',
+    "  assert.match(body, wanted);",
+    "  assert.match(body, alsoWanted);",
+    "});",
+    "",
+  ].join("\n"),
+);
+
+// Idiom 3: a sync read whose PATH is held in a variable (readFileSync(P) with
+// const P = "....yml"), so the document literal is not inside the read call.
+const GUARD_VAR_PATH_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import { readFileSync } from "node:fs";',
+    "",
+    'const guardDoc = ".github/workflows/guard.yml";',
+    'test("the falsifiability guard step is wired", () => {',
+    '  const body = READ_DOC(guardDoc, "utf8");',
+    "  assert.match(body, /falsifiability guard/);",
+    "  assert.match(body, /FALSIFIABILITY GUARD BROKEN/);",
+    "});",
+    "",
+  ].join("\n"),
+);
+
+test("an async-read text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_ASYNC_TEXT_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+test("an async-read text-asserting witness is red when its text-preserving member leaves the test green", () => {
+  const fixture = guardFixture(
+    GUARD_ASYNC_TEXT_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE, GUARD_MEMBER_EXIT_FLIP],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  // The exit-flip member preserves every asserted string (the async read is
+  // now detected, so the preservation arm runs) yet the text test stays green
+  // under it: hazard #3, caught.
+  const flip = outcome.evaluations[0]?.members.find(
+    (member) => member.index === 1,
+  );
+  assert.equal(flip?.preservesAssertedText, true);
+  assert.equal(flip?.rate?.red, 0);
+});
+
+test("a variable-regex text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_VAR_REGEX_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+test("a variable-path text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_VAR_PATH_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+// ---------------------------------------------------------------------------
 // Criterion 4: the measured 3-of-5 stage-path collision shape (row 16)
 // ---------------------------------------------------------------------------
 
@@ -1023,6 +1147,134 @@ test("a cited capture missing from the repository is red naming it", () => {
   const outcome = runGate(fixture);
   assert.equal(outcome.result.status, "red", reasonsOf(outcome));
   assert.match(outcome.result.detail, /captures\/absent\.txt is missing/);
+});
+
+// ---------------------------------------------------------------------------
+// CR-H2 (fix round 1): rule (f)'s capture obligation must also see a shell
+// script that spawns and parses another program's output. M1's V-2 lived in
+// bin/fm-*.sh scripts classifying git contention output; the four-JS-token
+// grep is blind to them, so a bin/*.sh guarded by a hand-written string
+// shipped green with no consumesExternalOutput required.
+// ---------------------------------------------------------------------------
+
+// A shell script that captures a program's output (pipe into grep) and
+// classifies it: the V-2 shape, in shell.
+const CLASSIFY_SH = [
+  "#!/bin/sh",
+  "# classify a git failure line as transient or permanent",
+  'line="$1"',
+  'if printf "%s" "$line" | grep -q "cannot lock ref"; then',
+  "  echo transient",
+  "else",
+  "  echo permanent",
+  "fi",
+  "",
+].join("\n");
+
+const CLASSIFY_MEMBER = {
+  kind: "mutation",
+  file: "bin/classify.sh",
+  find: "cannot lock ref",
+  replace: "cannot bogus ref",
+};
+
+// The dangerous guard: a test that hand-writes the git output rather than
+// feeding a real capture (CLAUDE.md warning 10, the exact V-2 anti-pattern).
+const CLASSIFY_HANDWRITTEN_TEST = [
+  'import test from "node:test";',
+  'import assert from "node:assert/strict";',
+  'import { spawnSync } from "node:child_process";',
+  "",
+  'test("classify calls a contention line transient", () => {',
+  '  const res = spawnSync("sh", ["bin/classify.sh", "fatal: cannot lock ref whatever"], { encoding: "utf8" });',
+  '  assert.equal(res.stdout.trim(), "transient");',
+  "});",
+  "",
+].join("\n");
+
+// The corrected guard: it feeds the REAL captured contention stderr, and the
+// spec cites that capture.
+const CLASSIFY_CAPTURE_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import { readFileSync } from "node:fs";',
+    'import { spawnSync } from "node:child_process";',
+    "",
+    'test("classify calls the real contention line transient", () => {',
+    '  const line = READ_DOC("captures/git-contention-stderr.txt", "utf8").trim();',
+    '  const res = spawnSync("sh", ["bin/classify.sh", line], { encoding: "utf8" });',
+    '  assert.equal(res.stdout.trim(), "transient");',
+    "});",
+    "",
+  ].join("\n"),
+);
+
+const CLASSIFY_CONSUMES = {
+  program: "git fetch under forced remote-tracking ref contention",
+  captures: ["captures/git-contention-stderr.txt"],
+  provenance:
+    "delivery/review/verification-m1-p3-fix-round.md finding V-2: the exact " +
+    "line is the orchestrator re-performance (is at a0e80f0 but expected a0d1254)",
+};
+
+function classifyFixture(
+  consumes: Record<string, unknown> | undefined,
+  testBody: string,
+  testName: string,
+): Fixture {
+  const spec: Record<string, unknown> = {
+    id: "classify-transient-guard",
+    behavior: "classify-transient",
+    tests: [testName],
+    class: "additive",
+    dangerousStates: [CLASSIFY_MEMBER],
+    deterministic: true,
+    repeats: 1,
+  };
+  if (consumes !== undefined) {
+    spec["consumesExternalOutput"] = consumes;
+  }
+  return makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": fixtureBehaviors({
+        "classify-transient": testName,
+      }),
+    },
+    {
+      "bin/classify.sh": CLASSIFY_SH,
+      "test/classify.test.ts": testBody,
+      "captures/git-contention-stderr.txt": REAL_CONTENTION_STDERR,
+      "witness/classify.json": fixtureSpec(spec),
+    },
+  );
+}
+
+test("a diff touching a spawning shell script without the capture field is red naming the derivation", () => {
+  const fixture = classifyFixture(
+    undefined,
+    CLASSIFY_HANDWRITTEN_TEST,
+    "classify calls a contention line transient",
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /rule \(f\)/);
+  assert.match(outcome.result.detail, /bin\/classify\.sh/);
+  assert.match(outcome.result.detail, /consumesExternalOutput/);
+});
+
+test("a spawning shell script witness citing the real capture is green", () => {
+  const fixture = classifyFixture(
+    CLASSIFY_CONSUMES,
+    CLASSIFY_CAPTURE_TEST,
+    "classify calls the real contention line transient",
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  const captures = outcome.evaluations[0]?.captures;
+  assert.equal(captures?.length, 1);
+  assert.match(captures?.[0]?.provenance ?? "", /verification-m1-p3-fix-round/);
 });
 
 // ---------------------------------------------------------------------------
