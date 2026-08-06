@@ -1,0 +1,16 @@
+{
+  "id": "M2-P2",
+  "branch": "claude/m2-p2-red-witness-harness",
+  "filesToTouch": [
+    "src/witness/spec.ts",
+    "src/witness/run.ts",
+    "src/gates/red-witness.ts",
+    "src/gates/schemas/witness-spec.schema.json",
+    "test/witness.test.ts",
+    "witness/",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-015b", "R-028b", "R-036", "R-037b", "R-056b", "T-003", "T-005", "T-006", "V-1", "V-2", "U-10", "N-401", "CR-661", "CR-720", "CR-721", "CR-722"]
+}

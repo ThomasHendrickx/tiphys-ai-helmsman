@@ -1,0 +1,13 @@
+{
+  "id": "M2-P4",
+  "branch": "claude/m2-p4-scope-auditor",
+  "filesToTouch": [
+    "src/gates/scope.ts",
+    "src/gates/schemas/phase-declaration.schema.json",
+    "test/scope-gate.test.ts",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-020", "R-058"]
+}

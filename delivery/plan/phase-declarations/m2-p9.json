@@ -1,0 +1,13 @@
+{
+  "id": "M2-P9",
+  "branch": "claude/m2-p9-exit-test",
+  "filesToTouch": [
+    "scripts/m2-exit-test.sh",
+    "test/m2-exit-test.test.ts",
+    ".github/workflows/gates.yml",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["SC-011", "CR-602", "CR-604", "CR-720", "CR-721", "CR-722", "M2R-003", "M2R-011", "M2R-026"]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "M2-P5",
+  "branch": "claude/m2-p5-citation-linter",
+  "filesToTouch": [
+    "src/gates/citations.ts",
+    "src/gates/schemas/citation-config.schema.json",
+    "test/citation-gate.test.ts",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-010b", "R-025", "CR-520", "M2-C-6"]
+}

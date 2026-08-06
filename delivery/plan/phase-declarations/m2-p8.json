@@ -1,0 +1,17 @@
+{
+  "id": "M2-P8",
+  "branch": "claude/m2-p8-credential-scoping",
+  "filesToTouch": [
+    "src/exec/env.ts",
+    "src/gates/credentials.ts",
+    "test/credentials-gate.test.ts",
+    "src/spawn.ts",
+    "src/hooks.ts",
+    "scripts/stub-payload.sh",
+    "scripts/m1-exit-test.sh",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-008", "DR-0004", "EXT-F-02", "T-003", "M2R-004"]
+}

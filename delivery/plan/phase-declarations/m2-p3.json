@@ -1,0 +1,13 @@
+{
+  "id": "M2-P3",
+  "branch": "claude/m2-p3-suite-wrapper",
+  "filesToTouch": [
+    "src/gates/suite.ts",
+    "test/suite-gate.test.ts",
+    "package.json",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-048", "CR-002", "PR-106", "CR-604", "C-1", "M2-C-5"]
+}
