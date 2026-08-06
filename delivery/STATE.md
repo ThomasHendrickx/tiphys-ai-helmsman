@@ -6,8 +6,8 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-06
-- milestone: M1 (walking skeleton), COMPLETE. Exit test passed on `7e1b5f1`.
-  M2 not started, and blocked on the owner's hard stop below.
+- milestone: M2 (gate registry), IN PROGRESS. M1 complete, exit test passed on
+  `7e1b5f1`, completion record merged to main in PR #10 at `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -16,31 +16,13 @@ is wrong: verify against git and the PR list before trusting it.
   their evidence is presented to the owner regardless, which is a reporting
   obligation and not a click.
 
-## HARD STOP AT THE M1 BOUNDARY (owner instruction, 2026-08-05)
+## The M1 hard stop: DISCHARGED 2026-08-06
 
-**When M1 is COMPLETELY done, STOP and wait for the owner's explicit
-confirmation before continuing. Do not dispatch M2. The owner intends to change
-the model being used, and wants that change to land at the milestone boundary.**
-
-"Completely done" means all three, not the first two:
-
-1. M1-P6 merged to `main`.
-2. The M1 exit test executed and PASSED, with its evidence recorded.
-3. That evidence presented to the owner.
-
-Then stop. Do not dispatch M2-P1. Do not start anything that grounds on M1.
-
-**This overrides DR-0015 and DR-0016 at this one point, deliberately.** Both of
-those say the owner is not an approval step and that recommendation-backed
-questions are the agent's to take. That remains true everywhere EXCEPT here.
-This is not a question with an obvious answer, and it is not an escalation: it
-is a standing instruction to pause at a boundary the owner named in advance,
-for a reason the agent cannot evaluate.
-
-Work already in flight that produces DOCUMENTS rather than dispatches (the M2
-and M3 plan re-grounding) may complete, because a re-grounded plan stays valid
-across a model change and costs nothing if it waits. Nothing that dispatches an
-implementer against M2 may start.
+The owner confirmed at the boundary, changed the session model, and instructed
+M2 to start with maximum safe parallelism and deterministic supervision of
+subagents (beacons plus freshness watchdogs per the T-008 dispatch contract).
+The stop is kept here as history because a future session should see that it
+existed and that it was released by the owner, not optimised away.
 
 ## How to resume cold
 
@@ -65,42 +47,21 @@ implementer against M2 may start.
 
 ## In flight
 
-**NOTHING. M1 IS COMPLETE AND THE HARD STOP ABOVE IS NOW IN FORCE.**
+**M2-P1 (gate contract, manifest, runner, pin): DISPATCHED** on branch
+`claude/m2-p1-gate-contract-and-runner` off `037477e`. It is the serialising
+phase; M2-P2 through M2-P8 dispatch concurrently the moment it merges, per
+`delivery/plan/m2-conflict-pre-pass.md`. The implementer carries the T-008
+dispatch contract (incremental work history as beacon), the pre-submit hazard
+self-review, M2-C-6, and the DR-0013 diagnostic contract as load-bearing
+constraints.
 
-**M1-P6 merged at `7e1b5f1` (PR #9).** All six M1 phases are on `main`:
-PR #1, #2, #3, #6, #8, #9.
+**M3 plan re-grounding: DISPATCHED** on branch `claude/m3-plan-regrounding`,
+documents only, same DR-0011 step M2 received. Inputs: DR-0013 as decided,
+DR-0014 to DR-0016, T-005 to T-008, MECHANISMS.md, the M2 revision-2 boundary,
+and M1's final defect record.
 
-**The M1 exit test PASSED on the merged head**, Node v26.6.0 (the declared
-floor, not the container default), exit code 0, 56-record evidence bundle, all
-12 section-4 steps represented. Full evidence in
-`delivery/verification/m1-exit-test-evidence.md`.
-
-The falsification control was run on the same head and exits 1 at C2, so the
-pass is a measurement rather than an absence of failure.
-
-All three blueprint exit conditions witnessed: a trivial task lands on the
-sandbox default branch via spawn; teardown REFUSES while unlanded (exit 1,
-naming the branch, worktree surviving) and exits 0 after the merge with the
-worktree gone and meta closed; the watcher wakes with exactly
-`signal m1-exit turn-end` byte-exact under `cat -A`.
-
-Not witnessed and stated rather than implied: full mode, which needs `gh`. It
-is absent here and not usefully installable (it authenticates but reports no
-push permission even where git pushes succeed, and GraphQL is refused). The two
-gh observations are recorded as `skipped-full-only` with their executed local
-substitutions. The full-mode command is in the evidence file.
-
-**M2 and M3 plans.** M2 is RE-GROUNDED (revision 2) against everything M1
-taught: T-005 to T-008, DR-0013 to DR-0016, the conflict pre-pass, and M1's
-full defect record. Its section 1.5 traceability table is rebuilt at 22 rows,
-11 caught by an M2 gate and 11 not. M3 re-grounding has NOT been done.
-
-**M2's parallel structure is recorded** in `delivery/plan/m2-conflict-pre-pass.md`:
-M2-P1 serialises, M2-P2 through M2-P8 are mutually disjoint and concurrent,
-M2-P9 last. Roughly 14 hours against 36 serial.
-
-**Nothing is dispatched and nothing will be** until the owner confirms, per the
-hard stop at the top of this file.
+A freshness watchdog is armed on both worktrees (20-minute staleness
+threshold). Supervision is beacon freshness, not completion notifications.
 
 ## Carried forward, not yet owned
 
