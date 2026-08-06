@@ -1,0 +1,11 @@
+{
+  "status": "completed",
+  "conclusion": "success",
+  "workflow_id": 100000001,
+  "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "head_branch": "PLACEHOLDER-branch",
+  "event": "push",
+  "run_attempt": 1,
+  "check_suite_id": 200000002,
+  "display_title": "PLACEHOLDER-title"
+}

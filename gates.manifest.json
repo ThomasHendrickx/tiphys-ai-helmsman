@@ -14,6 +14,34 @@
       ],
       "unitLabel": "schema documents validated",
       "applicability": "required"
+    },
+    {
+      "id": "deploy",
+      "command": [
+        "node",
+        "src/gates/deploy.ts"
+      ],
+      "unitLabel": "release verifications satisfied",
+      "applicability": "conditional",
+      "precondition": {
+        "id": "deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
+        "kind": "file-exists",
+        "path": "release-verification.json"
+      }
+    },
+    {
+      "id": "migrations",
+      "command": [
+        "node",
+        "src/gates/migrations.ts"
+      ],
+      "unitLabel": "migrations compared",
+      "applicability": "conditional",
+      "precondition": {
+        "id": "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
+        "kind": "file-exists",
+        "path": "release-verification.json"
+      }
     }
   ],
   "destructiveCommands": [

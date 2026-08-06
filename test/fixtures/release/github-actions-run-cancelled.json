@@ -1,0 +1,11 @@
+{
+  "status": "completed",
+  "conclusion": "cancelled",
+  "workflow_id": 100000001,
+  "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "head_branch": "PLACEHOLDER-branch",
+  "event": "pull_request",
+  "run_attempt": 1,
+  "check_suite_id": 200000003,
+  "display_title": "PLACEHOLDER-title"
+}
