@@ -609,3 +609,65 @@ test("a named pipe at the registry path is error, not a hang", () => {
   assert.equal(run.record.status, "error");
   assert.match(run.record.detail, /behaviors\.json is a named pipe/);
 });
+
+test("a file that defines zero tests is named, not counted as a passing test (CR-1306, mixed)", () => {
+  // The dangerous state, first structurally different member: ONE file
+  // among several defines zero tests. Node itself still emits a nesting-0
+  // test:pass for that file, entityType "test", named after the file's own
+  // path (measured directly against the pinned node, see
+  // isFileWrapperPhantom's derivation in src/gates/suite.ts). Before the
+  // fix that point satisfied BOTH discovery parity (its file matches the
+  // walk) and, being an ordinary entityType "test" point, inflated
+  // `reported`; the bare runner is silently green over a file that ran no
+  // real test.
+  const { dir, base } = makeFixture({
+    files: { "test/a.test.ts": ALPHA_TEST, "test/empty.test.ts": "" },
+    registry: { alpha: "alpha passes", beta: "beta skipped" },
+  });
+  assert.equal(bareRunner(dir), 0, "the bare runner must be green at exit 0");
+  const run = runGate(dir, base);
+  assert.equal(run.status, 1);
+  assert.equal(run.record.status, "red");
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty\.test\.ts/,
+  );
+  // The phantom point is not counted: only the two real points (alpha,
+  // beta) land in `reported`, never three.
+  assert.equal(run.record.units, 2);
+  assert.ok(run.counts !== undefined);
+  assert.equal(run.counts.counts["reported"], 2);
+  assert.deepEqual(run.counts.reported, ["test/a.test.ts"]);
+});
+
+test("a suite of only empty test files is red naming every one, never a counted green (CR-1306, total)", () => {
+  // The second structurally different member: EVERY file is empty and the
+  // registry is empty too, reproducing exactly the arbitration's captured
+  // shape ("three empty .test.ts files plus an empty registry -> GREEN,
+  // units 3"). Without the fix this is a silent, fully vacuous green
+  // (findings.length === 0, because walk and phantom-reporter file sets
+  // still match each other) that M2-C-2's green+units-0 rewrite cannot
+  // catch either, because units is nonzero (one per emptied file).
+  const { dir, base } = makeFixture({
+    files: { "test/empty1.test.ts": "", "test/empty2.test.ts": "" },
+    registry: {},
+  });
+  assert.equal(bareRunner(dir), 0, "the bare runner must be green at exit 0");
+  const run = runGate(dir, base);
+  assert.equal(run.status, 1);
+  assert.equal(run.record.status, "red");
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty1\.test\.ts/,
+  );
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty2\.test\.ts/,
+  );
+  // Never a counted green: units is 0 (no real test ran) and status is
+  // "red", never "green" and never a smuggled "error" masking a green.
+  assert.equal(run.record.units, 0);
+  assert.notEqual(run.record.status, "green");
+  assert.ok(run.counts !== undefined);
+  assert.deepEqual(run.counts.reported, []);
+});

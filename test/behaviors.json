@@ -222,6 +222,8 @@
   "suite-gate-fifo-refused": "a named pipe inside a declared test root is error naming the path and type",
   "suite-gate-registry-fifo-refused": "a named pipe at the registry path is error, not a hang",
   "suite-gate-absent-stream-error": "a test command that produces no reporter stream is error naming the request",
+  "suite-gate-empty-file-not-counted-mixed": "a file that defines zero tests is named, not counted as a passing test (CR-1306, mixed)",
+  "suite-gate-empty-file-not-counted-total": "a suite of only empty test files is red naming every one, never a counted green (CR-1306, total)",
   "coverage-real-pair-units-and-breakdown": "the coverage gate against the real migration table and appendix reports units 115 with per-kind and per-milestone breakdowns matching the plan",
   "coverage-bucket-kind-classification": "a phase bucket value is counted under its milestone and kind, and an unrecognized bucket value is red naming the row",
   "coverage-orphan-both-directions": "deleting an appendix row is red naming the orphan id, and restoring it is green",

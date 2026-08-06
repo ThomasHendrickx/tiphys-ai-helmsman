@@ -333,8 +333,12 @@ export function parseSuiteStream(body: string): StreamParse {
  *   pass        any other test:pass
  *
  * `reported` counts points whose entityType is `test`, which reproduces
- * node's own "# tests" semantics (measured: suites are not tests, file
- * wrappers emit no pass/fail). The identity
+ * node's own "# tests" semantics for every REAL test (measured: suites
+ * are not tests). This does NOT hold for a file that defines zero tests:
+ * node still emits one nesting-0 test:pass for it, entityType `test`,
+ * named after the file's own invocation path (CR-1306, fixed below by
+ * `isFileWrapperPhantom`; a prior version of this comment asserted the
+ * false generalization "file wrappers emit no pass/fail"). The identity
  * pass + fail + skipped + todo + didNotRun == reported is asserted, and
  * `discovered` is the independent walk's file set, tied to `reported` by
  * the file-set equality check rather than by unit-mixing arithmetic.
@@ -344,6 +348,45 @@ export const MAPPING_STATEMENT =
   "todo is recorded and counted as its own bucket; discovered is the independent " +
   "walk of the declared roots for the declared suffix, never the reporter's total; " +
   "identity: pass + fail + skipped + todo + did-not-run == reported";
+
+/**
+ * CR-1306: a `.test.ts` file that defines ZERO tests is not silent. Node
+ * itself (measured on v22.22.2 and v26.6.0, both directions of the glob
+ * the repo's own test script uses) still emits exactly one nesting-0
+ * test:pass point for such a file, entityType `test`, whose `name` is the
+ * file's own path exactly as it was invoked (the same string
+ * `relative(cwd, point.file)` reproduces). Counting that point as
+ * `entityType === "test"` like every other reported point (the mechanism
+ * `bucketPoints` and the discovery/registry filters below all shared)
+ * inflates `units` by one per emptied file, and because `units > 0` the
+ * M2-C-2 "never green by omission" rewrite in result.ts never triggers:
+ * a suite that ran zero real tests would report green.
+ *
+ * A real top-level test is ALSO nesting 0 and entityType `test` (measured:
+ * `describe()` wrappers are entityType `suite` and never collide), so
+ * nesting and entityType alone cannot distinguish the phantom from a real
+ * test. The one further fact that does, and the only one node offers, is
+ * the point's own name coinciding exactly with its file's invocation path;
+ * a real test can only produce that collision by deliberately naming
+ * itself after its own file, which this function accepts as the residual,
+ * documented non-coverage (see delivery/work-history/m2-p3.md fix round
+ * one derivation).
+ *
+ * The fix filters the phantom out before ANY of the three counting sites
+ * that read `entityType === "test"` (bucketPoints, the discovery-parity
+ * reportedFiles set, and the registry-resolution reportedTestNames set) so
+ * an emptied file is not silently miscounted as a passing test; it instead
+ * falls out of `reportedFiles`, which the existing discovery-parity check
+ * (step 3, unchanged) already reports as "test file discovered by the walk
+ * but absent from the reporter" -- a red finding, never a counted green.
+ */
+export function isFileWrapperPhantom(point: SuitePoint, cwd: string): boolean {
+  return (
+    point.entityType === "test" &&
+    point.nesting === 0 &&
+    point.name === relative(cwd, point.file)
+  );
+}
 
 export interface SuiteCounts {
   reported: number;
@@ -878,6 +921,12 @@ export function runSuiteGate(argv: string[]): number {
     return error(rawRefusal, evidence);
   }
 
+  // CR-1306: strip a file-wrapper phantom (a file that defined zero tests)
+  // BEFORE any of the three sites below reads entityType === "test", so an
+  // emptied file cannot inflate `reported` and cannot slip past M2-C-2 as
+  // a counted green; see isFileWrapperPhantom's derivation above.
+  const points = stream.points.filter((point) => !isFileWrapperPhantom(point, cwd));
+
   // M2-C-5: any pin difference makes the record error, whatever the counts
   // said, because a run over a tree that changed names nothing.
   const pinDifferences = comparePins(startPin, endPin);
@@ -894,7 +943,7 @@ export function runSuiteGate(argv: string[]): number {
   }
 
   const { counts, skipsWithoutReason, failures, cancelled } = bucketPoints(
-    stream.points,
+    points,
   );
   const identity =
     counts.pass + counts.fail + counts.skipped + counts.todo + counts.didNotRun;
@@ -937,7 +986,7 @@ export function runSuiteGate(argv: string[]): number {
   // Discovery parity, both directions (step 3).
   const reportedFiles = [
     ...new Set(
-      stream.points
+      points
         .filter((point) => point.entityType === "test")
         .map((point) => point.file),
     ),
@@ -962,7 +1011,7 @@ export function runSuiteGate(argv: string[]): number {
 
   // Registry resolution and merge-base preservation (step 4).
   const reportedTestNames = new Set(
-    stream.points
+    points
       .filter((point) => point.entityType === "test")
       .map((point) => point.name),
   );
