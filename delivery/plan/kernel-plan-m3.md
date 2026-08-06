@@ -3177,6 +3177,32 @@ regression contract, it is a new contract wearing the old one's name.
   supervision clauses (section 1.4). This is the kernel's shipped orchestrator
   brief and is not `CLAUDE.md`, which is this repository's own agent-rules file
   under the current process.
+  **Three decisions and one tuition entry changed what this document says after
+  revision 1.** DR-0015 removes the owner from the merge path including at
+  milestone boundaries, so step 2's merge-authority duty no longer reads
+  "owner approves per pull request". DR-0016 replaces the stop-and-wait response
+  at an escalation bound with a fresh implementer plus a third review contract
+  dispatched immediately, and adds a threshold rule for when the owner is
+  involved at all, which is a new clause. T-007 makes the second review contract
+  a declared duty rather than a dispatch habit. And T-008 is the reason this
+  document's supervision section is the most load-bearing prose M3 ships: the
+  orchestrator running THIS project supervised two review agents by waiting for
+  a completion notification and lost nine hours eleven minutes, while building
+  the watcher and liveness guard that exist to prevent exactly that.
+- hazard class (T-007, D-M3-32): **the document the orchestrator runs on, whose
+  failure mode is a clause that reads as satisfied while the property is
+  absent.** What can pass every criterion here: a supervision section that
+  names lease freshness and the beacon and still leaves "wait for the agent to
+  report" as the operative instruction, which is exactly what T-008 measured; a
+  duty stated without the mechanism that discharges it, so it depends on
+  attention, which this project has recorded twice as insufficient; a
+  decorrelation clause satisfied by two verdicts that differ in `produced-by`
+  while both ran the criteria contract, which is T-007's failure surviving
+  DR-0012's check; an anti-duplication check that passes because the duplicated
+  data was reworded rather than removed; a reference that resolves to a file
+  whose content moved; and the whole document drifting into a restatement of
+  the registry and the modes, which is risk 5 and which the criterion 3 check
+  is the structural answer to.
 - steps:
   1. Create `AGENTS.md` (markdown with frontmatter validated by
      `schemas/role-brief.schema.json` with `role: orchestrator`), clause ids in
@@ -3202,12 +3228,65 @@ regression contract, it is a new contract wearing the old one's name.
      re-kick only when there is nothing pending to batch it with (R-077).
   2. Add the four plan-assigned duties named in the grounding, each citing its
      source: fleet-state commit and push discipline (which fleet state is
-     committed and pushed, and when); merge authority (owner approves per pull
-     request, orchestrator executes the merge serially as release manager);
-     the projects/ read-only rule and its ref-update carve-out; the fleet resume
+     committed and pushed, and when); **merge authority, restated at revision 2
+     under DR-0015**, which is that the authority regime is whatever the
+     declared mode's `merge-authority` says and that for a mode declaring
+     `delegated-under-conditions` the SIGNATURE is dual cross-model clean review
+     rather than a person, at milestone boundaries included; the orchestrator
+     executes the merge serially as release manager. Revision 1's "owner
+     approves per pull request, orchestrator executes the merge" is superseded
+     2026-08-05 by DR-0015, which states in terms that the owner does not
+     approve merges and that DR-0012's milestone-boundary carve-out is removed.
+     What SURVIVES and is written here because DR-0015 says it survives: exit
+     tests remain hard gates, and their evidence is presented to the owner
+     unasked. Presenting evidence is not requiring a click, and only the second
+     was removed. Also the projects/ read-only rule and its ref-update
+     carve-out; and the fleet resume
      specification (what is expected to survive reclamation, what is rebuilt,
      what doctor should report), explicitly marked as specification with the
      machinery deferred to M4.
+  2b. **The escalation-threshold clause, NEW at revision 2 (DR-0016).** Clause
+     `escalation-threshold`: the orchestrator escalates to the owner ONLY when
+     two or more options are genuinely comparable AND the consequence is high
+     impact and costly to reverse. If the analysis yields a recommendation the
+     orchestrator would defend, the options are not comparable and there is
+     nothing to ask: decide, record it as a decision record with its reasoning,
+     and report it. The clause states the ordering rule that makes the test
+     applicable rather than felt: **write the recommendation FIRST**, because
+     doing so is what reveals whether the question was ever a question. It
+     states the two standing exceptions unchanged: anything needing elevated
+     access the agent does not hold, and anything the owner has explicitly
+     reserved. And it carries DR-0016's own measured evidence, because a
+     threshold with no cost attached gets widened: owner escalations cost 4.7
+     hours on M1-P5 alone, 16 per cent of that milestone's elapsed critical
+     path, the limit fired three times, and all three times the owner chose the
+     option the orchestrator had already recommended.
+     Clause `stalled-phase-response`, the other half: when a phase needs more
+     than two fix rounds after review or a high-severity finding recurs in one
+     component, the response is a FRESH IMPLEMENTER plus a third review
+     contract, dispatched immediately, with the owner notified asynchronously
+     rather than waited on; only if that round also fails does the phase go to
+     the owner. The clause cites `full` mode's `escalation-bounds.on-exceeded`
+     (M3-P3) by path rather than restating the numbers, per the
+     anti-duplication rule, and it records why the response changed: the
+     intervention that broke M1-P5's spiral was not the owner's decision but the
+     fresh implementer dispatched afterwards, which derived eleven call sites
+     where the review had listed eight.
+  2c. **The two-review-contract duty, NEW at revision 2 (T-007).** Clause
+     `two-review-contracts`: for a code phase the orchestrator dispatches two
+     review CONTRACTS, not two reviewers. One is composed with
+     `--review-contract criteria` and `checklists/clean-room.yaml`; the other
+     with `--review-contract hazard` and `checklists/hazard-review.yaml`,
+     carrying the phase's declared `hazard-classes[]` as its starting question.
+     The clause states, with the evidence, why two models are not sufficient:
+     two reviewers on different families walked all fifteen of M1-P5's
+     acceptance criteria by direct execution, agreed on every mechanical fact,
+     and one returned APPROVE while the other found a high-severity defect that
+     live-locked every supervision command; the approving report does not
+     contain the word `readBeacon`, and had both been briefed on the criteria
+     both would have approved on any two models. The clause also states the
+     `AGENTS.md`-side residue plainly: "all acceptance criteria met" is one
+     input to a phase's assurance and is never a terminal green.
   3. Add the four duties this build paid tuition for, each citing its entry:
      salvage discipline, with the exact `WIP-UNREVIEWED (do not treat as
      reviewed):` prefix (T-002); verification dispatch isolation, every lens in
@@ -3228,11 +3307,20 @@ regression contract, it is a new contract wearing the old one's name.
      (c) their `framing` values are distinct, which is T-001's second lesson
      that "two reviews with different STARTING QUESTIONS find different things"
      and that "the checklists should vary the entry point rather than only the
-     reviewer", and (d) neither carries an unresolved high or medium finding,
-     which is DR-0012 condition 2. The clause also carries DR-0012's
-     stop-rather-than-grind limit by reference to `full` mode's
-     `escalation-bounds` (M3-P3), rather than restating the numbers, per the
-     anti-duplication rule. Ship `scripts/check-dual-review.mjs` (Kind B derived
+     reviewer", (d) neither carries an unresolved high or medium finding,
+     which is DR-0012 condition 2, and **(e) NEW at revision 2, their
+     `review-contract` values are distinct, one `criteria` and one `hazard`**
+     (T-007, and the schema field M3-P7 step 6a adds). Condition (e) is not a
+     duplicate of (b) or (c) and the difference is the whole point: T-007
+     records two verdicts on ONE head, from two different model families, that
+     agreed on every mechanical fact because both walked the criteria, and the
+     one that found the high-severity defect differed in its BRIEF. DR-0012's
+     condition 1 checks the model; T-007's condition checks the question.
+     The clause also carries the stop-rather-than-grind bound by
+     reference to `full` mode's `escalation-bounds` INCLUDING its `on-exceeded`
+     response (M3-P3), rather than restating the numbers, per the
+     anti-duplication rule; the response is DR-0016's fresh implementer plus a
+     third contract, not DR-0012's original stop-and-wait. Ship `scripts/check-dual-review.mjs` (Kind B derived
      check `dual-review-decorrelation`, registered in `src/checks.ts`) so the
      verification is a command with an exit code and not a habit: a kernel that
      can represent the regime but cannot detect a run that quietly used one
@@ -3242,6 +3330,46 @@ regression contract, it is a new contract wearing the old one's name.
   4. Add a supervision section written in lease and beacon terms only, with an
      explicit statement that liveness is lease freshness and that arming the
      watcher is an explicit foreground step (C-2, C-3).
+     **Revision 2 makes this section the dispatch contract rather than a
+     restatement of C-2, and it is the clause with the largest measured price
+     behind it in the whole plan (T-008, D-M3-31).** Three clauses:
+     - `dispatch-requires-a-beacon`: no agent is dispatched without being
+       instructed to write its output INCREMENTALLY, creating its artifact
+       within the first minutes and appending as it works, so the file's mtime
+       is the beacon. An agent that writes only at the end has no beacon, and
+       when it dies it leaves nothing. This is the orchestrator-side half of the
+       `incremental-output` clause M3-P5 and M3-P6 put in the briefs, and the
+       two are one rule seen from two ends.
+     - `dispatch-requires-a-guard`: a freshness watchdog is armed in the SAME
+       TURN as the dispatch. It watches the newest mtime under the agent's
+       working directory and reports stale after a declared threshold. **It
+       tests FRESHNESS, never existence and never completion.** The clause names
+       the recorded failure of the first attempt at this fix, because it is the
+       cheapest available warning: the first watchdog written after the incident
+       tested whether the report file EXISTED, both agents created a skeleton
+       within two minutes, so it fired immediately and reported success while
+       telling the orchestrator nothing. That is a guard whose condition does
+       not test the property that matters, which is the red-witness rule one
+       level up.
+     - `notification-is-not-liveness`: waiting for a completion notification is
+       PROCESS LIVENESS and is forbidden by C-2. A dead process sends no
+       notification, and an absence of notification is indistinguishable from
+       work in progress. The clause carries the measurement: on 2026-08-06 two
+       review agents died within minutes of dispatch and were not noticed for
+       nine hours eleven minutes, during which the orchestrator answered the
+       owner repeatedly, dispatched other work, wrote three decision records and
+       ran a throughput analysis, without once checking whether the thing it was
+       waiting on was alive. It was the largest single waste in the project,
+       larger than every escalation combined. The clause also states why a
+       stated stall rule is not the answer: the orchestrator HAD a thirty-minute
+       stall rule, had stated it aloud to the owner that morning, and did not
+       apply it, because a rule addressed to attention fails exactly when a
+       session is busy, which is when it is needed.
+     The section also carries the C-3 distinction from section 1.4, so a reader
+     does not resolve "arm a watchdog" against "never auto-background" by
+     guessing: C-3 forbids a kernel COMMAND from backgrounding work behind the
+     operator's back; the watchdog is an explicit, declared supervision act
+     whose purpose is to be observable, and the orchestrator arms it knowingly.
   5. Create `scripts/check-agents-references.mjs`: every path referenced by
      `AGENTS.md` must exist, and `AGENTS.md` must not contain a gate list, a
      mode table, or a model-tier table (the data lives in
@@ -3284,9 +3412,36 @@ regression contract, it is a new contract wearing the old one's name.
      `merge-authority` is `owner`, so the check applies exactly where the grant
      applies. Deregistering `dual-review-decorrelation` makes the shared-family
      fixture pass, which is the Kind B witness (section 2.3 rule 3).
+  7b. **Contract distinctness (T-007), both directions.** `check-dual-review.mjs`
+     exits nonzero naming the duplicated value when the two verdicts share a
+     `review-contract`, even if their `produced-by` and `framing` both differ;
+     the same pair with one `criteria` and one `hazard` exits 0. This is the
+     fifth distinctness dimension and it is witnessed separately from the other
+     two, because T-007's whole finding is that model decorrelation and contract
+     decorrelation are different properties and the project had the second by
+     accident.
+  7c. **Supervision clauses (T-008, D-M3-31), both directions each.** A
+     registered test asserts `AGENTS.md` carries `dispatch-requires-a-beacon`,
+     `dispatch-requires-a-guard` and `notification-is-not-liveness` as body
+     headings resolving from frontmatter, and that the
+     `dispatch-requires-a-guard` clause text contains the words FRESHNESS and
+     "newest mtime" while containing neither "exists" nor "completion" as the
+     watched condition. Weakening the clause to "check the agent has produced
+     output" makes the test fail, restoring it returns green. This is a text
+     assertion over prose and is labelled as one, per D-M3-28's honesty rule:
+     it proves the clause says the thing, never that an orchestrator obeys it.
+     What makes it more than decoration is criterion 5's vocabulary scan, which
+     forbids the liveness vocabulary in the same document.
   8. `AGENTS.md` cites DR-0012 and T-001 by id in the `decorrelated-review`
      clause, asserted by a registered grep test (revision 0's `AGENTS.md`
      citation list contained neither, which is what M3R-004 found).
+     **Revision 2 extends the same test to four more ids in the clauses that
+     encode them**: DR-0015 in the merge-authority duty, DR-0016 in
+     `escalation-threshold` and `stalled-phase-response`, T-007 in
+     `two-review-contracts`, and T-008 in the supervision section. A clause
+     whose reasoning cannot be traced to a record is a clause a future reader
+     will soften, and four of this document's clauses now encode settled
+     decisions that reversed an earlier position.
   9. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
      mappings still resolve.
 - new behaviors: `agents-frontmatter-validates`,
@@ -3294,7 +3449,12 @@ regression contract, it is a new contract wearing the old one's name.
   `agents-clause-ids-round-trip`, `agents-no-liveness-vocabulary`,
   `agents-carries-plan-assigned-duties`, `dual-review-distinct-model-families`,
   `dual-review-distinct-framings`, `dual-review-requires-two-verdicts`,
-  `dual-review-inapplicable-under-owner-authority`.
+  `dual-review-inapplicable-under-owner-authority`,
+  and NEW at revision 2: `dual-review-distinct-contracts`,
+  `agents-supervision-tests-freshness`,
+  `agents-carries-escalation-threshold`,
+  `agents-carries-two-review-contract-duty`,
+  `agents-cites-decisions-behind-reversed-clauses`.
 - suggested model tier: strongest. This is the document the orchestrator runs
   on, and four of its clauses encode settled owner resolutions.
 - citations: R-001b, R-002, R-013, R-030, R-061, R-062, R-065b, R-067, R-073,
@@ -3302,7 +3462,12 @@ regression contract, it is a new contract wearing the old one's name.
   1d, 3, 4, and 5; plan v1 D-4, D-6, D-8, D-9, D-13, PR-012, PR-201, SC-002,
   SC-008, SC-010; DR-0012 (the delegated-authority conditions the
   `decorrelated-review` clause enforces); T-001 (framing distinctness), T-002,
-  T-004, and T-005 (the tuition promotion duty); constraints C-2 and C-3.
+  T-004, and T-005 (the tuition promotion duty); constraints C-2 and C-3;
+  **DR-0015** (the merge-authority duty as restated in step 2); **DR-0016**
+  (`escalation-threshold` and `stalled-phase-response`, step 2b, with the
+  measurement); **T-007** (`two-review-contracts`, step 2c, and the fifth
+  distinctness dimension in step 3b); **T-008** (the three supervision clauses
+  of step 4, D-M3-31, and the nine-hour-eleven-minute measurement they carry).
 - conflicts-with: M3-P10 (files entry).
 - blocked-by: M3-P8 merged.
 
