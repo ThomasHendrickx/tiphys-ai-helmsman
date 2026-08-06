@@ -244,5 +244,7 @@
   "citation-a-malformed-content-hash-suffix-reds-end-to": "a malformed content-hash suffix reds end to end through the registered gate",
   "citation-analyzedocument-separates-resolved-self-resolved-unresolved-and-unverifiable": "analyzeDocument separates resolved, self-resolved, unresolved and unverifiable-external counts, hunk-scoped by the touched parameter",
   "citation-matchesany-is-true-when-any-glob-in-the": "matchesAny is true when any glob in the list matches, and findOrphanCitationRequired is empty for the default config",
-  "citation-gittargetreader-reads-the-same-content-readgitblob-does-at": "gitTargetReader reads the same content readGitBlob does, at a given rev"
+  "citation-gittargetreader-reads-the-same-content-readgitblob-does-at": "gitTargetReader reads the same content readGitBlob does, at a given rev",
+  "gate-self-check-schema-enumeration": "manifest-self-check picks up a schema document dropped into the directory after the fact",
+  "gate-bundle-steps-only-survives-parameterized-gate": "both bundle steps' --only shape survives a required gate that its own step cannot evaluate"
 }
