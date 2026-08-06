@@ -564,12 +564,16 @@ test("a named pipe inside a declared test root is error naming the path and type
   // M2-C-6: the walk reads paths it did not create, so a FIFO inside a
   // declared root must be a refusal naming the path and observed type,
   // never a hang. The gate returns before the assertion runs, which is
-  // itself the no-hang witness under the harness timeout.
+  // itself the no-hang witness under the harness timeout. The pin root is
+  // narrowed to src so the WALK's own guard is the one witnessed here:
+  // with test/ pinned, takePin's identical refusal would mask a defanged
+  // walk, and a witness that reddens under no member of its class guards
+  // nothing.
   const { dir, base } = greenFixture();
   const fifoPath = join(dir, "test", "fifo.test.ts");
   const made = spawnSync("mkfifo", [fifoPath], { encoding: "utf8" });
   assert.equal(made.status, 0, made.stderr);
-  const run = runGate(dir, base);
+  const run = runGate(dir, base, ["--pin-root", "src"]);
   assert.equal(run.status, 21);
   assert.equal(run.record.status, "error");
   assert.match(run.record.detail, /fifo\.test\.ts is a named pipe/);
