@@ -645,7 +645,7 @@ export function runGates(options: RunOptions): RunOutcome {
     error: 0,
     vacuous: 0,
   };
-  let requiredNotApplicable: string[] = [];
+  const requiredNotApplicable: string[] = [];
 
   for (const entry of selected) {
     const outcome = runOneGate(entry, options, cwd, options.evidenceDir);
@@ -682,14 +682,15 @@ export function runGates(options: RunOptions): RunOutcome {
     });
   }
 
+  // AGGREGATE PRECEDENCE, fixed here so it is one rule and not a reading.
+  // A concrete failure outranks the vacuity check, because "3 gates reported
+  // error" tells the operator more than "no applicable gate" and both exit
+  // 21 anyway. The vacuity check outranks a required not-applicable gate,
+  // because a bundle that examined nothing is not a report about any one
+  // gate (M2-C-2 at the aggregate level, M2R-012).
   let exitCode = EXIT_GREEN;
   let reason = "every applicable gate is green";
-  if (counts.applicable === 0) {
-    // M2-C-2 at the aggregate level (M2R-012): a bundle that examined
-    // nothing is not a pass, whatever the individual gates said.
-    exitCode = EXIT_GATE_ERROR;
-    reason = NO_APPLICABLE_GATE;
-  } else if (counts.error > 0) {
+  if (counts.error > 0) {
     exitCode = EXIT_GATE_ERROR;
     reason = `${String(counts.error)} gate(s) reported error: ${rows
       .filter((row) => row.status === "error")
@@ -701,6 +702,9 @@ export function runGates(options: RunOptions): RunOutcome {
       .filter((row) => row.status === "red")
       .map((row) => row.id)
       .join(", ")}`;
+  } else if (counts.applicable === 0) {
+    exitCode = EXIT_GATE_ERROR;
+    reason = NO_APPLICABLE_GATE;
   } else if (requiredNotApplicable.length > 0) {
     exitCode = EXIT_NOT_APPLICABLE;
     reason = `required gate(s) not applicable: ${requiredNotApplicable.join(", ")}`;

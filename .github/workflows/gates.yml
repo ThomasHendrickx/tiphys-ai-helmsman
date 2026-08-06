@@ -25,6 +25,37 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # The M2 gate bundle (kernel plan M2, M2-P1 step 9). This runs INSIDE
+      # the existing `test` job on purpose: check-run contexts are derived
+      # from job names and matrix values, so the published contexts stay
+      # `test (26)` and `gates`, and DR-0004's required context named
+      # verbatim `gates` is untouched. Adding a job here would add a context
+      # and require a ruleset change nobody has approved.
+      #
+      # The bundle carries one gate today, `manifest-self-check`, and that
+      # is deliberate: a runner wired to an empty gate set reports a green
+      # bundle over nothing measured, which is the failure this milestone
+      # exists to make impossible (M2R-012), so the first CI run measures
+      # something real. M2-P9 later replaces this step with the exit harness
+      # so the set runs once (M2R-026).
+      #
+      # Two steps rather than one expression: on a pull request the base and
+      # head SHAs exist and are passed; on a push to main they do not, and a
+      # gate needing them reports `error` rather than being silently skipped.
+      - name: M2 gate bundle (pull request)
+        if: github.event_name == 'pull_request'
+        run: >
+          node dist/bin/tiphys.js gates run
+          --manifest gates.manifest.json
+          --evidence "${{ runner.temp }}/gate-evidence"
+          --base "${{ github.event.pull_request.base.sha }}"
+          --head "${{ github.sha }}"
+      - name: M2 gate bundle (push)
+        if: github.event_name != 'pull_request'
+        run: >
+          node dist/bin/tiphys.js gates run
+          --manifest gates.manifest.json
+          --evidence "${{ runner.temp }}/gate-evidence"
       # The M1 exit-test harness in local mode (kernel plan v1, M1-P6
       # step 4): the skeleton plumbing is exercised end to end on every
       # kernel PR from this phase on. It re-runs the three gates above as
