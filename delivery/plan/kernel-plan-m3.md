@@ -773,19 +773,63 @@ kind of thing that is expensive to find during a merge and cheap to find now.
   phase lands against a machine gate instead of against prose review alone.
 - grounding: M2 merged with its exit evidence on `main`. `schemas/` holds only
   the M1-P1 placeholder README; `templates/` and `checklists/` do not exist.
-  DR-0006 decided (section 1.5 table is the applied form). DR-0013 decided (validator
-  implementation, section 7) must be decided before dispatch. M2-P6's coverage
-  checker fixes the accepted reference types (phase, decision, parked) that the
-  plan schema's open-questions and parked sections must express (D-7).
+  DR-0006 decided (section 1.5 table is the applied form). **DR-0013 is DECIDED
+  (2026-08-05) and this phase implements it**: Ajv 8.20.0 exact, Draft 2020-12,
+  strict, plus `yaml` 2.9.0 exact; revision 1's "must be decided before
+  dispatch" is superseded and the record is
+  `delivery/decisions/DR-0013-schema-validator-implementation.md`. M2-P6's
+  coverage checker fixes the accepted reference types (phase, decision, parked)
+  that the plan schema's open-questions and parked sections must express (D-7).
+  **DR-0014 is DECIDED in principle and its investigation has reported**
+  (`delivery/verification/release-verification-interface.md`), which is why
+  step 3 RESERVES the charter's verification field rather than designing it
+  (D-M3-29). T-007 gives the plan schema a required `hazard-classes[]` field
+  (D-M3-32). D-M3-27 binds every path this phase's commands read.
+- hazard class (T-007, D-M3-32): **the contract every later M3 phase and every
+  future kernel consumer is written against, so a defect here is invisible until
+  it has been depended on by nine phases.** What can produce a schema set that
+  passes its own criteria and guarantees nothing: a schema permissive enough
+  that every later artifact validates while proving nothing, whose invalid
+  fixtures are syntax errors rather than structurally plausible instances; an
+  `additionalProperties: false` omitted at ONE nested object level, so a typo is
+  silently ignored exactly where the criteria did not look; a derived check
+  registered but never reached, so a cross-document rule passes by not running;
+  an Ajv instantiation that differs in one policy from DR-0013's list, most
+  dangerously coercion or default-insertion, which makes the validator alter
+  what it validated; a diagnostic that leaks Ajv's own wording into what
+  becomes a public contract; a YAML decode failure presenting as a stack trace,
+  which is the seam this phase is taking; the M2 retirement changing M2's test
+  EXPECTATIONS rather than its engine, which would make DR-0013's
+  "boundary preserved" false at the moment it was acted on; and a
+  hand-authored path handed to `validate` that is a named pipe, which blocks
+  the command forever (D-M3-27, the M1-P5 class applied to the first kernel
+  command whose ordinary input is an operator-supplied path).
 - steps:
   1. Verify: `schemas/` contains only `README.md`; `templates/` and
      `checklists/` absent; `package.json` `files` is `["dist"]`. Verify the real
      paths and output shapes of the M2-P5 citation linter, the M2-P6 coverage
-     checker, the M2 validator module and its documented keyword set, the
+     checker, the M2 validator module, the
      `src/gates/schemas/` location, and the phase-declaration projection
      `delivery/plan/phases/<phase-id>.json` the M2-P4 scope auditor consumes;
      record all of it in the work history, because later phases cite these paths
      and the M2 plan they come from is DRAFT (section 1.1).
+     **Two verifications rewritten at revision 2, because DR-0013 changed what
+     matters about M2's validator.** Revision 1 asked this step to verify
+     "the M2 validator module and its documented keyword set". Under DR-0013 the
+     keyword set is irrelevant, because Ajv supplies Draft 2020-12 entire and
+     M2's engine is retired. What must be verified instead, and is now the
+     step's operative content, is the pair that makes DR-0013 clause 6 keepable
+     (section 1.1 item 5): (a) that M2's validator as DELIVERED emits
+     `INVALID <json-pointer> <message>` with deterministic ordering, and (b)
+     that M2's own validation tests assert THAT contract and not any
+     engine-specific wording. Both are obligations M2's plan accepted at its
+     revision 2 (M2-P1 step 4 and criterion 10). Record the exact test file
+     paths and the assertions inspected. **If either is false as delivered, STOP
+     and escalate**: the retirement is then a rewrite of M2's tests rather than
+     an engine swap, DR-0013's "existing M2 validation tests are re-run
+     unchanged" cannot be satisfied, and quietly rewriting them would make the
+     decision record false at the moment it was acted on (D-M3-16 forbids the
+     quiet edit; the escalation is the alternative).
   2. Create `schemas/plan.schema.json`. Required: header (`status`,
      `baseline-commit`, `binding-rule` as a required const carrying the process
      doc's exact sentence, R-017; `process-summary`), `standing-context`
@@ -794,8 +838,23 @@ kind of thing that is expensive to find during a merge and cheap to find now.
      references only (D-7, SC-009), `parked[]` whose entries require a `reason`.
      Each phase requires `id`, `branch`, `intent`, `grounding`, `severity`,
      `verified-root-cause`, `steps[]`, `files-to-touch[]`, `acceptance[]`
-     (minItems 1), `migrations`, `conflicts-with[]`, `parallelizable`,
-     `citations[]` (R-019 plus the blueprint section 5 superset). Two structural
+     (minItems 1), `hazard-classes[]` (minItems 1, NEW at revision 2),
+     `migrations`, `conflicts-with[]`, `parallelizable`,
+     `citations[]` (R-019 plus the blueprint section 5 superset).
+     **`hazard-classes[]` is T-007's explicit structural consequence for this
+     schema (D-M3-32)**: "a phase section that declares acceptance criteria
+     should also declare its hazard classes, so the second contract is derivable
+     from the plan rather than improvised per dispatch". Each entry is
+     `{id, hazard, derived-from}` where `derived-from` is a free-text statement
+     of what about the component's NATURE produces the hazard (for M1-P5 it was
+     "this component reads files it does not own", which names the defect class
+     directly). It is `minItems: 1` and not optional, because an optional field
+     is the version of this rule that did not survive: T-007 records a phase
+     meeting fifteen of fifteen executed criteria while live-locking every
+     supervision command, and the reviewer who found it differed in its BRIEF,
+     not in its model. This is a Kind A rule; the criteria coupling
+     (`verdict-hazard-classes-addressed`, M3-P7) is Kind B and lands there.
+     Three structural
      rules that make prose rules mechanical:
      - `fill-in` (R-014): an optional phase object with `filled: false` and the
        named slots `root-cause`, `fix-shape`, `files`; a phase whose `fill-in`
@@ -830,10 +889,50 @@ kind of thing that is expensive to find during a merge and cheap to find now.
      core data model, tenancy, auth, deployment topology),
      `product-intent` (block scalar, one page), `constraints`,
      `escalation-contract` (R-022, R-090) with a required `stop-for[]` whose
-     default entry is "any irreversible choice the charter is silent on", and
+     default entries are "any irreversible choice the charter is silent on"
+     and, NEW at revision 2, **"a change from a declared release verification
+     to `none`"**, and
      `retention` paths (consumed by M3-P8 for R-098). A missing required field
      blocks realization, which is what the schema's `required` list means
      (blueprint section 7).
+  3b. **Release verification: RESERVE the space, do not design it (DR-0014,
+     D-M3-29, NEW at revision 2).** The charter schema declares a
+     `release-verification` field and this phase does exactly four things with
+     it, no more:
+     - It is REQUIRED, and its only currently-valid shapes are
+       `{mode: none, reason: <non-empty string>}` and
+       `{mode: reserved, note: <non-empty string>}`. `additionalProperties:
+       false` at that object level, so any other shape fails compilation-time
+       or validation-time rather than being silently accepted.
+     - `mode: none` requires a non-empty `reason`. This is the investigation's
+       defence 2 (`delivery/verification/release-verification-interface.md`
+       section 4.1): silence is never permission, an absent field is an error
+       rather than a quiet skip, and disabling verification costs visibility.
+       It is Kind A, an `if`/`then` on `mode`.
+     - The schema's `$comment` on the field cites
+       `delivery/verification/release-verification-interface.md` and DR-0014 by
+       id, and states in terms that the field's real shape is NOT decided here.
+       That investigation's section 8 item 4 is unambiguous: "the charter field
+       is M3's, and M3 should reserve the space rather than design it", settled
+       by the first real project charter at M4's pilot.
+     - It does NOT enumerate adapters, does NOT model N verifications, does NOT
+       express M2-P7's outcome enum, and does NOT carry the charter coherence
+       check the investigation recommends (a non-local deployment topology
+       declared alongside verification `none` is internally contradictory).
+       That check is a Kind B derived check in this plan's own vocabulary and
+       would cost one check and no new artifact, and it is DECLINED FOR M3 WITH
+       A REASON rather than built: the investigation's own section 8 item 4
+       says its predicate ("non-local topology") needs a real charter to be
+       written against, and inventing the predicate now is the M1-P3 shape risk
+       1 exists to prevent. Recorded in Appendix C item 12 as
+       available-and-declined, so the question is asked and answered rather
+       than skipped.
+     What this phase DOES take from the investigation, because it is one line
+     and available now, is step 3's `stop-for[]` addition: a change from a
+     declared verification to `none` becomes an owner decision rather than an
+     implementer's edit, which is the difference between "the owner chose to
+     run without verification" and "verification stopped happening"
+     (investigation section 4.1, closing recommendation).
   4. Create `schemas/decision-record.schema.json`: blueprint section 7's field
      list, plus `reversibility` as an enum of exactly `reversible`, `costly`,
      `irreversible` (R-063), plus `vetoable` (boolean) and `revert-cost`
@@ -868,6 +967,10 @@ kind of thing that is expensive to find during a merge and cheap to find now.
      this phase registers `plan-dispatchable` and
      `plan-verification-first-present`, and later phases append their own.
      Schema-validation implementation per DR-0013: instantiate the Ajv Draft 2020-12 implementation with strict mode, allErrors, schema and meta-schema validation, and NO coercion, defaults, additional-property removal, input mutation or remote schema loading. Unknown or invalidly combined keywords fail schema COMPILATION. Normalize every Ajv error into the Tiphys diagnostic contract `INVALID <json-pointer> <message>` with deterministic ordering; Ajv wording is never a public contract. Retire the M2 validator as an ENGINE, preserving its module boundary, routing M2 gate-schema validation through Ajv, and re-running every existing M2 validation test unchanged.
+     **Two clauses of DR-0013 that revision 1 did not carry into this step, added at revision 2.**
+     (a) **YAML is INPUT DECODING and is a separate stage from validation, not conflated with it** (DR-0013 YAML clause 3). `src/validate.ts` decodes with `yaml` 2.9.0 first, then validates the decoded value; a decode failure and a validation failure are distinguishable in the diagnostic and neither produces a stack trace on any stream (DR-0013 YAML clause 4, which is the same top-level policy step 8b builds).
+     (b) **Every Tiphys schema declares the dialect explicitly**, `"$schema": "https://json-schema.org/draft/2020-12/schema"` (DR-0013 clause 3), and this is asserted by a registered test over every file in `schemas/` rather than by inspection, so a schema added by a later phase without the declaration fails a gate rather than a reading. **Every schema file M3 ships in any phase inherits this**, which is why it is stated here and not repeated ten times.
+     (c) The path handed to `validate` is an operator-supplied path this command did not create, so it is opened through `classifyEntry` and `refuseOpenForWrite` (D-M3-27), never a bare `readFileSync`. Same for the `--context` directory walk.
   8b. Add a top-level error presentation handler in `bin/tiphys.ts`: a thrown
      error from any subcommand is printed as one diagnostic line and exits 1
      (or 64 for usage errors), never as a stack trace. This closes the seam
@@ -893,9 +996,49 @@ kind of thing that is expensive to find during a merge and cheap to find now.
       the seam (D-M3-20); the M2 plan states this is one move plus one path
       constant, and this phase verifies that claim before acting on it and
       reports rather than improvises if it is wrong.
+  10c. **Dependencies and the lockfile, stated explicitly at revision 2 because
+      this is the kernel's first production dependency and the lockfile is the
+      artifact that makes the pin real.** Add `ajv` at exactly `8.20.0` and
+      `yaml` at exactly `2.9.0` to `dependencies` (not `devDependencies`), with
+      no range prefix. Regenerate `package-lock.json` by running `npm install`
+      once and committing the result; do not hand-edit it. Record in the work
+      history the resolved transitive production dependency set of both
+      packages, with each one's `license` field, because that inventory is a
+      REQUIRED INPUT to the EXT-F-09 license gate M3-P10 builds (DR-0013 clause
+      5, and criterion 14 of the validator block below). Recording it here
+      rather than only at M3-P10 is deliberate: an inventory taken nine phases
+      after the dependency was added is an inventory of whatever the tree
+      resolved to by then, and plan v1 decision D-3 (zero runtime dependencies)
+      is superseded from M3 onward by DR-0013 and dated there, not silently.
   11. Tests: `test/validate.test.ts`, `test/schemas.test.ts`,
       `test/checks.test.ts`, `test/status.test.ts`, with valid and invalid
       fixtures under `test/fixtures/`.
+      **Revision 2 states what those files must contain, because DR-0013's own
+      consequence note says "its steps 8 and 11 ... change with the choice" and
+      revision 1 changed step 8 only.** The fourteen validator criteria below
+      are the acceptance contract; these are the test files that carry them:
+      `test/validate.test.ts` holds the engine-policy tests (criteria 4, 5, 6,
+      7, 8, 9: unknown keyword fails COMPILATION and names the keyword; an
+      invalid schema fails meta-schema validation; the validated value is
+      deep-equal to the input for one case of each mutation kind Ajv could have
+      performed; local `$ref` resolves while an unresolved and a REMOTE
+      reference each fail closed; the diagnostic text is asserted exactly and no
+      Ajv-authored wording reaches either stream; malformed YAML gives one
+      concise diagnostic, nonzero exit, and no stack frame).
+      `test/schemas.test.ts` holds the vocabulary coverage (criterion 2: every
+      keyword in the declared authoring vocabulary has BOTH a positive and a
+      negative test, and criterion 3: `oneOf`, `if`/`then` and `contains` each
+      carry a DISCRIMINATING pair), plus the dialect-declaration assertion of
+      step 8(b).
+      `test/schema-suite.test.ts` (a fifth file, NEW at revision 2 and added to
+      files-to-touch) holds criterion 11, the applicable cases from the official
+      JSON Schema Test Suite, with the suite revision recorded and every
+      exclusion carrying its reason. It is a separate file because it is the one
+      test set imported from outside this repository and a reviewer needs to see
+      its provenance without reading past the kernel's own tests.
+      The M2 regression contract (criterion 10) is discharged by RUNNING M2's
+      existing validation test files unchanged, not by copying assertions into
+      these files; step 1 verified they are runnable against the new engine.
 - files-to-touch (create unless marked): `schemas/plan.schema.json`,
   `schemas/charter.schema.json`, `schemas/decision-record.schema.json`,
   `schemas/status-line.schema.json`, `schemas/README.md` (edit),
@@ -904,16 +1047,27 @@ kind of thing that is expensive to find during a merge and cheap to find now.
   `src/commands/validate.ts`, `src/status.ts`, `src/commands/status.ts`,
   `src/plan.ts`, `src/commands/plan.ts`,
   `test/validate.test.ts`, `test/schemas.test.ts`, `test/checks.test.ts`,
-  `test/status.test.ts`, `test/plan-projection.test.ts`, `test/fixtures/**`,
+  `test/status.test.ts`, `test/plan-projection.test.ts`,
+  `test/schema-suite.test.ts` (NEW at revision 2, step 11: the JSON Schema Test
+  Suite cases of validator criterion 11), `test/fixtures/**`,
   `scripts/check-clause-map.mjs`,
   `delivery/requirements/clause-map.json`, `src/cli.ts` (edit),
   `bin/tiphys.ts` (edit, top-level error handler only, step 8b; verify the
   dispatcher shape first),
-  `package.json` (edit, ADDS `ajv` 8.20.0 and `yaml` 2.9.0 as exact production dependencies, the kernel's first), `package-lock.json` (edit, required by DR-0013's
-  dependency), `.github/workflows/gates.yml` (edit), `src/gates/schemas/**`
+  `package.json` (edit, ADDS `ajv` 8.20.0 and `yaml` 2.9.0 as exact production
+  dependencies, the kernel's first, per step 10c),
+  `package-lock.json` (edit, REGENERATED by `npm install` and never hand-edited;
+  required by DR-0013 and load-bearing, because criterion 1's clean
+  `git status --porcelain` after `npm ci` plus `npm run build` is what proves
+  the committed lockfile matches the declared pins),
+  `.github/workflows/gates.yml` (edit), `src/gates/schemas/**`
   (move to `schemas/`, per step 10 and D-M3-20; verify the M2 path constant
-  dependencies), the M2 validator module (edit to route through Ajv and retire it as an engine while preserving its boundary; NOT to extend
-  its keyword set; verify first).
+  dependencies), the M2 validator module (edit to route through Ajv and retire
+  it as an engine while preserving its module boundary and its diagnostic
+  contract; verify step 1's two findings first), M2's own validation test files
+  (RE-RUN unchanged, NOT edited; listed here so that an edit to any of them is
+  visible to the scope audit as the escalation-worthy event step 1 describes
+  rather than as an ordinary change).
 - acceptance criteria:
   1. `npm ci`, then `npm run build` exits 0 and `git status --porcelain` is
      empty afterward; `npm test` exits 0 without a prior build, 0 failing, zero
@@ -951,7 +1105,43 @@ kind of thing that is expensive to find during a merge and cheap to find now.
   5. An instance identical to a valid example except for one misspelled property
      name exits 1 and the message names that property (every object level sets
      `additionalProperties: false`, so a typo is a failure and not a silently
-     ignored field).
+     ignored field). **Two structurally different members, per section 2.3 rule
+     6**: one misspelling at the document's TOP level and one at a nested object
+     level at least two deep (a `phases[n].fill-in` property, for instance).
+     One witness here is not a class, because the failure mode this guards is
+     precisely an `additionalProperties: false` omitted at one nesting level
+     while present at the top.
+  5b. **Charter release-verification reservation (D-M3-29, DR-0014), all
+     directions.** A charter with no `release-verification` field exits 1 naming
+     the field; one with `{mode: none}` and no `reason` exits 1 naming `reason`;
+     one with `{mode: none, reason: "..."}` exits 0; one with
+     `{mode: vercel, endpoint: "..."}` exits 1 naming the offending property,
+     which is the guard that stops a project inventing the field's real shape
+     before M4's pilot decides it. Each is Kind A and each is witnessed by
+     removing and restoring its guarding keyword. A registered test asserts the
+     field's `$comment` cites DR-0014 and
+     `delivery/verification/release-verification-interface.md` by path, so a
+     later reader finds the reason for the reservation from the schema itself.
+  5c. **`stop-for[]` default entry (investigation section 4.1).** The shipped
+     `templates/charter.example.yaml` carries "a change from a declared release
+     verification to `none`" in its `escalation-contract.stop-for[]`, asserted
+     by a registered test. This is a presence assertion over prose and is
+     labelled as such: it proves the default is shipped, not that anyone obeys
+     it.
+  5d. **Path-type refusal (D-M3-27), both directions.** With a named pipe staged
+     by a real `mkfifo` at the path handed to `tiphys validate <file>`, the
+     command exits nonzero within a bounded time naming the path and the
+     observed entry type, and does NOT block; the same invocation against a
+     regular file at the same path exits 0. The same pair is witnessed for the
+     `--context` directory. This is the M1-P5 class (CR-520, twelve paths, four
+     fix rounds) applied to the first kernel command whose ordinary input is an
+     operator-supplied path, and it is a criterion rather than a note because
+     `src/brief.ts` shows what happens when the rule is only a note.
+  5e. **Hazard-classes field (T-007, D-M3-32), both directions.** A plan whose
+     phase carries `hazard-classes: []` exits 1 naming the pointer; the same
+     phase with one entry exits 0. Witnessed by removing and restoring
+     `minItems`. `templates/plan.example.yaml` carries at least one real hazard
+     class, so the template teaches the field rather than declaring it empty.
   6. `tiphys status emit --run r1 --state phase-change --detail x` in a fleet
      home exits 0, appends exactly one line to `state/status/stream.jsonl`, and
      `state/status/current.json` parses with `state` equal to `phase-change`.
@@ -987,17 +1177,38 @@ kind of thing that is expensive to find during a merge and cheap to find now.
   `status-state-enum-closed`, `clause-map-check-detects-missing-clause`,
   `plan-projection-feeds-scope-auditor`, `check-plan-verification-first-present`,
   `check-plan-dispatchable`, `check-missing-context-fails-loudly`,
-  `cli-errors-have-no-stack-trace`.
+  `cli-errors-have-no-stack-trace`,
+  and NEW at revision 2: `validate-unknown-keyword-fails-compilation`,
+  `validate-input-not-mutated`, `validate-remote-ref-fails-closed`,
+  `validate-yaml-decode-diagnostic`, `schemas-declare-2020-12-dialect`,
+  `schema-suite-applicable-cases-pass`,
+  `schema-charter-release-verification-reserved`,
+  `schema-charter-verification-none-requires-reason`,
+  `schema-plan-hazard-classes-required`,
+  `validate-refuses-non-regular-input-path`.
 - suggested model tier: strongest. The schemas are the contract every later M3
   phase and every future kernel consumer is written against; a loose schema here
   is invisible until it has been depended on.
 - citations: R-011, R-012, R-014, R-016, R-017, R-018, R-019, R-021, R-022,
-  R-063, R-084, R-090; blueprint sections 5 and 7; DR-0006; plan v1 D-7, D-3,
-  and section 11 item 8; constraint C-1; SC-009.
+  R-063, R-084, R-090; blueprint sections 5 and 7; DR-0006; plan v1 D-7, D-3
+  (superseded from M3 onward by DR-0013, dated in that record), and section 11
+  item 8; constraint C-1; SC-009; **DR-0013** (the engine, the pins, the
+  diagnostic contract, the fourteen criteria); **DR-0014** and
+  `delivery/verification/release-verification-interface.md` sections 4.1 and 8
+  item 4 (the reserved charter field, D-M3-29); **T-007** (the
+  `hazard-classes[]` field, D-M3-32); **`MECHANISMS.md`** row "reading a path
+  whose type is not established" (D-M3-27); `delivery/STATE.md`'s
+  carried-forward item on the top-level error handler (step 8b, D-M3-21).
 - conflicts-with: every later M3 phase (`src/cli.ts`, `package.json` files
   entry, `schemas/README.md`, the clause map, `test/behaviors.json`). Sequential
   ordering absorbs this.
-- blocked-by: M2 exit evidence on `main`. DR-0013 is DECIDED (2026-08-05): Ajv 8.20.0 exact, Draft 2020-12, strict mode, plus `yaml` 2.9.0 exact. No longer a blocker.
+- blocked-by: M2 exit evidence on `main`, and nothing else. DR-0013 is DECIDED
+  (2026-08-05): Ajv 8.20.0 exact, Draft 2020-12, strict mode, plus `yaml` 2.9.0
+  exact. It is no longer a blocker and this phase implements it. **Verified at
+  revision 2 by reading every `blocked-by` in section 3**: no M3 phase is
+  blocked on an open owner decision, because DR-0008 and DR-0013 are both
+  decided and DR-0010's M3 half needs no work under this plan's recorded answer
+  (section 6 item 2).
 
 #### Validator acceptance criteria added by DR-0013 (decided 2026-08-05)
 
@@ -1033,12 +1244,37 @@ that adopts Ajv. Each is falsifiable and each names what must be executed.
     scratch directory resolves both runtime dependencies.
 14. The production dependency and license inventory includes `ajv`, `yaml` and
     every transitive production dependency of both, as an input to EXT-F-09.
+    **Recorded in THIS phase's work history** (step 10c), not deferred to
+    M3-P10, so the inventory names what was installed when the pin was taken
+    rather than whatever the tree resolved to nine phases later. M3-P10's
+    license gate consumes it as an input and re-derives it at release time;
+    a difference between the two is a finding, not a routine update.
+
+**Verified unchanged at revision 2 (this block was inserted on the decision day,
+2026-08-05, and re-read against the decision text on 2026-08-06).** All fourteen
+criteria are coherent with
+`delivery/decisions/DR-0013-schema-validator-implementation.md`: criteria 1 to 3
+against clause 7 (documented authoring vocabulary), 4 against clause 4's
+compilation-time failure, 5 against clause 4's meta-schema validation, 6 against
+clause 4's four no-mutation policies, 7 against clause 4's no-remote-loading, 8
+against clause 5's diagnostic contract, 9 against the YAML clause 4, 10 against
+clause 6's regression promise, 12 and 13 against the packaging consequence, and
+14 against clause 5 of the YAML correction. Criterion 11 (the official JSON
+Schema Test Suite) is the plan's own addition rather than the decision's and is
+kept, because a vocabulary claim with no external suite behind it is the
+hand-written-subset risk the decision rejected, wearing different clothes. Only
+criterion 14's SITE moved at revision 2, from unstated to this phase's work
+history. No criterion was reworded.
 
 Two standing prohibitions for this phase, from DR-0013 and from plan review
 finding M3R-002: do NOT silently weaken a schema rule, and do NOT reclassify a
 Kind A requirement as Kind B to avoid expressing it. If a planned requirement
 cannot be represented correctly under Draft 2020-12, or conflicts with the
 decision, STOP and report the exact conflict rather than working around it.
+**A third prohibition, added at revision 2 and load-bearing for DR-0013 clause
+6**: do NOT edit M2's validation tests to make them pass against Ajv. They are
+re-run UNCHANGED or the phase escalates (step 1). An edited M2 test is not a
+regression contract, it is a new contract wearing the old one's name.
 
 ### M3-P2: Canonical gate registry
 
