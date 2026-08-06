@@ -150,5 +150,15 @@
   "liveness-fifo-beacon-does-not-block": "a named pipe at the beacon does not block the guard or the commands that consult it",
   "liveness-fifo-record-does-not-block-teardown": "a named pipe at a task record does not block teardown",
   "doctor-fifo-lease-does-not-block": "a named pipe at the lease file does not block doctor",
-  "watcher-unique-stage-path": "a pass stages its state writes under a name no other pass can collide with"
+  "watcher-unique-stage-path": "a pass stages its state writes under a name no other pass can collide with",
+  "exit-test-harness-usage-errors": "the harness rejects invalid invocations with exit 64",
+  "exit-test-step-registry-covers-section-4": "the harness step registry covers every step of section 4 exactly once",
+  "exit-test-single-harness-identity": "the three exit-test scripts declare one harness identity",
+  "sandbox-seed-idempotent-identified": "seeding a sandbox remote is idempotent and commits as the harness identity",
+  "sandbox-clone-npm-ci-and-test": "a clone of the seeded sandbox passes npm ci and npm test with at least one test",
+  "stub-payload-lands-and-pushes": "the stub payload appends, commits as the harness identity, and pushes the task branch",
+  "stub-payload-refuses-bad-inputs": "the stub payload refuses a bad mode and a working directory that is not a worktree",
+  "exit-test-step-failure-is-fatal": "a failed harness step is fatal to the run and is recorded as failed",
+  "exit-test-falsifiability-guard-wired": "the gates falsifiability guard fails the job when the harness cannot fail",
+  "exit-test-guard-inside-gated-job": "the falsifiability guard sits inside the job the required check consumes"
 }
