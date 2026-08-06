@@ -412,7 +412,7 @@ M2-P4 scope auditor would fail the undeclared file anyway.
   phase lands against a machine gate instead of against prose review alone.
 - grounding: M2 merged with its exit evidence on `main`. `schemas/` holds only
   the M1-P1 placeholder README; `templates/` and `checklists/` do not exist.
-  DR-0006 decided (section 1.5 table is the applied form). DR-0013 (validator
+  DR-0006 decided (section 1.5 table is the applied form). DR-0013 decided (validator
   implementation, section 7) must be decided before dispatch. M2-P6's coverage
   checker fixes the accepted reference types (phase, decision, parked) that the
   plan schema's open-questions and parked sections must express (D-7).
@@ -506,7 +506,7 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      `src/checks.ts` holds the registry of derived checks per type (section 2.3);
      this phase registers `plan-dispatchable` and
      `plan-verification-first-present`, and later phases append their own.
-     Schema-validation implementation per DR-0013.
+     Schema-validation implementation per DR-0013: instantiate the Ajv Draft 2020-12 implementation with strict mode, allErrors, schema and meta-schema validation, and NO coercion, defaults, additional-property removal, input mutation or remote schema loading. Unknown or invalidly combined keywords fail schema COMPILATION. Normalize every Ajv error into the Tiphys diagnostic contract `INVALID <json-pointer> <message>` with deterministic ordering; Ajv wording is never a public contract. Retire the M2 validator as an ENGINE, preserving its module boundary, routing M2 gate-schema validation through Ajv, and re-running every existing M2 validation test unchanged.
   8b. Add a top-level error presentation handler in `bin/tiphys.ts`: a thrown
      error from any subcommand is printed as one diagnostic line and exits 1
      (or 64 for usage errors), never as a stack trace. This closes the seam
@@ -548,10 +548,10 @@ M2-P4 scope auditor would fail the undeclared file anyway.
   `delivery/requirements/clause-map.json`, `src/cli.ts` (edit),
   `bin/tiphys.ts` (edit, top-level error handler only, step 8b; verify the
   dispatcher shape first),
-  `package.json` (edit), `package-lock.json` (edit, only if DR-0013 adds a
+  `package.json` (edit, ADDS `ajv` 8.20.0 and `yaml` 2.9.0 as exact production dependencies, the kernel's first), `package-lock.json` (edit, required by DR-0013's
   dependency), `.github/workflows/gates.yml` (edit), `src/gates/schemas/**`
   (move to `schemas/`, per step 10 and D-M3-20; verify the M2 path constant
-  first), the M2 validator module (edit only under DR-0013 option 2, to extend
+  dependencies), the M2 validator module (edit to route through Ajv and retire it as an engine while preserving its boundary; NOT to extend
   its keyword set; verify first).
 - acceptance criteria:
   1. `npm ci`, then `npm run build` exits 0 and `git status --porcelain` is
@@ -636,7 +636,48 @@ M2-P4 scope auditor would fail the undeclared file anyway.
 - conflicts-with: every later M3 phase (`src/cli.ts`, `package.json` files
   entry, `schemas/README.md`, the clause map, `test/behaviors.json`). Sequential
   ordering absorbs this.
-- blocked-by: M2 exit evidence on `main`; DR-0013 (validator implementation).
+- blocked-by: M2 exit evidence on `main`. DR-0013 is DECIDED (2026-08-05): Ajv 8.20.0 exact, Draft 2020-12, strict mode, plus `yaml` 2.9.0 exact. No longer a blocker.
+
+#### Validator acceptance criteria added by DR-0013 (decided 2026-08-05)
+
+These are additional to M3-P1's existing criteria and are binding on the phase
+that adopts Ajv. Each is falsifiable and each names what must be executed.
+
+1. A valid instance of each shipped schema validates and exits 0.
+2. Every keyword in the declared authoring vocabulary has BOTH a positive and a
+   negative test; a keyword with only a positive test is not covered.
+3. `oneOf`, `if`/`then` and `contains` each carry a DISCRIMINATING test: one
+   instance that satisfies exactly one branch and one that satisfies the wrong
+   branch, so the test would fail if the keyword were ignored.
+4. An unknown schema keyword fails schema COMPILATION, before any instance is
+   validated, and the failure names the keyword.
+5. A schema that is itself invalid fails meta-schema validation.
+6. Input is not coerced, defaulted, stripped or otherwise mutated: assert the
+   validated value is deep-equal to the input, for a case of each kind.
+7. Local `$ref` resolves; an unresolved reference and a REMOTE reference each
+   fail closed rather than being silently skipped or fetched.
+8. Ajv errors are converted into `INVALID <json-pointer> <message>` with stable
+   ordering. Assert the exact diagnostic text, and assert that no Ajv-authored
+   wording reaches stdout or stderr.
+9. Malformed YAML produces one concise diagnostic and a nonzero exit, with no
+   stack trace on any stream.
+10. Every existing M2 gate manifest and result retains its PRIOR pass/fail
+    behaviour through the new engine. This is a regression contract: the M2
+    validation tests are re-run unchanged, not rewritten.
+11. Applicable cases from the official JSON Schema Test Suite pass for every
+    keyword in the declared vocabulary. Record which suite revision was used
+    and which cases were excluded as not applicable, with the reason.
+12. `npm ci`, `npm run build`, `node --test` and `npm pack` all exit 0.
+13. The packed package contains the shipped schemas, and a clean install in a
+    scratch directory resolves both runtime dependencies.
+14. The production dependency and license inventory includes `ajv`, `yaml` and
+    every transitive production dependency of both, as an input to EXT-F-09.
+
+Two standing prohibitions for this phase, from DR-0013 and from plan review
+finding M3R-002: do NOT silently weaken a schema rule, and do NOT reclassify a
+Kind A requirement as Kind B to avoid expressing it. If a planned requirement
+cannot be represented correctly under Draft 2020-12, or conflicts with the
+decision, STOP and report the exact conflict rather than working around it.
 
 ### M3-P2: Canonical gate registry
 
@@ -795,7 +836,7 @@ M2-P4 scope auditor would fail the undeclared file anyway.
      references resolve through Kind B check `mode-gate-sets-resolve`, which
      reads `gate-registry.yaml` from `--context`. `full` requiring a
      `fix-round-verification` stage is Kind A (`if` on `id`, `then` a `contains`
-     on `pipeline[]`), which is why DR-0013's option 2 keyword list must include
+     on `pipeline[]`). Under DR-0013 as decided this is simply Draft 2020-12, which includes
      `contains`; section 7 records that addition.
   3. Create `schemas/role-model-config.schema.json` and
      `role-model-config.yaml` (R-075): per role id, a `tier` of `strongest` or
@@ -2262,7 +2303,7 @@ D-19, which remain in force unchanged.
 - D-M3-16: no M3 phase edits a merged M2 component except M3-P2's optional
   extension of the gate runner's selection flags, M3-P1's relocation of M2's
   schema documents (D-M3-20), and M3-P1's extension of the M2 validator's
-  keyword set if DR-0013 lands on option 2. Any other required M2 change is an
+  keyword set, which DR-0013 as decided makes unnecessary (Ajv supplies Draft 2020-12 entire). Any other required M2 change is an
   escalation to the orchestrator, not an improvisation, because M2's exit
   evidence is a hard gate that a quiet edit would invalidate.
 - D-M3-17: this plan follows `delivery/plan/kernel-plan-m2.md`'s phase ids and
@@ -2282,7 +2323,7 @@ D-19, which remain in force unchanged.
      D-M3-18, built in M3-P1 step 2 with `tiphys plan project`.
   4. schemas-directory relocation: accepted as D-M3-20, executed in M3-P1
      step 10b.
-  5. validation technology seam: DR-0013, section 7, whose recommendation is now
+  5. validation technology seam: DR-0013, DECIDED for Ajv, superseding the recommendation that was
      to extend M2's validator rather than adopt a library.
   6. fix-round verification as a pipeline requirement: M2 disclaims it, M3-P3
      carries it as a required `full` stage, cited to T-003.
@@ -2413,8 +2454,10 @@ free-floating list item. The open questions of this plan are exactly:
    adapter and the current process, and nothing in section 3 or section 4
    targets the primitive. If the owner wants the M3 half decided differently,
    M3-P3 is the phase that changes.
-3. DR-0013 (JSON Schema validation implementation): new, raised by this plan,
-   open. See section 7.
+3. DR-0013 (JSON Schema validation implementation): raised by this plan and
+   DECIDED by the owner 2026-08-05 for an external validator (Ajv 8.20.0 exact,
+   Draft 2020-12), with the plan's YAML-parser omission closed in the same
+   decision (`yaml` 2.9.0 exact). See section 7 and the decision record.
 
 There are no other open questions.
 
@@ -2424,11 +2467,14 @@ There are no other open questions.
 |---|---|---|---|
 | DR-0008 | Release registry and package naming (SC-012, SC-006) | open, deferred; the stated due date (before this plan is approved) has passed, re-escalated as overdue with this plan | M3-P10 in full; the `name` field; the fleet pin; every release criterion. M3-P1 to M3-P9 are NOT blocked (section 6 item 1) |
 | DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work |
-| DR-0013 | How is JSON Schema validation implemented in the kernel | open, raised here, due before M3-P1 dispatches | M3-P1, and transitively every later M3 phase |
+| DR-0013 | How is JSON Schema validation implemented in the kernel | DECIDED 2026-08-05: Ajv 8.20.0 exact, Draft 2020-12, strict; `yaml` 2.9.0 exact | discharged; M3-P1 unblocked |
 
-DR-0013 in full, to be written up as
-`delivery/decisions/DR-0013-schema-validator-implementation.md` when this plan is
-presented:
+DR-0013 in full. SUPERSEDED 2026-08-05: the owner decided for an EXTERNAL
+validator (Ajv 8.20.0 exact, JSON Schema Draft 2020-12, strict mode), rejecting
+the option-2 recommendation preserved below, and closed this plan's YAML-parser
+omission in the same decision (`yaml` 2.9.0 exact). The authoritative text is
+`delivery/decisions/DR-0013-schema-validator-implementation.md`; what follows is
+kept as the record of what was asked and recommended, and is NOT the decision:
 
 - Question: DR-0006 decided that artifacts are validated by JSON Schema. The
   kernel ships zero runtime dependencies today (`package.json` has
@@ -2524,11 +2570,13 @@ comparison plan v1's own history makes available.
    M3-P9 criterion 4) at least make an empty clause id impossible; every brief
    and checklist phase is dispatched at the strongest model tier for the clause
    text. Residual risk is real and is not closed by this plan.
-3. **DR-0008 and DR-0013 are undecided and both are load-bearing.** DR-0008
-   blocks M3-P10 completely and is already overdue by its own terms ("due before
-   the M3 plan is approved"). DR-0013 blocks M3-P1, which blocks all nine
-   phases after it. A decision that arrives late does not delay one phase, it
-   delays the milestone.
+3. **DR-0008 and DR-0013 are both now DECIDED, and the risk they carried is
+   discharged.** DR-0008 decided 2026-08-05 (public npmjs under @tiphys);
+   DR-0013 decided 2026-08-05 (Ajv 8.20.0 exact, Draft 2020-12, plus `yaml`
+   2.9.0 exact). The reasoning this item recorded remains true as a general
+   lesson and is kept for it: DR-0013 blocked M3-P1, which blocks all nine
+   phases after it, so a decision that arrives late does not delay one phase,
+   it delays the milestone. No M3 phase is now blocked on an owner decision.
 4. **The exit run is circular and supervised.** The kernel's full mode is judged
    by artifacts the kernel just shipped, in a run a competent human is watching
    and can rescue without noticing they did. E0.3 exists precisely because "the
@@ -2698,7 +2746,7 @@ blocked phase and not as a surprise at implementation time.
 
 | Phase | M2 components consumed | What breaks without it |
 |---|---|---|
-| M3-P1 | M2-P4 scope auditor (the phase-declaration projection), M2-P5 citation linter, M2-P6 coverage checker, the M2 validator module and its keyword set, `src/gates/schemas/` | the plan schema's open-questions and parked reference types are unconstrained; the projection stays a second hand-authored source; DR-0013 option 2 has nothing to extend |
+| M3-P1 | M2-P4 scope auditor (the phase-declaration projection), M2-P5 citation linter, M2-P6 coverage checker, the M2 validator module and its keyword set, `src/gates/schemas/` | the plan schema's open-questions and parked reference types are unconstrained; the projection stays a second hand-authored source; under DR-0013 as decided, M3-P1 adds Ajv and retires the M2 engine, so this row's risk is the M2 boundary rather than a keyword subset |
 | M3-P2 | M2-P1 `gates.manifest.json`, its schema with the reserved `modes` field, and the runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
 | M3-P3 | M2-P1 (gate set references), M2-P7 deploy and migration verifiers | `full` mode's stage list cannot reference the verification stages the process doc requires after merge |
 | M3-P4 | M2-P3 full-suite wrapper, M2-P6 coverage checker and its declared input contract | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker and the two contracts drift apart |

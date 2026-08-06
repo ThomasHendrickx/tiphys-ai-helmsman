@@ -76,9 +76,15 @@ artifact behind it is treated as unknown.
    Authored files must be pure ASCII; check with `grep -rP '[^\x00-\x7F]'`.
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
-5. Parallelism is OFF until M5: every M1 phase is sequential, one phase =
-   one branch = one PR, and the next phase starts only after the previous
-   PR is merged.
+5. One phase = one branch = one PR, always. Parallelism is ON where a
+   recorded pre-pass proves the phases disjoint (DR-0011, superseding the
+   original "off until M5"). MERGE order is always dependency order even when
+   work order is concurrent, and the pre-pass must be written down before
+   dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
+   M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
+   The two shared registries (`test/behaviors.json`, `gates.manifest.json`)
+   are append-only and resolved as a union against the merge base; they never
+   re-serialise phases.
 6. Milestone exit tests are hard gates: no milestone starts before the
    previous exit test has passed with recorded evidence.
 7. Commit messages carry no AI model or tool names.
@@ -115,6 +121,99 @@ worthless. Where the behavior under test consumes another program's output,
 assertions must include real captured output from that program, not
 hand-written strings chosen to match the implementation.
 
+## Fix-round contract (measured, 2026-08-05)
+
+A throughput analysis of M1 measured sixteen completed fix rounds. Thirteen
+were re-reviewed and TWELVE of those thirteen produced a new finding
+attributable to the round itself. The dominant cause, roughly a third of the
+milestone's elapsed time, is a single shape: **the fix addressed the instance
+the reviewer named, when the defect was the mechanism.** M1-P3 chained four
+rounds that way, M1-P5 chained four, M1-P6 chained two.
+
+Every avoidable instance had a counterfactual that was a COMMAND or a DECLARED
+SCOPE, never a judgment call. So this is mechanical, and it is binding on every
+fix round from now on.
+
+A fix round is not done, and a work history is not acceptable, without all
+three of these:
+
+1. **Name the MECHANISM, not the finding.** "A FIFO at the beacon hangs the
+   guard" is a finding. "Reading a path whose type has not been established"
+   is the mechanism. The round fixes the second.
+2. **Publish the derivation.** The exact command that enumerates every call
+   site of that mechanism, and its full output. Not a summary of it.
+3. **State what the derivation did NOT cover.** The regions the search
+   excluded, and why. A search whose scope is wrong returns an empty result
+   that is indistinguishable from an absence of defects, and this project has
+   been bitten by that three times: `state/session.lock` probed when the lease
+   is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and
+   `worktrees/` while the missed path sat at the fleet root; a usage error
+   read as a clean result.
+
+**The reviewer's FIRST check is item 3**, before examining any row.
+
+This is proven inside this repository rather than imported. M1-P5's fourth
+round used exactly this method and derived eleven call sites where the review
+had listed eight, closing in one round a class that three prior rounds had each
+closed one path at a time.
+
+### The claim grep, also binding
+
+Before submitting any work history, run:
+
+```
+grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/<phase>.md
+```
+
+Every hit must carry an adjacent captured command that settles it, or be
+restated as an open question. "I did not find a way to force this arm" is a
+true sentence; "this arm cannot be forced here" is a false one, and the first
+invites the next reader to try. Tuition T-006 records seven instances of this
+across M1, one of them the orchestrator's own, and notes that the pattern
+survived being documented as a norm. A grep is mechanical; a reminder is not.
+
+### One witness is not a class
+
+A witness for a CLASS must redden under at least TWO structurally different
+members of it. M1-P6 produced two consecutive mediums from this alone: one
+defang reddened a guard test, three others left it green, and the round after
+it repeated the mistake one abstraction up.
+
+## Dispatch contract: no agent without a beacon and a guard (T-008, binding)
+
+Measured 2026-08-06: two review agents died within minutes of dispatch and the
+orchestrator did not notice for **nine hours and eleven minutes**, while
+answering the owner and dispatching other work throughout. Nothing was lost but
+wall clock, and it was the largest single waste in the project.
+
+The orchestrator's supervision was "wait for a completion notification". That
+is PROCESS LIVENESS, which constraint C-2 forbids for exactly this reason: a
+dead process sends no notification, and no notification is indistinguishable
+from work in progress. This repository is building the watcher and liveness
+guard that prevent precisely this, and the rule was not applied to the process
+building it.
+
+A stated stall rule is not sufficient. It addresses attention, and attention is
+what a busy session does not have. This project has recorded twice that a rule
+depending on memory does not survive; the answer both times was a mechanism.
+
+**Two rules, both mechanical, binding on every dispatch:**
+
+1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
+   artifact within the first minutes and appends as it works. The file's mtime
+   is its beacon. A death then leaves a partial result rather than nothing,
+   which is the difference between salvage and a total loss.
+2. **A freshness watchdog is armed in the SAME TURN as the dispatch.** It
+   watches the newest mtime under the agent's working directory and reports
+   stale after a threshold. It must test FRESHNESS, never existence and never
+   completion.
+
+The second rule has its own recorded failure: the first watchdog written after
+this incident tested whether the report file EXISTED, so it fired two minutes
+in, reported success, and said nothing. A guard whose condition does not test
+the property that matters is green and worthless, which is the red-witness rule
+one level up.
+
 ## Identifier schemes
 
 Stable IDs, never renumbered, cited across documents:
@@ -136,6 +235,17 @@ One phase, one branch, one PR. Branch names are given by the plan
 (`claude/m1-pN-<slug>`). The orchestrator never writes feature code and
 never lets a review be skipped; implementers never open PRs and never merge.
 
+**When to involve the owner (DR-0016, binding).** Escalate ONLY when two or
+more options are genuinely comparable AND the consequence is high impact and
+costly to reverse. If the analysis yields a recommendation you would defend,
+the options are not comparable and there is nothing to ask: decide, record it
+as a decision record with its reasoning, and report it. Asking the owner a
+question whose answer was already obvious is a FAILURE of the system, because
+it costs them the focus they were spending elsewhere. Write your recommendation
+first; doing so is what reveals whether a question was ever a question.
+Unchanged: anything needing elevated access the agent does not hold, and
+milestone exit-test evidence, which is reported unasked.
+
 Merge authority normally rests with the owner. It is currently DELEGATED to
 the orchestrator under DR-0012, conditional on dual cross-model clean review:
 two independent clean-room reviews of the same head, produced on different
@@ -144,7 +254,13 @@ green on that exact head, and the scope audit passing. Read
 `delivery/decisions/DR-0012-delegated-merge-authority.md` before merging
 anything; it also records the limits the orchestrator holds itself to,
 including stopping rather than grinding when a phase needs more than two fix
-rounds or a high-severity finding recurs in one component.
+rounds or a high-severity finding recurs in one component. **DR-0016 changes
+what "stopping" means**: the phase no longer waits for the owner. A fresh
+implementer plus a third review contract is dispatched immediately and the
+owner is notified asynchronously. Only if THAT round also fails does the phase
+go to the owner. The property being protected is that something different must
+happen, and the measured evidence is that the fresh implementer, not the owner
+decision, is the half that worked.
 
 The full procedure is in `.claude/skills/phase-delivery/SKILL.md`. Read it
 before dispatching or implementing a phase.
@@ -158,12 +274,33 @@ code survives and its proof does not.
 
 Each of these bit someone once. Forward them to every implementer.
 
-1. Local Node is 22.x while the declared floor is `>=26`. EBADENGINE
-   warnings on every npm operation are expected. Never lower the floor and
-   never set engine-strict. Node 22.18+ runs TypeScript natively so the
-   suite works locally, but CI on Node 26 is the authority. Any assertion
-   that depends on the floor being met (for example doctor exiting 0) must
-   be floor-gated locally and witnessed in CI.
+1. THREE Node versions are installed and which one you get depends on how
+   the shell was started. Measured 2026-08-05: a login shell resolves `node`
+   to v22.22.2 via `/opt/node22/bin`, but a STRIPPED environment
+   (`env -i bash -c`, and some subagent or hook contexts) resolves it to
+   **v20.20.2** via `/usr/local/bin/node`, a symlink to `/opt/node20`. Node 20
+   has no TypeScript type stripping, so the suite fails there in a way that
+   does not look like a version problem. A second trap in the same family: an
+   exported PATH survives for the rest of a shell invocation, so a run intended
+   to measure the default toolchain can silently measure the floor one. Always
+   check `node --version` in the shell that actually runs the command, and prefer an absolute path or an explicit
+   PATH prefix over trusting the ambient one. A reviewer hit this and had to
+   run the default-toolchain gates through `bash -lc`.
+   The container's default Node is 22.x while the declared floor is `>=26`.
+   EBADENGINE warnings on every npm operation are expected. Never lower the
+   floor and never set engine-strict. Node 22.18+ runs TypeScript natively so
+   the suite works on the default toolchain, and CI on Node 26 remains the
+   authority. Tests must still be floor-gated, because the default toolchain
+   is below the floor.
+   A floor-satisfying toolchain CAN be fetched, which removes "witnessed in
+   CI" as the only way to discharge a floor-dependent assertion. Measured
+   2026-08-05: `curl -O https://nodejs.org/dist/v26.6.0/node-v26.6.0-linux-x64.tar.xz`
+   then `tar -xJf` into a scratch prefix and put its `bin` first on PATH.
+   Against `main` at `bcefc98` that toolchain gave npm 11.18.0, `npm ci`
+   exit 0 with no EBADENGINE line, `npm run build` exit 0, a clean
+   `git status` after build, and `npm test` exit 0 with 106 tests, 106 pass,
+   0 fail and 0 SKIPPED, where the default toolchain skips the floor-gated
+   ones. Install to a scratch prefix, never over the system Node.
 2. `typescript` is pinned exact. Do not remove `"types": ["node"]` from
    either tsconfig; the strict build cannot resolve Node builtins without it.
 3. `*.tsbuildinfo` is gitignored deliberately; `tsc -b` writes one at the
@@ -179,10 +316,25 @@ Each of these bit someone once. Forward them to every implementer.
    option B) and must never touch user or global config.
 6. `gh` is absent locally and present in CI. Use a deterministic gh-free
    PATH in tests rather than assuming either.
+   MEASURED 2026-08-05, and it matters for the M1 exit test's FULL mode: `gh`
+   CAN be installed here (release tarball from github.com, same pattern as the
+   Node 26 toolchain) and `gh api user` does authenticate as the owner. But it
+   is NOT usable for the exit test. `gh auth status` reports the GH_TOKEN
+   invalid, `permissions.push` reads FALSE even on the kernel repository where
+   git pushes demonstrably succeed, and GraphQL is refused with "only the
+   pinned set of PR-review operations is served". So the API path and the git
+   path have different authorities in this container, and `gh pr create`,
+   `gh pr merge` and `gh pr view` cannot be relied on. Full mode needs a real
+   runner or the owner's machine; local mode is the form that runs here.
 7. `--test-name-pattern` must precede the positional test path, or it is
    silently ignored.
 8. `git checkout --` wipes uncommitted sibling edits. Copy before
-   experimenting.
+   experimenting. SHARPER FORM, paid for twice: ANY `git checkout --` in a
+   tree holding uncommitted work is destructive, INCLUDING when it names a
+   single path, and especially the path you have been editing. An implementer
+   used it to clean up one control probe and silently lost four rounds' worth
+   of uncommitted harness edits, having read this warning beforehand. Commit or
+   copy out of tree first; there is no safe narrow form.
 9. `git remote set-url` resolves relative paths against the repository, not
    the current working directory. Use absolute paths in test staging.
 10. Concurrent git operations against one clone contend on ref locks, and
