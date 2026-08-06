@@ -1,6 +1,16 @@
 # Tiphys Kernel Plan M3: Judgment Layer
 
-- Status: DRAFT, revision 1
+- Status: DRAFT, revision 2 (**re-grounded 2026-08-06** under DR-0011's recorded
+  consequence, as the explicit step BEFORE adversarial review round 2. Revision 1
+  applied plan-review round 1.)
+- Revision 2 (2026-08-06): re-grounding only. No requirement row moves, no phase
+  is renumbered, no decision id is reused. The inputs absorbed and the inputs
+  read-and-declined are tabulated in section 1.6, which is the instrument by
+  which this revision is judged. Baseline: `main` at `037477e` (M1 complete: all
+  six M1 phases merged, M1 exit test passed with recorded evidence, four
+  decisions DR-0013 to DR-0016 recorded, three tuition entries T-006 to T-008
+  recorded, M2 plan re-grounded to revision 2). Working branch
+  `claude/m3-plan-regrounding`.
 - Revision 1 (2026-08-05): plan-review round 1 findings applied (M3R-001 to
   M3R-011, `delivery/review/plan-review-m3-r1.md`), and the plan re-grounded
   against everything the project learned after it was first drafted: tuition
