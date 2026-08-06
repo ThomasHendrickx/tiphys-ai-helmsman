@@ -350,14 +350,27 @@ export interface TextAssertionDerivation {
 }
 
 const STRING_LITERAL = /(["'`])((?:(?!\1)[^\\]|\\.)*)\1/g;
+// The read callee the detector targets: `readFile` / `readFileSync`, reached
+// either as a bare identifier (a destructured named import) OR through a
+// namespace member chain (`fs.readFileSync`, `fs.promises.readFile`, an
+// aliased `fsp.readFile`). CR-1500: the namespace-qualified form is the
+// DOMINANT real-world idiom and round one recognised only the bare form, so a
+// single deleting text-asserting member shipped green under it. The prefix is
+// zero or more `<ident>.` segments, which is still the SAME builtin, not an
+// idiom widening: it resolves the callee, never the meaning of the read. What
+// it deliberately does NOT reach is stated in the work history (a callee bound
+// to another variable, `const rf = fs.readFileSync`; callback-style reads).
+const READ_CALLEE = String.raw`(?:[A-Za-z_$][\w$]*\s*\.\s*)*readFile(?:Sync)?`;
 // A read call whose result is bound to a name, so the assertions ON that
 // name can be found: `const body = readFileSync(...)`, `let body = await
-// readFile(...)`. Sync AND async are covered (CR-H1: async readFile from
-// node:fs/promises is a first-class API, not an alias of the sync one, so
-// restricting to readFileSync shipped a text-asserting witness green). A
-// trailing `.trim()` or similar leaves the binding intact.
-const READ_BINDING =
-  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?readFile(?:Sync)?\s*\(([^)]*)\)/g;
+// fs.promises.readFile(...)`. Sync AND async, bare AND namespace-qualified,
+// are covered. A trailing `.trim()` or similar leaves the binding intact.
+const READ_BINDING = new RegExp(
+  String.raw`(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?` +
+    READ_CALLEE +
+    String.raw`\s*\(([^)]*)\)`,
+  "g",
+);
 // A bare-string binding, so a read whose path is held in a variable
 // (`readFileSync(P)` with `const P = "....yml"`, CR-H1 member F) resolves to
 // the document rather than vanishing.
@@ -366,13 +379,45 @@ const STRING_BINDING =
 const EQUAL_FORMS =
   "(?:equal|strictEqual|deepEqual|deepStrictEqual|notEqual|notStrictEqual|notDeepEqual)";
 
+// Extension-less root documents: a CLOSED, named vocabulary of well-known
+// files whose path carries neither `/` nor `.` (CR-1501). Without this a
+// witness reading `Makefile` or `LICENSE` and asserting its text escaped the
+// detector, because the "no slash and no dot" test rejected the path as a
+// bare token. This is a denylist-shaped gap, so it is DERIVED from the
+// closed set of conventional extension-less root files rather than guessed by
+// pattern; any extension-less name OUTSIDE this set stays behaviour and is
+// named as residue in the work history rather than chased.
+const EXTENSIONLESS_ROOT_DOCS = new Set([
+  "Makefile",
+  "Dockerfile",
+  "Containerfile",
+  "Jenkinsfile",
+  "Vagrantfile",
+  "Rakefile",
+  "Gemfile",
+  "Procfile",
+  "Brewfile",
+  "LICENSE",
+  "LICENCE",
+  "NOTICE",
+  "COPYING",
+  "AUTHORS",
+  "CONTRIBUTORS",
+  "CODEOWNERS",
+  "README",
+  "CHANGELOG",
+]);
+
 /** A document read the CR-661 class cares about: a path outside src/ and test/. */
 function isDocumentPathLiteral(value: string): boolean {
-  if (!value.includes("/") && !value.includes(".")) {
-    return false;
-  }
   if (value.startsWith("src/") || value.startsWith("test/")) {
     return false;
+  }
+  if (!value.includes("/") && !value.includes(".")) {
+    // Extension-less: only a recognised root-document name (the closed set
+    // above) counts. Any other bare token (a variable-like word, a scratch
+    // label) stays behaviour.
+    return EXTENSIONLESS_ROOT_DOCS.has(value);
   }
   return true;
 }
@@ -471,7 +516,9 @@ function inlineTextAssertedReads(
 ): Array<{ doc: string; patterns: string[] }> {
   const found: Array<{ doc: string; patterns: string[] }> = [];
   const inline = new RegExp(
-    `assert\\.(?:match|doesNotMatch|${EQUAL_FORMS})\\s*\\(\\s*(?:await\\s+)?readFile(?:Sync)?\\s*\\(([^)]*)\\)\\s*,\\s*([^)]*)\\)`,
+    `assert\\.(?:match|doesNotMatch|${EQUAL_FORMS})\\s*\\(\\s*(?:await\\s+)?` +
+      READ_CALLEE +
+      `\\s*\\(([^)]*)\\)\\s*,\\s*([^)]*)\\)`,
     "g",
   );
   for (const m of source.matchAll(inline)) {

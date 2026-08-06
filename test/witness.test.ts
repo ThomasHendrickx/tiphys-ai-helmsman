@@ -126,16 +126,26 @@ function fixtureSpec(spec: Record<string, unknown>): string {
 
 /**
  * Restore the contiguous read call inside fixture sources. The templates
- * carry READ_DOC (sync) and READ_DOC_ASYNC (node:fs/promises) instead of the
- * real callee so that THIS file's own source never contains a document read
- * the text-assertion derivation would see; the self-guard test below holds
- * that property red-green. READ_DOC_ASYNC is replaced FIRST because READ_DOC
- * is a prefix of it.
+ * carry placeholder tokens instead of the real callee so that THIS file's own
+ * source never contains a document read the text-assertion derivation would
+ * see; the self-guard test below holds that property red-green.
+ *
+ * READ_DOC (bare sync) and READ_DOC_ASYNC (bare async, node:fs/promises named
+ * import) are the round-one tokens; READ_DOC_ASYNC is replaced FIRST because
+ * READ_DOC is a prefix of it. The NSREAD_* tokens (fix round two, CR-1500) are
+ * the NAMESPACE-QUALIFIED reads: NSREAD_SYNC -> `fs.readFileSync`,
+ * NSREAD_ASYNC -> `await fs.promises.readFile`, NSREAD_ALIAS -> `fsp.readFile`
+ * (an aliased namespace, `const fsp = fs.promises`). None of the NSREAD tokens
+ * contains `READ_DOC` as a substring, so the two families do not interfere;
+ * NSREAD_ALIAS and NSREAD_ASYNC precede NSREAD_SYNC only for readability.
  */
 function fixRead(template: string): string {
   return template
     .replaceAll("READ_DOC_ASYNC", "await readFile")
-    .replaceAll("READ_DOC", "readFileSync");
+    .replaceAll("READ_DOC", "readFileSync")
+    .replaceAll("NSREAD_ALIAS", "fsp.readFile")
+    .replaceAll("NSREAD_ASYNC", "await fs.promises.readFile")
+    .replaceAll("NSREAD_SYNC", "fs.readFileSync");
 }
 
 function runGate(
@@ -831,6 +841,217 @@ test("a variable-path text-asserting witness with a single member is red naming 
   assert.equal(outcome.result.status, "red", reasonsOf(outcome));
   assert.match(outcome.result.detail, /single-member collapse/);
   assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+// ---------------------------------------------------------------------------
+// CR-1500 (fix round 2): rule (g) detection must not be bypassed by the
+// NAMESPACE-QUALIFIED read, the DOMINANT real-world idiom. Round one broadened
+// recognition to the bare async named-import and variable forms but still saw
+// only a bare `readFile`/`readFileSync` callee, so `fs.readFileSync(...)`,
+// `await fs.promises.readFile(...)` and an aliased `fsp.readFile(...)` shipped
+// a single deleting text-asserting witness GREEN. These are structurally
+// different members of the "namespace read escape" class (a one-hop namespace,
+// a two-hop `fs.promises` chain, an aliased namespace), each demonstrated
+// green under the pre-fix detector and red once the callee is recognised, and
+// one also under a text-preserving meaning-inverting member.
+// ---------------------------------------------------------------------------
+
+// Member G: a one-hop namespace sync read, fs.readFileSync, LITERAL regexes so
+// the preservation arm runs too.
+const GUARD_NS_SYNC_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import fs from "node:fs";',
+    "",
+    'test("the falsifiability guard step is wired", () => {',
+    '  const body = NSREAD_SYNC(".github/workflows/guard.yml", "utf8");',
+    "  assert.match(body, /falsifiability guard/);",
+    "  assert.match(body, /FALSIFIABILITY GUARD BROKEN/);",
+    "});",
+    "",
+  ].join("\n"),
+);
+
+// Member A: a two-hop namespace async read, await fs.promises.readFile.
+const GUARD_NS_ASYNC_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import fs from "node:fs";',
+    "",
+    'test("the falsifiability guard step is wired", async () => {',
+    '  const body = NSREAD_ASYNC(".github/workflows/guard.yml", "utf8");',
+    "  assert.match(body, /falsifiability guard/);",
+    "  assert.match(body, /FALSIFIABILITY GUARD BROKEN/);",
+    "});",
+    "",
+  ].join("\n"),
+);
+
+// Member A2: an ALIASED namespace read, `const fsp = fs.promises; fsp.readFile`.
+const GUARD_NS_ALIAS_TEST = fixRead(
+  [
+    'import test from "node:test";',
+    'import assert from "node:assert/strict";',
+    'import fs from "node:fs";',
+    "",
+    "const fsp = fs.promises;",
+    'test("the falsifiability guard step is wired", async () => {',
+    '  const body = await NSREAD_ALIAS(".github/workflows/guard.yml", "utf8");',
+    "  assert.match(body, /falsifiability guard/);",
+    "  assert.match(body, /FALSIFIABILITY GUARD BROKEN/);",
+    "});",
+    "",
+  ].join("\n"),
+);
+
+test("a namespace sync-read text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_NS_SYNC_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+test("a namespace async-read text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_NS_ASYNC_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+test("an aliased-namespace read text-asserting witness with a single member is red naming the collapse", () => {
+  const fixture = guardFixture(
+    GUARD_NS_ALIAS_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /single-member collapse/);
+  assert.equal(outcome.evaluations[0]?.textAsserting, true);
+});
+
+test("a namespace sync-read text-asserting witness is red when its text-preserving member leaves the test green", () => {
+  const fixture = guardFixture(
+    GUARD_NS_SYNC_TEST,
+    "the falsifiability guard step is wired",
+    [GUARD_MEMBER_DELETE, GUARD_MEMBER_EXIT_FLIP],
+  );
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  // The exit-flip member preserves every asserted string (the namespace read
+  // is now detected, so the preservation arm runs) yet the text test stays
+  // green under it: hazard #3 for the dominant idiom, caught.
+  const flip = outcome.evaluations[0]?.members.find(
+    (member) => member.index === 1,
+  );
+  assert.equal(flip?.preservesAssertedText, true);
+  assert.equal(flip?.rate?.red, 0);
+});
+
+// CR-1501 (fix round 2, folded): an extension-less root document (a path with
+// neither "/" nor ".") read and text-asserted is exercised in the detection
+// matrix below (Makefile via a namespace read, LICENSE via a bare read: two
+// structurally different recognised members), not as a separate gate-level
+// collapse fixture. The gate machinery downstream of detection is already
+// demonstrated red-green by the namespace collapse fixtures above; once
+// isDocumentPathLiteral returns true the identical single-member-collapse path
+// applies, so the CR-1501 delta is purely a DETECTION change and is witnessed
+// where the detection lives.
+
+// The detection matrix and its NAMED residue, asserted directly against the
+// exported derivation so the boundary is pinned. Sources are built through
+// fixRead so this file's own source carries only placeholders (the self-guard
+// test above stays green). Recognised: namespace sync/async/alias reads and
+// recognised extension-less root docs. Residue (must stay not-text, matching
+// the aliased-callee residue already named): a callee bound to another
+// variable, callback-style reads, two-hop variable rebinding, and an
+// extension-less name outside the recognised set.
+test("deriveTextAssertions recognises the namespace and root-doc reads and leaves the named residue not-text", () => {
+  const DOC = ".github/workflows/guard.yml";
+  const A = "  assert.match(body, /falsifiability guard/);";
+  const recognised: Array<[string, string]> = [
+    ["namespace sync", `const body = NSREAD_SYNC("${DOC}", "utf8");\n${A}`],
+    ["namespace async", `const body = NSREAD_ASYNC("${DOC}", "utf8");\n${A}`],
+    [
+      "aliased namespace",
+      `const fsp = f.promises;\nconst body = await NSREAD_ALIAS("${DOC}", "utf8");\n${A}`,
+    ],
+    ["root doc Makefile", `const body = NSREAD_SYNC("Makefile", "utf8");\n${A}`],
+    ["root doc LICENSE", `const body = READ_DOC("LICENSE", "utf8");\n${A}`],
+  ];
+  for (const [label, source] of recognised) {
+    assert.equal(
+      deriveTextAssertions([fixRead(source)]).textAsserting,
+      true,
+      `expected ${label} to be recognised as text-asserting`,
+    );
+  }
+  const residue: Array<[string, string]> = [
+    [
+      "callee bound to another variable",
+      `const rf = NSREAD_SYNC;\nconst body = rf("${DOC}", "utf8");\n${A}`,
+    ],
+    [
+      "callback-style read",
+      `READ_DOC(("${DOC}"), (e, data) => { assert.match(data, /falsifiability guard/); });`,
+    ],
+    [
+      "two-hop variable rebinding",
+      `const raw = NSREAD_SYNC("${DOC}", "utf8");\n  const body = raw;\n${A}`,
+    ],
+    [
+      "extension-less name outside the set",
+      `const body = NSREAD_SYNC("randomtoken", "utf8");\n${A}`,
+    ],
+  ];
+  for (const [label, source] of residue) {
+    assert.equal(
+      deriveTextAssertions([fixRead(source)]).textAsserting,
+      false,
+      `expected residue ${label} to stay not-text (named, not chased)`,
+    );
+  }
+});
+
+// Over-reach guard (the round-one property, lifted to the namespace form): a
+// namespace read whose RESULT is consumed as a derived value, not text-asserted
+// directly, must stay behaviour. The fix gives the namespace read exactly the
+// classification the bare read already had; it does not falsely redden these.
+test("deriveTextAssertions does not falsely redden a namespace derived-value behaviour witness", () => {
+  const DOC = ".github/workflows/guard.yml";
+  const overReach: Array<[string, string]> = [
+    [
+      "namespace read passed to a project function",
+      `const body = NSREAD_SYNC("${DOC}", "utf8");\n  assert.ok(isTransient(body));`,
+    ],
+    [
+      "namespace read parsed then asserted on a derived field",
+      `const body = NSREAD_ASYNC("${DOC}", "utf8");\n  const n = JSON.parse(body).count;\n  assert.equal(n, 3);`,
+    ],
+    [
+      "namespace read of a runtime path held in a variable",
+      `const p = jn(cwd(), "run-counter.txt");\n  const body = NSREAD_SYNC(p, "utf8");\n  assert.match(body, /x/);`,
+    ],
+  ];
+  for (const [label, source] of overReach) {
+    assert.equal(
+      deriveTextAssertions([fixRead(source)]).textAsserting,
+      false,
+      `expected over-reach case ${label} to stay behaviour (not-text)`,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
