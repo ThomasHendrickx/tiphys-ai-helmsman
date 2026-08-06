@@ -40,8 +40,19 @@ jobs:
       # so the set runs once (M2R-026).
       #
       # Two steps rather than one expression: on a pull request the base and
-      # head SHAs exist and are passed; on a push to main they do not, and a
-      # gate needing them reports `error` rather than being silently skipped.
+      # head SHAs exist and are passed; on a push to main they do not.
+      #
+      # The push step names its gate set with --only (M2-P3, interim until
+      # M2-P9's harness). The manifest now carries gates that DECLARE a
+      # required --base (kernel plan M2 section 1.4; the runner refuses to
+      # spawn them without it, M2-C-3), so a push-bundle run over the whole
+      # manifest is `error` by construction on every push, which is a
+      # permanently red main, not a measurement. The plan's own main-bundle
+      # design is an --only list with the absent gates asserted absent
+      # rather than silently skipped (kernel plan M2 section 4, M2-P9
+      # step 4); this interim --only keeps the push bundle measuring
+      # exactly what it measured before the suite gate was registered, and
+      # M2-P9 replaces it with the full main-bundle set and assertions.
       #
       # --head is `github.event.pull_request.head.sha`, NOT `github.sha`
       # (CR-830-1). On a pull_request trigger `github.sha` is the ephemeral
@@ -70,6 +81,7 @@ jobs:
           node dist/bin/tiphys.js gates run
           --manifest gates.manifest.json
           --evidence "${{ runner.temp }}/gate-evidence"
+          --only manifest-self-check
       # The M1 exit-test harness in local mode (kernel plan v1, M1-P6
       # step 4): the skeleton plumbing is exercised end to end on every
       # kernel PR from this phase on. It re-runs the three gates above as
