@@ -220,5 +220,6 @@
   "suite-gate-base-required": "suite gate without --base is error, not not-applicable",
   "suite-gate-failing-test-red": "a failing test makes the suite gate red naming it",
   "suite-gate-fifo-refused": "a named pipe inside a declared test root is error naming the path and type",
-  "suite-gate-registry-fifo-refused": "a named pipe at the registry path is error, not a hang"
+  "suite-gate-registry-fifo-refused": "a named pipe at the registry path is error, not a hang",
+  "suite-gate-absent-stream-error": "a test command that produces no reporter stream is error naming the request"
 }

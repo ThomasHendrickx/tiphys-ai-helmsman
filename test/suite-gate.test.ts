@@ -427,6 +427,21 @@ function stubFixture(cannedStream: string): { dir: string; base: string } {
   });
 }
 
+test("a test command that produces no reporter stream is error naming the request", () => {
+  // The fail-loud path for a script that does not run node --test at all
+  // (a lifecycle-dependent or foreign runner): the requested stream never
+  // appears, and that is error, never green and never a guess.
+  const { dir, base } = makeFixture({
+    script: 'node -e "process.exit(0)"',
+    files: { "test/a.test.ts": ALPHA_TEST, "test/sub/x.test.ts": SUB_TEST },
+    registry: GREEN_REGISTRY,
+  });
+  const run = runGate(dir, base);
+  assert.equal(run.status, 21);
+  assert.equal(run.record.status, "error");
+  assert.match(run.record.detail, /without producing the requested tiphys-suite-events-v1 reporter stream/);
+});
+
 test("a truncated reporter stream is error, not green", () => {
   // Criterion 7: the runner exits 0 and the stream stops mid-run. The
   // truncated stream is a REAL stream from a real green run, minus its
