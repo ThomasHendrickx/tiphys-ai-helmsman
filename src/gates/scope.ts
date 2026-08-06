@@ -64,7 +64,7 @@ import type { GateResultFields, GateStatus } from "./result.ts";
  * merge-base-vs-trunk validation immediately below, which this round added.
  *
  * CROSS-CHECKING EVERY CALLER-SUPPLIED INPUT AGAINST THE BRANCH UNDER AUDIT
- * (fix round 1, CR-1030/CR-1045/CR-1030, the mechanism, not the three
+ * (fix round 1, CR-1030/CR-1045, the mechanism, not the three
  * witnesses that exposed it). Before this round `--phase`, `--base` and
  * `--head` were forwarded to the diff/declaration machinery exactly as
  * supplied, so the audited party chose which declaration governed it
