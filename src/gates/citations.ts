@@ -444,7 +444,7 @@ const HASH_SHAPE = /^[0-9a-f]{64}$/;
  * because something unsafe follows it with no separating whitespace
  * (CR-1024): a bare trailing `-` (`path:3-`), a decimal-looking range
  * (`path:3.5`), or any other non-ASCII or word-forming character glued on
- * (a non-breaking hyphen, `path:2‑2`). A `.` is safe UNLESS the next
+ * (a Unicode dash lookalike glued onto the digits, U+2011 for example). A `.` is safe UNLESS the next
  * character is a digit, so an ordinary end-of-sentence period after a
  * citation is not flagged. Returns `undefined` when nothing unsafe follows
  * (end of text, whitespace, or an ordinary closing/punctuation character).
