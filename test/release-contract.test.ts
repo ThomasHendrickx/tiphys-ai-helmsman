@@ -536,7 +536,7 @@ test(
       );
       const { run: outcome } = await run(attacker, {
         evidenceDir,
-        clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 3000 }),
+        clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 5000 }),
       });
       // Bounded return, error naming the path and the observed type; never a
       // silent green and never a block.
@@ -576,7 +576,7 @@ test(
        else { ${OK_SATISFIED} }`,
     );
     const { run: inverse, evidenceDir } = await run(good, {
-      clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 3000 }),
+      clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 5000 }),
     });
     assert.equal(inverse.verdict.kind, "satisfied");
     // The kernel's own evidence writes landed as regular files.

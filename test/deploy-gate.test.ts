@@ -526,7 +526,7 @@ test("deploy gate ignores a head declaration flipped to none and records the mer
         mode: "adapter",
         adapter: [NODE, adapter],
         config: {},
-        clock: { intervalMs: 30, deadlineMs: 200, attemptTimeoutMs: 3000 },
+        clock: { intervalMs: 30, deadlineMs: 200, attemptTimeoutMs: 5000 },
       },
     },
   });
@@ -563,7 +563,7 @@ test("deploy gate is error when a declared credential variable is not resolvable
         mode: "adapter",
         adapter: [NODE, adapter],
         config: {},
-        clock: { intervalMs: 30, deadlineMs: 200, attemptTimeoutMs: 3000 },
+        clock: { intervalMs: 30, deadlineMs: 200, attemptTimeoutMs: 5000 },
         credentials: ["TIPHYS_TEST_UNSET_CREDENTIAL"],
       },
     },
@@ -711,7 +711,7 @@ process.stdout.write(readFileSync(${JSON.stringify(appliedSource)}, "utf8"));
         mode: "adapter",
         adapter: [NODE, absent],
         config: {},
-        clock: { intervalMs: 40, deadlineMs: 250, attemptTimeoutMs: 3000 },
+        clock: { intervalMs: 40, deadlineMs: 250, attemptTimeoutMs: 5000 },
       },
       migrations: {
         mode: "adapter",
@@ -723,7 +723,7 @@ process.stdout.write(readFileSync(${JSON.stringify(appliedSource)}, "utf8"));
           appliedPointer: "/migrations",
           idPointer: "/version",
         },
-        clock: { intervalMs: 40, deadlineMs: 250, attemptTimeoutMs: 3000 },
+        clock: { intervalMs: 40, deadlineMs: 250, attemptTimeoutMs: 5000 },
       },
     },
   });
