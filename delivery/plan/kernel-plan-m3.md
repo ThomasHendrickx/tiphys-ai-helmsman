@@ -2005,6 +2005,32 @@ regression contract, it is a new contract wearing the old one's name.
   roles (blueprint section 6); its real invocation is verified and recorded.
   `roles/` holds only the M1-P1 placeholder README. `src/brief.ts` exists from
   M1-P4 and is consumed, not rewritten: verify its exported shape first.
+  **A warning about `src/brief.ts` specifically, added at revision 2 and
+  verified at `037477e`.** It is one of the three files where M1's
+  unprobed-open class is still OPEN: line 1 imports `readFileSync` and lines 43
+  and 56 call it bare, so a named pipe at the fleet `warnings.md` hangs
+  `tiphys spawn` forever and strands a worktree, a branch and a pool record
+  (CR-560). This phase CONSUMES that module and adds `brief compose`, whose
+  whole job is resolving and reading mandated-reading paths it did not create.
+  **D-M3-27 binds the new code**: `brief compose` uses `classifyEntry` and
+  `refuseOpenForWrite`. It does NOT fix `src/brief.ts` (that file is M1-P4's,
+  patching it from here would repeat CR-521, and `delivery/STATE.md` records
+  the class as needing its own scope), and it must not add a thirteenth
+  instance. Record the observed state of the three files in the work history so
+  the residue is measured rather than assumed unchanged.
+- hazard class (T-007, D-M3-32): **judgment-bearing prose whose only mechanical
+  guarantee is that a clause id exists, plus an edit to a governing document.**
+  What can pass every criterion here and still be wrong: a clause present as a
+  heading with text under it that says the opposite of the row it discharges,
+  which the clause map cannot see; a `mandated-reading` list that resolves
+  because every path exists while omitting the one document the role actually
+  needs; a brief composed correctly whose rendered phase text silently drops a
+  field the plan carries, so the agent reads a subset and believes it read the
+  phase; the SC-001 process-doc edit rewriting rather than annotating, which
+  loses the provenance the footnote exists to preserve; a `finding` schema that
+  admits an empty review as a thorough one; and a composition path that blocks
+  forever on a non-regular mandated-reading entry, which is this phase's own
+  inherited hazard (D-M3-27, above).
 - steps:
   1. Create `schemas/role-brief.schema.json` for the frontmatter of every
      `roles/*.md` file: `role` (id from the six of blueprint section 6),
@@ -2023,6 +2049,24 @@ regression contract, it is a new contract wearing the old one's name.
      as decision records (R-005); performs the code-level verification pass over
      every input claim before any phase is planned, with file:line evidence
      (R-010a); outputs a plan instance validated by `schemas/plan.schema.json`.
+  3b. **The dispatch contract, carried by all three briefs of this phase and
+     both of M3-P6's (T-008, D-M3-31, NEW at revision 2).** Two clauses, with
+     their own ids, in the shared clause block every role brief inherits:
+     - `incremental-output`: the agent creates its output artifact within the
+       first minutes of work and appends to it as it goes, so the file's mtime
+       is a beacon and a death leaves a partial result rather than nothing. An
+       agent that writes only at the end has no beacon. Measured cost of the
+       absence: nine hours eleven minutes, T-008, and the entire loss was wall
+       clock because nothing was written down as it happened.
+     - `beacon-is-not-a-claim`: the agent does not report progress by asserting
+       it. The artifact IS the report. This is the brief-side half of the
+       orchestrator duty M3-P9 carries, and the two are written as one rule seen
+       from two ends, because a watchdog watching freshness needs something
+       freshening.
+     Both are delivered under R-033a's "mandated reading in order" family for
+     the implementer and under the corresponding brief-structure rows for the
+     other roles, so no requirement row moves and Appendix A's counts are
+     unchanged.
   4. Create `roles/adversarial-plan-reviewer.md`: sees the input report, the
      plan, and the code (the blueprint's deliberate widening, D-14), edits
      nothing, outputs a finding set (R-006). Amend
@@ -2092,19 +2136,41 @@ regression contract, it is a new contract wearing the old one's name.
      report with the reference removed (R-015a made mechanical through the
      report contract rather than left as brief prose; Kind A `if`/`then`, both
      directions).
+  6b. **Dispatch-contract clauses present (T-008, D-M3-31), both directions.**
+     All three briefs carry `incremental-output` and `beacon-is-not-a-claim` as
+     body headings resolving from frontmatter (criterion 7's round-trip shape,
+     imported here). Deleting either heading makes
+     `tiphys validate --type role-brief` exit nonzero naming the orphaned clause
+     id, and restoring it returns exit 0. A registered grep test asserts the
+     `incremental-output` clause text names the artifact-within-the-first-
+     minutes rule rather than a generic "report as you go", which is the
+     difference between the rule and a sentiment.
+  6c. **Path-type refusal in composition (D-M3-27), both directions.** With a
+     named pipe staged by a real `mkfifo` at a `mandated-reading` path,
+     `tiphys brief compose` exits nonzero within a bounded time naming the path
+     and the observed entry type and does NOT block; with a regular file at the
+     same path it exits 0. This is not the same criterion as criterion 2: that
+     one covers a MISSING path, and a missing path and a non-regular path are
+     different states with different failure modes, which is precisely the
+     distinction M1-P5 paid four fix rounds to learn.
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; clause map
      resolves this phase's seven rows; earlier mappings still resolve.
 - new behaviors: `role-brief-frontmatter-validates`,
   `brief-compose-missing-reading-fails`, `brief-compose-renders-phase`,
   `brief-compose-unknown-phase-id-fails`, `reviewer-visibility-agrees-across-documents`,
   `finding-requires-concrete-edit`, `finding-empty-set-requires-statement`,
-  `finding-records-model-family`, `investigator-report-requires-repro`.
+  `finding-records-model-family`, `investigator-report-requires-repro`,
+  and NEW at revision 2: `role-brief-carries-incremental-output-clause`,
+  `brief-compose-refuses-non-regular-reading-path`.
 - suggested model tier: strongest. Brief content is judgment-bearing and the
   SC-001 correction touches a governing document.
 - citations: R-004, R-005, R-006, R-010a, R-015a, R-029, R-092; blueprint
   section 6 (role table and attached verifiers) and section 1 (placement rule);
   process doc sections 0, 1a, 1b, 1d, and 8 item 6; SC-001 and plan v1 D-14;
-  T-001; M2-P5 citation linter as the attached verifier.
+  T-001; M2-P5 citation linter as the attached verifier; **T-008** (the two
+  dispatch-contract clauses, D-M3-31); **`MECHANISMS.md`** row "reading a path
+  whose type is not established" and CR-560 (the `src/brief.ts` warning in the
+  grounding, and criterion 6c).
 - conflicts-with: M3-P6 (adds two more briefs to the same schema and command),
   M3-P7 (checklists reference the reviewer roles), M3-P10 (files entry).
 - blocked-by: M3-P4 merged; M2-P5 merged (named dependency); M1-P4 merged (for
@@ -2133,6 +2199,38 @@ regression contract, it is a new contract wearing the old one's name.
   is delivered by M3-P8. Ordering note: the index therefore has to exist before
   the brief can require reading it, which is why this phase's criterion 8 is
   conditional and its full witness is completed by M3-P8 (see D-M3-23).
+  **Revision 2 changes the premise of that ordering note, and it is the single
+  most consequential re-grounding change in this phase.** Revision 1 was written
+  when the mechanism index did not exist and therefore had this phase invent a
+  one-entry stub. `MECHANISMS.md` was committed at the repository root on
+  2026-08-05 with TWELVE rows, under T-005's own "cheap interim measure,
+  available now", and it says of itself that it is intended to be SUPERSEDED by
+  M3-P8's generated projection. So this phase does not invent a stub: **it
+  CONVERTS the twelve interim rows into the schema M3-P8 will generate into**,
+  and M3-P8's projection must not silently drop any of them (its criterion 4c).
+  D-M3-23 is amended accordingly.
+  **Three of the twelve rows bind this phase's own clauses rather than only its
+  stub**, which is why the conversion is not clerical: "reading a path whose
+  type is not established" is D-M3-27 and is the class still open in
+  `src/brief.ts`, the module this phase's own command extends; "worktree removal
+  and force branch delete" is the `destructive-authority` clause's evidence; and
+  "asserting a CI step is wired" is D-M3-28, which binds this phase's own
+  `scripts/check-brief-drift.mjs` wiring.
+- hazard class (T-007, D-M3-32): **the instruction surface every future
+  implementer runs on, whose defects are executed rather than read.** What can
+  pass this phase's criteria and still produce bad implementers: a clause whose
+  heading round-trips while its text says something weaker than the row (the
+  clause map proves presence, never content); a generated gate-list block whose
+  drift check compares the block to itself rather than to the registry; a
+  mandated-reading list that names the mechanism index while the index it names
+  is the stub nobody replaced, so the lookup obligation resolves against one
+  entry and reads as satisfied; a `destructive-authority` clause whose third
+  conjunct points at a manifest key M2 renamed; a claim-grep obligation stated
+  without the command, so each implementer invents their own pattern; a
+  dispatch-contract clause that says "report progress" instead of "write the
+  artifact", which is the T-008 shape restated as a sentiment; and a
+  brief-drift check wired into the workflow as a text assertion (D-M3-28,
+  CR-760's live shape in the file this phase edits).
 - steps:
   1. Create `roles/implementer.md` with the six sections R-033a enumerates,
      each carrying a clause id: mandated reading in order; phase scope with
@@ -2186,11 +2284,64 @@ regression contract, it is a new contract wearing the old one's name.
        not exist yet, which the M1-P3 environment warnings already record as
        "a safety argument that depends on a component not yet built is not a
        safety argument".
+  1c. **Three clauses NEW at revision 2, all delivered under R-033a's existing
+     rows so no row moves and Appendix A's counts are unchanged.**
+     - `claim-grep` (`CLAUDE.md`, T-006, D-M3-30): before submitting any work
+       history the implementer runs the exact command
+       `grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' <work-history>`
+       and records its output. Every hit carries an adjacent captured command
+       that settles it, or is restated as an open question in the work history's
+       `claims[]` section (M3-P4 step 1b). **The clause carries the command
+       literally, not a description of it**, because a description makes each
+       implementer invent a pattern and the whole point of a grep is that it is
+       the same grep. T-006 records seven instances of unexecuted claims across
+       M1, one of them the orchestrator's own, and notes that the pattern
+       survived being documented as a norm; a norm depends on memory and a
+       command does not.
+     - `fix-round-mechanism` (`CLAUDE.md`'s fix-round contract, D-M3-30): a fix
+       round names the MECHANISM rather than the finding, publishes the exact
+       command enumerating every call site of that mechanism together with its
+       FULL output, and states what the derivation did NOT cover. The clause
+       cites the measurement (sixteen M1 fix rounds, thirteen re-reviewed,
+       twelve of those thirteen producing a new finding attributable to the
+       round itself) and the counter-example that worked (M1-P5's fourth round
+       derived eleven call sites where the review had listed eight, closing in
+       one round a class three prior rounds had each closed one path at a time).
+       The report SHAPE is M3-P4's `fix-round[]`; this clause is the instruction
+       to fill it, and the placement rule (D-M3-03) is why the shape is there
+       and the instruction is here.
+     - `incremental-output` and `beacon-is-not-a-claim` (T-008, D-M3-31): the
+       two dispatch-contract clauses M3-P5 step 3b defines for the shared clause
+       block, carried here for the implementer and the clean-room reviewer. Both
+       roles create their output artifact within the first minutes and append to
+       it as work proceeds, so its mtime is the beacon the orchestrator's
+       watchdog reads. The measured cost of the absence is nine hours eleven
+       minutes on this project's own review dispatch (T-008), and the entire
+       loss was wall clock precisely because nothing was written down as it
+       happened.
   2. Create `roles/clean-room-reviewer.md`: has not seen the implementation
      session, reviews the diff and the plan's acceptance criteria only, edits
      nothing and posts nothing to the pull request (R-009b); carries the same
      R-087 clause on the review side; outputs a verdict instance (the schema
      lands in M3-P7, referenced here by type name).
+  2b. **The clean-room brief declares WHICH CONTRACT it is running (T-007,
+     D-M3-32, NEW at revision 2).** `full` mode requires two review contracts
+     rather than two reviewers (M3-P3 step 2b), so this brief carries a
+     `review-contract` frontmatter field whose value is `criteria` or `hazard`,
+     and a clause block per value:
+     - `criteria`: walk every acceptance criterion of the phase, quote it, and
+       return a met or not-met verdict with file:line evidence (R-053, the
+       existing content).
+     - `hazard`: the reviewer is given the phase's declared `hazard-classes[]`
+       as its STARTING QUESTION and is instructed not to begin from the
+       criteria. T-007's evidence is that a reviewer executing the phase's
+       entire contract faithfully and completely could not have found M1-P5's
+       high-severity defect, because the contract did not contain it, and that
+       the approving report does not contain the word `readBeacon` at all.
+     The brief states, in its own text, that a `criteria` verdict is not a
+     completeness claim: "all acceptance criteria met" is one input, never a
+     terminal green. That sentence is in the brief rather than only in this plan
+     because the brief is what the reviewer reads.
   3. Extend `src/roles.ts` with the generated-section mechanism and
      `scripts/check-brief-drift.mjs --check`, mirroring M3-P2's agent-rules
      drift check.
@@ -2201,8 +2352,12 @@ regression contract, it is a new contract wearing the old one's name.
   5. Tests: `test/implementer-brief.test.ts`, `test/clean-room-brief.test.ts`.
 - files-to-touch: `roles/implementer.md`, `roles/clean-room-reviewer.md`,
   `scripts/check-brief-drift.mjs`, `tuition/mechanism-index.yaml` (create as the
-  stub of criterion 8; M3-P8 replaces its contents with the generated
-  projection), `test/implementer-brief.test.ts`,
+  SEED of criterion 8, converted from `MECHANISMS.md`'s twelve rows; M3-P8
+  replaces its contents with the generated projection),
+  `schemas/mechanism-index.schema.json` (create here rather than at M3-P8, per
+  criterion 8 as revised; M3-P8 EDITS it to add `machine-readable-form` and
+  does not create it, and that phase's files-to-touch is corrected to match),
+  `test/implementer-brief.test.ts`,
   `test/clean-room-brief.test.ts` (create); `src/roles.ts` (edit),
   `src/commands/brief.ts` (edit), `.github/workflows/gates.yml` (edit),
   `package.json` (edit, files entry: `tuition` enters the published set here
@@ -2238,16 +2393,29 @@ regression contract, it is a new contract wearing the old one's name.
      names `tuition/mechanism-index.yaml` by path, and its `mechanism-lookup`
      and `mechanism-sibling` clauses are present as body headings resolving from
      frontmatter (criterion 7 covers the round trip). Because M3-P8 ships the
-     index, this phase witnesses the clause and the path entry against a
-     committed stub index carrying at least the one entry T-005 itself
-     establishes (mechanism `claim-file`, rule "a claim that cannot be taken
-     fails loudly and names the stuck file", evidence citing
-     `delivery/verification/u2-race-flake-investigation.md` and
-     `delivery/review/clean-room-m1-p5-second.md`), and M3-P8 replaces the stub
-     with the generated projection and re-witnesses the path. Deleting the stub
-     makes `tiphys brief compose --role implementer` exit nonzero naming the
-     missing path (both directions), which is the same mandated-reading check
-     M3-P5 built and is why the clause is not merely advisory.
+     GENERATED index, this phase witnesses the clause and the path entry against
+     a committed SEED index, and M3-P8 replaces the seed with the generated
+     projection and re-witnesses the path. Deleting the seed makes
+     `tiphys brief compose --role implementer` exit nonzero naming the missing
+     path (both directions), which is the same mandated-reading check M3-P5
+     built and is why the clause is not merely advisory.
+     **Revision 2 changes what the seed is, and it is a strictly stronger
+     requirement than revision 1's.** Revision 1 asked for a stub carrying "at
+     least the one entry T-005 itself establishes". The interim index exists:
+     `MECHANISMS.md` at the repository root, twelve rows, committed 2026-08-05.
+     The seed is therefore a CONVERSION of all twelve of those rows into
+     `schemas/mechanism-index.schema.json`'s shape, each keeping its rule text
+     and its "paid for by" citations as `evidence[]`, and the criterion is:
+     `tiphys validate --type mechanism-index tuition/mechanism-index.yaml` exits
+     0 and a registered test asserts the seed's mechanism-key set is a superset
+     of the twelve keys in `MECHANISMS.md`, failing and naming any missing key.
+     Both directions: removing one converted row makes the test fail naming that
+     mechanism, restoring it returns green. This is what stops the shipped index
+     being poorer than the interim file it supersedes, which is the coupling
+     `delivery/plan/kernel-plan-m2.md` section 2 item 10 asked for from the
+     other side ("M3-P8's generated index must not silently drop an interim
+     row"). The seed's schema is created here by reference to M3-P8's, which is
+     the only forward reference in this phase and is why D-M3-23 exists.
   8b. The `destructive-authority` clause is present as a body heading resolving
      from frontmatter (criterion 7 covers the round trip), names all three of its
      conjuncts, and names `gates.manifest.json`'s `destructiveCommands` list by
@@ -2255,11 +2423,43 @@ regression contract, it is a new contract wearing the old one's name.
      reading resolution, so a brief pointing at a manifest M2 moved fails loudly
      rather than instructing an implementer to edit a file that is not there
      (both directions, D-M3-26).
+  9. **Revision-2 clauses present and specific, both directions each.** (a) The
+     `claim-grep` clause body contains the grep command VERBATIM, asserted by a
+     registered test that compares it to the pattern in `CLAUDE.md`; replacing
+     the command with a paraphrase makes the test fail, restoring it returns
+     green. This is a text assertion and is labelled as one: it proves the
+     command is shipped, not that anyone runs it. (b) The `fix-round-mechanism`
+     clause body names all three items (mechanism, derivation with full output,
+     what the derivation did not cover) and cites the M1 measurement; weakening
+     it to two items makes the test fail. (c) `incremental-output` and
+     `beacon-is-not-a-claim` are present as body headings in both briefs and
+     round-trip against frontmatter (criterion 7's shape).
+  10. **The two review contracts are declared and distinguishable (T-007).**
+     `tiphys brief compose --role clean-room-reviewer --review-contract criteria`
+     and `--review-contract hazard` both exit 0 and emit briefs whose first
+     instruction differs; a `--review-contract` value outside the two exits
+     nonzero naming it. A registered test asserts the `hazard` brief's text
+     instructs the reviewer NOT to begin from the acceptance criteria, and the
+     `criteria` brief's text contains the sentence that "all acceptance criteria
+     met" is one input and never a terminal green. Both directions.
+  11. **The brief-drift check is wired as a BEHAVIOUR (D-M3-28).** The workflow
+     step added in step 3 is extracted and EXECUTED against stubs and its exit
+     code observed, under two structurally different defangs (section 2.3
+     rules 6 and 7). Criterion 3 already witnesses the check's own logic; this
+     criterion witnesses that CI actually runs it, which is the half M1-P6
+     produced six confirmed misses of.
 - new behaviors: `implementer-brief-six-sections`,
   `implementer-brief-gate-list-drift`, `implementer-brief-no-pr-instruction`,
   `implementer-brief-carries-warnings`, `clean-room-brief-validates`,
   `brief-clause-ids-round-trip`, `implementer-brief-requires-mechanism-index`,
-  `implementer-brief-destructive-authority-clause`.
+  `implementer-brief-destructive-authority-clause`,
+  and NEW at revision 2: `seed-index-covers-interim-mechanisms`,
+  `implementer-brief-carries-claim-grep-command`,
+  `implementer-brief-fix-round-three-items`,
+  `briefs-carry-dispatch-contract-clauses`,
+  `clean-room-brief-declares-review-contract`,
+  `clean-room-hazard-brief-does-not-start-from-criteria`,
+  `brief-drift-check-wired-executably`.
 - suggested model tier: strongest for the clause text (it is the instruction
   surface every future implementer runs on), cheaper tier acceptable for the
   drift-check mechanics.
@@ -2269,7 +2469,15 @@ regression contract, it is a new contract wearing the old one's name.
   T-005 (the two mechanism clauses, delivered under R-033a); T-003 structural
   consequence 4 and finding V-1 (the `destructive-authority` clause, delivered
   under the same row, D-M3-26); M2-P1 as the owner of the `destructiveCommands`
-  list the clause writes to; M2-P2 and M2-P8 as the named dependencies.
+  list the clause writes to; M2-P2 and M2-P8 as the named dependencies;
+  **`MECHANISMS.md`** (the twelve-row interim index the seed converts, and the
+  three rows that bind this phase's own clauses); **T-006 and `CLAUDE.md`'s
+  claim grep** (the `claim-grep` clause, D-M3-30); **`CLAUDE.md`'s fix-round
+  contract** (the `fix-round-mechanism` clause, D-M3-30); **T-007** (the
+  `review-contract` frontmatter field and its two clause blocks, D-M3-32);
+  **T-008** (the two dispatch-contract clauses, D-M3-31); **CR-760** (why
+  criterion 11 executes the wired step rather than asserting its text,
+  D-M3-28).
 - conflicts-with: M3-P7 (verdict schema referenced here), M3-P9 (`AGENTS.md`
   references both briefs), M3-P10 (files entry).
 - blocked-by: M3-P5 merged; M2-P2 and M2-P8 merged (named dependencies).
