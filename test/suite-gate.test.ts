@@ -90,6 +90,13 @@ const GREEN_SCRIPT = 'node --test "test/**/*.test.ts"';
 
 interface FixtureOptions {
   script?: string;
+  /**
+   * Computed once `dir` (the fixture's own scratch path) is known, for a
+   * script that must name test files by an ABSOLUTE path (CR-1410-1): the
+   * path cannot be written until the scratch directory exists. Ignored if
+   * `script` is also given.
+   */
+  scriptForDir?: (dir: string) => string;
   files: Record<string, string>;
   registry: Record<string, string>;
   /** Applied and committed as a second commit; --base stays the first. */
@@ -100,11 +107,14 @@ interface FixtureOptions {
 function makeFixture(options: FixtureOptions): { dir: string; base: string } {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-suite-"));
   git(dir, ["init", "-q", "-b", "main", "."]);
+  const script =
+    options.script ??
+    (options.scriptForDir !== undefined ? options.scriptForDir(dir) : GREEN_SCRIPT);
   const packageJson = {
     name: "fixture",
     private: true,
     type: "module",
-    scripts: { test: options.script ?? GREEN_SCRIPT },
+    scripts: { test: script },
   };
   writeFileSync(join(dir, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
   mkdirSync(join(dir, "src"), { recursive: true });
@@ -649,6 +659,81 @@ test("a suite of only empty test files is red naming every one, never a counted 
   // still match each other) that M2-C-2's green+units-0 rewrite cannot
   // catch either, because units is nonzero (one per emptied file).
   const { dir, base } = makeFixture({
+    files: { "test/empty1.test.ts": "", "test/empty2.test.ts": "" },
+    registry: {},
+  });
+  assert.equal(bareRunner(dir), 0, "the bare runner must be green at exit 0");
+  const run = runGate(dir, base);
+  assert.equal(run.status, 1);
+  assert.equal(run.record.status, "red");
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty1\.test\.ts/,
+  );
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty2\.test\.ts/,
+  );
+  // Never a counted green: units is 0 (no real test ran) and status is
+  // "red", never "green" and never a smuggled "error" masking a green.
+  assert.equal(run.record.units, 0);
+  assert.notEqual(run.record.status, "green");
+  assert.ok(run.counts !== undefined);
+  assert.deepEqual(run.counts.reported, []);
+});
+
+test("CR-1410-1: a zero-test file invoked by an ABSOLUTE path is not silently counted (mixed)", () => {
+  // The dangerous state is a DIFFERENT SPELLING of the exact same CR-1306
+  // defect (arbitration-m2-p3-round2.md, hazard-lens finding CR-1410-1).
+  // Round one's filter compared `point.name === relative(cwd, point.file)`,
+  // which only matches when the invoked path is spelled relative to cwd.
+  // Here the fixture's own scripts.test (read VERBATIM by the gate, never
+  // rewritten or reconstructed) names every file by its ABSOLUTE path, so
+  // node names the phantom absolutely too (measured directly against both
+  // installed toolchains; see isFileWrapperPhantom's derivation in
+  // src/gates/suite.ts and delivery/work-history/m2-p3.md fix round two).
+  // Structurally different from the relative CR-1306 "mixed" test above
+  // only in HOW the files are spelled in the invocation, holding the
+  // mixed-vs-total shape identical, per the "one witness is not a class"
+  // rule: this and the next test are two structurally different members of
+  // the ABSOLUTE-spelling class, paralleling the two members CR-1306
+  // already covers for the relative spelling.
+  const { dir, base } = makeFixture({
+    scriptForDir: (fixtureDir) =>
+      `node --test "${join(fixtureDir, "test", "a.test.ts")}" "${join(fixtureDir, "test", "empty.test.ts")}"`,
+    files: { "test/a.test.ts": ALPHA_TEST, "test/empty.test.ts": "" },
+    registry: { alpha: "alpha passes", beta: "beta skipped" },
+  });
+  assert.equal(bareRunner(dir), 0, "the bare runner must be green at exit 0");
+  const run = runGate(dir, base);
+  assert.equal(run.status, 1);
+  assert.equal(run.record.status, "red");
+  assert.match(
+    run.record.detail,
+    /discovered by the walk but absent from the reporter: test\/empty\.test\.ts/,
+  );
+  // The phantom point is not counted: only the two real points (alpha,
+  // beta) land in `reported`, never three, exactly as the relative-spelling
+  // "mixed" test above asserts for its own spelling.
+  assert.equal(run.record.units, 2);
+  assert.ok(run.counts !== undefined);
+  assert.equal(run.counts.counts["reported"], 2);
+  assert.deepEqual(run.counts.reported, ["test/a.test.ts"]);
+});
+
+test("CR-1410-1: a suite of only empty test files invoked by ABSOLUTE paths is red, never a counted green (total)", () => {
+  // Second structurally different member of the ABSOLUTE-spelling class:
+  // EVERY file is empty and the registry is empty too, reproducing the
+  // arbitration's own captured dangerous shape but spelled absolutely.
+  // Under round one's relative-only filter this reports a fully vacuous
+  // GREEN with units 2 (one phantom point per emptied file, each named by
+  // its own absolute path so `relative(cwd, file)` never matches `name`),
+  // which M2-C-2's green+units-0 rewrite cannot catch either, because units
+  // is nonzero. Confirmed by sha256-restoring the pre-round-two suite.ts
+  // (see delivery/work-history/m2-p3.md fix round two, defang section).
+  const { dir, base } = makeFixture({
+    scriptForDir: (fixtureDir) =>
+      `node --test "${join(fixtureDir, "test", "empty1.test.ts")}" "${join(fixtureDir, "test", "empty2.test.ts")}"`,
     files: { "test/empty1.test.ts": "", "test/empty2.test.ts": "" },
     registry: {},
   });

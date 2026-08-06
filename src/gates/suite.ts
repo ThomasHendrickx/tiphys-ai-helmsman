@@ -354,8 +354,7 @@ export const MAPPING_STATEMENT =
  * itself (measured on v22.22.2 and v26.6.0, both directions of the glob
  * the repo's own test script uses) still emits exactly one nesting-0
  * test:pass point for such a file, entityType `test`, whose `name` is the
- * file's own path exactly as it was invoked (the same string
- * `relative(cwd, point.file)` reproduces). Counting that point as
+ * file's own path exactly AS IT WAS INVOKED. Counting that point as
  * `entityType === "test"` like every other reported point (the mechanism
  * `bucketPoints` and the discovery/registry filters below all shared)
  * inflates `units` by one per emptied file, and because `units > 0` the
@@ -366,11 +365,32 @@ export const MAPPING_STATEMENT =
  * `describe()` wrappers are entityType `suite` and never collide), so
  * nesting and entityType alone cannot distinguish the phantom from a real
  * test. The one further fact that does, and the only one node offers, is
- * the point's own name coinciding exactly with its file's invocation path;
- * a real test can only produce that collision by deliberately naming
- * itself after its own file, which this function accepts as the residual,
- * documented non-coverage (see delivery/work-history/m2-p3.md fix round
- * one derivation).
+ * the point's own name coinciding exactly with its file's identity; a real
+ * test can only produce that collision by deliberately naming itself after
+ * its own file, which this function accepts as the residual, documented
+ * non-coverage (see delivery/work-history/m2-p3.md fix round one
+ * derivation).
+ *
+ * CR-1410-1 (fix round two): the string this coincidence is compared
+ * against MUST be spelling-invariant, not one particular spelling. Round
+ * one compared `point.name === relative(cwd, point.file)`, which is a
+ * comparison between two DIFFERENT strings whenever the invocation spells
+ * the path other than relative-to-cwd; node names the phantom by the
+ * file's path exactly as invoked (measured, both toolchains, fix round two
+ * derivation in delivery/work-history/m2-p3.md step "fix round two"):
+ * relative glob, bare auto-discovery and a `./`-prefixed path all name it
+ * relatively, but an ABSOLUTE-path invocation names it absolutely, and
+ * `relative(cwd, point.file)` is always relative, so the comparison misses
+ * that spelling and the phantom is counted as a real test again -- the
+ * exact CR-1306 defect through a different spelling, and the gate cannot
+ * control the spelling because it reads the target repo's `scripts.test`
+ * verbatim (see the file header). The fix compares two REPRESENTATIONS OF
+ * THE SAME FILE instead of two spellings of a path: `resolve(cwd,
+ * point.name)` normalizes whatever spelling `name` carries (relative,
+ * `./`-prefixed, or already absolute -- `resolve` returns an absolute
+ * argument unchanged, measured) into the same absolute string `point.file`
+ * already is, so the equality is invariant across every spelling node
+ * produces it in, by construction rather than by enumeration.
  *
  * The fix filters the phantom out before ANY of the three counting sites
  * that read `entityType === "test"` (bucketPoints, the discovery-parity
@@ -384,7 +404,7 @@ export function isFileWrapperPhantom(point: SuitePoint, cwd: string): boolean {
   return (
     point.entityType === "test" &&
     point.nesting === 0 &&
-    point.name === relative(cwd, point.file)
+    resolve(cwd, point.name) === point.file
   );
 }
 
