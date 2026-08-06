@@ -257,8 +257,13 @@ export function computePhaseDiff(
   return { ok: true, diff: { baseSha, headSha, files } };
 }
 
-/** The spawn grep of rule (f), over the changed files' head-state contents. */
-export const SPAWN_GREP = /child_process|execFile|spawnSync|execSync|\bexec\(/;
+/**
+ * The spawn grep of rule (f), over the changed files' head-state contents.
+ * Exactly the plan's four tokens (M2-P2 step 4 rule (f)): a wider pattern
+ * (for example a bare `exec(`) false-positives on `RegExp.exec` calls and
+ * would derive a capture obligation from a file that spawns nothing.
+ */
+export const SPAWN_GREP = /child_process|execFile|spawnSync|execSync/;
 
 export interface TapTestPoint {
   name: string;
@@ -396,6 +401,29 @@ export function resolveNamedTests(
   return { files: [...files].sort(), missing };
 }
 
+/**
+ * The 1-based line numbers a find text occupies, across every occurrence,
+ * multi-line finds included (a single-line scan misses those, and rule (d)
+ * plus the unreached-arm report both need the true span).
+ */
+export function findOccurrenceLines(body: string, find: string): number[] {
+  const lines = new Set<number>();
+  let from = 0;
+  for (;;) {
+    const at = body.indexOf(find, from);
+    if (at < 0) {
+      break;
+    }
+    const startLine = body.slice(0, at).split("\n").length;
+    const spanned = find.split("\n").length;
+    for (let offset = 0; offset < spanned; offset += 1) {
+      lines.add(startLine + offset);
+    }
+    from = at + Math.max(find.length, 1);
+  }
+  return [...lines].sort((a, b) => a - b);
+}
+
 interface ApplyOutcome {
   ok: boolean;
   reason?: string;
@@ -487,13 +515,6 @@ function applyMember(
           : read.reason,
     };
   }
-  const lines: number[] = [];
-  const bodyLines = read.body.split("\n");
-  for (let index = 0; index < bodyLines.length; index += 1) {
-    if ((bodyLines[index] as string).includes(member.find)) {
-      lines.push(index + 1);
-    }
-  }
   if (!read.body.includes(member.find)) {
     return {
       ok: false,
@@ -502,6 +523,7 @@ function applyMember(
         `${member.file}`,
     };
   }
+  const lines = findOccurrenceLines(read.body, member.find);
   const mutated = read.body.split(member.find).join(member.replace);
   const refusal = refuseOpenForWrite(target);
   if (refusal !== undefined) {
@@ -554,11 +576,23 @@ function runNamedTests(
   }
   // The pattern flags PRECEDE the positional paths (CLAUDE.md warning 7).
   argv.push(...testFilePaths);
+  // The child must not inherit the parent's node:test context: when this
+  // harness itself runs inside `node --test` (its own suite does), the
+  // inherited NODE_TEST_CONTEXT makes the child print "run() is being
+  // called recursively" and skip every file while exiting 0, which would
+  // read as an empty reporter stream. Scrub every NODE_TEST* variable.
+  const env: Record<string, string> = { NO_COLOR: "1", FORCE_COLOR: "0" };
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || name.startsWith("NODE_TEST")) {
+      continue;
+    }
+    env[name] = value;
+  }
   const child = spawnSync(process.execPath, argv, {
     cwd: cloneDir,
     encoding: "utf8",
     timeout: TEST_RUN_TIMEOUT_MS,
-    env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+    env,
   });
   if (child.error !== undefined) {
     return {
@@ -574,7 +608,12 @@ function runNamedTests(
   }
   const parsed = parseTapStream(child.stdout ?? "");
   if (!parsed.ok) {
-    return { problem: parsed.reason };
+    return {
+      problem:
+        `${parsed.reason} (test child exited ` +
+        `${String(child.status)}; stderr: ` +
+        `${singleLine((child.stderr ?? "").slice(0, 400))})`,
+    };
   }
   const failed: string[] = [];
   const passed: string[] = [];
@@ -647,7 +686,7 @@ function makeClone(
   label: string,
 ): CloneOutcome {
   const dir = join(scratchRoot, label);
-  const cloned = gitIn(scratchRoot, ["clone", "--no-hardlinks", "--quiet", repoRoot, dir]);
+  const cloned = gitIn(scratchRoot, ["clone", "--quiet", repoRoot, dir]);
   if (!cloned.ok) {
     return { reason: `scratch clone failed: ${cloned.reason}` };
   }
@@ -893,18 +932,10 @@ function evaluateRefusalRules(
         ]);
         let insideHunk = false;
         if (diffFile !== undefined && shown.ok) {
-          const lines = shown.stdout.split("\n");
-          for (let lineNo = 1; lineNo <= lines.length; lineNo += 1) {
-            if (!(lines[lineNo - 1] as string).includes(member.find)) {
-              continue;
-            }
-            if (
-              diffFile.hunks.some(([start, end]) => lineNo >= start && lineNo <= end)
-            ) {
-              insideHunk = true;
-              break;
-            }
-          }
+          const occupied = findOccurrenceLines(shown.stdout, member.find);
+          insideHunk = occupied.some((lineNo) =>
+            diffFile.hunks.some(([start, end]) => lineNo >= start && lineNo <= end),
+          );
         }
         if (!insideHunk) {
           reasons.push(

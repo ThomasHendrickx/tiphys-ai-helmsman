@@ -1,0 +1,18 @@
+{
+  "id": "witness-spec-schema-required",
+  "behavior": "witness-spec-schema-required",
+  "tests": [
+    "a witness spec missing deterministic is rejected naming the field"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/witness-spec.schema.json",
+      "find": "\"required\": [\"id\", \"behavior\", \"tests\", \"class\", \"dangerousStates\", \"deterministic\"],",
+      "replace": "\"required\": [\"id\", \"behavior\", \"tests\", \"class\", \"dangerousStates\"],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
