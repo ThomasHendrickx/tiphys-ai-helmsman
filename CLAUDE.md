@@ -179,6 +179,41 @@ members of it. M1-P6 produced two consecutive mediums from this alone: one
 defang reddened a guard test, three others left it green, and the round after
 it repeated the mistake one abstraction up.
 
+## Dispatch contract: no agent without a beacon and a guard (T-008, binding)
+
+Measured 2026-08-06: two review agents died within minutes of dispatch and the
+orchestrator did not notice for **nine hours and eleven minutes**, while
+answering the owner and dispatching other work throughout. Nothing was lost but
+wall clock, and it was the largest single waste in the project.
+
+The orchestrator's supervision was "wait for a completion notification". That
+is PROCESS LIVENESS, which constraint C-2 forbids for exactly this reason: a
+dead process sends no notification, and no notification is indistinguishable
+from work in progress. This repository is building the watcher and liveness
+guard that prevent precisely this, and the rule was not applied to the process
+building it.
+
+A stated stall rule is not sufficient. It addresses attention, and attention is
+what a busy session does not have. This project has recorded twice that a rule
+depending on memory does not survive; the answer both times was a mechanism.
+
+**Two rules, both mechanical, binding on every dispatch:**
+
+1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
+   artifact within the first minutes and appends as it works. The file's mtime
+   is its beacon. A death then leaves a partial result rather than nothing,
+   which is the difference between salvage and a total loss.
+2. **A freshness watchdog is armed in the SAME TURN as the dispatch.** It
+   watches the newest mtime under the agent's working directory and reports
+   stale after a threshold. It must test FRESHNESS, never existence and never
+   completion.
+
+The second rule has its own recorded failure: the first watchdog written after
+this incident tested whether the report file EXISTED, so it fired two minutes
+in, reported success, and said nothing. A guard whose condition does not test
+the property that matters is green and worthless, which is the red-witness rule
+one level up.
+
 ## Identifier schemes
 
 Stable IDs, never renumbered, cited across documents:
