@@ -217,5 +217,7 @@
   "scope-diff-against-merge-base-not-supplied-base": "diffs are computed against the merge base of base and head, so a base that has advanced past the fork point does not misattribute another phase's changes",
   "scope-invalid-declaration-is-error": "a declaration that does not parse as JSON, or fails schema validation, is error rather than a guessed verdict",
   "scope-unprobed-result-refused": "a named pipe at --result is refused naming the path and the type, without blocking",
-  "scope-unprobed-evidence-refused": "a named pipe at the evidence path is refused and logged without blocking, and the gate's own verdict still stands"
+  "scope-unprobed-evidence-refused": "a named pipe at the evidence path is refused and logged without blocking, and the gate's own verdict still stands",
+  "gate-self-check-schema-enumeration": "manifest-self-check picks up a schema document dropped into the directory after the fact",
+  "gate-bundle-steps-only-survives-parameterized-gate": "both bundle steps' --only shape survives a required gate that its own step cannot evaluate"
 }
