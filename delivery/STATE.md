@@ -116,6 +116,20 @@ yet. Recorded here so they are not rediscovered the expensive way.
   re-run both times. It is an M1-P5 file, out of this phase's scope, and it is
   a real flake in a suite the rules treat as a hard binary gate. **This is the
   highest-value of the three and should be fixed early in M2.**
+- **CI-witnessed exclusivity violation at `test/watcher.test.ts:500`, seen
+  once, 2026-08-06.** During M2-P1's merge-gate CI on head `4811d2e` (run
+  31092570135, first attempt), the test "a resident watcher and a concurrent
+  single pass never both surface a wake" failed with BOTH runs surfacing:
+  the `--once` pass printed `signal t1 turn-end` and exited 0, AND the
+  resident surfaced the same wake. That is not timing noise; it is one
+  witnessed violation of M1-P5 criterion 7's exclusivity (PR-204). The rerun
+  was green, and the suite is green locally on both toolchains, so it rides
+  as an investigation item, not a blocker: M2-P1's diff does not touch the
+  watcher, and a once-in-CI witness against M1-P5 code is M1-P5's defect
+  either way. Needs `delivery/verification/watcher-exclusivity.md` before
+  anyone calls it settled, per the durability rule's investigation row. Same
+  family as the `liveness.test.ts:671` flake above: members of a hard binary
+  gate that are not binary.
 - **Work-history contract must cover impossibility, coverage and remedy
   claims**, not only universal quantifiers, per tuition T-006. T-003 already
   routed the universal-quantifier rule to M3's report contract; T-006 records
