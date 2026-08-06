@@ -205,5 +205,17 @@
   "gate-claim-lost-no-dispatch": "a run that has lost the claim does not dispatch further gates",
   "gate-claim-stolen-by-precondition": "a claim stolen by a gate's own precondition command still stops that gate",
   "gate-claim-lost-no-mkdir": "a run that has lost the claim creates no directories in the holder's tree",
-  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused"
+  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused",
+  "scope-declared-green-undeclared-red": "a diff touching every declared path is green with units equal to the touched count, and an extra undeclared path is red naming it",
+  "scope-standing-extras-and-other-phase-history": "touching the two standing extras without declaring them is green, and touching another phase's work history is red naming it",
+  "scope-rename-declared-and-undeclared": "renaming a declared file to an undeclared path is red naming the new path, and renaming to another declared path is green",
+  "scope-delete-declared-and-undeclared": "deleting a declared file is green and deleting an undeclared file is red naming it",
+  "scope-anti-widening-merge-base-pinned": "a declaration widened on the head branch to add an undeclared touch does not change the verdict, and the record's declaration sha256 equals the merge-base blob",
+  "scope-branch-pattern-three-directions": "a branch matching the phase pattern with no merge-base declaration is red naming the branch, a non-matching branch is not-applicable, and a matching branch without --phase is error",
+  "scope-usage-errors": "scope without --declarations, --base, or --phase exits 64 with usage",
+  "scope-unresolvable-ref-is-error": "an unresolvable base or head ref is error, never a guessed red or green",
+  "scope-diff-against-merge-base-not-supplied-base": "diffs are computed against the merge base of base and head, so a base that has advanced past the fork point does not misattribute another phase's changes",
+  "scope-invalid-declaration-is-error": "a declaration that does not parse as JSON, or fails schema validation, is error rather than a guessed verdict",
+  "scope-unprobed-result-refused": "a named pipe at --result is refused naming the path and the type, without blocking",
+  "scope-unprobed-evidence-refused": "a named pipe at the evidence path is refused and logged without blocking, and the gate's own verdict still stands"
 }

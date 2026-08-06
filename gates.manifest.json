@@ -14,6 +14,23 @@
       ],
       "unitLabel": "schema documents validated",
       "applicability": "required"
+    },
+    {
+      "id": "scope",
+      "command": [
+        "node",
+        "src/gates/scope.ts",
+        "--declarations",
+        "delivery/plan/phase-declarations"
+      ],
+      "unitLabel": "changed paths audited",
+      "applicability": "required",
+      "parameters": ["base", "head"],
+      "precondition": {
+        "id": "scope-branch-is-a-phase-branch",
+        "kind": "branch-matches",
+        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
+      }
     }
   ],
   "destructiveCommands": [
