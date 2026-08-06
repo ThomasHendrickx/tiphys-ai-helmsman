@@ -357,8 +357,9 @@ test("a malformed trailing continuation is flagged rather than silently narrowed
 test("a token cannot be fabricated by resuming a match after a colon, backslash, or a non-ASCII letter (CR-1023)", () => {
   assert.deepEqual(extractCitations("src/wei:rd.ts:2"), []);
   assert.deepEqual(extractCitations("src\\ten.ts:3"), []);
-  // Cyrillic "с" (U+0441) immediately before "li.ts:1".
-  assert.deepEqual(extractCitations("src/сli.ts:1"), []);
+  // Cyrillic "es" (U+0441) immediately before "li.ts:1"; written as an
+  // escape so this authored file itself stays pure ASCII (CLAUDE.md).
+  assert.deepEqual(extractCitations("src/\u0441li.ts:1"), []);
 });
 
 test("a content hash strips trailing carriage returns before hashing, so CRLF and LF checkouts of the same content agree (CR-1026)", () => {
