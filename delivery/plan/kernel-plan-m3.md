@@ -2813,7 +2813,7 @@ regression contract, it is a new contract wearing the old one's name.
   feed, the retention duty made checkable (R-098), and the immediate hotfix rule
   stated where the orchestrator reads it (R-070).
 - grounding: M3-P7 merged. `tuition/README.md` is the M1-P1 placeholder and
-  `tuition/` holds nothing but that and M3-P6's stub `mechanism-index.yaml`
+  `tuition/` holds nothing but that and M3-P6's seed `mechanism-index.yaml`
   (`CLAUDE.md`: the root `tuition/` is the future cross-project feed and is not
   `delivery/tuition/`). The charter schema's `retention` field exists from
   M3-P1. The M1-P2 doctor is extended here, so its check list and profile table
@@ -2823,6 +2823,33 @@ regression contract, it is a new contract wearing the old one's name.
   mechanism, so the index is a projection of the tuition feed rather than a
   second thing to maintain". `delivery/STATE.md`'s carried-forward list assigns
   the index to this milestone with no owner; this phase is the owner (M3R-003).
+  **Revision 2 corrects two premises and adds three entries.** First, the
+  interim index EXISTS: `MECHANISMS.md`, twelve rows, root, committed
+  2026-08-05, self-described as the interim to be SUPERSEDED by this phase's
+  projection. It is this phase's SEED and INPUT, M3-P6 has already converted it
+  into schema shape, and criterion 4c makes dropping any of its rows a failure
+  rather than a slow loss. Second, this build's tuition log has grown from five
+  entries to EIGHT (T-006, T-007 and T-008 were recorded 2026-08-05 and
+  2026-08-06), all three kernel-relevant, so step 3's promotion list grows from
+  five to eight and step 5's identifier allocation must start higher than
+  revision 1's "at the time of writing that is T-006 and T-007", which is now
+  false. Third, `schemas/mechanism-index.schema.json` is CREATED by M3-P6 (its
+  seed needs it) and EDITED here to add `machine-readable-form`; step 2 and the
+  files-to-touch list are corrected accordingly.
+- hazard class (T-007, D-M3-32): **an artifact whose whole value is that a
+  future reader who was not there can act on it, and whose defects are silence
+  rather than error.** What can produce a feed and an index that validate and
+  teach nothing: a generated projection that silently drops an interim row, so
+  the index ships poorer than the markdown file it replaced; a rule stated
+  precisely enough to pass its evidence check and vaguely enough to be
+  unusable, which no schema reaches; a `structural-consequence` marked
+  `applied` whose target path exists but does not contain the change claimed; a
+  `machine-readable-form` pointing at a manifest key M2 renamed, so the
+  anti-drift coupling is itself drifted; an id collision between the two
+  `T-nnn` spaces that grows silently as both directories keep growing; a
+  `mechanisms[]` entry whose evidence resolves to a file that exists but does
+  not establish the rule; and a retention check that passes because the
+  declared path is absent from the charter rather than present and tracked.
 - steps:
   1. Create `schemas/tuition.schema.json`: `{id, project, date, stage,
      kernel-relevant, what-happened, lesson[], mechanisms[],
@@ -2835,18 +2862,52 @@ regression contract, it is a new contract wearing the old one's name.
      `{mechanism, rule, evidence[]}` with `evidence[]` required and non-empty,
      because T-005's checkability rule is that "a rule with no citation to an
      investigation, review or tuition entry is not a rule".
-  2. Create `schemas/mechanism-index.schema.json` (a rule may carry an optional
+  2. EDIT `schemas/mechanism-index.schema.json` (created by M3-P6 for its seed;
+     revision 1 had this phase create it, which contradicted M3-P6's own
+     files-to-touch list) to add the optional
      `machine-readable-form`, a path plus a key naming where the same rule exists
-     as data, which is the field the `destructive-git-operation` entry uses) and
+     as data, which is the field the `destructive-git-operation` entry uses, and
      generate `tuition/mechanism-index.yaml` with
      `tiphys tuition index [--out <file>] [--check]`: the index is a projection
      of every entry's `mechanisms[]`, keyed by mechanism, each rule carrying its
      evidence references and the id of the entry it came from. `--check`
      compares the committed index against a fresh projection and exits nonzero
      on drift, so the index cannot rot, and it is a projection rather than a
-     second source exactly as T-005 requires. This phase replaces M3-P6's stub
+     second source exactly as T-005 requires. This phase replaces M3-P6's seed
      index with the generated file and re-witnesses the implementer brief's
      mandated-reading path against it.
+  2b. **The interim index is an INPUT, not a competitor (NEW at revision 2).**
+     `MECHANISMS.md` at the repository root holds twelve rows, each with a rule
+     and a "paid for by" citation, and states of itself that it is the interim
+     and is intended to be superseded by this projection. Every one of its
+     twelve mechanisms must appear in the generated index, which means every one
+     must appear in some tuition entry's `mechanisms[]` field, which is the work
+     step 4 does. `MECHANISMS.md` is then DELETED by this phase, with a pointer
+     to `tuition/mechanism-index.yaml` left in `tuition/README.md`, because two
+     indexes is the exact thing T-005 says not to build ("a projection of the
+     tuition feed rather than a second thing to maintain"). It is deleted rather
+     than kept for reference because git history keeps it losslessly and a file
+     kept for reference is a file someone will edit.
+  2c. **The projection model is also the repository's compaction model (NEW at
+     revision 2, stated here because this is the phase that builds the model).**
+     The index is dense because it is READ at every dispatch under the
+     `mechanism-lookup` obligation; the tuition entries behind it are longer
+     because they are read only when a rule is disputed. That shape is general
+     and not a property of tuition: projections (this index, M3-P4's final
+     report, a findings inventory, a carried-forward list) are the READ layer
+     and must stay dense, while raw entries (full review texts, per-round
+     work-history sections) are the ARCHIVE layer. Once a raw entry's durable
+     residue has been projected out and the projection's evidence references
+     resolve, the entry is archive rather than working state, and git history
+     makes removing it from the working tree lossless. **This plan builds no
+     compactor and proposes none.** What it does is make the two layers
+     structurally distinct in the artifacts and their checks, so a later
+     compaction decision is a question about which layer a file is in rather
+     than a judgement about which files look like filler. The check that makes
+     it safe already exists in this phase as
+     `mechanism-rule-evidence-resolves`: a projection whose evidence no longer
+     resolves fails, which is what stops an archive removal from being a silent
+     loss rather than a lossless one.
   3. Populate `tuition/` with the kernel-relevant entries promoted from this
      build's own log, converted to the schema (R-091's "kernel-relevant tuition
      ships upstream as a kernel PR", performed once, by hand, as the flow's
@@ -2864,6 +2925,26 @@ regression contract, it is a new contract wearing the old one's name.
      `structural-consequence[].status` is `applied` with the artifact path, or
      `ticketed` with the record that carries it, and never `proposed` for a
      consequence this milestone already shipped.
+     **Three more entries, NEW at revision 2, because the log grew after
+     revision 1 was written and all three are kernel-relevant by their own
+     headers.** T-006 (unexecuted claims about the world, targeting
+     `schemas/report.schema.json`'s and `schemas/work-history.schema.json`'s
+     shared `claims[]` section from M3-P4 step 1b, and
+     `checklists/clean-room.yaml`'s two unexecuted-claim probes from M3-P7 step
+     3c, plus the mechanism `verifying-access-to-a-remote` whose rule is that
+     `git push --dry-run` authenticates against receive-pack while `clone` and
+     `ls-remote` witness nothing about write access). T-007 (criteria cannot
+     contain the defect, targeting `schemas/plan.schema.json`'s
+     `hazard-classes[]`, `assurance-modes.yaml`'s `review-contracts[]`,
+     `checklists/hazard-review.yaml`, and `roles/clean-room-reviewer.md`'s
+     `review-contract` field). T-008 (the orchestrator had no beacon, targeting
+     the `incremental-output` and `beacon-is-not-a-claim` clauses in
+     `roles/implementer.md` and `roles/clean-room-reviewer.md` and the
+     supervision section of `AGENTS.md`, plus the mechanism
+     `supervising-a-dispatched-agent` whose rule is that supervision is a
+     freshness watchdog armed in the same turn as the dispatch and never a wait
+     for a completion notification). **This entry set is eight, not five**, and
+     step 5's identifier allocation and criterion 1's count follow from it.
   4. Populate `mechanisms[]` on the entries that constrain one, which is what
      makes the index non-empty on day one rather than an empty shell waiting for
      a future incident. At minimum: `claim-file` from T-005 (a claim that cannot
@@ -2884,6 +2965,21 @@ regression contract, it is a new contract wearing the old one's name.
      `delivery/verification/u2-race-flake-investigation.md`). Each is a rule this
      project has already paid for, with a citation, which is the only kind of
      entry the schema accepts.
+     **The minimum is now the twelve interim rows, not the four above (revision
+     2).** `MECHANISMS.md` carries twelve mechanisms and step 2b requires every
+     one to survive into the generated index, so `mechanisms[]` across the eight
+     entries must cover all twelve: the four already named, plus
+     `lease-compare-and-swap`, `append-only-log`,
+     `reading-a-path-whose-type-is-not-established`, `atomic-file-replacement`,
+     `parsing-another-programs-reporter-output`,
+     `pattern-matching-a-consumed-files-text`, `asserting-a-ci-step-is-wired`,
+     `verifying-access-to-a-remote`, and `a-guards-own-failure-path`. Each keeps
+     the interim file's rule text and its "paid for by" citations as `evidence[]`
+     rather than being re-derived, because re-deriving a rule someone already
+     paid for is how the wording drifts away from what the incident actually
+     established. Where a mechanism has no natural home among the eight
+     entries, it attaches to the entry whose incident produced it, which the
+     interim file's "paid for by" column already names.
   5. Create the two migration tickets plan v1 section 11 item 7 parked for this
      moment as `ticketed` tuition entries: D-9's L1 mode-aware branch-protection
      enforcement of review-never-skipped, and D-10's L1 pre-validation push
@@ -2892,9 +2988,16 @@ regression contract, it is a new contract wearing the old one's name.
      this build's `delivery/tuition/` share one `T-nnn` space, which `CLAUDE.md`
      says is never renumbered, so the two ticket numbers are allocated at
      dispatch as the next two free ids across BOTH directories and recorded in
-     the work history. At the time of writing that is T-006 and T-007, and the
-     files-to-touch list below carries the slug with the number resolved at
-     dispatch rather than a number that may already be taken by then.
+     the work history. The files-to-touch list below carries the slug with the
+     number resolved at dispatch rather than a number that may already be taken
+     by then. **Revision 1's parenthetical "at the time of writing that is T-006
+     and T-007" is superseded 2026-08-06 and is the worked example of why the
+     rule exists**: T-006, T-007 and T-008 were all recorded in
+     `delivery/tuition/` within thirty hours of revision 1 being written, so
+     both proposed numbers were taken before the phase could dispatch. The
+     lowest free id at revision 2 is T-009, and it will very likely have moved
+     again by dispatch. Resolve at dispatch; do not copy a number out of this
+     plan.
   6. Create `src/tuition.ts` and `src/commands/tuition.ts`:
      `tiphys tuition add --file <entry>` validates and writes an entry into the
      fleet's tuition area; `tiphys tuition list [--kernel-relevant]` prints one
@@ -2917,22 +3020,31 @@ regression contract, it is a new contract wearing the old one's name.
      Kind B, and neither was named by the review).
   9. Tests: `test/tuition.test.ts`, `test/mechanism-index.test.ts`, and an
      extension of `test/doctor.test.ts` for the retention check.
-- files-to-touch: `schemas/tuition.schema.json`,
-  `schemas/mechanism-index.schema.json`, `tuition/T-001.yaml`,
+- files-to-touch: `schemas/tuition.schema.json` (create),
+  `schemas/mechanism-index.schema.json` (EDIT: created by M3-P6 for its seed,
+  extended here with `machine-readable-form`; corrected at revision 2, where
+  revision 1 listed it as a create and contradicted M3-P6's list),
+  `tuition/T-001.yaml`,
   `tuition/T-002.yaml`, `tuition/T-003.yaml`, `tuition/T-004.yaml`,
-  `tuition/T-005.yaml`, `tuition/T-<next>-review-enforcement-ticket.yaml`,
+  `tuition/T-005.yaml`, `tuition/T-006.yaml`, `tuition/T-007.yaml`,
+  `tuition/T-008.yaml` (the three added at revision 2, step 3),
+  `MECHANISMS.md` (DELETE, step 2b, once every one of its twelve rows resolves
+  through the generated index; declared here because a deletion must never be
+  an undeclared extra to the scope audit),
+  `tuition/T-<next>-review-enforcement-ticket.yaml`,
   `tuition/T-<next+1>-push-before-validation-ticket.yaml` (both numbers
   allocated at dispatch per step 5 and recorded in the work history; the
   resolved names are what the scope audit sees), `src/tuition.ts`,
   `src/commands/tuition.ts`, `test/tuition.test.ts`,
   `test/mechanism-index.test.ts` (create); `tuition/mechanism-index.yaml`
-  (edit: replaces M3-P6's stub with the generated projection),
+  (edit: replaces M3-P6's seed with the generated projection),
   `tuition/README.md` (edit), `src/commands/doctor.ts` (edit, verify check list
   and profile table first), `test/doctor.test.ts` (edit), `src/cli.ts` (edit),
   `src/validate.ts` (edit, type table), `src/checks.ts` (edit, register this
   phase's derived checks), `package.json` (edit, files entry).
 - acceptance criteria:
-  1. `tiphys validate --type tuition` exits 0 on all seven entries and
+  1. `tiphys validate --type tuition` exits 0 on all TEN entries (eight promoted
+     plus two tickets; revision 1 said seven, before T-006 to T-008 existed) and
      `tiphys validate --type mechanism-index tuition/mechanism-index.yaml`
      exits 0.
   2. Kind A DANGEROUS-instance rejections, each witnessed by removing and
@@ -2965,6 +3077,26 @@ regression contract, it is a new contract wearing the old one's name.
      coupling M2 asked for: the prose rule and the machine list are two views of
      one thing and the index says which (D-M3-26). Dependency direction is M3
      reads M2, never the reverse.
+  4c. **No interim row is dropped (NEW at revision 2, step 2b, and the coupling
+     `delivery/plan/kernel-plan-m2.md` section 2 item 10 asked for), both
+     directions.** A registered test parses `MECHANISMS.md` as it stood at
+     `037477e` (checked in as `test/fixtures/mechanisms-interim.md`, a verbatim
+     capture, per section 2.3 rule 4) and asserts that every one of its twelve
+     mechanism keys resolves to an entry in the generated
+     `tuition/mechanism-index.yaml`, failing and NAMING any missing key.
+     Removing one mechanism from a tuition entry's `mechanisms[]` and
+     regenerating makes the test fail naming that mechanism; restoring it
+     returns exit 0. The fixture is the capture rather than the live file
+     because `MECHANISMS.md` is deleted by this phase, and a test whose input
+     the phase deletes is a test that stops meaning anything the moment it is
+     needed.
+  4d. **`MECHANISMS.md` is gone and its readers are redirected**, asserted by a
+     registered test: the file is absent, `tuition/README.md` names
+     `tuition/mechanism-index.yaml` as the index, and no shipped artifact
+     (briefs, `AGENTS.md`, checklists, schemas) contains the string
+     `MECHANISMS.md`. Both directions: reintroducing a reference makes the test
+     fail. Two indexes is the state T-005 exists to prevent and the state that
+     produced M1's most severe defect when one mechanism was implemented twice.
   5. The generated `tuition/mechanism-index.yaml` contains an entry for
      `claim-file` whose rule is T-005's loud-failure rule and whose evidence
      resolves to both cited files; deleting T-005's `mechanisms[]` block and
@@ -3000,7 +3132,10 @@ regression contract, it is a new contract wearing the old one's name.
   `mechanism-machine-readable-form-resolves`,
   `implementer-brief-reads-generated-index`,
   `tuition-list-filters-kernel-relevant`, `tuition-add-rejects-invalid`,
-  `tuition-ids-unique-across-directories`, `doctor-retention-check`.
+  `tuition-ids-unique-across-directories`, `doctor-retention-check`,
+  and NEW at revision 2: `mechanism-index-covers-every-interim-row`,
+  `interim-index-removed-and-redirected`,
+  `tuition-add-refuses-non-regular-entry-path`.
 - suggested model tier: strongest, changed from revision 0's "cheaper tier
   acceptable". The phase is no longer a schema plus four conversions: it now
   carries the mechanism index, which is the structural answer to the failure
@@ -3009,9 +3144,14 @@ regression contract, it is a new contract wearing the old one's name.
 - citations: R-070, R-091, R-098; blueprint section 9 (tuition flow) and section
   2 (kernel PRs); process doc sections 4 and 9 item 5; plan v1 section 11 item 7
   and the R-091 note (directory scaffolded in M1-P1); T-001 to T-005, with T-005
-  as the source of the mechanism index and its checkability rule; T-003
+  as the source of the mechanism index and its checkability rule; **T-006, T-007
+  and T-008** (the three entries added at revision 2, step 3, and the two
+  mechanisms they contribute); T-003
   structural consequence 4 and V-1, with M2-P1's `destructiveCommands` list as
   the cited machine-readable form (D-M3-26, M2 plan section 2 items 10 and 11);
+  **`MECHANISMS.md`** (the twelve-row interim index this phase's projection must
+  cover and then supersede, steps 2b and 4c); **`delivery/plan/kernel-plan-m2.md`
+  section 2 item 10** (the no-dropped-row coupling, asked for from M2's side);
   `delivery/STATE.md` carried-forward item "a mechanism index... belongs with the
   M3 tuition flow".
 - conflicts-with: M3-P9 (`AGENTS.md` clauses reserved here), M3-P10 (files
