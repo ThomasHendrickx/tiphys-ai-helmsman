@@ -205,5 +205,7 @@
   "gate-claim-lost-no-dispatch": "a run that has lost the claim does not dispatch further gates",
   "gate-claim-stolen-by-precondition": "a claim stolen by a gate's own precondition command still stops that gate",
   "gate-claim-lost-no-mkdir": "a run that has lost the claim creates no directories in the holder's tree",
-  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused"
+  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused",
+  "gate-self-check-schema-enumeration": "manifest-self-check picks up a schema document dropped into the directory after the fact",
+  "gate-bundle-steps-only-survives-parameterized-gate": "both bundle steps' --only shape survives a required gate that its own step cannot evaluate"
 }
