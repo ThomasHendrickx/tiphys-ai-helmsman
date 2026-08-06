@@ -577,6 +577,31 @@ The rules, binding on every phase's acceptance criteria:
    and by T-003 lesson 4.
 5. Every derived check is listed in the table below when its phase introduces
    it, so the class stays auditable rather than being rediscovered per phase.
+6. **One witness is not a class (revision 2, `CLAUDE.md`).** Where a criterion
+   below says a fixture witnesses a CLASS of invalid instance rather than one
+   instance, at least TWO structurally different members of that class must be
+   demonstrated red. M1-P6 produced two consecutive medium findings from this
+   alone: one defang reddened a guard test and three others left it green, and
+   the round after it repeated the mistake one abstraction up. Applied to this
+   plan, the criteria it binds are the ones whose language is plural, and each
+   of them now names its two members explicitly rather than saying "a fixture":
+   M3-P1 criterion 5 (a misspelled property at two different object depths),
+   M3-P6 criterion 2 (section deletion witnessed per section, already plural),
+   M3-P7 criterion 3b (probe-text weakening witnessed on two different probes),
+   and M3-P9 criterion 3 (a gate list AND a mode table, which revision 1
+   already listed as three and which therefore already complies).
+7. **A check wired into CI is a behaviour, not a text (revision 2, D-M3-28).**
+   Five M3 phases wire a new step into `.github/workflows/gates.yml`. A test
+   that asserts the step's TEXT is present catches deletion and misses
+   defanging, which M1-P6 confirmed six times across four rounds (`exit 1`
+   changed to `exit 0`, two placements of `|| true`, a step-level `if: false`,
+   a quoted YAML key the whitelist regex could not see, and the step moved into
+   a job the fan-in does not need). Every M3 criterion asserting that a check
+   is wired EXECUTES the extracted step against stubs and observes its exit
+   code, and where a text assertion is unavoidable it is labelled as such and
+   the residue is named. M1-P6's tracked low CR-760 records that the `gates`
+   fan-in's own script is still text-asserted, so this is a live condition of
+   the workflow M3 edits and not a hypothetical.
 
 Derived checks this plan requires, by owning phase. The review's list was
 explicitly representative rather than exhaustive, so this table is the result of
@@ -609,16 +634,14 @@ M2-P4 scope auditor would fail the undeclared file anyway.
 ### 2.4 Shared phase fields, stated once
 
 - migrations: none. This is a library.
-- parallelizable (DR-0011, section 1.3): no for M3-P1 through M3-P3 and for
-  M3-P10, which are the phases everything else grounds on or which close the
-  milestone. Conditionally yes for exactly one pair, M3-P7 (checklists) beside
-  M3-P8 (tuition flow): their files-to-touch lists share only the standing
-  pre-authorized extras and `package.json`'s `files` array, and that overlap is
-  one line each. Any parallel dispatch still requires DR-0011's recorded
-  pairwise disjointness check at dispatch time, over the real lists rather than
-  over this sentence, and merges in dependency order. Every other pair overlaps
-  on `src/cli.ts`, `src/validate.ts`, or an artifact the later phase reads, so
-  the honest declaration is no (D-M3-19).
+- parallelizable (DR-0011, section 1.3): **section 2.5 now carries the
+  derivation and this bullet carries only its outcome.** M3-P1 through M3-P3
+  and M3-P10 are no; M3-P7 beside M3-P8 is conditionally yes. Revision 1
+  asserted this in one sentence; revision 2 shows the work, because M2's
+  pre-pass demonstrated that a plan written sequentially is not necessarily
+  sequentially CONSTRAINED and that nobody had checked. For M3 the check was
+  run and the conclusion did not move, which is a result and not a formality
+  (D-M3-19, unchanged in substance).
 - substrate (DR-0007): substrate-neutral for M3-P1 to M3-P9 (all of it is
   files, schemas, and text). M3-P10 is the exception and says so.
 - invocation form (PR-102): `tiphys <cmd>` means `node bin/tiphys.ts <cmd>`;
@@ -633,6 +656,108 @@ M2-P4 scope auditor would fail the undeclared file anyway.
 - every phase runs `grep -rP '[^\x00-\x7F]'` over its touched files and records
   a clean result (conventions, `CLAUDE.md`).
 - suggested model tier is stated per phase, per R-075's own rule.
+- **hazard class, NEW at revision 2 (T-007, D-M3-32).** Every phase section
+  below declares a hazard class beside its acceptance criteria: what a defect
+  in THIS phase would look like if the criteria were all met. It is the second
+  review contract's input and a pre-submit self-review for the implementer. The
+  hazard classes are the plan's, not the implementer's; an implementer who
+  believes one is wrong escalates rather than rewriting it. T-007's evidence is
+  that two reviewers on different model families walked all fifteen of a
+  phase's acceptance criteria by direct execution, agreed on every mechanical
+  fact, and one found a high-severity defect that live-locked every supervision
+  command, because no criterion described it.
+- **path reads, NEW at revision 2 (D-M3-27).** Every M3 command that opens a
+  path it did not create goes through the delivered `classifyEntry` and
+  `refuseOpenForWrite` in `src/task.ts`, never a bare `readFileSync`,
+  `openSync`, `appendFileSync` or `renameSync`. A path that is not a regular
+  file makes the command report an error naming the path and the observed type,
+  and no M3 command blocks indefinitely on a path it did not create. Each phase
+  that adds such a command carries one criterion staging the dangerous state
+  with a real `mkfifo`, in both directions.
+- **CI wiring, NEW at revision 2 (D-M3-28).** A criterion asserting that a
+  check is wired into `.github/workflows/gates.yml` executes the extracted step
+  against stubs and observes its exit code; a text assertion is labelled as
+  such and its residue named (section 2.3 rule 7).
+
+### 2.5 M3's parallel structure, derived rather than asserted
+
+DR-0011 condition 1 requires a recorded pairwise files-to-touch disjointness
+check BEFORE each parallel dispatch. Revision 1 satisfied the letter of
+D-M3-19 with a sentence. Revision 2 records the derivation, in the shape
+`delivery/plan/m2-conflict-pre-pass.md` established, so a dispatching
+orchestrator reads a table rather than re-deriving one. **This is the plan's
+statement, not the dispatch-time check**: the dispatch-time check is still
+required, is still run over the real lists on the day, and still cancels a
+parallel start on any overlap it finds.
+
+**The dependency graph, read from this plan's own `grounding` and `blocked-by`
+fields, one row per phase:**
+
+| Phase | Grounds on (its own field) | Can start when |
+|---|---|---|
+| M3-P1 | M2 merged with exit evidence on `main` | M2 exit test passes |
+| M3-P2 | M3-P1 merged | P1 merges |
+| M3-P3 | M3-P2 merged | P2 merges |
+| M3-P4 | M3-P3 merged | P3 merges |
+| M3-P5 | M3-P4 merged | P4 merges |
+| M3-P6 | M3-P5 merged | P5 merges |
+| M3-P7 | M3-P6 merged | P6 merges |
+| M3-P8 | M3-P7 merged | P7 merges |
+| M3-P9 | M3-P8 merged | P8 merges |
+| M3-P10 | M3-P1 to M3-P9 merged | all merge |
+
+**The graph result, and it is the opposite of M2's.** M2's pre-pass found that
+nothing between P2 and P8 grounded on anything between P2 and P8, so a plan
+written sequentially was not sequentially constrained. **M3's chain is
+genuinely a chain**: every phase from P2 to P9 grounds on its immediate
+predecessor by name, and each grounding is a real consumption rather than an
+ordering habit. The consumptions, so the claim is checkable rather than
+restated: P2 needs P1's validator and clause map to validate the registry at
+all; P3 resolves gate-set references INTO P2's `gate-registry.yaml`; P4's
+report contract is referenced by type name from P5's and P6's briefs; P5 ships
+`schemas/role-brief.schema.json` and `brief compose`, which P6 extends rather
+than reinvents; P7's checklists must supply the probe ids P2's registry entries
+name and are referenced by P6's clean-room brief; P8 replaces P6's stub index
+and re-witnesses P6's mandated-reading path; P9 references all of them and its
+own anti-duplication check fails if any is absent.
+
+**Pairwise file overlap, and where the chain would break even if the graph
+allowed it.** Nine of the ten phases edit `src/cli.ts` or `src/validate.ts` or
+both, because every phase registers its own artifact types with the validator's
+`--type` table and the `auto` resolver (M3R-001 made that edit explicit per
+phase rather than implicit). Six edit `src/checks.ts` to register derived
+checks. Six edit `package.json`'s `files` array. **These are not append-only
+registries keyed by name**, which is what let M2 resolve `test/behaviors.json`
+and `gates.manifest.json` as a union: `src/cli.ts` is a dispatch table and
+`src/validate.ts` is a type table, both hand-edited source, and a union merge
+over source is not a resolution rule, it is a hope.
+
+| Pair | Overlap beyond the standing extras | Parallelizable |
+|---|---|---|
+| P7 beside P8 | `package.json` `files` (one line each: `checklists` and `tuition`); `src/validate.ts` type table; `src/checks.ts` registry | **conditionally yes**, see below |
+| every other pair | `src/cli.ts` and/or `src/validate.ts` and/or `src/checks.ts`, plus at least one artifact the later phase reads | no |
+
+**The one qualified yes, restated honestly (revision 2 narrows revision 1's
+claim).** Revision 1 said M3-P7 and M3-P8's lists "share only the standing
+pre-authorized extras and `package.json`'s `files` array, and that overlap is
+one line each". Re-reading both files-to-touch lists as they are written shows
+that is not accurate: both also edit `src/validate.ts` (type table) and
+`src/checks.ts` (derived-check registry). So the pair is parallelizable only
+under a stronger condition than revision 1 stated, and the condition is named
+here rather than discovered at merge: **both edits are single-line appends to
+two lists, and the pair may be dispatched concurrently only if the dispatch-time
+check confirms that both phases' edits to those two files are appends and not
+restructurings.** If either phase needs to restructure the type table or the
+check registry, the pair serialises. Under DR-0011 condition 1 an overlap
+cancels the parallel start unless the resolution rule is written down first,
+and this paragraph is that rule.
+
+**What the derivation is worth, stated so nobody reads it as a disappointment.**
+M2's pre-pass bought roughly 22 hours of wall clock. M3's buys at most one
+phase overlap and possibly none. The value here is not the saving: it is that
+DR-0011 condition 1 is now DISCHARGED IN WRITING for M3 before dispatch,
+including the correction to revision 1's overlap claim, which is exactly the
+kind of thing that is expensive to find during a merge and cheap to find now.
 
 ---
 
