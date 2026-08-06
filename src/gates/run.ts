@@ -180,10 +180,21 @@ export interface RunSummary {
 }
 
 export interface RunOutcome {
+  /**
+   * THIS run's identity, on every outcome including a refusal (CR-861). The
+   * runId used to live only inside `summary.json`, so a caller had no way to
+   * tell whether the summary it was reading was its own: after a refusal the
+   * previous run's green summary sat there, `aborted: false`, exit 0, with
+   * nothing to mark it stale. Attribution needs the caller to know the id it
+   * should expect, and this is where it gets it.
+   */
+  runId: string;
   exitCode: number;
   summary?: RunSummary;
   /** Set when the run could not start at all (no summary to write). */
   reason?: string;
+  /** True when the evidence directory was owned by another run. */
+  refused?: boolean;
 }
 
 export const NO_APPLICABLE_GATE = "no applicable gate";
@@ -790,11 +801,54 @@ export function decideAggregate(
     reason = `required gate(s) not applicable: ${requiredNotApplicable.join(", ")}`;
   }
 
+  // TOTAL OVER GARBAGE, not just over zero (CR-862). The first version of
+  // this check was `counts.green === 0`, which is FALSE for NaN, for
+  // undefined, for a missing key and for a negative number, so all four
+  // reached exit 0 with "every applicable gate is green". None is reachable
+  // through the runner today, where `counts` is built from integer literals
+  // and `+= 1`. That is exactly the argument this function exists to refuse
+  // to rely on: its stated contract is to be handed states the runner cannot
+  // currently produce, and a guard that only rejects the value it was written
+  // against is the same shape as the defect it was written for.
+  //
+  // So every count is checked for being a non-negative safe integer FIRST,
+  // and the success-path assertion is written as `!(green > 0)`, which is
+  // true for every non-number as well as for zero.
+  const badCounts = Object.entries(counts)
+    .filter(([, value]) => !Number.isSafeInteger(value) || (value as number) < 0)
+    .map(([name]) => name)
+    .sort();
+  if (badCounts.length > 0) {
+    return {
+      exitCode: EXIT_GATE_ERROR,
+      reason:
+        "internal inconsistency: count(s) that are not non-negative integers: " +
+        `${badCounts.join(", ")} (${JSON.stringify(counts)})`,
+    };
+  }
+  for (const name of [
+    "declared",
+    "applicable",
+    "verdict",
+    "green",
+    "red",
+    "not-applicable",
+    "error",
+    "vacuous",
+  ]) {
+    if (!Object.prototype.hasOwnProperty.call(counts, name)) {
+      return {
+        exitCode: EXIT_GATE_ERROR,
+        reason: `internal inconsistency: the count ${name} is missing (${JSON.stringify(counts)})`,
+      };
+    }
+  }
+
   // THE SUCCESS PATH CANNOT DESCRIBE AN EMPTY GREEN BUCKET. The branches
-  // above already make exit 0 unreachable with `counts.green === 0`, and this
+  // above already make exit 0 unreachable with a zero green bucket, and this
   // asserts it rather than trusting the reading, because CR-800 was exactly a
   // reading of the branch conditions that turned out not to hold.
-  if (exitCode === EXIT_GREEN && counts.green === 0) {
+  if (exitCode === EXIT_GREEN && !(counts.green > 0)) {
     exitCode = EXIT_GATE_ERROR;
     reason =
       "internal inconsistency: the run reached the success path with zero " +
@@ -846,11 +900,21 @@ function claimEvidenceDirectory(
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       return `evidence directory ${evidenceDir} could not be claimed: ${singleLine(String(error))}`;
     }
+    const holder = claimHolder(evidenceDir);
     const held = readRegularFileIfPresent(claimPath);
     const who = held.kind === "read" ? singleLine(held.body) : "unreadable";
+    // CR-861. The refused run writes NOTHING here, which is correct, and that
+    // used to mean the only statement in the directory about what happened
+    // was a DIFFERENT run's: the previous summary sat there saying exit 0,
+    // aborted false, "every applicable gate is green". So the refusal itself
+    // carries both ids and says, in words, that anything in the directory
+    // belongs to the other run.
     return (
       `evidence directory ${evidenceDir} is already claimed by another run; ` +
       `claim file ${claimPath} holds ${who}. ` +
+      `This run is ${runId} and it wrote NOTHING: any summary.json in ` +
+      `${evidenceDir} belongs to run ${holder ?? "unknown"}, not to this run, ` +
+      "and is not a report about this invocation. " +
       "Two runs sharing one evidence directory produce a bundle attributable " +
       "to neither. Use a different --evidence directory, or delete that file " +
       "if no run holds it."
@@ -890,11 +954,58 @@ function writeSummaryAtomically(
   return renamed.ok ? undefined : renamed.reason;
 }
 
-function releaseEvidenceDirectory(evidenceDir: string): void {
+/** The runId recorded in a claim file, or undefined if it cannot be read. */
+function claimHolder(evidenceDir: string): string | undefined {
+  const read = readRegularFileIfPresent(join(evidenceDir, RUN_CLAIM_FILE));
+  if (read.kind !== "read") {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(read.body) as { runId?: unknown };
+    return typeof parsed.runId === "string" ? parsed.runId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * RELEASE ONLY WHAT THIS RUN HOLDS (CR-860).
+ *
+ * The mechanism the finding names is: *cleanup that is valid only while the
+ * claim is held, performed from a frame that does not know whether the claim
+ * is held*. The instance was a release in an inner `finally` followed by a
+ * second, unconditional release in an outer `catch`, so a crashed run could
+ * unlink a claim that by then belonged to a DIFFERENT run, revoking a live
+ * run's exclusion. That is "release a lock you no longer hold", the classic
+ * claim-file defect.
+ *
+ * Two things close it, and both are here because the line deletion alone is
+ * the instance fix and this project fixes the mechanism:
+ *
+ *   1. THIS function reads the claim and unlinks ONLY when the runId is its
+ *      own, which is what `src/lock.ts` does when it verifies holdership
+ *      before mutating. A release from a frame that no longer holds the claim
+ *      is then a no-op rather than a revocation, whatever the call graph does.
+ *   2. The call graph is also fixed, in `runGates`: exactly one release, in
+ *      one `finally`, after every write into the directory. Depending on the
+ *      guard alone would leave the writes happening outside the claimed
+ *      region, which is the other half of the same finding.
+ *
+ * A claim this run does not hold is deliberately LEFT IN PLACE. Deleting
+ * another run's claim is the harm; leaving a stranded one costs a human one
+ * `rm`, and the refusal text says which file and why.
+ */
+export function releaseEvidenceDirectory(evidenceDir: string, runId: string): boolean {
+  const holder = claimHolder(evidenceDir);
+  if (holder !== runId) {
+    return false;
+  }
   try {
     unlinkSync(join(evidenceDir, RUN_CLAIM_FILE));
+    return true;
   } catch {
     // Releasing a claim that is already gone is not a failure.
+    return false;
   }
 }
 
@@ -904,30 +1015,31 @@ function releaseEvidenceDirectory(evidenceDir: string): void {
  * runner enforces exactly this rule on its gates; it now obeys it itself.
  */
 export function runGates(options: RunOptions): RunOutcome {
+  const runId = randomBytes(12).toString("hex");
   try {
-    return runGatesInner(options);
+    return runGatesInner(options, runId);
   } catch (error) {
-    const reason =
-      `the gate runner failed: ${singleLine((error as Error).message ?? String(error))}`;
-    // Best effort: leave a summary saying the run aborted, so a consumer can
-    // tell "the runner died" from "a gate reported red". A failure to write
-    // it must not itself throw out of the catch.
-    try {
-      writeAbortedSummary(options, reason);
-    } catch {
-      // Nothing further can be recorded; the exit code and stderr remain.
-    }
-    releaseEvidenceDirectory(options.evidenceDir);
-    return { exitCode: EXIT_GATE_ERROR, reason };
+    // Reached only for a throw BEFORE the claim was taken, because every
+    // path after it is wrapped inside the claimed region below. Nothing is
+    // written here: without the claim this run does not own the directory.
+    return {
+      runId,
+      exitCode: EXIT_GATE_ERROR,
+      reason: `the gate runner failed: ${singleLine((error as Error).message ?? String(error))}`,
+    };
   }
 }
 
-function writeAbortedSummary(options: RunOptions, reason: string): void {
+function writeAbortedSummary(
+  options: RunOptions,
+  runId: string,
+  reason: string,
+): void {
   if (!isRealDirectory(options.evidenceDir)) {
     return;
   }
   const summary: RunSummary = {
-    runId: "unknown",
+    runId,
     manifest: options.manifestPath,
     manifestSha256: "",
     startedAt: now(),
@@ -957,10 +1069,9 @@ function writeAbortedSummary(options: RunOptions, reason: string): void {
   );
 }
 
-function runGatesInner(options: RunOptions): RunOutcome {
+function runGatesInner(options: RunOptions, runId: string): RunOutcome {
   const cwd = options.cwd ?? process.cwd();
   const startedAt = now();
-  const runId = randomBytes(12).toString("hex");
 
   // The evidence directory is created and CLAIMED before the manifest is
   // loaded, so that every failure from here on leaves a summary a consumer
@@ -969,7 +1080,7 @@ function runGatesInner(options: RunOptions): RunOutcome {
   // is a programmatic consumer of the bundle.
   const dirRefusal = ensureDirectory(options.evidenceDir);
   if (dirRefusal !== undefined) {
-    return { exitCode: EXIT_GATE_ERROR, reason: dirRefusal };
+    return { runId, exitCode: EXIT_GATE_ERROR, reason: dirRefusal };
   }
   const claimRefusal = claimEvidenceDirectory(
     options.evidenceDir,
@@ -977,22 +1088,40 @@ function runGatesInner(options: RunOptions): RunOutcome {
     options.manifestPath,
   );
   if (claimRefusal !== undefined) {
-    // Deliberately no summary and no release: the directory belongs to the
-    // run that holds the claim, and writing into it is the very thing this
-    // refusal exists to prevent.
-    return { exitCode: EXIT_GATE_ERROR, reason: claimRefusal };
+    // Deliberately no write and no release: the directory belongs to the run
+    // that holds the claim, and writing into it is the very thing this
+    // refusal exists to prevent. What the refusal DOES carry is both run
+    // ids, so a caller can tell that any summary.json there is not its own
+    // (CR-861).
+    return { runId, exitCode: EXIT_GATE_ERROR, reason: claimRefusal, refused: true };
   }
 
+  // EVERY WRITE INTO THE DIRECTORY HAPPENS INSIDE THIS BLOCK, and the single
+  // release is its `finally` (CR-860). The aborted summary used to be written
+  // by an OUTER catch, after an inner `finally` had already released, so for
+  // a measured 2.13ms the run wrote into a directory it no longer owned.
   try {
-    const loaded = loadManifest(options.manifestPath);
-    if (!loaded.ok) {
-      const reason = [loaded.reason, ...loaded.diagnostics].join("\n");
-      writeAbortedSummary(options, reason);
-      return { exitCode: EXIT_GATE_ERROR, reason };
+    try {
+      const loaded = loadManifest(options.manifestPath);
+      if (!loaded.ok) {
+        const reason = [loaded.reason, ...loaded.diagnostics].join("\n");
+        writeAbortedSummary(options, runId, reason);
+        return { runId, exitCode: EXIT_GATE_ERROR, reason };
+      }
+      return runClaimedBundle(options, cwd, startedAt, runId, loaded);
+    } catch (error) {
+      const reason =
+        `the gate runner failed: ${singleLine((error as Error).message ?? String(error))}`;
+      // A failure to record must not itself throw out of the catch.
+      try {
+        writeAbortedSummary(options, runId, reason);
+      } catch {
+        // Nothing further can be recorded; the exit code and stderr remain.
+      }
+      return { runId, exitCode: EXIT_GATE_ERROR, reason };
     }
-    return runClaimedBundle(options, cwd, startedAt, runId, loaded);
   } finally {
-    releaseEvidenceDirectory(options.evidenceDir);
+    releaseEvidenceDirectory(options.evidenceDir, runId);
   }
 }
 
@@ -1010,6 +1139,7 @@ function runClaimedBundle(
     const unknown = only.filter((id) => !known.has(id));
     if (unknown.length > 0) {
       return {
+        runId,
         exitCode: EXIT_GATE_ERROR,
         reason: `--only names no such gate: ${unknown.join(", ")}`,
       };
@@ -1105,7 +1235,7 @@ function runClaimedBundle(
   const summaryPath = join(options.evidenceDir, "summary.json");
   const summaryRefusal = writeSummaryAtomically(summaryPath, runId, summary);
   if (summaryRefusal !== undefined) {
-    return { exitCode: EXIT_GATE_ERROR, summary, reason: summaryRefusal };
+    return { runId, exitCode: EXIT_GATE_ERROR, summary, reason: summaryRefusal };
   }
-  return { exitCode, summary, reason };
+  return { runId, exitCode, summary, reason };
 }

@@ -117,6 +117,15 @@ function cmdRun(args: string[]): number {
     phase: flags.phase,
     only: flags.only,
   });
+  // CR-861: THE RUN IDENTIFIES ITSELF, on every outcome, before anything else
+  // it has to say. `summary.json` carried a runId and nothing emitted one, so
+  // a caller could not tell whether the summary it read was its own. That is
+  // what "a bundle is attributable" has to mean to be true, and it is the
+  // property the record-level runId decline rests on: the caller compares the
+  // id printed here with `summary.json`'s, and a mismatch means the bundle is
+  // someone else's. Printed to stdout even when the run fails, so the id is
+  // available to a consumer that captures only one stream.
+  process.stdout.write(`gates: run ${outcome.runId}\n`);
   if (outcome.summary === undefined) {
     process.stderr.write(`tiphys gates run: ${outcome.reason ?? "failed"}\n`);
     return outcome.exitCode;

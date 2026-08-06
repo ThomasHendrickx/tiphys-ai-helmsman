@@ -79,6 +79,7 @@ const runModule = (await import(
     requiredNotApplicable: string[],
     rows: { id: string; status: string }[],
   ) => { exitCode: number; reason: string };
+  releaseEvidenceDirectory: (evidenceDir: string, runId: string) => boolean;
 };
 
 const manifestModule = (await import(
@@ -885,7 +886,14 @@ test("the compiled entry resolves its schema documents and behaves identically t
     );
     assert.equal(fromSource.status, 0, fromSource.stdout + fromSource.stderr);
     assert.equal(fromDist.status, 0, fromDist.stdout + fromDist.stderr);
-    assert.equal(fromDist.stdout, fromSource.stdout);
+    // The runId line is per-run by construction (CR-861), so it is normalised
+    // out of the equivalence comparison and asserted separately. Blanking it
+    // rather than dropping it keeps a deleted line visible as a difference.
+    const withoutRunId = (out: string): string =>
+      out.replace(/^gates: run [0-9a-f]{24}$/m, "gates: run <id>");
+    assert.match(fromSource.stdout, /^gates: run [0-9a-f]{24}$/m);
+    assert.match(fromDist.stdout, /^gates: run [0-9a-f]{24}$/m);
+    assert.equal(withoutRunId(fromDist.stdout), withoutRunId(fromSource.stdout));
     assert.deepEqual(
       readSummary(join(dir, "ev-dist")).counts,
       readSummary(join(dir, "ev-src")).counts,
@@ -2426,4 +2434,284 @@ test("file-absent is met only when nothing is there, and an irregular entry is e
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ================================================================== */
+/* FIX ROUND 2                                                        */
+/* ================================================================== */
+
+/**
+ * CR-860 (MEDIUM). The mechanism: cleanup that is valid only while the claim
+ * is held, performed from a frame that does not know whether it is held. The
+ * instance was a release in an inner `finally` followed by a second,
+ * unconditional release in an outer `catch`, so a crashed run wrote into the
+ * directory for a measured 2.13ms after releasing, and then unlinked whatever
+ * claim was there by that time, which could be a LIVE second run's.
+ *
+ * Two structurally different members:
+ *   (a) release-without-holdership unlinking a FOREIGN claim, which is the
+ *       dangerous state the reviewer named;
+ *   (b) the write happening outside the claimed region at all, checked by
+ *       ordering rather than by racing: after a crash the claim is gone AND
+ *       the aborted summary is present, and the release is holdership-checked
+ *       so the two cannot be reordered into the unsafe form without one of
+ *       these assertions failing.
+ */
+test("a run releases only the claim it holds, and writes nothing after releasing", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-one",
+        command: writeGate(dir, "one", {
+          record: gateRecord("g-one", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+
+    // MEMBER (a): a run CRASHES in a directory whose claim belongs to someone
+    // else by the time it cleans up. Staged directly: the claim file is
+    // swapped for a foreign one while the run is in flight is a race, so the
+    // deterministic equivalent is used, which exercises the same code path.
+    // The run is given a directory it does NOT own and must leave the foreign
+    // claim intact.
+    const foreign = join(dir, "ev-foreign");
+    mkdirSync(foreign, { recursive: true });
+    const foreignClaim = join(foreign, ".tiphys-gate-run.json");
+    const foreignBody = '{"runId":"ffffffffffffffffffffffff","manifest":"other"}\n';
+    writeFileSync(foreignClaim, foreignBody);
+    const refused = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      foreign,
+    ]);
+    assert.notEqual(refused.status, 0);
+    assert.ok(
+      existsSync(foreignClaim),
+      "the refused run unlinked a claim it did not hold",
+    );
+    assert.equal(
+      readFileSync(foreignClaim, "utf8"),
+      foreignBody,
+      "the refused run modified another run's claim",
+    );
+
+    // The same property one level deeper, at the function the finding names:
+    // a release quoting the WRONG runId must be a no-op, and the right one
+    // must actually release. Without both directions this would pass over a
+    // release that never releases anything.
+    assert.equal(runModule.releaseEvidenceDirectory(foreign, "not-mine"), false);
+    assert.ok(existsSync(foreignClaim));
+    assert.equal(
+      runModule.releaseEvidenceDirectory(foreign, "ffffffffffffffffffffffff"),
+      true,
+    );
+    assert.ok(!existsSync(foreignClaim));
+
+    // MEMBER (b): a CRASHING run must leave the directory with the summary
+    // written AND its own claim released. If the write happened after the
+    // release, the claim would already be gone while the file was being
+    // written; the two assertions together pin the order, because a release
+    // that ran first could not then have been holdership-verified.
+    const dist = join(dir, "dist");
+    cpSync(join(repoRoot, "dist"), dist, { recursive: true });
+    rmSync(join(dist, "src", "gates", "schemas", "gate-manifest.schema.json"));
+    const crashed = spawnSync(
+      process.execPath,
+      [
+        join(dist, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-crash"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(crashed.status, 21, crashed.stdout + crashed.stderr);
+    const crashSummary = readSummary(join(dir, "ev-crash"));
+    assert.equal(crashSummary.aborted, true);
+    // The run's OWN claim is released exactly once and is gone.
+    assert.ok(
+      !existsSync(join(dir, "ev-crash", ".tiphys-gate-run.json")),
+      "a crashed run left its own claim behind",
+    );
+    // And the summary it wrote carries its own runId, not "unknown", which is
+    // what makes the aborted bundle attributable to the run that died.
+    assert.match(crashSummary.runId, /^[0-9a-f]{24}$/);
+    assert.match(crashed.stdout, new RegExp(`gates: run ${crashSummary.runId}`));
+
+    // CONTROL: a normal run still releases its claim, or the holdership check
+    // would be a guard that never releases anything.
+    const okRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-ok"),
+    ]);
+    assert.equal(okRun.status, 0, okRun.stdout + okRun.stderr);
+    assert.ok(!existsSync(join(dir, "ev-ok", ".tiphys-gate-run.json")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-861 (MEDIUM). A run refused the directory exits 21 and writes nothing,
+ * which is correct, and used to mean the only statement in the directory
+ * about what happened was a DIFFERENT run's green summary, `aborted: false`,
+ * exit 0. And the runId that "a bundle is attributable" rests on never left
+ * the process, so no caller could tell whether the summary it read was its
+ * own.
+ *
+ * The property witnessed, in the two halves the coordinator named:
+ *   (a) after a refusal, a consumer cannot mistake the surviving bundle for
+ *       the refused run's output;
+ *   (b) a bundle's runId is observable from OUTSIDE the process.
+ */
+test("a refused run identifies itself and cannot be mistaken for the bundle it declined to overwrite", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-one",
+        command: writeGate(dir, "one", {
+          record: gateRecord("g-one", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+
+    // Run 1: a clean green bundle, exactly as the review staged it.
+    const first = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    const firstId = /gates: run ([0-9a-f]{24})/.exec(first.stdout)?.[1];
+    assert.ok(firstId, `no runId on stdout: ${first.stdout}`);
+    // (b) The id a caller was told matches the artifact. This IS attribution.
+    assert.equal(readSummary(evidence).runId, firstId);
+
+    // Plant the stale claim a SIGKILLed run leaves behind.
+    writeFileSync(
+      join(evidence, ".tiphys-gate-run.json"),
+      '{"runId":"deadbeefdeadbeefdeadbeef","manifest":"other"}\n',
+    );
+
+    // Run 2: refused.
+    const second = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(second.status, 21, second.stdout + second.stderr);
+    const secondId = /gates: run ([0-9a-f]{24})/.exec(second.stdout)?.[1];
+    assert.ok(secondId, `a refused run printed no runId: ${second.stdout}`);
+    assert.notEqual(secondId, firstId);
+
+    // (a) The surviving summary is still run 1's, untouched, and the
+    // consumer can SEE that it is not run 2's, because the ids differ.
+    const surviving = readSummary(evidence);
+    assert.equal(surviving.runId, firstId);
+    assert.notEqual(surviving.runId, secondId);
+    assert.equal(surviving.exitCode, 0);
+    assert.equal(surviving.aborted, false);
+
+    // And the refusal says so in words as well as by id, so a human reading
+    // stderr reaches the same conclusion as a consumer comparing ids.
+    assert.match(second.stderr, new RegExp(`This run is ${secondId}`));
+    assert.match(second.stderr, /wrote NOTHING/);
+    assert.match(second.stderr, /deadbeefdeadbeefdeadbeef/);
+    assert.match(second.stderr, /not a report about this invocation/);
+
+    // CONTROL: with the claim removed the same invocation succeeds and its
+    // printed id becomes the summary's, so the refusal is about ownership
+    // and not about the directory.
+    rmSync(join(evidence, ".tiphys-gate-run.json"));
+    const third = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(third.status, 0, third.stdout + third.stderr);
+    const thirdId = /gates: run ([0-9a-f]{24})/.exec(third.stdout)?.[1];
+    assert.equal(readSummary(evidence).runId, thirdId);
+    assert.notEqual(thirdId, firstId);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-862 (LOW). `decideAggregate`'s stated contract is to be total over
+ * states the runner cannot currently produce, and its success assertion was
+ * `counts.green === 0`, which is FALSE for NaN, undefined, a missing key and
+ * a negative number. All four exited 0. The six probes below are the
+ * reviewer's, verbatim.
+ */
+test("decideAggregate is total over counts that are not non-negative integers", () => {
+  const base = {
+    declared: 1,
+    applicable: 1,
+    verdict: 1,
+    green: 1,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  const without = (name: string): Record<string, number> => {
+    const copy: Record<string, number> = { ...base };
+    delete copy[name];
+    return copy;
+  };
+  const probes: [string, Record<string, number>][] = [
+    ["NaN green", { ...base, green: Number.NaN }],
+    ["NaN verdict", { ...base, verdict: Number.NaN }],
+    ["negative green", { ...base, green: -1 }],
+    ["undefined green", { ...base, green: undefined as unknown as number }],
+    ["missing verdict key", without("verdict")],
+    ["missing green key", without("green")],
+    ["fractional green", { ...base, green: 0.5 }],
+    ["Infinity green", { ...base, green: Number.POSITIVE_INFINITY }],
+  ];
+  for (const [name, counts] of probes) {
+    const decided = runModule.decideAggregate(counts, [], []);
+    assert.notEqual(decided.exitCode, 0, `${name} exited 0`);
+    assert.match(decided.reason, /internal inconsistency/, name);
+    assert.doesNotMatch(decided.reason, /every applicable gate is green/, name);
+  }
+
+  // CONTROL: the consistent shape still exits 0, or this is a guard that
+  // rejects everything.
+  const good = runModule.decideAggregate(base, [], []);
+  assert.equal(good.exitCode, 0);
+  assert.equal(good.reason, "every applicable gate is green");
 });
