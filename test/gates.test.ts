@@ -1,0 +1,3212 @@
+import { strict as assert } from "node:assert";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+/**
+ * M2-P1: the gate contract, manifest, validator and runner.
+ *
+ * TWO THINGS ABOUT WHAT THIS FILE MAY ASSERT ON.
+ *
+ * 1. DR-0013 clause 6 promises that M3-P1 re-runs "all existing M2
+ *    validation tests" against Ajv. That is only an engine swap rather than
+ *    a test rewrite if this file asserts on the DIAGNOSTIC CONTRACT and on
+ *    nothing else: the line shape `INVALID <json-pointer> <message>`, the
+ *    pointers, the message texts fixed by the plan, and the order. No
+ *    assertion here reads any string the validator produces about its own
+ *    internals. The single place a non-contract string is touched is the
+ *    closed-keyword LOAD failure, where the assertion is that the offending
+ *    KEYWORD NAME appears; the keyword name is input data, not wording, and
+ *    criterion 10 requires the failure to name it.
+ * 2. Every dangerous state staged below is the dangerous state, not the
+ *    absent feature. The named pipes are made with `mkfifo`, the vacuous
+ *    green is a real gate exiting 0, and the crash is a real uncaught throw.
+ */
+
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
+const distEntry = join(repoRoot, "dist", "bin", "tiphys.js");
+
+interface Diagnostic {
+  pointer: string;
+  message: string;
+}
+const validateModule = (await import(
+  new URL("../src/gates/validate.ts", import.meta.url).href
+)) as {
+  loadSchema: (
+    document: unknown,
+    name: string,
+  ) => { ok: true; schema: Record<string, unknown> } | { ok: false; reason: string };
+  validate: (
+    schema: Record<string, unknown>,
+    instance: unknown,
+  ) => Diagnostic[];
+  validateToLines: (
+    schema: Record<string, unknown>,
+    instance: unknown,
+  ) => string[];
+};
+
+const resultModule = (await import(
+  new URL("../src/gates/result.ts", import.meta.url).href
+)) as {
+  makeGateResult: (fields: Record<string, unknown>) => {
+    status: string;
+    units: number;
+    vacuous?: boolean;
+    detail: string;
+  };
+};
+
+const runModule = (await import(
+  new URL("../src/gates/run.ts", import.meta.url).href
+)) as {
+  decideAggregate: (
+    counts: Record<string, number>,
+    requiredNotApplicable: string[],
+    rows: { id: string; status: string }[],
+  ) => { exitCode: number; reason: string };
+  releaseEvidenceDirectory: (evidenceDir: string, runId: string) => boolean;
+};
+
+const manifestModule = (await import(
+  new URL("../src/gates/manifest.ts", import.meta.url).href
+)) as {
+  validateManifestDocument: (document: unknown) => string[];
+  validateResultDocument: (document: unknown) => string[];
+  manifestSchema: () => Record<string, unknown>;
+};
+
+function scratch(): string {
+  return mkdtempSync(join(tmpdir(), "tiphys-gates-"));
+}
+
+function runCli(args: string[], cwd?: string) {
+  return spawnSync(process.execPath, [sourceEntry, ...args], {
+    encoding: "utf8",
+    cwd: cwd ?? repoRoot,
+  });
+}
+
+interface GateScript {
+  /** The record to write, or undefined to write nothing at all. */
+  record?: Record<string, unknown>;
+  exit: number;
+  /** Throw before exiting: the real uncaught-exception shape. */
+  crash?: boolean;
+  /** Busy-wait before exiting, so a second runner can contend. */
+  sleepMs?: number;
+}
+
+const FIXED_START = "2026-08-06T00:00:00.000Z";
+const FIXED_END = "2026-08-06T00:00:01.000Z";
+
+function gateRecord(
+  gate: string,
+  status: string,
+  units: number,
+): Record<string, unknown> {
+  return {
+    gate,
+    status,
+    units,
+    unitLabel: "fixture units",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: `fixture gate ${gate} reporting ${status}`,
+    evidence: [],
+  };
+}
+
+/** Write a fixture gate as a real program, and return its argv. */
+function writeGate(dir: string, name: string, spec: GateScript): string[] {
+  const path = join(dir, `${name}.mjs`);
+  const body = [
+    'import { writeFileSync } from "node:fs";',
+    "const args = process.argv.slice(2);",
+    'const at = args.indexOf("--result");',
+    `const record = ${JSON.stringify(spec.record ?? null)};`,
+    "if (record !== null && at >= 0) {",
+    '  writeFileSync(args[at + 1], JSON.stringify(record, null, 2) + "\\n");',
+    "}",
+    spec.sleepMs === undefined
+      ? ""
+      : `const until = Date.now() + ${String(spec.sleepMs)}; while (Date.now() < until) {}`,
+    spec.crash === true
+      ? 'throw new Error("uncaught exception inside the fixture gate");'
+      : "",
+    `process.exit(${String(spec.exit)});`,
+  ].join("\n");
+  writeFileSync(path, `${body}\n`);
+  return ["node", path];
+}
+
+function writeManifest(
+  dir: string,
+  gates: unknown[],
+  name = "manifest.json",
+): string {
+  const path = join(dir, name);
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      { version: 1, gates, destructiveCommands: ["pool destroy", "teardown"] },
+      null,
+      2,
+    )}\n`,
+  );
+  return path;
+}
+
+interface Summary {
+  runId: string;
+  aborted: boolean;
+  counts: Record<string, number>;
+  reason: string;
+  exitCode: number;
+  requiredNotApplicable: string[];
+  gates: {
+    id: string;
+    status: string;
+    detail: string;
+    vacuous: boolean;
+    applicable: boolean;
+    units: number;
+  }[];
+}
+
+function readSummary(evidence: string): Summary {
+  return JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as Summary;
+}
+
+function mkfifo(path: string): void {
+  const made = spawnSync("mkfifo", [path], { encoding: "utf8" });
+  assert.equal(made.status, 0, `mkfifo ${path} failed: ${made.stderr}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Criterion 2: the four statuses and the summary arithmetic           */
+/* ------------------------------------------------------------------ */
+
+test("the runner maps four fixture gates onto green red not-applicable and error with matching summary counts", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-green",
+        command: writeGate(dir, "green", {
+          record: gateRecord("g-green", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+      {
+        id: "g-red",
+        command: writeGate(dir, "red", {
+          record: gateRecord("g-red", "red", 2),
+          exit: 1,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+      {
+        id: "g-absent",
+        command: writeGate(dir, "never", {
+          record: gateRecord("g-absent", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+        precondition: {
+          id: "needs-inventory",
+          kind: "file-exists",
+          path: join(dir, "no-such-inventory.json"),
+        },
+      },
+      {
+        id: "g-error",
+        command: writeGate(dir, "error", {
+          record: gateRecord("g-error", "error", 0),
+          exit: 21,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+
+    const records = readdirSync(evidence)
+      .filter((name) => existsSync(join(evidence, name, "result.json")))
+      .sort();
+    assert.deepEqual(records, ["g-absent", "g-error", "g-green", "g-red"]);
+
+    const byGate = new Map(
+      records.map((id) => [
+        id,
+        JSON.parse(
+          readFileSync(join(evidence, id, "result.json"), "utf8"),
+        ) as { status: string },
+      ]),
+    );
+    assert.equal(byGate.get("g-green")?.status, "green");
+    assert.equal(byGate.get("g-red")?.status, "red");
+    assert.equal(byGate.get("g-absent")?.status, "not-applicable");
+    assert.equal(byGate.get("g-error")?.status, "error");
+
+    const summary = readSummary(evidence);
+    assert.deepEqual(summary.counts, {
+      declared: 4,
+      applicable: 3,
+      verdict: 2,
+      green: 1,
+      red: 1,
+      "not-applicable": 1,
+      error: 1,
+      vacuous: 0,
+    });
+    // error is the total, vacuous a strict subset of it (M2R-021).
+    const errorRecords = summary.gates.filter((g) => g.status === "error");
+    assert.equal(summary.counts["error"], errorRecords.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 3: the all-green bundle                                    */
+/* ------------------------------------------------------------------ */
+
+test("a manifest of only the green gate exits 0 with applicable 1 and vacuous 0", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-green",
+        command: writeGate(dir, "green", {
+          record: gateRecord("g-green", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const summary = readSummary(evidence);
+    assert.equal(summary.counts["applicable"], 1);
+    assert.equal(summary.counts["green"], 1);
+    assert.equal(summary.counts["vacuous"], 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 4: M2-C-2, the vacuous green, both directions              */
+/* ------------------------------------------------------------------ */
+
+test("a gate exiting 0 with units 0 is recorded error and counted vacuous, and units 1 is green", () => {
+  const dir = scratch();
+  try {
+    for (const units of [0, 1]) {
+      const evidence = join(dir, `evidence-${String(units)}`);
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "g-claim",
+            command: writeGate(dir, `claim-${String(units)}`, {
+              // The DANGEROUS state: a gate that genuinely exits 0 and
+              // genuinely claims green, having examined nothing.
+              record: gateRecord("g-claim", "green", units),
+              exit: 0,
+            }),
+            unitLabel: "fixture units",
+            applicability: "required",
+          },
+        ],
+        `manifest-${String(units)}.json`,
+      );
+      const result = runCli([
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        evidence,
+      ]);
+      const summary = readSummary(evidence);
+      const record = JSON.parse(
+        readFileSync(join(evidence, "g-claim", "result.json"), "utf8"),
+      ) as { status: string; vacuous?: boolean };
+
+      if (units === 0) {
+        assert.notEqual(result.status, 0);
+        assert.equal(record.status, "error");
+        assert.equal(record.vacuous, true);
+        assert.equal(summary.counts["vacuous"], 1);
+        assert.equal(summary.counts["error"], 1);
+        assert.equal(summary.counts["green"], 0);
+      } else {
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.equal(record.status, "green");
+        assert.equal(summary.counts["vacuous"], 0);
+        assert.equal(summary.counts["green"], 1);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 5: required versus conditional, both directions            */
+/* ------------------------------------------------------------------ */
+
+test("a required gate with an unmet precondition is not-applicable and fails the run, conditional does not", () => {
+  const dir = scratch();
+  try {
+    for (const applicability of ["required", "conditional"]) {
+      const evidence = join(dir, `evidence-${applicability}`);
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "g-green",
+            command: writeGate(dir, "green", {
+              record: gateRecord("g-green", "green", 1),
+              exit: 0,
+            }),
+            unitLabel: "fixture units",
+            applicability: "required",
+          },
+          {
+            id: "g-gated",
+            command: writeGate(dir, "gated", {
+              record: gateRecord("g-gated", "green", 1),
+              exit: 0,
+            }),
+            unitLabel: "fixture units",
+            applicability,
+            precondition: {
+              id: "needs-config",
+              kind: "file-exists",
+              path: join(dir, "absent-config.json"),
+            },
+          },
+        ],
+        `manifest-${applicability}.json`,
+      );
+      const result = runCli([
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        evidence,
+      ]);
+      const summary = readSummary(evidence);
+      assert.equal(summary.counts["not-applicable"], 1);
+      if (applicability === "required") {
+        assert.notEqual(result.status, 0);
+        assert.match(summary.reason, /g-gated/);
+      } else {
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 6: a precondition that cannot be evaluated is error         */
+/* ------------------------------------------------------------------ */
+
+test("a command-exit-zero precondition whose command does not exist is error, never not-applicable", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-probe",
+        command: writeGate(dir, "probe", {
+          record: gateRecord("g-probe", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "conditional",
+        precondition: {
+          id: "needs-tool",
+          kind: "command-exit-zero",
+          command: ["tiphys-no-such-program-9f3a", "--version"],
+        },
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(result.status, 0);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "g-probe", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "error");
+    assert.notEqual(record.status, "not-applicable");
+    assert.notEqual(record.status, "green");
+    assert.match(record.detail, /tiphys-no-such-program-9f3a/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 7: a crash is not a refutation                             */
+/* ------------------------------------------------------------------ */
+
+test("a gate that throws and exits 1 without a record is error, not red", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-crash",
+        // Node exits 1 on an uncaught exception, which collides exactly
+        // with the red code. The dangerous state is that collision.
+        command: writeGate(dir, "crash", { exit: 1, crash: true }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(result.status, 0);
+    const summary = readSummary(evidence);
+    assert.equal(summary.counts["error"], 1);
+    assert.equal(summary.counts["red"], 0);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "g-crash", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "error");
+    assert.match(record.detail, /without writing a result record/);
+    // The gate really did crash the way the dangerous state requires.
+    const stderr = readFileSync(join(evidence, "g-crash", "stderr.txt"), "utf8");
+    assert.match(stderr, /uncaught exception inside the fixture gate/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 8: a missing run parameter is error, both directions       */
+/* ------------------------------------------------------------------ */
+
+function scratchRepo(dir: string): { base: string } {
+  const git = (args: string[]) => {
+    const result = spawnSync("git", args, {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Tiphys test",
+        GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+        GIT_COMMITTER_NAME: "Tiphys test",
+        GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+      },
+    });
+    assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+    return result.stdout.trim();
+  };
+  git(["init", "--quiet", "-b", "main"]);
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "src", "start.ts"), "export const start = 1;\n");
+  git(["add", "-A"]);
+  git(["commit", "--quiet", "-m", "base"]);
+  const base = git(["rev-parse", "HEAD"]);
+  writeFileSync(join(dir, "src", "changed.ts"), "export const changed = 2;\n");
+  git(["add", "-A"]);
+  git(["commit", "--quiet", "-m", "head"]);
+  return { base };
+}
+
+test("a diff-touches gate without --base is error and with --base yields its real verdict", () => {
+  const dir = scratch();
+  try {
+    const { base } = scratchRepo(dir);
+    const gateCommand = writeGate(dir, "diffgate", {
+      record: gateRecord("g-diff", "green", 4),
+      exit: 0,
+    });
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-diff",
+        command: gateCommand,
+        unitLabel: "fixture units",
+        applicability: "required",
+        precondition: {
+          id: "touches-src",
+          kind: "diff-touches",
+          paths: ["src/"],
+        },
+      },
+    ]);
+
+    // DIRECTION 1: no --base. Not evaluable, therefore error, never
+    // not-applicable and never green (M2-C-3, M2R-003).
+    const without = runCli(
+      ["gates", "run", "--manifest", manifest, "--evidence", join(dir, "ev-without")],
+      dir,
+    );
+    assert.notEqual(without.status, 0);
+    const withoutRecord = JSON.parse(
+      readFileSync(join(dir, "ev-without", "g-diff", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(withoutRecord.status, "error");
+    assert.match(withoutRecord.detail, /--base/);
+
+    // DIRECTION 2: with --base, the gate's real verdict.
+    const withBase = runCli(
+      [
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-with"),
+        "--base",
+        base,
+        "--head",
+        "HEAD",
+      ],
+      dir,
+    );
+    assert.equal(withBase.status, 0, withBase.stdout + withBase.stderr);
+    const withRecord = JSON.parse(
+      readFileSync(join(dir, "ev-with", "g-diff", "result.json"), "utf8"),
+    ) as { status: string };
+    assert.equal(withRecord.status, "green");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 9: zero applicable gates is an error                       */
+/* ------------------------------------------------------------------ */
+
+test("a manifest with no gates and a manifest of only not-applicable gates both exit nonzero with no applicable gate", () => {
+  const dir = scratch();
+  try {
+    const empty = writeManifest(dir, [], "empty.json");
+    const emptyRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      empty,
+      "--evidence",
+      join(dir, "ev-empty"),
+    ]);
+    assert.notEqual(emptyRun.status, 0);
+    assert.equal(readSummary(join(dir, "ev-empty")).reason, "no applicable gate");
+
+    const allGated = writeManifest(
+      dir,
+      [
+        {
+          id: "g-one",
+          command: writeGate(dir, "one", {
+            record: gateRecord("g-one", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "fixture units",
+          applicability: "conditional",
+          precondition: {
+            id: "needs-a",
+            kind: "file-exists",
+            path: join(dir, "absent-a.json"),
+          },
+        },
+        {
+          id: "g-two",
+          command: writeGate(dir, "two", {
+            record: gateRecord("g-two", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "fixture units",
+          applicability: "conditional",
+          precondition: {
+            id: "needs-b",
+            kind: "file-exists",
+            path: join(dir, "absent-b.json"),
+          },
+        },
+      ],
+      "all-gated.json",
+    );
+    const gatedRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      allGated,
+      "--evidence",
+      join(dir, "ev-gated"),
+    ]);
+    assert.notEqual(gatedRun.status, 0);
+    const summary = readSummary(join(dir, "ev-gated"));
+    assert.equal(summary.reason, "no applicable gate");
+    assert.equal(summary.counts["applicable"], 0);
+    assert.equal(summary.counts["not-applicable"], 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 10: the diagnostic contract                                */
+/* ------------------------------------------------------------------ */
+
+test("a manifest missing a gate id is rejected naming the field as INVALID with a json pointer", () => {
+  const lines = manifestModule.validateManifestDocument({
+    version: 1,
+    gates: [
+      { command: ["node", "x.mjs"], unitLabel: "u", applicability: "required" },
+    ],
+    destructiveCommands: [],
+  });
+  assert.deepEqual(lines, [
+    "INVALID #/gates/0/id required property id is missing",
+  ]);
+});
+
+test("a result record with a status outside the enum is rejected as INVALID naming the pointer", () => {
+  const lines = manifestModule.validateResultDocument({
+    gate: "g-one",
+    status: "mostly-fine",
+    units: 1,
+    unitLabel: "u",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: "",
+    evidence: [],
+  });
+  assert.deepEqual(lines, [
+    'INVALID #/status value "mostly-fine" is not one of the permitted values ' +
+      '"green", "red", "not-applicable", "error"',
+  ]);
+});
+
+test("loading a schema with a keyword outside the closed set fails naming the keyword and validates nothing", () => {
+  // `oneOf` is real JSON Schema and this validator does not implement it.
+  // Silently ignoring it would report a document valid while never having
+  // checked the constraint that mattered.
+  const loaded = validateModule.loadSchema(
+    {
+      type: "object",
+      properties: {
+        shape: { oneOf: [{ type: "string" }, { type: "number" }] },
+      },
+    },
+    "fixture.schema.json",
+  );
+  assert.equal(loaded.ok, false);
+  assert.match(loaded.ok === false ? loaded.reason : "", /oneOf/);
+
+  // A second, structurally different member of the same class: a keyword at
+  // the document root rather than nested, and one that constrains rather
+  // than composes.
+  const alsoLoaded = validateModule.loadSchema(
+    { type: "string", maxLength: 5 },
+    "fixture-two.schema.json",
+  );
+  assert.equal(alsoLoaded.ok, false);
+  assert.match(alsoLoaded.ok === false ? alsoLoaded.reason : "", /maxLength/);
+
+  // And the closed set itself still loads, so the refusal is about the
+  // keyword and not about loading in general.
+  const good = validateModule.loadSchema(
+    { type: "object", required: ["a"], properties: { a: { type: "string" } } },
+    "fixture-three.schema.json",
+  );
+  assert.equal(good.ok, true);
+});
+
+test("three simultaneous violations produce the same three INVALID lines in the same order across ten runs", () => {
+  const document = {
+    // 1. version is missing entirely.
+    gates: [
+      // 2. the gate has no id.
+      { command: ["node", "x.mjs"], unitLabel: "u", applicability: "required" },
+    ],
+    // 3. destructiveCommands is a string where an array is required.
+    destructiveCommands: "pool destroy",
+  };
+  const expected = [
+    "INVALID #/destructiveCommands expected type array but found string",
+    "INVALID #/gates/0/id required property id is missing",
+    "INVALID #/version required property version is missing",
+  ];
+  // Member 1 of the ordering class: the SCHEMA WALK's own sort, reached by
+  // calling the validator directly. Through validateManifestDocument this
+  // sort is invisible, because that function re-sorts the merged list, so a
+  // test that only went through the manifest path would stay green while the
+  // contract's sort was deleted (work history W15b).
+  const direct = validateModule.validateToLines(
+    manifestModule.manifestSchema(),
+    document,
+  );
+  assert.deepEqual(direct, expected);
+
+  const runs: string[][] = [];
+  for (let i = 0; i < 10; i += 1) {
+    runs.push(manifestModule.validateManifestDocument(document));
+  }
+  for (const run of runs) {
+    assert.deepEqual(run, expected);
+  }
+
+  // THE ORDER IS THE CONTRACT, NOT THE TRAVERSAL, and the fixture above
+  // cannot show that on its own: its natural traversal order for the schema
+  // walk happens to be #/version, #/destructiveCommands, #/gates/0/id, so
+  // only the FINAL SORT produces the expected list. That was established by
+  // red-witnessing, not by reading (see the work history's W15).
+  //
+  // A second, structurally different member, because one witness is not a
+  // class: this document's two failures come from DIFFERENT PRODUCERS, the
+  // schema walk and the kind-specific precondition check that cannot be
+  // expressed in the closed keyword set. They are concatenated in producer
+  // order and must come out in pointer order, so the merge sort is what this
+  // member measures and the schema walk's own sort cannot supply it.
+  const twoProducers = {
+    version: 1,
+    gates: [
+      {
+        id: "a-gate",
+        command: ["node", "x.mjs"],
+        unitLabel: "u",
+        applicability: "required",
+        precondition: { id: "p", kind: "file-exists" },
+      },
+      { command: ["node", "y.mjs"], unitLabel: "u", applicability: "required" },
+    ],
+    destructiveCommands: [],
+  };
+  const expectedTwo = [
+    "INVALID #/gates/0/precondition/path required property path is missing",
+    "INVALID #/gates/1/id required property id is missing",
+  ];
+  for (let i = 0; i < 10; i += 1) {
+    assert.deepEqual(
+      manifestModule.validateManifestDocument(twoProducers),
+      expectedTwo,
+    );
+  }
+});
+
+test("the compiled entry resolves its schema documents and behaves identically to the source entry", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const command = writeGate(dir, "green", {
+      record: gateRecord("g-green", "green", 3),
+      exit: 0,
+    });
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-green",
+        command,
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const fromSource = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-src"),
+    ]);
+    const fromDist = spawnSync(
+      process.execPath,
+      [
+        distEntry,
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-dist"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(fromSource.status, 0, fromSource.stdout + fromSource.stderr);
+    assert.equal(fromDist.status, 0, fromDist.stdout + fromDist.stderr);
+    // The runId line is per-run by construction (CR-861), so it is normalised
+    // out of the equivalence comparison and asserted separately. Blanking it
+    // rather than dropping it keeps a deleted line visible as a difference.
+    const withoutRunId = (out: string): string =>
+      out.replace(/^gates: run [0-9a-f]{24}$/m, "gates: run <id>");
+    assert.match(fromSource.stdout, /^gates: run [0-9a-f]{24}$/m);
+    assert.match(fromDist.stdout, /^gates: run [0-9a-f]{24}$/m);
+    assert.equal(withoutRunId(fromDist.stdout), withoutRunId(fromSource.stdout));
+    assert.deepEqual(
+      readSummary(join(dir, "ev-dist")).counts,
+      readSummary(join(dir, "ev-src")).counts,
+    );
+
+    // The compiled entry really is resolving schemas out of dist/, which is
+    // the half that would silently break if the build's copy step were
+    // dropped: self-check names the documents it validated.
+    const selfCheck = spawnSync(
+      process.execPath,
+      [
+        distEntry,
+        "gates",
+        "self-check",
+        "--manifest",
+        join(repoRoot, "gates.manifest.json"),
+        "--result",
+        join(dir, "self-check.json"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(selfCheck.status, 0, selfCheck.stdout + selfCheck.stderr);
+    assert.match(selfCheck.stdout, /dist[/]src[/]gates[/]schemas/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("npm pack output contains both schema documents", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  // --ignore-scripts deliberately: without it npm pack runs prepack, which
+  // rebuilds dist/ underneath a suite whose other files are reading it.
+  // The listing then describes the dist/ the build produced, which is the
+  // artifact the criterion is about.
+  const packed = spawnSync(
+    "npm",
+    ["pack", "--dry-run", "--json", "--ignore-scripts"],
+    { encoding: "utf8", cwd: repoRoot },
+  );
+  assert.equal(packed.status, 0, packed.stderr);
+  const listing = JSON.parse(packed.stdout) as { files: { path: string }[] }[];
+  const paths = (listing[0]?.files ?? []).map((file) => file.path);
+  assert.ok(
+    paths.includes("dist/src/gates/schemas/gate-manifest.schema.json"),
+    paths.join("\n"),
+  );
+  assert.ok(
+    paths.includes("dist/src/gates/schemas/gate-result.schema.json"),
+    paths.join("\n"),
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 12: usage                                                  */
+/* ------------------------------------------------------------------ */
+
+test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () => {
+  const result = runCli(["gates", "run", "--no-such-flag", "x"]);
+  assert.equal(result.status, 64);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /^usage: tiphys gates /m);
+
+  // ISOLATED. The invocation above is missing --manifest and --evidence too,
+  // so a runner that ignored unknown flags entirely would still exit 64 by a
+  // different route, and this test would guard nothing about unknown flags
+  // (work history W23). Here everything required is present and the ONLY
+  // fault is the unknown flag.
+  const dir = scratch();
+  try {
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-green",
+        command: writeGate(dir, "green", {
+          record: gateRecord("g-green", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const complete = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev"),
+    ]);
+    assert.equal(complete.status, 0, complete.stdout + complete.stderr);
+
+    const withExtra = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev2"),
+      "--no-such-flag",
+      "x",
+    ]);
+    assert.equal(withExtra.status, 64, withExtra.stdout + withExtra.stderr);
+    assert.match(withExtra.stderr, /^usage: tiphys gates /m);
+
+    // A value flag with no value is the same class and a different member.
+    const danglingValue = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+    ]);
+    assert.equal(danglingValue.status, 64);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 13: C-2 and C-3, structurally                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The grep runs over CODE, not prose. A module that explains constraint C-2
+ * has to be able to name what it does not do, and a check that a comment
+ * defeats is a check nobody can write honestly around. Stripping is
+ * deliberately conservative: block comments, and line comments only where
+ * the line begins with one, so no code line is ever truncated and the strip
+ * cannot manufacture a false negative by eating half a statement.
+ *
+ * The strip is itself controlled: after stripping, each file must still
+ * contain a marker that is definitely code. A stripper that deleted
+ * everything would otherwise turn this guard permanently green, which is
+ * the failure mode the whole milestone is about.
+ */
+function codeOnly(body: string): string {
+  return body
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+}
+
+test("the gate runner uses no pid, process liveness, signals or proc", () => {
+  const files = [
+    ...readdirSync(join(repoRoot, "src", "gates"))
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => join(repoRoot, "src", "gates", name)),
+    join(repoRoot, "src", "commands", "gates.ts"),
+  ];
+  assert.ok(
+    files.length >= 6,
+    `expected the gate modules, found ${String(files.length)}`,
+  );
+  const forbidden = [
+    /detached\s*:/,
+    /\bunref\s*\(/,
+    /process\.kill/,
+    /[/]proc\b/,
+    /\bpid\b/,
+    /\bkill\s*\(/,
+    /SIGTERM|SIGKILL|SIGINT/,
+  ];
+  for (const file of files) {
+    const code = codeOnly(readFileSync(file, "utf8"));
+    // The control on the strip: this is code, and it survived.
+    assert.match(
+      code,
+      /export|import/,
+      `${file} lost all its code to the comment strip`,
+    );
+    for (const pattern of forbidden) {
+      assert.doesNotMatch(code, pattern, `${file} matched ${String(pattern)}`);
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 16: M2-C-6, three placements, both directions              */
+/* ------------------------------------------------------------------ */
+
+test("a named pipe at the manifest path, a precondition target, or a record path is error naming the type and returns", () => {
+  const dir = scratch();
+  try {
+    /* --- Placement 1: the manifest path itself --- */
+    const fifoManifest = join(dir, "fifo-manifest.json");
+    mkfifo(fifoManifest);
+    // Every assertion after this line only executes because the command
+    // RETURNED. A runner that opened the pipe would block in the kernel and
+    // the harness would report a timeout code instead of a failed assertion.
+    const one = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fifoManifest,
+      "--evidence",
+      join(dir, "ev-1"),
+    ]);
+    assert.notEqual(one.status, 0);
+    assert.match(one.stderr, /fifo-manifest\.json/);
+    assert.match(one.stderr, /named pipe/);
+
+    /* --- Placement 2: a file-exists precondition target --- */
+    const fifoTarget = join(dir, "fifo-inventory.json");
+    mkfifo(fifoTarget);
+    const gateCommand = writeGate(dir, "guarded", {
+      record: gateRecord("g-guarded", "green", 2),
+      exit: 0,
+    });
+    const gatedManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-guarded",
+          command: gateCommand,
+          unitLabel: "fixture units",
+          applicability: "required",
+          precondition: {
+            id: "needs-inventory",
+            kind: "file-exists",
+            path: fifoTarget,
+          },
+        },
+      ],
+      "gated.json",
+    );
+    const two = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      gatedManifest,
+      "--evidence",
+      join(dir, "ev-2"),
+    ]);
+    assert.notEqual(two.status, 0);
+    const twoRecord = JSON.parse(
+      readFileSync(join(dir, "ev-2", "g-guarded", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(twoRecord.status, "error");
+    assert.match(twoRecord.detail, /fifo-inventory\.json/);
+    assert.match(twoRecord.detail, /named pipe/);
+
+    /* --- Placement 3: the path the gate writes its record to --- */
+    const evidence3 = join(dir, "ev-3");
+    mkdirSync(join(evidence3, "g-plain"), { recursive: true });
+    mkfifo(join(evidence3, "g-plain", "result.json"));
+    const plainManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-plain",
+          command: writeGate(dir, "plain", {
+            record: gateRecord("g-plain", "green", 2),
+            exit: 0,
+          }),
+          unitLabel: "fixture units",
+          applicability: "required",
+        },
+      ],
+      "plain.json",
+    );
+    const three = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      plainManifest,
+      "--evidence",
+      evidence3,
+    ]);
+    assert.notEqual(three.status, 0);
+    const summary3 = readSummary(evidence3);
+    assert.equal(summary3.counts["error"], 1);
+    assert.match(summary3.gates[0]?.detail ?? "", /named pipe/);
+    assert.match(summary3.gates[0]?.detail ?? "", /result\.json/);
+
+    /* --- BOTH DIRECTIONS: the same three paths as regular files --- */
+    rmSync(fifoManifest);
+    rmSync(fifoTarget);
+    writeFileSync(fifoTarget, "{}\n");
+    rmSync(join(evidence3, "g-plain", "result.json"));
+
+    const twoAgain = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      gatedManifest,
+      "--evidence",
+      join(dir, "ev-2b"),
+    ]);
+    assert.equal(twoAgain.status, 0, twoAgain.stdout + twoAgain.stderr);
+
+    const threeAgain = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      plainManifest,
+      "--evidence",
+      evidence3,
+    ]);
+    assert.equal(threeAgain.status, 0, threeAgain.stdout + threeAgain.stderr);
+
+    // Placement 1's other direction: a real manifest file at a real path.
+    const oneAgain = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      plainManifest,
+      "--evidence",
+      join(dir, "ev-1b"),
+    ]);
+    assert.equal(oneAgain.status, 0, oneAgain.stdout + oneAgain.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Step 9: the CI wiring, guarded BEHAVIOURALLY                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * MECHANISMS.md, "Asserting a CI step is wired": assert BEHAVIOUR, not
+ * text. A text assertion catches deletion and misses defanging, and M1-P6
+ * paid four rounds for six confirmed instances of exactly that (`exit 1`
+ * changed to `exit 0`, two placements of `|| true`, a step-level
+ * `if: false`, a quoted YAML key, and the step moved into a job the fan-in
+ * does not need).
+ *
+ * So the step's own command is EXTRACTED from the workflow and EXECUTED,
+ * and the assertions are on what it does. Two structurally different
+ * dangerous states redden this test:
+ *
+ *   (a) the step is deleted: the extraction finds fewer than two bundle
+ *       steps and the count assertion fails;
+ *   (b) the step's text is PRESERVED and its meaning inverted, for example
+ *       `|| true` appended inside the folded block or `exit 0` added: the
+ *       command still contains every string a text assertion would look
+ *       for, and the falsifiability arm below goes green, which fails.
+ *
+ * The extraction itself is controlled rather than trusted: the extracted
+ * string must still be the runner invocation, because an extractor that
+ * silently returned "" would make this test pass over nothing at all.
+ *
+ * WHAT THIS DOES NOT COVER, stated rather than implied. It does not read
+ * GitHub's evaluation of `if:`, job-level or workflow-level `defaults`,
+ * `continue-on-error`, or branch protection; none of those is readable from
+ * this tree. Criterion 14's check-run and ruleset evidence is the API-side
+ * half and is CI-deferred (`gh` is absent locally, CLAUDE.md warning 6).
+ */
+function bundleStepCommands(): string[] {
+  const yaml = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
+    "utf8",
+  ).split("\n");
+  const commands: string[] = [];
+  for (let i = 0; i < yaml.length; i += 1) {
+    const line = yaml[i] as string;
+    if (!/^\s*- name: M2 gate bundle /.test(line)) {
+      continue;
+    }
+    const stepIndent = (/^(\s*)- /.exec(line)?.[1] ?? "").length;
+    let command: string | undefined;
+    for (let j = i + 1; j < yaml.length; j += 1) {
+      const inner = yaml[j] as string;
+      const indent = inner.search(/\S/);
+      if (indent !== -1 && indent <= stepIndent) {
+        break;
+      }
+      if (!/^\s*run: >\s*$/.test(inner)) {
+        continue;
+      }
+      const parts: string[] = [];
+      for (let k = j + 1; k < yaml.length; k += 1) {
+        const folded = yaml[k] as string;
+        const foldedIndent = folded.search(/\S/);
+        if (foldedIndent === -1 || foldedIndent <= stepIndent) {
+          break;
+        }
+        parts.push(folded.trim());
+      }
+      command = parts.join(" ");
+      break;
+    }
+    if (command !== undefined) {
+      commands.push(command);
+    }
+  }
+  return commands;
+}
+
+test("the workflow's gate bundle step runs the gate runner and is able to fail", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const commands = bundleStepCommands();
+  // Dangerous state (a): a deleted step lands here.
+  assert.equal(
+    commands.length,
+    2,
+    `expected the pull-request and push bundle steps, found ${String(commands.length)}`,
+  );
+  // The control on the extractor, not the guard: an extractor that
+  // returned nothing would otherwise make everything below vacuous.
+  for (const command of commands) {
+    assert.match(command, /node dist[/]bin[/]tiphys\.js gates run/);
+    assert.match(command, /--manifest gates\.manifest\.json/);
+  }
+
+  // A PINNED SHAPE, AND IT IS A TEXT ASSERTION, said plainly rather than
+  // dressed up as behaviour (CR-830-1). `${{ github.sha }}` on a
+  // pull_request trigger is the ephemeral merge commit, not the branch head,
+  // so a diff computed against it answers a different question and SUCCEEDS
+  // while doing so. The value is substituted by GitHub at run time and there
+  // is nothing here to execute, so MECHANISMS.md's second tier applies: pin
+  // the accepted shape and fail closed on anything else, never widen. What
+  // stays unguarded is everything about how GitHub resolves the expression;
+  // that is not readable from this tree and is not claimed.
+  const pullRequestStep = commands.find((c) => c.includes("--base"));
+  assert.ok(pullRequestStep, "no pull-request bundle step (the one with --base)");
+  assert.match(
+    pullRequestStep,
+    /--head "\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
+  );
+  assert.doesNotMatch(pullRequestStep, /--head "\$\{\{ github\.sha \}\}"/);
+
+  const dir = scratch();
+  try {
+    const push = commands.find((c) => !c.includes("--base")) as string;
+    assert.ok(push, "no push-event bundle step (the one with no --base)");
+
+    // 1. The step, executed. It must pass on this repository, or the wiring
+    //    would redden every honest run.
+    const temp = join(dir, "temp");
+    mkdirSync(temp, { recursive: true });
+    const green = spawnSync(
+      "bash",
+      ["-c", push.replaceAll("${{ runner.temp }}", temp)],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(green.status, 0, green.stdout + green.stderr);
+    const summary = readSummary(join(temp, "gate-evidence"));
+    assert.ok(
+      summary.counts["green"] >= 1,
+      `the wired bundle measured nothing: ${JSON.stringify(summary.counts)}`,
+    );
+
+    // 2. FALSIFIABILITY. Dangerous state (b) lands here: the same extracted
+    //    command pointed at a manifest that cannot pass must FAIL the step.
+    //    A `|| true` or an appended `exit 0` preserves every string in the
+    //    command and makes this arm green.
+    const emptyManifest = writeManifest(dir, [], "empty.json");
+    const temp2 = join(dir, "temp2");
+    mkdirSync(temp2, { recursive: true });
+    const red = spawnSync(
+      "bash",
+      [
+        "-c",
+        push
+          .replaceAll("${{ runner.temp }}", temp2)
+          .replace("gates.manifest.json", emptyManifest),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.notEqual(
+      red.status,
+      0,
+      `the wired bundle step exited 0 over a manifest with no gates: ${red.stdout}${red.stderr}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M2-C-2 at the constructor, and the exit-code/status seam             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The rewrite is enforced TWICE on purpose: here, so a gate built on this
+ * module cannot construct a vacuous green, and again at the runner's ingest,
+ * so a gate that does not use this module cannot smuggle one past it. Two
+ * enforcement points need two witnesses, or one of them is an arm no test
+ * reaches (T-006).
+ */
+test("makeGateResult cannot construct a green record with zero units", () => {
+  const vacuous = resultModule.makeGateResult({
+    gate: "g-one",
+    status: "green",
+    units: 0,
+    unitLabel: "u",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: "everything is fine",
+  });
+  assert.equal(vacuous.status, "error");
+  assert.equal(vacuous.vacuous, true);
+  assert.match(vacuous.detail, /M2-C-2/);
+  // The gate's own claim survives in the record rather than being discarded.
+  assert.match(vacuous.detail, /everything is fine/);
+
+  // BOTH DIRECTIONS: one unit examined is a green the constructor keeps.
+  const real = resultModule.makeGateResult({
+    gate: "g-one",
+    status: "green",
+    units: 1,
+    unitLabel: "u",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: "",
+  });
+  assert.equal(real.status, "green");
+  assert.equal(real.vacuous, undefined);
+
+  // A negative or fractional count is not a smaller measurement, it is an
+  // unusable one, and is treated as zero rather than as a green.
+  for (const units of [-3, 0.5]) {
+    const bad = resultModule.makeGateResult({
+      gate: "g-one",
+      status: "green",
+      units,
+      unitLabel: "u",
+      startedAt: FIXED_START,
+      endedAt: FIXED_END,
+      detail: "",
+    });
+    assert.equal(bad.status, "error", `units ${String(units)} produced ${bad.status}`);
+  }
+});
+
+test("a gate whose exit code contradicts its own record is error naming both", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-liar",
+        // The dangerous state: a record that says red while the process
+        // says green. Trusting either one alone reports a verdict nobody
+        // measured, and trusting the record alone reports RED as a finding
+        // when the gate may simply have crashed after writing it.
+        command: writeGate(dir, "liar", {
+          record: gateRecord("g-liar", "red", 2),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(result.status, 0);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "g-liar", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "error");
+    assert.match(record.detail, /recorded status red/);
+    assert.match(record.detail, /exited 0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The DECLARED-parameter arm, which is a different code path from the
+ * precondition-derived one and was found by red-witnessing rather than by
+ * reading: defanging `requiredParameters` left the `diff-touches` test green,
+ * because `evaluatePrecondition` re-checks `--base` for its own reasons. The
+ * property survived; the mechanism was unwitnessed. A gate that declares it
+ * needs `--phase` and has no precondition at all reaches only the first
+ * guard, and this is that gate.
+ */
+test("a gate declaring a run parameter it does not receive is error, and receives it otherwise", () => {
+  const dir = scratch();
+  try {
+    const command = writeGate(dir, "phased", {
+      record: gateRecord("g-phased", "green", 2),
+      exit: 0,
+    });
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-phased",
+        command,
+        unitLabel: "fixture units",
+        applicability: "required",
+        parameters: ["phase"],
+      },
+    ]);
+
+    const without = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-without"),
+    ]);
+    assert.notEqual(without.status, 0);
+    const withoutRecord = JSON.parse(
+      readFileSync(join(dir, "ev-without", "g-phased", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(withoutRecord.status, "error");
+    assert.notEqual(withoutRecord.status, "not-applicable");
+    assert.match(withoutRecord.detail, /--phase/);
+
+    const withPhase = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-with"),
+      "--phase",
+      "M2-P1",
+    ]);
+    assert.equal(withPhase.status, 0, withPhase.stdout + withPhase.stderr);
+
+    // And the value really reached the gate's argv, rather than the runner
+    // merely having satisfied itself that it was present.
+    const passed = readFileSync(join(dir, "ev-with", "g-phased", "stdout.txt"), "utf8");
+    assert.equal(passed, "");
+    const withRecord = JSON.parse(
+      readFileSync(join(dir, "ev-with", "g-phased", "result.json"), "utf8"),
+    ) as { status: string };
+    assert.equal(withRecord.status, "green");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ================================================================== */
+/* FIX ROUND 1                                                        */
+/* ================================================================== */
+
+/**
+ * CR-800 (HIGH). The two routes to `not-applicable` were guarded
+ * differently: a precondition the RUNNER evaluated failed closed, and a gate
+ * that declared its OWN not-applicable did not, because `counts.applicable`
+ * meant "was spawned". A bundle in which zero gates were green exited 0 with
+ * the reason "every applicable gate is green".
+ *
+ * Three structurally different members, because one witness is not a class,
+ * and the missing second member is exactly what found the defect. Both
+ * controls are here too, so this is not a restatement of "nonzero is
+ * nonzero".
+ */
+test("a gate that declares its own not-applicable cannot make the bundle green", () => {
+  const dir = scratch();
+  try {
+    const selfNotApplicable = writeGate(dir, "selfna", {
+      record: gateRecord("selfna", "not-applicable", 0),
+      exit: 20,
+    });
+    const selfGreen = writeGate(dir, "selfgreen", {
+      record: gateRecord("selfna", "green", 1),
+      exit: 0,
+    });
+
+    // MEMBER 1: a single conditional gate, not-applicable by its own record.
+    for (const applicability of ["conditional", "required"]) {
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "selfna",
+            command: selfNotApplicable,
+            unitLabel: "fixture units",
+            applicability,
+          },
+        ],
+        `m-self-${applicability}.json`,
+      );
+      const result = runCli([
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, `ev-self-${applicability}`),
+      ]);
+      assert.notEqual(
+        result.status,
+        0,
+        `${applicability}: a bundle with zero green gates exited 0`,
+      );
+      const summary = readSummary(join(dir, `ev-self-${applicability}`));
+      assert.equal(summary.reason, "no applicable gate");
+      assert.equal(summary.counts["verdict"], 0);
+      assert.equal(summary.counts["applicable"], 0);
+      assert.equal(summary.gates[0]?.applicable, false);
+      assert.doesNotMatch(summary.reason, /every applicable gate is green/);
+    }
+
+    // CONTROL A: the SAME gate reporting green with one unit. If this were
+    // not distinguishable by exit code, the member above would prove nothing.
+    const greenManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "selfna",
+          command: selfGreen,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+        },
+      ],
+      "m-self-green.json",
+    );
+    const greenRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      greenManifest,
+      "--evidence",
+      join(dir, "ev-self-green"),
+    ]);
+    assert.equal(greenRun.status, 0, greenRun.stdout + greenRun.stderr);
+    assert.equal(readSummary(join(dir, "ev-self-green")).counts["verdict"], 1);
+
+    // MEMBER 2: a mixed bundle exercising BOTH routes at once, which is the
+    // shape a real manifest has.
+    const mixed = writeManifest(
+      dir,
+      [
+        {
+          id: "runner-na",
+          command: selfGreen,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+          precondition: {
+            id: "needs-config",
+            kind: "file-exists",
+            path: join(dir, "absent-config.json"),
+          },
+        },
+        {
+          id: "selfna",
+          command: selfNotApplicable,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+        },
+      ],
+      "m-mixed.json",
+    );
+    const mixedRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      mixed,
+      "--evidence",
+      join(dir, "ev-mixed"),
+    ]);
+    assert.notEqual(mixedRun.status, 0);
+    const mixedSummary = readSummary(join(dir, "ev-mixed"));
+    assert.equal(mixedSummary.reason, "no applicable gate");
+    assert.equal(mixedSummary.counts["not-applicable"], 2);
+    assert.equal(mixedSummary.counts["verdict"], 0);
+    // The two routes are now indistinguishable in the summary, which is the
+    // property that was missing.
+    for (const row of mixedSummary.gates) {
+      assert.equal(row.applicable, false, `${row.id} counted as applicable`);
+    }
+    assert.equal(
+      mixedSummary.gates.reduce((total, row) => total + row.units, 0),
+      0,
+    );
+
+    // MEMBER 3: the same through --only, a different selection path.
+    const onlyRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      mixed,
+      "--evidence",
+      join(dir, "ev-only"),
+      "--only",
+      "selfna",
+    ]);
+    assert.notEqual(onlyRun.status, 0);
+    assert.equal(readSummary(join(dir, "ev-only")).reason, "no applicable gate");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The structural half of CR-800, EXERCISED rather than read.
+ *
+ * The first version of this test asserted on the TEXT of `src/gates/run.ts`,
+ * which is the guard-that-asserts-text class MECHANISMS.md records six M1-P6
+ * instances of: wrapping the invariant in `if (false && ...)` preserved every
+ * asserted string and left the test green. That is recorded in the work
+ * history as witness F3 and is why the decision was extracted into a pure
+ * function: a counts object can be handed states the runner cannot currently
+ * produce, which is exactly what an invariant against internal inconsistency
+ * needs.
+ */
+test("the runner cannot report success over an empty green bucket", () => {
+  const base = {
+    declared: 2,
+    applicable: 2,
+    verdict: 2,
+    green: 0,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  // MEMBER 1: verdicts were reached and none of them was green. Unreachable
+  // through the branch conditions today; the invariant is what makes that a
+  // property rather than a coincidence of how they are written.
+  const inconsistent = runModule.decideAggregate(base, [], []);
+  assert.notEqual(inconsistent.exitCode, 0);
+  assert.doesNotMatch(inconsistent.reason, /every applicable gate is green/);
+
+  // MEMBER 2: step 8's subset relation broken, a structurally different
+  // inconsistency reached through a different field (CR-806).
+  const subsetBroken = runModule.decideAggregate(
+    { ...base, green: 2, vacuous: 1, error: 0 },
+    [],
+    [],
+  );
+  assert.notEqual(subsetBroken.exitCode, 0);
+  assert.match(subsetBroken.reason, /strict subset/);
+
+  // MEMBER 3: the anti-vacuity rule itself, over a bundle that reached no
+  // verdict at all.
+  const vacuous = runModule.decideAggregate(
+    { ...base, applicable: 2, verdict: 0, "not-applicable": 2 },
+    [],
+    [],
+  );
+  assert.equal(vacuous.reason, "no applicable gate");
+  assert.notEqual(vacuous.exitCode, 0);
+
+  // CONTROL: a consistent green bundle still exits 0, or the invariants
+  // above would be a guard that refuses everything.
+  const good = runModule.decideAggregate({ ...base, green: 2 }, [], []);
+  assert.equal(good.exitCode, 0);
+  assert.equal(good.reason, "every applicable gate is green");
+
+  // CONTROL 2: precedence is unchanged. An error outranks the vacuity rule.
+  const errored = runModule.decideAggregate(
+    { ...base, verdict: 0, error: 1 },
+    [],
+    [{ id: "g-bad", status: "error" }],
+  );
+  assert.match(errored.reason, /g-bad/);
+});
+
+/**
+ * CR-801 (MEDIUM). Node's uncaught-exception exit code is 1, which is this
+ * phase's own RED code. The runner enforced that rule on its gates and not on
+ * itself: an escaping throw exited 1, wrote no summary, and mid-bundle left a
+ * gate-authored GREEN record on disk with nothing to say the run had died.
+ *
+ * Staged against a COPY of dist/, never the repository's own, so a suite
+ * running its files in parallel cannot see a half-deleted build.
+ */
+function stagedDist(dir: string): string {
+  const copy = join(dir, "dist");
+  cpSync(join(repoRoot, "dist"), copy, { recursive: true });
+  return copy;
+}
+
+test("a throw escaping the runner is error with a summary, never the red exit code", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const dist = stagedDist(dir);
+    const manifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-one",
+          command: writeGate(dir, "one", {
+            record: gateRecord("g-one", "green", 3),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+        {
+          id: "g-two",
+          command: writeGate(dir, "two", {
+            record: gateRecord("g-two", "green", 4),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "m-two.json",
+    );
+
+    // MEMBER 1: the throw happens during the manifest load, before any gate.
+    rmSync(join(dist, "src", "gates", "schemas", "gate-manifest.schema.json"));
+    const early = spawnSync(
+      process.execPath,
+      [
+        join(dist, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-early"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(early.status, 21, `expected 21, got ${String(early.status)}`);
+    assert.notEqual(early.status, 1, "the runner exited with its own RED code");
+    const earlySummary = readSummary(join(dir, "ev-early"));
+    assert.equal(earlySummary.aborted, true);
+    assert.equal(earlySummary.exitCode, 21);
+
+    // MEMBER 2: structurally different. The throw happens MID-BUNDLE, after
+    // gate one has already written a green record, which is the shape that
+    // leaves a misleading bundle behind.
+    const dist2 = join(dir, "dist2");
+    cpSync(join(repoRoot, "dist"), dist2, { recursive: true });
+    rmSync(join(dist2, "src", "gates", "schemas", "gate-result.schema.json"));
+    const mid = spawnSync(
+      process.execPath,
+      [
+        join(dist2, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-mid"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(mid.status, 21, `expected 21, got ${String(mid.status)}`);
+    // The gate's own green record is on disk; the summary is what tells a
+    // consumer not to read the bundle as a result.
+    assert.ok(existsSync(join(dir, "ev-mid", "g-one", "result.json")));
+    const midSummary = readSummary(join(dir, "ev-mid"));
+    assert.equal(midSummary.aborted, true);
+    assert.equal(midSummary.counts["green"], 0);
+    assert.match(midSummary.reason, /the gate runner failed/);
+
+    // CONTROL: the same invocation against an INTACT dist copy. Without it
+    // this test would pass over a runner that always exited 21.
+    cpSync(join(repoRoot, "dist"), join(dir, "dist3"), { recursive: true });
+    const okRun = spawnSync(
+      process.execPath,
+      [
+        join(dir, "dist3", "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-ok2"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(okRun.status, 0, okRun.stdout + okRun.stderr);
+    assert.equal(readSummary(join(dir, "ev-ok2")).aborted, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-803 (MEDIUM). Two runners pointed at one `--evidence` directory used to
+ * interleave on fixed per-gate paths: the later runner ingested the earlier
+ * one's records as its own, and a genuine red was converted to `error` while
+ * the surviving bundle was the other run's green. Seven phases run this
+ * concurrently.
+ *
+ * Two structurally different members: a claim already present (the
+ * deterministic shape, which is also what a crashed run leaves), and a real
+ * concurrent second runner started while the first is still working.
+ */
+test("one run owns its evidence directory and a second is refused loudly", async () => {
+  const dir = scratch();
+  try {
+    const fast = writeManifest(
+      dir,
+      [
+        {
+          id: "g-fast",
+          command: writeGate(dir, "fast", {
+            record: gateRecord("g-fast", "green", 5),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "fast.json",
+    );
+
+    // MEMBER 1: a claim is already there. This is also exactly what a run
+    // that died leaves behind, and the rule MECHANISMS.md fixes for claim
+    // files is that it must fail LOUDLY and NAME THE STUCK FILE, never wait
+    // silently and never steal.
+    const held = join(dir, "ev-held");
+    mkdirSync(held, { recursive: true });
+    writeFileSync(
+      join(held, ".tiphys-gate-run.json"),
+      '{"runId":"aaaaaaaaaaaa","manifest":"other"}\n',
+    );
+    const refused = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      held,
+    ]);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /already claimed by another run/);
+    assert.match(refused.stderr, /\.tiphys-gate-run\.json/);
+    assert.match(refused.stderr, /aaaaaaaaaaaa/);
+    assert.ok(
+      !existsSync(join(held, "g-fast")),
+      "the refused run wrote into a directory it did not own",
+    );
+
+    // CONTROL: remove the claim and the same invocation succeeds, so the
+    // refusal is about the claim and not about the directory.
+    rmSync(join(held, ".tiphys-gate-run.json"));
+    const allowed = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      held,
+    ]);
+    assert.equal(allowed.status, 0, allowed.stdout + allowed.stderr);
+    assert.ok(
+      !existsSync(join(held, ".tiphys-gate-run.json")),
+      "the claim was not released at the end of the run",
+    );
+
+    // MEMBER 2: a genuinely concurrent second runner, which is the shape the
+    // review constructed. The first holds a slow gate; the second must be
+    // refused rather than interleaving with it.
+    const slow = writeManifest(
+      dir,
+      [
+        {
+          id: "g-slow",
+          command: writeGate(dir, "slow", {
+            record: gateRecord("g-slow", "green", 9),
+            exit: 0,
+            sleepMs: 3000,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "slow.json",
+    );
+    const shared = join(dir, "ev-shared");
+    const first = spawn(
+      process.execPath,
+      [sourceEntry, "gates", "run", "--manifest", slow, "--evidence", shared],
+      { cwd: repoRoot, stdio: "ignore" },
+    );
+    const firstExit = new Promise<number>((resolve) => {
+      first.on("exit", (code) => resolve(code ?? -1));
+    });
+    // Wait for the claim to exist, so the contention is real rather than a
+    // race this test also has to win. Bounded, so a failure reports.
+    const deadline = Date.now() + 10_000;
+    while (
+      !existsSync(join(shared, ".tiphys-gate-run.json")) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(
+      existsSync(join(shared, ".tiphys-gate-run.json")),
+      "the first runner never took its claim",
+    );
+    const second = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      shared,
+    ]);
+    assert.notEqual(second.status, 0);
+    assert.match(second.stderr, /already claimed by another run/);
+
+    assert.equal(await firstExit, 0);
+    // The surviving bundle is the first run's, entirely, and says so.
+    const summary = readSummary(shared);
+    assert.equal(summary.gates.length, 1);
+    assert.equal(summary.gates[0]?.id, "g-slow");
+    assert.equal(summary.gates[0]?.units, 9);
+    assert.match(summary.runId, /^[0-9a-f]{24}$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-804 part two (MEDIUM). M2-C-5 was enforced entirely by each gate's own
+ * honesty: the runner held both the record's pins and the module that
+ * compares them and did nothing with either, two lines from where it applies
+ * the structurally identical M2-C-2 rewrite to `units`.
+ */
+function pinFor(files: { path: string; sha: string; mtime: number }[]) {
+  return {
+    roots: ["/scratch/src"],
+    takenAt: "2026-08-06T00:00:00.000Z",
+    fileCount: files.length,
+    files: files.map((file) => ({
+      path: file.path,
+      sha256: file.sha,
+      size: 10,
+      mtimeMs: file.mtime,
+      ctimeMs: file.mtime,
+    })),
+  };
+}
+
+test("a green record whose pins disagree, or whose pin measured nothing, is error", () => {
+  const dir = scratch();
+  try {
+    const sha = "a".repeat(64);
+    const cases: { name: string; pin: unknown; expect: string }[] = [
+      {
+        name: "changed",
+        pin: {
+          start: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+          end: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 2 }]),
+        },
+        expect: "error",
+      },
+      {
+        name: "empty",
+        pin: { start: pinFor([]), end: pinFor([]) },
+        expect: "error",
+      },
+      {
+        name: "equal",
+        pin: {
+          start: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+          end: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+        },
+        expect: "green",
+      },
+    ];
+    for (const item of cases) {
+      const record = { ...gateRecord("g-pinned", "green", 4), pin: item.pin };
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "g-pinned",
+            command: writeGate(dir, `pinned-${item.name}`, {
+              record,
+              exit: 0,
+            }),
+            unitLabel: "u",
+            applicability: "required",
+          },
+        ],
+        `m-pin-${item.name}.json`,
+      );
+      const evidence = join(dir, `ev-pin-${item.name}`);
+      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const written = JSON.parse(
+        readFileSync(join(evidence, "g-pinned", "result.json"), "utf8"),
+      ) as { status: string; detail: string };
+      assert.equal(
+        written.status,
+        item.expect,
+        `${item.name}: ${written.detail}`,
+      );
+      if (item.expect === "error") {
+        assert.match(written.detail, /M2-C-5/);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-805 (MEDIUM). `branch-matches` was unanchored and interpolated `{phase}`
+ * unescaped into regex SOURCE, and the kind had no test at all. Two members:
+ * a decoy branch that is a superstring of the real one, and a phase id
+ * carrying a regex metacharacter. Two controls, because the anchoring change
+ * could otherwise have made every branch fail to match, which would be
+ * "safe" and useless.
+ */
+test("branch-matches is anchored and treats the phase id as a literal", () => {
+  const dir = scratch();
+  try {
+    const repo = join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    const git = (args: string[]) => {
+      const result = spawnSync("git", args, {
+        cwd: repo,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Tiphys test",
+          GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+          GIT_COMMITTER_NAME: "Tiphys test",
+          GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+        },
+      });
+      assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+    };
+    git(["init", "--quiet", "-b", "claude/m2-p4-scope-auditor"]);
+    writeFileSync(join(repo, "f"), "x\n");
+    git(["add", "-A"]);
+    git(["commit", "--quiet", "-m", "base"]);
+
+    const manifest = writeManifest(
+      dir,
+      [
+        {
+          id: "scope",
+          command: writeGate(dir, "scope", {
+            record: gateRecord("scope", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+          precondition: {
+            id: "on-phase-branch",
+            kind: "branch-matches",
+            // Anchored, so a prefix rule needs its own .* (schema description).
+            pattern: "claude/{phase}-.*",
+          },
+        },
+      ],
+      "m-branch.json",
+    );
+
+    const statusOn = (branch: string, phase: string): string => {
+      git(["branch", "--quiet", "-m", branch]);
+      const evidence = join(dir, `ev-${branch.replace(/[^a-z0-9]/gi, "_")}-${phase}`);
+      spawnSync(
+        process.execPath,
+        [
+          sourceEntry,
+          "gates",
+          "run",
+          "--manifest",
+          manifest,
+          "--evidence",
+          evidence,
+          "--phase",
+          phase,
+        ],
+        { cwd: repo, encoding: "utf8" },
+      );
+      return readSummary(evidence).gates[0]?.status ?? "missing";
+    };
+
+    // CONTROL 1: the real phase branch must still match, or the fix is a
+    // guard that refuses everything.
+    assert.equal(statusOn("claude/m2-p4-scope-auditor", "m2-p4"), "green");
+    // MEMBER 1: a decoy branch that CONTAINS the pattern.
+    assert.equal(
+      statusOn("evil/claude/m2-p4-scope-auditor-DECOY", "m2-p4"),
+      "not-applicable",
+    );
+    // MEMBER 2: a phase id carrying a regex metacharacter, against a branch
+    // that only matches if the dot is a wildcard.
+    assert.equal(statusOn("claude/m2xp4-scope", "m2.p4"), "not-applicable");
+    // CONTROL 2: the same phase id against the branch it literally names.
+    assert.equal(statusOn("claude/m2.p4-scope", "m2.p4"), "green");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-806 (LOW). `vacuous` exists to be set by the two rewrite points and by
+ * nothing else. A gate that wrote it on a GREEN record was believed, and the
+ * runner is documented as adversarial towards its own gates.
+ */
+test("a gate cannot set the vacuous flag on its own record", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const record = { ...gateRecord("g-liar", "green", 7), vacuous: true };
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-liar",
+        command: writeGate(dir, "liar", { record, exit: 0 }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const summary = readSummary(evidence);
+    assert.equal(summary.counts["vacuous"], 0);
+    assert.ok(summary.counts["vacuous"] <= summary.counts["error"]);
+    const written = JSON.parse(
+      readFileSync(join(evidence, "g-liar", "result.json"), "utf8"),
+    ) as { vacuous?: boolean };
+    assert.equal(written.vacuous, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-802, CR-807, CR-808 (the Ajv seam). Each is a place where this engine
+ * and Ajv at Draft 2020-12 disagree, and DR-0013 clause 6 promises M3-P1 can
+ * swap the engine and re-run these tests unchanged.
+ */
+test("the validator refuses $ref siblings, reports $ref cycles, and rejects __proto__", () => {
+  // CR-802, two structurally different siblings.
+  for (const sibling of [
+    { required: ["mustBeThere"] },
+    { enum: ["a", "b"] },
+  ]) {
+    const loaded = validateModule.loadSchema(
+      {
+        type: "object",
+        properties: { x: { $ref: "#/$defs/s", ...sibling } },
+        $defs: { s: { type: "object" } },
+      },
+      "sibling.schema.json",
+    );
+    assert.equal(loaded.ok, false, JSON.stringify(sibling));
+    assert.match(
+      loaded.ok === false ? loaded.reason : "",
+      new RegExp(Object.keys(sibling)[0] as string),
+    );
+  }
+  // CONTROL: a bare $ref with only annotations beside it still loads.
+  const bare = validateModule.loadSchema(
+    {
+      type: "object",
+      properties: { x: { $ref: "#/$defs/s", description: "fine" } },
+      $defs: { s: { type: "string" } },
+    },
+    "bare.schema.json",
+  );
+  assert.equal(bare.ok, true);
+  assert.deepEqual(
+    bare.ok === true
+      ? validateModule.validateToLines(bare.schema, { x: 1 })
+      : [],
+    ["INVALID #/x expected type string but found integer"],
+  );
+
+  // CR-807: a cycle is a diagnostic, not a RangeError escaping mid-run.
+  const cyclic = validateModule.loadSchema(
+    { properties: { x: { $ref: "#/$defs/a" } }, $defs: { a: { $ref: "#/$defs/a" } } },
+    "cyclic.schema.json",
+  );
+  assert.equal(cyclic.ok, true);
+  assert.deepEqual(
+    cyclic.ok === true
+      ? validateModule.validateToLines(cyclic.schema, { x: 1 })
+      : [],
+    ["INVALID #/x schema reference #/$defs/a is cyclic"],
+  );
+
+  // CONTROL: a schema that is recursive but consumes an instance node
+  // between follows is legitimate and must still validate.
+  const recursive = validateModule.loadSchema(
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: { name: { type: "string" }, child: { $ref: "#" } },
+    },
+    "recursive.schema.json",
+  );
+  assert.equal(recursive.ok, true);
+  assert.deepEqual(
+    recursive.ok === true
+      ? validateModule.validateToLines(recursive.schema, {
+          name: "a",
+          child: { name: "b", child: { name: 3 } },
+        })
+      : [],
+    ["INVALID #/child/child/name expected type string but found integer"],
+  );
+
+  // CR-808: __proto__ must not escape additionalProperties: false.
+  const strict = validateModule.loadSchema(
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: { ok: { type: "string" } },
+    },
+    "strict.schema.json",
+  );
+  assert.equal(strict.ok, true);
+  assert.deepEqual(
+    strict.ok === true
+      ? validateModule.validateToLines(
+          strict.schema,
+          JSON.parse('{"__proto__":1,"other":2}'),
+        )
+      : [],
+    [
+      "INVALID #/__proto__ property __proto__ is not permitted here",
+      "INVALID #/other property other is not permitted here",
+    ],
+  );
+
+  // A schema pattern that cannot compile is a LOAD failure with a reason,
+  // not a throw escaping mid-validation (the CR-801 asymmetry).
+  const badPattern = validateModule.loadSchema(
+    { type: "string", pattern: "([" },
+    "bad-pattern.schema.json",
+  );
+  assert.equal(badPattern.ok, false);
+  assert.match(
+    badPattern.ok === false ? badPattern.reason : "",
+    /not a valid expression/,
+  );
+});
+
+/** CR-811: every diagnostic message comes from the one table. */
+test("the duplicate-id diagnostic comes from the message table", () => {
+  const lines = manifestModule.validateManifestDocument({
+    version: 1,
+    gates: [
+      { id: "twice", command: ["node", "x"], unitLabel: "u", applicability: "required" },
+      { id: "twice", command: ["node", "y"], unitLabel: "u", applicability: "required" },
+    ],
+    destructiveCommands: [],
+  });
+  assert.deepEqual(lines, [
+    'INVALID #/gates/1/id gate id "twice" is declared more than once',
+  ]);
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/gates/manifest.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /is declared more than once`/);
+});
+
+/** CR-812: units counts what its label says it counts. */
+test("manifest-self-check reports one unit per schema document", () => {
+  const dir = scratch();
+  try {
+    const result = runCli([
+      "gates",
+      "self-check",
+      "--manifest",
+      join(repoRoot, "gates.manifest.json"),
+      "--result",
+      join(dir, "r.json"),
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const record = JSON.parse(readFileSync(join(dir, "r.json"), "utf8")) as {
+      units: number;
+      unitLabel: string;
+      detail: string;
+    };
+    assert.equal(record.unitLabel, "schema documents validated");
+    const schemas = readdirSync(
+      fileURLToPath(new URL("../src/gates/schemas", import.meta.url)),
+    ).filter((name) => name.endsWith(".schema.json"));
+    assert.equal(record.units, schemas.length);
+    assert.ok(record.units > 0);
+    // The manifest validation is real work and is still reported.
+    assert.match(record.detail, /gates\.manifest\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * `file-absent` was the last precondition kind with no test, found by the
+ * D-805 derivation rather than by reading. Its M2-C-6 arm matters as much as
+ * `file-exists`: a named pipe at the path is PRESENT, so a naive reading
+ * would call the precondition unmet, which is a verdict about a path nobody
+ * examined. Fail closed instead (M2-C-3).
+ */
+test("file-absent is met only when nothing is there, and an irregular entry is error", () => {
+  const dir = scratch();
+  try {
+    const target = join(dir, "must-not-exist");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-absent",
+        command: writeGate(dir, "absent", {
+          record: gateRecord("g-absent", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "conditional",
+        precondition: { id: "no-marker", kind: "file-absent", path: target },
+      },
+    ]);
+    const statusFor = (label: string): string => {
+      const evidence = join(dir, `ev-${label}`);
+      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      return (
+        JSON.parse(
+          readFileSync(join(evidence, "g-absent", "result.json"), "utf8"),
+        ) as { status: string }
+      ).status;
+    };
+
+    // Nothing there: met, so the gate runs.
+    assert.equal(statusFor("gone"), "green");
+    // A regular file there: evaluated and unmet.
+    writeFileSync(target, "present\n");
+    assert.equal(statusFor("present"), "not-applicable");
+    // A named pipe there: present, and not a thing this gate may examine.
+    // The assertion only executes because the command RETURNED.
+    rmSync(target);
+    mkfifo(target);
+    assert.equal(statusFor("fifo"), "error");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ================================================================== */
+/* FIX ROUND 2                                                        */
+/* ================================================================== */
+
+/**
+ * CR-860 (MEDIUM). The mechanism: cleanup that is valid only while the claim
+ * is held, performed from a frame that does not know whether it is held. The
+ * instance was a release in an inner `finally` followed by a second,
+ * unconditional release in an outer `catch`, so a crashed run wrote into the
+ * directory for a measured 2.13ms after releasing, and then unlinked whatever
+ * claim was there by that time, which could be a LIVE second run's.
+ *
+ * Two structurally different members:
+ *   (a) release-without-holdership unlinking a FOREIGN claim, which is the
+ *       dangerous state the reviewer named;
+ *   (b) the write happening outside the claimed region at all, checked by
+ *       ordering rather than by racing: after a crash the claim is gone AND
+ *       the aborted summary is present, and the release is holdership-checked
+ *       so the two cannot be reordered into the unsafe form without one of
+ *       these assertions failing.
+ */
+test("a run releases only the claim it holds, and writes nothing after releasing", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-one",
+        command: writeGate(dir, "one", {
+          record: gateRecord("g-one", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+
+    // MEMBER (a): a run CRASHES in a directory whose claim belongs to someone
+    // else by the time it cleans up. Staged directly: the claim file is
+    // swapped for a foreign one while the run is in flight is a race, so the
+    // deterministic equivalent is used, which exercises the same code path.
+    // The run is given a directory it does NOT own and must leave the foreign
+    // claim intact.
+    const foreign = join(dir, "ev-foreign");
+    mkdirSync(foreign, { recursive: true });
+    const foreignClaim = join(foreign, ".tiphys-gate-run.json");
+    const foreignBody = '{"runId":"ffffffffffffffffffffffff","manifest":"other"}\n';
+    writeFileSync(foreignClaim, foreignBody);
+    const refused = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      foreign,
+    ]);
+    assert.notEqual(refused.status, 0);
+    assert.ok(
+      existsSync(foreignClaim),
+      "the refused run unlinked a claim it did not hold",
+    );
+    assert.equal(
+      readFileSync(foreignClaim, "utf8"),
+      foreignBody,
+      "the refused run modified another run's claim",
+    );
+
+    // The same property one level deeper, at the function the finding names:
+    // a release quoting the WRONG runId must be a no-op, and the right one
+    // must actually release. Without both directions this would pass over a
+    // release that never releases anything.
+    assert.equal(runModule.releaseEvidenceDirectory(foreign, "not-mine"), false);
+    assert.ok(existsSync(foreignClaim));
+    assert.equal(
+      runModule.releaseEvidenceDirectory(foreign, "ffffffffffffffffffffffff"),
+      true,
+    );
+    assert.ok(!existsSync(foreignClaim));
+
+    // MEMBER (b): THE ORDERING. A crashing run must write its summary while
+    // it still holds the claim, then release once.
+    //
+    // The first version of this member asserted only the END STATE (summary
+    // present, claim gone), and that state is reachable BOTH ways: witness
+    // G2b reinstated the exact release-then-write ordering the finding
+    // measured and this test stayed green. The end state cannot see an
+    // ordering. So the write itself now verifies the claim, which makes the
+    // unsafe ordering produce a REFUSED write and no summary at all, and that
+    // is what the assertions below detect.
+    const dist = join(dir, "dist");
+    cpSync(join(repoRoot, "dist"), dist, { recursive: true });
+    rmSync(join(dist, "src", "gates", "schemas", "gate-manifest.schema.json"));
+    const crashed = spawnSync(
+      process.execPath,
+      [
+        join(dist, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-crash"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(crashed.status, 21, crashed.stdout + crashed.stderr);
+    const crashSummary = readSummary(join(dir, "ev-crash"));
+    assert.equal(crashSummary.aborted, true);
+    // The run's OWN claim is released exactly once and is gone.
+    assert.ok(
+      !existsSync(join(dir, "ev-crash", ".tiphys-gate-run.json")),
+      "a crashed run left its own claim behind",
+    );
+    // And the summary it wrote carries its own runId, not "unknown", which is
+    // what makes the aborted bundle attributable to the run that died.
+    assert.match(crashSummary.runId, /^[0-9a-f]{24}$/);
+    assert.match(crashed.stdout, new RegExp(`gates: run ${crashSummary.runId}`));
+
+    // MEMBER (c): the claim is LOST MID-RUN, which round 1 listed as not
+    // covered ("does not cover a process that deletes the claim file
+    // mid-run"). A gate deletes it and then reports green; the runner must
+    // refuse to write its summary into a directory it no longer owns, rather
+    // than reporting a green bundle over it. This is the member that makes
+    // the write-side verification load-bearing on its own (witness G3).
+    const thief = join(dir, "ev-thief");
+    mkdirSync(thief, { recursive: true });
+    const thiefGate = join(dir, "thief.mjs");
+    writeFileSync(
+      thiefGate,
+      [
+        'import { writeFileSync, rmSync } from "node:fs";',
+        "const args = process.argv.slice(2);",
+        'const at = args.indexOf("--result");',
+        `rmSync(${JSON.stringify(join(thief, ".tiphys-gate-run.json"))}, { force: true });`,
+        `writeFileSync(args[at + 1], ${JSON.stringify(
+          `${JSON.stringify(gateRecord("g-thief", "green", 2), null, 2)}\n`,
+        )});`,
+        "process.exit(0);",
+      ].join("\n") + "\n",
+    );
+    const thiefManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-thief",
+          command: ["node", thiefGate],
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "thief.json",
+    );
+    const stolen = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      thiefManifest,
+      "--evidence",
+      thief,
+    ]);
+    assert.notEqual(
+      stolen.status,
+      0,
+      `a run whose claim vanished reported success: ${stolen.stdout}`,
+    );
+    assert.match(stolen.stderr, /does not hold the claim/);
+    assert.ok(
+      !existsSync(join(thief, "summary.json")),
+      "a run wrote a summary into a directory it no longer held",
+    );
+
+    // CONTROL: a normal run still releases its claim, or the holdership check
+    // would be a guard that never releases anything.
+    const okRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-ok"),
+    ]);
+    assert.equal(okRun.status, 0, okRun.stdout + okRun.stderr);
+    assert.ok(!existsSync(join(dir, "ev-ok", ".tiphys-gate-run.json")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-861 (MEDIUM). A run refused the directory exits 21 and writes nothing,
+ * which is correct, and used to mean the only statement in the directory
+ * about what happened was a DIFFERENT run's green summary, `aborted: false`,
+ * exit 0. And the runId that "a bundle is attributable" rests on never left
+ * the process, so no caller could tell whether the summary it read was its
+ * own.
+ *
+ * The property witnessed, in the two halves the coordinator named:
+ *   (a) after a refusal, a consumer cannot mistake the surviving bundle for
+ *       the refused run's output;
+ *   (b) a bundle's runId is observable from OUTSIDE the process.
+ */
+test("a refused run identifies itself and cannot be mistaken for the bundle it declined to overwrite", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-one",
+        command: writeGate(dir, "one", {
+          record: gateRecord("g-one", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+
+    // Run 1: a clean green bundle, exactly as the review staged it.
+    const first = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    const firstId = /gates: run ([0-9a-f]{24})/.exec(first.stdout)?.[1];
+    assert.ok(firstId, `no runId on stdout: ${first.stdout}`);
+    // (b) The id a caller was told matches the artifact. This IS attribution.
+    assert.equal(readSummary(evidence).runId, firstId);
+
+    // Plant the stale claim a SIGKILLed run leaves behind.
+    writeFileSync(
+      join(evidence, ".tiphys-gate-run.json"),
+      '{"runId":"deadbeefdeadbeefdeadbeef","manifest":"other"}\n',
+    );
+
+    // Run 2: refused.
+    const second = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(second.status, 21, second.stdout + second.stderr);
+    const secondId = /gates: run ([0-9a-f]{24})/.exec(second.stdout)?.[1];
+    assert.ok(secondId, `a refused run printed no runId: ${second.stdout}`);
+    assert.notEqual(secondId, firstId);
+
+    // (a) The surviving summary is still run 1's, untouched, and the
+    // consumer can SEE that it is not run 2's, because the ids differ.
+    const surviving = readSummary(evidence);
+    assert.equal(surviving.runId, firstId);
+    assert.notEqual(surviving.runId, secondId);
+    assert.equal(surviving.exitCode, 0);
+    assert.equal(surviving.aborted, false);
+
+    // And the refusal says so in words as well as by id, so a human reading
+    // stderr reaches the same conclusion as a consumer comparing ids.
+    assert.match(second.stderr, new RegExp(`This run is ${secondId}`));
+    assert.match(second.stderr, /wrote NOTHING/);
+    assert.match(second.stderr, /deadbeefdeadbeefdeadbeef/);
+    assert.match(second.stderr, /not a report about this invocation/);
+
+    // CONTROL: with the claim removed the same invocation succeeds and its
+    // printed id becomes the summary's, so the refusal is about ownership
+    // and not about the directory.
+    rmSync(join(evidence, ".tiphys-gate-run.json"));
+    const third = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(third.status, 0, third.stdout + third.stderr);
+    const thirdId = /gates: run ([0-9a-f]{24})/.exec(third.stdout)?.[1];
+    assert.equal(readSummary(evidence).runId, thirdId);
+    assert.notEqual(thirdId, firstId);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-862 (LOW). `decideAggregate`'s stated contract is to be total over
+ * states the runner cannot currently produce, and its success assertion was
+ * `counts.green === 0`, which is FALSE for NaN, undefined, a missing key and
+ * a negative number. All four exited 0. The six probes below are the
+ * reviewer's, verbatim.
+ */
+test("decideAggregate is total over counts that are not non-negative integers", () => {
+  const base = {
+    declared: 1,
+    applicable: 1,
+    verdict: 1,
+    green: 1,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  const without = (name: string): Record<string, number> => {
+    const copy: Record<string, number> = { ...base };
+    delete copy[name];
+    return copy;
+  };
+  const probes: [string, Record<string, number>][] = [
+    ["NaN green", { ...base, green: Number.NaN }],
+    ["NaN verdict", { ...base, verdict: Number.NaN }],
+    ["negative green", { ...base, green: -1 }],
+    ["undefined green", { ...base, green: undefined as unknown as number }],
+    ["missing verdict key", without("verdict")],
+    ["missing green key", without("green")],
+    ["fractional green", { ...base, green: 0.5 }],
+    ["Infinity green", { ...base, green: Number.POSITIVE_INFINITY }],
+  ];
+  for (const [name, counts] of probes) {
+    const decided = runModule.decideAggregate(counts, [], []);
+    assert.notEqual(decided.exitCode, 0, `${name} exited 0`);
+    assert.match(decided.reason, /internal inconsistency/, name);
+    assert.doesNotMatch(decided.reason, /every applicable gate is green/, name);
+  }
+
+  // CONTROL: the consistent shape still exits 0, or this is a guard that
+  // rejects everything.
+  const good = runModule.decideAggregate(base, [], []);
+  assert.equal(good.exitCode, 0);
+  assert.equal(good.reason, "every applicable gate is green");
+});
+
+/* ================================================================== */
+/* FIX ROUND 3                                                        */
+/* ================================================================== */
+
+/**
+ * CR-900 (MEDIUM). The mechanism is A MUTATION OF EVIDENCE-DIRECTORY STATE
+ * PERFORMED FROM A FRAME THAT DOES NOT KNOW WHETHER THE CLAIM IS HELD, and
+ * round 2 read "mutation" as "content write". A directory's state is mutated
+ * by create, content-write, DELETE, rename, mkdir and SUBPROCESS DISPATCH; the
+ * round guarded one of the six and derived its coverage by grepping for the
+ * name of its own new wrapper, which can only return sites that already go
+ * through it.
+ *
+ * The three witnesses below are structurally different members of the class,
+ * not three assertions about one:
+ *
+ *   W1  the runner's own DELETE destroys a foreign holder's record;
+ *   W2  the runner DISPATCHES a gate into a directory it does not hold;
+ *   W3  the theft happens MID-GATE, from the gate's own precondition command,
+ *       after any top-of-function check has already passed.
+ *
+ * W3 is the one that decides the SHAPE of the fix. The review sketched a
+ * single `claimHolder` check at the top of `runOneGate`; W3 is green under
+ * that sketch and red under the shipped fix, because a precondition command
+ * runs between the top of the function and the delete.
+ */
+
+/** A fixture program that runs arbitrary statements, then exits. */
+function writeProgram(dir: string, name: string, lines: string[]): string {
+  const path = join(dir, `${name}.mjs`);
+  writeFileSync(path, `${lines.join("\n")}\n`);
+  return path;
+}
+
+const CLAIM_FILE = ".tiphys-gate-run.json";
+const THIEF_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const FOREIGN_RECORD = `{"planted-by":"${THIEF_ID}","note":"FOREIGN RUN OWNS THIS"}\n`;
+
+/**
+ * Build the two-gate theft fixture. `g-a` steals the claim mid-run and, as
+ * the new holder legitimately would, plants a record under `g-b`. `g-b` is an
+ * ordinary gate that writes NOTHING into the evidence directory and instead
+ * touches a sentinel OUTSIDE it, so "was this gate dispatched" is observable
+ * in the end state without the gate's own writes confusing the picture.
+ */
+function stealFixture(dir: string): {
+  manifest: string;
+  evidence: string;
+  plantedRecord: string;
+  sentinel: string;
+  unmadeDir: string;
+} {
+  const evidence = join(dir, "ev");
+  const sentinel = join(dir, "g-b-was-dispatched");
+  const plantedRecord = join(evidence, "g-b", "result.json");
+  const thief = writeProgram(dir, "thief", [
+    'import { mkdirSync, rmSync, writeFileSync } from "node:fs";',
+    "const args = process.argv.slice(2);",
+    'const at = args.indexOf("--result");',
+    `const evidence = ${JSON.stringify(evidence)};`,
+    // Steal: remove the live claim and plant a foreign one. This is the
+    // DANGEROUS state, not the absence of a feature: after these two lines a
+    // different runId genuinely owns the directory.
+    `rmSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, { force: true });`,
+    `writeFileSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, ` +
+      `JSON.stringify({ runId: ${JSON.stringify(THIEF_ID)}, manifest: "other-run" }) + "\\n");`,
+    // As the new holder would: write into the directory it now owns.
+    `mkdirSync(${JSON.stringify(join(evidence, "g-b"))}, { recursive: true });`,
+    `writeFileSync(${JSON.stringify(plantedRecord)}, ${JSON.stringify(FOREIGN_RECORD)});`,
+    `writeFileSync(args[at + 1], JSON.stringify(${JSON.stringify(
+      gateRecord("g-a", "green", 1),
+    )}, null, 2) + "\\n");`,
+    "process.exit(0);",
+  ]);
+  const victim = writeProgram(dir, "victim", [
+    'import { writeFileSync } from "node:fs";',
+    `writeFileSync(${JSON.stringify(sentinel)}, "dispatched\\n");`,
+    "process.exit(0);",
+  ]);
+  // `g-c` exists so that ONE gate after the theft has no directory of its own
+  // yet: `g-a` deliberately creates `g-b/` and not `g-c/`, which makes the
+  // runner's own mkdir observable (W4). Its command is never expected to run.
+  const manifest = writeManifest(dir, [
+    {
+      id: "g-a",
+      command: ["node", thief],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+    {
+      id: "g-b",
+      command: ["node", victim],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+    {
+      id: "g-c",
+      command: ["node", victim],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+  ]);
+  return {
+    manifest,
+    evidence,
+    plantedRecord,
+    sentinel,
+    unmadeDir: join(evidence, "g-c"),
+  };
+}
+
+test("a run that has lost the claim does not delete the holder's records", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0, "a run that lost its claim certified itself");
+
+    // THE OBSERVABLE: the foreign holder's record, byte for byte. Under the
+    // round-2 code the runner's own rmSync at the top of runOneGate removed
+    // it while holding no claim.
+    assert.ok(
+      existsSync(fixture.plantedRecord),
+      "the runner deleted a record belonging to the run that holds the claim",
+    );
+    assert.equal(
+      readFileSync(fixture.plantedRecord, "utf8"),
+      FOREIGN_RECORD,
+      "the holder's record was replaced by a run that does not hold the claim",
+    );
+
+    // And the theft is left in place rather than cleaned up, which is the
+    // claim module's standing rule: never revoke a claim you do not hold.
+    assert.equal(
+      (JSON.parse(readFileSync(join(fixture.evidence, CLAIM_FILE), "utf8")) as {
+        runId: string;
+      }).runId,
+      THIEF_ID,
+    );
+
+    // CONTROL, or this passes for a runner that does nothing at all: with no
+    // theft the same two gates run and the record under g-b is the runner's,
+    // not the planted text.
+    const clean = join(dir, "ev-clean");
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-b",
+          command: writeGate(dir, "plain", {
+            record: gateRecord("g-b", "green", 2),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "clean-manifest.json",
+    );
+    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.equal(
+      (JSON.parse(readFileSync(join(clean, "g-b", "result.json"), "utf8")) as {
+        status: string;
+      }).status,
+      "green",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a run that has lost the claim does not dispatch further gates", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+
+    // THE OBSERVABLE, and it is a different one from W1: the sentinel lives
+    // OUTSIDE the evidence directory and is written by the gate itself, so it
+    // records "this subprocess was started" and nothing else. Under the
+    // round-2 code the runner spawned g-b into a directory whose claim it had
+    // lost, handing that other run's paths to a program of its own choosing.
+    assert.ok(
+      !existsSync(fixture.sentinel),
+      "the runner dispatched a gate into a directory it does not hold",
+    );
+
+    // CONTROL: the sentinel is reachable. The same program, dispatched by a
+    // run that DOES hold the claim, writes it. Without this the assertion
+    // above would pass against a gate that could never write it.
+    const clean = join(dir, "ev-clean");
+    const cleanSentinel = join(dir, "control-was-dispatched");
+    const control = writeProgram(dir, "control", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(cleanSentinel)}, "dispatched\\n");`,
+      "process.exit(0);",
+    ]);
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-b",
+          command: ["node", control],
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "control-manifest.json",
+    );
+    runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.ok(
+      existsSync(cleanSentinel),
+      "the control gate was never dispatched either, so the witness proves nothing",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a claim stolen by a gate's own precondition command still stops that gate", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const sentinel = join(dir, "g-p-was-dispatched");
+    const planted = join(evidence, "g-p", "result.json");
+
+    // The precondition command steals the claim and exits 0, so the
+    // precondition is MET and the runner proceeds. The theft therefore lands
+    // strictly between the top of runOneGate and the record delete, which is
+    // the window a single top-of-function check does not cover.
+    const thief = writeProgram(dir, "pre-thief", [
+      'import { rmSync, writeFileSync } from "node:fs";',
+      `rmSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, { force: true });`,
+      `writeFileSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, ` +
+        `JSON.stringify({ runId: ${JSON.stringify(THIEF_ID)}, manifest: "other-run" }) + "\\n");`,
+      "process.exit(0);",
+    ]);
+    const victim = writeProgram(dir, "pre-victim", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(sentinel)}, "dispatched\\n");`,
+      "process.exit(0);",
+    ]);
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-p",
+        command: ["node", victim],
+        unitLabel: "u",
+        applicability: "conditional",
+        precondition: {
+          id: "steals-the-claim",
+          kind: "command-exit-zero",
+          command: ["node", thief],
+        },
+      },
+    ]);
+
+    // A record is already there for the runner's rmSync to destroy. It stands
+    // in for the foreign holder's, and it is planted before the run so the
+    // run's own claim is taken legitimately.
+    mkdirSync(join(evidence, "g-p"), { recursive: true });
+    writeFileSync(planted, FOREIGN_RECORD);
+
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+    assert.ok(
+      existsSync(planted) && readFileSync(planted, "utf8") === FOREIGN_RECORD,
+      "a mid-gate claim theft still let the runner delete the new holder's record",
+    );
+    assert.ok(
+      !existsSync(sentinel),
+      "a mid-gate claim theft still let the runner dispatch the gate",
+    );
+
+    // CONTROL: an identical manifest whose precondition command steals
+    // NOTHING runs the gate and rewrites the record, so the refusal above is
+    // about holdership and not about having a precondition at all.
+    const clean = join(dir, "ev-clean");
+    const cleanSentinel = join(dir, "control-p-was-dispatched");
+    const honest = writeProgram(dir, "pre-honest", ["process.exit(0);"]);
+    const controlVictim = writeProgram(dir, "pre-control", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(cleanSentinel)}, "dispatched\\n");`,
+      `const args = process.argv.slice(2);`,
+      `const at = args.indexOf("--result");`,
+      `writeFileSync(args[at + 1], JSON.stringify(${JSON.stringify(
+        gateRecord("g-p", "green", 1),
+      )}, null, 2) + "\\n");`,
+      "process.exit(0);",
+    ]);
+    const controlManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-p",
+          command: ["node", controlVictim],
+          unitLabel: "u",
+          applicability: "conditional",
+          precondition: {
+            id: "steals-nothing",
+            kind: "command-exit-zero",
+            command: ["node", honest],
+          },
+        },
+      ],
+      "control-p-manifest.json",
+    );
+    const ok = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      controlManifest,
+      "--evidence",
+      clean,
+    ]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.ok(existsSync(cleanSentinel), "the control gate was never dispatched");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a run that has lost the claim creates no directories in the holder's tree", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+
+    // THE OBSERVABLE, and a third distinct operation: mkdir. `g-a` created
+    // `g-b/` before stealing, so only `g-c/` isolates the RUNNER's own mkdir.
+    // Two call sites make this directory (runOneGate's, and the record-write
+    // loop's in runClaimedBundle) and either one alone leaves it behind, so
+    // this assertion reddens under a defang of either.
+    assert.ok(
+      !existsSync(fixture.unmadeDir),
+      `the runner created ${fixture.unmadeDir} in a tree it does not hold; ` +
+        `evidence dir now holds: ${readdirSync(fixture.evidence).sort().join(", ")}`,
+    );
+
+    // CONTROL: the directory is reachable. The same gate id under a run that
+    // HOLDS the claim gets its directory made.
+    const clean = join(dir, "ev-clean");
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-c",
+          command: writeGate(dir, "plain-c", {
+            record: gateRecord("g-c", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "clean-c-manifest.json",
+    );
+    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.ok(existsSync(join(clean, "g-c")), "no run ever creates this directory");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-901 (LOW). Round 2 recorded the choice between `!(counts.green > 0)` and
+ * `counts.green === 0` as UNWITNESSABLE, on the argument that "no input
+ * distinguishes the two forms". That is an impossibility claim of the shape
+ * tuition T-006 is about, and it is false: the bad-count screen enumerates
+ * with `Object.entries` (own ENUMERABLE properties) while the presence screen
+ * uses `hasOwnProperty` (own properties, enumerable or not), so an own
+ * NON-ENUMERABLE count passes both screens unexamined.
+ *
+ * The direction matters and is why this is low: the SHIPPED form is the safe
+ * one. This test vindicates the code and disproves the sentence about it.
+ */
+test("a non-enumerable NaN green passes both count screens and is still refused", () => {
+  const counts: Record<string, number> = {
+    declared: 1,
+    applicable: 1,
+    verdict: 1,
+    green: 1,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  Object.defineProperty(counts, "green", { value: Number.NaN, enumerable: false });
+
+  // The construction really does defeat both screens, asserted rather than
+  // asserted-about: without these two lines the test would pass for a value
+  // the screens above `decideAggregate`'s success assertion already caught,
+  // and would say nothing about which form of that assertion is shipped.
+  assert.ok(!Object.keys(counts).includes("green"), "Object.entries can see green");
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(counts, "green"),
+    "hasOwnProperty cannot see green",
+  );
+  assert.ok(Number.isNaN(counts.green), "the construction did not yield NaN");
+
+  const decided = runModule.decideAggregate(counts, [], []);
+  assert.notEqual(decided.exitCode, 0, "green NaN certified the run");
+  assert.match(decided.reason, /zero\s+green gates/);
+  assert.doesNotMatch(decided.reason, /every applicable gate is green/);
+});
