@@ -205,5 +205,20 @@
   "gate-claim-lost-no-dispatch": "a run that has lost the claim does not dispatch further gates",
   "gate-claim-stolen-by-precondition": "a claim stolen by a gate's own precondition command still stops that gate",
   "gate-claim-lost-no-mkdir": "a run that has lost the claim creates no directories in the holder's tree",
-  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused"
+  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused",
+  "suite-gate-healthy-green": "suite gate on a healthy fixture is green with parity counts and equal pins",
+  "suite-gate-pattern-missed-file": "suite gate names a test file the configured pattern missed and passes once the pattern is corrected",
+  "suite-gate-file-outside-roots": "suite gate names a reported test file outside the declared roots",
+  "suite-gate-behavior-renamed": "suite gate names a behavior whose test was renamed and passes when the name is restored",
+  "suite-gate-behavior-deleted-at-base": "suite gate names a behavior deleted from the head registry since the merge base",
+  "suite-gate-skip-reason": "suite gate rejects a skip without a reason and accepts one with a reason",
+  "suite-gate-counterfeit-immune": "counterfeit summary and event lines printed by a test change no count and are captured verbatim",
+  "suite-gate-truncated-stream-error": "a truncated reporter stream is error, not green",
+  "suite-gate-foreign-format-error": "a stream in a different but valid reporter format is error naming expected and observed",
+  "suite-gate-exit-stream-disagree": "a runner exit of zero with a failing stream is error because the authorities disagree",
+  "suite-gate-pin-rewrite-error": "a byte-identical rewrite of a pinned source during the run is error naming the path and mtimeMs",
+  "suite-gate-base-required": "suite gate without --base is error, not not-applicable",
+  "suite-gate-failing-test-red": "a failing test makes the suite gate red naming it",
+  "suite-gate-fifo-refused": "a named pipe inside a declared test root is error naming the path and type",
+  "suite-gate-registry-fifo-refused": "a named pipe at the registry path is error, not a hang"
 }

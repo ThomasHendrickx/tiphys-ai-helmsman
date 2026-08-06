@@ -14,6 +14,22 @@
       ],
       "unitLabel": "schema documents validated",
       "applicability": "required"
+    },
+    {
+      "id": "suite",
+      "command": [
+        "node",
+        "src/gates/suite.ts",
+        "--pin-root",
+        "src",
+        "--pin-root",
+        "bin",
+        "--pin-root",
+        "test"
+      ],
+      "unitLabel": "tests reported",
+      "applicability": "required",
+      "parameters": ["base"]
     }
   ],
   "destructiveCommands": [
