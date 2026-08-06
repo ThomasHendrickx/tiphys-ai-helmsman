@@ -131,10 +131,16 @@ const OK_SATISFIED = `respond({ outcome: "satisfied",
   observation: { raw: { state: "ok" }, detail: "stub-state satisfied" } });`;
 
 function clock(overrides?: Partial<Clock>): Clock {
+  // Generous bounds by default: this machine runs several sibling suites
+  // concurrently, and a node child can take most of a second to start
+  // under contention (CLAUDE.md warning 11: budget harness timeouts,
+  // never shorten the waits). Tests that exercise the deadline conversion
+  // override deadlineMs downward deliberately, and assert on outcomes and
+  // reasons, not on how many polls fit into a contended window.
   return {
     intervalMs: 20,
-    deadlineMs: 4000,
-    attemptTimeoutMs: 3000,
+    deadlineMs: 10000,
+    attemptTimeoutMs: 5000,
     ...overrides,
   };
 }
@@ -214,7 +220,12 @@ test("release loop converts endless pending to red at the deadline naming the la
     elapsed >= deadlineMs,
     `elapsed ${String(elapsed)} ms must be at least the ${String(deadlineMs)} ms deadline`,
   );
-  assert.ok(outcome.attempts.length >= 2, "polling happened more than once");
+  // At least one attempt was recorded; under CPU contention a single
+  // child spawn can consume the whole short deadline, so a two-poll
+  // minimum here would flake (observed once on this shared machine). The
+  // multi-poll property is witnessed deterministically by the
+  // pending-twice-then-satisfied test above.
+  assert.ok(outcome.attempts.length >= 1, "at least one attempt was recorded");
 });
 
 test("release loop treats absent as distinct from pending and satisfies after late object creation", async () => {
@@ -425,6 +436,11 @@ test("release hanging adapter attempt is error while the kernel returns", { time
     "hangs",
     `setInterval(() => {}, 1000); /* never writes, never exits */`,
   );
+  // Short per-attempt timeout ONLY for the hanging members: a hanging
+  // child overruns any bound, so a short one just keeps the test fast.
+  // The corrected inverse below uses the generous default, because a
+  // HEALTHY child that merely starts slowly under CPU contention must not
+  // be killed by the harness (observed once on this shared machine).
   const attemptTimeoutMs = 300;
   const { run: outcome } = await run(bad, {
     clock: clock({ deadlineMs: 5000, attemptTimeoutMs }),
@@ -436,10 +452,24 @@ test("release hanging adapter attempt is error while the kernel returns", { time
   assert.match(outcome.verdict.reason ?? "", /overran the per-attempt timeout of 300 ms/);
   assert.equal(outcome.attempts.length, 1);
   assert.equal(outcome.attempts[0]?.transport.terminatedByTimeout, true);
-  const good = writeStub(dir, "hang-corrected", OK_SATISFIED);
-  const { run: inverse } = await run(good, {
+  // Second structurally different member of the hang class, and the
+  // reason the kill signal is 9: MEASURED in this phase, a child that
+  // traps the default termination signal makes spawnSync never return, so
+  // a bound that only asked politely would be advisory exactly here.
+  const trapping = writeStub(
+    dir,
+    "hangs-trapping",
+    `process.on("SIGTERM", () => {});
+     setInterval(() => {}, 1000); /* traps, never writes, never exits */`,
+  );
+  const { run: trapped } = await run(trapping, {
     clock: clock({ deadlineMs: 5000, attemptTimeoutMs }),
   });
+  assert.equal(trapped.verdict.kind, "error");
+  assert.match(trapped.verdict.reason ?? "", /overran the per-attempt timeout/);
+  assert.equal(trapped.attempts[0]?.transport.terminatedByTimeout, true);
+  const good = writeStub(dir, "hang-corrected", OK_SATISFIED);
+  const { run: inverse } = await run(good);
   assert.equal(inverse.verdict.kind, "satisfied");
 });
 

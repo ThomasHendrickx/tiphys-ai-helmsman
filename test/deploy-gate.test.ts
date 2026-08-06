@@ -192,10 +192,13 @@ async function runHttp(
     subject: subject ?? SUBJECT,
     adapter: [NODE, HTTP_JSON],
     config: { url, ...config },
+    // Generous defaults: sibling suites share this machine and a node
+    // child can start slowly under contention (warning 11). Deadline
+    // conversions override deadlineMs downward deliberately.
     clock: {
       intervalMs: 30,
-      deadlineMs: 5000,
-      attemptTimeoutMs: 4000,
+      deadlineMs: 12000,
+      attemptTimeoutMs: 6000,
       ...clockOverrides,
     },
     evidenceDir: scratch(),

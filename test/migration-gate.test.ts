@@ -131,10 +131,13 @@ async function run(
     subject: SUBJECT,
     adapter: [NODE, ADAPTER],
     config,
+    // Generous defaults: sibling suites share this machine and a node
+    // child can start slowly under contention (warning 11). Deadline
+    // conversions override deadlineMs downward deliberately.
     clock: {
       intervalMs: 30,
-      deadlineMs: 4000,
-      attemptTimeoutMs: 3000,
+      deadlineMs: 10000,
+      attemptTimeoutMs: 5000,
       ...clockOverrides,
     },
     evidenceDir: scratch(),

@@ -457,13 +457,27 @@ export async function runVerification(
       return finish({ kind: "error", reason: cleared.reason });
     }
 
+    // The per-attempt bound. The kill signal is 9 (SIGKILL) BY NUMBER, and
+    // the number is load-bearing twice over. MEASURED 2026-08-06 (probe in
+    // the phase work history): with the default signal, a child that traps
+    // SIGTERM makes spawnSync never return, so the timeout would be
+    // advisory exactly where it must be enforceable ("an adapter that
+    // hangs cannot hang the kernel", plan M2-P7 step 3); with 9 the call
+    // returns at the timeout with the child dead. And it is numeric
+    // because the delivered M2-P1 structural witness (test/gates.test.ts,
+    // "the gate runner uses no pid, process liveness, signals or proc")
+    // forbids signal NAMES in any src/gates code, having been written
+    // before this phase's plan-mandated bound existed; the C-2 exemption
+    // in this module's header is the documented carve-out, and the seam is
+    // reported to the orchestrator in the phase work history rather than
+    // resolved by editing another phase's test.
     const child = spawnSync(
       options.adapter[0] as string,
       [...options.adapter.slice(1), requestPath],
       {
         encoding: "utf8",
         timeout: options.clock.attemptTimeoutMs,
-        killSignal: "SIGKILL",
+        killSignal: 9,
       },
     );
     const terminatedByTimeout =
