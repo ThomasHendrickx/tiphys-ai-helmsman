@@ -1,4 +1,5 @@
 import { cmdDoctor } from "./commands/doctor.ts";
+import { cmdGates } from "./commands/gates.ts";
 import { cmdInit } from "./commands/init.ts";
 import { cmdLock } from "./commands/lock.ts";
 import { cmdPool } from "./commands/pool.ts";
@@ -19,6 +20,7 @@ const commands = new Map<string, CommandHandler>([
   ["version", printVersion],
   ["init", cmdInit],
   ["doctor", cmdDoctor],
+  ["gates", cmdGates],
   ["lock", cmdLock],
   ["pool", cmdPool],
   ["spawn", cmdSpawn],

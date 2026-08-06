@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/gate-manifest.schema.json",
+  "title": "Tiphys gate manifest",
+  "description": "One manifest per repository: which gates exist, how each is invoked, and which commands can destroy work. Kernel plan M2, M2-P1 step 6. Expressed entirely in the closed keyword set of M2-D-04.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "gates", "destructiveCommands"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "gates": {
+      "description": "Append-only registry keyed by id. No minItems: a manifest with zero gates must reach the runner and be reported as no applicable gate (M2R-012), not rejected at load.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "destructiveCommands": {
+      "description": "CLI commands and module paths whose operations can destroy work (kernel plan M2 section 2 item 11). Consumed by M2-P2 rule (e) to DERIVE a witness class rather than trust the implementer's declaration.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "command", "unitLabel", "applicability"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "command": {
+          "description": "argv array. The runner appends --result and --evidence, plus one flag per declared parameter.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "unitLabel": {
+          "type": "string"
+        },
+        "applicability": {
+          "description": "required: an unmet precondition fails the run. conditional: an unmet precondition does not.",
+          "type": "string",
+          "enum": ["required", "conditional"]
+        },
+        "parameters": {
+          "description": "Run parameters this gate's command REQUIRES. Declared rather than inferred: deciding what another program needs by pattern-matching its command line is the mechanism MECHANISMS.md forbids. An absent declared parameter makes the gate error, never not-applicable (M2-C-3, M2R-003).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["base", "head", "phase"]
+          }
+        },
+        "precondition": {
+          "$ref": "#/$defs/precondition"
+        },
+        "modes": {
+          "description": "Reserved for M3's assurance modes (section 2 item 1). Validated if present, ignored by the M2 runner, so the promotion is additive.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "The closed set. Kind-specific required fields are checked by src/gates/manifest.ts, which emits the same INVALID <pointer> <message> diagnostics, because this validator's keyword set has no conditional composition and M2-D-04 forbids growing it.",
+          "type": "string",
+          "enum": [
+            "file-exists",
+            "file-absent",
+            "branch-matches",
+            "diff-touches",
+            "command-exit-zero"
+          ]
+        },
+        "path": {
+          "description": "file-exists and file-absent.",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "branch-matches. A JavaScript regular expression source; the token {phase} is replaced by the --phase value before compilation.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "diff-touches. Path prefixes; the precondition is met when the diff changes a path under any of them.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "command-exit-zero. argv array, run in the runner's working directory.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

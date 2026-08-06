@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/gate-result.schema.json",
+  "title": "Tiphys gate result record",
+  "description": "One record per gate the runner evaluated. Kernel plan M2, M2-P1 step 2. Expressed entirely in the closed keyword set of M2-D-04.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gate",
+    "status",
+    "units",
+    "unitLabel",
+    "startedAt",
+    "endedAt",
+    "detail",
+    "evidence"
+  ],
+  "properties": {
+    "gate": {
+      "description": "The gate id, matching the manifest entry that produced this record.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "status": {
+      "description": "The four-word status vocabulary. not-applicable ASSERTS that a precondition was evaluated and found unmet (SC-011).",
+      "type": "string",
+      "enum": ["green", "red", "not-applicable", "error"]
+    },
+    "units": {
+      "description": "How much the gate examined, in unitLabel units. M2-C-2: green with 0 is rewritten to error.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "unitLabel": {
+      "description": "What one unit is, declared per gate in kernel plan M2 section 1.4.",
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "endedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "vacuous": {
+      "description": "Set only when the M2-C-2 rewrite fired: this error was a green with zero units. A strict subset of error in the summary counts.",
+      "type": "boolean"
+    },
+    "precondition": {
+      "$ref": "#/$defs/precondition"
+    },
+    "pin": {
+      "$ref": "#/$defs/pinPair"
+    },
+    "detail": {
+      "description": "One human-facing reason line. Never the machine authority for anything.",
+      "type": "string"
+    },
+    "evidence": {
+      "description": "Paths relative to the evidence directory.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "met", "reason"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "met": {
+          "description": "false means EVALUATED AND UNMET. An evaluation that could not conclude produces no precondition record at all, because the gate is error.",
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pinPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/pin"
+        },
+        "end": {
+          "$ref": "#/$defs/pin"
+        }
+      }
+    },
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roots", "takenAt", "files"],
+      "properties": {
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "takenAt": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pinFile"
+          }
+        }
+      }
+    },
+    "pinFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size", "mtimeMs"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mtimeMs": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

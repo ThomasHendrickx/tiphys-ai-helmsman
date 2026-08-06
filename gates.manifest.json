@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "gates": [
+    {
+      "id": "manifest-self-check",
+      "command": [
+        "node",
+        "bin/tiphys.ts",
+        "gates",
+        "self-check",
+        "--manifest",
+        "gates.manifest.json"
+      ],
+      "unitLabel": "schema documents validated",
+      "applicability": "required"
+    }
+  ],
+  "destructiveCommands": [
+    "pool destroy",
+    "teardown",
+    "src/pool.ts",
+    "src/teardown.ts"
+  ]
+}
