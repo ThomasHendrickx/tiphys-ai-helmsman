@@ -3479,14 +3479,35 @@ regression contract, it is a new contract wearing the old one's name.
   on licenses, wire the fleet-home version pin the M1-P2 init left as a
   documented placeholder, then execute the M3 exit test of section 4 and publish
   v0.1.0.
-- grounding: M3-P1 through M3-P9 merged with CI green on `main`. DR-0008 decided
-  (registry and package names): this phase cannot dispatch without it. Owner
-  action A-4 (publish credentials for the decided registry) is available. The
+- grounding: M3-P1 through M3-P9 merged with CI green on `main`. **DR-0008 is
+  DECIDED (2026-08-05): public npmjs under the `@tiphys` scope,
+  `@tiphys/kernel` and `@tiphys/claude-code-plugin`
+  (`delivery/STATE.md` owner-decisions table).** Revision 1 recorded it as open
+  and overdue in three places while its own risk 3 recorded it as decided, which
+  is a contradiction revision 2 removes: section 6 item 1, section 7's table,
+  and this line all now read decided, and the M3R-008 split fallback below is
+  marked historical. Owner
+  action A-4 (publish credentials and the `@tiphys` scope claim) is the one
+  remaining owner item and is elevated access the orchestrator does not hold,
+  which DR-0016 keeps owner-reserved. The
   M1-P2 init writes a fleet `package.json` whose kernel dependency pin is
   "a documented placeholder until M3 first publish" (plan v1 M1-P2 step 2), and
   this is that moment. EXT-F-09 fixes the license gate's five checks.
   Blueprint section 13's M3 exit test, amended by DR-0008 and SC-011, is the
   procedure of section 4.
+- hazard class (T-007, D-M3-32): **the one irreversible phase in the milestone,
+  and the one whose failure is invisible until a consumer installs.** What can
+  pass every criterion and still ship a broken package: a `files` list that
+  packs every directory and omits one file inside one of them, so the pack
+  listing looks right and a schema `$ref` fails to resolve from inside an
+  installed tree; a license gate that inventories `dependencies` while the
+  transitive production set is what actually ships; a release-verify script run
+  from a directory that still has the source tree on its resolution path, so it
+  witnesses the repository rather than the install; an exit-test evidence bundle
+  that is internally consistent and records a claim that was false, which is the
+  M1-P6 CR-680 shape exactly; a supervising intervention that filled a gap
+  without either party noticing, which E0.3 exists for; and a publish that
+  succeeds against a scope the owner has not claimed, which cannot be undone.
 - steps:
   1. Update `package.json`: name per DR-0008's outcome, `version` 0.1.0, remove
      `private`, and set `files` to exactly `dist`, `schemas`, `templates`,
@@ -3495,7 +3516,14 @@ regression contract, it is a new contract wearing the old one's name.
      notices. Verify the accumulated list against what the previous nine phases
      added rather than trusting this list.
   2. Create `scripts/license-gate.mjs` implementing EXT-F-09's five checks:
-     inventory production dependencies; check license metadata is present;
+     inventory production dependencies **including the full TRANSITIVE
+     production set of `ajv` 8.20.0 and `yaml` 2.9.0, which DR-0013 clause 5
+     names as required inputs to this gate and which M3-P1 step 10c recorded at
+     the moment the pins were taken**; the gate re-derives the inventory here
+     and a difference from M3-P1's recorded set is a FINDING rather than a
+     routine update, because a silently grown production tree between M3-P1 and
+     M3-P10 is exactly the supply-chain surface DR-0013 marked the decision
+     costly for. Then: check license metadata is present;
      reject unknown or explicitly prohibited licenses against a declared
      allowlist; verify `THIRD-PARTY-NOTICES` exists whenever copied third-party
      code is declared (D-1's license note: protocol reimplementation carries no
@@ -3526,6 +3554,15 @@ regression contract, it is a new contract wearing the old one's name.
      outside the allowlist it exits nonzero naming the license; with a
      third-party-code declaration present and `THIRD-PARTY-NOTICES` absent it
      exits nonzero (four directions, each witnessed).
+  1b. **The two production dependencies and their transitive set are in the
+     inventory (DR-0013 clause 5, criterion 14 of M3-P1's validator block),
+     both directions.** The gate's inventory output names `ajv` at 8.20.0,
+     `yaml` at 2.9.0, and every transitive production dependency of both with
+     each one's license; a registered test compares that set against the one
+     M3-P1's work history recorded and exits nonzero naming any package present
+     in one and absent from the other. Removing `ajv` from the inventory logic
+     makes the gate exit 0 over a tree that contains it, which is the vacuous
+     pass this criterion exists to catch, and is captured and reverted.
   2. `npm pack` produces a tarball whose listing contains every path in the
      `files` list including `AGENTS.md`, `roles/`, `schemas/`, `checklists/`,
      `templates/`, `tuition/`, `gate-registry.yaml`, `assurance-modes.yaml`,
@@ -3555,7 +3592,8 @@ regression contract, it is a new contract wearing the old one's name.
 - new behaviors: `license-gate-missing-metadata`,
   `license-gate-prohibited-license`, `license-gate-missing-notices`,
   `pack-contains-kernel-artifacts`, `pack-excludes-delivery-and-tests`,
-  `installed-package-schemas-resolve`, `init-writes-kernel-pin`.
+  `installed-package-schemas-resolve`, `init-writes-kernel-pin`,
+  and NEW at revision 2: `license-gate-covers-runtime-dependency-tree`.
 - suggested model tier: strongest for the release procedure and the exit run
   (irreversible: a published name and version cannot be unpublished cleanly),
   cheaper tier acceptable for the license gate script.
@@ -3569,10 +3607,17 @@ regression contract, it is a new contract wearing the old one's name.
   blueprint section 3 (npm spine, pin is the upgrade) and section 13 (M3 exit
   test).
 - conflicts-with: none remaining (last M3 phase).
-- blocked-by: M3-P9 merged; DR-0008 decided; owner action A-4 (publish
-  credentials); owner action A-3 (the exit run's merge approval) falls due
-  inside section 4 stage E2.
-- fallback if DR-0008 is still open at dispatch (M3R-008): this phase splits at
+- blocked-by: M3-P9 merged; owner action A-4 (publish credentials and the
+  `@tiphys` scope claim), which is elevated access the orchestrator does not
+  hold. **DR-0008 is DECIDED (2026-08-05) and is no longer a blocker.**
+  **Owner action A-3 is REMOVED at revision 2**: DR-0015 states in terms that
+  the M3 plan's owner action A-3, "approve the exit run's pull request", is
+  removed as an owner action, and revision 1 carried it anyway. Section 4 stage
+  E2 is rewritten to match; the mechanism is kept and the signatory changes.
+- **HISTORICAL, superseded 2026-08-05**: fallback if DR-0008 is still open at dispatch (M3R-008). DR-0008 was decided
+  on 2026-08-05 (public npmjs under `@tiphys`), so this split never became
+  operative and is kept only as the record of what was planned against the risk.
+  It is not an instruction. Read as history: this phase splits at
   step 5. Steps 1 to 5 dispatch as `M3-P10a`, branch
   `claude/m3-p10a-release-engineering`, carrying the license gate, the `files`
   completeness assertions, `release-verify.sh` run against a locally packed
@@ -3596,9 +3641,24 @@ Blueprint section 13's M3 row, amended by DR-0008 and SC-011: "one kernel change
 delivered end to end through the kernel's own full mode; release v0.1.0 to the
 registry decided in DR-0008", plus the release-verification analogue. This
 section makes that concrete and executable. It is staged like the M1 exit test
-(EXT-F-04): automated witnesses either side of a recorded human authorization,
-because a human merge is not a script step and pretending otherwise is how a
+(EXT-F-04): automated witnesses either side of a recorded authorization,
+because an authorization is not a script step and pretending otherwise is how a
 "deterministic" exit test acquires a step nobody can re-run.
+
+**Revision 2 changes who signs that authorization and adds one stage.** DR-0015
+removes the owner from the merge path INCLUDING at milestone boundaries, so
+stage E2's signatory is dual cross-model clean review rather than the owner, and
+owner action A-3 is removed. The MECHANISM is deliberately kept, and DR-0015
+records why in the owner's own terms: stage B exists in the blueprint as more
+than a rubber stamp, because it is the one place the exit test witnesses that
+the kernel can hand control to an external decision it does not produce, sit
+inert while nothing of its own is running, and resume correctly afterwards. Keep
+the mechanism, change who signs. Section 4.5 records what is genuinely lost,
+which is that nobody witnesses a wait measured in days. Stage E0.5 is new and
+comes from the M1 exit test's own shape rather than from a decision: the M1 run
+passed with a FALSIFICATION CONTROL, the same harness against a known-bad state,
+exiting 1 at step C2, which is what made its pass a measurement rather than an
+absence of failure. Section 4 did not require one; it does now.
 
 The run is the controlled exception settled decision 6 authorizes (SC-013): the
 kernel's own full mode drives one change, under current-process supervision.
@@ -3636,6 +3696,22 @@ install. If it is already built by the time the run happens, the fallback rule
 is: the orchestrator designates the smallest item from the M5 deferral list in
 `delivery/STATE.md` that meets every criterion above, and records the
 designation and the reason in the evidence bundle before stage E1 begins.
+
+E0.5. **A falsification control is defined before the run and executed after it
+(NEW at revision 2, from the M1 exit test's delivered shape).** The M1 run's
+pass is a measurement rather than an absence of failure because the same harness
+was run against a known-bad state and exited 1 at step C2, and that control is
+in `delivery/verification/m1-exit-test-evidence.md`. Section 4 as revision 1
+wrote it required no such thing, which means a stage that silently did nothing
+would have been indistinguishable from a stage that passed. The control for this
+exit test is: re-run the E1 sequence against a deliberately broken artifact set
+(one shipped schema keyword removed, so an instance the run validated should
+now be accepted where it was rejected) and record that the run FAILS, naming the
+stage at which it fails. A control that passes is an exit-test failure, because
+it means the stages are not measuring what they claim. The control's definition
+and its expected failure stage are written into
+`delivery/evidence/m3-exit-test/supervision-rules.md` BEFORE stage E1 begins,
+so it cannot be chosen after seeing which stages turned out to be weak.
 
 ### 4.1 Stage E1: full-mode delivery of the subject change (automated witnesses)
 
@@ -3704,21 +3780,45 @@ E1.10. Status: the status records emitted during the run validate against
 `schemas/status-line.schema.json`, and `tiphys status show` reports the current
 state from `current.json` (C-1).
 
-### 4.2 Stage E2: owner authorization (recorded, not scripted)
+### 4.2 Stage E2: authorization (recorded, not scripted)
 
-E2.1. The owner's approving review on the pull request is recorded, or an
-approval note is captured into the bundle (owner action A-3). The orchestrator
-then merges with a squash merge, as release manager (D-6). DR-0012's delegated
-merge grant does not apply here: it holds the orchestrator to "never merge
-across a milestone boundary", and this merge is the milestone boundary, so the
-owner's approval is required and its absence is an exit-test failure rather than
-a delay. Stage E2 has no timing requirement; the lease is renewed across the
-wait and the renewal is recorded (PR-203).
-E2.2. If DR-0012's regime is still in force at the time of the run, the two
-independent cross-model clean reviews it requires are also in the bundle, both
-validating against `schemas/verdict.schema.json`, and
-`scripts/check-dual-review.mjs`'s exit-0 record from E1.7 is in the bundle as
-the evidence that they were actually decorrelated rather than declared to be.
+**Rewritten at revision 2 under DR-0015.** Revision 1's title was "owner
+authorization" and its E2.1 required the owner's approving review, citing
+DR-0012's milestone-boundary carve-out. DR-0015 supersedes that carve-out
+explicitly and names this plan's owner action A-3 as removed. The stage
+survives, and DR-0015 records why in the owner's terms: it is the one place the
+exit test witnesses that the kernel can hand control to an external decision it
+does not produce, sit inert while nothing of its own is running, and resume from
+the artifact afterwards. **Keep the mechanism, change who signs.**
+
+E2.1. The authorization artifact is the dual cross-model clean review of
+DR-0012's definition of clean, captured into the bundle: two verdicts on the
+exact head, distinct `produced-by` model families, distinct `framing` values,
+distinct `review-contract` values (one `criteria`, one `hazard`, T-007), no
+unresolved high or medium finding, CI green on that head, and the scope audit
+passing. `scripts/check-dual-review.mjs` exits 0 over the pair and its record is
+the bundle's evidence that the reviews were decorrelated rather than declared to
+be. The orchestrator then merges with a squash merge, as release manager (D-6).
+**The absence of a valid authorization artifact is an exit-test failure**, which
+is unchanged from revision 1; what changed is what makes it valid.
+
+E2.2. **The wait is the review pipeline's wall time and the lease is sized for
+it (DR-0015, CR-608, option 1 as adopted).** The certification run acquires its
+lease with an EXPLICIT duration covering the whole authorization window rather
+than relying on the 900-second default, and the observed lease state is recorded
+in the bundle either way, so a lapse is reported rather than silent. DR-0015
+notes this is a MORE binding requirement than the version it replaces, not less:
+a human might have answered in two minutes, whereas the measured review pipeline
+is not fast. Measured in DR-0015's own session rather than guessed: a single
+clean-room review of a code phase ran between 24 and 45 minutes, two ran
+concurrently, and a phase needing a fix round took hours end to end. A
+900-second lease covers none of that, and `checkHoldership` fails closed on an
+expired lease, so an overrun makes the run FAIL rather than pass unsafely.
+
+E2.3. **Exit-test evidence goes to the owner unasked (DR-0015, unchanged and
+restated because it is the half that survived).** The milestone does not start
+M4 before that evidence is presented. Presenting evidence is a reporting
+obligation, not a click, and this stage does not wait on the owner for it.
 
 ### 4.3 Stage E3: post-merge witnesses
 
@@ -3760,6 +3860,13 @@ schemas accept the artifacts the roles produced and rejected at least one
 deliberately invalid instance; the published package installs from a clean
 environment and its shipped schemas and templates resolve from inside the
 installed tree; the license gate runs before publication.
+**Revision 2 adds three to the proves-list.** The kernel can hand control to an
+external authorization it does not produce, sit inert, and resume from the
+artifact (stage E2, the property DR-0015 kept when it changed the signatory).
+The exit test measures rather than merely passes, because stage E0.5's
+falsification control fails and names its failure stage. And the two review
+contracts of `full` mode were both run and both recorded, which is T-007's
+property witnessed once rather than asserted.
 
 Does not prove, and these are recorded rather than assumed away:
 
@@ -3788,6 +3895,32 @@ Does not prove, and these are recorded rather than assumed away:
    `parallelizable` fields are recorded and validated, never load-bearing.
 8. Registry portability. The release is verified against the one registry
    DR-0008 chose, from one environment.
+9. **A long authorization wait (NEW at revision 2, DR-0015's own honest
+   residual).** With the owner out of the path, the authorization window is the
+   review pipeline's wall time, measured in tens of minutes to hours. Nobody
+   witnesses a wait measured in DAYS, which is the case an inert kernel would be
+   most likely to fail. DR-0015 records this as what is genuinely lost by the
+   change, and it is copied here rather than left in the decision record,
+   because a not-proven list that omits a known gap is the vacuous-pass shape
+   this plan spends section 2.3 preventing.
+10. **Supervision under real load (NEW at revision 2, T-008).** M3 ships the
+   dispatch contract as clause text and as an orchestrator duty, and the exit
+   run executes it once, on one change, with one orchestrator paying attention
+   to one thing. T-008's measurement is that the failure happened to a competent
+   orchestrator, holding the design, having stated the rule aloud that morning,
+   supervising only TWO agents, while busy with real work. Nothing in this exit
+   test reproduces the busy condition, so what is witnessed is that the clauses
+   exist and were followed once, never that they survive the state in which they
+   are needed. That is the standing limit of a layer-2 milestone and it is why
+   M4's pilot is the real test of this specific property, not only of judgment.
+11. **The claim classes the record contract newly covers (NEW at revision 2,
+   T-006).** M3-P4 makes an impossibility, coverage or remedy claim
+   unrepresentable without an executed construction, and M3-P7 adds probes that
+   hunt them. The exit run produces one work history and two verdicts. Whether
+   the contract actually stops a false claim is a property of many records over
+   many phases, and one run cannot show it. What the run witnesses is that an
+   honest record validates and that a fixture missing its construction is
+   rejected, which is a property of the schema and not of the practice.
 
 ---
 
