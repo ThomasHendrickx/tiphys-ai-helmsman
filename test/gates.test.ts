@@ -59,6 +59,17 @@ const validateModule = (await import(
   ) => string[];
 };
 
+const resultModule = (await import(
+  new URL("../src/gates/result.ts", import.meta.url).href
+)) as {
+  makeGateResult: (fields: Record<string, unknown>) => {
+    status: string;
+    units: number;
+    vacuous?: boolean;
+    detail: string;
+  };
+};
+
 const manifestModule = (await import(
   new URL("../src/gates/manifest.ts", import.meta.url).href
 )) as {
@@ -748,12 +759,60 @@ test("three simultaneous violations produce the same three INVALID lines in the 
     "INVALID #/gates/0/id required property id is missing",
     "INVALID #/version required property version is missing",
   ];
+  // Member 1 of the ordering class: the SCHEMA WALK's own sort, reached by
+  // calling the validator directly. Through validateManifestDocument this
+  // sort is invisible, because that function re-sorts the merged list, so a
+  // test that only went through the manifest path would stay green while the
+  // contract's sort was deleted (work history W15b).
+  const direct = validateModule.validateToLines(
+    manifestModule.manifestSchema(),
+    document,
+  );
+  assert.deepEqual(direct, expected);
+
   const runs: string[][] = [];
   for (let i = 0; i < 10; i += 1) {
     runs.push(manifestModule.validateManifestDocument(document));
   }
   for (const run of runs) {
     assert.deepEqual(run, expected);
+  }
+
+  // THE ORDER IS THE CONTRACT, NOT THE TRAVERSAL, and the fixture above
+  // cannot show that on its own: its natural traversal order for the schema
+  // walk happens to be #/version, #/destructiveCommands, #/gates/0/id, so
+  // only the FINAL SORT produces the expected list. That was established by
+  // red-witnessing, not by reading (see the work history's W15).
+  //
+  // A second, structurally different member, because one witness is not a
+  // class: this document's two failures come from DIFFERENT PRODUCERS, the
+  // schema walk and the kind-specific precondition check that cannot be
+  // expressed in the closed keyword set. They are concatenated in producer
+  // order and must come out in pointer order, so the merge sort is what this
+  // member measures and the schema walk's own sort cannot supply it.
+  const twoProducers = {
+    version: 1,
+    gates: [
+      {
+        id: "a-gate",
+        command: ["node", "x.mjs"],
+        unitLabel: "u",
+        applicability: "required",
+        precondition: { id: "p", kind: "file-exists" },
+      },
+      { command: ["node", "y.mjs"], unitLabel: "u", applicability: "required" },
+    ],
+    destructiveCommands: [],
+  };
+  const expectedTwo = [
+    "INVALID #/gates/0/precondition/path required property path is missing",
+    "INVALID #/gates/1/id required property id is missing",
+  ];
+  for (let i = 0; i < 10; i += 1) {
+    assert.deepEqual(
+      manifestModule.validateManifestDocument(twoProducers),
+      expectedTwo,
+    );
   }
 });
 
@@ -864,6 +923,60 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
   assert.equal(result.status, 64);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /^usage: tiphys gates /m);
+
+  // ISOLATED. The invocation above is missing --manifest and --evidence too,
+  // so a runner that ignored unknown flags entirely would still exit 64 by a
+  // different route, and this test would guard nothing about unknown flags
+  // (work history W23). Here everything required is present and the ONLY
+  // fault is the unknown flag.
+  const dir = scratch();
+  try {
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-green",
+        command: writeGate(dir, "green", {
+          record: gateRecord("g-green", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const complete = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev"),
+    ]);
+    assert.equal(complete.status, 0, complete.stdout + complete.stderr);
+
+    const withExtra = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev2"),
+      "--no-such-flag",
+      "x",
+    ]);
+    assert.equal(withExtra.status, 64, withExtra.stdout + withExtra.stderr);
+    assert.match(withExtra.stderr, /^usage: tiphys gates /m);
+
+    // A value flag with no value is the same class and a different member.
+    const danglingValue = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+    ]);
+    assert.equal(danglingValue.status, 64);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -1200,6 +1313,168 @@ test("the workflow's gate bundle step runs the gate runner and is able to fail",
       0,
       `the wired bundle step exited 0 over a manifest with no gates: ${red.stdout}${red.stderr}`,
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M2-C-2 at the constructor, and the exit-code/status seam             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The rewrite is enforced TWICE on purpose: here, so a gate built on this
+ * module cannot construct a vacuous green, and again at the runner's ingest,
+ * so a gate that does not use this module cannot smuggle one past it. Two
+ * enforcement points need two witnesses, or one of them is an arm no test
+ * reaches (T-006).
+ */
+test("makeGateResult cannot construct a green record with zero units", () => {
+  const vacuous = resultModule.makeGateResult({
+    gate: "g-one",
+    status: "green",
+    units: 0,
+    unitLabel: "u",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: "everything is fine",
+  });
+  assert.equal(vacuous.status, "error");
+  assert.equal(vacuous.vacuous, true);
+  assert.match(vacuous.detail, /M2-C-2/);
+  // The gate's own claim survives in the record rather than being discarded.
+  assert.match(vacuous.detail, /everything is fine/);
+
+  // BOTH DIRECTIONS: one unit examined is a green the constructor keeps.
+  const real = resultModule.makeGateResult({
+    gate: "g-one",
+    status: "green",
+    units: 1,
+    unitLabel: "u",
+    startedAt: FIXED_START,
+    endedAt: FIXED_END,
+    detail: "",
+  });
+  assert.equal(real.status, "green");
+  assert.equal(real.vacuous, undefined);
+
+  // A negative or fractional count is not a smaller measurement, it is an
+  // unusable one, and is treated as zero rather than as a green.
+  for (const units of [-3, 0.5]) {
+    const bad = resultModule.makeGateResult({
+      gate: "g-one",
+      status: "green",
+      units,
+      unitLabel: "u",
+      startedAt: FIXED_START,
+      endedAt: FIXED_END,
+      detail: "",
+    });
+    assert.equal(bad.status, "error", `units ${String(units)} produced ${bad.status}`);
+  }
+});
+
+test("a gate whose exit code contradicts its own record is error naming both", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-liar",
+        // The dangerous state: a record that says red while the process
+        // says green. Trusting either one alone reports a verdict nobody
+        // measured, and trusting the record alone reports RED as a finding
+        // when the gate may simply have crashed after writing it.
+        command: writeGate(dir, "liar", {
+          record: gateRecord("g-liar", "red", 2),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(result.status, 0);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "g-liar", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "error");
+    assert.match(record.detail, /recorded status red/);
+    assert.match(record.detail, /exited 0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The DECLARED-parameter arm, which is a different code path from the
+ * precondition-derived one and was found by red-witnessing rather than by
+ * reading: defanging `requiredParameters` left the `diff-touches` test green,
+ * because `evaluatePrecondition` re-checks `--base` for its own reasons. The
+ * property survived; the mechanism was unwitnessed. A gate that declares it
+ * needs `--phase` and has no precondition at all reaches only the first
+ * guard, and this is that gate.
+ */
+test("a gate declaring a run parameter it does not receive is error, and receives it otherwise", () => {
+  const dir = scratch();
+  try {
+    const command = writeGate(dir, "phased", {
+      record: gateRecord("g-phased", "green", 2),
+      exit: 0,
+    });
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-phased",
+        command,
+        unitLabel: "fixture units",
+        applicability: "required",
+        parameters: ["phase"],
+      },
+    ]);
+
+    const without = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-without"),
+    ]);
+    assert.notEqual(without.status, 0);
+    const withoutRecord = JSON.parse(
+      readFileSync(join(dir, "ev-without", "g-phased", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(withoutRecord.status, "error");
+    assert.notEqual(withoutRecord.status, "not-applicable");
+    assert.match(withoutRecord.detail, /--phase/);
+
+    const withPhase = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      join(dir, "ev-with"),
+      "--phase",
+      "M2-P1",
+    ]);
+    assert.equal(withPhase.status, 0, withPhase.stdout + withPhase.stderr);
+
+    // And the value really reached the gate's argv, rather than the runner
+    // merely having satisfied itself that it was present.
+    const passed = readFileSync(join(dir, "ev-with", "g-phased", "stdout.txt"), "utf8");
+    assert.equal(passed, "");
+    const withRecord = JSON.parse(
+      readFileSync(join(dir, "ev-with", "g-phased", "result.json"), "utf8"),
+    ) as { status: string };
+    assert.equal(withRecord.status, "green");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

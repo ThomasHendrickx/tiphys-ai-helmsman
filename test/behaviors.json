@@ -181,5 +181,8 @@
   "pin-mtime-only-difference": "a byte-identical rewrite that changes only mtime is one difference naming the path and mtimeMs, and no rewrite is none",
   "pin-added-and-removed": "comparePins reports added and removed paths",
   "pin-refuses-named-pipe": "takePin refuses a named pipe inside a root naming the path and the type",
-  "gate-bundle-step-wired-and-falsifiable": "the workflow's gate bundle step runs the gate runner and is able to fail"
+  "gate-bundle-step-wired-and-falsifiable": "the workflow's gate bundle step runs the gate runner and is able to fail",
+  "gate-constructor-refuses-vacuous-green": "makeGateResult cannot construct a green record with zero units",
+  "gate-exit-code-record-mismatch-is-error": "a gate whose exit code contradicts its own record is error naming both",
+  "gate-declared-parameter-missing-is-error": "a gate declaring a run parameter it does not receive is error, and receives it otherwise"
 }
