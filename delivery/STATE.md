@@ -44,16 +44,16 @@ existed and that it was released by the owner, not optimised away.
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
 | M1-P6 toy sandbox and exit test | merged | #9 | four fix rounds, five review passes; exit test PASSED on the merged head with a falsification control |
+| M2-P1 gate contract and runner | merged | #11 | squash `8718852` on head `4811d2e`, 2026-08-06. Three fix rounds; DR-0016's fresh-implementer response fired after round 3 and closed CR-900 at the mechanism in one round. Final clean: derivation audit (Opus) APPROVE plus criteria regression (Sonnet) APPROVE CR-960, CI green on the exact head. Arbitration: `delivery/review/arbitration-m2-p1-round4.md` |
 
 ## In flight
 
-**M2-P1 (gate contract, manifest, runner, pin): DISPATCHED** on branch
-`claude/m2-p1-gate-contract-and-runner` off `037477e`. It is the serialising
-phase; M2-P2 through M2-P8 dispatch concurrently the moment it merges, per
-`delivery/plan/m2-conflict-pre-pass.md`. The implementer carries the T-008
-dispatch contract (incremental work history as beacon), the pre-submit hazard
-self-review, M2-C-6, and the DR-0013 diagnostic contract as load-bearing
-constraints.
+**M2-P1 is MERGED (PR #11).** The serialising phase is done, so the seven-way
+parallel window is OPEN: M2-P2 through M2-P8 dispatch concurrently per
+`delivery/plan/m2-conflict-pre-pass.md`, M2-P9 last, merges in grounding
+order. Every dispatch carries the T-008 contract (incremental beacon plus a
+freshness watchdog armed in the same turn) and the M2-P1 carry-forwards
+recorded below (CR-902 section).
 
 **M3 plan re-grounding: DISPATCHED** on branch `claude/m3-plan-regrounding`,
 documents only, same DR-0011 step M2 received. Inputs: DR-0013 as decided,
