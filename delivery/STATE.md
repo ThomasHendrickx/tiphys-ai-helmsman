@@ -146,6 +146,26 @@ they have not absorbed are T-005 (mechanism index), T-006 (work-history
 contract), DR-0014 (release verification becomes a pluggable interface, which
 moves M2-P7's centre of gravity), and M1-P5's own defect record.
 
+**Carried forward from M2-P1, placed here because a phase work history is not
+where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
+
+- A consumer of an evidence bundle must know WHICH RUN it asked for; a refused
+  run leaves the previous run's summary in place by design, and the runner
+  emits `gates: run <id>` on stdout for every outcome so attribution is
+  observable. M2-P9 consumes this.
+- The evidence claim has NO expiry by design: a killed run needs one `rm`, and
+  the refusal message names the file. Do not add a lease.
+- A gate's OWN writes into the evidence directory are unguardable by the
+  runner; the runner refuses to certify a run whose claim was lost instead.
+- `fetch-depth: 0` is required before the first `diff-touches` gate lands
+  (M2-P2, M2-P5), and on pull_request events the checkout SHA is the synthetic
+  merge commit unless `--head` is passed explicitly (fixed for the bundle step,
+  a trap for any new step).
+- The pin is five fields including `ctimeMs`; a gate over-reporting `units`
+  remains uncloseable by the runner and is recorded, not solved.
+- There is no `env` precondition kind; M2-P8's `credential-token` gate wires
+  through a command or file check, not an environment probe.
+
 ## Owner decisions
 
 | Record | State |
