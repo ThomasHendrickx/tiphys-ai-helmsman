@@ -731,6 +731,85 @@ function pinRefusal(record: GateResult): string | undefined {
  * Run the manifest's gates. Returns the aggregate exit code and, when the
  * run got far enough to have one, the summary that was written.
  */
+export interface AggregateCounts {
+  declared: number;
+  applicable: number;
+  verdict: number;
+  green: number;
+  red: number;
+  "not-applicable": number;
+  error: number;
+  vacuous: number;
+}
+
+/**
+ * THE ONE AGGREGATE DECISION, extracted so it can be EXERCISED rather than
+ * read (CR-800's fix round). CR-800 was a reading of these branch conditions
+ * that turned out not to hold, and the first test written for the fix
+ * asserted on the TEXT of this function, which is the guard-that-asserts-text
+ * class MECHANISMS.md records six instances of. A pure function over a counts
+ * object can be handed states the runner cannot currently produce, including
+ * the internally inconsistent ones the invariants below exist for, so the
+ * invariants are witnessed instead of quoted.
+ *
+ * AGGREGATE PRECEDENCE, fixed here so it is one rule and not a reading. A
+ * concrete failure outranks the vacuity check, because "3 gates reported
+ * error" tells the operator more than "no applicable gate" and both exit 21
+ * anyway. The vacuity check outranks a required not-applicable gate, because
+ * a bundle that examined nothing is not a report about any one gate (M2-C-2
+ * at the aggregate level, M2R-012).
+ */
+export function decideAggregate(
+  counts: AggregateCounts,
+  requiredNotApplicable: string[],
+  rows: { id: string; status: GateStatus }[],
+): { exitCode: number; reason: string } {
+  let exitCode = EXIT_GREEN;
+  let reason = "every applicable gate is green";
+  if (counts.error > 0) {
+    exitCode = EXIT_GATE_ERROR;
+    reason = `${String(counts.error)} gate(s) reported error: ${rows
+      .filter((row) => row.status === "error")
+      .map((row) => row.id)
+      .join(", ")}`;
+  } else if (counts.red > 0) {
+    exitCode = EXIT_RED;
+    reason = `${String(counts.red)} gate(s) reported red: ${rows
+      .filter((row) => row.status === "red")
+      .map((row) => row.id)
+      .join(", ")}`;
+  } else if (counts.verdict === 0) {
+    // CR-800. This used to read `counts.applicable === 0`, and `applicable`
+    // used to mean "was spawned", so a bundle of gates that each declared
+    // their own not-applicable slipped past it and exited 0. The count
+    // consulted here is now the only one that means work was done.
+    exitCode = EXIT_GATE_ERROR;
+    reason = NO_APPLICABLE_GATE;
+  } else if (requiredNotApplicable.length > 0) {
+    exitCode = EXIT_NOT_APPLICABLE;
+    reason = `required gate(s) not applicable: ${requiredNotApplicable.join(", ")}`;
+  }
+
+  // THE SUCCESS PATH CANNOT DESCRIBE AN EMPTY GREEN BUCKET. The branches
+  // above already make exit 0 unreachable with `counts.green === 0`, and this
+  // asserts it rather than trusting the reading, because CR-800 was exactly a
+  // reading of the branch conditions that turned out not to hold.
+  if (exitCode === EXIT_GREEN && counts.green === 0) {
+    exitCode = EXIT_GATE_ERROR;
+    reason =
+      "internal inconsistency: the run reached the success path with zero " +
+      `green gates (${JSON.stringify(counts)})`;
+  }
+  // Step 8's stated relation, asserted rather than assumed (CR-806).
+  if (counts.vacuous > counts.error) {
+    exitCode = EXIT_GATE_ERROR;
+    reason =
+      `internal inconsistency: vacuous ${String(counts.vacuous)} exceeds ` +
+      `error ${String(counts.error)}, and vacuous is a strict subset of error`;
+  }
+  return { exitCode, reason };
+}
+
 export const RUN_CLAIM_FILE = ".tiphys-gate-run.json";
 
 /**
@@ -992,56 +1071,9 @@ function runClaimedBundle(
     });
   }
 
-  // AGGREGATE PRECEDENCE, fixed here so it is one rule and not a reading.
-  // A concrete failure outranks the vacuity check, because "3 gates reported
-  // error" tells the operator more than "no applicable gate" and both exit
-  // 21 anyway. The vacuity check outranks a required not-applicable gate,
-  // because a bundle that examined nothing is not a report about any one
-  // gate (M2-C-2 at the aggregate level, M2R-012).
-  let exitCode = EXIT_GREEN;
-  let reason = "every applicable gate is green";
-  if (counts.error > 0) {
-    exitCode = EXIT_GATE_ERROR;
-    reason = `${String(counts.error)} gate(s) reported error: ${rows
-      .filter((row) => row.status === "error")
-      .map((row) => row.id)
-      .join(", ")}`;
-  } else if (counts.red > 0) {
-    exitCode = EXIT_RED;
-    reason = `${String(counts.red)} gate(s) reported red: ${rows
-      .filter((row) => row.status === "red")
-      .map((row) => row.id)
-      .join(", ")}`;
-  } else if (counts.verdict === 0) {
-    // CR-800. This used to read `counts.applicable === 0`, and `applicable`
-    // used to mean "was spawned", so a bundle of gates that each declared
-    // their own not-applicable slipped past it and exited 0. The count
-    // consulted here is now the only one that means work was done.
-    exitCode = EXIT_GATE_ERROR;
-    reason = NO_APPLICABLE_GATE;
-  } else if (requiredNotApplicable.length > 0) {
-    exitCode = EXIT_NOT_APPLICABLE;
-    reason = `required gate(s) not applicable: ${requiredNotApplicable.join(", ")}`;
-  }
-
-  // THE SUCCESS PATH CANNOT DESCRIBE AN EMPTY GREEN BUCKET. The branch above
-  // already makes exit 0 unreachable with `counts.green === 0`, and this
-  // asserts it rather than trusting the reading, because CR-800 was exactly a
-  // reading of the branch conditions that turned out not to hold. An internal
-  // inconsistency here is `error`, never a green nobody measured.
-  if (exitCode === EXIT_GREEN && counts.green === 0) {
-    exitCode = EXIT_GATE_ERROR;
-    reason =
-      "internal inconsistency: the run reached the success path with zero " +
-      `green gates (${JSON.stringify(counts)})`;
-  }
-  // Step 8's stated relation, asserted rather than assumed (CR-806).
-  if (counts.vacuous > counts.error) {
-    exitCode = EXIT_GATE_ERROR;
-    reason =
-      `internal inconsistency: vacuous ${String(counts.vacuous)} exceeds ` +
-      `error ${String(counts.error)}, and vacuous is a strict subset of error`;
-  }
+  const decided = decideAggregate(counts, requiredNotApplicable, rows);
+  const exitCode = decided.exitCode;
+  const reason = decided.reason;
 
   const parameters: RunSummary["parameters"] = {};
   if (options.base !== undefined) {

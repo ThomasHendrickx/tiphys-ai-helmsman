@@ -196,5 +196,6 @@
   "gate-duplicate-id-message-in-table": "the duplicate-id diagnostic comes from the message table",
   "gate-self-check-units-match-label": "manifest-self-check reports one unit per schema document",
   "pin-vacuity-floor": "a pin that measured no files refuses instead of reporting no difference",
-  "pin-restored-mtime-still-differs": "a byte-identical rewrite that restores mtime exactly is still a difference"
+  "pin-restored-mtime-still-differs": "a byte-identical rewrite that restores mtime exactly is still a difference",
+  "gate-file-absent-precondition": "file-absent is met only when nothing is there, and an irregular entry is error"
 }

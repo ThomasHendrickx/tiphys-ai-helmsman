@@ -71,6 +71,16 @@ const resultModule = (await import(
   };
 };
 
+const runModule = (await import(
+  new URL("../src/gates/run.ts", import.meta.url).href
+)) as {
+  decideAggregate: (
+    counts: Record<string, number>,
+    requiredNotApplicable: string[],
+    rows: { id: string; status: string }[],
+  ) => { exitCode: number; reason: string };
+};
+
 const manifestModule = (await import(
   new URL("../src/gates/manifest.ts", import.meta.url).href
 )) as {
@@ -1287,6 +1297,23 @@ test("the workflow's gate bundle step runs the gate runner and is able to fail",
     assert.match(command, /--manifest gates\.manifest\.json/);
   }
 
+  // A PINNED SHAPE, AND IT IS A TEXT ASSERTION, said plainly rather than
+  // dressed up as behaviour (CR-830-1). `${{ github.sha }}` on a
+  // pull_request trigger is the ephemeral merge commit, not the branch head,
+  // so a diff computed against it answers a different question and SUCCEEDS
+  // while doing so. The value is substituted by GitHub at run time and there
+  // is nothing here to execute, so MECHANISMS.md's second tier applies: pin
+  // the accepted shape and fail closed on anything else, never widen. What
+  // stays unguarded is everything about how GitHub resolves the expression;
+  // that is not readable from this tree and is not claimed.
+  const pullRequestStep = commands.find((c) => c.includes("--base"));
+  assert.ok(pullRequestStep, "no pull-request bundle step (the one with --base)");
+  assert.match(
+    pullRequestStep,
+    /--head "\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
+  );
+  assert.doesNotMatch(pullRequestStep, /--head "\$\{\{ github\.sha \}\}"/);
+
   const dir = scratch();
   try {
     const push = commands.find((c) => !c.includes("--base")) as string;
@@ -1652,22 +1679,68 @@ test("a gate that declares its own not-applicable cannot make the bundle green",
 });
 
 /**
- * The structural half of CR-800: the success path is asserted, not merely
- * unreachable by reading. CR-800 WAS a reading of the branch conditions that
- * turned out not to hold, so the code now checks the invariant it depends on.
+ * The structural half of CR-800, EXERCISED rather than read.
+ *
+ * The first version of this test asserted on the TEXT of `src/gates/run.ts`,
+ * which is the guard-that-asserts-text class MECHANISMS.md records six M1-P6
+ * instances of: wrapping the invariant in `if (false && ...)` preserved every
+ * asserted string and left the test green. That is recorded in the work
+ * history as witness F3 and is why the decision was extracted into a pure
+ * function: a counts object can be handed states the runner cannot currently
+ * produce, which is exactly what an invariant against internal inconsistency
+ * needs.
  */
 test("the runner cannot report success over an empty green bucket", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("../src/gates/run.ts", import.meta.url)),
-    "utf8",
+  const base = {
+    declared: 2,
+    applicable: 2,
+    verdict: 2,
+    green: 0,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  // MEMBER 1: verdicts were reached and none of them was green. Unreachable
+  // through the branch conditions today; the invariant is what makes that a
+  // property rather than a coincidence of how they are written.
+  const inconsistent = runModule.decideAggregate(base, [], []);
+  assert.notEqual(inconsistent.exitCode, 0);
+  assert.doesNotMatch(inconsistent.reason, /every applicable gate is green/);
+
+  // MEMBER 2: step 8's subset relation broken, a structurally different
+  // inconsistency reached through a different field (CR-806).
+  const subsetBroken = runModule.decideAggregate(
+    { ...base, green: 2, vacuous: 1, error: 0 },
+    [],
+    [],
   );
-  // The success reason exists in exactly one place and is guarded by an
-  // explicit invariant check that names counts.green.
-  assert.match(source, /exitCode === EXIT_GREEN && counts\.green === 0/);
-  assert.match(source, /counts\.vacuous > counts\.error/);
-  // And the anti-vacuity branch consults `verdict`, never `applicable`.
-  assert.match(source, /else if \(counts\.verdict === 0\)/);
-  assert.doesNotMatch(source, /else if \(counts\.applicable === 0\)/);
+  assert.notEqual(subsetBroken.exitCode, 0);
+  assert.match(subsetBroken.reason, /strict subset/);
+
+  // MEMBER 3: the anti-vacuity rule itself, over a bundle that reached no
+  // verdict at all.
+  const vacuous = runModule.decideAggregate(
+    { ...base, applicable: 2, verdict: 0, "not-applicable": 2 },
+    [],
+    [],
+  );
+  assert.equal(vacuous.reason, "no applicable gate");
+  assert.notEqual(vacuous.exitCode, 0);
+
+  // CONTROL: a consistent green bundle still exits 0, or the invariants
+  // above would be a guard that refuses everything.
+  const good = runModule.decideAggregate({ ...base, green: 2 }, [], []);
+  assert.equal(good.exitCode, 0);
+  assert.equal(good.reason, "every applicable gate is green");
+
+  // CONTROL 2: precedence is unchanged. An error outranks the vacuity rule.
+  const errored = runModule.decideAggregate(
+    { ...base, verdict: 0, error: 1 },
+    [],
+    [{ id: "g-bad", status: "error" }],
+  );
+  assert.match(errored.reason, /g-bad/);
 });
 
 /**
@@ -2302,6 +2375,54 @@ test("manifest-self-check reports one unit per schema document", () => {
     assert.ok(record.units > 0);
     // The manifest validation is real work and is still reported.
     assert.match(record.detail, /gates\.manifest\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * `file-absent` was the last precondition kind with no test, found by the
+ * D-805 derivation rather than by reading. Its M2-C-6 arm matters as much as
+ * `file-exists`: a named pipe at the path is PRESENT, so a naive reading
+ * would call the precondition unmet, which is a verdict about a path nobody
+ * examined. Fail closed instead (M2-C-3).
+ */
+test("file-absent is met only when nothing is there, and an irregular entry is error", () => {
+  const dir = scratch();
+  try {
+    const target = join(dir, "must-not-exist");
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-absent",
+        command: writeGate(dir, "absent", {
+          record: gateRecord("g-absent", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "u",
+        applicability: "conditional",
+        precondition: { id: "no-marker", kind: "file-absent", path: target },
+      },
+    ]);
+    const statusFor = (label: string): string => {
+      const evidence = join(dir, `ev-${label}`);
+      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      return (
+        JSON.parse(
+          readFileSync(join(evidence, "g-absent", "result.json"), "utf8"),
+        ) as { status: string }
+      ).status;
+    };
+
+    // Nothing there: met, so the gate runs.
+    assert.equal(statusFor("gone"), "green");
+    // A regular file there: evaluated and unmet.
+    writeFileSync(target, "present\n");
+    assert.equal(statusFor("present"), "not-applicable");
+    // A named pipe there: present, and not a thing this gate may examine.
+    // The assertion only executes because the command RETURNED.
+    rmSync(target);
+    mkfifo(target);
+    assert.equal(statusFor("fifo"), "error");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
