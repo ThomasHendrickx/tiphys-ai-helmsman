@@ -10,84 +10,60 @@ concurrency:
   group: gates-${{ github.ref }}
   cancel-in-progress: true
 
+# ONE job, named `gates`. DR-0004's required status context is the string
+# `gates` verbatim, and a job named `gates` with no matrix publishes exactly
+# that context, so branch protection is satisfied by this job directly and its
+# red/green is the real build+test+gate outcome rather than a fan-in over it.
+#
+# This replaces the earlier two-job shape (a matrix `test` job plus a `gates`
+# fan-in that only asserted the matrix succeeded). That shape needed a SECOND
+# runner acquisition per run for the fan-in, and under any runner contention
+# the fan-in starved in the queue and GitHub cancelled it, turning correct
+# heads red and stalling the merge train. Owner decision (2026-08-06): collapse
+# to one job so each run acquires one runner. The node floor is >=26 and CI on
+# Node 26 is the authority (CLAUDE.md), so the single leg pins node 26 without a
+# matrix; adding a matrix would change the context to `gates (26)` and break the
+# required-check name.
 jobs:
-  test:
+  gates:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node:
-          - 26
     steps:
-      # fetch-depth: 0, THE OTHER HALF the TWO THINGS comment below has
-      # named since M2-P1 shipped (fix round, M2-P1, refined mechanism 2).
-      # A shallow checkout has only the tip commit, so `git diff
-      # base...head` and `git merge-base` both exit nonzero against any ref
-      # that is not that one commit. The M2-P1 bundle steps below no longer
-      # need it themselves (they now run only `manifest-self-check`, which
-      # touches no git history), but M2-P5's citation-linter, M2-P2's and
-      # M2-P4's gates, and M2-P9's exit harness all need real history from
-      # their own SUITES exercised by `npm test` two steps up, and none of
-      # those phases' files-to-touch lists include this workflow file. Full
-      # history costs one slower checkout per run; landing it here once
-      # keeps the comment's promise without waiting for a phase that is
-      # structurally unable to make good on it itself.
+      # fetch-depth: 0 is load-bearing. A shallow checkout has only the tip
+      # commit, so `git diff base...head` and `git merge-base` exit nonzero
+      # against any other ref. M2-P5's citation-linter, M2-P2's and M2-P4's
+      # gates, and M2-P9's exit harness all need real history from the suites
+      # `npm test` exercises, and none of those phases' files-to-touch lists
+      # include this workflow file. Full history costs one slower checkout.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 26
       - run: npm ci
       - run: npm run build
       - run: npm test
-      # The M2 gate bundle (kernel plan M2, M2-P1 step 9). This runs INSIDE
-      # the existing `test` job on purpose: check-run contexts are derived
-      # from job names and matrix values, so the published contexts stay
-      # `test (26)` and `gates`, and DR-0004's required context named
-      # verbatim `gates` is untouched. Adding a job here would add a context
-      # and require a ruleset change nobody has approved.
+      # The M2 gate bundle (kernel plan M2, M2-P1 step 9). It carries one gate
+      # today, `manifest-self-check`, deliberately: a runner wired to an empty
+      # gate set reports a green bundle over nothing measured (M2R-012), so the
+      # first CI run measures something real. M2-P9 replaces this step with the
+      # exit harness so the set runs once (M2R-026).
       #
-      # The bundle carries one gate today, `manifest-self-check`, and that
-      # is deliberate: a runner wired to an empty gate set reports a green
-      # bundle over nothing measured, which is the failure this milestone
-      # exists to make impossible (M2R-012), so the first CI run measures
-      # something real. M2-P9 later replaces this step with the exit harness
-      # so the set runs once (M2R-026).
-      #
-      # Two steps rather than one expression: on a pull request the base and
-      # head SHAs exist and are passed; on a push to main they do not.
+      # Two steps rather than one: on a pull request the base and head SHAs
+      # exist and are passed; on a push to main they do not.
       #
       # --head is `github.event.pull_request.head.sha`, NOT `github.sha`
-      # (CR-830-1). On a pull_request trigger `github.sha` is the ephemeral
-      # merge commit the runner checked out, so a diff computed against it has
-      # the wrong right-hand side: it would succeed and answer a different
-      # question, which is worse than failing. No gate in this phase consumes
-      # the value, so this is correctness in advance of a consumer.
+      # (CR-830-1). On a pull_request trigger `github.sha` is the ephemeral merge
+      # commit checked out, so a diff against it answers a different question.
       #
-      # --only manifest-self-check ON BOTH STEPS (fix round, M2-P1, mechanism
-      # 2, refined after both M2-P5's and M2-P4's implementers independently
-      # hit the same class isolating their own gates). THE MECHANISM: this
-      # interim wiring cannot absorb a PARAMETERIZED gate, and that is true of
-      # both steps, not just the push one. A required diff-touches gate needs
-      # --base, which the push step never has (M2-C-3: no base means the
-      # precondition cannot be evaluated, and it fails closed, correctly,
-      # which is exactly the failure this pins around). A required
-      # branch-matches gate (M2-P4's scope gate) needs --phase, which NEITHER
-      # generic step supplies, base and head being the only parameters either
-      # one is written to carry. `--only` errors loudly on a name absent from
-      # the manifest (`--only names no such gate`, src/gates/run.ts), so a
-      # static list here can never silently drift ahead of what the manifest
-      # actually declares; it can only ever be too narrow, never wrong. This
-      # is why the fix is one line on each step and not a forward-compatible
-      # list: there is no list that stays correct as gates are added except
-      # "the one gate this interim wiring can actually run everywhere."
-      # Widening it belongs to M2-P9 (kernel-plan-m2.md section 1.4's
-      # main-bundle column; M2-P9 step 4's own `--only
-      # manifest-self-check,suite,coverage,credential-scrub,deploy,migrations`
-      # design, run through the exit harness that carries every parameter a
-      # main-bundle gate needs), which replaces both these steps outright
-      # (M2R-026). No intermediate phase's files-to-touch list includes this
-      # workflow file, so the subset here is not meant to grow before then.
+      # --only manifest-self-check ON BOTH STEPS (fix round, M2-P1, mechanism 2):
+      # this interim wiring cannot absorb a PARAMETERIZED gate, on either step.
+      # A diff-touches gate needs --base, which the push step never has (M2-C-3,
+      # fails closed correctly); a branch-matches gate needs --phase, which
+      # neither generic step supplies. `--only` errors loudly on a name absent
+      # from the manifest (src/gates/run.ts), so the static list can only ever be
+      # too narrow, never wrong. Widening it belongs to M2-P9 (M2R-026), which
+      # replaces both steps outright.
       - name: M2 gate bundle (pull request)
         if: github.event_name == 'pull_request'
         run: >
@@ -104,21 +80,19 @@ jobs:
           --manifest gates.manifest.json
           --evidence "${{ runner.temp }}/gate-evidence"
           --only manifest-self-check
-      # The M1 exit-test harness in local mode (kernel plan v1, M1-P6
-      # step 4): the skeleton plumbing is exercised end to end on every
-      # kernel PR from this phase on. It re-runs the three gates above as
-      # its own A1 precondition, which is section 4's procedure and not a
-      # duplication to optimize away. A failure here fails this matrix
-      # leg, which the gates fan-in job below turns red.
+      # The M1 exit-test harness in local mode (kernel plan v1, M1-P6 step 4):
+      # the skeleton plumbing exercised end to end on every kernel PR. It
+      # re-runs the three gates above as its own A1 precondition (section 4's
+      # procedure, not a duplication to optimize away). A failure here fails the
+      # run, which reddens the required `gates` context.
       - name: M1 exit test (local mode)
         run: scripts/m1-exit-test.sh --mode local "${{ runner.temp }}/m1-exit-evidence"
-      # The falsifiability guard of M1-P6 criterion 5, run as a gate
-      # rather than trusted to a work history (CR-605). The single most
-      # important property of a certification harness is that it CAN
-      # fail; before this step, a regression to unconditionally-green
-      # would have turned nothing red anywhere, because CI ran only the
-      # green path. This costs a second full harness run per leg and that
-      # is the price of the property. Do not delete it to save minutes.
+      # The falsifiability guard of M1-P6 criterion 5, run as a gate rather than
+      # trusted to a work history (CR-605). A certification harness must be able
+      # to fail; before this step CI ran only the green path, so a regression to
+      # unconditionally-green would have turned nothing red. This costs a second
+      # full harness run per run and that is the price of the property. Do not
+      # delete it to save minutes.
       - name: M1 exit test falsifiability guard (the harness must be able to fail)
         run: |
           set -u
@@ -128,16 +102,14 @@ jobs:
             echo "Nothing was merged, so C2 teardown should have refused and the run should have failed." >&2
             exit 1
           fi
-          # Exiting nonzero is necessary but not sufficient: it must fail
-          # at C2 on teardown refusing unlanded work, not somewhere else.
+          # Exiting nonzero is necessary but not sufficient: it must fail at C2
+          # on teardown refusing unlanded work, not somewhere else.
           node -e '
             const fs = require("node:fs");
             const dir = process.argv[1] + "/records";
-            // Decide, do not crash. readdirSync throws when the harness
-            // exited nonzero without creating records/, and the guard
-            // would then "fire" by unhandled exception rather than by
-            // its own check. Same lesson as the C2 arm below; this was
-            // the last instance of it in these twelve lines.
+            // Decide, do not crash. readdirSync throws when the harness exited
+            // nonzero without creating records/, and the guard would then
+            // "fire" by unhandled exception rather than by its own check.
             if (!fs.existsSync(dir)) {
               console.error("the harness left no records directory: " + dir);
               console.error("it exited nonzero, but not by failing a recorded step, so the guard cannot confirm it failed at C2");
@@ -154,26 +126,8 @@ jobs:
               process.exit(1);
             }
             // Total on purpose: it must NOT throw when failing is empty.
-            // While this line read failing[0].exitCode, deleting the
-            // process.exit(1) above still produced a nonzero exit, via
-            // an unhandled TypeError rather than via the check. That
-            // made the explicit exit look load-bearing when it was not,
-            // and hid the deletion from the test that guards this step.
             console.log(
               "falsifiability guard witnessed at C2: exitCode " +
                 failing.map((r) => String(r.exitCode)).join(","),
             );
           ' "${evidence}"
-
-  gates:
-    needs: test
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: fail unless every matrix leg succeeded
-        run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "test matrix result: ${{ needs.test.result }}" >&2
-            exit 1
-          fi
-          echo "all matrix legs succeeded"
