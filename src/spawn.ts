@@ -492,7 +492,23 @@ export async function spawnTask(
   }
   if (outcome.kind === "incomplete") {
     // The payload ran, so nothing is rolled back, and the reason says so.
+    // The scrub root is deliberately LEFT in place here: the hook child
+    // failed, and whatever the children left under the redirected paths
+    // is part of the state an operator inspects.
     return { ok: false, reason: outcome.reason };
+  }
+  // The scrub root is ephemeral. Both children have exited (the launch is
+  // synchronous, C-3), so the harness-owned redirect targets have no
+  // further reader; removing them returns the task directory to its
+  // documented records-only shape. This removal touches ONLY the scrub
+  // root, never the worktree, so it cannot be a V-1-shaped loss.
+  if (childEnv !== undefined) {
+    try {
+      rmSync(scrubRoot(dir), { recursive: true, force: true });
+    } catch {
+      // A leftover empty scrub directory is benign; failing a completed
+      // spawn over its cleanup would not be.
+    }
   }
   return { ok: true, value: { meta, exitCode: outcome.exitCode } };
 }

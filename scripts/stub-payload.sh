@@ -7,9 +7,15 @@
 # It runs with the spawned task worktree as its working directory, which
 # is what tiphys spawn's executor adapter guarantees, and it does exactly
 # what the milestone exit condition needs a task to do: land one trivial
-# change. It appends one line to the toy project's README, commits it,
-# pushes the task branch, and in full mode opens a pull request with gh
-# and prints its URL.
+# change. It appends one line to the toy project's README, commits it, and
+# pushes the task branch.
+#
+# THE PAYLOAD NEVER OPENS A PULL REQUEST (M2-P8 step 5, R-008). An earlier
+# revision ran `gh pr create` here in full mode, which had the exercised
+# shape contradict the discipline the exit test certifies: implementers
+# push branches and never create PRs. Pull-request creation is the
+# HARNESS'S act (scripts/m1-exit-test.sh, step A6, full mode), performed
+# outside the payload's scrubbed child environment. Do not move it back.
 #
 # Every commit uses command-scoped GIT_AUTHOR_* and GIT_COMMITTER_*
 # variables carrying the documented harness identity, mirroring the
@@ -27,7 +33,6 @@
 #   payload branch <branch>
 #   payload commit <sha>
 #   payload pushed <remote-url> <branch>
-#   payload pr <url>            (full mode only)
 #
 # The report file exists because whether tiphys spawn forwards the
 # payload's stdout to its own is not a contract the plan states. The
@@ -110,11 +115,3 @@ report_line "payload commit ${commit}"
 remote_url=$(git remote get-url origin)
 git push --quiet origin "HEAD:refs/heads/${branch}"
 report_line "payload pushed ${remote_url} ${branch}"
-
-if [ "${mode}" = "full" ]; then
-  url=$(gh pr create \
-    --head "${branch}" \
-    --title "exit-test ${task}: trivial change" \
-    --body "Trivial change landed by the Tiphys M1 exit test stub payload (kernel plan v1 section 4, step A6).")
-  report_line "payload pr ${url}"
-fi
