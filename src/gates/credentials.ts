@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, realpathSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -36,21 +36,48 @@ import type { GateResult, GateStatus } from "./result.ts";
  * survive by construction, so a name count is a tautology that grows by
  * adding names and measures nothing (M2R-004).
  *
- * THE ONE DERIVED DENYLIST IN THIS MODULE, AND WHY IT IS PERMITTED HERE.
- * The environment-source probe refuses the gh-documented token variables
- * even if some future edit puts one on the allowlist. MECHANISMS.md's row
- * on denylists allows exactly this shape: "where a denylist is
+ * THE DERIVED DENYLIST TRIPWIRE IN THIS MODULE, AND WHY IT IS PERMITTED
+ * HERE, AND EXACTLY WHAT IT DOES AND DOES NOT COVER.
+ * The environment-source probe carries a bounded, allowlist-INDEPENDENT
+ * tripwire: it reddens if a documented credential- or code-execution-
+ * capable variable is present in the constructed child, even if some
+ * future edit puts one on the allowlist in src/exec/env.ts. MECHANISMS.md's
+ * row on denylists allows exactly this shape: "where a denylist is
  * unavoidable, DERIVE it by walking the consuming program's closed
- * documented vocabulary once, publishing the walk". The walk: the gh
- * manual (gh help environment) documents the variables gh resolves a
- * token from as GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN and
- * GITHUB_ENTERPRISE_TOKEN, and no others. This is NOT the scrub (the
- * scrub is the allowlist in src/exec/env.ts); it is the tripwire that
- * makes "an allowlist widened by an implementer to turn a red gate green"
- * (this phase's declared hazard) cost a red instead of succeeding, and it
- * is the check M2-P7 step 8 reserves for the M4-era per-invocation
- * extension ("the extension may never include a pull-request-capable
- * credential").
+ * documented vocabulary once, publishing the walk." The walk covers the
+ * vocabularies of the programs a scrubbed child actually runs:
+ *
+ *   - gh: `gh help environment` documents the token variables as GH_TOKEN,
+ *     GITHUB_TOKEN, GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN
+ *     (GH_TOKEN_VARIABLES).
+ *   - git, ssh, node/loader/shell: the askpass, ssh-exec, proxy, config-
+ *     injection and code-execution variables git-config(1), git(1),
+ *     ssh(1), node(1) and bash(1) document (DANGEROUS_ENV_VOCABULARY;
+ *     see that constant for the per-name source).
+ *
+ * WHY THIS IS A TRIPWIRE, NOT THE SCRUB. The scrub is the allowlist in
+ * src/exec/env.ts: nothing outside it can appear in a child by
+ * construction, so the allowlist is the real defense. This tripwire is a
+ * BOUNDED denylist and cannot enumerate every dangerous name that any
+ * program will ever read. What it buys is that "an allowlist widened by an
+ * implementer to turn a red gate green" (this phase's declared hazard)
+ * costs a red for every name in the walked vocabulary, not just gh's four
+ * tokens. A name outside the vocabulary that is also admitted to the
+ * allowlist would pass the environment probe green; that residue is the
+ * allowlist's responsibility, and this comment states it rather than
+ * hiding it. This is also the check M2-P7 step 8 reserves for the M4-era
+ * per-invocation extension ("the extension may never include a
+ * pull-request-capable credential").
+ *
+ * THE ENV-INJECTION VECTOR IS BEHAVIORALLY PROBED, NOT JUST NAME-CHECKED.
+ * git resolves a credential.helper injected via the GIT_CONFIG_COUNT /
+ * GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n family (git-config(1)) at a scope
+ * the --global and --system probes cannot see. So beyond the name
+ * tripwire, source `git-resolved-config` asks git itself, with NO scope
+ * flag, what credential.helper resolves from inside the child (env, then
+ * global, then system, then any repo-local config of the child's working
+ * directory). A resolvable helper from ANY source, including env
+ * injection, reddens the gate.
  *
  * `credential-token` (conditional). When TIPHYS_IMPLEMENTER_TOKEN is
  * absent it reports `not-applicable` NAMING OWNER ACTION A-3, never green.
@@ -86,12 +113,78 @@ export const GH_TOKEN_VARIABLES: readonly string[] = [
   "GITHUB_ENTERPRISE_TOKEN",
 ];
 
+/**
+ * The credential- or code-execution-capable environment vocabulary of the
+ * programs a scrubbed child runs, walked from each program's own
+ * documentation. A child environment must contain NONE of these,
+ * allowlisted or not; the environment probe reddens if any is present.
+ * This is a BOUNDED denylist (it cannot list every dangerous name any
+ * program will ever read); the allowlist in src/exec/env.ts remains the
+ * real defense. Per-name source:
+ *
+ *   git (git-config(1), git(1)):
+ *     GIT_ASKPASS       - program git runs to obtain a password.
+ *     GIT_SSH_COMMAND   - shell command git uses for its ssh transport.
+ *     GIT_PROXY_COMMAND - external program for git:// connections.
+ *     GIT_CONFIG_COUNT  - trigger of the environment config-injection
+ *                         family; with GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n
+ *                         it injects arbitrary config (e.g. a
+ *                         credential.helper) at a scope --global/--system
+ *                         cannot see. The numbered KEY_n / VALUE_n members
+ *                         are matched by isDangerousEnvName's pattern.
+ *   ssh (ssh(1), ssh-add(1)):
+ *     SSH_ASKPASS       - program ssh runs to obtain a passphrase.
+ *   node / dynamic loader / shell startup (node(1), ld.so(8), bash(1)):
+ *     NODE_OPTIONS       - options node applies at startup (can require
+ *                          arbitrary modules), arbitrary code execution.
+ *     NODE_EXTRA_CA_CERTS- extra CAs node trusts, a TLS-trust channel.
+ *     LD_PRELOAD         - shared objects the loader injects into every
+ *                          dynamically linked program, arbitrary code.
+ *     BASH_ENV           - script bash sources at non-interactive startup.
+ *     ENV                - script the POSIX shell sources at startup.
+ *
+ * GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM are DELIBERATELY absent: they are
+ * redirected (CREDENTIAL_STORE_REDIRECTIONS) to empty harness-owned targets
+ * and the override runs last in buildChildEnv, so their mere presence is
+ * expected and neutralized; flagging them would false-positive on every
+ * real run.
+ */
+export const DANGEROUS_ENV_VOCABULARY: readonly string[] = [
+  "GIT_ASKPASS",
+  "GIT_SSH_COMMAND",
+  "GIT_PROXY_COMMAND",
+  "GIT_CONFIG_COUNT",
+  "SSH_ASKPASS",
+  "NODE_OPTIONS",
+  "NODE_EXTRA_CA_CERTS",
+  "LD_PRELOAD",
+  "BASH_ENV",
+  "ENV",
+];
+
+/**
+ * git-config(1)'s numbered environment config-injection members:
+ * GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n> for n in [0, COUNT). The
+ * index is git's own documented closed shape (a non-negative integer), so
+ * this is a vocabulary match, not a widened guess.
+ */
+const GIT_CONFIG_INJECTION_MEMBER = /^GIT_CONFIG_(KEY|VALUE)_\d+$/;
+
+/** Whether a variable name is in the walked dangerous vocabulary. */
+export function isDangerousEnvName(name: string): boolean {
+  return (
+    DANGEROUS_ENV_VOCABULARY.includes(name) ||
+    GIT_CONFIG_INJECTION_MEMBER.test(name)
+  );
+}
+
 /** The names credential-scrub probes, in probe order. */
 export const CREDENTIAL_SOURCES: readonly string[] = [
   "environment",
   "gh-configuration",
   "git-global-config",
   "git-system-config",
+  "git-resolved-config",
   "netrc",
   "git-credentials",
 ];
@@ -167,11 +260,17 @@ export function probeCredentialSources(
   const permitted = options.permittedNames ?? permittedChildEnvNames();
   const probes: SourceProbe[] = [];
 
-  // Source 1: the environment itself. Two checks, both capability-facing:
-  // no gh-documented token variable resolves, and nothing outside the
-  // constructed contract crossed at all.
+  // Source 1: the environment itself. Three checks. The first two are
+  // allowlist-INDEPENDENT tripwires (they fire even on a permitted name):
+  // no gh-documented token variable, and no git/ssh/node credential- or
+  // code-execution-capable variable from the walked vocabulary. The third
+  // is the allowlist-dependent stray check (anything outside the
+  // constructed contract), which in a real run is tautological because the
+  // child is built from that contract, and does real work only in tests
+  // that hand-build an env with extra names.
   const names = Object.keys(env).filter((name) => env[name] !== undefined);
   const tokens = names.filter((name) => GH_TOKEN_VARIABLES.includes(name));
+  const dangerous = names.filter((name) => isDangerousEnvName(name));
   const strays = names.filter((name) => !permitted.has(name));
   if (tokens.length > 0) {
     probes.push(
@@ -179,6 +278,14 @@ export function probeCredentialSources(
         "environment",
         "resolvable",
         `pull-request-capable token variable(s) present in the child environment: ${tokens.join(", ")}`,
+      ),
+    );
+  } else if (dangerous.length > 0) {
+    probes.push(
+      probe(
+        "environment",
+        "resolvable",
+        `credential- or code-execution-capable variable(s) from the walked vocabulary present in the child environment: ${dangerous.join(", ")}`,
       ),
     );
   } else if (strays.length > 0) {
@@ -194,7 +301,7 @@ export function probeCredentialSources(
       probe(
         "environment",
         "clean",
-        `${String(names.length)} variable(s), all inside the constructed contract, no gh token variable`,
+        `${String(names.length)} variable(s), all inside the constructed contract, no gh token or walked-vocabulary variable`,
       ),
     );
   }
@@ -289,7 +396,53 @@ export function probeCredentialSources(
     }
   }
 
-  // Source 5: ~/.netrc, resolved from the child HOME.
+  // Source 5 (behavioral): what git ACTUALLY resolves for credential.helper
+  // from inside the child, with NO scope flag. This catches the env-injection
+  // vector the two scoped probes structurally miss: a credential.helper
+  // injected via git's GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n
+  // family resolves here (exit 0 with output) while --global and --system see
+  // nothing. It resolves env, then global, then system, then any repo-local
+  // config of the working directory. The probe runs from the child's
+  // redirected HOME (an empty, non-repo directory) rather than the gate's own
+  // cwd, so it does not pick up repo-local config of whatever tree the gate
+  // happens to run in; repo-local config of an arbitrary worktree is out of
+  // the environment scrub's scope (the gate has no worktree). Nothing here
+  // parses message text (T-003): the contract is git's exit code.
+  const resolvedCwd =
+    env["HOME"] !== undefined && existsSync(env["HOME"]) ? env["HOME"] : undefined;
+  const resolved = spawnSync("git", ["config", "--get-all", "credential.helper"], {
+    env: env as NodeJS.ProcessEnv,
+    encoding: "utf8",
+    timeout: 15000,
+    cwd: resolvedCwd,
+  });
+  if (resolved.error !== undefined) {
+    probes.push(
+      probe(
+        "git-resolved-config",
+        "error",
+        `git config --get-all could not be run: ${singleLine(String(resolved.error))}`,
+      ),
+    );
+  } else if (resolved.status === 0 && (resolved.stdout ?? "").trim() !== "") {
+    probes.push(
+      probe(
+        "git-resolved-config",
+        "resolvable",
+        `git config --get-all credential.helper resolves from inside the child (any source, including env injection): ${singleLine((resolved.stdout ?? "").trim())}`,
+      ),
+    );
+  } else {
+    probes.push(
+      probe(
+        "git-resolved-config",
+        "clean",
+        `git config --get-all credential.helper exited ${String(resolved.status)} with no output`,
+      ),
+    );
+  }
+
+  // Source 6: ~/.netrc, resolved from the child HOME.
   const netrcPaths = env["HOME"] === undefined ? [] : [join(env["HOME"], ".netrc")];
   if (netrcPaths.length === 0) {
     probes.push(
@@ -303,7 +456,7 @@ export function probeCredentialSources(
     probes.push(fileProbe("netrc", netrcPaths));
   }
 
-  // Source 6: git's store-backed credential files, both documented
+  // Source 7: git's store-backed credential files, both documented
   // locations (~/.git-credentials and $XDG_CONFIG_HOME/git/credentials).
   const credPaths: string[] = [];
   if (env["HOME"] !== undefined) {

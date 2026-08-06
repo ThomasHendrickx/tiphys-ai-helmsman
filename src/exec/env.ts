@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { refuseOpenForWrite, runStep } from "../task.ts";
 
@@ -54,9 +54,16 @@ import { refuseOpenForWrite, runStep } from "../task.ts";
 /**
  * The default allowlist. Exact names only; no prefixes, no patterns.
  * Append here only with a recorded reason, and never a credential-capable
- * name: `credential-scrub` (src/gates/credentials.ts) probes the
- * constructed environment and treats the gh-documented token variables as
- * never-permitted regardless of this list.
+ * name. This allowlist is the REAL defense: a name crosses only if it is
+ * here (or in a per-invocation extension), so nothing outside it appears
+ * in a child by construction. `credential-scrub` (src/gates/credentials.ts)
+ * adds a bounded, allowlist-INDEPENDENT tripwire on top: it reddens if a
+ * gh-documented token variable OR a git/ssh/node credential- or
+ * code-execution-capable variable (its documented vocabulary) is present
+ * in the constructed child, even if some future edit wrongly adds one
+ * here. That tripwire is a bounded denylist and cannot enumerate every
+ * dangerous name; it makes a widened allowlist cost a red for the names it
+ * knows, it does not replace this allowlist.
  */
 export const DEFAULT_CHILD_ENV_ALLOWLIST: readonly string[] = [
   // Program resolution and scratch space.
@@ -151,11 +158,19 @@ export type ChildEnvResult =
   | { ok: false; reason: string };
 
 /**
- * Build the child environment: create the scrub root and its five empty
+ * Build the child environment: create the scrub root and its five EMPTY
  * redirect targets, copy the allowlisted names that are present in the
  * parent environment, then OVERRIDE the five pointers with the
  * harness-owned paths. The override runs last and unconditionally, so a
  * pointer that is also (wrongly) allowlisted still ends up redirected.
+ *
+ * EVERY redirect target is re-emptied on every build, directory and file
+ * alike: a leftover store file from a prior same-taskId incarnation (a
+ * .git-credentials or hosts.yml written into a directory target, or a
+ * populated gitconfig-global file) must not survive a rebuild and smuggle
+ * configuration into the next child (M2-P8 fix round 1, review finding O1).
+ * File targets are rewritten empty; directory targets are removed and
+ * recreated so they are empty too.
  *
  * A failure to stage any redirect target fails the whole construction:
  * an unredirected pointer would silently fall back to the default
@@ -184,11 +199,16 @@ export function buildChildEnv(spec: ChildEnvSpec): ChildEnvResult {
   for (const redirection of CREDENTIAL_STORE_REDIRECTIONS) {
     const target = join(spec.scrubDir, redirection.relativePath);
     if (redirection.kind === "directory") {
-      const created = runStep(`creating the redirect target ${target}`, () =>
-        mkdirSync(target, { recursive: true }),
-      );
-      if (!created.ok) {
-        return { ok: false, reason: created.reason };
+      // Re-empty the directory target on every build (remove then
+      // recreate), exactly as the file targets are rewritten empty below,
+      // so a leftover store file from an earlier incarnation cannot
+      // smuggle configuration in (review finding O1).
+      const cleared = runStep(`re-emptying the redirect target ${target}`, () => {
+        rmSync(target, { recursive: true, force: true });
+        mkdirSync(target, { recursive: true });
+      });
+      if (!cleared.ok) {
+        return { ok: false, reason: cleared.reason };
       }
     } else {
       // The file target is written EMPTY on every build, so a leftover

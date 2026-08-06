@@ -60,6 +60,8 @@ interface SourceProbe {
 
 interface CredentialsModule {
   GH_TOKEN_VARIABLES: readonly string[];
+  DANGEROUS_ENV_VOCABULARY: readonly string[];
+  isDangerousEnvName: (name: string) => boolean;
   CREDENTIAL_SOURCES: readonly string[];
   probeCredentialSources: (
     env: Record<string, string | undefined>,
@@ -416,6 +418,50 @@ test("the turn-end hook child receives the same scrubbed environment as the payl
   }
 });
 
+test("a leftover store file in a redirected directory target does not survive the next buildChildEnv, matching the file targets", (t) => {
+  const tmp = makeTempDir(t);
+  const scrubDir = join(tmp, "scrub-env");
+
+  const first = envModule.buildChildEnv({
+    parentEnv: { PATH: "/usr/bin" },
+    scrubDir,
+  });
+  assert.equal(first.ok, true, first.ok ? "" : first.reason);
+
+  // Seed leftover credential stores inside THREE structurally different
+  // directory targets, as a prior same-taskId incarnation could (a
+  // .git-credentials under the redirected HOME, a hosts.yml under the
+  // redirected gh-config, and a credentials file under the redirected
+  // xdg-config). A file target's leftover is already cleared; these
+  // directory targets must be too (review finding O1).
+  const leftovers = [
+    join(scrubDir, "home", ".git-credentials"),
+    join(scrubDir, "gh-config", "hosts.yml"),
+    join(scrubDir, "xdg-config", "git", "credentials"),
+  ];
+  for (const leftover of leftovers) {
+    mkdirSync(join(leftover, ".."), { recursive: true });
+    writeFileSync(leftover, "https://x-access-token:PR_CAPABLE@github.com\n");
+    assert.equal(existsSync(leftover), true);
+  }
+
+  const second = envModule.buildChildEnv({
+    parentEnv: { PATH: "/usr/bin" },
+    scrubDir,
+  });
+  assert.equal(second.ok, true, second.ok ? "" : second.reason);
+
+  // Pre-fix the directory targets are only mkdir'd (recursive, no clear),
+  // so every leftover survives and these assertions fail: the red witness.
+  for (const leftover of leftovers) {
+    assert.equal(
+      existsSync(leftover),
+      false,
+      `${leftover} must not survive a rebuild`,
+    );
+  }
+});
+
 // ---------------------------------------------------------------------------
 // credential-scrub (criterion 3, plus the metric contract)
 // ---------------------------------------------------------------------------
@@ -548,6 +594,120 @@ test("credential-scrub probes report resolvable sources when the redirection is 
   assert.equal(widenedProbe.outcome, "resolvable", widenedProbe.detail);
   assert.match(widenedProbe.detail, /token variable/);
   assert.equal(credentialsModule.verdictFromProbes(probesWidened).status, "red");
+});
+
+test("a widened allowlist admitting a git or node credential/exec variable still reddens the environment probe via the walked vocabulary tripwire", (t) => {
+  const tmp = makeTempDir(t);
+  const bin = ghFreeBinDir(t);
+  const emptyHome = join(tmp, "empty-home");
+  mkdirSync(emptyHome);
+
+  // The declared hazard: an allowlist WIDENED to admit a dangerous name.
+  // Once the name is permitted, neither the gh-token arm nor the stray-name
+  // arm can catch it (the stray arm derives its permitted set from the same
+  // widened allowlist). Only the allowlist-INDEPENDENT vocabulary tripwire
+  // can, and it must trip under structurally different members: a git
+  // askpass exec channel and a node loader channel.
+  const members: { name: string; value: string }[] = [
+    { name: "GIT_ASKPASS", value: "/tmp/evil-askpass" },
+    { name: "NODE_OPTIONS", value: "--require /tmp/evil.js" },
+  ];
+  for (const member of members) {
+    const widened = envModule.permittedChildEnvNames([member.name]);
+    const probes = credentialsModule.probeCredentialSources(
+      { PATH: bin, HOME: emptyHome, [member.name]: member.value },
+      { permittedNames: widened },
+    );
+    const envProbe = probes.find((probe) => probe.source === "environment");
+    assert.ok(envProbe !== undefined);
+    // Pre-fix this is `clean` (the name is permitted, not a gh token, not a
+    // stray) and the gate is GREEN; the tripwire is what makes it red.
+    assert.equal(envProbe.outcome, "resolvable", envProbe.detail);
+    assert.match(envProbe.detail, new RegExp(member.name));
+    assert.equal(
+      credentialsModule.verdictFromProbes(probes).status,
+      "red",
+      `${member.name} admitted to the allowlist must redden the gate`,
+    );
+    // The member is in the module's walked vocabulary (documents intent).
+    assert.equal(
+      credentialsModule.isDangerousEnvName(member.name),
+      true,
+      `${member.name} must be in the walked vocabulary`,
+    );
+  }
+});
+
+test("a credential.helper injected via the GIT_CONFIG_COUNT family is caught by the no-scope git resolution probe even when the scoped probes miss it and the names are permitted", (t) => {
+  const tmp = makeTempDir(t);
+  const bin = ghFreeBinDir(t);
+  const emptyHome = join(tmp, "empty-home");
+  mkdirSync(emptyHome);
+  // Empty global/system config files, so the scoped --global/--system
+  // probes are genuinely clean and the ONLY thing that can catch the
+  // injected helper is the behavioral no-scope resolution probe.
+  const emptyGlobal = join(tmp, "gitconfig-global");
+  const emptySystem = join(tmp, "gitconfig-system");
+  writeFileSync(emptyGlobal, "");
+  writeFileSync(emptySystem, "");
+
+  // The env-injection vector: git resolves credential.helper from the
+  // GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0 family. The
+  // helper is PR-capable (a helper can return a GitHub PAT). We WIDEN the
+  // allowlist to admit the whole family, defeating every name-based arm, so
+  // the only remaining catch is git's own resolution.
+  const injectionEnv: Record<string, string> = {
+    PATH: bin,
+    HOME: emptyHome,
+    GIT_CONFIG_GLOBAL: emptyGlobal,
+    GIT_CONFIG_SYSTEM: emptySystem,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.helper",
+    GIT_CONFIG_VALUE_0: "!echo password=PR_CAPABLE_TOKEN",
+  };
+  const permitted = envModule.permittedChildEnvNames([
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_0",
+    "GIT_CONFIG_VALUE_0",
+  ]);
+
+  // Capture what git ACTUALLY resolves under this environment, from a
+  // non-repo cwd, so the assertion is anchored to real program output and
+  // not a hand-written string (red-witness strong form, MECHANISMS.md).
+  const realResolution = spawnSync(
+    "git",
+    ["config", "--get-all", "credential.helper"],
+    { encoding: "utf8", env: injectionEnv, cwd: emptyHome },
+  );
+  assert.equal(
+    realResolution.status,
+    0,
+    `git must resolve the env-injected helper: ${realResolution.stderr}`,
+  );
+  assert.match(realResolution.stdout, /PR_CAPABLE_TOKEN/);
+
+  const probes = credentialsModule.probeCredentialSources(injectionEnv, {
+    permittedNames: permitted,
+  });
+
+  // The scoped probes MISS it: --global and --system see nothing.
+  const globalProbe = probes.find((p) => p.source === "git-global-config");
+  const systemProbe = probes.find((p) => p.source === "git-system-config");
+  assert.ok(globalProbe !== undefined && systemProbe !== undefined);
+  assert.equal(globalProbe.outcome, "clean", globalProbe.detail);
+  assert.equal(systemProbe.outcome, "clean", systemProbe.detail);
+
+  // The no-scope resolution probe CATCHES it, carrying git's real output.
+  // Pre-fix this source does not exist, so `find` is undefined and this
+  // assertion fails: the red witness.
+  const resolvedProbe = probes.find((p) => p.source === "git-resolved-config");
+  assert.ok(
+    resolvedProbe !== undefined,
+    "git-resolved-config source must exist",
+  );
+  assert.equal(resolvedProbe.outcome, "resolvable", resolvedProbe.detail);
+  assert.match(resolvedProbe.detail, /PR_CAPABLE_TOKEN/);
+  assert.equal(credentialsModule.verdictFromProbes(probes).status, "red");
 });
 
 // ---------------------------------------------------------------------------
