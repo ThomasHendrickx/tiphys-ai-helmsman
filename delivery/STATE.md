@@ -139,6 +139,23 @@ yet. Recorded here so they are not rediscovered the expensive way.
   executed criteria while live-locking every supervision command. The plan
   schema should carry a phase's hazard classes beside its acceptance criteria
   so the second contract is derivable. M3 role briefs and M3-P1 plan schema.
+- **M1-P6's three tracked lows, merged with under DR-0012 clause 2.** Each is
+  recorded here with its reason rather than fixed, because all three are in the
+  guard-on-the-guard rather than in the harness that certifies the milestone,
+  and this phase has already spent four fix rounds on that test.
+  **CR-760**: the `gates` fan-in's own `run:` script is text-asserted, so two
+  structurally different edits leave it green. Real fix is ~8 lines executing
+  the fan-in script the way tier 1 executes the guard's. Reason for deferring:
+  it is a third-order guard, and the second-order one is now sound.
+  **CR-761**: residual R6 is stated one level too narrow;
+  `defaults.run.working-directory` is green at the WORKFLOW level as well as
+  the job level. Documentation fix.
+  **CR-762 and the criteria contract's sighting, which are the same thing and
+  now NAMED**: `test/liveness.test.ts:671` asserts a hardcoded "age 13s" and
+  fails under CPU contention. Seen once by each reviewer, clean on serial
+  re-run both times. It is an M1-P5 file, out of this phase's scope, and it is
+  a real flake in a suite the rules treat as a hard binary gate. **This is the
+  highest-value of the three and should be fixed early in M2.**
 - **Work-history contract must cover impossibility, coverage and remedy
   claims**, not only universal quantifiers, per tuition T-006. T-003 already
   routed the universal-quantifier rule to M3's report contract; T-006 records
