@@ -1292,6 +1292,44 @@ regression contract, it is a new contract wearing the old one's name.
   their real paths recorded. SC-011 is binding: a gate whose precondition is
   unmet reports not-applicable and never green. `CLAUDE.md` line 3 states that this registry replaces its gate
   list, which is an obligation of this phase.
+  **Three things this phase must verify at revision 2 rather than assume.**
+  (a) M2's `deploy` and `migrations` entries report `not-applicable`
+  STRUCTURALLY and not locally: release verification runs after a merge against
+  a commit that exists only once the merge has happened, so those entries can
+  only ever be not-applicable in ANY pre-merge bundle, on every repository
+  (`delivery/verification/release-verification-interface.md` observation O-3,
+  adopted into M2's revision 2 gate table). The promotion carries them forward
+  as declared-but-not-applicable and this phase's criterion 3 must not be read
+  as having exercised them.
+  (b) M2's revision 2 added constraints M2-C-2 (never green by omission: a
+  green record carries `units` greater than zero) and M2-C-3 (fail closed: a
+  check that cannot reach a verdict is `error`, never not-applicable). Both are
+  properties of the manifest this registry is a superset of; verify their
+  delivered shape before extending, because a superset that drops a base
+  constraint is a widening dressed as a promotion.
+  (c) **The state of `test/liveness.test.ts:671`.** `delivery/STATE.md` records
+  it as a real flake in a suite the rules treat as a hard binary gate, and says
+  it should be fixed early in M2. If it is still present when this phase
+  dispatches, the `suite` gate this registry promotes reads `node --test` exit 0
+  as a binary fact over a suite with a known non-deterministic member. That is
+  not this phase's to fix and it is not this phase's to hide: record the
+  observed state in the work history, and if it is still open say so in that
+  entry's `$comment` and in risk 11 rather than promoting silence.
+- hazard class (T-007, D-M3-32): **a registry that can report green for a gate
+  that examined nothing, in the one artifact CI and every brief both read as
+  authoritative.** What can produce that: a promoted entry that lost the
+  precondition semantics SC-011 gives it, so an unmet precondition reads green
+  instead of not-applicable; a `modes[]` field made live in a shape M2's runner
+  validates-if-present and therefore silently accepts while meaning something
+  else; a gate declared with no precondition at all, which can only ever report
+  green or red and is how a vacuous pass enters; the rendered `CLAUDE.md` block
+  and the registry agreeing because the renderer reads the block rather than
+  deriving it from the registry; the drift check wired into the workflow as a
+  TEXT assertion that survives being defanged (D-M3-28, and CR-760 is that shape
+  live in the file this phase edits); a not-applicable that is really a
+  misconfiguration (M2-C-3); and a promotion that silently drops M2's
+  `units`-greater-than-zero rule, so a gate examining nothing reports green
+  lawfully.
 - steps:
   1. Verify `gates.manifest.json`, its schema (including the reserved `modes`
      field's declared shape), and one real captured run of the M2 gate runner
@@ -1358,6 +1396,17 @@ regression contract, it is a new contract wearing the old one's name.
   5. `node scripts/render-agent-rules-gates.mjs --check` exits 0; adding a gate
      to `gate-registry.yaml` without re-rendering makes it exit nonzero naming
      the added gate; re-rendering returns exit 0.
+  5b. **The drift check is wired as a BEHAVIOUR, not as a text (D-M3-28,
+     section 2.3 rule 7).** The workflow step added in step 5 is extracted and
+     EXECUTED against stubs, and its exit code is observed: with a drifted
+     registry the extracted step exits nonzero, with a re-rendered one it exits
+     0. A test asserting only that the step's text appears in
+     `.github/workflows/gates.yml` does not discharge this criterion; M1-P6
+     produced six confirmed instances of a text assertion surviving an edit that
+     inverted the behaviour (`exit 1` to `exit 0`, two placements of `|| true`,
+     a step-level `if: false`, a quoted YAML key the whitelist regex could not
+     see, and the step moved into a job the fan-in does not need). Two
+     structurally different defangs are witnessed, per section 2.3 rule 6.
   6. `CLAUDE.md`'s gate section is the rendered block plus the registry pointer,
      and contains no hand-maintained gate list (inspection plus criterion 5).
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; behaviors
@@ -1365,7 +1414,8 @@ regression contract, it is a new contract wearing the old one's name.
      still resolves.
 - new behaviors: `gate-registry-validates`, `gate-registry-probe-required`,
   `gate-registry-precondition-required`, `gate-registry-not-applicable-not-green`,
-  `agent-rules-gate-drift-detected`.
+  `agent-rules-gate-drift-detected`,
+  and NEW at revision 2: `gate-drift-check-wired-executably`.
 - suggested model tier: cheaper tier acceptable. The shape is fixed by the M2
   manifest and by SC-011; the work is promotion plus two entries.
 - citations: R-043, R-044, R-094; D-11; SC-011; blueprint section 5 (gate
@@ -1390,6 +1440,32 @@ regression contract, it is a new contract wearing the old one's name.
   authority; SC-008 and plan v1 D-6 fix what "merge authority: owner" means.
   T-003's structural consequence for full mode is applied here and is cited, not
   invented. Constraints C-2 and C-3 bind stage definitions (section 1.4).
+  **Three decisions changed what this phase encodes after revision 1 and all
+  three are cited rather than inferred.** DR-0015 removes the owner from the
+  merge path INCLUDING at milestone boundaries, so `merge-authority: owner` is
+  still a representable value (a future project may want it) but is no longer
+  what the kernel's own regime is. DR-0016 changes the RESPONSE at an escalation
+  bound from a stop-and-wait to a fresh implementer plus a third review contract
+  dispatched immediately with the owner notified asynchronously, which is why
+  `escalation-bounds` gains a required `on-exceeded` field in step 1. T-007
+  requires a code phase to have TWO review contracts rather than two reviewers,
+  which is a property of the pipeline and therefore lands in the stage list.
+- hazard class (T-007, D-M3-32): **the one artifact in which a downgrade can be
+  made invisible, and the one that encodes who may merge.** What can produce a
+  mode set that validates while permitting less assurance than it appears to:
+  a mode omitting a stage `full` contains with an empty `skips[]`, which is the
+  improvisation blueprint section 8 forbids and which no schema keyword can
+  see; `adversarial-plan-review` placed after `implement` in a pipeline that
+  still contains both; a gate-set reference that resolves to nothing because the
+  cross-document check was never run, so the mode's assurance is a name with no
+  gates behind it; `escalation-bounds` carrying DR-0012's numbers while
+  recording the SUPERSEDED response, which encodes a regime DR-0016 replaced;
+  `merge-authority: delegated-under-conditions` with conditions that do not
+  match DR-0012's, so the artifact and the grant differ; a charter mode enum
+  that drifts from the mode ids the first time a mode is added; and a stage
+  whose completion could be detected by process liveness, which is C-2 and
+  which T-008 measured at nine hours eleven minutes on this project's own
+  orchestrator.
 - steps:
   1. Create `schemas/assurance-modes.schema.json`: a mode is
      `{id, pipeline[], gate-sets[], merge-authority, skips[], declared-by}`
@@ -1403,6 +1479,17 @@ regression contract, it is a new contract wearing the old one's name.
      owner returns), and a mode vocabulary that cannot express the authority
      regime actually in force would force the next such grant to live outside
      the artifacts,
+     **Revision 2 adds the DR-0015 annotation, not a fourth value.** The enum is
+     unchanged: `owner`, `owner-approves-orchestrator-merges`, and
+     `delegated-under-conditions` all remain representable, because a future
+     project may declare any of them and the kernel is not the place to make
+     another project's governance unrepresentable. What changes is the
+     `$comment` on the field and the kernel's own charter instance: DR-0015
+     records that for THIS project the owner is not an approval step anywhere in
+     execution, milestone boundaries included, and that dual cross-model clean
+     review is the signature. So `owner-approves-orchestrator-merges` describes
+     a regime this project has left, and the schema says so with a dated
+     citation rather than by deletion.
      and `skips[]` lists the stages this mode omits. "Non-empty for any mode that
      omits a stage `full` contains" (blueprint section 8: "downgrades are
      declared, never improvised") is Kind B, derived check
@@ -1410,11 +1497,34 @@ regression contract, it is a new contract wearing the old one's name.
      sibling `full` mode's, which is a cross-object comparison no schema keyword
      performs (M3R-002). The schema's own share is the field's presence and item
      type. Stop-rather-than-grind bound: a mode may carry
-     `escalation-bounds: {max-fix-rounds-after-review, recurrence-of-high-in-one-component}`,
-     and `full` carries DR-0012's own two limits, because those limits are being
-     exercised right now (M1-P5 is stopped at PR #8 under exactly them) and a
-     limit that lives only in an orchestrator's discipline is the prompt-only
-     state blueprint principle 6 calls temporary.
+     `escalation-bounds: {max-fix-rounds-after-review, recurrence-of-high-in-one-component, on-exceeded}`,
+     and `full` carries DR-0012's own two limits plus DR-0016's response,
+     because a limit that lives only in an orchestrator's discipline is the
+     prompt-only state blueprint principle 6 calls temporary.
+     **`on-exceeded` is NEW at revision 2 and is required whenever
+     `escalation-bounds` is present (DR-0016).** Its value is a closed enum of
+     `fresh-implementer-and-third-contract` and `escalate-to-owner`, and `full`
+     declares the first. This is not a refinement: DR-0012's bound as revision 1
+     encoded it was a STOP-AND-WAIT, and DR-0016 replaced that response after
+     measuring that the stop cost 4.7 hours on M1-P5 alone (16 per cent of that
+     milestone's elapsed critical path), that it fired three times, that all
+     three times the owner chose the option the orchestrator had already
+     recommended, and that the intervention which actually broke M1-P5's spiral
+     was the FRESH IMPLEMENTER dispatched afterwards, which derived eleven call
+     sites where the review had listed eight. A bound recording the limit but
+     not the response encodes the superseded regime in the kernel's own data,
+     which is exactly the drift this phase's other checks exist to prevent.
+     `escalate-to-owner` remains in the enum because DR-0016's residual
+     guardrail is real: if the round after the fresh implementer also fails, the
+     phase goes to the owner.
+     **Revision 1's parenthetical is superseded 2026-08-06.** It read "those
+     limits are being exercised right now (M1-P5 is stopped at PR #8 under
+     exactly them)". M1-P5 MERGED at `58ac964` (PR #8) after four fix rounds and
+     six clean-room reviews, with zero high findings from either contract on the
+     merged code, and M1 completed on 2026-08-06. The claim is kept in its
+     corrected form because the underlying point survives and is now stronger:
+     the limits were exercised, three times, and the measurement of what
+     happened next is what produced DR-0016.
   2. Create `assurance-modes.yaml` with `full`, `direct-pr`, `local-only`.
      `full`'s pipeline is the process doc's sequence enumerated (process doc
      section 9 item 3, R-096): intake, verification-pass, plan,
@@ -1435,6 +1545,29 @@ regression contract, it is a new contract wearing the old one's name.
      `fix-round-verification` stage is Kind A (`if` on `id`, `then` a `contains`
      on `pipeline[]`). Under DR-0013 as decided this is simply Draft 2020-12, which includes
      `contains`; section 7 records that addition.
+  2b. **`review-contracts`, NEW at revision 2 (T-007, D-M3-32).** The
+     `clean-room-review` stage carries a `review-contracts[]` list rather than a
+     reviewer count, and `full` declares exactly two contracts by id:
+     `criteria` (walks the phase's acceptance criteria) and `hazard` (is given
+     the phase's declared `hazard-classes[]` as its starting question). A mode
+     whose pipeline contains `clean-room-review` and whose `review-contracts[]`
+     has fewer than two entries is invalid, Kind A via `if`/`then` over
+     `minItems`. T-007's evidence is why this is a schema rule and not a brief
+     sentence: two reviewers on different model families walked all fifteen of
+     M1-P5's acceptance criteria by direct execution, agreed on every mechanical
+     fact, and one returned APPROVE while the other found a high-severity defect
+     that live-locks `doctor`, `spawn`, `teardown` and both watcher modes. The
+     approving report does not contain the word `readBeacon`, because no
+     criterion covers that path. **Had both been briefed on the criteria, both
+     would have approved, on any two models.** The decorrelation that mattered
+     was in the question asked, and this project had it by accident of how two
+     lenses happened to be briefed. `full` makes it a declaration.
+     Its relation to DR-0012, stated so the two are not read as one: DR-0012
+     requires two different MODEL FAMILIES and T-007 requires two different
+     CONTRACTS. They are orthogonal, `full` requires both, and
+     `scripts/check-dual-review.mjs` (M3-P9) checks both, which is why that
+     script's `framing` distinctness check and this field are two halves of one
+     rule rather than a duplication.
   3. Create `schemas/role-model-config.schema.json` and
      `role-model-config.yaml` (R-075): per role id, a `tier` of `strongest` or
      `cheaper` with the process doc's own rule applied (strongest for
@@ -1502,6 +1635,21 @@ regression contract, it is a new contract wearing the old one's name.
      directions). The bound is data the orchestrator brief cites (M3-P9), not
      an enforcement engine: nothing in M3 counts fix rounds, and section 4.5
      records that as unproven rather than implying otherwise.
+     **Revision 2 adds the `on-exceeded` half (DR-0016), both directions**: an
+     `escalation-bounds` object with the two limits and no `on-exceeded` exits 1
+     naming the field; `full`'s declared value is
+     `fresh-implementer-and-third-contract`; a value outside the two-item enum
+     exits 1 naming the enum. Kind A via `required` and `enum`, witnessed by
+     removing and restoring each. A registered test asserts `full`'s value is
+     the fresh-implementer one and not `escalate-to-owner`, so the kernel's own
+     mode cannot silently revert to the regime DR-0016 measured and replaced.
+  4d. **Two review contracts in `full` (T-007), both directions.** A `full`
+     definition whose `clean-room-review` stage declares one
+     `review-contracts[]` entry exits 1 naming the pointer; the same definition
+     with `criteria` and `hazard` exits 0. Witnessed by removing and restoring
+     the `minItems`. A registered test asserts the two ids are distinct, because
+     two entries both named `criteria` would satisfy `minItems` and reproduce
+     exactly the failure T-007 records.
   5. Structural constraint check: `assurance-modes.yaml` contains no stage whose
      definition mentions process liveness, pid, or backgrounding, verified by a
      grep over the file and its schema for `pid`, `kill`, `daemon`, `background`
@@ -1513,14 +1661,22 @@ regression contract, it is a new contract wearing the old one's name.
   `mode-full-requires-fix-round-verification`, `mode-unknown-gate-set-rejected`,
   `charter-mode-enum-closed`, `charter-mode-enum-drift-detected`,
   `mode-delegated-authority-requires-conditions`,
-  `mode-full-requires-escalation-bounds`, `modes-no-liveness-vocabulary`.
+  `mode-full-requires-escalation-bounds`, `modes-no-liveness-vocabulary`,
+  and NEW at revision 2: `mode-escalation-bounds-require-response`,
+  `mode-full-response-is-fresh-implementer`,
+  `mode-clean-room-requires-two-contracts`,
+  `mode-review-contracts-are-distinct`.
 - suggested model tier: strongest. This phase encodes merge authority, the
   definition of the pipeline that all later work is measured against, and the
   one place where a downgrade could be made invisible.
 - citations: R-024, R-075, R-096; blueprint sections 6 and 8; process doc
   sections 5 and 9; SC-008, plan v1 D-6, and DR-0012 (the delegated authority
   value and its conditions); T-001 (review-model-family option);
-  T-003 (fix-round verification stage); constraints C-2 and C-3.
+  T-003 (fix-round verification stage); constraints C-2 and C-3;
+  **DR-0015** (the annotation on `owner-approves-orchestrator-merges`);
+  **DR-0016** (`escalation-bounds.on-exceeded`, and the measurement behind it);
+  **T-007** (`review-contracts[]`, D-M3-32); **T-008** (why the C-2 criterion 5
+  scan is not decoration).
 - conflicts-with: M3-P6 and M3-P9 (both reference mode ids), M3-P7 (the
   fix-round-verification stage needs a checklist), M3-P10 (files entry).
 - blocked-by: M3-P2 merged. DR-0010's M3 half (section 7) should be answered
