@@ -31,6 +31,20 @@
         "kind": "branch-matches",
         "pattern": "claude/m[0-9]+-p[0-9]+-.*"
       }
+    },
+    {
+      "id": "coverage",
+      "command": [
+        "node",
+        "src/gates/coverage.ts"
+      ],
+      "unitLabel": "finding ids checked",
+      "applicability": "required",
+      "precondition": {
+        "id": "coverage-inventory-exists",
+        "kind": "file-exists",
+        "path": "delivery/requirements/migration-table.md"
+      }
     }
   ],
   "destructiveCommands": [
