@@ -242,6 +242,42 @@ function ensureDirectory(path: string): string | undefined {
   return made.ok ? undefined : made.reason;
 }
 
+/**
+ * WRITE ONLY WHILE THIS RUN HOLDS THE CLAIM (CR-860, the other half).
+ *
+ * The finding's mechanism is *cleanup that is valid only while the claim is
+ * held, performed from a frame that does not know whether the claim is held*.
+ * A WRITE into the evidence directory is valid under exactly the same
+ * condition, and fixing only the release would leave the call graph as the
+ * sole guarantee that writes happen inside the claimed region. A call graph
+ * is a reading, and this round exists because a reading of control flow was
+ * wrong; so the writer verifies, like the releaser does.
+ *
+ * This also makes the ordering OBSERVABLE, which it was not: a release moved
+ * back in front of the write is now a refused write with a reason, rather
+ * than an identical end state reachable two ways. That is what let the
+ * ordering be red-witnessed at all (work history G2b).
+ *
+ * The gates' OWN records are not covered: a gate subprocess writes to the
+ * path it was handed and this runner cannot guard another process's write.
+ * That boundary is unchanged and is stated in the CR-803 not-covered list.
+ */
+function writeInsideClaim(
+  evidenceDir: string,
+  runId: string,
+  path: string,
+  body: string,
+): string | undefined {
+  const holder = claimHolder(evidenceDir);
+  if (holder !== runId) {
+    return (
+      `refusing to write ${path}: this run (${runId}) does not hold the claim ` +
+      `on ${evidenceDir} (held by ${holder ?? "nobody"})`
+    );
+  }
+  return guardedWrite(path, body);
+}
+
 /** Write a file, refusing any path that is not safe to open for writing. */
 function guardedWrite(path: string, body: string): string | undefined {
   const refusal = refuseOpenForWrite(path);
@@ -848,6 +884,14 @@ export function decideAggregate(
   // above already make exit 0 unreachable with a zero green bucket, and this
   // asserts it rather than trusting the reading, because CR-800 was exactly a
   // reading of the branch conditions that turned out not to hold.
+  //
+  // `!(green > 0)` rather than `green === 0` is deliberate belt and braces,
+  // and it is honestly UNWITNESSABLE as long as the screens above stand: for
+  // every value that survives them (a non-negative safe integer) the two
+  // forms are equivalent, so no input distinguishes them (work history G7).
+  // It is kept because it is the form that still fails closed if a later edit
+  // weakens the screens, which is exactly how this check came to be wrong the
+  // first time.
   if (exitCode === EXIT_GREEN && !(counts.green > 0)) {
     exitCode = EXIT_GATE_ERROR;
     reason =
@@ -932,12 +976,15 @@ function claimEvidenceDirectory(
  * rename.
  */
 function writeSummaryAtomically(
+  evidenceDir: string,
   summaryPath: string,
   runId: string,
   summary: RunSummary,
 ): string | undefined {
   const stagePath = `${summaryPath}.${runId}.stage`;
-  const staged = guardedWrite(
+  const staged = writeInsideClaim(
+    evidenceDir,
+    runId,
     stagePath,
     `${JSON.stringify(summary, null, 2)}\n`,
   );
@@ -1063,7 +1110,9 @@ function writeAbortedSummary(
     exitCode: EXIT_GATE_ERROR,
     reason,
   };
-  guardedWrite(
+  writeInsideClaim(
+    options.evidenceDir,
+    runId,
     join(options.evidenceDir, "summary.json"),
     `${JSON.stringify(summary, null, 2)}\n`,
   );
@@ -1185,7 +1234,12 @@ function runClaimedBundle(
     const recordPath = outcome.recordPath ?? join(options.evidenceDir, entry.id, "result.json");
     const dirRefusalForGate = ensureDirectory(join(options.evidenceDir, entry.id));
     if (dirRefusalForGate === undefined) {
-      guardedWrite(recordPath, renderGateResult(result));
+      writeInsideClaim(
+        options.evidenceDir,
+        runId,
+        recordPath,
+        renderGateResult(result),
+      );
     }
     rows.push({
       id: entry.id,
@@ -1233,7 +1287,12 @@ function runClaimedBundle(
     reason,
   };
   const summaryPath = join(options.evidenceDir, "summary.json");
-  const summaryRefusal = writeSummaryAtomically(summaryPath, runId, summary);
+  const summaryRefusal = writeSummaryAtomically(
+    options.evidenceDir,
+    summaryPath,
+    runId,
+    summary,
+  );
   if (summaryRefusal !== undefined) {
     return { runId, exitCode: EXIT_GATE_ERROR, summary, reason: summaryRefusal };
   }

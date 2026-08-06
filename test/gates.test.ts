@@ -2518,11 +2518,16 @@ test("a run releases only the claim it holds, and writes nothing after releasing
     );
     assert.ok(!existsSync(foreignClaim));
 
-    // MEMBER (b): a CRASHING run must leave the directory with the summary
-    // written AND its own claim released. If the write happened after the
-    // release, the claim would already be gone while the file was being
-    // written; the two assertions together pin the order, because a release
-    // that ran first could not then have been holdership-verified.
+    // MEMBER (b): THE ORDERING. A crashing run must write its summary while
+    // it still holds the claim, then release once.
+    //
+    // The first version of this member asserted only the END STATE (summary
+    // present, claim gone), and that state is reachable BOTH ways: witness
+    // G2b reinstated the exact release-then-write ordering the finding
+    // measured and this test stayed green. The end state cannot see an
+    // ordering. So the write itself now verifies the claim, which makes the
+    // unsafe ordering produce a REFUSED write and no summary at all, and that
+    // is what the assertions below detect.
     const dist = join(dir, "dist");
     cpSync(join(repoRoot, "dist"), dist, { recursive: true });
     rmSync(join(dist, "src", "gates", "schemas", "gate-manifest.schema.json"));
@@ -2551,6 +2556,59 @@ test("a run releases only the claim it holds, and writes nothing after releasing
     // what makes the aborted bundle attributable to the run that died.
     assert.match(crashSummary.runId, /^[0-9a-f]{24}$/);
     assert.match(crashed.stdout, new RegExp(`gates: run ${crashSummary.runId}`));
+
+    // MEMBER (c): the claim is LOST MID-RUN, which round 1 listed as not
+    // covered ("does not cover a process that deletes the claim file
+    // mid-run"). A gate deletes it and then reports green; the runner must
+    // refuse to write its summary into a directory it no longer owns, rather
+    // than reporting a green bundle over it. This is the member that makes
+    // the write-side verification load-bearing on its own (witness G3).
+    const thief = join(dir, "ev-thief");
+    mkdirSync(thief, { recursive: true });
+    const thiefGate = join(dir, "thief.mjs");
+    writeFileSync(
+      thiefGate,
+      [
+        'import { writeFileSync, rmSync } from "node:fs";',
+        "const args = process.argv.slice(2);",
+        'const at = args.indexOf("--result");',
+        `rmSync(${JSON.stringify(join(thief, ".tiphys-gate-run.json"))}, { force: true });`,
+        `writeFileSync(args[at + 1], ${JSON.stringify(
+          `${JSON.stringify(gateRecord("g-thief", "green", 2), null, 2)}\n`,
+        )});`,
+        "process.exit(0);",
+      ].join("\n") + "\n",
+    );
+    const thiefManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-thief",
+          command: ["node", thiefGate],
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "thief.json",
+    );
+    const stolen = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      thiefManifest,
+      "--evidence",
+      thief,
+    ]);
+    assert.notEqual(
+      stolen.status,
+      0,
+      `a run whose claim vanished reported success: ${stolen.stdout}`,
+    );
+    assert.match(stolen.stderr, /does not hold the claim/);
+    assert.ok(
+      !existsSync(join(thief, "summary.json")),
+      "a run wrote a summary into a directory it no longer held",
+    );
 
     // CONTROL: a normal run still releases its claim, or the holdership check
     // would be a guard that never releases anything.
