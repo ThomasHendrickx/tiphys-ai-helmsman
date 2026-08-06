@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/coverage-config.schema.json",
+  "title": "Tiphys coverage gate configuration",
+  "description": "Declares the inventory source, the coverage-table source, and the named bucket-kind regexes the coverage gate (kernel plan M2, M2-P6) classifies bucket values against. Expressed entirely in the closed keyword set of M2-D-04.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["inventory", "coverageTable", "bucketKinds"],
+  "properties": {
+    "inventory": {
+      "description": "The document enumerating every id that must be covered (this repository's real run: delivery/requirements/migration-table.md).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "idPattern"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "idPattern": {
+          "description": "A regex SOURCE, compiled anchored as ^(?:<idPattern>)$ and tested against the first cell of every markdown table row in the document. A row whose first cell matches is a candidate id row; every other row (headers, separators, prose) is ignored.",
+          "type": "string"
+        }
+      }
+    },
+    "coverageTable": {
+      "description": "The document asserting, for each id, which bucket it lands in (this repository's real run: delivery/plan/kernel-plan-v1.md Appendix A).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "idPattern", "bucketColumn", "noteColumn"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "idPattern": {
+          "type": "string"
+        },
+        "bucketColumn": {
+          "description": "0-based index into the row's cell array (cell 0 is the id) holding the bucket value.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "noteColumn": {
+          "description": "0-based index into the row's cell array holding the note, checked only for bucket kinds that declare requiresNote true.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "bucketKinds": {
+      "description": "A named set of regexes, tested in order, each anchored full-string against a bucket value. The first entry whose pattern matches decides the row's kind. A pattern's first capturing group, when present and participating in the match, is read as a milestone digit (bare group value, e.g. 2 for M2); a kind whose pattern carries no such group, or whose match did not use it, buckets by the kind's own name in the per-milestone view (this is how 'parked' appears in that view rather than as a milestone).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "pattern", "requiresNote"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z-]*$"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "requiresNote": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
