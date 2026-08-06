@@ -14,6 +14,35 @@
       ],
       "unitLabel": "schema documents validated",
       "applicability": "required"
+    },
+    {
+      "id": "credential-scrub",
+      "command": [
+        "node",
+        "src/gates/credentials.ts",
+        "credential-scrub"
+      ],
+      "unitLabel": "credential sources probed",
+      "applicability": "required"
+    },
+    {
+      "id": "credential-token",
+      "command": [
+        "node",
+        "src/gates/credentials.ts",
+        "credential-token"
+      ],
+      "unitLabel": "tokens probed",
+      "applicability": "conditional",
+      "precondition": {
+        "id": "implementer-token-present-owner-action-a-3",
+        "kind": "command-exit-zero",
+        "command": [
+          "node",
+          "-e",
+          "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"
+        ]
+      }
     }
   ],
   "destructiveCommands": [
