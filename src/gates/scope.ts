@@ -42,14 +42,55 @@ import type { GateResultFields, GateStatus } from "./result.ts";
  * `git show <mergeBaseSha>:<path>`, which reads the git object database and
  * never touches the working tree at that path, so an implementer's own
  * edit to the declaration on the branch being audited cannot change what
- * this run considers authorized. The merge base is computed explicitly
- * with `git merge-base`, and diffs are computed against THAT commit, never
- * against `--base` directly and never against `main`'s current tip: if
- * `main` has advanced past the true fork point by the time this runs
- * (another phase merged in the interim), diffing directly against `--base`
- * would misattribute every path `main` changed afterward to this branch.
- * `--base`/`--head` are still both required (a check that cannot compute a
- * merge base has not reached a verdict, M2-C-3).
+ * this run considers authorized THROUGH THE WORKING TREE. The merge base is
+ * computed explicitly with `git merge-base`, and diffs are computed against
+ * THAT commit, never against `--base` directly and never against `main`'s
+ * current tip: if `main` has advanced past the true fork point by the time
+ * this runs (another phase merged in the interim), diffing directly against
+ * `--base` would misattribute every path `main` changed afterward to this
+ * branch. `--base`/`--head` are still both required (a check that cannot
+ * compute a merge base has not reached a verdict, M2-C-3).
+ *
+ * CORRECTION, fix round 1 (CR-1046): reading via the object database is NOT
+ * by itself enough to make the property above a structural fact about this
+ * module's code, because `--base` is supplied by the party under audit.
+ * Before this round, `--base` could name a ref on the AUDITED BRANCH ITSELF
+ * (for example `HEAD~1` after committing a widened declaration), which
+ * makes `git merge-base(--base, --head)` resolve to a commit that is only
+ * reachable from that branch, so the "merge base" blob read is the widened
+ * one, not main's. This was reproduced live (clean-room hazard CR-1045,
+ * witness W2) before this round closed it. The property now holds because
+ * of TWO checks together, not one: the object-database read above, AND the
+ * merge-base-vs-trunk validation immediately below, which this round added.
+ *
+ * CROSS-CHECKING EVERY CALLER-SUPPLIED INPUT AGAINST THE BRANCH UNDER AUDIT
+ * (fix round 1, CR-1030/CR-1045/CR-1030, the mechanism, not the three
+ * witnesses that exposed it). Before this round `--phase`, `--base` and
+ * `--head` were forwarded to the diff/declaration machinery exactly as
+ * supplied, so the audited party chose which declaration governed it
+ * (`--phase` naming a different, more permissive, already-committed
+ * declaration), which commit's blob the merge base pinned (`--base` forked
+ * onto the audited branch), and how much of the branch's own history was
+ * measured (`--head` set short of the real tip). All three are now
+ * cross-checked against a property of the branch under audit that the
+ * caller does not get to redefine per invocation:
+ *   - `--phase` must equal the loaded declaration's own `id` field;
+ *   - the branch this process actually has checked out (`currentBranch`)
+ *     must equal the loaded declaration's own `branch` field;
+ *   - `--head`, resolved, must equal the commit this process actually has
+ *     checked out (`git rev-parse HEAD`), so a `--head` that is an ancestor
+ *     of the real tip is rejected rather than silently narrowing the diff;
+ *   - the merge base must be an ancestor of the repository's configured
+ *     trunk (`origin/main`, falling back to a local `main` where there is
+ *     no `origin` remote, for example a scratch test repository), so a
+ *     merge base forked onto the audited branch itself is rejected.
+ * A divergence in any of the four is `error`, naming what was expected and
+ * what was supplied. None of the four can be satisfied by editing anything
+ * on the audited branch, because each is checked against either the
+ * declaration's own OWN fields (read from the object database at the merge
+ * base, already anti-widened) or against a reference this process resolves
+ * itself (the real checkout, the real trunk), never against a second
+ * caller-supplied string.
  *
  * M2-C-6, applied. `--result` and the optional `--evidence` side artifact
  * are opened only through `refuseOpenForWrite`. The phase-declaration
@@ -197,6 +238,95 @@ function resolveMergeBase(cwd: string, base: string, head: string): MergeBaseRes
     };
   }
   return { ok: true, sha };
+}
+
+type RefResolution = { ok: true; sha: string } | { ok: false; reason: string };
+
+/**
+ * Resolve any ref-ish string (a sha, a branch, `HEAD`, `HEAD~1`, ...) to the
+ * commit sha it names, or a reason it could not be resolved as a commit.
+ * Fix round 1 (CR-1030/CR-1045, W3): used to compare the CALLER-SUPPLIED
+ * `--head` against the commit this process actually has checked out, so a
+ * `--head` set short of the real tip is caught rather than silently
+ * narrowing the diff.
+ */
+function resolveRef(cwd: string, ref: string): RefResolution {
+  const result = runGit(cwd, ["rev-parse", "--verify", `${ref}^{commit}`]);
+  if (result.error !== undefined) {
+    return {
+      ok: false,
+      reason: `git rev-parse --verify ${ref} could not be run: ${singleLine(String(result.error))}`,
+    };
+  }
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      reason: `git rev-parse --verify ${ref} exited ${String(result.status)}: ${singleLine(bufferToUtf8(result.stderr))}`,
+    };
+  }
+  const sha = bufferToUtf8(result.stdout).trim();
+  if (sha === "") {
+    return { ok: false, reason: `git rev-parse --verify ${ref} produced no output` };
+  }
+  return { ok: true, sha };
+}
+
+/**
+ * The one trunk reference the merge base is checked against (fix round 1,
+ * CR-1030/CR-1045, W2). Tried in order: a real checkout of this repository
+ * carries an `origin` remote (`.github/workflows/gates.yml` fetches full
+ * history), while a scratch repository built for this suite, or a plain
+ * local clone, typically does not. Either way this kernel has exactly one
+ * branch it calls trunk, so the first candidate that resolves to a real
+ * commit is it; a repository with neither is one this check cannot be
+ * performed against, which is `error`, never a guessed pass.
+ */
+const TRUNK_CANDIDATES = ["origin/main", "main"] as const;
+
+type TrunkResolution = { ok: true; ref: string; sha: string } | { ok: false; reason: string };
+
+function resolveTrunk(cwd: string): TrunkResolution {
+  const failures: string[] = [];
+  for (const ref of TRUNK_CANDIDATES) {
+    const resolved = resolveRef(cwd, ref);
+    if (resolved.ok) {
+      return { ok: true, ref, sha: resolved.sha };
+    }
+    failures.push(`${ref} (${resolved.reason})`);
+  }
+  return {
+    ok: false,
+    reason:
+      `could not resolve a trunk reference to validate the merge base against, tried ` +
+      `${failures.join(", ")}`,
+  };
+}
+
+type AncestorCheck = { ok: true; isAncestor: boolean } | { ok: false; reason: string };
+
+/** `git merge-base --is-ancestor`: exit 0 is yes, exit 1 is no, anything else is error. */
+function isAncestorOf(cwd: string, ancestor: string, descendant: string): AncestorCheck {
+  const result = runGit(cwd, ["merge-base", "--is-ancestor", ancestor, descendant]);
+  if (result.error !== undefined) {
+    return {
+      ok: false,
+      reason:
+        `git merge-base --is-ancestor ${ancestor} ${descendant} could not be run: ` +
+        `${singleLine(String(result.error))}`,
+    };
+  }
+  if (result.status === 0) {
+    return { ok: true, isAncestor: true };
+  }
+  if (result.status === 1) {
+    return { ok: true, isAncestor: false };
+  }
+  return {
+    ok: false,
+    reason:
+      `git merge-base --is-ancestor ${ancestor} ${descendant} exited ${String(result.status)}: ` +
+      `${singleLine(bufferToUtf8(result.stderr))}`,
+  };
 }
 
 interface TouchedPath {
@@ -424,124 +554,261 @@ export function main(argv: string[]): number {
 
   const shared = { gate: "scope", unitLabel: "changed paths audited", startedAt };
 
-  const mergeBaseResult = resolveMergeBase(cwd, base, head);
-  if (!mergeBaseResult.ok) {
-    return emit(resultPath, {
-      ...shared,
-      status: "error",
-      units: 0,
-      endedAt: now(),
-      detail: mergeBaseResult.reason,
-    });
-  }
-  const mergeBase = mergeBaseResult.sha;
-
-  const declLoad = loadDeclarationAtMergeBase(cwd, mergeBase, declarationsDir, phase);
-  if (!declLoad.ok) {
-    if (declLoad.kind === "error") {
+  // CR-1047: the failure path below reads a shipped schema document
+  // (`declarationSchema`, invoked from `loadDeclarationAtMergeBase`), which
+  // THROWS on a missing schema, a schema outside the closed keyword set, or
+  // an irregular entry (a named pipe) at the schema path. Node's default
+  // uncaught-exception exit code is 1, identical to EXIT_RED, so before this
+  // wrap a crash there was indistinguishable from a genuine red verdict to
+  // any consumer reading only the exit code. Wrapping produces a clean
+  // `error` record instead, on the same standalone path this module's own
+  // USAGE line documents (the `tiphys gates run` ingest already degrades a
+  // crashing subprocess to `error`; this is the backstop for running this
+  // script directly, which has no such wrapper of its own until now).
+  try {
+    const mergeBaseResult = resolveMergeBase(cwd, base, head);
+    if (!mergeBaseResult.ok) {
       return emit(resultPath, {
         ...shared,
         status: "error",
         units: 0,
         endedAt: now(),
-        detail: declLoad.reason,
+        detail: mergeBaseResult.reason,
       });
     }
-    // declLoad.kind === "missing": the branch-matches precondition already
-    // established (at the runner) that this branch matches the phase
-    // pattern, but no declaration exists for it at the merge base.
+    const mergeBase = mergeBaseResult.sha;
+
+    // Fix round 1, CR-1030/CR-1045 mechanism, member W3: --head is supplied
+    // by the party under audit; a --head set to an ancestor of the real tip
+    // hides later commits from the diff without changing the merge base at
+    // all (the merge base depends only on the fork point, not on which
+    // descendant of it --head names), so this cannot be caught by the
+    // trunk-ancestry check below. Cross-check the resolved --head against a
+    // property the caller does not supply: the commit this process actually
+    // has checked out.
+    const actualHeadResult = resolveRef(cwd, "HEAD");
+    if (!actualHeadResult.ok) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: `could not resolve the commit actually checked out: ${actualHeadResult.reason}`,
+      });
+    }
+    const resolvedHeadResult = resolveRef(cwd, head);
+    if (!resolvedHeadResult.ok) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: `could not resolve --head ${head}: ${resolvedHeadResult.reason}`,
+      });
+    }
+    if (resolvedHeadResult.sha !== actualHeadResult.sha) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `--head ${head} resolves to ${resolvedHeadResult.sha}, but the commit actually checked ` +
+          `out in this working tree is ${actualHeadResult.sha}; refusing to audit a diff whose ` +
+          "right-hand side is not what is really checked out, which could omit later commits",
+      });
+    }
+
+    // Fix round 1, CR-1030/CR-1045 mechanism, member W2: --base is equally
+    // caller-supplied. A merge base forked onto the audited branch itself
+    // (for example `--base HEAD~1` after committing a widened declaration)
+    // makes the object-database read above resolve the BRANCH's own blob,
+    // not main's, defeating the anti-widening property this phase exists
+    // for. Cross-check the merge base against a reference this process
+    // resolves itself, not a second caller-supplied string.
+    const trunkResult = resolveTrunk(cwd);
+    if (!trunkResult.ok) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: trunkResult.reason,
+      });
+    }
+    const ancestorResult = isAncestorOf(cwd, mergeBase, trunkResult.sha);
+    if (!ancestorResult.ok) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: ancestorResult.reason,
+      });
+    }
+    if (!ancestorResult.isAncestor) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `merge base ${mergeBase} (of --base ${base} and --head ${head}) is not an ancestor of ` +
+          `the configured trunk ${trunkResult.ref} (${trunkResult.sha}); this is the shape of a ` +
+          "merge base forked onto the branch under audit rather than the true fork point with main",
+      });
+    }
+
+    const declLoad = loadDeclarationAtMergeBase(cwd, mergeBase, declarationsDir, phase);
     const branch = currentBranch(cwd);
+    if (!declLoad.ok) {
+      if (declLoad.kind === "error") {
+        return emit(resultPath, {
+          ...shared,
+          status: "error",
+          units: 0,
+          endedAt: now(),
+          detail: declLoad.reason,
+        });
+      }
+      // declLoad.kind === "missing": the branch-matches precondition already
+      // established (at the runner) that this branch matches the phase
+      // pattern, but no declaration exists for it at the merge base.
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `branch ${branch} (phase ${phase}) matches the phase pattern but no phase declaration ` +
+          `exists at ${declLoad.path} in the merge base ${mergeBase} of --base ${base} and --head ${head}; ` +
+          "the declaration must be committed to main before the phase branch is created",
+      });
+    }
+
+    const declaration = declLoad.declaration;
+    const declarationSha256 = declLoad.sha256;
+    const declarationPath = declLoad.path;
+
+    // Fix round 1, CR-1030/CR-1045 mechanism, member W1 (the yardstick
+    // swap): --phase selects WHICH declaration governs this run. Before this
+    // round nothing checked that the declaration read back actually claims
+    // to be for that phase or that branch, so a caller could name a
+    // different, more permissive, already-committed declaration and have it
+    // silently accepted for this branch's diff. Declaration ids are the
+    // plan's uppercase spelling (schema pattern `^M[0-9]+-P[0-9]+$`); --phase
+    // is the lowercase, hyphenated filename form (a deviation this phase
+    // already records), so the comparison is case-normalized, not literal.
+    if (phase.toUpperCase() !== declaration.id) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `--phase ${phase} does not match declaration ${declarationPath}'s own id ${declaration.id} ` +
+          `(read from merge base ${mergeBase}); refusing to audit this diff against a declaration ` +
+          "that does not claim to be the one --phase named",
+      });
+    }
+    if (branch !== declaration.branch) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `the current branch ${branch} does not match declaration ${declarationPath}'s own branch ` +
+          `${declaration.branch} (read from merge base ${mergeBase}); refusing to audit a branch ` +
+          "against a declaration that does not claim to govern it",
+      });
+    }
+
+    const touchedResult = computeTouchedPaths(cwd, mergeBase, head);
+    if (!touchedResult.ok) {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: touchedResult.reason,
+      });
+    }
+    const touched = touchedResult.paths;
+
+    const standingExtras = ["test/behaviors.json", `delivery/work-history/${phase}.md`];
+    const allowed = [...declaration.filesToTouch, ...declaration.declaredExtras, ...standingExtras];
+
+    const violations = [
+      ...new Set(touched.filter((entry) => !isAllowed(entry.path, allowed)).map((entry) => entry.path)),
+    ].sort();
+
+    const declaredLiterals = [...declaration.filesToTouch, ...declaration.declaredExtras].filter(
+      (entry) => !entry.endsWith("/"),
+    );
+    const touchedSet = new Set(touched.map((entry) => entry.path));
+    const underTouched = declaredLiterals.filter((entry) => !touchedSet.has(entry)).sort();
+
+    const evidenceName = writeEvidenceFile(
+      evidenceDir,
+      "scope-audit.json",
+      `${JSON.stringify(
+        {
+          phase,
+          base,
+          head,
+          mergeBase,
+          declarationPath,
+          declarationSha256,
+          touchedPaths: touched,
+          allowed,
+          violations,
+          underTouched,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const evidence = evidenceName === undefined ? [] : [evidenceName];
+
+    const units = touched.length;
+    const underTouchNote =
+      underTouched.length > 0
+        ? ` (${String(underTouched.length)} declared path(s) not touched: ${underTouched.join(", ")})`
+        : "";
+
+    if (violations.length > 0) {
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units,
+        endedAt: now(),
+        detail:
+          `touched path(s) outside the declared scope: ${violations.join(", ")} ` +
+          `(declaration ${declarationPath} at merge base ${mergeBase}, sha256 ${declarationSha256})${underTouchNote}`,
+        evidence,
+      });
+    }
+
     return emit(resultPath, {
       ...shared,
-      status: "red",
-      units: 0,
+      status: "green",
+      units,
       endedAt: now(),
       detail:
-        `branch ${branch} (phase ${phase}) matches the phase pattern but no phase declaration ` +
-        `exists at ${declLoad.path} in the merge base ${mergeBase} of --base ${base} and --head ${head}; ` +
-        "the declaration must be committed to main before the phase branch is created",
+        `${String(units)} changed path(s) audited against declaration ${declarationPath} ` +
+        `at merge base ${mergeBase} (sha256 ${declarationSha256})${underTouchNote}`,
+      evidence,
     });
-  }
-
-  const touchedResult = computeTouchedPaths(cwd, mergeBase, head);
-  if (!touchedResult.ok) {
+  } catch (error) {
     return emit(resultPath, {
       ...shared,
       status: "error",
       units: 0,
       endedAt: now(),
-      detail: touchedResult.reason,
+      detail: `scope gate crashed before reaching a verdict: ${singleLine((error as Error).message ?? String(error))}`,
     });
   }
-  const touched = touchedResult.paths;
-  const declaration = declLoad.declaration;
-  const declarationSha256 = declLoad.sha256;
-  const declarationPath = declLoad.path;
-
-  const standingExtras = ["test/behaviors.json", `delivery/work-history/${phase}.md`];
-  const allowed = [...declaration.filesToTouch, ...declaration.declaredExtras, ...standingExtras];
-
-  const violations = [
-    ...new Set(touched.filter((entry) => !isAllowed(entry.path, allowed)).map((entry) => entry.path)),
-  ].sort();
-
-  const declaredLiterals = [...declaration.filesToTouch, ...declaration.declaredExtras].filter(
-    (entry) => !entry.endsWith("/"),
-  );
-  const touchedSet = new Set(touched.map((entry) => entry.path));
-  const underTouched = declaredLiterals.filter((entry) => !touchedSet.has(entry)).sort();
-
-  const evidenceName = writeEvidenceFile(
-    evidenceDir,
-    "scope-audit.json",
-    `${JSON.stringify(
-      {
-        phase,
-        base,
-        head,
-        mergeBase,
-        declarationPath,
-        declarationSha256,
-        touchedPaths: touched,
-        allowed,
-        violations,
-        underTouched,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  const evidence = evidenceName === undefined ? [] : [evidenceName];
-
-  const units = touched.length;
-  const underTouchNote =
-    underTouched.length > 0
-      ? ` (${String(underTouched.length)} declared path(s) not touched: ${underTouched.join(", ")})`
-      : "";
-
-  if (violations.length > 0) {
-    return emit(resultPath, {
-      ...shared,
-      status: "red",
-      units,
-      endedAt: now(),
-      detail:
-        `touched path(s) outside the declared scope: ${violations.join(", ")} ` +
-        `(declaration ${declarationPath} at merge base ${mergeBase}, sha256 ${declarationSha256})${underTouchNote}`,
-      evidence,
-    });
-  }
-
-  return emit(resultPath, {
-    ...shared,
-    status: "green",
-    units,
-    endedAt: now(),
-    detail:
-      `${String(units)} changed path(s) audited against declaration ${declarationPath} ` +
-      `at merge base ${mergeBase} (sha256 ${declarationSha256})${underTouchNote}`,
-    evidence,
-  });
 }
 
 /**
@@ -554,8 +821,30 @@ export function main(argv: string[]): number {
 const invokedDirectly =
   process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (invokedDirectly) {
-  process.exitCode = main(process.argv.slice(2));
+  // CR-1047, second layer: `main` already wraps its own body, but this
+  // catches anything that could escape from outside that wrap (flag
+  // parsing, `usageError`, or a future change to either) so the standalone
+  // entry point this module documents never exits 1 (EXIT_RED) on an
+  // uncaught throw, which is indistinguishable from a genuine red verdict
+  // to a consumer reading only the exit code (CR-801 recurring).
+  try {
+    process.exitCode = main(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(
+      `tiphys gates scope: ${singleLine((error as Error).message ?? String(error))}\n`,
+    );
+    process.exitCode = EXIT_GATE_ERROR;
+  }
 }
 
-export { computeTouchedPaths, currentBranch, isAllowed, loadDeclarationAtMergeBase, resolveMergeBase };
+export {
+  computeTouchedPaths,
+  currentBranch,
+  isAllowed,
+  isAncestorOf,
+  loadDeclarationAtMergeBase,
+  resolveMergeBase,
+  resolveRef,
+  resolveTrunk,
+};
 export type { PhaseDeclaration, TouchedPath };

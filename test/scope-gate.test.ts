@@ -60,16 +60,26 @@ function git(cwd: string, args: string[]): string {
   return result.stdout.trim();
 }
 
+/**
+ * The branch a phase's fixture declaration claims (and, after fix round 1,
+ * the branch this suite must actually have checked out for that
+ * declaration to be readable at all: the scope gate now cross-checks
+ * `currentBranch` against the loaded declaration's own `branch` field).
+ */
+function fixtureBranch(phase: string): string {
+  return `claude/${phase}-fixture`;
+}
+
 function writeDeclaration(
   declDir: string,
   phase: string,
-  fields: { filesToTouch: string[]; declaredExtras?: string[] },
+  fields: { filesToTouch: string[]; declaredExtras?: string[]; branch?: string; id?: string },
 ): string {
   mkdirSync(declDir, { recursive: true });
   const body = `${JSON.stringify(
     {
-      id: phase.toUpperCase(),
-      branch: `claude/${phase}-fixture`,
+      id: fields.id ?? phase.toUpperCase(),
+      branch: fields.branch ?? fixtureBranch(phase),
       filesToTouch: fields.filesToTouch,
       declaredExtras: fields.declaredExtras ?? [],
       citations: [],
@@ -79,6 +89,21 @@ function writeDeclaration(
   )}\n`;
   writeFileSync(join(declDir, `${phase}.json`), body);
   return body;
+}
+
+/**
+ * Copy `src/` to a scratch location and return the path to ITS COPY of
+ * `src/gates/scope.ts`. `declarationSchema()` resolves the shipped schema
+ * document relative to `import.meta.url`, so running the COPY is the way to
+ * mutate or remove that schema document for CR-1047's three failure arms
+ * without touching the real installation this suite itself runs from.
+ */
+function copyInstallation(outside: string): string {
+  const dest = join(outside, `installation-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dest, { recursive: true });
+  const copied = spawnSync("cp", ["-r", join(repoRoot, "src"), dest], { encoding: "utf8" });
+  assert.equal(copied.status, 0, `cp -r src failed: ${copied.stdout}${copied.stderr}`);
+  return join(dest, "src", "gates", "scope.ts");
 }
 
 interface ProcessOutcome {
@@ -151,6 +176,10 @@ test("a diff touching every declared path is green with units equal to the touch
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "base"]);
     const base = git(dir, ["rev-parse", "HEAD"]);
+    // Fix round 1: the gate now cross-checks the current branch against the
+    // declaration's own `branch` field, so every test that expects a
+    // declaration to load successfully must actually stand on that branch.
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
 
     // DIRECTION 1: touch only declared paths A and B.
     writeFileSync(join(dir, "src", "a.ts"), "2\n");
@@ -195,6 +224,7 @@ test("touching the two standing extras without declaring them is green, and touc
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "base"]);
     const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
 
     // DIRECTION 1: touch only the two standing extras, neither declared.
     writeFileSync(join(dir, "test/behaviors.json"), "{\"a\":1}\n");
@@ -238,6 +268,7 @@ test("renaming a declared file to an undeclared path is red naming the new path,
       git(dir, ["add", "-A"]);
       git(dir, ["commit", "-q", "-m", "base"]);
       const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
       spawnSync("git", ["mv", "src/old.ts", "src/undeclared-new.ts"], { cwd: dir, env: GIT_ENV });
       git(dir, ["commit", "-q", "-am", "rename to undeclared"]);
       const head = git(dir, ["rev-parse", "HEAD"]);
@@ -264,6 +295,7 @@ test("renaming a declared file to an undeclared path is red naming the new path,
       git(dir, ["add", "-A"]);
       git(dir, ["commit", "-q", "-m", "base"]);
       const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
       spawnSync("git", ["mv", "src/old.ts", "src/allowed-new.ts"], { cwd: dir, env: GIT_ENV });
       git(dir, ["commit", "-q", "-am", "rename to declared"]);
       const head = git(dir, ["rev-parse", "HEAD"]);
@@ -293,6 +325,7 @@ test("deleting a declared file is green and deleting an undeclared file is red n
       git(dir, ["add", "-A"]);
       git(dir, ["commit", "-q", "-m", "base"]);
       const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
       git(dir, ["rm", "-q", "src/gone.ts"]);
       git(dir, ["commit", "-q", "-am", "delete declared"]);
       const head = git(dir, ["rev-parse", "HEAD"]);
@@ -316,6 +349,7 @@ test("deleting a declared file is green and deleting an undeclared file is red n
       git(dir, ["add", "-A"]);
       git(dir, ["commit", "-q", "-m", "base"]);
       const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
       git(dir, ["rm", "-q", "src/gone2.ts"]);
       git(dir, ["commit", "-q", "-am", "delete undeclared"]);
       const head = git(dir, ["rev-parse", "HEAD"]);
@@ -345,6 +379,7 @@ test("a declaration widened on the head branch to add an undeclared touch does n
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "base"]);
     const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
     const expectedSha256 = createHash("sha256").update(Buffer.from(baseDeclarationBody, "utf8")).digest("hex");
 
     // On the audited branch: touch an undeclared path C, AND widen the
@@ -585,8 +620,10 @@ test("diffs are computed against the merge base of base and head, so a base that
     git(dir, ["commit", "-q", "-m", "fork point"]);
     const forkPoint = git(dir, ["rev-parse", "HEAD"]);
 
-    // This phase's branch: touches only its own declared file.
-    git(dir, ["checkout", "-q", "-b", "phase-branch"]);
+    // This phase's branch: touches only its own declared file. Named to
+    // match the declaration's own `branch` field (fixtureBranch("m2-p4")),
+    // since fix round 1 cross-checks the two.
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
     writeFileSync(join(dir, "src", "only-mine.ts"), "1\n");
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "this phase's own change"]);
@@ -601,6 +638,12 @@ test("diffs are computed against the merge base of base and head, so a base that
     git(dir, ["rm", "-q", "src/shared.ts"]);
     git(dir, ["commit", "-q", "-m", "another phase merged after the fork point"]);
     const advancedMain = git(dir, ["rev-parse", "HEAD"]);
+    // Fix round 1: the gate now cross-checks both the current branch and
+    // the resolved --head against what is actually checked out, so the
+    // working tree must be back on the audited branch (at its real tip)
+    // before invoking the gate, even though --base names main's advanced
+    // (and, from here, uncommitted-to-by-this-branch) tip.
+    git(dir, ["checkout", "-q", fixtureBranch("m2-p4")]);
 
     const r = runScope(dir, outside, ["--base", advancedMain, "--head", head, "--phase", "m2-p4"]);
     assert.equal(r.run.status, 0, r.run.stdout + r.run.stderr);
@@ -739,6 +782,7 @@ test("a named pipe at the evidence path is refused and logged without blocking, 
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "base"]);
     const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
     writeFileSync(join(dir, "src", "a.ts"), "2\n");
     git(dir, ["commit", "-q", "-am", "touch declared"]);
     const head = git(dir, ["rev-parse", "HEAD"]);
