@@ -12,7 +12,12 @@ import {
 } from "../gates/result.ts";
 import { runGates } from "../gates/run.ts";
 import { loadSchema } from "../gates/validate.ts";
-import { readRegularFileIfPresent, refuseOpenForWrite, runStep } from "../task.ts";
+import {
+  readRegularFileIfPresent,
+  refuseOpenForWrite,
+  runStep,
+  singleLine,
+} from "../task.ts";
 import { writeFileSync } from "node:fs";
 import type { GateResultFields, GateStatus } from "../gates/result.ts";
 
@@ -119,6 +124,7 @@ function cmdRun(args: string[]): number {
   const counts = outcome.summary.counts;
   process.stdout.write(
     `gates: declared ${String(counts.declared)} applicable ${String(counts.applicable)} ` +
+      `verdict ${String(counts.verdict)} ` +
       `green ${String(counts.green)} red ${String(counts.red)} ` +
       `not-applicable ${String(counts["not-applicable"])} error ${String(counts.error)} ` +
       `vacuous ${String(counts.vacuous)}\n`,
@@ -225,24 +231,44 @@ function cmdSelfCheck(args: string[]): number {
       detail: [manifest.reason, ...manifest.diagnostics].join("; "),
     });
   }
-  validated += 1;
-
+  // CR-812. `units` used to be 3, counting the manifest as a "schema document
+  // validated". Section 1.4 fixes the unitLabel, `units` is the entire
+  // anti-vacuity device of M2-C-2, and the one gate this milestone ships was
+  // reporting a count that did not match its own declared unit. The manifest
+  // validation is real work and is reported in `detail`, where it belongs.
   return emit(flags.result, {
     ...base,
     status: "green",
     units: validated,
     endedAt: new Date().toISOString(),
-    detail: `validated ${schemaDocumentPaths().join(", ")} against the closed keyword set and ${flags.manifest} against gate-manifest.schema.json`,
+    detail:
+      `validated ${String(validated)} schema document(s) against the closed keyword set ` +
+      `(${schemaDocumentPaths().join(", ")}), and ${flags.manifest} against gate-manifest.schema.json`,
   });
 }
 
+/**
+ * The outer backstop for CR-801. Node's uncaught-exception exit code is 1,
+ * which is this phase's own EXIT_RED, so a throw escaping anywhere under
+ * `gates` used to be indistinguishable to a consumer from a gate reporting
+ * red. `runGates` folds its own throws; this catches everything else the
+ * subcommand can reach, including the schema loads that `self-check`
+ * performs outside the runner.
+ */
 export function cmdGates(args: string[]): number {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "run") {
-    return cmdRun(rest);
+  try {
+    const [subcommand, ...rest] = args;
+    if (subcommand === "run") {
+      return cmdRun(rest);
+    }
+    if (subcommand === "self-check") {
+      return cmdSelfCheck(rest);
+    }
+    return usageError();
+  } catch (error) {
+    process.stderr.write(
+      `tiphys gates: ${singleLine((error as Error).message ?? String(error))}\n`,
+    );
+    return EXIT_GATE_ERROR;
   }
-  if (subcommand === "self-check") {
-    return cmdSelfCheck(rest);
-  }
-  return usageError();
 }

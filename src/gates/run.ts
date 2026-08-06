@@ -1,5 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { lstatSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   classifyEntry,
@@ -9,6 +10,7 @@ import {
   singleLine,
 } from "../task.ts";
 import { loadManifest, validateResultDocument } from "./manifest.ts";
+import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
   EXIT_GREEN,
@@ -63,6 +65,56 @@ import type { GateResult, GateStatus, PreconditionRecord } from "./result.ts";
  * tell you whether the property holds" is called (M2-C-3), and because
  * every one of them otherwise reads as a pass.
  *
+ * WHAT "APPLICABLE" MEANS, fixed in round 1 (CR-800). It used to mean "the
+ * runner spawned this gate", which is not the same thing and differed from it
+ * on the one path that matters: a gate that decides its OWN applicability and
+ * exits 20 with a `not-applicable` record was spawned, so it counted as
+ * applicable, so the aggregate anti-vacuity rule never fired, so a bundle in
+ * which zero gates were green exited 0 with the reason "every applicable gate
+ * is green". The two routes to `not-applicable`, runner-evaluated and
+ * gate-declared, were guarded differently, and the gate subprocess contract
+ * documented above is what tells every gate author the second route exists.
+ *
+ * So there are now two counts and they answer two different questions:
+ *
+ *   applicable  the gate was reached AND did not report `not-applicable`,
+ *               whichever side decided that. It is the denominator of "how
+ *               much of this manifest was in play".
+ *   verdict     the gate reached a GREEN OR RED verdict. It is the only
+ *               count the anti-vacuity rule consults, because it is the only
+ *               one that means work was actually done.
+ *
+ * The exit-0 success path is then structurally unable to describe an empty
+ * green bucket: it is guarded by `verdict > 0` and asserted again before the
+ * summary is written, so an internal inconsistency reports `error` rather
+ * than a green nobody measured (SC-011, M2-C-2, M2R-012).
+ *
+ * ONE RUN OWNS ITS EVIDENCE DIRECTORY (CR-803). Two runners pointed at one
+ * `--evidence` directory used to interleave on fixed per-gate paths: the
+ * later runner ingested the earlier one's records as its own, and a genuine
+ * red was converted to `error` while the surviving bundle was the other run's
+ * green. That is the declared hazard "a runner that writes a record for a
+ * gate it did not execute", and seven phases run this concurrently.
+ *
+ * The evidence directory is therefore CLAIMED with an O_EXCL create, the
+ * pattern src/lock.ts already carries and which MECHANISMS.md requires a
+ * third user to read first. Per that row's rule, a claim that cannot be taken
+ * fails LOUDLY and NAMES THE STUCK FILE; there is no steal, no age heuristic
+ * and no bounded wait, because an evidence directory is not a contended
+ * resource by design and a silent wait would be indistinguishable from an
+ * absence of contention. Every run also stamps a `runId` into its summary, so
+ * a bundle is attributable, and the summary is replaced atomically through a
+ * stage name carrying that runId, which no other run can collide with
+ * (MECHANISMS.md, "Atomic file replacement").
+ *
+ * THE RUNNER OBEYS ITS OWN CRASH DISCIPLINE (CR-801). It used to enforce on
+ * its gates the rule that Node's uncaught-exception exit code 1 collides with
+ * this phase's own RED code, while itself exiting 1 on an escaping throw,
+ * with no summary and, mid-bundle, a gate-authored green record left on disk.
+ * `runGates` now folds any escaping throw into `EXIT_GATE_ERROR` AND writes a
+ * summary marked aborted, so a consumer can always tell "a gate reported red"
+ * from "the runner died before it could report".
+ *
  * M2-C-6 IS WIRED AT FOUR PLACES, all of them paths from outside: the
  * manifest path (in `loadManifest`), the evidence directory, every
  * `file-exists` and `file-absent` precondition target, and every gate's
@@ -98,6 +150,8 @@ export interface GateSummaryRow {
 }
 
 export interface RunSummary {
+  /** Identity of THIS run. A bundle nobody can attribute is not evidence. */
+  runId: string;
   manifest: string;
   manifestSha256: string;
   startedAt: string;
@@ -109,12 +163,18 @@ export interface RunSummary {
   counts: {
     declared: number;
     applicable: number;
+    /** green + red: gates that reached a verdict. The anti-vacuity count. */
+    verdict: number;
     green: number;
     red: number;
     "not-applicable": number;
     error: number;
     vacuous: number;
   };
+  /** Named here as well as in the rows, because the reason line is one line. */
+  requiredNotApplicable: string[];
+  /** True when a throw escaped the run and this summary is a partial record. */
+  aborted: boolean;
   exitCode: number;
   reason: string;
 }
@@ -130,6 +190,15 @@ export const NO_APPLICABLE_GATE = "no applicable gate";
 
 function now(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Escape a value being substituted into regex SOURCE. The set is the one
+ * MDN documents for this purpose; `-` is included because it is special
+ * inside a character class and a substituted value can land in one.
+ */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\\-]/g, "\\$&");
 }
 
 function isRealDirectory(path: string): boolean {
@@ -274,10 +343,18 @@ function evaluatePrecondition(
       return { kind: "error", reason: branch.reason };
     }
     const name = branch.lines[0] ?? "";
-    const source = pattern.split("{phase}").join(options.phase);
+    // CR-805, two faults in one line. `{phase}` is documented as a TOKEN
+    // substitution, and substituting a value into regex SOURCE without
+    // escaping silently changes the pattern's meaning: a phase id containing
+    // `.` matched any character. And the compiled expression was unanchored,
+    // so `claude/m2-p4-` matched the decoy branch
+    // `evil/claude/m2-p4-scope-auditor-DECOY`. A precondition whose job is to
+    // decide "am I on the branch this phase governs" was deciding it on a
+    // strictly weaker predicate than it appeared to.
+    const source = pattern.split("{phase}").join(escapeRegExp(options.phase));
     let expression: RegExp;
     try {
-      expression = new RegExp(source);
+      expression = new RegExp(`^(?:${source})$`);
     } catch (error) {
       return {
         kind: "error",
@@ -288,7 +365,7 @@ function evaluatePrecondition(
     const record: PreconditionRecord = {
       id,
       met,
-      reason: `branch ${name} ${met ? "matches" : "does not match"} ${source}`,
+      reason: `branch ${name} ${met ? "matches" : "does not match"} ^(?:${source})$`,
     };
     return met ? { kind: "met", record } : { kind: "unmet", record };
   }
@@ -483,7 +560,10 @@ function runOneGate(
   const ingested = ingestGateRun(entry, startedAt, recordPath, child, captureRefusal);
   return {
     result: ingested,
-    applicable: true,
+    // CR-800: "applicable" is read off the RESULT, never off the fact that a
+    // child was started. A gate that decides its own applicability and says
+    // `not-applicable` is not applicable, and it used to be counted as one.
+    applicable: ingested.status !== "not-applicable",
     recordPath,
     stdoutPath,
     stderrPath,
@@ -581,44 +661,270 @@ function ingestGateRun(
         (named === undefined ? "" : ` (${named})`),
     );
   }
-  if (record.status === "green" && record.units === 0) {
+  // CR-806. `vacuous` exists to be set by the two rewrite points and by
+  // nothing else (deviation D2). A gate that writes it itself was being
+  // believed, so a green record could be counted in the `vacuous` bucket and
+  // break step 8's "vacuous is a strict subset of error". The runner is
+  // documented as adversarial towards its own gates; here it was trusting one.
+  const claimed: GateResult = { ...record };
+  delete claimed.vacuous;
+
+  if (claimed.status === "green" && claimed.units === 0) {
     // The constructor cannot produce this, but a gate that does not use the
     // constructor can, and that is exactly the party this rule is aimed at.
     return {
-      ...record,
+      ...claimed,
       status: "error",
       vacuous: true,
       detail:
-        record.detail === ""
+        claimed.detail === ""
           ? M2_C_2_DETAIL
-          : `${M2_C_2_DETAIL}; the gate reported: ${record.detail}`,
+          : `${M2_C_2_DETAIL}; the gate reported: ${claimed.detail}`,
     };
   }
-  return record;
+
+  // CR-804 part two: M2-C-5, enforced by the runner rather than left to each
+  // gate's own honesty. The runner holds both the record's pins and the
+  // module that compares them, two lines from where it applies the
+  // structurally identical M2-C-2 rewrite, and was doing nothing with either.
+  const pinFailure = pinRefusal(claimed);
+  if (pinFailure !== undefined && claimed.status === "green") {
+    return {
+      ...claimed,
+      status: "error",
+      detail:
+        claimed.detail === ""
+          ? pinFailure
+          : `${pinFailure}; the gate reported: ${claimed.detail}`,
+    };
+  }
+  return claimed;
+}
+
+export const M2_C_5_DETAIL =
+  "M2-C-5 (a run that cannot name what it executed is not evidence)";
+
+/**
+ * Why a record's pins refuse it, or undefined when they do not. A gate that
+ * declares no pin is not bound by M2-C-5 and is not touched here; the
+ * constraint binds the gates that execute a test suite, and each of those
+ * declares its pins.
+ */
+function pinRefusal(record: GateResult): string | undefined {
+  if (record.pin === undefined) {
+    return undefined;
+  }
+  if (record.pin.start.fileCount === 0 || record.pin.end.fileCount === 0) {
+    return `${M2_C_5_DETAIL}: a pin over ${record.pin.start.roots.join(", ")} measured no files`;
+  }
+  const differences = comparePins(record.pin.start, record.pin.end);
+  if (differences.length === 0) {
+    return undefined;
+  }
+  return (
+    `${M2_C_5_DETAIL}: the tree changed during the run: ` +
+    differences.map(describePinDifference).join("; ")
+  );
 }
 
 /**
  * Run the manifest's gates. Returns the aggregate exit code and, when the
  * run got far enough to have one, the summary that was written.
  */
+export const RUN_CLAIM_FILE = ".tiphys-gate-run.json";
+
+/**
+ * Claim the evidence directory with an O_EXCL create, the pattern
+ * `src/lock.ts` already carries (MECHANISMS.md, "Claim file (mutual exclusion
+ * by O_EXCL)", which requires a third user to read that module first: done,
+ * and this follows its rule rather than inventing a second one).
+ *
+ * No steal, no age heuristic, no bounded wait. A claim that cannot be taken
+ * fails LOUDLY and NAMES THE STUCK FILE, because a silent wait is
+ * indistinguishable from an absence of contention, and because an evidence
+ * directory is not a contended resource by design: two runs sharing one is
+ * an operator error, not a queue.
+ */
+function claimEvidenceDirectory(
+  evidenceDir: string,
+  runId: string,
+  manifestPath: string,
+): string | undefined {
+  const claimPath = join(evidenceDir, RUN_CLAIM_FILE);
+  const refusal = refuseOpenForWrite(claimPath);
+  if (refusal !== undefined) {
+    return refusal;
+  }
+  const body = `${JSON.stringify(
+    { runId, manifest: manifestPath, startedAt: now() },
+    null,
+    2,
+  )}\n`;
+  try {
+    writeFileSync(claimPath, body, { flag: "wx" });
+    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      return `evidence directory ${evidenceDir} could not be claimed: ${singleLine(String(error))}`;
+    }
+    const held = readRegularFileIfPresent(claimPath);
+    const who = held.kind === "read" ? singleLine(held.body) : "unreadable";
+    return (
+      `evidence directory ${evidenceDir} is already claimed by another run; ` +
+      `claim file ${claimPath} holds ${who}. ` +
+      "Two runs sharing one evidence directory produce a bundle attributable " +
+      "to neither. Use a different --evidence directory, or delete that file " +
+      "if no run holds it."
+    );
+  }
+}
+
+/**
+ * Replace `summary.json` atomically, staging under a name that carries this
+ * run's id. MECHANISMS.md's "Atomic file replacement" row is explicit that a
+ * FIXED stage name lets two concurrent passes share one temporary and the
+ * loser dies on ENOENT, so the runId is in the stage name and no other run
+ * can collide with it. The claim above already excludes a second runner from
+ * this directory; this is the second lock on the same door, and it costs one
+ * rename.
+ */
+function writeSummaryAtomically(
+  summaryPath: string,
+  runId: string,
+  summary: RunSummary,
+): string | undefined {
+  const stagePath = `${summaryPath}.${runId}.stage`;
+  const staged = guardedWrite(
+    stagePath,
+    `${JSON.stringify(summary, null, 2)}\n`,
+  );
+  if (staged !== undefined) {
+    return staged;
+  }
+  const refusal = refuseOpenForWrite(summaryPath);
+  if (refusal !== undefined) {
+    return refusal;
+  }
+  const renamed = runStep(`replacing ${summaryPath}`, () =>
+    renameSync(stagePath, summaryPath),
+  );
+  return renamed.ok ? undefined : renamed.reason;
+}
+
+function releaseEvidenceDirectory(evidenceDir: string): void {
+  try {
+    unlinkSync(join(evidenceDir, RUN_CLAIM_FILE));
+  } catch {
+    // Releasing a claim that is already gone is not a failure.
+  }
+}
+
+/**
+ * The public entry. It exists so that NO throw can escape the runner and be
+ * read as this phase's RED exit code by whatever consumes it (CR-801). The
+ * runner enforces exactly this rule on its gates; it now obeys it itself.
+ */
 export function runGates(options: RunOptions): RunOutcome {
+  try {
+    return runGatesInner(options);
+  } catch (error) {
+    const reason =
+      `the gate runner failed: ${singleLine((error as Error).message ?? String(error))}`;
+    // Best effort: leave a summary saying the run aborted, so a consumer can
+    // tell "the runner died" from "a gate reported red". A failure to write
+    // it must not itself throw out of the catch.
+    try {
+      writeAbortedSummary(options, reason);
+    } catch {
+      // Nothing further can be recorded; the exit code and stderr remain.
+    }
+    releaseEvidenceDirectory(options.evidenceDir);
+    return { exitCode: EXIT_GATE_ERROR, reason };
+  }
+}
+
+function writeAbortedSummary(options: RunOptions, reason: string): void {
+  if (!isRealDirectory(options.evidenceDir)) {
+    return;
+  }
+  const summary: RunSummary = {
+    runId: "unknown",
+    manifest: options.manifestPath,
+    manifestSha256: "",
+    startedAt: now(),
+    endedAt: now(),
+    parameters: {},
+    only: options.only ?? [],
+    manifestGates: 0,
+    gates: [],
+    counts: {
+      declared: 0,
+      applicable: 0,
+      verdict: 0,
+      green: 0,
+      red: 0,
+      "not-applicable": 0,
+      error: 0,
+      vacuous: 0,
+    },
+    requiredNotApplicable: [],
+    aborted: true,
+    exitCode: EXIT_GATE_ERROR,
+    reason,
+  };
+  guardedWrite(
+    join(options.evidenceDir, "summary.json"),
+    `${JSON.stringify(summary, null, 2)}\n`,
+  );
+}
+
+function runGatesInner(options: RunOptions): RunOutcome {
   const cwd = options.cwd ?? process.cwd();
   const startedAt = now();
+  const runId = randomBytes(12).toString("hex");
 
-  const loaded = loadManifest(options.manifestPath);
-  if (!loaded.ok) {
-    return {
-      exitCode: EXIT_GATE_ERROR,
-      reason: [loaded.reason, ...loaded.diagnostics].join("\n"),
-    };
-  }
-  const manifest: GateManifest = loaded.manifest;
-
+  // The evidence directory is created and CLAIMED before the manifest is
+  // loaded, so that every failure from here on leaves a summary a consumer
+  // can read. CR-801 member 1 (a throw during the manifest load) otherwise
+  // left no directory, no summary and only an exit code, and M2-P9's harness
+  // is a programmatic consumer of the bundle.
   const dirRefusal = ensureDirectory(options.evidenceDir);
   if (dirRefusal !== undefined) {
     return { exitCode: EXIT_GATE_ERROR, reason: dirRefusal };
   }
+  const claimRefusal = claimEvidenceDirectory(
+    options.evidenceDir,
+    runId,
+    options.manifestPath,
+  );
+  if (claimRefusal !== undefined) {
+    // Deliberately no summary and no release: the directory belongs to the
+    // run that holds the claim, and writing into it is the very thing this
+    // refusal exists to prevent.
+    return { exitCode: EXIT_GATE_ERROR, reason: claimRefusal };
+  }
 
+  try {
+    const loaded = loadManifest(options.manifestPath);
+    if (!loaded.ok) {
+      const reason = [loaded.reason, ...loaded.diagnostics].join("\n");
+      writeAbortedSummary(options, reason);
+      return { exitCode: EXIT_GATE_ERROR, reason };
+    }
+    return runClaimedBundle(options, cwd, startedAt, runId, loaded);
+  } finally {
+    releaseEvidenceDirectory(options.evidenceDir);
+  }
+}
+
+function runClaimedBundle(
+  options: RunOptions,
+  cwd: string,
+  startedAt: string,
+  runId: string,
+  loaded: { manifest: GateManifest; sha256: string },
+): RunOutcome {
+  const manifest = loaded.manifest;
   const only = options.only ?? [];
   if (only.length > 0) {
     const known = new Set(manifest.gates.map((gate) => gate.id));
@@ -639,6 +945,7 @@ export function runGates(options: RunOptions): RunOutcome {
   const counts = {
     declared: selected.length,
     applicable: 0,
+    verdict: 0,
     green: 0,
     red: 0,
     "not-applicable": 0,
@@ -654,6 +961,9 @@ export function runGates(options: RunOptions): RunOutcome {
       counts.applicable += 1;
     }
     counts[result.status] += 1;
+    if (result.status === "green" || result.status === "red") {
+      counts.verdict += 1;
+    }
     if (result.vacuous === true) {
       counts.vacuous += 1;
     }
@@ -702,12 +1012,35 @@ export function runGates(options: RunOptions): RunOutcome {
       .filter((row) => row.status === "red")
       .map((row) => row.id)
       .join(", ")}`;
-  } else if (counts.applicable === 0) {
+  } else if (counts.verdict === 0) {
+    // CR-800. This used to read `counts.applicable === 0`, and `applicable`
+    // used to mean "was spawned", so a bundle of gates that each declared
+    // their own not-applicable slipped past it and exited 0. The count
+    // consulted here is now the only one that means work was done.
     exitCode = EXIT_GATE_ERROR;
     reason = NO_APPLICABLE_GATE;
   } else if (requiredNotApplicable.length > 0) {
     exitCode = EXIT_NOT_APPLICABLE;
     reason = `required gate(s) not applicable: ${requiredNotApplicable.join(", ")}`;
+  }
+
+  // THE SUCCESS PATH CANNOT DESCRIBE AN EMPTY GREEN BUCKET. The branch above
+  // already makes exit 0 unreachable with `counts.green === 0`, and this
+  // asserts it rather than trusting the reading, because CR-800 was exactly a
+  // reading of the branch conditions that turned out not to hold. An internal
+  // inconsistency here is `error`, never a green nobody measured.
+  if (exitCode === EXIT_GREEN && counts.green === 0) {
+    exitCode = EXIT_GATE_ERROR;
+    reason =
+      "internal inconsistency: the run reached the success path with zero " +
+      `green gates (${JSON.stringify(counts)})`;
+  }
+  // Step 8's stated relation, asserted rather than assumed (CR-806).
+  if (counts.vacuous > counts.error) {
+    exitCode = EXIT_GATE_ERROR;
+    reason =
+      `internal inconsistency: vacuous ${String(counts.vacuous)} exceeds ` +
+      `error ${String(counts.error)}, and vacuous is a strict subset of error`;
   }
 
   const parameters: RunSummary["parameters"] = {};
@@ -722,6 +1055,7 @@ export function runGates(options: RunOptions): RunOutcome {
   }
 
   const summary: RunSummary = {
+    runId,
     manifest: options.manifestPath,
     manifestSha256: loaded.sha256,
     startedAt,
@@ -731,14 +1065,13 @@ export function runGates(options: RunOptions): RunOutcome {
     manifestGates: manifest.gates.length,
     gates: rows,
     counts,
+    requiredNotApplicable,
+    aborted: false,
     exitCode,
     reason,
   };
   const summaryPath = join(options.evidenceDir, "summary.json");
-  const summaryRefusal = guardedWrite(
-    summaryPath,
-    `${JSON.stringify(summary, null, 2)}\n`,
-  );
+  const summaryRefusal = writeSummaryAtomically(summaryPath, runId, summary);
   if (summaryRefusal !== undefined) {
     return { exitCode: EXIT_GATE_ERROR, summary, reason: summaryRefusal };
   }

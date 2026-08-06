@@ -105,8 +105,13 @@
     "pin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["roots", "takenAt", "files"],
+      "required": ["roots", "takenAt", "fileCount", "files"],
       "properties": {
+        "fileCount": {
+          "description": "files.length, carried explicitly so a vacuous pin is visible in the record (CR-804). Zero makes a green record error under M2-C-5.",
+          "type": "integer",
+          "minimum": 0
+        },
         "roots": {
           "type": "array",
           "items": {
@@ -127,7 +132,7 @@
     "pinFile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256", "size", "mtimeMs"],
+      "required": ["path", "sha256", "size", "mtimeMs", "ctimeMs"],
       "properties": {
         "path": {
           "type": "string"
@@ -141,6 +146,11 @@
           "minimum": 0
         },
         "mtimeMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ctimeMs": {
+          "description": "Inode change time. Pinned in addition to M2-C-5's four fields because mtime is settable from userspace and cp -p, rsync -a and tar -x all restore it exactly (CR-809).",
           "type": "number",
           "minimum": 0
         }

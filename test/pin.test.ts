@@ -28,10 +28,12 @@ interface PinFile {
   sha256: string;
   size: number;
   mtimeMs: number;
+  ctimeMs: number;
 }
 interface Pin {
   roots: string[];
   takenAt: string;
+  fileCount: number;
   files: PinFile[];
 }
 type PinDifference =
@@ -88,10 +90,15 @@ test("a byte-identical rewrite that changes only mtime is one difference naming 
     const only = differences[0] as PinDifference;
     assert.equal(only.path, join(root, "a.ts"));
     assert.equal(only.kind, "changed");
-    assert.deepEqual(
-      only.kind === "changed" ? only.fields : [],
-      ["mtimeMs"],
-    );
+    // mtimeMs is the M2-C-5 field and is what this witness is about. ctimeMs
+    // accompanies it because `utimensat` BUMPS the inode change time, which
+    // is precisely the property CR-809's fix relies on: the act of setting
+    // mtime is itself visible. Asserting containment rather than equality
+    // keeps this witness about mtime while letting the stronger field ride
+    // along.
+    const fields = only.kind === "changed" ? only.fields : [];
+    assert.ok(fields.includes("mtimeMs"), JSON.stringify(fields));
+    assert.deepEqual([...fields].sort(), ["ctimeMs", "mtimeMs"]);
 
     // The content hash really is unchanged: this is what makes the witness
     // a witness rather than a restatement of "the file changed".
@@ -165,6 +172,99 @@ test("takePin refuses a named pipe inside a root naming the path and the type", 
     writeFileSync(join(root, "beacon"), "now a regular file\n");
     const pin = takePin([root]);
     assert.equal(pin.files.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-804 part one. Nothing in the shape distinguished "the tree did not
+ * change" from "no tree was measured", at the module two other phases consume
+ * as their PRIMARY evidence. M2-P2 pins "the clone's source and test roots";
+ * a scratch clone that puts sources one directory deeper than the computed
+ * root produced a silent empty pin, no difference, and a green gate.
+ *
+ * Two structurally different members: a root that exists and is empty, and a
+ * root list that is empty.
+ */
+test("a pin that measured no files refuses instead of reporting no difference", () => {
+  const dir = scratch();
+  try {
+    // MEMBER 1: a declared root that exists and contributes nothing.
+    const empty = join(dir, "empty");
+    mkdirSync(empty);
+    assert.throws(
+      () => takePin([empty]),
+      (error: Error) => {
+        assert.match(error.message, /contributed no files/);
+        assert.match(error.message, /empty/);
+        return true;
+      },
+    );
+
+    // MEMBER 2: a root LIST that is empty, which no per-root check reaches.
+    assert.throws(() => takePin([]), /measures nothing/);
+
+    // MEMBER 1 again, one level up: the root holds only a subdirectory that
+    // is itself empty, which is the M2-P2 shape (sources one level deeper).
+    mkdirSync(join(empty, "src"));
+    assert.throws(() => takePin([empty]), /contributed no files/);
+
+    // BOTH DIRECTIONS: one file is enough, and fileCount records it.
+    writeFileSync(join(empty, "src", "a.ts"), "export const a = 1;\n");
+    const pin = takePin([empty]);
+    assert.equal(pin.fileCount, 1);
+    assert.equal(pin.files.length, pin.fileCount);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-809. mtime is SETTABLE FROM USERSPACE. `cp -p`, `rsync -a` and `tar -x`
+ * all restore it through utimensat at nanosecond precision, so a rewrite
+ * performed by any of those three ordinary commands passed a pin of
+ * {sha256, size, mtimeMs} without a mark, and T-004's incident IS a rewrite.
+ *
+ * The dangerous state here is a REAL `cp -p` round trip, not a simulated one:
+ * the point of the finding is that ordinary tooling produces it by default.
+ */
+test("a byte-identical rewrite that restores mtime exactly is still a difference", () => {
+  const dir = scratch();
+  try {
+    const root = join(dir, "src");
+    mkdirSync(root);
+    const target = join(root, "lock.ts");
+    writeFileSync(target, "export const lock = 1;\n");
+    const start = takePin([root]);
+
+    // The T-004 shape, produced the way real tooling produces it.
+    const stash = join(dir, "stash");
+    const away = spawnSync("cp", ["-p", target, stash], { encoding: "utf8" });
+    assert.equal(away.status, 0, away.stderr);
+    const back = spawnSync("cp", ["-p", stash, target], { encoding: "utf8" });
+    assert.equal(back.status, 0, back.stderr);
+
+    const end = takePin([root]);
+    const before = start.files[0] as PinFile;
+    const after = end.files[0] as PinFile;
+
+    // The premise of the finding, asserted so this is a witness and not a
+    // restatement of "the file changed": content, size AND mtime all survive.
+    assert.equal(before.sha256, after.sha256);
+    assert.equal(before.size, after.size);
+    assert.equal(before.mtimeMs, after.mtimeMs);
+
+    const differences = comparePins(start, end);
+    assert.equal(differences.length, 1, JSON.stringify(differences));
+    const only = differences[0] as PinDifference;
+    assert.equal(only.path, target);
+    assert.deepEqual(only.kind === "changed" ? only.fields : [], ["ctimeMs"]);
+
+    // BOTH DIRECTIONS: with no rewrite at all there is no difference, so the
+    // new field is not simply reporting every run as dirty.
+    const quiet = takePin([root]);
+    assert.deepEqual(comparePins(end, quiet), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

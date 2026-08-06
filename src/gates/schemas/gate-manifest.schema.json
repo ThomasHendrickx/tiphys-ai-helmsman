@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["version", "gates", "destructiveCommands"],
   "properties": {
+    "note": {
+      "description": "Free prose for the manifest's own readers. JSON carries no comments and a manifest has things worth saying about itself (CR-813).",
+      "type": "string"
+    },
     "version": {
       "type": "integer",
       "minimum": 1
@@ -96,7 +100,7 @@
           "type": "string"
         },
         "pattern": {
-          "description": "branch-matches. A JavaScript regular expression source; the token {phase} is replaced by the --phase value before compilation.",
+          "description": "branch-matches. A JavaScript regular expression source that is ANCHORED: it is compiled as ^(?:<pattern>)$ and must match the WHOLE branch name, so a prefix rule is written claude/{phase}-.* and not claude/{phase}-. The token {phase} is replaced by the --phase value, REGEX-ESCAPED, so a phase id containing a metacharacter is a literal. Both were faults: unanchored, claude/m2-p4- matched the decoy branch evil/claude/m2-p4-scope-auditor-DECOY, and unescaped, a phase id m2.p4 matched m2xp4 (CR-805). An author who forgets the .* gets not-applicable, which is the safe direction.",
           "type": "string"
         },
         "paths": {

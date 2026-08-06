@@ -115,7 +115,34 @@ export const DIAGNOSTIC_MESSAGES = {
     `array has ${count} items, fewer than the required minimum ${minimum}`,
   pattern: (value: string, pattern: string): string =>
     `value ${value} does not match the required pattern ${pattern}`,
+  /**
+   * Authored by src/gates/manifest.ts, which cannot express "keyed by name"
+   * in the closed keyword set. It lives in THIS table anyway (CR-811): the
+   * table's stated purpose is to give a future engine one place to map onto
+   * instead of a search through call sites, and a message that sits outside
+   * it defeats that purpose whatever module emits it.
+   */
+  duplicateId: (id: string): string =>
+    `gate id ${id} is declared more than once`,
+  /** A $ref chain that returns to itself without consuming an instance. */
+  cyclicRef: (reference: string): string =>
+    `schema reference ${reference} is cyclic`,
+  unresolvedRef: (reference: string): string =>
+    `schema reference ${reference} does not resolve`,
 };
+
+/**
+ * Own-property test. `properties["__proto__"]` resolves through the prototype
+ * chain to `Object.prototype`, which is an object, so a naive lookup treats
+ * `__proto__` as a DECLARED property and lets it through
+ * `additionalProperties: false` (CR-808). Ajv rejects it, so this was also a
+ * seam divergence.
+ */
+function ownProperty(container: Record<string, unknown>, name: string): unknown {
+  return Object.prototype.hasOwnProperty.call(container, name)
+    ? container[name]
+    : undefined;
+}
 
 export type SchemaDocument = Record<string, unknown>;
 
@@ -218,6 +245,32 @@ function checkSchemaNode(
   if (reference !== undefined && typeof reference !== "string") {
     problems.push(`$ref at ${pointer} is not a string`);
   }
+  if (reference !== undefined) {
+    // CR-802. JSON Schema 2020-12 APPLIES keywords sitting beside `$ref`,
+    // and Ajv does too. This engine followed the reference and returned,
+    // dropping every sibling without a word: a KNOWN keyword in a position
+    // the validator silently ignores, which is the harder half of the
+    // attack the closed keyword set exists to stop, and a verdict change at
+    // the exact seam DR-0013 clause 6 promises M3-P1 can swap across.
+    //
+    // Refusing at load rather than implementing sibling application is the
+    // choice this module's philosophy already made everywhere else: a
+    // schema this engine cannot evaluate the way the specification says is
+    // rejected, never partially honoured. A schema that never uses the
+    // construct behaves identically under both engines.
+    const siblings = Object.keys(node)
+      .filter(
+        (key) => key !== "$ref" && VALIDATION_KEYWORDS.includes(key),
+      )
+      .sort();
+    if (siblings.length > 0) {
+      problems.push(
+        `$ref at ${pointer} has sibling keyword(s) ${siblings.join(", ")}: ` +
+          "this validator does not apply keywords beside a $ref, and " +
+          "silently ignoring them would validate less than the schema says",
+      );
+    }
+  }
   const properties = node["properties"];
   if (properties !== undefined) {
     if (!isPlainObject(properties)) {
@@ -227,7 +280,7 @@ function checkSchemaNode(
     } else {
       for (const name of Object.keys(properties).sort()) {
         checkSchemaNode(
-          properties[name],
+          ownProperty(properties as Record<string, unknown>, name),
           `${childPointer(pointer, "properties")}/${pointerSegment(name)}`,
           problems,
         );
@@ -241,13 +294,33 @@ function checkSchemaNode(
     } else {
       for (const name of Object.keys(defs).sort()) {
         checkSchemaNode(
-          defs[name],
+          ownProperty(defs as Record<string, unknown>, name),
           `${childPointer(pointer, "$defs")}/${pointerSegment(name)}`,
           problems,
         );
       }
     }
   }
+  const patternSource = node["pattern"];
+  if (patternSource !== undefined) {
+    if (typeof patternSource !== "string") {
+      problems.push(`pattern at ${pointer} is not a string`);
+    } else {
+      // Compiled HERE so an unusable pattern is a load failure with a
+      // reason, not a throw escaping mid-validation. CR-801's derivation
+      // named this exact asymmetry: `new RegExp` on a CALLER-supplied
+      // pattern was guarded and `new RegExp` on a SCHEMA-supplied one was
+      // not, same call, same failure, one guarded.
+      try {
+        new RegExp(patternSource);
+      } catch (error) {
+        problems.push(
+          `pattern at ${pointer} is not a valid expression: ${(error as Error).message}`,
+        );
+      }
+    }
+  }
+
   const items = node["items"];
   if (items !== undefined) {
     checkSchemaNode(items, childPointer(pointer, "items"), problems);
@@ -275,6 +348,14 @@ function resolveRef(
   root: SchemaDocument,
   reference: string,
 ): SchemaDocument | undefined {
+  // `#` is the whole document, which is how a recursive schema is normally
+  // written. It was unhandled until a control in test/gates.test.ts exercised
+  // a legitimate recursive schema and got "does not resolve"; the cycle fix
+  // that motivated the control would otherwise have shipped beside a gap
+  // that made every recursive schema unusable.
+  if (reference === "#") {
+    return root;
+  }
   if (!reference.startsWith("#/")) {
     return undefined;
   }
@@ -284,7 +365,7 @@ function resolveRef(
     if (!isPlainObject(node)) {
       return undefined;
     }
-    node = node[segment];
+    node = ownProperty(node, segment);
   }
   return isPlainObject(node) ? node : undefined;
 }
@@ -293,24 +374,44 @@ function render(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }
 
+/**
+ * `refChain` holds the `$ref`s followed since the last time an INSTANCE node
+ * was consumed. A schema that refers to itself without descending into the
+ * instance loops forever, and this engine answered that with a RangeError
+ * escaping mid-validation rather than with a diagnostic (CR-807). A
+ * LEGITIMATE recursive schema always consumes an instance node between two
+ * follows of the same reference, so the chain is reset on every descent into
+ * `properties` or `items` and a repeat inside one chain is a genuine cycle.
+ */
 function validateNode(
   root: SchemaDocument,
   schema: SchemaDocument,
   instance: unknown,
   pointer: string,
   into: Diagnostic[],
+  refChain: string[],
 ): void {
   const reference = schema["$ref"];
   if (typeof reference === "string") {
+    if (refChain.includes(reference)) {
+      into.push({
+        pointer,
+        message: DIAGNOSTIC_MESSAGES.cyclicRef(reference),
+      });
+      return;
+    }
     const target = resolveRef(root, reference);
     if (target === undefined) {
       into.push({
         pointer,
-        message: `schema reference ${reference} does not resolve`,
+        message: DIAGNOSTIC_MESSAGES.unresolvedRef(reference),
       });
       return;
     }
-    validateNode(root, target, instance, pointer, into);
+    validateNode(root, target, instance, pointer, into, [
+      ...refChain,
+      reference,
+    ]);
     return;
   }
 
@@ -361,7 +462,19 @@ function validateNode(
 
   const pattern = schema["pattern"];
   if (typeof pattern === "string" && typeof instance === "string") {
-    if (!new RegExp(pattern).test(instance)) {
+    // The pattern was compiled at load, so reaching the catch means the
+    // schema was not loaded through loadSchema. Report, never throw.
+    let matched: boolean;
+    try {
+      matched = new RegExp(pattern).test(instance);
+    } catch (error) {
+      into.push({
+        pointer,
+        message: `pattern ${pattern} is not a valid expression: ${(error as Error).message}`,
+      });
+      matched = true;
+    }
+    if (!matched) {
       into.push({
         pointer,
         message: DIAGNOSTIC_MESSAGES.pattern(render(instance), pattern),
@@ -383,13 +496,7 @@ function validateNode(
     const items = schema["items"];
     if (isPlainObject(items)) {
       for (let index = 0; index < instance.length; index += 1) {
-        validateNode(
-          root,
-          items,
-          instance[index],
-          `${pointer}/${index}`,
-          into,
-        );
+        validateNode(root, items, instance[index], `${pointer}/${index}`, into, []);
       }
     }
   }
@@ -398,7 +505,10 @@ function validateNode(
     const required = schema["required"];
     if (Array.isArray(required)) {
       for (const name of [...required].sort()) {
-        if (typeof name === "string" && !(name in instance)) {
+        if (
+          typeof name === "string" &&
+          !Object.prototype.hasOwnProperty.call(instance, name)
+        ) {
           into.push({
             pointer: childPointer(pointer, name),
             message: DIAGNOSTIC_MESSAGES.required(name),
@@ -411,14 +521,15 @@ function validateNode(
       : {};
     const additional = schema["additionalProperties"];
     for (const name of Object.keys(instance).sort()) {
-      const subschema = properties[name];
+      const subschema = ownProperty(properties, name);
       if (isPlainObject(subschema)) {
         validateNode(
           root,
           subschema,
-          instance[name],
+          ownProperty(instance, name),
           childPointer(pointer, name),
           into,
+          [],
         );
         continue;
       }
@@ -442,7 +553,7 @@ export function validate(
   instance: unknown,
 ): Diagnostic[] {
   const collected: Diagnostic[] = [];
-  validateNode(schema, schema, instance, ROOT_POINTER, collected);
+  validateNode(schema, schema, instance, ROOT_POINTER, collected, []);
   collected.sort((a, b) => {
     if (a.pointer !== b.pointer) {
       return a.pointer < b.pointer ? -1 : 1;

@@ -42,6 +42,20 @@ jobs:
       # Two steps rather than one expression: on a pull request the base and
       # head SHAs exist and are passed; on a push to main they do not, and a
       # gate needing them reports `error` rather than being silently skipped.
+      #
+      # --head is `github.event.pull_request.head.sha`, NOT `github.sha`
+      # (CR-830-1). On a pull_request trigger `github.sha` is the ephemeral
+      # merge commit the runner checked out, so a diff computed against it has
+      # the wrong right-hand side: it would succeed and answer a different
+      # question, which is worse than failing. No gate in this phase consumes
+      # the value, so this is correctness in advance of a consumer.
+      #
+      # TWO THINGS THE FIRST diff-touches GATE (M2-P2, M2-P5) MUST DO, and
+      # they are coupled. This checkout is shallow, so the base SHA and the
+      # PR head SHA are not both in the clone and `git diff base...head` will
+      # exit nonzero, which the runner reports as `error`. Adding
+      # `fetch-depth: 0` to the checkout step is the other half; changing
+      # either alone leaves the diff either wrong or impossible.
       - name: M2 gate bundle (pull request)
         if: github.event_name == 'pull_request'
         run: >
@@ -49,7 +63,7 @@ jobs:
           --manifest gates.manifest.json
           --evidence "${{ runner.temp }}/gate-evidence"
           --base "${{ github.event.pull_request.base.sha }}"
-          --head "${{ github.sha }}"
+          --head "${{ github.event.pull_request.head.sha }}"
       - name: M2 gate bundle (push)
         if: github.event_name != 'pull_request'
         run: >

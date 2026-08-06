@@ -18,6 +18,26 @@ import { classifyEntry } from "../task.ts";
  * path's presence included) is a difference and makes the run's record
  * `error`.
  *
+ * WHY ctimeMs IS PINNED TOO (CR-809, added in fix round 1). mtime is
+ * SETTABLE FROM USERSPACE. `cp -p`, `rsync -a` and `tar -x` all restore it
+ * through `utimensat` at nanosecond precision, so a rewrite performed by any
+ * of those three ordinary commands passes a pin of {sha256, size, mtimeMs}
+ * without a mark, and T-004's incident is a rewrite. ctime is the inode
+ * change time: no userspace call sets it, and `utimensat` BUMPS it, so the
+ * very act of restoring mtime is what makes the change visible. It also
+ * catches replace-by-rename, which changes the inode.
+ *
+ * This is a strict ADDITION to M2-C-5's four fields, never a substitution:
+ * the constraint says any difference in file set, sha256, size or mtime makes
+ * the record `error`, and pinning a fifth field can only make more runs
+ * `error`, never fewer. M2-P2 criterion 7 and M2-P3 criterion 8 are pin
+ * witnesses and should be read against five fields, not four.
+ *
+ * The residue, stated rather than left to be discovered: ctime is not
+ * forgeable from userspace, but it is not a cryptographic seal either. A
+ * privileged actor with raw device access can write any inode field it
+ * likes. That is outside anything this kernel can measure.
+ *
  * WHY mtimeMs IS PINNED AND A CONTENT HASH IS NOT ENOUGH. T-004's forensics
  * describe a BYTE-IDENTICAL rewrite: `src/lock.ts` was replaced with
  * pristine content 42.8 seconds into the failing run. A content-only pin
@@ -56,15 +76,24 @@ export interface PinFile {
   sha256: string;
   size: number;
   mtimeMs: number;
+  /** Inode change time. Not settable from userspace; see the header. */
+  ctimeMs: number;
 }
 
 export interface Pin {
   roots: string[];
   takenAt: string;
+  /**
+   * `files.length`, carried explicitly so a vacuous pin is visible in the
+   * RECORD and not only to a caller who thinks to check (CR-804). Nothing in
+   * the shape used to distinguish "the tree did not change" from "no tree was
+   * measured", at the module two other phases consume as primary evidence.
+   */
+  fileCount: number;
   files: PinFile[];
 }
 
-export type PinFieldName = "sha256" | "size" | "mtimeMs";
+export type PinFieldName = "sha256" | "size" | "mtimeMs" | "ctimeMs";
 
 export type PinDifference =
   | { path: string; kind: "added" }
@@ -88,6 +117,7 @@ function hashFile(path: string): PinFile {
     sha256: createHash("sha256").update(body).digest("hex"),
     size: stats.size,
     mtimeMs: stats.mtimeMs,
+    ctimeMs: stats.ctimeMs,
   };
 }
 
@@ -133,9 +163,26 @@ function walk(root: string, dir: string, into: PinFile[]): void {
  */
 export function takePin(roots: string[]): Pin {
   const files: PinFile[] = [];
+  if (roots.length === 0) {
+    throw new Error("a pin over no roots measures nothing (M2-C-5)");
+  }
   for (const root of roots) {
+    const before = files.length;
     if (isRealDirectory(root)) {
       walk(root, root, files);
+      // THE VACUITY FLOOR (CR-804). A root a caller DECLARED that holds no
+      // files is a configuration error, not a measurement of an unchanged
+      // tree, and the two are indistinguishable in the result. M2-P2 pins
+      // "the clone's source and test roots"; if a scratch clone puts sources
+      // one directory deeper than the computed root, a silent empty pin
+      // reports no difference and the gate goes green on evidence nobody
+      // took. The rule lives HERE, in the module that carries the mechanism,
+      // rather than in each consumer (T-005).
+      if (files.length === before) {
+        throw new Error(
+          `pin root ${root} contributed no files; a declared root that holds nothing is a configuration error, not an unchanged tree (M2-C-5)`,
+        );
+      }
       continue;
     }
     const entry = classifyEntry(root);
@@ -152,6 +199,7 @@ export function takePin(roots: string[]): Pin {
   return {
     roots: [...roots],
     takenAt: new Date().toISOString(),
+    fileCount: files.length,
     files,
   };
 }
@@ -189,6 +237,9 @@ export function comparePins(a: Pin, b: Pin): PinDifference[] {
     }
     if (start.mtimeMs !== end.mtimeMs) {
       fields.push("mtimeMs");
+    }
+    if (start.ctimeMs !== end.ctimeMs) {
+      fields.push("ctimeMs");
     }
     if (fields.length > 0) {
       differences.push({ path, kind: "changed", fields });

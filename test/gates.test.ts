@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -95,6 +96,8 @@ interface GateScript {
   exit: number;
   /** Throw before exiting: the real uncaught-exception shape. */
   crash?: boolean;
+  /** Busy-wait before exiting, so a second runner can contend. */
+  sleepMs?: number;
 }
 
 const FIXED_START = "2026-08-06T00:00:00.000Z";
@@ -128,6 +131,9 @@ function writeGate(dir: string, name: string, spec: GateScript): string[] {
     "if (record !== null && at >= 0) {",
     '  writeFileSync(args[at + 1], JSON.stringify(record, null, 2) + "\\n");',
     "}",
+    spec.sleepMs === undefined
+      ? ""
+      : `const until = Date.now() + ${String(spec.sleepMs)}; while (Date.now() < until) {}`,
     spec.crash === true
       ? 'throw new Error("uncaught exception inside the fixture gate");'
       : "",
@@ -155,10 +161,20 @@ function writeManifest(
 }
 
 interface Summary {
+  runId: string;
+  aborted: boolean;
   counts: Record<string, number>;
   reason: string;
   exitCode: number;
-  gates: { id: string; status: string; detail: string; vacuous: boolean }[];
+  requiredNotApplicable: string[];
+  gates: {
+    id: string;
+    status: string;
+    detail: string;
+    vacuous: boolean;
+    applicable: boolean;
+    units: number;
+  }[];
 }
 
 function readSummary(evidence: string): Summary {
@@ -254,6 +270,7 @@ test("the runner maps four fixture gates onto green red not-applicable and error
     assert.deepEqual(summary.counts, {
       declared: 4,
       applicable: 3,
+      verdict: 2,
       green: 1,
       red: 1,
       "not-applicable": 1,
@@ -1475,6 +1492,816 @@ test("a gate declaring a run parameter it does not receive is error, and receive
       readFileSync(join(dir, "ev-with", "g-phased", "result.json"), "utf8"),
     ) as { status: string };
     assert.equal(withRecord.status, "green");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ================================================================== */
+/* FIX ROUND 1                                                        */
+/* ================================================================== */
+
+/**
+ * CR-800 (HIGH). The two routes to `not-applicable` were guarded
+ * differently: a precondition the RUNNER evaluated failed closed, and a gate
+ * that declared its OWN not-applicable did not, because `counts.applicable`
+ * meant "was spawned". A bundle in which zero gates were green exited 0 with
+ * the reason "every applicable gate is green".
+ *
+ * Three structurally different members, because one witness is not a class,
+ * and the missing second member is exactly what found the defect. Both
+ * controls are here too, so this is not a restatement of "nonzero is
+ * nonzero".
+ */
+test("a gate that declares its own not-applicable cannot make the bundle green", () => {
+  const dir = scratch();
+  try {
+    const selfNotApplicable = writeGate(dir, "selfna", {
+      record: gateRecord("selfna", "not-applicable", 0),
+      exit: 20,
+    });
+    const selfGreen = writeGate(dir, "selfgreen", {
+      record: gateRecord("selfna", "green", 1),
+      exit: 0,
+    });
+
+    // MEMBER 1: a single conditional gate, not-applicable by its own record.
+    for (const applicability of ["conditional", "required"]) {
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "selfna",
+            command: selfNotApplicable,
+            unitLabel: "fixture units",
+            applicability,
+          },
+        ],
+        `m-self-${applicability}.json`,
+      );
+      const result = runCli([
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, `ev-self-${applicability}`),
+      ]);
+      assert.notEqual(
+        result.status,
+        0,
+        `${applicability}: a bundle with zero green gates exited 0`,
+      );
+      const summary = readSummary(join(dir, `ev-self-${applicability}`));
+      assert.equal(summary.reason, "no applicable gate");
+      assert.equal(summary.counts["verdict"], 0);
+      assert.equal(summary.counts["applicable"], 0);
+      assert.equal(summary.gates[0]?.applicable, false);
+      assert.doesNotMatch(summary.reason, /every applicable gate is green/);
+    }
+
+    // CONTROL A: the SAME gate reporting green with one unit. If this were
+    // not distinguishable by exit code, the member above would prove nothing.
+    const greenManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "selfna",
+          command: selfGreen,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+        },
+      ],
+      "m-self-green.json",
+    );
+    const greenRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      greenManifest,
+      "--evidence",
+      join(dir, "ev-self-green"),
+    ]);
+    assert.equal(greenRun.status, 0, greenRun.stdout + greenRun.stderr);
+    assert.equal(readSummary(join(dir, "ev-self-green")).counts["verdict"], 1);
+
+    // MEMBER 2: a mixed bundle exercising BOTH routes at once, which is the
+    // shape a real manifest has.
+    const mixed = writeManifest(
+      dir,
+      [
+        {
+          id: "runner-na",
+          command: selfGreen,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+          precondition: {
+            id: "needs-config",
+            kind: "file-exists",
+            path: join(dir, "absent-config.json"),
+          },
+        },
+        {
+          id: "selfna",
+          command: selfNotApplicable,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+        },
+      ],
+      "m-mixed.json",
+    );
+    const mixedRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      mixed,
+      "--evidence",
+      join(dir, "ev-mixed"),
+    ]);
+    assert.notEqual(mixedRun.status, 0);
+    const mixedSummary = readSummary(join(dir, "ev-mixed"));
+    assert.equal(mixedSummary.reason, "no applicable gate");
+    assert.equal(mixedSummary.counts["not-applicable"], 2);
+    assert.equal(mixedSummary.counts["verdict"], 0);
+    // The two routes are now indistinguishable in the summary, which is the
+    // property that was missing.
+    for (const row of mixedSummary.gates) {
+      assert.equal(row.applicable, false, `${row.id} counted as applicable`);
+    }
+    assert.equal(
+      mixedSummary.gates.reduce((total, row) => total + row.units, 0),
+      0,
+    );
+
+    // MEMBER 3: the same through --only, a different selection path.
+    const onlyRun = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      mixed,
+      "--evidence",
+      join(dir, "ev-only"),
+      "--only",
+      "selfna",
+    ]);
+    assert.notEqual(onlyRun.status, 0);
+    assert.equal(readSummary(join(dir, "ev-only")).reason, "no applicable gate");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The structural half of CR-800: the success path is asserted, not merely
+ * unreachable by reading. CR-800 WAS a reading of the branch conditions that
+ * turned out not to hold, so the code now checks the invariant it depends on.
+ */
+test("the runner cannot report success over an empty green bucket", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/gates/run.ts", import.meta.url)),
+    "utf8",
+  );
+  // The success reason exists in exactly one place and is guarded by an
+  // explicit invariant check that names counts.green.
+  assert.match(source, /exitCode === EXIT_GREEN && counts\.green === 0/);
+  assert.match(source, /counts\.vacuous > counts\.error/);
+  // And the anti-vacuity branch consults `verdict`, never `applicable`.
+  assert.match(source, /else if \(counts\.verdict === 0\)/);
+  assert.doesNotMatch(source, /else if \(counts\.applicable === 0\)/);
+});
+
+/**
+ * CR-801 (MEDIUM). Node's uncaught-exception exit code is 1, which is this
+ * phase's own RED code. The runner enforced that rule on its gates and not on
+ * itself: an escaping throw exited 1, wrote no summary, and mid-bundle left a
+ * gate-authored GREEN record on disk with nothing to say the run had died.
+ *
+ * Staged against a COPY of dist/, never the repository's own, so a suite
+ * running its files in parallel cannot see a half-deleted build.
+ */
+function stagedDist(dir: string): string {
+  const copy = join(dir, "dist");
+  cpSync(join(repoRoot, "dist"), copy, { recursive: true });
+  return copy;
+}
+
+test("a throw escaping the runner is error with a summary, never the red exit code", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const dist = stagedDist(dir);
+    const manifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-one",
+          command: writeGate(dir, "one", {
+            record: gateRecord("g-one", "green", 3),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+        {
+          id: "g-two",
+          command: writeGate(dir, "two", {
+            record: gateRecord("g-two", "green", 4),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "m-two.json",
+    );
+
+    // MEMBER 1: the throw happens during the manifest load, before any gate.
+    rmSync(join(dist, "src", "gates", "schemas", "gate-manifest.schema.json"));
+    const early = spawnSync(
+      process.execPath,
+      [
+        join(dist, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-early"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(early.status, 21, `expected 21, got ${String(early.status)}`);
+    assert.notEqual(early.status, 1, "the runner exited with its own RED code");
+    const earlySummary = readSummary(join(dir, "ev-early"));
+    assert.equal(earlySummary.aborted, true);
+    assert.equal(earlySummary.exitCode, 21);
+
+    // MEMBER 2: structurally different. The throw happens MID-BUNDLE, after
+    // gate one has already written a green record, which is the shape that
+    // leaves a misleading bundle behind.
+    const dist2 = join(dir, "dist2");
+    cpSync(join(repoRoot, "dist"), dist2, { recursive: true });
+    rmSync(join(dist2, "src", "gates", "schemas", "gate-result.schema.json"));
+    const mid = spawnSync(
+      process.execPath,
+      [
+        join(dist2, "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-mid"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(mid.status, 21, `expected 21, got ${String(mid.status)}`);
+    // The gate's own green record is on disk; the summary is what tells a
+    // consumer not to read the bundle as a result.
+    assert.ok(existsSync(join(dir, "ev-mid", "g-one", "result.json")));
+    const midSummary = readSummary(join(dir, "ev-mid"));
+    assert.equal(midSummary.aborted, true);
+    assert.equal(midSummary.counts["green"], 0);
+    assert.match(midSummary.reason, /the gate runner failed/);
+
+    // CONTROL: the same invocation against an INTACT dist copy. Without it
+    // this test would pass over a runner that always exited 21.
+    cpSync(join(repoRoot, "dist"), join(dir, "dist3"), { recursive: true });
+    const okRun = spawnSync(
+      process.execPath,
+      [
+        join(dir, "dist3", "bin", "tiphys.js"),
+        "gates",
+        "run",
+        "--manifest",
+        manifest,
+        "--evidence",
+        join(dir, "ev-ok2"),
+      ],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(okRun.status, 0, okRun.stdout + okRun.stderr);
+    assert.equal(readSummary(join(dir, "ev-ok2")).aborted, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-803 (MEDIUM). Two runners pointed at one `--evidence` directory used to
+ * interleave on fixed per-gate paths: the later runner ingested the earlier
+ * one's records as its own, and a genuine red was converted to `error` while
+ * the surviving bundle was the other run's green. Seven phases run this
+ * concurrently.
+ *
+ * Two structurally different members: a claim already present (the
+ * deterministic shape, which is also what a crashed run leaves), and a real
+ * concurrent second runner started while the first is still working.
+ */
+test("one run owns its evidence directory and a second is refused loudly", async () => {
+  const dir = scratch();
+  try {
+    const fast = writeManifest(
+      dir,
+      [
+        {
+          id: "g-fast",
+          command: writeGate(dir, "fast", {
+            record: gateRecord("g-fast", "green", 5),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "fast.json",
+    );
+
+    // MEMBER 1: a claim is already there. This is also exactly what a run
+    // that died leaves behind, and the rule MECHANISMS.md fixes for claim
+    // files is that it must fail LOUDLY and NAME THE STUCK FILE, never wait
+    // silently and never steal.
+    const held = join(dir, "ev-held");
+    mkdirSync(held, { recursive: true });
+    writeFileSync(
+      join(held, ".tiphys-gate-run.json"),
+      '{"runId":"aaaaaaaaaaaa","manifest":"other"}\n',
+    );
+    const refused = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      held,
+    ]);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /already claimed by another run/);
+    assert.match(refused.stderr, /\.tiphys-gate-run\.json/);
+    assert.match(refused.stderr, /aaaaaaaaaaaa/);
+    assert.ok(
+      !existsSync(join(held, "g-fast")),
+      "the refused run wrote into a directory it did not own",
+    );
+
+    // CONTROL: remove the claim and the same invocation succeeds, so the
+    // refusal is about the claim and not about the directory.
+    rmSync(join(held, ".tiphys-gate-run.json"));
+    const allowed = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      held,
+    ]);
+    assert.equal(allowed.status, 0, allowed.stdout + allowed.stderr);
+    assert.ok(
+      !existsSync(join(held, ".tiphys-gate-run.json")),
+      "the claim was not released at the end of the run",
+    );
+
+    // MEMBER 2: a genuinely concurrent second runner, which is the shape the
+    // review constructed. The first holds a slow gate; the second must be
+    // refused rather than interleaving with it.
+    const slow = writeManifest(
+      dir,
+      [
+        {
+          id: "g-slow",
+          command: writeGate(dir, "slow", {
+            record: gateRecord("g-slow", "green", 9),
+            exit: 0,
+            sleepMs: 3000,
+          }),
+          unitLabel: "u",
+          applicability: "required",
+        },
+      ],
+      "slow.json",
+    );
+    const shared = join(dir, "ev-shared");
+    const first = spawn(
+      process.execPath,
+      [sourceEntry, "gates", "run", "--manifest", slow, "--evidence", shared],
+      { cwd: repoRoot, stdio: "ignore" },
+    );
+    const firstExit = new Promise<number>((resolve) => {
+      first.on("exit", (code) => resolve(code ?? -1));
+    });
+    // Wait for the claim to exist, so the contention is real rather than a
+    // race this test also has to win. Bounded, so a failure reports.
+    const deadline = Date.now() + 10_000;
+    while (
+      !existsSync(join(shared, ".tiphys-gate-run.json")) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(
+      existsSync(join(shared, ".tiphys-gate-run.json")),
+      "the first runner never took its claim",
+    );
+    const second = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fast,
+      "--evidence",
+      shared,
+    ]);
+    assert.notEqual(second.status, 0);
+    assert.match(second.stderr, /already claimed by another run/);
+
+    assert.equal(await firstExit, 0);
+    // The surviving bundle is the first run's, entirely, and says so.
+    const summary = readSummary(shared);
+    assert.equal(summary.gates.length, 1);
+    assert.equal(summary.gates[0]?.id, "g-slow");
+    assert.equal(summary.gates[0]?.units, 9);
+    assert.match(summary.runId, /^[0-9a-f]{24}$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-804 part two (MEDIUM). M2-C-5 was enforced entirely by each gate's own
+ * honesty: the runner held both the record's pins and the module that
+ * compares them and did nothing with either, two lines from where it applies
+ * the structurally identical M2-C-2 rewrite to `units`.
+ */
+function pinFor(files: { path: string; sha: string; mtime: number }[]) {
+  return {
+    roots: ["/scratch/src"],
+    takenAt: "2026-08-06T00:00:00.000Z",
+    fileCount: files.length,
+    files: files.map((file) => ({
+      path: file.path,
+      sha256: file.sha,
+      size: 10,
+      mtimeMs: file.mtime,
+      ctimeMs: file.mtime,
+    })),
+  };
+}
+
+test("a green record whose pins disagree, or whose pin measured nothing, is error", () => {
+  const dir = scratch();
+  try {
+    const sha = "a".repeat(64);
+    const cases: { name: string; pin: unknown; expect: string }[] = [
+      {
+        name: "changed",
+        pin: {
+          start: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+          end: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 2 }]),
+        },
+        expect: "error",
+      },
+      {
+        name: "empty",
+        pin: { start: pinFor([]), end: pinFor([]) },
+        expect: "error",
+      },
+      {
+        name: "equal",
+        pin: {
+          start: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+          end: pinFor([{ path: "/scratch/src/a.ts", sha, mtime: 1 }]),
+        },
+        expect: "green",
+      },
+    ];
+    for (const item of cases) {
+      const record = { ...gateRecord("g-pinned", "green", 4), pin: item.pin };
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "g-pinned",
+            command: writeGate(dir, `pinned-${item.name}`, {
+              record,
+              exit: 0,
+            }),
+            unitLabel: "u",
+            applicability: "required",
+          },
+        ],
+        `m-pin-${item.name}.json`,
+      );
+      const evidence = join(dir, `ev-pin-${item.name}`);
+      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const written = JSON.parse(
+        readFileSync(join(evidence, "g-pinned", "result.json"), "utf8"),
+      ) as { status: string; detail: string };
+      assert.equal(
+        written.status,
+        item.expect,
+        `${item.name}: ${written.detail}`,
+      );
+      if (item.expect === "error") {
+        assert.match(written.detail, /M2-C-5/);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-805 (MEDIUM). `branch-matches` was unanchored and interpolated `{phase}`
+ * unescaped into regex SOURCE, and the kind had no test at all. Two members:
+ * a decoy branch that is a superstring of the real one, and a phase id
+ * carrying a regex metacharacter. Two controls, because the anchoring change
+ * could otherwise have made every branch fail to match, which would be
+ * "safe" and useless.
+ */
+test("branch-matches is anchored and treats the phase id as a literal", () => {
+  const dir = scratch();
+  try {
+    const repo = join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    const git = (args: string[]) => {
+      const result = spawnSync("git", args, {
+        cwd: repo,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Tiphys test",
+          GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+          GIT_COMMITTER_NAME: "Tiphys test",
+          GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+        },
+      });
+      assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+    };
+    git(["init", "--quiet", "-b", "claude/m2-p4-scope-auditor"]);
+    writeFileSync(join(repo, "f"), "x\n");
+    git(["add", "-A"]);
+    git(["commit", "--quiet", "-m", "base"]);
+
+    const manifest = writeManifest(
+      dir,
+      [
+        {
+          id: "scope",
+          command: writeGate(dir, "scope", {
+            record: gateRecord("scope", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+          precondition: {
+            id: "on-phase-branch",
+            kind: "branch-matches",
+            // Anchored, so a prefix rule needs its own .* (schema description).
+            pattern: "claude/{phase}-.*",
+          },
+        },
+      ],
+      "m-branch.json",
+    );
+
+    const statusOn = (branch: string, phase: string): string => {
+      git(["branch", "--quiet", "-m", branch]);
+      const evidence = join(dir, `ev-${branch.replace(/[^a-z0-9]/gi, "_")}-${phase}`);
+      spawnSync(
+        process.execPath,
+        [
+          sourceEntry,
+          "gates",
+          "run",
+          "--manifest",
+          manifest,
+          "--evidence",
+          evidence,
+          "--phase",
+          phase,
+        ],
+        { cwd: repo, encoding: "utf8" },
+      );
+      return readSummary(evidence).gates[0]?.status ?? "missing";
+    };
+
+    // CONTROL 1: the real phase branch must still match, or the fix is a
+    // guard that refuses everything.
+    assert.equal(statusOn("claude/m2-p4-scope-auditor", "m2-p4"), "green");
+    // MEMBER 1: a decoy branch that CONTAINS the pattern.
+    assert.equal(
+      statusOn("evil/claude/m2-p4-scope-auditor-DECOY", "m2-p4"),
+      "not-applicable",
+    );
+    // MEMBER 2: a phase id carrying a regex metacharacter, against a branch
+    // that only matches if the dot is a wildcard.
+    assert.equal(statusOn("claude/m2xp4-scope", "m2.p4"), "not-applicable");
+    // CONTROL 2: the same phase id against the branch it literally names.
+    assert.equal(statusOn("claude/m2.p4-scope", "m2.p4"), "green");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-806 (LOW). `vacuous` exists to be set by the two rewrite points and by
+ * nothing else. A gate that wrote it on a GREEN record was believed, and the
+ * runner is documented as adversarial towards its own gates.
+ */
+test("a gate cannot set the vacuous flag on its own record", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const record = { ...gateRecord("g-liar", "green", 7), vacuous: true };
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-liar",
+        command: writeGate(dir, "liar", { record, exit: 0 }),
+        unitLabel: "u",
+        applicability: "required",
+      },
+    ]);
+    const result = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const summary = readSummary(evidence);
+    assert.equal(summary.counts["vacuous"], 0);
+    assert.ok(summary.counts["vacuous"] <= summary.counts["error"]);
+    const written = JSON.parse(
+      readFileSync(join(evidence, "g-liar", "result.json"), "utf8"),
+    ) as { vacuous?: boolean };
+    assert.equal(written.vacuous, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-802, CR-807, CR-808 (the Ajv seam). Each is a place where this engine
+ * and Ajv at Draft 2020-12 disagree, and DR-0013 clause 6 promises M3-P1 can
+ * swap the engine and re-run these tests unchanged.
+ */
+test("the validator refuses $ref siblings, reports $ref cycles, and rejects __proto__", () => {
+  // CR-802, two structurally different siblings.
+  for (const sibling of [
+    { required: ["mustBeThere"] },
+    { enum: ["a", "b"] },
+  ]) {
+    const loaded = validateModule.loadSchema(
+      {
+        type: "object",
+        properties: { x: { $ref: "#/$defs/s", ...sibling } },
+        $defs: { s: { type: "object" } },
+      },
+      "sibling.schema.json",
+    );
+    assert.equal(loaded.ok, false, JSON.stringify(sibling));
+    assert.match(
+      loaded.ok === false ? loaded.reason : "",
+      new RegExp(Object.keys(sibling)[0] as string),
+    );
+  }
+  // CONTROL: a bare $ref with only annotations beside it still loads.
+  const bare = validateModule.loadSchema(
+    {
+      type: "object",
+      properties: { x: { $ref: "#/$defs/s", description: "fine" } },
+      $defs: { s: { type: "string" } },
+    },
+    "bare.schema.json",
+  );
+  assert.equal(bare.ok, true);
+  assert.deepEqual(
+    bare.ok === true
+      ? validateModule.validateToLines(bare.schema, { x: 1 })
+      : [],
+    ["INVALID #/x expected type string but found integer"],
+  );
+
+  // CR-807: a cycle is a diagnostic, not a RangeError escaping mid-run.
+  const cyclic = validateModule.loadSchema(
+    { properties: { x: { $ref: "#/$defs/a" } }, $defs: { a: { $ref: "#/$defs/a" } } },
+    "cyclic.schema.json",
+  );
+  assert.equal(cyclic.ok, true);
+  assert.deepEqual(
+    cyclic.ok === true
+      ? validateModule.validateToLines(cyclic.schema, { x: 1 })
+      : [],
+    ["INVALID #/x schema reference #/$defs/a is cyclic"],
+  );
+
+  // CONTROL: a schema that is recursive but consumes an instance node
+  // between follows is legitimate and must still validate.
+  const recursive = validateModule.loadSchema(
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: { name: { type: "string" }, child: { $ref: "#" } },
+    },
+    "recursive.schema.json",
+  );
+  assert.equal(recursive.ok, true);
+  assert.deepEqual(
+    recursive.ok === true
+      ? validateModule.validateToLines(recursive.schema, {
+          name: "a",
+          child: { name: "b", child: { name: 3 } },
+        })
+      : [],
+    ["INVALID #/child/child/name expected type string but found integer"],
+  );
+
+  // CR-808: __proto__ must not escape additionalProperties: false.
+  const strict = validateModule.loadSchema(
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: { ok: { type: "string" } },
+    },
+    "strict.schema.json",
+  );
+  assert.equal(strict.ok, true);
+  assert.deepEqual(
+    strict.ok === true
+      ? validateModule.validateToLines(
+          strict.schema,
+          JSON.parse('{"__proto__":1,"other":2}'),
+        )
+      : [],
+    [
+      "INVALID #/__proto__ property __proto__ is not permitted here",
+      "INVALID #/other property other is not permitted here",
+    ],
+  );
+
+  // A schema pattern that cannot compile is a LOAD failure with a reason,
+  // not a throw escaping mid-validation (the CR-801 asymmetry).
+  const badPattern = validateModule.loadSchema(
+    { type: "string", pattern: "([" },
+    "bad-pattern.schema.json",
+  );
+  assert.equal(badPattern.ok, false);
+  assert.match(
+    badPattern.ok === false ? badPattern.reason : "",
+    /not a valid expression/,
+  );
+});
+
+/** CR-811: every diagnostic message comes from the one table. */
+test("the duplicate-id diagnostic comes from the message table", () => {
+  const lines = manifestModule.validateManifestDocument({
+    version: 1,
+    gates: [
+      { id: "twice", command: ["node", "x"], unitLabel: "u", applicability: "required" },
+      { id: "twice", command: ["node", "y"], unitLabel: "u", applicability: "required" },
+    ],
+    destructiveCommands: [],
+  });
+  assert.deepEqual(lines, [
+    'INVALID #/gates/1/id gate id "twice" is declared more than once',
+  ]);
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/gates/manifest.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /is declared more than once`/);
+});
+
+/** CR-812: units counts what its label says it counts. */
+test("manifest-self-check reports one unit per schema document", () => {
+  const dir = scratch();
+  try {
+    const result = runCli([
+      "gates",
+      "self-check",
+      "--manifest",
+      join(repoRoot, "gates.manifest.json"),
+      "--result",
+      join(dir, "r.json"),
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const record = JSON.parse(readFileSync(join(dir, "r.json"), "utf8")) as {
+      units: number;
+      unitLabel: string;
+      detail: string;
+    };
+    assert.equal(record.unitLabel, "schema documents validated");
+    const schemas = readdirSync(
+      fileURLToPath(new URL("../src/gates/schemas", import.meta.url)),
+    ).filter((name) => name.endsWith(".schema.json"));
+    assert.equal(record.units, schemas.length);
+    assert.ok(record.units > 0);
+    // The manifest validation is real work and is still reported.
+    assert.match(record.detail, /gates\.manifest\.json/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

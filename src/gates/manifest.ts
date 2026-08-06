@@ -188,7 +188,7 @@ function duplicateIdDiagnostics(manifest: unknown): Diagnostic[] {
     if (seen.has(id)) {
       found.push({
         pointer: `#/gates/${index}/id`,
-        message: `gate id ${JSON.stringify(id)} is declared more than once`,
+        message: DIAGNOSTIC_MESSAGES.duplicateId(JSON.stringify(id)),
       });
     }
     seen.add(id);

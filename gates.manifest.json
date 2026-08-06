@@ -1,4 +1,5 @@
 {
+  "note": "This is the KERNEL'S OWN manifest and is repository-local by construction: gate commands invoke bin/tiphys.ts, which npm pack does not ship (files is [\"dist\"]). In CI the RUNNER is the compiled entry (dist/bin/tiphys.js, per kernel plan M2 step 9) while this gate is the source entry, so the runner resolves dist/src/gates/schemas and the gate resolves src/gates/schemas. Both copies are therefore exercised on every CI run, the runner's by its manifest load and record ingest and the gate's by self-check. Recorded here rather than left ambiguous (CR-813).",
   "version": 1,
   "gates": [
     {
