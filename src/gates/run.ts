@@ -514,6 +514,7 @@ function runOneGate(
   options: RunOptions,
   cwd: string,
   evidenceDir: string,
+  runId: string,
 ): GateOutcome {
   const startedAt = now();
   const gateDir = join(evidenceDir, entry.id);
@@ -600,8 +601,20 @@ function runOneGate(
     cwd,
     encoding: "utf8",
   });
-  const stdoutRefusal = guardedWrite(stdoutPath, child.stdout ?? "");
-  const stderrRefusal = guardedWrite(stderrPath, child.stderr ?? "");
+  // Through writeInsideClaim like every other write into this directory: the
+  // rule is a property of writing here, not of one call site (CR-860).
+  const stdoutRefusal = writeInsideClaim(
+    evidenceDir,
+    runId,
+    stdoutPath,
+    child.stdout ?? "",
+  );
+  const stderrRefusal = writeInsideClaim(
+    evidenceDir,
+    runId,
+    stderrPath,
+    child.stderr ?? "",
+  );
   const captureRefusal = stdoutRefusal ?? stderrRefusal;
 
   const ingested = ingestGateRun(entry, startedAt, recordPath, child, captureRefusal);
@@ -1213,7 +1226,7 @@ function runClaimedBundle(
   const requiredNotApplicable: string[] = [];
 
   for (const entry of selected) {
-    const outcome = runOneGate(entry, options, cwd, options.evidenceDir);
+    const outcome = runOneGate(entry, options, cwd, options.evidenceDir, runId);
     const result = outcome.result;
     if (outcome.applicable) {
       counts.applicable += 1;
