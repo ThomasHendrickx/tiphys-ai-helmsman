@@ -33,6 +33,15 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const scopeEntry = fileURLToPath(new URL("../src/gates/scope.ts", import.meta.url));
 const tiphysEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
+// Computed-URL dynamic import (CLAUDE.md warning 4): a literal relative
+// import of a src module from test/ fails the build under
+// rewriteRelativeImportExtensions.
+const resultModule = (await import(new URL("../src/gates/result.ts", import.meta.url).href)) as {
+  EXIT_RED: number;
+  EXIT_GATE_ERROR: number;
+};
+const { EXIT_RED, EXIT_GATE_ERROR } = resultModule;
+
 interface GateResultRecord {
   gate: string;
   status: string;
@@ -822,5 +831,329 @@ test("a named pipe at the evidence path is refused and logged without blocking, 
     assert.deepEqual(record.evidence, []);
   } finally {
     cleanup(dir, outside);
+  }
+});
+
+/* ====================================================================== */
+/* FIX ROUND 1 (CR-1030/CR-1045, HIGH): the mechanism is that every input   */
+/* selecting what is measured (--phase, --base, --head) was forwarded       */
+/* verbatim and never cross-checked against a property of the branch under  */
+/* audit, so the audited party could choose the yardstick. Three            */
+/* structurally different members, each closed by a DIFFERENT check, so     */
+/* each gets its own witness (CLAUDE.md, "one witness is not a class"):     */
+/*   W1 --phase names a different, more permissive declaration (closed by   */
+/*      the branch-vs-declaration.branch cross-check: the swapped-in        */
+/*      declaration's own `branch` field never matches the real branch).    */
+/*   W2 --base is forked onto the audited branch itself, so the merge base  */
+/*      lands on a blob the branch itself authored (closed by asserting the */
+/*      merge base is an ancestor of the configured trunk).                 */
+/*   W3 --head is set to an ancestor of the real tip, hiding a commit       */
+/*      without changing the merge base at all, so W2's check cannot catch  */
+/*      it (closed by cross-checking --head against the commit actually     */
+/*      checked out).                                                       */
+/* Every witness below runs the HONEST construction first (a control that   */
+/* still reaches the correct verdict) before the ATTACK, which is the       */
+/* DANGEROUS state, not merely the absent feature: each attack reproduces,  */
+/* on THIS gate's own real code path, the exact live GREEN clean-room       */
+/* review CR-1045 captured before this round, and asserts it is now error.  */
+/* ====================================================================== */
+
+test("--phase naming a different, more permissive, already-committed declaration is error, not the more permissive verdict (yardstick swap, W1)", () => {
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    // TWO valid, internally consistent declarations at the SAME merge base:
+    // the branch's own (restricted) and a different phase's (permissive).
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+    writeDeclaration(declDir, "m2-p9", { filesToTouch: ["src/a.ts", "src/extra.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+
+    // The REAL branch is m2-p4's own.
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+    writeFileSync(join(dir, "src", "extra.ts"), "1\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "touch a file undeclared for m2-p4"]);
+    const head = git(dir, ["rev-parse", "HEAD"]);
+
+    // CONTROL: audited against its own declaration, correctly red.
+    const honest = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
+    assert.notEqual(honest.run.status, 0, honest.run.stdout + honest.run.stderr);
+    assert.equal(honest.record?.status, "red");
+    assert.match(honest.record?.detail ?? "", /src\/extra\.ts/);
+
+    // ATTACK (the dangerous state): --phase names a DIFFERENT, more
+    // permissive, already-committed declaration for the SAME base/head/
+    // branch. Before fix round 1 this was GREEN (CR-1045's own live
+    // reproduction: "IDENTICAL base/head, only --phase changed").
+    const attack = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p9"]);
+    assert.notEqual(attack.run.status, 0, attack.run.stdout + attack.run.stderr);
+    assert.equal(attack.record?.status, "error");
+    assert.notEqual(attack.record?.status, "green");
+    assert.match(attack.record?.detail ?? "", /claude\/m2-p4-fixture/);
+    assert.match(attack.record?.detail ?? "", /claude\/m2-p9-fixture/);
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+test("a merge base forked onto the branch under audit, not the true fork point with main, is error (merge-base fork, W2)", () => {
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const trueBase = git(dir, ["rev-parse", "HEAD"]);
+
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+    // Commit 1 on the branch: self-widen the declaration.
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts", "src/c.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "widen the declaration on the audited branch"]);
+    const forgedBase = git(dir, ["rev-parse", "HEAD"]);
+    // Commit 2: touch the newly self-authorized path.
+    writeFileSync(join(dir, "src", "c.ts"), "1\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "touch the newly self-authorized file"]);
+    const head = git(dir, ["rev-parse", "HEAD"]);
+
+    // CONTROL: audited honestly against the true fork point with main, the
+    // anti-widening property (criterion 5) still holds: red.
+    const honest = runScope(dir, outside, ["--base", trueBase, "--head", head, "--phase", "m2-p4"]);
+    assert.notEqual(honest.run.status, 0, honest.run.stdout + honest.run.stderr);
+    assert.equal(honest.record?.status, "red");
+
+    // ATTACK (the dangerous state): --base names a commit ON THE AUDITED
+    // BRANCH ITSELF (the widening commit), so `merge-base(forgedBase, head)`
+    // resolves to forgedBase, whose declaration blob is ALREADY widened.
+    // Before fix round 1 this was GREEN (CR-1045's own live reproduction,
+    // W2: "declarationSha256 ... the BRANCH's widened blob, not main's").
+    const attack = runScope(dir, outside, ["--base", forgedBase, "--head", head, "--phase", "m2-p4"]);
+    assert.notEqual(attack.run.status, 0, attack.run.stdout + attack.run.stderr);
+    assert.equal(attack.record?.status, "error");
+    assert.notEqual(attack.record?.status, "green");
+    assert.match(attack.record?.detail ?? "", /not an ancestor of/);
+    assert.match(attack.record?.detail ?? "", new RegExp(forgedBase));
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+test("a --head that hides the last commit without changing the merge base is error (hidden commit, W3)", () => {
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+    writeFileSync(join(dir, "src", "a.ts"), "2\n");
+    git(dir, ["commit", "-q", "-am", "honest commit: touch only the declared file"]);
+    const honestHead = git(dir, ["rev-parse", "HEAD"]);
+    writeFileSync(join(dir, "src", "undeclared.ts"), "1\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "the commit the attack hides"]);
+    const realHead = git(dir, ["rev-parse", "HEAD"]);
+
+    // CONTROL: audited honestly against the real tip, correctly red.
+    const honest = runScope(dir, outside, ["--base", base, "--head", realHead, "--phase", "m2-p4"]);
+    assert.notEqual(honest.run.status, 0, honest.run.stdout + honest.run.stderr);
+    assert.equal(honest.record?.status, "red");
+    assert.match(honest.record?.detail ?? "", /src\/undeclared\.ts/);
+
+    // ATTACK (the dangerous state): the working tree is ACTUALLY standing at
+    // realHead (never checked out anywhere else), but --head names an
+    // ancestor of it, hiding the undeclared commit from the diff. The merge
+    // base does not change either way (both resolve to `base`), so W2's
+    // trunk-ancestry check cannot catch this; only cross-checking --head
+    // against the real checkout does. Before fix round 1 this was GREEN
+    // (CR-1045's own live reproduction, W3: "the last commit is simply not
+    // measured").
+    const attack = runScope(dir, outside, ["--base", base, "--head", honestHead, "--phase", "m2-p4"]);
+    assert.notEqual(attack.run.status, 0, attack.run.stdout + attack.run.stderr);
+    assert.equal(attack.record?.status, "error");
+    assert.notEqual(attack.record?.status, "green");
+    assert.match(attack.record?.detail ?? "", new RegExp(honestHead));
+    assert.match(attack.record?.detail ?? "", new RegExp(realHead));
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+/* ====================================================================== */
+/* CR-1047 (medium): the gate's own failure path was an uncaught throw.     */
+/* `declarationSchema()` throws on three structurally different arms, all   */
+/* reached the same way (a schema read that is not a clean "read" or       */
+/* "absent"), and before this round none of them was caught: Node's        */
+/* default uncaught-exception exit code is 1, identical to EXIT_RED, so a   */
+/* crash there was indistinguishable from a genuine red verdict to a        */
+/* consumer reading only the exit code. Each arm below is constructed       */
+/* against a COPY of the installation (`copyInstallation`), because the     */
+/* schema path is resolved relative to `import.meta.url`, not to a          */
+/* declarations directory a scratch repo can override.                     */
+/* ====================================================================== */
+
+test("a missing schema, a schema outside the closed keyword set, or a named pipe at the schema path is a clean error record, never an uncaught crash read as a verdict (CR-1047)", () => {
+  // ARM A: the schema document is absent from the installation.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(declDir, { recursive: true });
+      // Valid JSON is enough to reach declarationSchema(): the code loads
+      // the schema BEFORE it validates the parsed document against it.
+      writeFileSync(join(declDir, "m2-p4.json"), "{}\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+
+      const scopeCopy = copyInstallation(outside);
+      const schemaPath = join(scopeCopy, "..", "schemas", "phase-declaration.schema.json");
+      rmSync(schemaPath);
+
+      const resultPath = join(outside, "result-arm-a.json");
+      const run = spawnSync(
+        process.execPath,
+        [
+          scopeCopy,
+          "--declarations",
+          "delivery/plan/phase-declarations",
+          "--result",
+          resultPath,
+          "--base",
+          base,
+          "--head",
+          "HEAD",
+          "--phase",
+          "m2-p4",
+        ],
+        { cwd: dir, encoding: "utf8" },
+      );
+      assert.notEqual(run.status, 0);
+      assert.notEqual(
+        run.status,
+        EXIT_RED,
+        `must not read as EXIT_RED (a verdict), never a crash: stdout=${run.stdout} stderr=${run.stderr}`,
+      );
+      assert.equal(run.status, EXIT_GATE_ERROR);
+      const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateResultRecord;
+      assert.equal(record.status, "error");
+      assert.match(record.detail, /missing from this installation/);
+    } finally {
+      cleanup(dir, outside);
+    }
+  }
+
+  // ARM B: the schema document carries a keyword outside the closed set.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(declDir, { recursive: true });
+      writeFileSync(join(declDir, "m2-p4.json"), "{}\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+
+      const scopeCopy = copyInstallation(outside);
+      const schemaPath = join(scopeCopy, "..", "schemas", "phase-declaration.schema.json");
+      writeFileSync(
+        schemaPath,
+        `${JSON.stringify({ type: "object", oneOf: [{ required: ["id"] }, { required: ["branch"] }] })}\n`,
+      );
+
+      const resultPath = join(outside, "result-arm-b.json");
+      const run = spawnSync(
+        process.execPath,
+        [
+          scopeCopy,
+          "--declarations",
+          "delivery/plan/phase-declarations",
+          "--result",
+          resultPath,
+          "--base",
+          base,
+          "--head",
+          "HEAD",
+          "--phase",
+          "m2-p4",
+        ],
+        { cwd: dir, encoding: "utf8" },
+      );
+      assert.notEqual(run.status, 0);
+      assert.notEqual(
+        run.status,
+        EXIT_RED,
+        `must not read as EXIT_RED (a verdict), never a crash: stdout=${run.stdout} stderr=${run.stderr}`,
+      );
+      assert.equal(run.status, EXIT_GATE_ERROR);
+      const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateResultRecord;
+      assert.equal(record.status, "error");
+      assert.match(record.detail, /unsupported schema keyword oneOf/);
+    } finally {
+      cleanup(dir, outside);
+    }
+  }
+
+  // ARM C: a named pipe sits at the schema path.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(declDir, { recursive: true });
+      writeFileSync(join(declDir, "m2-p4.json"), "{}\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+
+      const scopeCopy = copyInstallation(outside);
+      const schemaPath = join(scopeCopy, "..", "schemas", "phase-declaration.schema.json");
+      rmSync(schemaPath);
+      const made = spawnSync("mkfifo", [schemaPath], { encoding: "utf8" });
+      assert.equal(made.status, 0, `mkfifo failed: ${made.stderr}`);
+
+      const resultPath = join(outside, "result-arm-c.json");
+      // Every assertion after this point only executes because the process
+      // RETURNED: a gate that opened the pipe would block in the kernel.
+      const run = spawnSync(
+        process.execPath,
+        [
+          scopeCopy,
+          "--declarations",
+          "delivery/plan/phase-declarations",
+          "--result",
+          resultPath,
+          "--base",
+          base,
+          "--head",
+          "HEAD",
+          "--phase",
+          "m2-p4",
+        ],
+        { cwd: dir, encoding: "utf8" },
+      );
+      assert.notEqual(run.status, 0);
+      assert.notEqual(
+        run.status,
+        EXIT_RED,
+        `must not read as EXIT_RED (a verdict), never a crash: stdout=${run.stdout} stderr=${run.stderr}`,
+      );
+      assert.equal(run.status, EXIT_GATE_ERROR);
+      const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateResultRecord;
+      assert.equal(record.status, "error");
+      assert.match(record.detail, /named pipe|not a regular file/);
+    } finally {
+      cleanup(dir, outside);
+    }
   }
 });
