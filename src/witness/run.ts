@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -490,7 +490,9 @@ function applyMember(
         reason: `patch ${member.patch} does not exist at the audited head: ${body.reason}`,
       };
     }
-    const patchPath = join(cloneDir, "..", `patch-${Date.now()}-${process.pid}.patch`);
+    // A unique stage name, per MECHANISMS.md "Atomic file replacement":
+    // never a fixed or pid-derived name (C-2 forbids pid identity).
+    const patchPath = join(cloneDir, "..", `patch-${randomUUID()}.patch`);
     const refusal = refuseOpenForWrite(patchPath);
     if (refusal !== undefined) {
       return { ok: false, reason: refusal };
