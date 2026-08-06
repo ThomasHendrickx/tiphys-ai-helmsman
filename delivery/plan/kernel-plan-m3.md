@@ -607,7 +607,9 @@ Derived checks this plan requires, by owning phase. The review's list was
 explicitly representative rather than exhaustive, so this table is the result of
 auditing every validation criterion in the plan for the pattern, and it contains
 three instances the review did not name (`checklist-probe-ids-unique`,
-`tuition-target-exists`, `charter-mode-enum-matches-modes`):
+`tuition-target-exists`, `charter-mode-enum-matches-modes`). **Revision 2 adds
+one row, `verdict-hazard-classes-addressed`, bringing the count to sixteen**;
+D-M3-22's "fifteen Kind B checks" is corrected there:
 
 | Check id | Phase | Property, and why no schema keyword reaches it |
 |---|---|---|
@@ -623,6 +625,7 @@ three instances the review did not name (`checklist-probe-ids-unique`,
 | `checklist-probe-ids-unique` | M3-P7 | `uniqueItems` compares whole array items, not one nested property across items, so probe-id uniqueness is not a keyword property |
 | `verdict-criteria-complete` | M3-P7 | compares a verdict's `criteria[]` against the acceptance criteria of a plan phase in a different document |
 | `verdict-deviations-judged` | M3-P7 | compares a verdict's `deviations-judged[]` against the deviations declared in a work history, a different document (M3R-005) |
+| `verdict-hazard-classes-addressed` | M3-P7 | NEW at revision 2 (T-007): compares a `hazard` verdict's `hazard-classes-addressed[]` against the `hazard-classes[]` of a plan phase in a different document. Same cross-document completeness shape as `verdict-criteria-complete`, one field along |
 | `dual-review-decorrelation` | M3-P9 | compares two verdict documents' `produced-by` values and their injected probe framings (M3R-004) |
 | `tuition-target-exists` | M3-P8 | resolves an `applied` structural consequence's target path against the filesystem |
 | `mechanism-rule-evidence-resolves` | M3-P8 | resolves each mechanism-index rule's evidence references, and any `machine-readable-form` path and key, against real files (T-005's checkability rule, extended by D-M3-26 to the M2 manifest coupling) |
@@ -2496,6 +2499,31 @@ regression contract, it is a new contract wearing the old one's name.
   (section 2.3 rule 3). The gate registry's two `verified-by:
   clean-room-checklist` entries from M3-P2 name probe ids this phase must
   supply, and the clause map fails if they do not resolve.
+  **Revision 2 adds a fifth checklist and three probe families, all from inputs
+  that name a "reviewer checklist" as their structural consequence by name.**
+  T-006 asks for a probe hunting impossibility and coverage claims specifically,
+  and records that reviewers already do it by instinct three times out of three,
+  which is exactly the case for an instruction: instinct does not survive a
+  reviewer change. T-007 asks for the hazard review contract to be a DECLARED
+  ARTIFACT rather than left to whoever writes the dispatch prompt, which makes
+  it a checklist here and not only a brief clause in M3-P6. `CLAUDE.md`'s
+  fix-round contract states that "the reviewer's FIRST check is item 3", which
+  is an ordering requirement on a probe list and is therefore this phase's to
+  express.
+- hazard class (T-007, D-M3-32): **a checklist whose probes are present,
+  unique, resolvable and useless.** What can pass every criterion here: a probe
+  whose text is generic enough to be answered without opening anything, which
+  criterion 3b narrows for four probes and cannot for the rest; a framing that
+  reorders the list without changing the entry point, so `--framing` is
+  cosmetic and the T-001 decorrelation is nominal; a hazard checklist whose
+  probes are the criteria probes reworded, which reproduces T-007's failure
+  while appearing to fix it; an extra-probe merge that silently overrides a
+  canonical probe instead of colliding; a probe id resolving to a gate entry
+  that no longer exists in the other direction (the check runs registry-to-
+  checklist, not checklist-to-registry); a verdict schema that admits APPROVE
+  alongside an unaddressed hazard class; and the ordering requirement on the
+  fix-round probe being expressed as a comment rather than as position, so it is
+  first in the file and not first in the resolved output.
 - steps:
   1. Create `schemas/checklist.schema.json`: a checklist is
      `{id, applies-to, probes[]}` where each probe requires `id`, `probe` (the
@@ -2529,6 +2557,66 @@ regression contract, it is a new contract wearing the old one's name.
      script can judge whether a contract states an authority; the computable part
      is M2's list, and this probe's third question is the reviewer reading that
      list rather than re-deriving it.
+  3c. **Three probe families NEW at revision 2, added to
+     `checklists/clean-room.yaml` under existing rows so no row moves.**
+     - **The fix-round probes (`CLAUDE.md`'s fix-round contract, D-M3-30),
+       under R-057b.** Three probes, and their ORDER is part of the artifact:
+       `fix-round-not-covered` is the FIRST probe of the resolved clean-room
+       list whenever the review is of a fix round, because `CLAUDE.md` says in
+       terms that "the reviewer's FIRST check is item 3". It asks what regions
+       the derivation excluded and why, and it carries
+       `evidence-required: true` because the answer is in the work history's
+       `fix-round.not-covered` field (M3-P4 step 1c) or it is missing.
+       `fix-round-mechanism-named` asks whether the round's stated `mechanism`
+       is a mechanism or a restated finding, with the plan's own worked example
+       in the probe text ("a FIFO at the beacon hangs the guard" is a finding,
+       "reading a path whose type has not been established" is the mechanism).
+       `fix-round-derivation-published` asks whether the derivation's full
+       output is present rather than summarized. The first and third are
+       answerable from the artifact; the second is the judgement no schema
+       reaches, which is why M3-P4 criterion 2d states its own residue and
+       points here.
+     - **The unexecuted-claim probes (T-006), under R-056a's test-honesty
+       family.** `claim-impossibility-constructed` and
+       `claim-coverage-constructed` ask, for every entry in the record's
+       `claims[]` section and for every impossibility or coverage assertion in
+       its prose that the section does not declare, whether the executed
+       construction is present. Both carry `evidence-required: true`. The probe
+       text names the distinction that makes them different from the existing
+       universal-claim probe: a universal claim needs someone to try to falsify
+       it, an impossibility claim needs someone to try to BUILD the thing, and
+       T-006's own reviewer settled one in minutes with `symlinkSync(p, p)`
+       raising ELOOP where the record had claimed the state could not be
+       constructed without privileges. T-006 records that reviewers caught all
+       three instances by instinct; an instruction is what makes that repeatable
+       across a reviewer change, which is the whole reason it is a probe.
+     - **The one-witness-is-not-a-class probe (`CLAUDE.md`), under R-056a.**
+       `class-witness-has-two-members` asks, for any test the record presents as
+       guarding a CLASS, whether at least two structurally different members
+       have been demonstrated red. M1-P6 produced two consecutive medium
+       findings from this alone: one defang reddened a guard test and three
+       others left it green, and the round after repeated the mistake one
+       abstraction up.
+  3d. **`checklists/hazard-review.yaml`, NEW at revision 2 (T-007, D-M3-32).**
+     T-007's structural consequence is that the second review contract "must be
+     a declared artifact, not left to whoever writes the dispatch prompt to
+     remember". M3-P6 ships the brief that declares which contract a reviewer is
+     running; this file is the contract's probe list. Its probes are derived
+     from the phase's `hazard-classes[]` (M3-P1) rather than from the acceptance
+     criteria, and its canonical entries are the four questions T-007 names as
+     the hazard family: what can BLOCK, what can be LOST, what can NEVER EXIT,
+     what can DESTROY. Each carries `evidence-required: true` and each names a
+     construction rather than asking a bare question (a real `mkfifo`, a forced
+     concurrency, a killed process mid-write, a destroy on a branch carrying
+     committed unpushed work).
+     **Its first probe is `hazard-classes-addressed`**, which walks the phase's
+     declared `hazard-classes[]` and requires one finding-or-cleared statement
+     per class. That is the Kind B derived check `verdict-hazard-classes-
+     addressed`, registered in step 6b and tabulated in section 2.3.
+     The file explicitly does NOT restate the criteria probes. A hazard
+     checklist that is the criteria checklist reworded reproduces T-007's exact
+     failure while appearing to fix it, and criterion 6b asserts the two files'
+     probe-id sets are disjoint.
   4. Create `checklists/flake-playbook.yaml` (R-066: extract the failure, judge
      fail-pattern against a local run, known signature means re-kick, unknown
      means investigate first, because a real bug looks identical to a flake
@@ -2565,8 +2653,24 @@ regression contract, it is a new contract wearing the old one's name.
      `concrete-fix`; `framing` records which entry point this review was given;
      and a verdict of `APPROVE` with any finding of severity `high` is invalid
      (Kind A, `if`/`then` over `contains`).
+  6a. **The verdict schema gains `hazard-classes-addressed[]` and
+     `review-contract` (T-007, NEW at revision 2).** `review-contract` is a
+     required enum of `criteria` and `hazard`, mirroring the brief field M3-P6
+     ships, so a verdict states which contract produced it and
+     `scripts/check-dual-review.mjs` can check contract distinctness as well as
+     model-family and framing distinctness. `hazard-classes-addressed[]` is
+     required when `review-contract` is `hazard`, one entry per class in the
+     referenced plan phase, each with `class-id`, `probed` and either a finding
+     reference or a `cleared-because` statement. The completeness rule across
+     the two documents is Kind B, check `verdict-hazard-classes-addressed`
+     (step 6b), and it has exactly the shape `verdict-criteria-complete` has for
+     criteria, for exactly the same reason: a reviewer could otherwise silently
+     skip one of three declared hazard classes and every other criterion would
+     still pass. That is the shape M3R-005 found for deviations and revision 2
+     finds again one field along.
   6b. Register the `checklist` and `verdict` types with the validator and
-     register this phase's four derived checks in `src/checks.ts`:
+     register this phase's four derived checks in `src/checks.ts`, plus
+     `verdict-hazard-classes-addressed` NEW at revision 2 (five in total):
      `checklist-probe-ids-unique` (uniqueness of a nested property across array
      items is not what `uniqueItems` compares, so this is Kind B and the review
      did not name it), `gate-probes-resolve` (registry probe ids into the
@@ -2577,6 +2681,7 @@ regression contract, it is a new contract wearing the old one's name.
 - files-to-touch: `schemas/checklist.schema.json`, `schemas/verdict.schema.json`,
   `checklists/plan-review.yaml`, `checklists/clean-room.yaml`,
   `checklists/flake-playbook.yaml`, `checklists/env-failure-diagnosis.yaml`,
+  `checklists/hazard-review.yaml` (NEW at revision 2, step 3d, T-007),
   `src/checklists.ts`, `src/commands/checklist.ts`, `test/checklists.test.ts`,
   `test/verdict-schema.test.ts`, `test/fixtures/red-witness-evidence.*`
   (create); `src/cli.ts` (edit), `src/validate.ts` (edit, type table),
@@ -2634,6 +2739,32 @@ regression contract, it is a new contract wearing the old one's name.
      first probe differs; a `--framing` id absent from the checklist's
      `framings[]` exits nonzero naming it (T-001's second lesson made
      executable rather than recorded).
+  4d. **Fix-round probe ordering (`CLAUDE.md`, D-M3-30), both directions.**
+     `tiphys checklist resolve --checklist clean-room --framing fix-round`
+     emits a list whose FIRST probe id is `fix-round-not-covered`; moving that
+     probe later in `checklists/clean-room.yaml` changes the resolved output and
+     makes a registered test fail naming the expected first probe; restoring it
+     returns green. The ordering is a property of the RESOLVED output rather
+     than of the file, because a reviewer reads the resolved list. This is the
+     falsifiable form of "the reviewer's FIRST check is item 3".
+  4e. **Hazard checklist (T-007), all directions.**
+     `tiphys validate --type checklist checklists/hazard-review.yaml` exits 0.
+     A registered test asserts its probe-id set is DISJOINT from
+     `checklists/clean-room.yaml`'s, failing and naming any shared id; adding a
+     criteria probe to the hazard file makes it fail, removing it returns green.
+     Kind B check `verdict-hazard-classes-addressed`, run with `--context`: a
+     `hazard` verdict whose `hazard-classes-addressed[]` omits a class declared
+     in the referenced plan phase exits nonzero naming the class, the complete
+     verdict exits 0, and deregistering the check makes the incomplete fixture
+     pass (all three captured, section 2.3 rule 3). A `criteria` verdict is
+     unaffected by the check, which is asserted too, so the rule applies exactly
+     where the contract applies.
+  4f. **Unexecuted-claim probes (T-006), specificity in both directions.** The
+     `claim-impossibility-constructed` probe text names the
+     falsify-versus-BUILD distinction and cites T-006; weakening it to
+     "check claims are supported" makes a registered test fail, restoring it
+     returns green. Same for `claim-coverage-constructed`. Two structurally
+     different members, per section 2.3 rule 6.
   5. The R-028a and R-056a probes name the M2-P2 evidence file as the accepted
      proof, and a registered test asserts the fixture used in the tests is a
      real captured harness evidence file (its recorded command and exit code are
@@ -2647,7 +2778,14 @@ regression contract, it is a new contract wearing the old one's name.
   `verdict-criteria-completeness`, `verdict-deviations-completeness`,
   `verdict-finding-requires-fix`, `verdict-records-framing`,
   `checklist-framings-differ`, `checklist-probe-text-specific`,
-  `checklist-destructive-authority-probe`, `red-witness-fixture-is-captured`.
+  `checklist-destructive-authority-probe`, `red-witness-fixture-is-captured`,
+  and NEW at revision 2: `checklist-fix-round-probe-is-first`,
+  `checklist-hazard-probes-disjoint-from-criteria`,
+  `verdict-hazard-classes-completeness`,
+  `verdict-records-review-contract`,
+  `checklist-impossibility-probe-specific`,
+  `checklist-coverage-probe-specific`,
+  `checklist-class-witness-probe`.
 - suggested model tier: strongest. Probe quality is the whole value of the
   artifact, and the verdict schema decides what a review is allowed to say.
 - citations: R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a,
@@ -2655,7 +2793,12 @@ regression contract, it is a new contract wearing the old one's name.
   doc sections 1d, 2e, 3, 4, and 8 items 4, 5, and 7; D-11 (the two registry
   probes); T-001 second data point (framings); T-003 structural consequence 4
   and V-1 (the `destructive-authority-declared` probe, delivered under R-055,
-  D-M3-26); M2-P2 as the named dependency.
+  D-M3-26); M2-P2 as the named dependency; **T-006** (the two unexecuted-claim
+  probes, under R-056a); **T-007** (`checklists/hazard-review.yaml`, the
+  verdict's `review-contract` and `hazard-classes-addressed[]`, D-M3-32);
+  **`CLAUDE.md`'s fix-round contract** (the three fix-round probes and the
+  ordering requirement, D-M3-30) **and its one-witness-is-not-a-class rule**
+  (the `class-witness-has-two-members` probe).
 - conflicts-with: M3-P9 (`AGENTS.md` cites the probe-injection duty), M3-P10
   (files entry).
 - blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
