@@ -810,7 +810,14 @@ process.stdout.write(readFileSync(${JSON.stringify(appliedSource)}, "utf8"));
           appliedPointer: "/migrations",
           idPointer: "/version",
         },
-        clock: { intervalMs: 40, deadlineMs: 3000, attemptTimeoutMs: 2000 },
+        // 5000ms per attempt, matching this implementer's own convention for
+        // the same subprocess-spawn risk profile in migration-gate.test.ts and
+        // release-contract.test.ts. This adapter subprocess itself spawns a
+        // second node child to read applied.json, and under heavy shared-host
+        // load the earlier 2000ms bound tripped the per-attempt timeout and
+        // reported error (criteria review #17, CR-762 class; CLAUDE.md warning
+        // 11: budget harness timeouts up, never shorten the waits).
+        clock: { intervalMs: 40, deadlineMs: 3000, attemptTimeoutMs: 5000 },
       },
     },
   });

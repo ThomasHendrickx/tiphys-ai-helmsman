@@ -249,6 +249,69 @@ test("migrations adapter fails on a checksum mismatch naming the migration and p
   assert.equal(inverse.verdict.units, 2);
 });
 
+test("migrations adapter surfaces a matched row whose configured checksum is absent instead of a silent id-match pass", async () => {
+  // CR-P7H-2, staged against the DANGEROUS state (T-003 strong form): the
+  // repository content is TAMPERED (it cannot be what a real checksum would
+  // cover), checksumPointer IS configured (content verification was asked
+  // for), and the applied row matches by id but exposes NO usable checksum.
+  // Pre-fix this fell through to satisfied on id-match alone, hiding an
+  // unverified-content row behind a green (the M2-C-3 soft-state hazard, and
+  // the declared hazard exactly). It must now be surfaced, not passed.
+  //
+  // TWO structurally different members of the class (one witness is not a
+  // class): an applied checksum of null, and an absent checksum key. Both
+  // reach the same "configured but unusable" state.
+  const tampered = "TAMPERED CONTENT that no honest checksum could cover\n";
+  const members: { label: string; entry: Record<string, unknown> }[] = [
+    { label: "null checksum", entry: { version: "001", checksum: null } },
+    { label: "absent checksum key", entry: { version: "001" } },
+  ];
+  for (const member of members) {
+    const dir = scratch();
+    const migrationsDir = writeMigrations(dir, { "001_init.sql": tampered });
+    const applied = appliedScript(dir, { migrations: [member.entry] });
+    const outcome = await run({
+      migrationsDir,
+      pattern: PATTERN,
+      appliedCommand: applied,
+      appliedPointer: "/migrations",
+      idPointer: "/version",
+      checksumPointer: "/checksum",
+    });
+    assert.equal(
+      outcome.verdict.kind,
+      "error",
+      `${member.label}: a configured-but-absent checksum is surfaced, never a silent pass`,
+    );
+    assert.notEqual(
+      outcome.verdict.kind,
+      "satisfied",
+      `${member.label}: the unverified row must not pass on id-match`,
+    );
+    assert.match(outcome.verdict.reason ?? "", /content comparison could not be made/);
+    assert.match(outcome.verdict.reason ?? "", /001/);
+  }
+  // Inverse (green with the behavior): the SAME configuration, with a usable
+  // applied checksum that agrees, reaches the real satisfied verdict, and the
+  // record discloses the row as checksum-compared so a green is auditable.
+  const okDir = scratch();
+  const body = "create table a (id int);\n";
+  const okMigrationsDir = writeMigrations(okDir, { "001_init.sql": body });
+  const okApplied = appliedScript(okDir, {
+    migrations: [{ version: "001", checksum: sha256hex(body) }],
+  });
+  const inverse = await run({
+    migrationsDir: okMigrationsDir,
+    pattern: PATTERN,
+    appliedCommand: okApplied,
+    appliedPointer: "/migrations",
+    idPointer: "/version",
+    checksumPointer: "/checksum",
+  });
+  assert.equal(inverse.verdict.kind, "satisfied");
+  assert.equal(inverse.verdict.units, 1);
+});
+
 test("migrations adapter reports not-applicable for a repository location with zero migrations", async () => {
   // Criterion 8's REPOSITORY side, two structurally different members of
   // the same precondition: an empty directory, and no directory at all.

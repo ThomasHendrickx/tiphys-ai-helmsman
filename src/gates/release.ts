@@ -364,7 +364,36 @@ function conditionalResponseDiagnostics(parsed: unknown): Diagnostic[] {
   return found;
 }
 
-/** Replace every resolved credential VALUE with a named placeholder. */
+/**
+ * The encoded forms of a credential value the kernel can derive from the
+ * value alone (CR-P7H-3). Redacting only the verbatim bytes let a trivially
+ * reversible copy through: an adapter emitting the token as a standalone
+ * base64 blob (an HTTP Basic `Authorization: Basic <base64(token)>` of the
+ * token) leaked a recoverable secret into the stderr evidence. Each form here
+ * is a DETERMINISTIC, enumerable transform of the same value, so the set is
+ * bounded and cheap.
+ *
+ * WHAT THIS DOES NOT COVER, stated so a green is auditable rather than
+ * silently partial (never soften a work history): forms that fold in bytes
+ * the kernel does not hold, e.g. base64 of `"user:" + value` for a full Basic
+ * credential PAIR (the username is the project's, not the kernel's), or a
+ * value re-encoded by a transport the kernel never sees (gzip, hex, a second
+ * base64 round). Those are residue the reference adapters do not produce; a
+ * third-party adapter that composes a credential with unknown surrounding
+ * bytes owns that redaction, and the guarantee scoped here is the value and
+ * its own single-step base64 and percent encodings.
+ */
+export function secretForms(value: string): string[] {
+  const forms = new Set<string>([value]);
+  forms.add(Buffer.from(value, "utf8").toString("base64"));
+  forms.add(encodeURIComponent(value));
+  return [...forms].filter((form) => form !== "");
+}
+
+/**
+ * Replace every resolved credential VALUE, and its enumerable encoded forms
+ * (see secretForms), with a named placeholder, everywhere in the text.
+ */
 export function redactSecrets(
   text: string,
   secrets: readonly { name: string; value: string }[],
@@ -374,9 +403,37 @@ export function redactSecrets(
     if (secret.value === "") {
       continue;
     }
-    redacted = redacted.split(secret.value).join(`<redacted:${secret.name}>`);
+    const placeholder = `<redacted:${secret.name}>`;
+    for (const form of secretForms(secret.value)) {
+      redacted = redacted.split(form).join(placeholder);
+    }
   }
   return redacted;
+}
+
+/**
+ * THE ONE KERNEL-SIDE WRITE into the evidence directory. The mechanism the
+ * request-file write already obeyed, now applied to EVERY write the kernel
+ * makes there without exception: establish the path's TYPE before opening it.
+ *
+ * WHY (CR-P7H-1). A hostile adapter is handed a record path inside the
+ * evidence directory, so it can derive and pre-create any deterministic
+ * sibling path (the next attempt's stdout, stderr or attempt record). An
+ * open-for-write of a FIFO with no reader BLOCKS forever, and the per-attempt
+ * `spawnSync` timeout bounds only the CHILD, not these kernel-side writes that
+ * happen after it returns. So `refuseOpenForWrite` gates the open: an
+ * irregular or unexaminable entry is refused by name and observed type and the
+ * caller returns a bounded error, never a blocking `writeFileSync`. Returns
+ * undefined on a completed write, or the reason on refusal or a raised write
+ * error. This is the single writer; no kernel-side evidence write bypasses it.
+ */
+function guardedEvidenceWrite(path: string, body: string): string | undefined {
+  const refusal = refuseOpenForWrite(path);
+  if (refusal !== undefined) {
+    return refusal;
+  }
+  const wrote = runStep(`writing ${path}`, () => writeFileSync(path, body));
+  return wrote.ok ? undefined : wrote.reason;
 }
 
 export interface RunVerificationOptions {
@@ -439,15 +496,12 @@ export async function runVerification(
     // stale-response clear removes whatever a previous attempt (or a hostile
     // adapter) left at the response path, FIFO included, so the read below
     // never opens an entry this attempt's adapter did not just write.
-    const requestRefusal = refuseOpenForWrite(requestPath);
+    const requestRefusal = guardedEvidenceWrite(
+      requestPath,
+      `${JSON.stringify(request, null, 2)}\n`,
+    );
     if (requestRefusal !== undefined) {
       return finish({ kind: "error", reason: requestRefusal });
-    }
-    const wrote = runStep(`writing ${requestPath}`, () =>
-      writeFileSync(requestPath, `${JSON.stringify(request, null, 2)}\n`),
-    );
-    if (!wrote.ok) {
-      return finish({ kind: "error", reason: wrote.reason });
     }
     evidence.push(requestName);
     const cleared = runStep(`clearing ${responsePath}`, () =>
@@ -486,14 +540,20 @@ export async function runVerification(
 
     const stdoutName = `${options.verification}-attempt-${String(attempt)}-stdout.txt`;
     const stderrName = `${options.verification}-attempt-${String(attempt)}-stderr.txt`;
-    writeFileSync(
+    const stdoutRefusal = guardedEvidenceWrite(
       join(options.evidenceDir, stdoutName),
       redactSecrets(child.stdout ?? "", secrets),
     );
-    writeFileSync(
+    if (stdoutRefusal !== undefined) {
+      return finish({ kind: "error", reason: stdoutRefusal });
+    }
+    const stderrRefusal = guardedEvidenceWrite(
       join(options.evidenceDir, stderrName),
       redactSecrets(child.stderr ?? "", secrets),
     );
+    if (stderrRefusal !== undefined) {
+      return finish({ kind: "error", reason: stderrRefusal });
+    }
     evidence.push(stdoutName, stderrName);
 
     const record: AttemptRecord = {
@@ -507,13 +567,28 @@ export async function runVerification(
         terminatedByTimeout,
       },
     };
-    const writeAttempt = (): void => {
+    const writeAttempt = (): string | undefined => {
       attempts.push(record);
-      writeFileSync(
+      const refusal = guardedEvidenceWrite(
         join(options.evidenceDir, attemptName),
         `${JSON.stringify(record, null, 2)}\n`,
       );
+      if (refusal !== undefined) {
+        return refusal;
+      }
       evidence.push(attemptName);
+      return undefined;
+    };
+    // Write the attempt record, then return the given verdict, EXCEPT when the
+    // attempt-record path is itself a planted FIFO or other non-regular entry:
+    // the guarded write refuses it (no block), and the bounded return names
+    // that hazard rather than the terminal verdict it displaced.
+    const recordAndReturn = (verdict: VerificationVerdict): VerificationRun => {
+      const refusal = writeAttempt();
+      if (refusal !== undefined) {
+        return finish({ kind: "error", reason: refusal });
+      }
+      return finish(verdict);
     };
 
     if (terminatedByTimeout) {
@@ -521,13 +596,11 @@ export async function runVerification(
         `adapter overran the per-attempt timeout of ` +
         `${String(options.clock.attemptTimeoutMs)} ms and was terminated; ` +
         `the attempt is error and the kernel returns`;
-      writeAttempt();
-      return finish({ kind: "error", reason: record.detail });
+      return recordAndReturn({ kind: "error", reason: record.detail });
     }
     if (child.error !== undefined) {
       record.detail = `adapter could not be run: ${singleLine(String(child.error))}`;
-      writeAttempt();
-      return finish({ kind: "error", reason: record.detail });
+      return recordAndReturn({ kind: "error", reason: record.detail });
     }
 
     const read = readRegularFileIfPresent(responsePath);
@@ -536,14 +609,12 @@ export async function runVerification(
         `fail-closed rule 1: adapter exited ${String(child.status)} without ` +
         `writing a response record at ${responsePath}; exit 0 with no ` +
         `response is error, not success`;
-      writeAttempt();
-      return finish({ kind: "error", reason: record.detail });
+      return recordAndReturn({ kind: "error", reason: record.detail });
     }
     if (read.kind === "refused") {
       // M2-C-6: present and not a regular file. Named, never opened.
       record.detail = read.reason;
-      writeAttempt();
-      return finish({ kind: "error", reason: record.detail });
+      return recordAndReturn({ kind: "error", reason: record.detail });
     }
 
     // Redaction before anything else touches the body: the response was
@@ -551,7 +622,13 @@ export async function runVerification(
     // the leak must not survive under the evidence directory (criterion 11).
     const redactedBody = redactSecrets(read.body, secrets);
     if (redactedBody !== read.body) {
-      writeFileSync(responsePath, redactedBody);
+      // The response path was just read as a regular file, but the rewrite is
+      // routed through the one guarded writer too, so no kernel-side evidence
+      // write is an exception to the type-before-open rule.
+      const rewriteRefusal = guardedEvidenceWrite(responsePath, redactedBody);
+      if (rewriteRefusal !== undefined) {
+        return finish({ kind: "error", reason: rewriteRefusal });
+      }
     }
     evidence.push(responseName);
 
@@ -559,8 +636,7 @@ export async function runVerification(
     if (!validation.ok) {
       record.outcome = "invalid";
       record.detail = validation.reason;
-      writeAttempt();
-      return finish({ kind: "error", reason: validation.reason });
+      return recordAndReturn({ kind: "error", reason: validation.reason });
     }
     const response = validation.response;
     record.outcome = response.outcome;
@@ -576,7 +652,10 @@ export async function runVerification(
     if (older !== undefined) {
       record.releaseObjectOlderThanMerge = older;
     }
-    writeAttempt();
+    const attemptRefusal = writeAttempt();
+    if (attemptRefusal !== undefined) {
+      return finish({ kind: "error", reason: attemptRefusal });
+    }
 
     if (response.outcome === "satisfied") {
       return finish({

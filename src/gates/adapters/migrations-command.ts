@@ -280,7 +280,7 @@ function observeOnce(request: AdapterRequest): void {
     });
     return;
   }
-  const applied = new Map<string, { checksum?: string }>();
+  const applied = new Map<string, { checksum?: string; checksumAbsent?: boolean }>();
   for (let index = 0; index < list.value.length; index += 1) {
     const entry: unknown = list.value[index];
     const id = resolvePointer(entry, config.idPointer);
@@ -293,11 +293,16 @@ function observeOnce(request: AdapterRequest): void {
       });
       return;
     }
-    const record: { checksum?: string } = {};
+    const record: { checksum?: string; checksumAbsent?: boolean } = {};
     if (config.checksumPointer !== undefined) {
+      // Content verification was requested. A usable checksum is a non-empty
+      // string; null, absent, empty or non-string is NOT a usable checksum,
+      // and (CR-P7H-2) must not silently reduce this row to an id-only pass.
       const checksum = resolvePointer(entry, config.checksumPointer);
-      if (checksum.found && typeof checksum.value === "string") {
+      if (checksum.found && typeof checksum.value === "string" && checksum.value !== "") {
         record.checksum = checksum.value;
+      } else {
+        record.checksumAbsent = true;
       }
     }
     applied.set(String(id.value), record);
@@ -336,6 +341,41 @@ function observeOnce(request: AdapterRequest): void {
       return;
     }
   }
+  // CR-P7H-2: content verification was requested (checksumPointer configured)
+  // but a MATCHED row (present in both inventories) exposes no usable applied
+  // checksum, so the comparison the config asked for could not be made. This
+  // is NOT a silent pass on id-match: an unchecked assumption never becomes a
+  // green (M2-C-3). It is surfaced as error naming the ids, and observation.raw
+  // discloses which rows were checksum-compared versus which could not be.
+  // Terminal, and ahead of the missing/pending check, because waiting cannot
+  // add a checksum the applied inventory does not expose. Two structurally
+  // different members reach this: an applied checksum of null, and an absent
+  // checksum key (both set checksumAbsent above).
+  if (config.checksumPointer !== undefined) {
+    const checksumCompared = repositoryIds
+      .filter((id) => applied.get(id)?.checksum !== undefined)
+      .sort();
+    const checksumAbsent = repositoryIds
+      .filter((id) => applied.get(id)?.checksumAbsent === true)
+      .sort();
+    if (checksumAbsent.length > 0) {
+      writeResponse(request, {
+        outcome: "error",
+        resolved: { kind: "applied-migrations", id: appliedIds.join(",") },
+        reason:
+          `checksumPointer ${JSON.stringify(config.checksumPointer)} is configured, but ` +
+          `${String(checksumAbsent.length)} matched migration(s) expose no applied checksum, ` +
+          `so the requested content comparison could not be made: ${checksumAbsent.join(", ")}; ` +
+          `an unverifiable row is not a silent pass on id-match (M2-C-3)`,
+        observation: {
+          raw: { ...raw, checksumCompared, checksumAbsent },
+          detail: `checksum requested but absent for: ${checksumAbsent.join(", ")}`,
+        },
+      });
+      return;
+    }
+  }
+
   // Missing: repository migrations the applied inventory does not show.
   // Pending, never a terminal red here: the apply job may be queued, and
   // the kernel's deadline is what turns a wait into a red.
@@ -355,16 +395,23 @@ function observeOnce(request: AdapterRequest): void {
     return;
   }
 
+  // Every matched row was id-matched, and (when checksumPointer is configured)
+  // every matched row also exposed a usable checksum that agreed: an absent
+  // one would have been surfaced as error above, so a green here is auditable.
+  const satisfiedRaw =
+    config.checksumPointer === undefined
+      ? raw
+      : { ...raw, checksumCompared: repositoryIds };
   writeResponse(request, {
     outcome: "satisfied",
     resolved: { kind: "applied-migrations", id: repositoryIds.join(",") },
     observation: {
-      raw,
+      raw: satisfiedRaw,
       detail:
         `${String(repositoryIds.length)} migration(s) applied and matching` +
         (config.checksumPointer === undefined
           ? ""
-          : " (checksums compared where exposed)"),
+          : ` (all ${String(repositoryIds.length)} checksum(s) compared and matched)`),
     },
     units: repositoryIds.length,
   });

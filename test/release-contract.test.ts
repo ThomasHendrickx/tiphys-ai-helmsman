@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -487,6 +488,104 @@ test("release adapter leaving a named pipe at the record path is error not a han
   assert.match(outcome.verdict.reason ?? "", /not a regular file/);
 });
 
+test(
+  "release kernel-side evidence writes refuse a planted FIFO and return bounded",
+  { timeout: 15000 },
+  async () => {
+    // CR-P7H-1, at the MECHANISM: every path in the evidence directory the
+    // KERNEL opens for write is a block hazard if an untrusted adapter can
+    // pre-create it. The per-attempt spawnSync timeout bounds only the CHILD;
+    // these writes happen after it returns and, unguarded, a writeFileSync on
+    // a reader-less FIFO blocks the kernel forever. The attempt-file names are
+    // fully deterministic and the adapter is handed a recordPath inside the
+    // evidence directory, so it can derive and plant the next attempt's paths.
+    //
+    // Staged against the DANGEROUS state (T-003 strong form): a REAL FIFO at a
+    // real deterministic kernel-side write path, where a bare write WOULD
+    // block. Demonstrated red against the pre-fix kernel out of band (an
+    // external `timeout` killed the probe at 15s against a 5s deadline for
+    // BOTH members; see delivery/work-history/m2-p7.md fix round one). The
+    // 15000ms test-level timeout here makes a regression report as a failure
+    // code, not an unexplained wait: this assertion executing is the witness
+    // that the kernel returned.
+    //
+    // TWO structurally different members of the write class (one witness is
+    // not a class): the next attempt's STDOUT path, and the next attempt's
+    // ATTEMPT-RECORD path. They reach the guard through different call sites.
+    const members: { target: string; plant: string }[] = [
+      { target: "stdout", plant: "deploy-attempt-2-stdout.txt" },
+      { target: "attempt record", plant: "deploy-attempt-2.json" },
+    ];
+    for (const member of members) {
+      const dir = scratch();
+      const evidenceDir = scratch();
+      // Attempt 1 returns a valid pending AND plants a FIFO at the next
+      // attempt's kernel-side write path; attempt 2 would satisfy.
+      const attacker = writeStub(
+        dir,
+        `fifo-kernel-write-${member.target.replace(/\s+/g, "-")}`,
+        `import { execFileSync } from "node:child_process";
+         import { dirname, join } from "node:path";
+         const dir = dirname(req.recordPath);
+         if (req.attempt.number === 1) {
+           execFileSync("mkfifo", [join(dir, ${JSON.stringify(member.plant)})]);
+           respond({ outcome: "pending",
+             resolved: { kind: "stub-object", id: "stub-1" },
+             observation: { raw: { state: "waiting" }, detail: "stub pending" } });
+         } else { ${OK_SATISFIED} }`,
+      );
+      const { run: outcome } = await run(attacker, {
+        evidenceDir,
+        clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 3000 }),
+      });
+      // Bounded return, error naming the path and the observed type; never a
+      // silent green and never a block.
+      assert.equal(
+        outcome.verdict.kind,
+        "error",
+        `${member.target}: a planted FIFO at a kernel-side write path is error`,
+      );
+      assert.match(
+        outcome.verdict.reason ?? "",
+        new RegExp(member.plant.replace(/[.]/g, "\\.")),
+        `${member.target}: the refusal names the exact path`,
+      );
+      assert.match(
+        outcome.verdict.reason ?? "",
+        /named pipe/,
+        `${member.target}: the refusal names the observed type`,
+      );
+      assert.match(outcome.verdict.reason ?? "", /not a regular file/);
+      // The planted entry was NAMED, never opened: still a FIFO afterwards.
+      assert.equal(
+        statSync(join(evidenceDir, member.plant)).isFIFO(),
+        true,
+        `${member.target}: the FIFO was never opened for write`,
+      );
+    }
+    // Inverse (green with the behavior): the same paths as regular files reach
+    // the real verdict. The kernel writes its own attempt/stdout/stderr files
+    // and the loop satisfies.
+    const dir = scratch();
+    const good = writeStub(
+      dir,
+      "fifo-kernel-write-corrected",
+      `if (req.attempt.number === 1) respond({ outcome: "pending",
+         resolved: { kind: "stub-object", id: "stub-1" },
+         observation: { raw: { state: "waiting" }, detail: "stub pending" } });
+       else { ${OK_SATISFIED} }`,
+    );
+    const { run: inverse, evidenceDir } = await run(good, {
+      clock: clock({ intervalMs: 20, deadlineMs: 5000, attemptTimeoutMs: 3000 }),
+    });
+    assert.equal(inverse.verdict.kind, "satisfied");
+    // The kernel's own evidence writes landed as regular files.
+    const written = readdirSync(evidenceDir);
+    assert.ok(written.includes("deploy-attempt-2-stdout.txt"));
+    assert.ok(written.includes("deploy-attempt-2.json"));
+  },
+);
+
 test("release adapter error outcome is terminal with its reason", async () => {
   const dir = scratch();
   const bad = writeStub(
@@ -559,6 +658,65 @@ test("release credential values are redacted from every file under the evidence 
       }
     }
     assert.ok(sawPlaceholder, "the leak was redacted, not merely absent");
+  } finally {
+    delete process.env["TIPHYS_TEST_RELEASE_TOKEN"];
+  }
+});
+
+test("release encoded credential forms are redacted from every file under the evidence directory", async () => {
+  // CR-P7H-3, at the MECHANISM: redaction that removed only the verbatim bytes
+  // let a trivially reversible copy through. An HTTP Basic auth header carries
+  // the token as standalone base64, and a URL query carries it percent-encoded.
+  // Criterion 11 ("no secret value appears anywhere") is not scoped to verbatim.
+  //
+  // The value carries characters that make its percent encoding DIFFER from the
+  // raw bytes (space, /, +, :), so the url-encoded member is a genuinely
+  // distinct string and not a re-test of the verbatim path.
+  const dir = scratch();
+  const secret = "s3cr3t/tok+en:ABC 123";
+  const b64 = Buffer.from(secret, "utf8").toString("base64");
+  const urlenc = encodeURIComponent(secret);
+  assert.notEqual(b64, secret, "base64 form must differ from the raw value");
+  assert.notEqual(urlenc, secret, "url-encoded form must differ from the raw value");
+  // The dangerous state: an adapter that emits the credential in its encoded
+  // forms (never the raw bytes) into stdout, stderr AND the response record,
+  // including a realistic `Authorization: Basic <base64>` header.
+  const leaker = writeStub(
+    dir,
+    "encoded-leaker",
+    `const value = process.env.TIPHYS_TEST_RELEASE_TOKEN ?? "(unset)";
+     const b64 = Buffer.from(value, "utf8").toString("base64");
+     const urlenc = encodeURIComponent(value);
+     process.stdout.write("Authorization: Basic " + b64 + "\\n");
+     process.stderr.write("query ?token=" + urlenc + "\\n");
+     respond({ outcome: "satisfied",
+       resolved: { kind: "stub-object", id: "stub-1" },
+       observation: { raw: { header: "Basic " + b64, q: urlenc }, detail: "stub-state satisfied" } });`,
+  );
+  process.env["TIPHYS_TEST_RELEASE_TOKEN"] = secret;
+  try {
+    const { run: outcome, evidenceDir } = await run(leaker, {
+      secrets: [{ name: "TIPHYS_TEST_RELEASE_TOKEN", value: secret }],
+    });
+    assert.equal(outcome.verdict.kind, "satisfied");
+    // Two structurally different encoded members, each asserted absent
+    // EVERYWHERE, using the real bytes the adapter emitted (not hand-written
+    // strings): base64 and percent-encoding.
+    for (const [label, form] of [
+      ["base64", b64],
+      ["url-encoded", urlenc],
+    ] as const) {
+      for (const name of readdirSync(evidenceDir)) {
+        const body = readFileSync(join(evidenceDir, name), "utf8");
+        assert.ok(
+          !body.includes(form),
+          `${label} credential form must not appear in ${name}`,
+        );
+        // The raw value must not appear either (it never did on the wire here,
+        // but redaction of a form must not reconstruct it).
+        assert.ok(!body.includes(secret), `raw credential must not appear in ${name}`);
+      }
+    }
   } finally {
     delete process.env["TIPHYS_TEST_RELEASE_TOKEN"];
   }
