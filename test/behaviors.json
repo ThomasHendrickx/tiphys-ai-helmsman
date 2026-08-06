@@ -214,5 +214,13 @@
   "coverage-parked-note-both-directions": "a parked row with an empty note is red, and the same row with a note is green",
   "coverage-empty-inventory-is-error-vacuous": "an empty inventory is error with units 0 and the vacuous flag set, never green",
   "coverage-finding-outcome-parity": "a finding report missing an id, carrying an empty outcome, or fully covered, is red, red, and green respectively naming the id",
-  "coverage-cli-writes-result-record": "the coverage CLI entry writes a schema-valid result record and exits the status-mapped code"
+  "coverage-cli-writes-result-record": "the coverage CLI entry writes a schema-valid result record and exits the status-mapped code",
+  "coverage-duplicate-inventory-id": "a duplicated inventory id is red naming it, and units count distinct ids rather than occurrences",
+  "coverage-expected-units-floor": "a row deleted from both real documents is red against the expected-units floor, and restoring it is green",
+  "coverage-empty-cell-zero-width": "a zero-width-only note or outcome is empty on both sides of the shared predicate",
+  "coverage-parity-phantom-outcome": "a finding report row whose id is absent from the inventory is red naming it phantom",
+  "coverage-evidence-write-refused-is-error": "a refused or failed evidence write makes the gate error instead of a silent green",
+  "coverage-regex-malformed-pattern-is-error": "a malformed config pattern is a named config error with a written result record, never an uncaught exception",
+  "coverage-regex-redos-bounded": "a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging",
+  "coverage-ambiguous-bucket-kind": "a bucket value matching more than one declared kind is red naming every match, never a silent first match"
 }
