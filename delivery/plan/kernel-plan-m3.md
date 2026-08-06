@@ -1708,6 +1708,38 @@ regression contract, it is a new contract wearing the old one's name.
   deliberately; the choice is recorded in the work history and the criteria
   below run the real checker rather than reasoning about compatibility. T-003 and T-004 both name this contract as a structural
   consequence, and both are applied here by citation.
+  **Revision 2 adds three more inputs that name this phase by name, and it is
+  now the phase carrying the most re-grounding weight in the plan.** T-006
+  establishes that T-003's universal-quantifier rule, which revision 1 already
+  carried here, would have caught NONE of the three false claims M1-P5 produced,
+  because impossibility, coverage and remedy claims are existential and causal
+  rather than universal and are settled by CONSTRUCTION rather than by
+  counter-experiment. `CLAUDE.md`'s fix-round contract and claim grep are
+  repository rules that become KERNEL DELIVERABLES here: this is the phase where
+  a future project inherits them or does not. And the M2 traceability table
+  routes four uncovered M1 defects to this contract by name (rows 11, 12, 19 and
+  20 of `delivery/plan/kernel-plan-m2.md` section 1.5: a work history that
+  declared a path untestable when it was one CLI flag away; a deviation
+  declaration that undercounted its own extras; an evidence bundle recording a
+  claim that was false while being internally consistent and machine-valid; and
+  a self-reported registry count wrong by exactly one while described as
+  "computed independently"). Those four are what this contract is for, and none
+  of them is caught by any gate M1 or M2 builds.
+- hazard class (T-007, D-M3-32): **the contract that decides what a false claim
+  is allowed to look like, in a milestone whose own evidence is written in it.**
+  What can produce a schema that validates a dishonest record: a required field
+  satisfied by an empty string, so `reason`, `not-covered` and
+  `no-findings-statement` become ceremony; an arithmetic parity rule that adds
+  up while a row is lost, which is the shape M1 produced twice; a claims section
+  whose `kind` enum is open, so an impossibility claim can be filed as a note
+  and skip its construction requirement; a fix-round record whose `derivation`
+  field accepts a SUMMARY of the command's output rather than the full output,
+  which is the exact softening `CLAUDE.md` names; a gate-result `green` that can
+  be constructed without the wrapper's exit code because the coupling lives in
+  a different object; an `honest-failures[]` entry that is structurally complete
+  and semantically empty; and, worst because it is invisible, a schema that
+  makes an honest record MORE expensive to write than a dishonest one, which is
+  how a contract gets routed around rather than broken.
 - steps:
   1. Create `schemas/report.schema.json`. Required: `kind`, `role`, `task`,
      `verdict` where applicable, `findings[]` each with `id`, `severity`,
@@ -1733,11 +1765,89 @@ regression contract, it is a new contract wearing the old one's name.
      `every`, `all cases`, `in all`) requires a sibling `counter-experiment`
      reference (T-003 lesson 3 and its named structural consequence, which
      states this is partially lintable).
+  1b. **`claims[]`, NEW at revision 2, and the largest single addition this
+     phase takes (T-006, `CLAUDE.md`'s claim grep, D-M3-30).** T-006 establishes
+     that step 1's `universal-claim` rule, which was T-003's answer, would have
+     caught NONE of the three false claims M1-P5 produced. Those were an
+     impossibility claim ("this state cannot be constructed here"), a coverage
+     claim ("this check catches that"), and a remedy claim ("doing X recovers
+     from Y"). Each is existential or causal rather than universal, and each is
+     settled by CONSTRUCTION rather than by counter-experiment: a universal
+     claim needs someone to try to falsify it, an impossibility claim needs
+     someone to try to BUILD the thing. The report and work-history schemas
+     therefore share a `claims[]` definition:
+     `{id, kind, statement, settled-by}` where `kind` is a CLOSED enum of
+     `universal`, `impossibility`, `coverage`, `remedy`, and `open-question`,
+     and `settled-by` is required for every kind except `open-question`, whose
+     entries must instead carry no evidence and are the honest restatement.
+     Per kind: `universal` requires a `counter-experiment` reference (T-003
+     unchanged); `impossibility`, `coverage` and `remedy` each require an
+     `executed-construction` object carrying `command`, `exit-code` and
+     `output`, which is the attempt rather than the reasoning that predicted
+     the attempt would fail.
+     **Why a schema field and not a regex.** `CLAUDE.md`'s claim grep is
+     mechanical and binding on this project today, and it works because a work
+     history is prose a grep can scan. But T-006 records that its own pattern
+     "survived being documented as a norm" and was then reproduced by the
+     orchestrator who filed it, on the same day. A grep over free prose finds
+     candidate sentences; a declared section gives the check a FIELD, so the
+     honest restatement is a first-class value rather than an omission. Both
+     survive: M3-P6's implementer brief carries the grep as a pre-submission
+     obligation over the prose, and this schema carries the section. The two are
+     not redundant, because the grep finds what the author forgot to declare.
+     **The honest restatement is cheap and the schema makes it available**:
+     "I did not find a way to force this arm" is `kind: open-question` and needs
+     no construction; "this arm cannot be forced here" is `kind: impossibility`
+     and needs one. T-006's whole lesson is that the first invites the next
+     reader to try and the second closes the question permanently, and the
+     schema is where that difference stops depending on which sentence an
+     implementer happened to write.
+  1c. **`fix-round[]`, NEW at revision 2 (`CLAUDE.md`'s fix-round contract,
+     D-M3-30).** A report of a fix round requires a `fix-round` object with
+     three required fields, and each maps to one item of the measured contract:
+     `mechanism` (a statement of the MECHANISM, not the finding: "a FIFO at the
+     beacon hangs the guard" is a finding, "reading a path whose type has not
+     been established" is the mechanism, and the round fixes the second);
+     `derivation` (`{command, output}`, where `output` is the FULL output of the
+     command that enumerates every call site of that mechanism, not a summary of
+     it, which is a schema `minLength` plus a registered test asserting the
+     example carries a multi-line value); and `not-covered` (a non-empty
+     statement of the regions the derivation excluded and why).
+     The measured evidence, cited in the schema's `$comment` so a future reader
+     finds the reason rather than the rule: a throughput analysis of M1
+     measured sixteen completed fix rounds, thirteen were re-reviewed, and
+     TWELVE of those thirteen produced a new finding attributable to the round
+     itself; the dominant shape, roughly a third of the milestone's elapsed
+     time, is that the fix addressed the INSTANCE the reviewer named when the
+     defect was the MECHANISM, and M1-P3 chained four rounds that way, M1-P5
+     four, M1-P6 two. `not-covered` is required rather than optional because a
+     search whose scope is wrong returns an empty result indistinguishable from
+     an absence of defects, and this project was bitten by that three times
+     (`state/session.lock` probed when the lease is `state/orchestrator.lock`;
+     an inventory scoped to `tasks/`, `state/` and `worktrees/` while the missed
+     path sat at the fleet root; a usage error read as a clean result).
+     M3-P7's clean-room checklist makes `not-covered` the reviewer's FIRST
+     probe, which is the other half of the same rule.
   2. Create `schemas/final-report.schema.json` (R-089a): `input-findings[]`
      mapping every input finding id to an `outcome` (the table), plus
      `decisions-owed[]`, `owner-verification[]`, `infrastructure-left[]`, and
      `out-of-band[]`, all required and all allowed to be empty only with an
      explicit `none: true` marker, so silence and emptiness are distinguishable.
+     **One property of this schema is load-bearing beyond this phase and is
+     named at revision 2: the final report is a PROJECTION, not a summary.**
+     Every field above is derived from records that already exist (findings,
+     verdicts, decisions, work histories), which is the same relation M3-P8's
+     mechanism index has to the tuition feed. That relation is what makes a
+     dense read layer possible on top of a verbose archive: the projections
+     (final report, mechanism index, findings inventory, carried-forward items)
+     are consumed at every dispatch and must stay dense, while the raw entries
+     (full review texts, per-round work-history sections) are read only in
+     dispute. Once a raw entry's durable residue has been projected out, the
+     entry is archive rather than working state, and git history makes removing
+     it from the working tree lossless. **M3 builds no compactor and this plan
+     proposes none.** What it does is make the distinction structural in the
+     artifacts, so a later compaction is a question about which layer a file is
+     in rather than a judgement about which files look like filler.
   3. Create `schemas/work-history.schema.json` (R-052a, R-035): `prompt`
      (verbatim block scalar), `files-touched[]`, `per-step-commits[]`,
      `key-decisions[]` each with `decision` and `why` (the why that is invisible
@@ -1746,7 +1856,14 @@ regression contract, it is a new contract wearing the old one's name.
      true value requires a `stopped-and-reported` reference),
      `deviations[]`, `gate-evidence[]` sharing the report schema's
      `gate-results` definition, and `environment-warnings[]` (R-083a's
-     accumulation half).
+     accumulation half). **At revision 2 it also shares the report schema's
+     `claims[]` (step 1b) and `fix-round[]` (step 1c) definitions by `$ref`,
+     rather than restating them.** A shared definition is not a convenience
+     here: the work history is the artifact a later reviewer trusts and the one
+     `CLAUDE.md` says must never be softened, and two independently-drifting
+     copies of the honesty contract is the drift hole M3-P2 closes for gates and
+     M3-P3 closes for mode ids. A registered test asserts both schemas resolve
+     to the SAME definition object rather than to two equal ones.
   4. Create `templates/report.example.yaml`,
      `templates/final-report.example.yaml`,
      `templates/work-history.example.yaml`, and `templates/warnings.md`
@@ -1783,6 +1900,40 @@ regression contract, it is a new contract wearing the old one's name.
      contains "always" and which carries no `counter-experiment` (T-003, an
      `if`/`then` over a `pattern` on the same object, so it is Kind A);
      (f) a finding with `source-pinned: true` and no `pinned-evidence` (T-004).
+  2c. **Claims-section rejections, NEW at revision 2 (T-006), each Kind A and
+     each witnessed by removing and restoring the guarding keyword.** (a) A
+     `claims[0]` with `kind: impossibility` and no `executed-construction`
+     exits 1 naming the pointer, and the same claim carrying a construction with
+     `command`, `exit-code` and `output` exits 0. This is M1-P5's exact false
+     claim, "needs a stat or readdir failure that is neither ENOENT nor a
+     permission bit, and this suite runs as root", which a reviewer disproved in
+     minutes with `symlinkSync(p, p)` raising ELOOP and needing no privileges.
+     (b) The same pair for `kind: coverage`, which is the M1-P5 claim whose
+     unhandled case was a permanent hang of every supervision command. (c) The
+     same pair for `kind: remedy`. (d) A `claims[0]` with `kind: note` exits 1
+     naming the enum, because an open `kind` lets any claim be filed as
+     something the schema does not question. (e) A `kind: open-question` entry
+     with no `settled-by` exits 0, which is the honest restatement being
+     first-class rather than an omission, and the same entry carrying an
+     `executed-construction` exits 1, because a settled question filed as open
+     is the opposite failure and is equally a misdeclaration.
+     Three structurally different members of the claim class are witnessed
+     across (a), (b) and (c), which exceeds section 2.3 rule 6's two.
+  2d. **Fix-round contract rejections, NEW at revision 2 (`CLAUDE.md`,
+     D-M3-30), each Kind A and each witnessed both directions.** (a) A
+     `fix-round` with a `finding` restated as its `mechanism` is not
+     schema-detectable and this criterion does NOT claim it is; what IS
+     detectable and is asserted here is (b) a `fix-round` with no
+     `not-covered`, which exits 1 naming the field, and (c) a `fix-round` whose
+     `derivation.output` is empty or absent, which exits 1. (d) A registered
+     test asserts `templates/report.example.yaml`'s `fix-round.derivation`
+     carries real multi-line captured output rather than a one-line
+     placeholder, per section 2.3 rule 4. The residue is stated rather than
+     implied: **no schema can tell a mechanism from a finding**, that judgement
+     is M3-P7's `fix-round-mechanism-named` probe, and risk 2 covers it. What
+     the schema buys is that the round cannot be REPORTED without the two
+     fields whose absence is what made twelve of thirteen re-reviewed M1 fix
+     rounds produce a new finding.
   2b. Kind B DANGEROUS-instance rejections, each carrying `(check: <id>)` in the
      message and each witnessed by deregistering and restoring the check
      (section 2.3 rule 3): (a) a report whose `gate-results[0]` has
@@ -1813,7 +1964,16 @@ regression contract, it is a new contract wearing the old one's name.
   `report-environmental-claim-requires-evidence`,
   `report-incident-requires-exposure-window`, `report-universal-claim-requires-counter-experiment`,
   `report-unpinned-finding-labelled`, `work-history-contradiction-requires-stop`,
-  `final-report-finding-outcome-parity`, `warnings-template-reaches-brief`.
+  `final-report-finding-outcome-parity`, `warnings-template-reaches-brief`,
+  and NEW at revision 2:
+  `report-impossibility-claim-requires-construction`,
+  `report-coverage-claim-requires-construction`,
+  `report-remedy-claim-requires-construction`,
+  `report-claim-kind-enum-closed`,
+  `report-open-question-needs-no-construction`,
+  `report-fix-round-requires-not-covered`,
+  `report-fix-round-requires-full-derivation-output`,
+  `claims-definition-shared-with-work-history`.
 - suggested model tier: strongest. This is the contract that decides whether a
   false claim is expressible, and T-003 is a record of what one false claim in a
   work history cost this project.
@@ -1821,7 +1981,11 @@ regression contract, it is a new contract wearing the old one's name.
   blueprint section 5 (report contract) and section 11 (honest reporting rules);
   process doc sections 2b, 2e, 3, and 7; R-089b and R-048 as the M2 components
   consumed; T-003 (universal claims, real captured output) and T-004 (source
-  pinning).
+  pinning); **T-006** (the `claims[]` section and its three non-universal kinds,
+  and the orchestrator's own instance); **`CLAUDE.md`'s fix-round contract and
+  claim grep** (the `fix-round[]` object, D-M3-30, with the M1 measurement);
+  **`delivery/plan/kernel-plan-m2.md` section 1.5 rows 11, 12, 19 and 20**, the
+  four M1 defects M2 routes to this contract by name.
 - conflicts-with: M3-P5 and M3-P6 (the briefs reference these types), M3-P7 (the
   verdict schema shares the finding definition), M3-P10 (files entry).
 - blocked-by: M3-P3 merged; M2-P3 and M2-P6 merged (named dependencies).
