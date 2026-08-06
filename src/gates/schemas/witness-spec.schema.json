@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tiphys:witness-spec",
+  "title": "Witness specification (kernel plan M2, M2-P2 step 2)",
+  "description": "One JSON document per behavior at witness/<behavior-id>.json, durable and repository-level (M2R-002, M2-D-14). Kind-specific member fields and the refusal rules (a) to (g) are enforced in src/witness/spec.ts and src/witness/run.ts because conditional composition is outside the closed keyword set (M2-D-04); the code emits the same INVALID <json-pointer> <message> contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "behavior", "tests", "class", "dangerousStates", "deterministic"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "behavior": {
+      "description": "Must resolve by name in test/behaviors.json of the repository under audit (refusal rule (b)).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "tests": {
+      "description": "Test names, run with --test-name-pattern BEFORE the positional test path (CLAUDE.md warning 7).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "class": {
+      "type": "string",
+      "enum": ["additive", "destructive", "classification"]
+    },
+    "dangerousStates": {
+      "description": "An ARRAY of one or more members; every member is applied, run and recorded separately, and the witness is green only when every member was red (rule (g) has something to require rather than something to bolt on).",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/dangerousStateMember" }
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "repeats": {
+      "description": "Red repetitions per member. Default 5 when absent.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "consumesExternalOutput": {
+      "description": "Required, not optional, when the phase diff touches a module that spawns a subprocess or parses another program's output (rule (f), derived; V-2, warning 10).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program", "captures", "provenance"],
+      "properties": {
+        "program": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "captures": {
+          "description": "Repository-relative paths to REAL captured output files. Each must exist, be non-empty, and have its basename referenced from the named tests' sources (rule (c)).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "provenance": {
+          "description": "Where and how the capture was taken (artifact path, date, command).",
+          "type": "string",
+          "pattern": "\\S"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dangerousStateMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["baseline-ref", "patch", "mutation"]
+        },
+        "ref": {
+          "description": "baseline-ref only: the ref resolved against the FETCHED remote, never a stale local ref.",
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "patch": {
+          "description": "patch only: repository-relative path of a patch file applied with git apply.",
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "file": {
+          "description": "mutation only: repository-relative path of the file the substitution edits.",
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "find": {
+          "description": "mutation only: literal text that must occur in the file; every occurrence is replaced.",
+          "type": "string",
+          "pattern": "[\\s\\S]"
+        },
+        "replace": {
+          "description": "mutation only: the replacement text.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
