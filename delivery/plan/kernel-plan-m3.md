@@ -85,7 +85,67 @@ From M1 (walking skeleton, plan v1 section 3):
 - `scripts/m1-exit-test.sh`, `scripts/stub-payload.sh`, `sandbox/`.
 - `.github/workflows/gates.yml` with the `test` matrix job and the `gates`
   fan-in job.
-- `delivery/evidence/m1-exit-test/`.
+- the M1 exit-test evidence. **Path corrected at revision 2**: revision 1 said
+  `delivery/evidence/m1-exit-test/`, and that directory does not exist. The
+  delivered artifact is `delivery/verification/m1-exit-test-evidence.md`
+  (56-record bundle, Node v26.6.0, exit 0, verified by `ls delivery/` at
+  `037477e`, which returns no `evidence` entry). Section 4's
+  `delivery/evidence/m3-exit-test/` is a path this plan CREATES and is
+  unaffected; what was wrong was the claim about M1.
+- **`MECHANISMS.md` at the repository root**, the interim mechanism index,
+  committed 2026-08-05 with twelve rows under T-005's "cheap interim measure,
+  available now". It says of itself that it is intended to be SUPERSEDED by
+  M3-P8's generated projection. M3-P6 and M3-P8 both consume it; see
+  D-M3-23 as amended at revision 2.
+- **`classifyEntry` and `refuseOpenForWrite` in `src/task.ts`** (M1-P5, merged
+  at `58ac964`): the one answer to "may this path be opened", lstat the link,
+  stat what it resolves to, open only a regular file. Every M3 command that
+  reads a path it did not create uses these rather than a bare `readFileSync`
+  (D-M3-27).
+
+**M1 residues that are load-bearing for M3, named here rather than left in
+`delivery/STATE.md` (revision 2).** M1 completed on 2026-08-06 with its exit
+test passed on `7e1b5f1`; these four items survived it and each one lands on an
+M3 phase:
+
+1. **The unprobed-open class is still OPEN in `src/lock.ts`, `src/pool.ts` and
+   `src/brief.ts`.** M1-P5 closed it for the guard, the watcher and doctor.
+   `teardown`, four `lock` subcommands and `spawn` still block forever on a
+   named pipe. `src/brief.ts` is the one of the three that M3 touches: M3-P5
+   consumes it and M3-P5/M3-P6 add `tiphys brief compose`, which resolves and
+   READS mandated-reading paths it did not create. Verified at `037477e`:
+   `src/brief.ts` line 1 imports `readFileSync` and lines 43 and 56 call it
+   bare. **M3 does not fix the three files (no M3 phase acquires
+   `src/lock.ts` or `src/pool.ts`) and M3 must not ADD an instance**, which is
+   D-M3-27, the M3 analogue of M2's constraint M2-C-6.
+2. **A known flake in a suite this plan's every criterion treats as a binary
+   gate.** `test/liveness.test.ts:671` asserts a hardcoded `age 13s` against a
+   901-second freshness threshold and fails under CPU contention; it was seen
+   once by each of two reviewers and was clean on serial re-run both times
+   (M1-P6 tracked low CR-762). It is an M1-P5 file. `delivery/STATE.md` says it
+   "should be fixed early in M2". **If it is not fixed before M3 starts, M3-P2
+   promotes a registry whose `suite` gate reads `node --test` exit 0 as a
+   binary fact over a suite with a known non-deterministic member**, and every
+   M3 phase's criterion 1 inherits it. Risk 11 records this and M3-P2's
+   grounding requires the state to be verified rather than assumed.
+3. **The other two tracked M1-P6 lows.** CR-760: the `gates` fan-in job's own
+   `run:` script is asserted by TEXT, so two structurally different edits leave
+   it green. This bites M3 directly, because five M3 phases (P1, P2, P6, P9,
+   P10) wire a new check into `.github/workflows/gates.yml`, and a text
+   assertion over a workflow is the exact class `MECHANISMS.md` row "Asserting
+   a CI step is wired" was paid for six times in M1-P6. D-M3-28 states what M3
+   phases do instead. CR-761 is a documentation narrowing in M1-P6's own
+   residue statement and touches no M3 artifact.
+4. **T-008, and it is not a residue so much as the milestone's strongest single
+   piece of evidence for what M3 ships.** On 2026-08-06 two review agents died
+   within minutes of dispatch and the orchestrator did not notice for nine
+   hours and eleven minutes, because its supervision was "wait for a completion
+   notification", which is process liveness and is what constraint C-2 forbids.
+   The project building the watcher and the liveness guard did not apply them to
+   itself. This lands on three M3 artifacts (the role briefs, the reviewer
+   briefs, and `AGENTS.md`) as the dispatch contract of section 1.3, and it is
+   cited in section 4.5 as the reason the supervision clauses are not
+   decoration.
 
 From M2 (deterministic gates), the eight components M3 consumes by name. Phase
 ids and artifact paths below follow `delivery/plan/kernel-plan-m2.md`, the M2
@@ -124,12 +184,36 @@ one is a joint this plan has to fit against rather than guess at:
    exist yet. M3-P4's report and final-report schemas must emit that shape or
    supersede it deliberately, and M3-P4 has a criterion that runs the real
    checker rather than reasoning about compatibility.
+5. **The M2 validator's DIAGNOSTIC CONTRACT, added at revision 2 and the one
+   joint that runs in the other direction.** DR-0013 clause 6 promises that
+   M3-P1 will retire M2's validator as an engine "preserving its module
+   boundary" and re-run "all existing M2 validation tests" unchanged. M2's plan
+   at revision 2 accepted the obligation that makes that promise keepable: M2-P1
+   step 4 and criterion 10 now require M2's validator to emit
+   `INVALID <json-pointer> <message>` with deterministic ordering and require
+   M2's own tests to assert that contract rather than any engine-specific
+   wording (`delivery/plan/kernel-plan-m2.md` section 2 item 5). **M3-P1 does
+   not assume this; it verifies it as its first step.** If M2 as delivered
+   emits engine-specific wording or its tests assert it, the retirement is a
+   rewrite of M2's tests rather than an engine swap, and DR-0013's
+   "boundary preserved" language would be false at the moment it was acted on.
+   That is an escalation to the orchestrator (D-M3-16), not something M3-P1
+   fixes on M2's side.
+6. **M2-P7's release-verification outcome enum and record schema** (M2-D-20,
+   rewritten in M2's revision 2 under DR-0014). It is the shape the charter's
+   RESERVED verification field must later configure or deliberately supersede,
+   in the same relation item 4 describes for the report contract. M3 does not
+   design that field; see D-M3-29.
 
 Everything else is verified before use: every M3 phase that consumes an M2
 artifact confirms its real path and output shape before editing and records the
-confirmation in its work history. The M2 plan is DRAFT and pending its own
-adversarial review, so a path taken from it is a starting point for that
-verification, never a substitute for it.
+confirmation in its work history. **At revision 2 the M2 plan is DRAFT at
+revision 2, re-grounded 2026-08-05 and pending its own adversarial review round
+2**, so a path taken from it is a starting point for that verification, never a
+substitute for it. This is not a formality: M2's revision 2 rewrote M2-P7
+substantially, rebuilt its section 1.5 traceability table from thirteen rows to
+twenty-two, added constraint M2-C-6, and changed its parallel structure. Any of
+those can move again.
 
 ### 1.2 What M3 therefore builds
 
@@ -177,6 +261,53 @@ it has been demonstrated red against the DANGEROUS state, not merely against
 the absent feature. Section 2.3 states what that means for schemas, which is
 the artifact type M3 mostly ships.
 
+**Four rules were added to `CLAUDE.md` after revision 1 of this plan and are
+binding on every M3 phase (revision 2).** They are listed here because M3 is
+the milestone in which three of the four stop being repository rules and become
+KERNEL DELIVERABLES: the artifacts M3 ships are where a future project inherits
+them or does not.
+
+1. **The fix-round contract, measured 2026-08-05.** Sixteen M1 fix rounds were
+   completed, thirteen were re-reviewed, and TWELVE of those thirteen produced a
+   new finding attributable to the round itself; the dominant shape, roughly a
+   third of M1's elapsed time, is that the fix addressed the INSTANCE the
+   reviewer named when the defect was the MECHANISM. Three items are required of
+   every fix round: name the mechanism rather than the finding; publish the
+   exact command that enumerates every call site of that mechanism together with
+   its full output; and state what the derivation did NOT cover. The reviewer's
+   FIRST check is the third item. M1-P5's fourth round used this method and
+   derived eleven call sites where the review had listed eight, closing in one
+   round a class that three prior rounds had each closed one path at a time.
+   **M3 ships this as a requirement on artifacts, not as a norm**: the report
+   and work-history contracts (M3-P4) carry the three fields, the clean-room
+   checklist (M3-P7) carries the reviewer's first check, and the implementer
+   brief (M3-P6) carries the obligation. D-M3-30 records the placement.
+2. **The claim grep, binding before any work history is submitted.** A
+   mechanical `grep -nEi 'cannot be|impossible|needs a|is covered|catches|would
+   catch|recovers|anyway|always|never|no way to'` over the work history, where
+   every hit carries an adjacent captured command or is restated as an open
+   question. Tuition T-006 records seven instances of unexecuted claims across
+   M1, one of them the orchestrator's own, and notes that the pattern survived
+   being documented as a norm; a grep is mechanical and a reminder is not.
+   **This is why M3-P4's work-history schema carries a declared claims
+   section**: a schema gives the check a field to look at instead of a regex
+   over free prose (D-M3-30).
+3. **One witness is not a class.** A witness for a CLASS must redden under at
+   least TWO structurally different members of it. M1-P6 produced two
+   consecutive mediums from this alone. Section 2.3 rule 6 applies it to M3's
+   own DANGEROUS-instance fixtures.
+4. **The dispatch contract (T-008): no agent without a beacon and a guard.**
+   Every dispatched agent writes its output INCREMENTALLY, creating its artifact
+   within the first minutes and appending as it works, so the file's mtime is
+   its beacon and a death leaves salvage rather than nothing. A freshness
+   watchdog is armed in the SAME TURN as the dispatch, and it tests FRESHNESS
+   (newest mtime under the agent's working directory), never existence and never
+   completion. The measured cost of not doing this was nine hours eleven
+   minutes; the first watchdog written after the incident tested EXISTENCE, so
+   it fired two minutes in and reported success while saying nothing, which is
+   the red-witness rule one level up. **M3 ships this in the role briefs
+   (M3-P5, M3-P6) and in `AGENTS.md` (M3-P9)**, per D-M3-31.
+
 ### 1.4 Constraints C-1, C-2, C-3 as they bite M3
 
 The three plan v1 constraints carry forward and are not restated as new
@@ -194,10 +325,39 @@ numbers. Where each one bites an M3 artifact:
   in terms of lease freshness and beacon age, never "check whether the agent is
   still running". Bites the assurance-mode definitions (M3-P3): no mode may
   declare a stage whose completion is detected by process liveness.
+  **Revision 2 adds the measurement that makes this the most expensive
+  constraint in the project.** T-008: the orchestrator supervised two review
+  agents by waiting for a completion notification, which IS process liveness,
+  and lost nine hours eleven minutes because a dead process sends no
+  notification and no notification is indistinguishable from work in progress.
+  So `AGENTS.md`'s supervision section is not a restatement of C-2 for
+  tidiness; it is the clause whose absence has a measured price on this
+  project's own orchestrator, and M3-P9 criterion 5 is what makes its
+  vocabulary falsifiable.
 - C-3 (never auto-background a long-running process). Bites the full-mode
   pipeline definition (M3-P3) and `AGENTS.md` (M3-P9): arming supervision is an
   explicit orchestrator step verified through the beacon; no mode definition
   and no brief may instruct any agent to background the watcher.
+  **A distinction revision 2 must draw so the two rules do not appear to
+  collide.** T-008's second rule requires a freshness watchdog armed in the
+  same turn as a dispatch, and C-3 forbids auto-backgrounding a long-running
+  process. These are compatible and the reason is the word AUTO: C-3 forbids a
+  kernel command from backgrounding work behind the operator's back, and the
+  watchdog is an EXPLICIT, declared supervision act whose whole purpose is to
+  be observable. `AGENTS.md` states the distinction rather than leaving a
+  future reader to resolve two clauses that look contradictory (M3-P9 step 4).
+- **New at revision 2, and not a new constraint number: the unprobed-open
+  class.** C-1 to C-3 are plan v1's and are not renumbered. What revision 2
+  adds is D-M3-27, which binds every M3 command that reads a path it did not
+  create to the delivered `classifyEntry` and `refuseOpenForWrite` in
+  `src/task.ts`. It bites `tiphys brief compose` (M3-P5, M3-P6), which resolves
+  mandated-reading paths; `tiphys validate` (M3-P1), whose ordinary input is a
+  hand-authored file at an operator-supplied path; `tiphys checklist resolve
+  --extra` (M3-P7); `tiphys tuition add --file` (M3-P8); and every `--context`
+  directory walk. This is M1's most expensive defect class (twelve paths, four
+  fix rounds, CR-520 and CR-560) and M2's constraint M2-C-6 is the same rule for
+  gates. M3 uses the delivered implementation rather than writing a second one,
+  which is T-005's lesson applied inside this milestone.
 
 ### 1.5 Artifact format policy under DR-0006 (per artifact type)
 
@@ -211,7 +371,7 @@ a form not listed here is a review finding.
 | Artifact type | Form | Reason |
 |---|---|---|
 | schemas | JSON (`schemas/*.schema.json`) | JSON Schema is a JSON dialect; no choice exists |
-| charter | YAML; the `product-intent` field is a block scalar | every field of blueprint section 7 is enumerable except product intent, which blueprint section 7 defines as "one page max, what winning looks like" prose; the prose lives inside a field, not outside the structure |
+| charter | YAML; the `product-intent` field is a block scalar | every field of blueprint section 7 is enumerable except product intent, which blueprint section 7 defines as "one page max, what winning looks like" prose; the prose lives inside a field, not outside the structure. **Revision 2: the charter also carries a RESERVED `release-verification` field under DR-0014 (D-M3-29). Reserved means declared, validated if present, and NOT designed here** |
 | plan | YAML; `intent`, `grounding`, and narrative fields are block scalars | R-019 enumerates the phase fields exactly; blueprint section 5 adds two more; a plan is a list of typed phases with prose values, so the structure is the artifact and the prose is field content |
 | decision record | YAML; `question`, `options[].detail`, `recommendation`, and narrative are block scalars | blueprint section 7 gives the field list literally (id, project, task, question, options, recommendation, reversibility, evidence, status, decided, date) |
 | status line | JSON records | fully enumerable; there is no prose field (R-084's whole point is sparseness) |
@@ -222,7 +382,7 @@ a form not listed here is a review finding.
 | role-to-model configuration | YAML | fully enumerable |
 | checklists (probe lists) | YAML: a list of `{id, probe, applies-to, evidence-required}` | a probe is a question with an identity and an applicability rule; that is data, and structuring it is what lets a checklist be extended, merged, and orphan-checked. Markdown here would be convenience, which DR-0006 forbids |
 | tuition entries | YAML; `what-happened`, `lesson`, and `structural-consequence[].detail` are block scalars | the header fields, the consequence list, and the `mechanisms[]` this entry constrains are enumerable; the incident narrative is not |
-| mechanism index | YAML: `{mechanism, rule, evidence[]}` entries keyed by mechanism | T-005 names the form directly ("it is small, it is structured data under DR-0006, and it is checkable"); it is a projection of the tuition feed's `mechanisms[]` field, so it has no prose of its own |
+| mechanism index | YAML: `{mechanism, rule, evidence[]}` entries keyed by mechanism | T-005 names the form directly ("it is small, it is structured data under DR-0006, and it is checkable"); it is a projection of the tuition feed's `mechanisms[]` field, so it has no prose of its own. **Revision 2: the INTERIM index now exists as `MECHANISMS.md`, markdown, twelve rows, committed 2026-08-05.** Its markdown form is not a counter-example to this row and is not grandfathered: it is repository paperwork under `CLAUDE.md`'s "where things live", explicitly self-described as the interim to be SUPERSEDED, and it is the SEED and INPUT for the shipped YAML index rather than a second copy of it (M3-P8 step 2b) |
 | role briefs (`roles/*.md`) | markdown with YAML frontmatter | JUSTIFIED EXCEPTION. A brief is instruction prose addressed to a reasoning agent. Its effect comes from argument, ordering, and emphasis, which have no field decomposition that preserves them: splitting a brief into fields produces either one giant string field (structure that carries nothing) or a set of fragments no agent reads as an argument. The frontmatter carries everything that is enumerable (role id, clause ids, mandated reading paths in order, attached verifiers, default model tier, allowed outputs), and that frontmatter is schema-validated. The reason is not that markdown is easier: it is that the remaining content has no structure to express |
 | `AGENTS.md` | markdown with YAML frontmatter | JUSTIFIED EXCEPTION, same reason: it is the orchestrator's brief. Binding: any policy that is expressible as data (gate lists, mode tables, model tiers, stage sequences) is NOT written in `AGENTS.md`; it is referenced by path into the structured artifacts, and M3-P9 has an acceptance criterion that asserts the absence of the duplicated data |
 | fleet environment-warnings file (`warnings.md`) | markdown | JUSTIFIED EXCEPTION. Its only consumer is `src/brief.ts`, which appends it verbatim into instruction prose (R-083b, M1-P4). Structuring it would require a renderer whose only output is the prose form the file already holds, so the structure would have no reader. The reason is absence of a consumer for the structure, not convenience. M3 ships the template (R-083a), not a conversion |
@@ -232,6 +392,72 @@ the kernel ships and validates. It does not govern `delivery/**`, which is this
 build's own paperwork under the current process and is not a kernel deliverable
 (`CLAUDE.md`, "Where things live"). `delivery/plan/kernel-plan-m3.md` is
 therefore markdown and is not an instance of the plan schema.
+
+### 1.6 Re-grounding record (revision 2, 2026-08-06)
+
+DR-0011's recorded consequence makes this an explicit step BEFORE adversarial
+review, not a review finding. One row per input, with what the plan took from it
+or the reason it changed nothing. An input silently ignored would be worse than
+one rejected with a reason, so every input read is listed whether or not it
+moved anything.
+
+| Input | Disposition |
+|---|---|
+| `delivery/decisions/DR-0013` as DECIDED (Ajv 8.20.0 exact, Draft 2020-12, strict; `yaml` 2.9.0 exact; the fourteen validator criteria; the `INVALID <json-pointer> <message>` contract) | **Changed six passages and confirmed two.** Changed: M3-P1 step 1 (verifies M2's diagnostic contract and its tests' assertions, not its keyword set); step 8 (already carried the decision, now also states the YAML decode stage as a separate stage per DR-0013 clause 3.3); step 10b and the files-to-touch entry for `package-lock.json` (the lockfile is a REQUIRED artifact of this phase and criterion 1's clean `git status` is what proves it was regenerated rather than hand-edited); step 11 (tests now enumerate the Ajv and YAML behaviours the fourteen criteria require); M3-P10 step 2 and criterion 1 (the license gate's inputs now name `ajv`, `yaml` and BOTH transitive production inventories, which is what DR-0013 clause 5 and criterion 14 demand and which revision 1 left only on M3-P1's side); D-M3-16 (its stale "extension of the M2 validator's keyword set" clause is restated). Confirmed unchanged after checking: the fourteen criteria inserted on the decision day are coherent with the decision text and none was reworded; the section 1.5 format table needs nothing, because Ajv changes the ENGINE and not the artifact forms. New section 1.1 item 5 records the obligation running from DR-0013 back into M2. |
+| The superseded option-2 write-up in section 7 | **Rewritten as history with an explicit frame.** Revision 1 marked the block SUPERSEDED at the top and then left the option list, the recommendation and the note to the owner in the present imperative, so a reader landing mid-block would read an instruction. Section 7 now brackets the whole passage between an opening and a closing marker, converts the recommendation to past tense with the outcome stated beside it, and marks the two bullets whose content was overtaken (the owner note about steps 8 and 11, and the M3R-002 scope correction) with what actually happened. |
+| `delivery/decisions/DR-0014` and `delivery/verification/release-verification-interface.md` (1053 lines, read in full) | **Changed M3-P1 step 3 and added D-M3-29 and D-M3-17 item 12.** The charter schema RESERVES `release-verification` and does not design it: the field is declared, validated if present, closed against unknown shapes, and cited to the investigation, whose section 8 item 4 says in terms that "the charter field is M3's, and M3 should reserve the space rather than design it". Two of the investigation's three hand-offs are TAKEN because they are cheap and available now: `escalation-contract`'s default `stop-for[]` gains "a change from a declared release verification to `none`" (section 4.1's closing recommendation, one line), and the M2 outcome enum is named as the shape a later charter field configures. The third, the charter coherence check, is DECLINED FOR M3 WITH A REASON rather than built: the investigation's own section 8 item 4 says the predicate needs a real charter, which arrives at M4's pilot, and building a Kind B check whose predicate is invented is the M1-P3 shape this plan's risk 1 exists to prevent. It is recorded in Appendix C item 12 as available-and-declined, not as a debt. |
+| `delivery/decisions/DR-0015` (the owner is not an approval step) | **Changed five passages.** Owner action **A-3 is REMOVED** from section 7, which is what DR-0015's own consequence list instructs and which revision 1 did not execute. Section 4.2 stage E2 is rewritten: the mechanism is kept and the signatory changes, so the exit run still stops, still waits for an approval artifact it did not produce, still records it, and still resumes from it, with dual cross-model clean review as the signature. M3-P10's `blocked-by` drops A-3. M3-P9 step 2's merge-authority duty no longer reads "owner approves per pull request". Section 4.5's proves-list gains the handoff property and the does-not-prove list gains what DR-0015 says is genuinely lost, that nobody witnesses a wait measured in days. |
+| `delivery/decisions/DR-0016` (escalation threshold) | **Changed four passages and settled one question this plan would otherwise have raised.** M3-P3's `escalation-bounds` gains a required `on-exceeded` field, because DR-0016 changes the RESPONSE at the bound from a stop-and-wait to a fresh implementer plus a third review contract dispatched immediately with the owner notified asynchronously, and a bound that records the limit but not the response encodes the superseded regime. M3-P9's `decorrelated-review` clause and the orchestrator's stop duty follow. Section 6 and section 7 are rewritten against DR-0016's two-limb test. **Nothing in section 3 or section 4 now assumes an owner click**, verified by the grep recorded in section 1.6's closing note. |
+| `delivery/tuition/T-005` plus the interim `MECHANISMS.md`, twelve rows | **Changed M3-P6, M3-P8 and D-M3-23.** The index EXISTS now, which falsifies revision 1's premise that M3-P6 must invent a one-entry stub. M3-P6's stub becomes a CONVERSION of the interim file's twelve rows into the schema M3-P8 will generate into, and M3-P8 gains criterion 4c: no interim row may be silently dropped by the generated projection, which is the coupling M2's boundary item 10 asked for from the other side. |
+| `delivery/tuition/T-006` (unexecuted claims about the world) | **Changed M3-P4 and M3-P7, and it is the input that most enlarges an existing contract.** T-006 establishes that T-003's universal-quantifier rule, already in this plan, would have caught NONE of the three false claims M1-P5 produced, because impossibility, coverage and remedy claims are existential and causal rather than universal and are settled by CONSTRUCTION rather than by counter-experiment. M3-P4's report and work-history schemas gain a declared `claims[]` section with a `kind` enum and a required executed construction per kind; M3-P7's clean-room checklist gains a probe that hunts impossibility and coverage claims specifically, which T-006 records reviewers already doing by instinct three times out of three. |
+| `delivery/tuition/T-007` (criteria cannot contain the defect) | **Changed every phase section, plus M3-P1, M3-P6, M3-P7 and M3-P9.** Every M3 phase now declares a **hazard class** beside its acceptance criteria (D-M3-32), which is T-007's explicit structural consequence for the plan schema and which M2's revision 2 did in the same shape. The plan SCHEMA gains a required `hazard-classes[]` phase field, so a future project's second review contract is derivable from its plan rather than improvised per dispatch. The clean-room reviewer brief and the checklists carry the two-contract rule: a code phase requires two review CONTRACTS, not two reviewers, one walking the criteria and one given the hazard question. |
+| `delivery/tuition/T-008` (the orchestrator had no beacon) | **Changed section 1.1, section 1.4, M3-P5, M3-P6, M3-P9 and section 4.5.** The dispatch contract (incremental output as beacon; a freshness watchdog armed in the same turn; the guard tests freshness, never existence) becomes clause text in the implementer and reviewer briefs and an orchestrator duty in `AGENTS.md`, with D-M3-31 recording the placement. Section 1.4 adds the C-3 distinction that keeps "arm a watchdog" from reading as a licence to auto-background. |
+| `CLAUDE.md`'s fix-round contract and claim grep | **Changed M3-P4, M3-P6, M3-P7 and section 1.3.** This is where the two stop being repository rules and become kernel deliverables. The report and work-history schemas carry `mechanism`, `derivation` (command plus FULL output) and `not-covered` as required fields of a fix-round record; the clean-room checklist's FIRST probe is `not-covered`; the implementer brief carries the claim grep as a pre-submission obligation. D-M3-30 records the placement and the measured evidence (twelve of thirteen re-reviewed fix rounds produced a new finding attributable to the round). |
+| The M1 defect record as it actually ended | **Changed section 1.1 (four named residues), added D-M3-27 and D-M3-28, and added risks 11 and 12.** The unprobed-open class still open in `src/lock.ts`, `src/pool.ts` and `src/brief.ts`; the `test/liveness.test.ts:671` flake against every criterion that reads `node --test` exit 0 as binary; CR-760's text-asserted CI wiring against the five M3 phases that wire a check into the workflow; and T-008 itself. |
+| `delivery/plan/kernel-plan-m2.md` at revision 2, sections 2 and 1.5 | **Changed D-M3-17 (item count corrected to twelve, item 12 added), section 1.1 items 5 and 6, and M3-P4's grounding.** M2's section 2 now carries twelve items, not nine as D-M3-17's prose asserted while listing eleven. Item 5 gained the diagnostic-contract obligation and item 12 is new for the charter boundary; both are reconciled on M3's side above. |
+| `delivery/plan/m2-conflict-pre-pass.md` | **Changed section 2.4 and added section 2.5.** M2's pre-pass is the worked shape for stating a parallel structure from grounding fields before dispatch rather than at it. M3's own structure is now DERIVED and written down in section 2.5 rather than asserted in one sentence of D-M3-19; the derivation confirms D-M3-19's conclusion and, for the first time, shows the work. |
+| `delivery/STATE.md` at `037477e` | **Corrected section 1.1's M1 statement and three stale claims.** Also the source of the four carried-forward items Appendix C item 10 dispositions, which are re-checked against the file as it now reads rather than as revision 1 read it. |
+
+**Inputs read that changed nothing, recorded so the omission is deliberate.**
+
+1. **`delivery/decisions/DR-0011` itself.** Its five conditions are already
+   applied in section 1.3 and D-M3-19 and none of them has moved. What changed
+   is not the decision but this plan's compliance with condition 1, which now
+   has a written derivation (section 2.5) instead of an assertion.
+2. **`delivery/decisions/DR-0012`.** Superseded in one clause by DR-0015
+   (milestone boundaries) and in another by DR-0016 (stop-and-wait), both
+   handled above. Its definition of "clean" and its dual cross-model condition
+   are unchanged and are what M3-P3's `delegated-under-conditions` value and
+   M3-P9's `decorrelated-review` clause encode. No edit needed.
+3. **`MECHANISMS.md`'s rows for the lease compare-and-swap, the append-only
+   log, atomic file replacement, worktree removal, classifying another
+   program's errors, parsing reporter output, pattern-matching a consumed
+   file's text, verifying access to a remote, and a guard's own failure path.**
+   Nine of the twelve rows bind M1 and M2 components that no M3 phase builds or
+   edits. They are forwarded in every M3 brief under the `mechanism-lookup`
+   obligation, which is a dispatch duty, and they are seeded into M3-P8's
+   index, which is a deliverable. Turning any of them into an M3 gate would be
+   machinery for a state this milestone does not reach. **Three of the twelve
+   DO bind M3 and are taken**: "reading a path whose type is not established"
+   becomes D-M3-27; "asserting a CI step is wired" becomes D-M3-28; and
+   "claim file" is the seeded entry M3-P6's stub and M3-P8's projection both
+   carry.
+4. **The M1 exit-test evidence bundle
+   (`delivery/verification/m1-exit-test-evidence.md`).** Read for the shape of
+   a passing exit test and for what its full mode could not witness. It
+   changes no M3 criterion: section 4's staging was already modelled on the M1
+   exit test under EXT-F-04, and the `gh` limitation it records is already in
+   `CLAUDE.md` warning 6 and already bounds section 4 stage E2. One thing was
+   confirmed rather than changed: the M1 run used a FALSIFICATION CONTROL (the
+   same harness against a known-bad state, exiting 1), which section 4 does not
+   currently require. That is a real gap and it is taken, as stage E0.5, rather
+   than being left as a confirmation.
+
+**The closing check on this record.** Two greps were run over the plan as
+re-grounded, and both are reported in the deliverable rather than summarized:
+`grep -rP '[^\x00-\x7F]'` over this file, which must report nothing, and the
+`CLAUDE.md` claim grep over the changes, whose hits are each either backed by an
+adjacent captured command or restated as an open question.
 
 ---
 
