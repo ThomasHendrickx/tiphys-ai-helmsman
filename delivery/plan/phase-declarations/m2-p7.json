@@ -1,0 +1,21 @@
+{
+  "id": "M2-P7",
+  "branch": "claude/m2-p7-deploy-and-migration-verifiers",
+  "filesToTouch": [
+    "src/gates/release.ts",
+    "src/gates/deploy.ts",
+    "src/gates/migrations.ts",
+    "src/gates/adapters/http-json.ts",
+    "src/gates/adapters/migrations-command.ts",
+    "src/gates/schemas/release-record.schema.json",
+    "src/gates/schemas/verifier-config.schema.json",
+    "test/deploy-gate.test.ts",
+    "test/migration-gate.test.ts",
+    "test/release-contract.test.ts",
+    "test/fixtures/release/",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["DR-0014", "R-032", "R-068", "R-069", "SC-011", "C-2", "C-3", "M2-C-3", "M2-D-07", "T-003"]
+}

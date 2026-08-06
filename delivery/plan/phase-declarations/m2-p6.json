@@ -1,0 +1,13 @@
+{
+  "id": "M2-P6",
+  "branch": "claude/m2-p6-coverage-checker",
+  "filesToTouch": [
+    "src/gates/coverage.ts",
+    "src/gates/schemas/coverage-config.schema.json",
+    "test/coverage-gate.test.ts",
+    "gates.manifest.json",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [],
+  "citations": ["R-023", "R-089b", "SC-009", "D-7"]
+}

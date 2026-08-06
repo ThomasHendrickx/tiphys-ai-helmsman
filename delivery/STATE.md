@@ -6,8 +6,8 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-06
-- milestone: M1 (walking skeleton), COMPLETE. Exit test passed on `7e1b5f1`.
-  M2 not started, and blocked on the owner's hard stop below.
+- milestone: M2 (gate registry), IN PROGRESS. M1 complete, exit test passed on
+  `7e1b5f1`, completion record merged to main in PR #10 at `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -16,31 +16,13 @@ is wrong: verify against git and the PR list before trusting it.
   their evidence is presented to the owner regardless, which is a reporting
   obligation and not a click.
 
-## HARD STOP AT THE M1 BOUNDARY (owner instruction, 2026-08-05)
+## The M1 hard stop: DISCHARGED 2026-08-06
 
-**When M1 is COMPLETELY done, STOP and wait for the owner's explicit
-confirmation before continuing. Do not dispatch M2. The owner intends to change
-the model being used, and wants that change to land at the milestone boundary.**
-
-"Completely done" means all three, not the first two:
-
-1. M1-P6 merged to `main`.
-2. The M1 exit test executed and PASSED, with its evidence recorded.
-3. That evidence presented to the owner.
-
-Then stop. Do not dispatch M2-P1. Do not start anything that grounds on M1.
-
-**This overrides DR-0015 and DR-0016 at this one point, deliberately.** Both of
-those say the owner is not an approval step and that recommendation-backed
-questions are the agent's to take. That remains true everywhere EXCEPT here.
-This is not a question with an obvious answer, and it is not an escalation: it
-is a standing instruction to pause at a boundary the owner named in advance,
-for a reason the agent cannot evaluate.
-
-Work already in flight that produces DOCUMENTS rather than dispatches (the M2
-and M3 plan re-grounding) may complete, because a re-grounded plan stays valid
-across a model change and costs nothing if it waits. Nothing that dispatches an
-implementer against M2 may start.
+The owner confirmed at the boundary, changed the session model, and instructed
+M2 to start with maximum safe parallelism and deterministic supervision of
+subagents (beacons plus freshness watchdogs per the T-008 dispatch contract).
+The stop is kept here as history because a future session should see that it
+existed and that it was released by the owner, not optimised away.
 
 ## How to resume cold
 
@@ -62,45 +44,24 @@ implementer against M2 may start.
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
 | M1-P6 toy sandbox and exit test | merged | #9 | four fix rounds, five review passes; exit test PASSED on the merged head with a falsification control |
+| M2-P1 gate contract and runner | merged | #11 | squash `8718852` on head `4811d2e`, 2026-08-06. Three fix rounds; DR-0016's fresh-implementer response fired after round 3 and closed CR-900 at the mechanism in one round. Final clean: derivation audit (Opus) APPROVE plus criteria regression (Sonnet) APPROVE CR-960, CI green on the exact head. Arbitration: `delivery/review/arbitration-m2-p1-round4.md` |
 
 ## In flight
 
-**NOTHING. M1 IS COMPLETE AND THE HARD STOP ABOVE IS NOW IN FORCE.**
+**M2-P1 is MERGED (PR #11).** The serialising phase is done, so the seven-way
+parallel window is OPEN: M2-P2 through M2-P8 dispatch concurrently per
+`delivery/plan/m2-conflict-pre-pass.md`, M2-P9 last, merges in grounding
+order. Every dispatch carries the T-008 contract (incremental beacon plus a
+freshness watchdog armed in the same turn) and the M2-P1 carry-forwards
+recorded below (CR-902 section).
 
-**M1-P6 merged at `7e1b5f1` (PR #9).** All six M1 phases are on `main`:
-PR #1, #2, #3, #6, #8, #9.
+**M3 plan re-grounding: DISPATCHED** on branch `claude/m3-plan-regrounding`,
+documents only, same DR-0011 step M2 received. Inputs: DR-0013 as decided,
+DR-0014 to DR-0016, T-005 to T-008, MECHANISMS.md, the M2 revision-2 boundary,
+and M1's final defect record.
 
-**The M1 exit test PASSED on the merged head**, Node v26.6.0 (the declared
-floor, not the container default), exit code 0, 56-record evidence bundle, all
-12 section-4 steps represented. Full evidence in
-`delivery/verification/m1-exit-test-evidence.md`.
-
-The falsification control was run on the same head and exits 1 at C2, so the
-pass is a measurement rather than an absence of failure.
-
-All three blueprint exit conditions witnessed: a trivial task lands on the
-sandbox default branch via spawn; teardown REFUSES while unlanded (exit 1,
-naming the branch, worktree surviving) and exits 0 after the merge with the
-worktree gone and meta closed; the watcher wakes with exactly
-`signal m1-exit turn-end` byte-exact under `cat -A`.
-
-Not witnessed and stated rather than implied: full mode, which needs `gh`. It
-is absent here and not usefully installable (it authenticates but reports no
-push permission even where git pushes succeed, and GraphQL is refused). The two
-gh observations are recorded as `skipped-full-only` with their executed local
-substitutions. The full-mode command is in the evidence file.
-
-**M2 and M3 plans.** M2 is RE-GROUNDED (revision 2) against everything M1
-taught: T-005 to T-008, DR-0013 to DR-0016, the conflict pre-pass, and M1's
-full defect record. Its section 1.5 traceability table is rebuilt at 22 rows,
-11 caught by an M2 gate and 11 not. M3 re-grounding has NOT been done.
-
-**M2's parallel structure is recorded** in `delivery/plan/m2-conflict-pre-pass.md`:
-M2-P1 serialises, M2-P2 through M2-P8 are mutually disjoint and concurrent,
-M2-P9 last. Roughly 14 hours against 36 serial.
-
-**Nothing is dispatched and nothing will be** until the owner confirms, per the
-hard stop at the top of this file.
+A freshness watchdog is armed on both worktrees (20-minute staleness
+threshold). Supervision is beacon freshness, not completion notifications.
 
 ## Carried forward, not yet owned
 
@@ -155,6 +116,20 @@ yet. Recorded here so they are not rediscovered the expensive way.
   re-run both times. It is an M1-P5 file, out of this phase's scope, and it is
   a real flake in a suite the rules treat as a hard binary gate. **This is the
   highest-value of the three and should be fixed early in M2.**
+- **CI-witnessed exclusivity violation at `test/watcher.test.ts:500`, seen
+  once, 2026-08-06.** During M2-P1's merge-gate CI on head `4811d2e` (run
+  31092570135, first attempt), the test "a resident watcher and a concurrent
+  single pass never both surface a wake" failed with BOTH runs surfacing:
+  the `--once` pass printed `signal t1 turn-end` and exited 0, AND the
+  resident surfaced the same wake. That is not timing noise; it is one
+  witnessed violation of M1-P5 criterion 7's exclusivity (PR-204). The rerun
+  was green, and the suite is green locally on both toolchains, so it rides
+  as an investigation item, not a blocker: M2-P1's diff does not touch the
+  watcher, and a once-in-CI witness against M1-P5 code is M1-P5's defect
+  either way. Needs `delivery/verification/watcher-exclusivity.md` before
+  anyone calls it settled, per the durability rule's investigation row. Same
+  family as the `liveness.test.ts:671` flake above: members of a hard binary
+  gate that are not binary.
 - **Work-history contract must cover impossibility, coverage and remedy
   claims**, not only universal quantifiers, per tuition T-006. T-003 already
   routed the universal-quantifier rule to M3's report contract; T-006 records
@@ -163,12 +138,47 @@ yet. Recorded here so they are not rediscovered the expensive way.
   CONSTRUCTION rather than by counter-experiment. M3 item, and a reviewer
   checklist item in the same role briefs.
 
+**Paperwork compaction, owner-raised 2026-08-06, falls due at the M2 or M3
+boundary.** The owner will challenge what of `delivery/` is useful going
+forward: compact without losing information, cut the filler. The measured
+split that should drive it: reviews and work histories are ~9,200 of the
+~15,300 lines and are mostly READ-ONCE (their probes-run sections were
+load-bearing at merge time and dead after), while decisions, tuition,
+MECHANISMS.md and STATE are the read-every-dispatch layer and are already
+dense. The compaction rule to apply: anything read at dispatch time must be
+dense; anything read only in dispute can be archived cold. Git history keeps
+deleted files, so compaction is "remove from the working tree, keep an index
+row pointing at the sha", never information loss. The kernel connection: M3-P8's
+tuition flow and the report contract ARE the productized compactor (incident
+text projects to mechanism index; review text projects to findings and
+verdicts), so this challenge is an INPUT to M3, not a separate cleanup chore.
+
 **Re-grounding debt for the M2 and M3 plans.** Both were written in parallel
 with M1-P5 and predate T-005 and T-006. DR-0011's recorded consequence makes
 re-grounding an explicit step before their delta review. The specific inputs
 they have not absorbed are T-005 (mechanism index), T-006 (work-history
 contract), DR-0014 (release verification becomes a pluggable interface, which
 moves M2-P7's centre of gravity), and M1-P5's own defect record.
+
+**Carried forward from M2-P1, placed here because a phase work history is not
+where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
+
+- A consumer of an evidence bundle must know WHICH RUN it asked for; a refused
+  run leaves the previous run's summary in place by design, and the runner
+  emits `gates: run <id>` on stdout for every outcome so attribution is
+  observable. M2-P9 consumes this.
+- The evidence claim has NO expiry by design: a killed run needs one `rm`, and
+  the refusal message names the file. Do not add a lease.
+- A gate's OWN writes into the evidence directory are unguardable by the
+  runner; the runner refuses to certify a run whose claim was lost instead.
+- `fetch-depth: 0` is required before the first `diff-touches` gate lands
+  (M2-P2, M2-P5), and on pull_request events the checkout SHA is the synthetic
+  merge commit unless `--head` is passed explicitly (fixed for the bundle step,
+  a trap for any new step).
+- The pin is five fields including `ctimeMs`; a gate over-reporting `units`
+  remains uncloseable by the runner and is recorded, not solved.
+- There is no `env` precondition kind; M2-P8's `credential-token` gate wires
+  through a command or file check, not an environment probe.
 
 ## Owner decisions
 
