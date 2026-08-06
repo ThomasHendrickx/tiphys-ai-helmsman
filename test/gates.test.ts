@@ -2773,3 +2773,440 @@ test("decideAggregate is total over counts that are not non-negative integers", 
   assert.equal(good.exitCode, 0);
   assert.equal(good.reason, "every applicable gate is green");
 });
+
+/* ================================================================== */
+/* FIX ROUND 3                                                        */
+/* ================================================================== */
+
+/**
+ * CR-900 (MEDIUM). The mechanism is A MUTATION OF EVIDENCE-DIRECTORY STATE
+ * PERFORMED FROM A FRAME THAT DOES NOT KNOW WHETHER THE CLAIM IS HELD, and
+ * round 2 read "mutation" as "content write". A directory's state is mutated
+ * by create, content-write, DELETE, rename, mkdir and SUBPROCESS DISPATCH; the
+ * round guarded one of the six and derived its coverage by grepping for the
+ * name of its own new wrapper, which can only return sites that already go
+ * through it.
+ *
+ * The three witnesses below are structurally different members of the class,
+ * not three assertions about one:
+ *
+ *   W1  the runner's own DELETE destroys a foreign holder's record;
+ *   W2  the runner DISPATCHES a gate into a directory it does not hold;
+ *   W3  the theft happens MID-GATE, from the gate's own precondition command,
+ *       after any top-of-function check has already passed.
+ *
+ * W3 is the one that decides the SHAPE of the fix. The review sketched a
+ * single `claimHolder` check at the top of `runOneGate`; W3 is green under
+ * that sketch and red under the shipped fix, because a precondition command
+ * runs between the top of the function and the delete.
+ */
+
+/** A fixture program that runs arbitrary statements, then exits. */
+function writeProgram(dir: string, name: string, lines: string[]): string {
+  const path = join(dir, `${name}.mjs`);
+  writeFileSync(path, `${lines.join("\n")}\n`);
+  return path;
+}
+
+const CLAIM_FILE = ".tiphys-gate-run.json";
+const THIEF_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const FOREIGN_RECORD = `{"planted-by":"${THIEF_ID}","note":"FOREIGN RUN OWNS THIS"}\n`;
+
+/**
+ * Build the two-gate theft fixture. `g-a` steals the claim mid-run and, as
+ * the new holder legitimately would, plants a record under `g-b`. `g-b` is an
+ * ordinary gate that writes NOTHING into the evidence directory and instead
+ * touches a sentinel OUTSIDE it, so "was this gate dispatched" is observable
+ * in the end state without the gate's own writes confusing the picture.
+ */
+function stealFixture(dir: string): {
+  manifest: string;
+  evidence: string;
+  plantedRecord: string;
+  sentinel: string;
+  unmadeDir: string;
+} {
+  const evidence = join(dir, "ev");
+  const sentinel = join(dir, "g-b-was-dispatched");
+  const plantedRecord = join(evidence, "g-b", "result.json");
+  const thief = writeProgram(dir, "thief", [
+    'import { mkdirSync, rmSync, writeFileSync } from "node:fs";',
+    "const args = process.argv.slice(2);",
+    'const at = args.indexOf("--result");',
+    `const evidence = ${JSON.stringify(evidence)};`,
+    // Steal: remove the live claim and plant a foreign one. This is the
+    // DANGEROUS state, not the absence of a feature: after these two lines a
+    // different runId genuinely owns the directory.
+    `rmSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, { force: true });`,
+    `writeFileSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, ` +
+      `JSON.stringify({ runId: ${JSON.stringify(THIEF_ID)}, manifest: "other-run" }) + "\\n");`,
+    // As the new holder would: write into the directory it now owns.
+    `mkdirSync(${JSON.stringify(join(evidence, "g-b"))}, { recursive: true });`,
+    `writeFileSync(${JSON.stringify(plantedRecord)}, ${JSON.stringify(FOREIGN_RECORD)});`,
+    `writeFileSync(args[at + 1], JSON.stringify(${JSON.stringify(
+      gateRecord("g-a", "green", 1),
+    )}, null, 2) + "\\n");`,
+    "process.exit(0);",
+  ]);
+  const victim = writeProgram(dir, "victim", [
+    'import { writeFileSync } from "node:fs";',
+    `writeFileSync(${JSON.stringify(sentinel)}, "dispatched\\n");`,
+    "process.exit(0);",
+  ]);
+  // `g-c` exists so that ONE gate after the theft has no directory of its own
+  // yet: `g-a` deliberately creates `g-b/` and not `g-c/`, which makes the
+  // runner's own mkdir observable (W4). Its command is never expected to run.
+  const manifest = writeManifest(dir, [
+    {
+      id: "g-a",
+      command: ["node", thief],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+    {
+      id: "g-b",
+      command: ["node", victim],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+    {
+      id: "g-c",
+      command: ["node", victim],
+      unitLabel: "u",
+      applicability: "conditional",
+    },
+  ]);
+  return {
+    manifest,
+    evidence,
+    plantedRecord,
+    sentinel,
+    unmadeDir: join(evidence, "g-c"),
+  };
+}
+
+test("a run that has lost the claim does not delete the holder's records", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0, "a run that lost its claim certified itself");
+
+    // THE OBSERVABLE: the foreign holder's record, byte for byte. Under the
+    // round-2 code the runner's own rmSync at the top of runOneGate removed
+    // it while holding no claim.
+    assert.ok(
+      existsSync(fixture.plantedRecord),
+      "the runner deleted a record belonging to the run that holds the claim",
+    );
+    assert.equal(
+      readFileSync(fixture.plantedRecord, "utf8"),
+      FOREIGN_RECORD,
+      "the holder's record was replaced by a run that does not hold the claim",
+    );
+
+    // And the theft is left in place rather than cleaned up, which is the
+    // claim module's standing rule: never revoke a claim you do not hold.
+    assert.equal(
+      (JSON.parse(readFileSync(join(fixture.evidence, CLAIM_FILE), "utf8")) as {
+        runId: string;
+      }).runId,
+      THIEF_ID,
+    );
+
+    // CONTROL, or this passes for a runner that does nothing at all: with no
+    // theft the same two gates run and the record under g-b is the runner's,
+    // not the planted text.
+    const clean = join(dir, "ev-clean");
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-b",
+          command: writeGate(dir, "plain", {
+            record: gateRecord("g-b", "green", 2),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "clean-manifest.json",
+    );
+    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.equal(
+      (JSON.parse(readFileSync(join(clean, "g-b", "result.json"), "utf8")) as {
+        status: string;
+      }).status,
+      "green",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a run that has lost the claim does not dispatch further gates", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+
+    // THE OBSERVABLE, and it is a different one from W1: the sentinel lives
+    // OUTSIDE the evidence directory and is written by the gate itself, so it
+    // records "this subprocess was started" and nothing else. Under the
+    // round-2 code the runner spawned g-b into a directory whose claim it had
+    // lost, handing that other run's paths to a program of its own choosing.
+    assert.ok(
+      !existsSync(fixture.sentinel),
+      "the runner dispatched a gate into a directory it does not hold",
+    );
+
+    // CONTROL: the sentinel is reachable. The same program, dispatched by a
+    // run that DOES hold the claim, writes it. Without this the assertion
+    // above would pass against a gate that could never write it.
+    const clean = join(dir, "ev-clean");
+    const cleanSentinel = join(dir, "control-was-dispatched");
+    const control = writeProgram(dir, "control", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(cleanSentinel)}, "dispatched\\n");`,
+      "process.exit(0);",
+    ]);
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-b",
+          command: ["node", control],
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "control-manifest.json",
+    );
+    runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.ok(
+      existsSync(cleanSentinel),
+      "the control gate was never dispatched either, so the witness proves nothing",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a claim stolen by a gate's own precondition command still stops that gate", () => {
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "ev");
+    const sentinel = join(dir, "g-p-was-dispatched");
+    const planted = join(evidence, "g-p", "result.json");
+
+    // The precondition command steals the claim and exits 0, so the
+    // precondition is MET and the runner proceeds. The theft therefore lands
+    // strictly between the top of runOneGate and the record delete, which is
+    // the window a single top-of-function check does not cover.
+    const thief = writeProgram(dir, "pre-thief", [
+      'import { rmSync, writeFileSync } from "node:fs";',
+      `rmSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, { force: true });`,
+      `writeFileSync(${JSON.stringify(join(evidence, CLAIM_FILE))}, ` +
+        `JSON.stringify({ runId: ${JSON.stringify(THIEF_ID)}, manifest: "other-run" }) + "\\n");`,
+      "process.exit(0);",
+    ]);
+    const victim = writeProgram(dir, "pre-victim", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(sentinel)}, "dispatched\\n");`,
+      "process.exit(0);",
+    ]);
+    const manifest = writeManifest(dir, [
+      {
+        id: "g-p",
+        command: ["node", victim],
+        unitLabel: "u",
+        applicability: "conditional",
+        precondition: {
+          id: "steals-the-claim",
+          kind: "command-exit-zero",
+          command: ["node", thief],
+        },
+      },
+    ]);
+
+    // A record is already there for the runner's rmSync to destroy. It stands
+    // in for the foreign holder's, and it is planted before the run so the
+    // run's own claim is taken legitimately.
+    mkdirSync(join(evidence, "g-p"), { recursive: true });
+    writeFileSync(planted, FOREIGN_RECORD);
+
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+    assert.ok(
+      existsSync(planted) && readFileSync(planted, "utf8") === FOREIGN_RECORD,
+      "a mid-gate claim theft still let the runner delete the new holder's record",
+    );
+    assert.ok(
+      !existsSync(sentinel),
+      "a mid-gate claim theft still let the runner dispatch the gate",
+    );
+
+    // CONTROL: an identical manifest whose precondition command steals
+    // NOTHING runs the gate and rewrites the record, so the refusal above is
+    // about holdership and not about having a precondition at all.
+    const clean = join(dir, "ev-clean");
+    const cleanSentinel = join(dir, "control-p-was-dispatched");
+    const honest = writeProgram(dir, "pre-honest", ["process.exit(0);"]);
+    const controlVictim = writeProgram(dir, "pre-control", [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(cleanSentinel)}, "dispatched\\n");`,
+      `const args = process.argv.slice(2);`,
+      `const at = args.indexOf("--result");`,
+      `writeFileSync(args[at + 1], JSON.stringify(${JSON.stringify(
+        gateRecord("g-p", "green", 1),
+      )}, null, 2) + "\\n");`,
+      "process.exit(0);",
+    ]);
+    const controlManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "g-p",
+          command: ["node", controlVictim],
+          unitLabel: "u",
+          applicability: "conditional",
+          precondition: {
+            id: "steals-nothing",
+            kind: "command-exit-zero",
+            command: ["node", honest],
+          },
+        },
+      ],
+      "control-p-manifest.json",
+    );
+    const ok = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      controlManifest,
+      "--evidence",
+      clean,
+    ]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.ok(existsSync(cleanSentinel), "the control gate was never dispatched");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a run that has lost the claim creates no directories in the holder's tree", () => {
+  const dir = scratch();
+  try {
+    const fixture = stealFixture(dir);
+    const run = runCli([
+      "gates",
+      "run",
+      "--manifest",
+      fixture.manifest,
+      "--evidence",
+      fixture.evidence,
+    ]);
+    assert.notEqual(run.status, 0);
+
+    // THE OBSERVABLE, and a third distinct operation: mkdir. `g-a` created
+    // `g-b/` before stealing, so only `g-c/` isolates the RUNNER's own mkdir.
+    // Two call sites make this directory (runOneGate's, and the record-write
+    // loop's in runClaimedBundle) and either one alone leaves it behind, so
+    // this assertion reddens under a defang of either.
+    assert.ok(
+      !existsSync(fixture.unmadeDir),
+      `the runner created ${fixture.unmadeDir} in a tree it does not hold; ` +
+        `evidence dir now holds: ${readdirSync(fixture.evidence).sort().join(", ")}`,
+    );
+
+    // CONTROL: the directory is reachable. The same gate id under a run that
+    // HOLDS the claim gets its directory made.
+    const clean = join(dir, "ev-clean");
+    const plain = writeManifest(
+      dir,
+      [
+        {
+          id: "g-c",
+          command: writeGate(dir, "plain-c", {
+            record: gateRecord("g-c", "green", 1),
+            exit: 0,
+          }),
+          unitLabel: "u",
+          applicability: "conditional",
+        },
+      ],
+      "clean-c-manifest.json",
+    );
+    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.ok(existsSync(join(clean, "g-c")), "no run ever creates this directory");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CR-901 (LOW). Round 2 recorded the choice between `!(counts.green > 0)` and
+ * `counts.green === 0` as UNWITNESSABLE, on the argument that "no input
+ * distinguishes the two forms". That is an impossibility claim of the shape
+ * tuition T-006 is about, and it is false: the bad-count screen enumerates
+ * with `Object.entries` (own ENUMERABLE properties) while the presence screen
+ * uses `hasOwnProperty` (own properties, enumerable or not), so an own
+ * NON-ENUMERABLE count passes both screens unexamined.
+ *
+ * The direction matters and is why this is low: the SHIPPED form is the safe
+ * one. This test vindicates the code and disproves the sentence about it.
+ */
+test("a non-enumerable NaN green passes both count screens and is still refused", () => {
+  const counts: Record<string, number> = {
+    declared: 1,
+    applicable: 1,
+    verdict: 1,
+    green: 1,
+    red: 0,
+    "not-applicable": 0,
+    error: 0,
+    vacuous: 0,
+  };
+  Object.defineProperty(counts, "green", { value: Number.NaN, enumerable: false });
+
+  // The construction really does defeat both screens, asserted rather than
+  // asserted-about: without these two lines the test would pass for a value
+  // the screens above `decideAggregate`'s success assertion already caught,
+  // and would say nothing about which form of that assertion is shipped.
+  assert.ok(!Object.keys(counts).includes("green"), "Object.entries can see green");
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(counts, "green"),
+    "hasOwnProperty cannot see green",
+  );
+  assert.ok(Number.isNaN(counts.green), "the construction did not yield NaN");
+
+  const decided = runModule.decideAggregate(counts, [], []);
+  assert.notEqual(decided.exitCode, 0, "green NaN certified the run");
+  assert.match(decided.reason, /zero\s+green gates/);
+  assert.doesNotMatch(decided.reason, /every applicable gate is green/);
+});

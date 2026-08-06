@@ -193,8 +193,17 @@ export interface RunOutcome {
   summary?: RunSummary;
   /** Set when the run could not start at all (no summary to write). */
   reason?: string;
-  /** True when the evidence directory was owned by another run. */
-  refused?: boolean;
+  // CR-903. A `refused?: boolean` used to sit here with one producer and zero
+  // readers: `src/commands/gates.ts` is the only caller of `runGates` and it
+  // consumes `runId`, `exitCode`, `summary` and `reason`. It is removed rather
+  // than wired, because the discriminator a consumer actually needs already
+  // exists and is stronger: CR-861 put THIS run's id on every outcome, so a
+  // caller compares the id it was given with the one inside `summary.json` and
+  // learns whether the bundle is its own. A boolean saying "somebody else owns
+  // that directory" adds nothing that comparison does not already give, and an
+  // unread field on an exported interface is a promise seven concurrent phases
+  // would build against with nothing testing it. If M2-P9 wants a typed
+  // discriminator it should add one together with the code that reads it.
 }
 
 export const NO_APPLICABLE_GATE = "no applicable gate";
@@ -243,39 +252,95 @@ function ensureDirectory(path: string): string | undefined {
 }
 
 /**
- * WRITE ONLY WHILE THIS RUN HOLDS THE CLAIM (CR-860, the other half).
+ * MUTATE ONLY WHILE THIS RUN HOLDS THE CLAIM (CR-860, then CR-900).
  *
- * The finding's mechanism is *cleanup that is valid only while the claim is
- * held, performed from a frame that does not know whether the claim is held*.
- * A WRITE into the evidence directory is valid under exactly the same
- * condition, and fixing only the release would leave the call graph as the
- * sole guarantee that writes happen inside the claimed region. A call graph
- * is a reading, and this round exists because a reading of control flow was
- * wrong; so the writer verifies, like the releaser does.
+ * The finding's mechanism is *a mutation of evidence-directory state
+ * performed from a frame that does not know whether the claim is held*.
  *
- * This also makes the ordering OBSERVABLE, which it was not: a release moved
- * back in front of the write is now a refused write with a reason, rather
- * than an identical end state reachable two ways. That is what let the
- * ordering be red-witnessed at all (work history G2b).
+ * CR-900 is the correction of ONE WORD in that sentence. Round two read the
+ * mechanism as being about WRITES, built `writeInsideClaim` around
+ * `writeFileSync`, derived its coverage by grepping for the name of its own
+ * new wrapper, and concluded that every write into the directory verified the
+ * claim. That sentence was true and it was not the property that mattered,
+ * because a directory's state is mutated by six operations and not by one:
  *
- * The gates' OWN records are not covered: a gate subprocess writes to the
- * path it was handed and this runner cannot guard another process's write.
- * That boundary is unchanged and is stated in the CR-803 not-covered list.
+ *   CREATE, CONTENT-WRITE, DELETE, RENAME, MKDIR, and SUBPROCESS DISPATCH
+ *   that will write there.
+ *
+ * A two-gate construction defeated the total claim in one run: the runner
+ * `rmSync`ed a foreign holder's `result.json` and then spawned a gate into a
+ * directory whose claim it had lost, neither of which is a `writeFileSync`.
+ *
+ * So the predicate is separated from the operation. THIS function answers
+ * "may this run mutate that directory right now", and every one of the six
+ * operations asks it, rather than one of them owning the rule. The wrappers
+ * below (`writeInsideClaim`, `mkdirInsideClaim`) and the four inline checks in
+ * `runOneGate`, `runClaimedBundle` and `writeSummaryAtomically` are its
+ * callers; the work history's CR-900 section carries the full inventory that
+ * fixes what "every" ranges over, derived from the closure's `node:fs` and
+ * `node:child_process` imports rather than from the names of these wrappers.
+ *
+ * Guarding the mutation rather than the call site also makes the ordering
+ * OBSERVABLE, which it was not: a release moved back in front of a mutation is
+ * now a refusal with a reason, rather than an identical end state reachable
+ * two ways. That is what let the ordering be red-witnessed at all (G2b).
+ *
+ * NOT COVERED, and stated rather than implied: a gate subprocess's own write
+ * to the record path it was handed. This runner cannot guard another
+ * process's write. What it CAN do, and now does, is decline to dispatch that
+ * process at all when it does not hold the claim, and decline to certify a
+ * run in which that happened.
  */
+function refuseUnlessHolder(
+  evidenceDir: string,
+  runId: string,
+  what: string,
+): string | undefined {
+  const holder = claimHolder(evidenceDir);
+  if (holder !== runId) {
+    return (
+      `refusing to ${what}: this run (${runId}) does not hold the claim ` +
+      `on ${evidenceDir} (held by ${holder ?? "nobody"})`
+    );
+  }
+  return undefined;
+}
+
+/** Content write, row 2 of the CR-900 inventory. */
 function writeInsideClaim(
   evidenceDir: string,
   runId: string,
   path: string,
   body: string,
 ): string | undefined {
-  const holder = claimHolder(evidenceDir);
-  if (holder !== runId) {
-    return (
-      `refusing to write ${path}: this run (${runId}) does not hold the claim ` +
-      `on ${evidenceDir} (held by ${holder ?? "nobody"})`
-    );
-  }
-  return guardedWrite(path, body);
+  return (
+    refuseUnlessHolder(evidenceDir, runId, `write ${path}`) ??
+    guardedWrite(path, body)
+  );
+}
+
+/**
+ * Mkdir, rows 1a and 1b of the CR-900 inventory. Creating a directory inside
+ * an evidence tree this run no longer owns is a smaller harm than deleting a
+ * record, and it is the same mechanism: it leaves a directory the real holder
+ * never made, in a bundle attributed to the real holder.
+ *
+ * Row 1c, the creation of the evidence directory ITSELF at the top of
+ * `runGatesInner`, deliberately does NOT go through here and must not: the
+ * directory has to exist before a claim file can be created inside it, so a
+ * holdership test there would be unsatisfiable by construction. That single
+ * mkdir is the only mutation in this module that legitimately precedes the
+ * claim, and it creates a directory rather than touching any content.
+ */
+function mkdirInsideClaim(
+  evidenceDir: string,
+  runId: string,
+  path: string,
+): string | undefined {
+  return (
+    refuseUnlessHolder(evidenceDir, runId, `create ${path}`) ??
+    ensureDirectory(path)
+  );
 }
 
 /** Write a file, refusing any path that is not safe to open for writing. */
@@ -518,7 +583,11 @@ function runOneGate(
 ): GateOutcome {
   const startedAt = now();
   const gateDir = join(evidenceDir, entry.id);
-  const dirRefusal = ensureDirectory(gateDir);
+  // CR-900 row 1a. Every mutation below is inside `evidenceDir`, and the claim
+  // can be lost between gates (a previous gate steals it) or DURING one (this
+  // gate's own precondition command steals it), so the question is asked at
+  // each operation and not once at the top of this function.
+  const dirRefusal = mkdirInsideClaim(evidenceDir, runId, gateDir);
   if (dirRefusal !== undefined) {
     return {
       result: errorResult(entry, startedAt, dirRefusal),
@@ -546,6 +615,22 @@ function runOneGate(
   }
 
   if (entry.precondition !== undefined) {
+    // CR-900 row 4, which the review's table did not list. Evaluating a
+    // precondition DISPATCHES a subprocess: `git` for `branch-matches` and
+    // `diff-touches`, and for kind `command` an ARBITRARY program named by the
+    // manifest. Dispatching a program is a mutation of this directory by
+    // proxy, so it asks the same question the delete and the gate spawn ask.
+    const preconditionRefusal = refuseUnlessHolder(
+      evidenceDir,
+      runId,
+      `evaluate precondition ${entry.precondition.id} for gate ${entry.id}`,
+    );
+    if (preconditionRefusal !== undefined) {
+      return {
+        result: errorResult(entry, startedAt, preconditionRefusal),
+        applicable: false,
+      };
+    }
     const outcome = evaluatePrecondition(entry.precondition, options, cwd);
     if (outcome.kind === "error") {
       return {
@@ -580,6 +665,28 @@ function runOneGate(
         startedAt,
         `${recordRefusal}; refusing to run gate ${entry.id}`,
       ),
+      applicable: false,
+    };
+  }
+  // CR-900 rows 5 and 6, the two the finding named. The DELETE below removes a
+  // record that, under a stolen claim, belongs to another run; the DISPATCH
+  // after it hands that other run's directory to a program of this manifest's
+  // choosing. One question covers both because nothing between them can change
+  // the claim: the argv construction is pure string work. Splitting it into two
+  // identical checks would add a line no test could redden independently.
+  //
+  // This check is what makes the fix COMPLETE rather than the review's sketch
+  // of one check at the top of `runOneGate`. By here the precondition command
+  // has already run, and it can have stolen the claim after that top check
+  // passed (witness W3).
+  const mutateRefusal = refuseUnlessHolder(
+    evidenceDir,
+    runId,
+    `clear ${recordPath} and run gate ${entry.id}`,
+  );
+  if (mutateRefusal !== undefined) {
+    return {
+      result: errorResult(entry, startedAt, mutateRefusal),
       applicable: false,
     };
   }
@@ -898,13 +1005,22 @@ export function decideAggregate(
   // asserts it rather than trusting the reading, because CR-800 was exactly a
   // reading of the branch conditions that turned out not to hold.
   //
-  // `!(green > 0)` rather than `green === 0` is deliberate belt and braces,
-  // and it is honestly UNWITNESSABLE as long as the screens above stand: for
-  // every value that survives them (a non-negative safe integer) the two
-  // forms are equivalent, so no input distinguishes them (work history G7).
-  // It is kept because it is the form that still fails closed if a later edit
-  // weakens the screens, which is exactly how this check came to be wrong the
-  // first time.
+  // `!(green > 0)` rather than `green === 0` is WITNESSED, not belt and braces
+  // (CR-901). Round two recorded it as "unwitnessable: no input distinguishes
+  // the two forms", which was an impossibility claim of exactly the shape
+  // tuition T-006 is about, and it is false. The two screens above do not
+  // screen the same set of properties: the bad-count screen enumerates with
+  // `Object.entries`, which sees own ENUMERABLE properties, while the presence
+  // screen uses `hasOwnProperty`, which sees own properties enumerable or not.
+  // A count defined as
+  //
+  //     Object.defineProperty(counts, "green", { value: NaN, enumerable: false })
+  //
+  // is invisible to the first screen and present to the second, so it arrives
+  // here unexamined. `!(NaN > 0)` is true and reports the inconsistency;
+  // `NaN === 0` is false and would certify "every applicable gate is green"
+  // with green equal to NaN. Registered as
+  // `gate-aggregate-nonenumerable-nan-green`.
   if (exitCode === EXIT_GREEN && !(counts.green > 0)) {
     exitCode = EXIT_GATE_ERROR;
     reason =
@@ -1007,6 +1123,19 @@ function writeSummaryAtomically(
   const refusal = refuseOpenForWrite(summaryPath);
   if (refusal !== undefined) {
     return refusal;
+  }
+  // CR-900 row 8. A rename is a mutation of two entries in this directory, and
+  // it was guarded only by the READING that the staged write above must have
+  // succeeded first. That reading happens to be sound today; this phase is on
+  // its third round because a reading of control flow was wrong twice, and the
+  // rule this module now states is that the mutation asks, not its caller.
+  const renameRefusal = refuseUnlessHolder(
+    evidenceDir,
+    runId,
+    `replace ${summaryPath}`,
+  );
+  if (renameRefusal !== undefined) {
+    return renameRefusal;
   }
   const renamed = runStep(`replacing ${summaryPath}`, () =>
     renameSync(stagePath, summaryPath),
@@ -1155,7 +1284,7 @@ function runGatesInner(options: RunOptions, runId: string): RunOutcome {
     // refusal exists to prevent. What the refusal DOES carry is both run
     // ids, so a caller can tell that any summary.json there is not its own
     // (CR-861).
-    return { runId, exitCode: EXIT_GATE_ERROR, reason: claimRefusal, refused: true };
+    return { runId, exitCode: EXIT_GATE_ERROR, reason: claimRefusal };
   }
 
   // EVERY WRITE INTO THE DIRECTORY HAPPENS INSIDE THIS BLOCK, and the single
@@ -1245,7 +1374,12 @@ function runClaimedBundle(
     // one: a not-applicable gate never ran and wrote nothing, and a rewritten
     // vacuous green must not stay green in the evidence (criterion 4).
     const recordPath = outcome.recordPath ?? join(options.evidenceDir, entry.id, "result.json");
-    const dirRefusalForGate = ensureDirectory(join(options.evidenceDir, entry.id));
+    // CR-900 row 1b. Same mutation, second call site.
+    const dirRefusalForGate = mkdirInsideClaim(
+      options.evidenceDir,
+      runId,
+      join(options.evidenceDir, entry.id),
+    );
     if (dirRefusalForGate === undefined) {
       writeInsideClaim(
         options.evidenceDir,

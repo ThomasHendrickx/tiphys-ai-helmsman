@@ -200,5 +200,10 @@
   "gate-file-absent-precondition": "file-absent is met only when nothing is there, and an irregular entry is error",
   "gate-claim-released-only-by-holder": "a run releases only the claim it holds, and writes nothing after releasing",
   "gate-refused-run-is-attributable": "a refused run identifies itself and cannot be mistaken for the bundle it declined to overwrite",
-  "gate-aggregate-total-over-bad-counts": "decideAggregate is total over counts that are not non-negative integers"
+  "gate-aggregate-total-over-bad-counts": "decideAggregate is total over counts that are not non-negative integers",
+  "gate-claim-lost-no-record-delete": "a run that has lost the claim does not delete the holder's records",
+  "gate-claim-lost-no-dispatch": "a run that has lost the claim does not dispatch further gates",
+  "gate-claim-stolen-by-precondition": "a claim stolen by a gate's own precondition command still stops that gate",
+  "gate-claim-lost-no-mkdir": "a run that has lost the claim creates no directories in the holder's tree",
+  "gate-aggregate-nonenumerable-nan-green": "a non-enumerable NaN green passes both count screens and is still refused"
 }
