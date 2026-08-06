@@ -3757,13 +3757,21 @@ E1.7. Clean-room review: an agent composed from `roles/clean-room-reviewer.md`
 with `checklists/clean-room.yaml` resolved through
 `tiphys checklist resolve` (including at least one injected per-phase probe,
 R-054) produces a verdict; `tiphys validate --type verdict --context <plan dir>`
-exits 0, which runs `verdict-criteria-complete` and `verdict-deviations-judged`
-against the plan phase and the work history. If the declared mode's
-`merge-authority` is `delegated-under-conditions`, two reviews run with
-different `--framing` values and different model families, and
+exits 0, which runs `verdict-criteria-complete`, `verdict-deviations-judged`
+and, NEW at revision 2, `verdict-hazard-classes-addressed`
+against the plan phase and the work history. **Two review CONTRACTS run, not
+merely two reviewers (T-007, and `full` mode's `review-contracts[]` from M3-P3
+step 2b)**: one composed with `--review-contract criteria` against
+`checklists/clean-room.yaml`, one with `--review-contract hazard` against
+`checklists/hazard-review.yaml`, the second given the phase's declared
+`hazard-classes[]` as its starting question. They also run on different model
+families and with different `--framing` values, and
 `node scripts/check-dual-review.mjs` exits 0 over the pair (M3R-004); a run that
-produces one review, or two sharing a family or a framing, fails the exit test
-rather than being noted.
+produces one review, or two sharing a family, a framing, or a contract, fails
+the exit test rather than being noted. The contract dimension is separate from
+the family dimension and both are checked, because T-007 records two verdicts on
+one head from two families agreeing on every mechanical fact while one missed a
+high-severity defect the criteria did not describe.
 
 E1.8. If the verdict is FIX-ROUND-NEEDED: the fix round runs, and the
 `fix-round-verification` stage that `full` mode requires (T-003) runs after it
@@ -4006,10 +4014,20 @@ D-19, which remain in force unchanged.
 - D-M3-15: the subject change of the exit run is designated at planning time
   (section 4.0 E0.4) with a stated fallback rule, so the run cannot be made easy
   by choosing a change after seeing what the kernel can manage.
-- D-M3-16: no M3 phase edits a merged M2 component except M3-P2's optional
-  extension of the gate runner's selection flags, M3-P1's relocation of M2's
-  schema documents (D-M3-20), and M3-P1's extension of the M2 validator's
-  keyword set, which DR-0013 as decided makes unnecessary (Ajv supplies Draft 2020-12 entire). Any other required M2 change is an
+- D-M3-16 (restated at revision 2, because DR-0013 changed what the third
+  exception IS): no M3 phase edits a merged M2 component except three named
+  cases. (1) M3-P2's optional extension of the gate runner's selection flags.
+  (2) M3-P1's relocation of M2's schema documents (D-M3-20). (3) M3-P1's
+  RETIREMENT of the M2 validator as an engine, routing its gate-schema
+  validation through Ajv while preserving its module boundary and its
+  diagnostic contract (DR-0013 clause 6). Revision 1 named the third case as
+  "extension of the M2 validator's keyword set, which DR-0013 as decided makes
+  unnecessary", which was a sentence describing a thing that is not happening;
+  the thing that IS happening is the retirement, and it is a bigger edit than an
+  extension would have been, so naming it correctly matters. **M2's validation
+  TESTS are not in the exception list**: they are re-run unchanged, and an edit
+  to any of them is the escalation-worthy event M3-P1 step 1 describes. Any
+  other required M2 change is an
   escalation to the orchestrator, not an improvisation, because M2's exit
   evidence is a hard gate that a quiet edit would invalidate.
 - D-M3-17: this plan follows `delivery/plan/kernel-plan-m2.md`'s phase ids and
@@ -4017,8 +4035,11 @@ D-19, which remain in force unchanged.
   outline put the red-witness harness first; the M2 plan puts the gate contract
   and runner first). Both documents are DRAFT and concurrent, written under
   DR-0011's parallel-planning grant, so the orchestrator reconciles them at the
-  boundary the M2 plan's section 2 names. All nine of its boundary items are
-  accepted, each with the place this plan discharges it, so completeness can be
+  boundary the M2 plan's section 2 names. **All TWELVE of its boundary items are
+  accepted** (revision 1's prose said "all nine" while listing eleven, which is
+  an arithmetic error revision 2 corrects in the direction the list already
+  showed; M2's revision 2 then added a twelfth, item 12 below), each with the
+  place this plan discharges it, so completeness can be
   read here rather than re-derived from the other document (M3R-010):
   1. gate registry versus manifest: M2 builds `gates.manifest.json`, M3-P2
      promotes it and makes the reserved `modes` field live.
@@ -4029,8 +4050,15 @@ D-19, which remain in force unchanged.
      D-M3-18, built in M3-P1 step 2 with `tiphys plan project`.
   4. schemas-directory relocation: accepted as D-M3-20, executed in M3-P1
      step 10b.
-  5. validation technology seam: DR-0013, DECIDED for Ajv, superseding the recommendation that was
-     to extend M2's validator rather than adopt a library.
+  5. validation technology seam: DR-0013, DECIDED for Ajv, superseding the
+     recommendation that was to extend M2's validator rather than adopt a
+     library. **M2's revision 2 added an obligation running the other way and it
+     is accepted here** (section 1.1 item 5): DR-0013 clause 6's promise to
+     re-run M2's validation tests unchanged only holds if M2's validator emits
+     `INVALID <json-pointer> <message>` with deterministic ordering and its own
+     tests assert that contract rather than engine-specific wording, which
+     M2-P1 step 4 and criterion 10 now require. M3-P1 step 1 VERIFIES both as
+     delivered and escalates rather than adapting if either is false.
   6. fix-round verification as a pipeline requirement: M2 disclaims it, M3-P3
      carries it as a required `full` stage, cited to T-003.
   7. universal-quantifier linting: M2 disclaims it, M3-P4 carries it in the
@@ -4046,6 +4074,25 @@ D-19, which remain in force unchanged.
      discharged by D-M3-26's `machine-readable-form` citation.
   11. destructive-authority declaration: split three ways and accepted as
      D-M3-26, with M3 taking the rule text and the authoring-time enforcement.
+  12. **release verification and the charter (DR-0014), NEW in M2's revision 2
+     and accepted here as D-M3-29.** M2 builds one post-merge verification
+     contract with two static manifest entries and two reference adapters
+     (M2-D-20); M2 explicitly does NOT build the charter field that selects and
+     configures a verification, does not build a registry of N charter-declared
+     verifications, and does not generalize the two entries. Its three named
+     hand-offs are dispositioned individually rather than accepted as a block:
+     **(a) accepted** as an input, M2's outcome enum and record schema are the
+     shape a later charter field must configure or supersede, recorded in
+     section 1.1 item 6, and M3 does not encode that shape now because the field
+     is reserved rather than designed. **(b) declined for M3 with a reason**,
+     the charter coherence check (a non-local deployment topology alongside
+     verification `none` is internally contradictory) is a Kind B check in this
+     plan's own vocabulary and would cost one check and no artifact, but the
+     investigation's section 8 item 4 says its predicate needs a real charter,
+     which arrives at M4's pilot; Appendix C item 12 records it as
+     available-and-declined. **(c) accepted and taken**, the change-to-`none`
+     entry on the charter's `escalation-contract.stop-for[]` default list, which
+     is one line and is M3-P1 step 3.
   No requirement row moves in either direction.
 - D-M3-18: the plan schema's phase object is a strict superset of the M2-P4
   scope auditor's phase-declaration projection, and M3-P1 ships
@@ -4076,16 +4123,18 @@ D-19, which remain in force unchanged.
   choice is visible rather than silent.
 - D-M3-22 (M3R-002): validation checks are classified as Kind A (schema keyword)
   or Kind B (validator-computed or cross-document) in section 2.3, every
-  criterion states which it is, and the fifteen Kind B checks are tabulated
-  there. An implementer who finds a check that belongs in that table and is not
+  criterion states which it is, and the **sixteen** Kind B checks are tabulated
+  there (fifteen at revision 1; revision 2 adds
+  `verdict-hazard-classes-addressed` from T-007). An implementer who finds a check that belongs in that table and is not
   in it escalates it as a plan defect; writing the check as an undeclared script
   is forbidden, both because the M2-P4 scope auditor would fail the undeclared
   file and because the table is what stops this class from being rediscovered
   once per phase.
-- D-M3-23 (M3R-003): T-005's mechanism index is delivered in two halves that sit
+- D-M3-23 (M3R-003, AMENDED at revision 2): T-005's mechanism index is delivered
+  in two halves that sit
   in adjacent phases: M3-P6 ships the implementer brief's `mechanism-lookup` and
-  `mechanism-sibling` clauses plus a committed stub index carrying the one rule
-  T-005 itself establishes, and M3-P8 replaces the stub with the generated
+  `mechanism-sibling` clauses plus a committed SEED index, and M3-P8 replaces
+  the seed with the generated
   projection of the tuition feed's `mechanisms[]` field and re-witnesses the
   brief's path. The split is because the brief cannot require reading a file that
   does not exist, and reordering the two phases would put the tuition flow before
@@ -4093,6 +4142,19 @@ D-19, which remain in force unchanged.
   clauses are delivered under R-033a's "mandated reading in order" and the index
   under R-091's tuition flow, both recorded in the clause map against those rows,
   so Appendix A's counts are unchanged.
+  **What revision 2 amends is the SEED, and the amendment is a strengthening.**
+  Revision 1 specified "a committed stub index carrying the one rule T-005
+  itself establishes", written when no index existed. `MECHANISMS.md` was
+  committed at the repository root on 2026-08-05 with TWELVE mechanisms, under
+  T-005's own "cheap interim measure, available now", and states of itself that
+  it is intended to be superseded by M3-P8's projection. So the seed is a
+  CONVERSION of all twelve rows rather than an invention of one, M3-P8's
+  projection must cover all twelve (its criterion 4c, which is the coupling
+  M2's boundary item 10 asked for), and M3-P8 DELETES the interim file rather
+  than leaving two indexes, which is the state T-005 exists to prevent.
+  `schemas/mechanism-index.schema.json` moves from M3-P8 to M3-P6 as a create,
+  because the seed needs it; M3-P8 edits it. Both phases' files-to-touch lists
+  are corrected, and no requirement row moves.
 - D-M3-24 (M3R-004): the dual cross-model review guarantee is enforced by
   `scripts/check-dual-review.mjs` and cited in `AGENTS.md`, not merely
   representable in a schema field. Recording a claim without checking it is the
@@ -4131,6 +4193,123 @@ D-19, which remain in force unchanged.
   3 steps"), so a gate would either fail honest work or never fire. Recorded in
   Appendix C as available-and-declined with these reasons, which is what the
   placement rule asks for: the question asked and answered, not skipped.
+
+**Decisions added at revision 2 (2026-08-06), numbering continued from D-M3-26
+so no id is reused and nothing is renumbered.** Each is taken under DR-0016's
+two-limb test rather than raised: each has a recommendation this planner would
+defend, so the options are not comparable and there is nothing to ask. The
+reasoning is recorded here exactly as if it had been escalated, which is what
+DR-0016 requires in exchange.
+
+- D-M3-27 (path reads go through the delivered classifier): every M3 command
+  that opens a path it did not create uses `classifyEntry` and
+  `refuseOpenForWrite` from `src/task.ts` (M1-P5, merged at `58ac964`), never a
+  bare `readFileSync`, `openSync`, `appendFileSync` or `renameSync`. A path that
+  is not a regular file makes the command report an error naming the path and
+  the observed type; no M3 command blocks indefinitely on a path it did not
+  create. **Why this is a decision and not an observation**: M3 introduces at
+  least five commands whose ordinary input is an operator-supplied path
+  (`validate <file>`, `validate --context <dir>`, `brief compose`'s
+  mandated-reading resolution, `checklist resolve --extra`, `tuition add
+  --file`), which is a larger untrusted-path surface than any M1 phase had. The
+  class is M1's most expensive: twelve paths, four fix rounds, CR-520 and
+  CR-560, and it is STILL OPEN in `src/lock.ts`, `src/pool.ts` and
+  `src/brief.ts`, the last of which M3-P5 consumes. M2 took the same decision as
+  constraint M2-C-6 for gates. **M3 uses the delivered implementation rather
+  than writing a second one**, which is T-005's lesson applied inside this
+  milestone, and M3 does NOT fix the three open files: no M3 phase acquires
+  `src/lock.ts` or `src/pool.ts`, patching `src/brief.ts` from M3-P5 would
+  repeat CR-521, and `delivery/STATE.md` records the class as needing its own
+  scope. The residue is that M3 stops the class growing and does not close it,
+  stated in section 1.1 rather than implied.
+- D-M3-28 (a wired check is a behaviour, not a text): every M3 criterion
+  asserting that a check is wired into `.github/workflows/gates.yml` extracts
+  the step and EXECUTES it against stubs, observing its exit code, under at
+  least two structurally different defangs. Where a text assertion is
+  unavoidable it is labelled as such and its residue named. Five M3 phases wire
+  a check into that file (P1's clause map, P2's gate drift, P6's brief drift,
+  P9's reference and duplication checks, P10's license gate), and the class this
+  prevents was confirmed SIX times across four M1-P6 rounds: `exit 1` changed to
+  `exit 0`, two placements of `|| true`, a step-level `if: false`, a quoted YAML
+  key the whitelist regex could not see, and the guarded step moved into a job
+  the fan-in does not need. M1-P6's tracked low CR-760 is that shape still live
+  in the `gates` fan-in's own script, in the file M3 edits five times. **Why
+  decided rather than raised**: the alternative is cheaper tests that are known
+  not to work, which is not a comparable option.
+- D-M3-29 (the charter RESERVES release verification): the charter schema
+  declares a required `release-verification` field admitting exactly
+  `{mode: none, reason}` and `{mode: reserved, note}`, with
+  `additionalProperties: false`, a `$comment` citing DR-0014 and the
+  investigation, and no adapter enumeration, no N-verification registry, and no
+  coherence check. `escalation-contract.stop-for[]` gains the change-to-`none`
+  entry. **Why reserve rather than design**: DR-0014's own impact section says
+  the M3 planner "should hold that space rather than design it now", and
+  `delivery/verification/release-verification-interface.md` section 8 item 4
+  repeats it and names what settles it, the first real project charter at M4's
+  pilot. Designing a field against no real charter is the M1-P3 shape risk 1
+  exists to prevent, in a new subject. What IS taken now is what costs one line
+  and needs no invented predicate: the positive-declaration rule with its
+  required reason (the investigation's defence 2, silence is never permission)
+  and the stop-for entry. The coherence check is declined with its reason in
+  Appendix C item 12.
+- D-M3-30 (the fix-round contract and the claim grep become artifact
+  requirements): `CLAUDE.md`'s fix-round contract lands as M3-P4's required
+  `fix-round[]` object (`mechanism`, `derivation` with FULL output,
+  `not-covered`), as M3-P7's three fix-round probes with `not-covered` FIRST in
+  the resolved list, and as M3-P6's `fix-round-mechanism` clause. The claim grep
+  lands as M3-P6's `claim-grep` clause carrying the command VERBATIM and as
+  M3-P4's `claims[]` section. **Why both a grep and a schema field**: they catch
+  different things. The grep finds candidate sentences the author did not
+  declare; the section makes the honest restatement a first-class value rather
+  than an omission. T-006 records that the pattern survived being documented as
+  a norm and was reproduced by the person who filed it on the same day, which is
+  the evidence that one mechanism is not enough. The measured evidence for the
+  fix-round half: sixteen M1 fix rounds, thirteen re-reviewed, twelve of those
+  thirteen producing a new finding attributable to the round; the dominant shape
+  is the fix addressing the instance when the defect was the mechanism, and
+  M1-P3 chained four rounds that way, M1-P5 four, M1-P6 two. **What no schema
+  buys**: whether a stated `mechanism` is a mechanism or a restated finding is a
+  judgement; it is M3-P7's `fix-round-mechanism-named` probe, and risk 2 owns it
+  rather than the criteria implying otherwise.
+- D-M3-31 (the dispatch contract ships in the briefs and in `AGENTS.md`):
+  T-008's two rules land as the `incremental-output` and
+  `beacon-is-not-a-claim` clauses in every role brief (M3-P5, M3-P6) and as the
+  `dispatch-requires-a-beacon`, `dispatch-requires-a-guard` and
+  `notification-is-not-liveness` clauses in `AGENTS.md`'s supervision section
+  (M3-P9). **Why the kernel and not a habit**: T-008 measured a competent
+  orchestrator, holding the design, having stated a thirty-minute stall rule
+  aloud that morning, supervising only two agents, losing nine hours eleven
+  minutes to a silent stop, because supervision by waiting for a completion
+  notification is process liveness and C-2 forbids it for exactly that reason.
+  It was the largest single waste in the project, larger than every escalation
+  combined, and it is also the strongest available argument for this kernel
+  existing at all, which is why section 4.5 cites it rather than leaving it in a
+  tuition entry. The GUARD clause names the recorded failure of the first fix,
+  which tested EXISTENCE, fired two minutes in, and reported success while
+  saying nothing: a guard whose condition does not test the property that
+  matters is the red-witness rule one level up.
+- D-M3-32 (every phase declares a hazard class, and the plan schema requires
+  them): each phase section of this plan carries a `hazard class` field beside
+  its acceptance criteria, and `schemas/plan.schema.json` requires
+  `hazard-classes[]` with `minItems: 1` on every phase. `full` mode requires two
+  review CONTRACTS (M3-P3), `checklists/hazard-review.yaml` is the second
+  contract's declared probe list (M3-P7), the clean-room brief declares which
+  contract it runs (M3-P6), the verdict schema records it and its
+  `hazard-classes-addressed[]` completeness is Kind B check
+  `verdict-hazard-classes-addressed`, and `AGENTS.md` carries the dispatch duty
+  (M3-P9). **Why required rather than optional**: T-007 records a phase meeting
+  fifteen of fifteen EXECUTED acceptance criteria, walked by two reviewers on
+  different model families who agreed on every mechanical fact, while
+  live-locking `doctor`, `spawn`, `teardown` and both watcher modes; the
+  approving report does not contain the word `readBeacon`, because no criterion
+  covers that path, and had both been briefed on the criteria both would have
+  approved on any two models. T-007's own words: the pairing "should be a rule,
+  not an accident". An optional field is the version of this rule that does not
+  survive a busy dispatch, which is the same failure mode T-008 records for
+  stall rules. **What it does not buy, stated so the criteria do not imply
+  otherwise**: a declared hazard class can be wrong or shallow, and nothing
+  checks that. It makes the second contract DERIVABLE rather than improvised,
+  which is what T-007 asks for; risk 2 owns the residue.
 
 ## 6. Open questions
 
