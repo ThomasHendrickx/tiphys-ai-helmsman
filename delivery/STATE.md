@@ -5,8 +5,9 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-05
-- milestone: M1 (walking skeleton), in progress
+- as of: 2026-08-06
+- milestone: M1 (walking skeleton), COMPLETE. Exit test passed on `7e1b5f1`.
+  M2 not started, and blocked on the owner's hard stop below.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -60,48 +61,46 @@ implementer against M2 may start.
 | M1-P3 lock and pool | merged | #3 | lease lock, worktree pool; concurrency hardening deferred to M5 |
 | M1-P4 spawn and teardown | merged | #6 | carry the criterion-13 meta.json baseOffline clause and P3's holder-identity transport into the brief |
 | M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
-| M1-P6 toy sandbox and exit test | unblocked, PR not opened; needs branch update then deferred-criteria validation | | branch claude/m1-p6-toy-sandbox-exit; sandbox repo tiphys-ai-helmsman-sandbox |
+| M1-P6 toy sandbox and exit test | merged | #9 | four fix rounds, five review passes; exit test PASSED on the merged head with a falsification control |
 
 ## In flight
 
-**M1-P5: MERGED at `58ac964` (PR #8).** Five of six M1 phases are on `main`.
+**NOTHING. M1 IS COMPLETE AND THE HARD STOP ABOVE IS NOW IN FORCE.**
 
-Four fix rounds, six clean-room reviews, zero high findings from either
-contract on the merged code. The dominant defect was one class, reading a file
-whose type has not been established, and the thing that finally closed it was
-fixing at the MECHANISM rather than at the instance: one implementation in
-`src/task.ts` with every reader and writer routed through it, instead of a
-probe at whichever call site the last review named.
+**M1-P6 merged at `7e1b5f1` (PR #9).** All six M1 phases are on `main`:
+PR #1, #2, #3, #6, #8, #9.
 
-DR-0004's branch protection is LIVE and fired on its first real use: the merge
-was rejected because the branch was one commit behind `main` and the ruleset's
-strict policy requires it current. The branch was updated, CI re-run to green
-on the exact merged head, and only then merged. Recorded because a protection
-that has never refused anything is not known to work.
+**The M1 exit test PASSED on the merged head**, Node v26.6.0 (the declared
+floor, not the container default), exit code 0, 56-record evidence bundle, all
+12 section-4 steps represented. Full evidence in
+`delivery/verification/m1-exit-test-evidence.md`.
 
-**What did NOT close, and is now a carried-forward item with its own scope:**
-`teardown`, four `lock` subcommands and `spawn` still block forever on a named
-pipe, through `src/lock.ts`, `src/pool.ts` and `src/brief.ts`. All are M1-P3
-and M1-P4 files. The PR body and the work history both say so rather than
-implying the class is closed everywhere.
+The falsification control was run on the same head and exits 1 at C2, so the
+pass is a measurement rather than an absence of failure.
 
-**M1-P6: unblocked, PR not yet opened.** P5 is merged, so its grounding is
-satisfied and its four DEFERRED-TO-VALIDATION criteria can now be EXECUTED
-rather than deferred again. Its work history names a discharging command per
-deferral, which makes the validation pass mechanical. The branch is three
-commits behind `main` and must be updated first, both to rebase onto the
-delivered P4 and P5 commands its harness drives and because DR-0004's ruleset
-now requires a current branch before any merge.
+All three blueprint exit conditions witnessed: a trivial task lands on the
+sandbox default branch via spawn; teardown REFUSES while unlanded (exit 1,
+naming the branch, worktree surviving) and exits 0 after the merge with the
+worktree gone and meta closed; the watcher wakes with exactly
+`signal m1-exit turn-end` byte-exact under `cat -A`.
 
-A floor-satisfying Node 26 toolchain is available (environment warning 1), so
-criteria 2, 3 and 5 can be discharged locally rather than only in CI.
-Criterion 5's falsification run is not in the CI workflow at all, so before
-this toolchain existed it had no discharge path.
+Not witnessed and stated rather than implied: full mode, which needs `gh`. It
+is absent here and not usefully installable (it authenticates but reports no
+push permission even where git pushes succeed, and GraphQL is refused). The two
+gh observations are recorded as `skipped-full-only` with their executed local
+substitutions. The full-mode command is in the evidence file.
 
-**M2 and M3 plans: revision 1, reviewed, fix rounds applied.** Neither is
-delta-reviewed, deliberately, because re-grounding at dispatch is already
-required and a second review now would be spent twice. Neither milestone may
-dispatch before M1's exit test passes.
+**M2 and M3 plans.** M2 is RE-GROUNDED (revision 2) against everything M1
+taught: T-005 to T-008, DR-0013 to DR-0016, the conflict pre-pass, and M1's
+full defect record. Its section 1.5 traceability table is rebuilt at 22 rows,
+11 caught by an M2 gate and 11 not. M3 re-grounding has NOT been done.
+
+**M2's parallel structure is recorded** in `delivery/plan/m2-conflict-pre-pass.md`:
+M2-P1 serialises, M2-P2 through M2-P8 are mutually disjoint and concurrent,
+M2-P9 last. Roughly 14 hours against 36 serial.
+
+**Nothing is dispatched and nothing will be** until the owner confirms, per the
+hard stop at the top of this file.
 
 ## Carried forward, not yet owned
 
