@@ -124,6 +124,21 @@ yet. Recorded here so they are not rediscovered the expensive way.
   CONSTRUCTION rather than by counter-experiment. M3 item, and a reviewer
   checklist item in the same role briefs.
 
+**Paperwork compaction, owner-raised 2026-08-06, falls due at the M2 or M3
+boundary.** The owner will challenge what of `delivery/` is useful going
+forward: compact without losing information, cut the filler. The measured
+split that should drive it: reviews and work histories are ~9,200 of the
+~15,300 lines and are mostly READ-ONCE (their probes-run sections were
+load-bearing at merge time and dead after), while decisions, tuition,
+MECHANISMS.md and STATE are the read-every-dispatch layer and are already
+dense. The compaction rule to apply: anything read at dispatch time must be
+dense; anything read only in dispute can be archived cold. Git history keeps
+deleted files, so compaction is "remove from the working tree, keep an index
+row pointing at the sha", never information loss. The kernel connection: M3-P8's
+tuition flow and the report contract ARE the productized compactor (incident
+text projects to mechanism index; review text projects to findings and
+verdicts), so this challenge is an INPUT to M3, not a separate cleanup chore.
+
 **Re-grounding debt for the M2 and M3 plans.** Both were written in parallel
 with M1-P5 and predate T-005 and T-006. DR-0011's recorded consequence makes
 re-grounding an explicit step before their delta review. The specific inputs
