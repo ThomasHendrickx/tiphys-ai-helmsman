@@ -27,6 +27,14 @@
   M1-P4 merged (#1, #2, #3, #6); M1-P5 stopped at PR #8 under DR-0012's
   stop-rather-than-grind limit, awaiting the owner; M1-P6 built ahead on its
   branch, waiting on P5 and on owner action A-1.
+  **State at revision 2 (2026-08-06), superseding all of the above**: M1 is
+  COMPLETE. All six phases are merged (#1, #2, #3, #6, #8, #9); M1-P5 merged at
+  `58ac964` after four fix rounds with zero high findings on the merged code;
+  M1-P6 merged at `7e1b5f1` after four fix rounds and five review passes; the M1
+  exit test PASSED on the merged head on Node v26.6.0 with a 56-record evidence
+  bundle and a falsification control that exits 1, so the pass is a measurement.
+  M2 has not started and is held by the owner's hard stop at the M1 boundary,
+  which permits document work such as this re-grounding and permits no dispatch.
 - Binding rule: "If it is not written here, it is not being made. Unanswered
   questions go to the orchestrator."
 - Relationship to `delivery/plan/kernel-plan-v1.md`: this document replaces
@@ -49,9 +57,17 @@
   may merge, both after plan v1 was approved and both applied here.
 - Process summary: written as the M3 detailed-planning stage of the current
   orchestrated delivery process, from plan v1, the migration table, the two
-  intake documents, decision records DR-0001 to DR-0012, and tuition entries
-  T-001 to T-005. Ten phases, each one branch and one pull request, sequential
-  except for the one pair D-M3-19 permits under DR-0011.
+  intake documents, decision records **DR-0001 to DR-0016**, tuition entries
+  **T-001 to T-008**, the interim mechanism index `MECHANISMS.md`,
+  `delivery/verification/release-verification-interface.md`,
+  `delivery/plan/kernel-plan-m2.md` at revision 2 and
+  `delivery/plan/m2-conflict-pre-pass.md`, `CLAUDE.md`'s fix-round contract,
+  claim grep and dispatch contract, and M1's complete defect record through the
+  M1 exit test. Ten phases, each one branch and one pull request, sequential
+  except for the one pair D-M3-19 permits under DR-0011, with the derivation in
+  section 2.5. Section 1.6 records what revision 2's re-grounding took from each
+  input and what it declined, and is the instrument by which this revision is
+  judged.
   M3-P4 of the v1 outline (the 74-row migration walk) is decomposed by
   artifact family into seven phases (M3-P3 to M3-P9), which discharges the
   binding external review finding EXT-F-07. The remaining three phases are the
@@ -3438,10 +3454,15 @@ regression contract, it is a new contract wearing the old one's name.
      **Revision 2 extends the same test to four more ids in the clauses that
      encode them**: DR-0015 in the merge-authority duty, DR-0016 in
      `escalation-threshold` and `stalled-phase-response`, T-007 in
-     `two-review-contracts`, and T-008 in the supervision section. A clause
-     whose reasoning cannot be traced to a record is a clause a future reader
-     will soften, and four of this document's clauses now encode settled
-     decisions that reversed an earlier position.
+     `two-review-contracts`, and T-008 in the supervision section. The reason
+     for the extension, stated as the argument it is rather than as a
+     prediction: four of this document's clauses now encode decisions that
+     REVERSED an earlier written position, and an untraceable clause gives a
+     future reader nothing to weigh a softening against. This project has one
+     recorded instance of the shape (revision 1 of this plan carried owner
+     action A-3 for a day after DR-0015 removed it, because the removal lived in
+     a record the plan did not cite); one instance is not a class, and the
+     citation costs a grep.
   9. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
      mappings still resolve.
 - new behaviors: `agents-frontmatter-validates`,
@@ -3507,7 +3528,13 @@ regression contract, it is a new contract wearing the old one's name.
   that is internally consistent and records a claim that was false, which is the
   M1-P6 CR-680 shape exactly; a supervising intervention that filled a gap
   without either party noticing, which E0.3 exists for; and a publish that
-  succeeds against a scope the owner has not claimed, which cannot be undone.
+  reaches the registry in a form nobody intended, which is the one action in
+  this milestone with no clean undo. **One open question inside that last
+  hazard, stated rather than asserted**: whether an unclaimed `@tiphys` scope
+  refuses a publish or accepts it is a property of npmjs this plan has NOT
+  executed. The implementer establishes it against the real registry before
+  step 4's workflow can run, and records the command and its output, rather
+  than reasoning about what npm will do.
 - steps:
   1. Update `package.json`: name per DR-0008's outcome, `version` 0.1.0, remove
      `private`, and set `files` to exactly `dist`, `schemas`, `templates`,
@@ -3584,9 +3611,12 @@ regression contract, it is a new contract wearing the old one's name.
      with a clean cache and emits one JSON evidence record per command with its
      exit code (SC-011).
   6. Section 4's exit test passes with its evidence bundle committed, and the
-     bundle validates: every stage has its records, the owner approval artifact
-     is present, and no stage records a substituted or skipped step without the
-     documented substitution marker.
+     bundle validates: every stage has its records, the AUTHORIZATION artifact
+     of stage E2 is present (the dual cross-model clean review with
+     `check-dual-review.mjs`'s exit-0 record, not an owner approval; corrected
+     at revision 2 under DR-0015), the falsification control of stage E0.5 is
+     present and FAILED at its declared stage, and no stage records a
+     substituted or skipped step without the documented substitution marker.
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
      mappings still resolve.
 - new behaviors: `license-gate-missing-metadata`,
@@ -3711,7 +3741,9 @@ stage at which it fails. A control that passes is an exit-test failure, because
 it means the stages are not measuring what they claim. The control's definition
 and its expected failure stage are written into
 `delivery/evidence/m3-exit-test/supervision-rules.md` BEFORE stage E1 begins,
-so it cannot be chosen after seeing which stages turned out to be weak.
+and the file's commit precedes the first E1 evidence record, which is the
+checkable form of "not chosen after seeing which stages turned out to be weak".
+The commit ordering is asserted from the bundle rather than promised.
 
 ### 4.1 Stage E1: full-mode delivery of the subject change (automated witnesses)
 
@@ -4316,22 +4348,24 @@ DR-0016 requires in exchange.
 Per D-7, an open question is a decision record with status open, not a
 free-floating list item. The open questions of this plan are exactly:
 
-1. DR-0008 (release registry and package naming): open, deferred by the owner,
-   with a stated due date ("before the M3 plan is approved") that has now passed:
-   this plan is in adversarial review on 2026-08-05 and the record is still open
-   (M3R-008). Binds M3-P10 entirely and binds `package.json`'s `name` field, the
-   fleet-home pin M3-P10 writes into `tiphys init`, and every
-   release-verification criterion that names the package.
-   What that means for this plan's own approval, stated rather than left to be
-   worked out at dispatch: M3-P1 through M3-P9 may be approved and dispatched
-   with DR-0008 still open, because no acceptance criterion in any of them names
-   a package, a registry, or a version; the reviewer verified this class and this
-   plan re-verified it by searching every criterion in phases 1 to 9 for the
-   package name, the word registry, and a version string. M3-P10 and section 4
-   stage E4 remain blocked, with the split fallback M3-P10 records. The
-   orchestrator re-escalates DR-0008 as overdue at the same moment it presents
-   this plan, rather than presenting the plan and noting the overdue date as a
-   risk afterwards.
+1. **DR-0008 (release registry and package naming): DECIDED 2026-08-05**,
+   public npmjs under the `@tiphys` scope, `@tiphys/kernel` and
+   `@tiphys/claude-code-plugin`. It is no longer an open question and is listed
+   here only because revision 1 listed it as open and overdue while its own
+   risk 3 already recorded it as decided; leaving the contradiction would be a
+   worse outcome than restating a settled record.
+   **Revision 1's text, superseded 2026-08-05, kept as the record of what was
+   asked**: DR-0008 was open and deferred with a stated due date ("before the M3
+   plan is approved") that had passed; it bound M3-P10 entirely and bound
+   `package.json`'s `name` field, the fleet-home pin M3-P10 writes into
+   `tiphys init`, and every release-verification criterion naming the package;
+   M3-P1 through M3-P9 could be approved and dispatched with it open because no
+   acceptance criterion in any of them names a package, a registry or a version,
+   which the reviewer verified and this plan re-verified by search. That
+   verification is still true and is why the decision arriving when it did cost
+   nothing. What remains open on this subject is not a decision but owner action
+   A-4, the publish credential and the `@tiphys` scope claim, which is elevated
+   access the orchestrator does not hold and which DR-0016 keeps owner-reserved.
 2. DR-0010 (harness-native orchestration primitive): open, recorded as due at
    M4. Its question text explicitly includes an M3 half ("should any
    judgment-layer fan-out (M3 review stages) target it?"). This plan's answer,
@@ -4343,23 +4377,55 @@ free-floating list item. The open questions of this plan are exactly:
    DECIDED by the owner 2026-08-05 for an external validator (Ajv 8.20.0 exact,
    Draft 2020-12), with the plan's YAML-parser omission closed in the same
    decision (`yaml` 2.9.0 exact). See section 7 and the decision record.
+4. **DR-0014 (release verification interface): DECIDED IN PRINCIPLE 2026-08-05**
+   (a pluggable interface with kernel-shipped reference adapters), with its
+   interface design investigated and reported in
+   `delivery/verification/release-verification-interface.md`. It is listed here
+   for completeness rather than as an open question, because the part that bears
+   on M3 is settled in the direction that requires no decision from anyone: the
+   charter field is M3's to RESERVE and not to design, which is D-M3-29. The
+   genuinely undecided parts (the field's real shape, whether verification
+   generalizes to N charter-declared verifications, the coherence-check
+   predicate) are all settled by the first real project charter at M4's pilot,
+   per the investigation's section 8 item 4. **No M3 phase is blocked by any of
+   them**, because a reserved field is complete without them.
 
-There are no other open questions.
+There are no other open questions, and **no M3 phase is blocked on an owner
+DECISION** (revision 2, verified by reading every `blocked-by` field in section
+3). The one owner item remaining is A-4, which is an ACT requiring elevated
+access rather than a choice, and it blocks M3-P10 only. Under DR-0016 that
+distinction matters: an act the agent cannot perform is owner-reserved by
+construction, while a choice with a defensible recommendation is the agent's.
 
 ## 7. Owner decisions and owner actions
 
 | DR | Question | Status | Blocks |
 |---|---|---|---|
-| DR-0008 | Release registry and package naming (SC-012, SC-006) | open, deferred; the stated due date (before this plan is approved) has passed, re-escalated as overdue with this plan | M3-P10 in full; the `name` field; the fleet pin; every release criterion. M3-P1 to M3-P9 are NOT blocked (section 6 item 1) |
-| DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work |
-| DR-0013 | How is JSON Schema validation implemented in the kernel | DECIDED 2026-08-05: Ajv 8.20.0 exact, Draft 2020-12, strict; `yaml` 2.9.0 exact | discharged; M3-P1 unblocked |
+| DR-0008 | Release registry and package naming (SC-012, SC-006) | **DECIDED 2026-08-05: public npmjs under `@tiphys`, packages `@tiphys/kernel` and `@tiphys/claude-code-plugin`.** Revision 1's "open, deferred, overdue" is superseded | nothing. M3-P10's remaining blocker is owner ACTION A-4, not this record |
+| DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work, and no is this plan's recorded answer |
+| DR-0013 | How is JSON Schema validation implemented in the kernel | DECIDED 2026-08-05: Ajv 8.20.0 exact, Draft 2020-12, strict; `yaml` 2.9.0 exact | discharged; M3-P1 unblocked and implements it |
+| DR-0014 | The shape of post-merge release verification | DECIDED IN PRINCIPLE 2026-08-05 (pluggable interface, kernel-shipped reference adapters); interface investigated, `delivery/verification/release-verification-interface.md` | nothing in M3. The charter field is RESERVED, not designed (D-M3-29) |
+| DR-0015 | Is the owner an approval step | DECIDED 2026-08-05: no, at milestone boundaries included; dual clean review is the signature | discharged; owner action A-3 REMOVED, section 4.2 rewritten |
+| DR-0016 | When may an agent stop and ask the owner | DECIDED 2026-08-05: only genuine high-impact ties; recommendation-backed questions are the agent's | discharged; `escalation-bounds.on-exceeded` (M3-P3) and two `AGENTS.md` clauses (M3-P9) |
 
-DR-0013 in full. SUPERSEDED 2026-08-05: the owner decided for an EXTERNAL
+**No M3 phase is blocked on an open owner decision at revision 2.**
+
+---
+
+### DR-0013 as raised: HISTORICAL RECORD, NOT INSTRUCTION
+
+**START OF HISTORICAL BLOCK. Everything between this line and the marked END is
+the record of what was ASKED and RECOMMENDED before 2026-08-05, preserved so a
+reader can see the reasoning the owner overrode. It is NOT the decision and no
+part of it is an instruction to anyone.** The owner decided for an EXTERNAL
 validator (Ajv 8.20.0 exact, JSON Schema Draft 2020-12, strict mode), rejecting
-the option-2 recommendation preserved below, and closed this plan's YAML-parser
-omission in the same decision (`yaml` 2.9.0 exact). The authoritative text is
-`delivery/decisions/DR-0013-schema-validator-implementation.md`; what follows is
-kept as the record of what was asked and recommended, and is NOT the decision:
+the option-2 recommendation below, and closed this plan's YAML-parser omission
+in the same decision (`yaml` 2.9.0 exact). The authoritative text is
+`delivery/decisions/DR-0013-schema-validator-implementation.md`. Revision 2
+added this framing because revision 1 marked the block superseded at the top and
+then left its option list, its recommendation and its note to the owner in the
+present imperative, so a reader landing in the middle of it would read
+instructions that are false.
 
 - Question: DR-0006 decided that artifacts are validated by JSON Schema. The
   kernel ships zero runtime dependencies today (`package.json` has
@@ -4386,8 +4452,9 @@ kept as the record of what was asked and recommended, and is NOT the decision:
   keyword property that makes the subset safe, and declare the subset in
   `schemas/README.md`; (3) hand-write per-type checks in TypeScript, which
   contradicts DR-0006's language-neutral intent.
-- Recommendation: option 2, extending M2's validator, which is a change from
-  what this plan first assumed. The reason is M2's loud-failure property: a
+- Recommendation AS MADE, and REJECTED by the owner 2026-08-05: option 2,
+  extending M2's validator, which was a change from
+  what this plan first assumed. The reason given was M2's loud-failure property: a
   keyword outside the set fails the validator rather than being ignored, which
   removes the failure mode that made option 1 attractive (silently ignored
   keywords producing vacuous passes, the SC-011 class). With that property in
@@ -4397,10 +4464,16 @@ kept as the record of what was asked and recommended, and is NOT the decision:
   rules M3-P1 step 2 and M3-P4 step 1 require turn out to need more of the
   specification than the extended subset can carry, and that is a discovery the
   M3-P1 implementer must escalate rather than work around.
-- Note for the owner: M3-P1's steps 8 and 11 and its dependency-related criteria
+- Note for the owner AS WRITTEN, and now DISCHARGED: "M3-P1's steps 8 and 11 and
+  its dependency-related criteria
   change with the choice, and nothing else does. Both options keep the schemas
-  themselves standard JSON Schema, so neither locks the artifacts in.
-- Scope correction from the review (M3R-002): revision 0's note framed
+  themselves standard JSON Schema, so neither locks the artifacts in." That
+  prediction held. Revision 1 changed step 8 only; revision 2 changed step 11
+  and step 10c (the lockfile and the dependency inventory) and M3-P10 step 2
+  (the license gate's inputs), which is the rest of what the note named. The
+  prediction that nothing else changes also held: no schema, no artifact form,
+  and no other phase moved because of the engine choice.
+- Scope correction from the review AS RECORDED (M3R-002): revision 0's note framed
   "the conditional rules need more of the specification than the subset carries"
   as a risk confined to M3-P1 and M3-P4, which was wrong. Section 2.3 now
   separates the checks no schema technology can express (Kind B, fifteen of them,
@@ -4408,22 +4481,45 @@ kept as the record of what was asked and recommended, and is NOT the decision:
   decision is about Kind A only and its blast radius is bounded. An implementer
   who finds a Kind A rule the subset cannot carry escalates rather than
   reclassifying it as Kind B to avoid the conversation (D-M3-22).
+  **Still true after the decision, and DR-0013 clause 8 says so in terms**:
+  cross-document, filesystem, arithmetic and cross-array rules stay in
+  `src/checks.ts` and are not encoded as Ajv extensions, so the Kind A / Kind B
+  boundary is unchanged by the engine choice. The count is sixteen at revision
+  2, not fifteen.
+
+**END OF HISTORICAL BLOCK. Everything below is current.**
+
+---
 
 Owner actions (acts, not choices):
 
-- A-3, before section 4 stage E2: approve the exit run's pull request on the
-  kernel repository. Merge authority is the owner's (D-6, SC-008). DR-0012's
-  delegated grant does not cover this one: it holds the orchestrator to "never
-  merge across a milestone boundary", and the exit run's merge is the milestone
-  boundary. The exit run cannot complete without the owner.
-- A-4, before M3-P10 dispatches: provide publish credentials for the registry
-  DR-0008 decides, and claim the scope or organization that registry requires
-  (npmjs scope claim under option 1, or organization creation under option 2).
-  The orchestrator has no such credential and will never assume one.
-- A-5, standing: DR-0004 items 2 and 3 (branch protection) should be executed
-  before M3 begins if they have not been by then. M3's exit run merges a real
-  change to `main` through the kernel's full mode, and "merge on CI green only"
-  (R-064) is structurally unenforced until they are.
+- **A-3: REMOVED 2026-08-05 by DR-0015**, which names this plan's owner action
+  A-3, "approve the exit run's pull request", as removed, on the basis that the
+  owner is not an approval step anywhere in execution, milestone boundaries
+  included. Revision 1 carried it anyway; revision 2 removes it. The id is
+  retired rather than reused, per the identifier rule. Nothing replaces it as an
+  owner act: section 4.2 stage E2's authorization artifact is the dual
+  cross-model clean review of DR-0012's definition of clean, and the MECHANISM
+  is deliberately kept (the kernel stops, waits for an artifact it did not
+  produce, records it, and resumes from it), because DR-0015 records that as the
+  one place the exit test witnesses that property. What is genuinely lost is in
+  section 4.5 item 9 rather than hidden.
+- A-4, before M3-P10 dispatches: provide publish credentials for npmjs and claim
+  the `@tiphys` scope, which DR-0008 decided on 2026-08-05 along with the
+  package names `@tiphys/kernel` and `@tiphys/claude-code-plugin`. The
+  orchestrator has no such credential and will never assume one. **This is the
+  only remaining owner item on M3's critical path**, and under DR-0016 it is
+  owner-reserved by construction rather than by judgement: it is elevated access
+  the agent does not hold, not a choice with options.
+- A-5: **DONE 2026-08-05, superseding revision 1's standing item.** DR-0004
+  items 2 and 3 (branch protection) are executed. `delivery/STATE.md` records
+  the ruleset as active and witnessed refusing a merge whose branch was behind
+  `main`, then allowing it after the branch was updated and CI went green on the
+  exact merged head. So "merge on CI green only" (R-064) is structurally
+  enforced before M3 begins, which is what this item asked for, and it is
+  witnessed rather than asserted. **DR-0004 item 4 (implementer token scoping)
+  remains queued for M2** and is not an M3 item: M2-P8 builds the kernel-side
+  half and the owner half is that queued action.
 
 ## 8. Risks
 
@@ -4490,13 +4586,27 @@ comparison plan v1's own history makes available.
    findings did not ask for (the mechanism-index ownership was already assigned
    to M3 by `delivery/STATE.md`'s carried-forward list; the top-level error
    handler, D-M3-21; DR-0012's escalation bounds as mode data, M3-P3 step 1;
-   T-001's framing lesson as a checklist field, M3-P7 step 5). The residual risk
-   is the same shape: M1-P5 is still open, M1-P6 has not run, and the M1 exit
-   test has not happened, so T-006 and T-007 may exist before M3-P1 dispatches.
-   The mitigation is the one that just worked, applied again: re-ground at
-   dispatch, not only at planning. Each phase's grounding line already requires
-   verification of what it consumes; this risk adds the tuition feed to that
-   list, which is exactly what the mechanism index makes cheap.
+   T-001's framing lesson as a checklist field, M3-P7 step 5).
+   **Revision 1 stated its residual risk as a prediction, and the prediction
+   came true in full, which is now the most useful thing this item records.** It
+   read: "M1-P5 is still open, M1-P6 has not run, and the M1 exit test has not
+   happened, so T-006 and T-007 may exist before M3-P1 dispatches." Measured on
+   2026-08-06: M1-P5 merged at `58ac964`, M1-P6 merged at `7e1b5f1`, the M1 exit
+   test PASSED with a 56-record bundle, and T-006, T-007 AND T-008 all exist.
+   Four decision records also arrived (DR-0013 to DR-0016), two of which
+   REVERSED positions revision 1 had encoded: DR-0015 removed an owner action
+   the plan still carried, and DR-0016 replaced the response at an escalation
+   bound the plan had written into mode data. Revision 2 is the re-grounding
+   that absorbed all of it, and section 1.6 is its record.
+   **The risk is not discharged, because the same shape applies one milestone
+   along**: M2 has not run, M2's own plan is DRAFT at revision 2 and pending its
+   adversarial review round 2, and six M3 phases ground on M2's DELIVERED
+   artifacts rather than on its planned ones. The mitigation is the one that has
+   now worked twice: re-ground at dispatch, not only at planning. Each phase's
+   grounding line already requires verification of what it consumes; this risk
+   adds the tuition feed to that list, which is exactly what the mechanism index
+   makes cheap, and revision 2 makes the lookup a dispatch duty in every brief
+   rather than a thing an orchestrator remembers.
 8. **Two plans written concurrently.** M2 and M3 were detail-planned in
    parallel under DR-0011 by separate agents. The boundary is enumerated in the
    M2 plan's section 2 and accepted in D-M3-17, which makes disagreement visible
@@ -4515,6 +4625,46 @@ comparison plan v1's own history makes available.
    cleanly withdrawn, and fleet homes pin it from M3 onward. M3-P10's ordering
    (license gate, pack assertions, install-from-tarball, only then publish)
    exists for that reason, and the phase is dispatched at the strongest tier.
+   **Narrowed at revision 2**: the NAME half is settled (DR-0008, `@tiphys`),
+   so what remains is the version and the content, both of which the ordering
+   above addresses. The new element is the two production dependencies: from
+   M3-P1 onward the published package carries `ajv` and `yaml` and their
+   transitive production trees, which every fleet home inherits and which
+   DR-0013 marked the decision costly for. M3-P10 criterion 1b compares the
+   gate's re-derived inventory against the one M3-P1 recorded when the pins were
+   taken, so a tree that grew between the two is a finding rather than a
+   surprise at publish time.
+11. **A known flake in a suite this plan treats as a binary gate (NEW at
+   revision 2).** `test/liveness.test.ts:671` asserts a hardcoded `age 13s` and
+   fails under CPU contention; it was seen once by each of two M1-P6 reviewers
+   and was clean on serial re-run both times (tracked low CR-762).
+   `delivery/STATE.md` calls it "a real flake in a suite the rules treat as a
+   hard binary gate" and says it should be fixed early in M2. Every M3 phase's
+   criterion 1 reads `node --test` exit 0 as a fact, and M3-P2 PROMOTES that
+   reading into `gate-registry.yaml`, where it becomes the definition every
+   future project inherits. **Mitigation, and it is weak on purpose because the
+   strong version is not M3's to build**: M3-P2's grounding requires the flake's
+   state to be VERIFIED at dispatch and recorded, and if it is still open the
+   registry entry's `$comment` says so. M3 does not fix it (it is an M1-P5
+   file, no M3 phase acquires it) and M3 does not paper over it. What would
+   discharge this risk is M2 fixing the flake, which is where
+   `delivery/STATE.md` already assigns it. The failure signature to watch for
+   is an M3 phase re-running a red suite until it goes green and recording the
+   green run, which is exactly the re-kick behaviour M3-P7's
+   `checklists/flake-playbook.yaml` exists to make a decision rather than a
+   habit.
+12. **M3 inherits an open defect class in a file it consumes (NEW at revision
+   2).** The unprobed-open class is still open in `src/lock.ts`, `src/pool.ts`
+   and `src/brief.ts`; M3-P5 consumes the third and both M3-P5 and M3-P6 build
+   `brief compose` on top of it. **Mitigation**: D-M3-27 binds all NEW M3 code
+   to the delivered `classifyEntry` and `refuseOpenForWrite`, and M3-P5
+   criterion 6c and M3-P1 criterion 5d stage the dangerous state with a real
+   `mkfifo` in both directions. **The residue is real and is not closed**: M3
+   stops the class growing to a thirteenth instance and leaves the twelve M1
+   instances where they are, which is the same position M2 takes with its
+   constraint M2-C-6, and neither milestone owns the fix. The failure signature
+   to watch for is an M3 phase "fixing" `src/brief.ts` in passing, which would
+   be an undeclared scope extension into an M1-P4 file and would repeat CR-521.
 
 ---
 
@@ -4539,6 +4689,27 @@ R-054 and R-060 for the checklist and verdict additions, R-002 and R-061 for the
 `AGENTS.md` review duties. Tuition entries and decision records are not
 requirement rows and never enter this table; adding one does not create a row,
 which is why the count survives a fix round that added real scope.
+
+**Revision 2 moved no row and changed no count either, and the check is the
+same one.** The artifacts revision 2 added (the plan schema's
+`hazard-classes[]`, `full` mode's `review-contracts[]` and
+`escalation-bounds.on-exceeded`, the charter's reserved `release-verification`
+field and its `stop-for[]` entry, the report and work-history `claims[]` and
+`fix-round[]` sections, `checklists/hazard-review.yaml` and six new probes, the
+verdict's `review-contract` and `hazard-classes-addressed[]`, the five
+dispatch-contract and escalation clauses across the briefs and `AGENTS.md`, the
+`claim-grep` and `fix-round-mechanism` clauses, three more tuition entries and
+eight more seeded mechanisms) are all delivered under rows that already existed:
+R-019 for the plan phase fields, R-096 and R-024 for the mode fields, R-022 and
+R-090 for the charter fields, R-052a, R-057a, R-085 to R-089a for the record
+contracts, R-053 to R-060 for the checklist and verdict additions, R-033a and
+R-009b for the brief clauses, R-002, R-061 and R-013 for the `AGENTS.md` duties,
+and R-091 for the tuition feed and its index. Per-phase counts are unchanged:
+M3-P1 = 12, M3-P2 = 3, M3-P3 = 3, M3-P4 = 9, M3-P5 = 7, M3-P6 = 13, M3-P7 = 13,
+M3-P8 = 3, M3-P9 = 11, M3-P10 = 0, total 74. **This is the second consecutive
+revision in which real scope was added and no row moved**, which is what the
+"artifacts, not rows" discipline is for and which is worth stating because the
+alternative reading, that nothing was added, is false.
 
 | Row | Phase | Artifact and note |
 |---|---|---|
@@ -4631,9 +4802,9 @@ blocked phase and not as a surprise at implementation time.
 
 | Phase | M2 components consumed | What breaks without it |
 |---|---|---|
-| M3-P1 | M2-P4 scope auditor (the phase-declaration projection), M2-P5 citation linter, M2-P6 coverage checker, the M2 validator module and its keyword set, `src/gates/schemas/` | the plan schema's open-questions and parked reference types are unconstrained; the projection stays a second hand-authored source; under DR-0013 as decided, M3-P1 adds Ajv and retires the M2 engine, so this row's risk is the M2 boundary rather than a keyword subset |
+| M3-P1 | M2-P4 scope auditor (the phase-declaration projection), M2-P5 citation linter, M2-P6 coverage checker, the M2 validator module WITH ITS DIAGNOSTIC CONTRACT and its own validation tests, `src/gates/schemas/` | the plan schema's open-questions and parked reference types are unconstrained; the projection stays a second hand-authored source; and, corrected at revision 2, the retirement of the M2 engine becomes a REWRITE of M2's tests rather than an engine swap unless M2 as delivered emits `INVALID <json-pointer> <message>` with deterministic ordering and its tests assert that contract rather than engine wording (M2-P1 step 4 and criterion 10). Step 1 verifies both; a divergence is an escalation, not an adaptation |
 | M3-P2 | M2-P1 `gates.manifest.json`, its schema with the reserved `modes` field, and the runner | there is nothing to promote; the registry would be invented rather than promoted, and SC-011's semantics would be re-derived |
-| M3-P3 | M2-P1 (gate set references), M2-P7 deploy and migration verifiers | `full` mode's stage list cannot reference the verification stages the process doc requires after merge |
+| M3-P3 | M2-P1 (gate set references), M2-P7's post-merge verification contract (rewritten in M2's revision 2 under DR-0014 as ONE pluggable contract with two static manifest entries and two reference adapters, not two bespoke verifiers) | `full` mode's stage list cannot reference the verification stages the process doc requires after merge. Corrected at revision 2: the stage names are `deploy-verify` and `migration-verify` as before, and what changed underneath them is M2's implementation shape, which M3 references by stage id and never by adapter |
 | M3-P4 | M2-P3 full-suite wrapper, M2-P6 coverage checker and its declared input contract | the report contract cannot bind "green" to a real exit code and parity counts; finding-to-outcome parity has no checker and the two contracts drift apart |
 | M3-P5 | M2-P5 citation linter | R-010a's verification pass has no attached verifier, which is the whole point of the row |
 | M3-P6 | M2-P2 red-witness harness, M2-P8 credential scoping, M3-P2 registry | the red-witness clause has no evidence artifact; the no-pull-request clause contradicts nothing structural |
@@ -4668,17 +4839,67 @@ not mistake absence for oversight.
    proxy exists (commits per push from git history, CI runs per phase from the
    workflow API) and is declined with reasons in D-M3-25, rather than the
    question going unasked as it did in revision 0 (M3R-009).
-10. Three of the four carried-forward items in `delivery/STATE.md` stay unowned
-   by M3, stated so the silence is a choice: the non-atomic `meta.json` write
-   (the M2 plan is where it belongs, and it is a source defect not a layer-2
-   artifact); M1-P4's inert liveness hook, which M3 does not remove because no
-   M3 phase acquires `src/spawn.ts`, and if any phase ends up needing that file
-   it removes the hook in the same change and declares it; and deadline-less
-   abandonment, which plan v1's own not-proven list assigns to M2 or M4. The
-   fourth, the top-level error handler, is owned by M3-P1 under D-M3-21, and the
-   fifth, the mechanism index, is owned by M3-P8 under D-M3-23.
+10. Carried-forward items in `delivery/STATE.md`, re-checked at revision 2
+   against the file as it now reads rather than as revision 1 read it. The list
+   has grown from five to eight, and M3's dispositions are:
+   **Unowned by M3, stated so the silence is a choice**: the non-atomic
+   `meta.json` write (the M2 plan is where it belongs, and it is a source defect
+   not a layer-2 artifact); M1-P4's inert liveness hook, which M3 does not
+   remove because no M3 phase acquires `src/spawn.ts`, and if any phase ends up
+   needing that file it removes the hook in the same change and declares it;
+   deadline-less abandonment, which plan v1's own not-proven list assigns to M2
+   or M4; **the unprobed-open class across `src/lock.ts`, `src/pool.ts` and
+   `src/brief.ts`** (NEW in the list at revision 2), which M3 does not close and
+   does not grow, per D-M3-27 and risk 12; and **M1-P6's three tracked lows**
+   (NEW at revision 2), of which CR-762 is risk 11's subject and belongs to M2,
+   CR-760 shapes D-M3-28 without M3 owning the fan-in fix, and CR-761 is a
+   documentation narrowing touching no M3 artifact.
+   **Owned by M3**: the top-level error handler, M3-P1 under D-M3-21; the
+   mechanism index, M3-P8 under D-M3-23; **the second review contract per code
+   phase** (NEW in the list at revision 2, from T-007), owned across M3-P1's
+   `hazard-classes[]`, M3-P3's `review-contracts[]`, M3-P6's brief field,
+   M3-P7's hazard checklist and M3-P9's dispatch duty, under D-M3-32; and **the
+   work-history contract covering impossibility, coverage and remedy claims**
+   (NEW at revision 2, from T-006), owned by M3-P4's `claims[]` section and
+   M3-P7's two probes, under D-M3-30.
 11. Counting fix rounds. `full` mode carries DR-0012's stop-rather-than-grind
    limits as `escalation-bounds` data (M3-P3), and nothing in M3 counts rounds
    or detects recurrence. The bound is a number the orchestrator brief cites,
    which makes it visible and auditable but not enforced; enforcement needs
-   pipeline history M3 does not have. Recorded rather than implied.
+   pipeline history M3 does not have. Recorded rather than implied. **Revision 2
+   adds the response half (`on-exceeded`, DR-0016) as data alongside the limits,
+   which changes what an unenforced bound MEANS but not whether it is
+   enforced**: an orchestrator reading the bound now finds the action as well as
+   the threshold, and still nothing counts.
+12. **The charter coherence check for release verification (NEW at revision 2,
+   available and declined with a reason).** The interface investigation
+   recommends it: a charter declaring a non-local deployment topology while
+   declaring release verification `none` is internally contradictory, that
+   contradiction is checkable across two fields of one document, it is a Kind B
+   derived check in this plan's own vocabulary, and it costs one check and no
+   new artifact. It is the only one of the investigation's four defences that
+   catches a project lying to itself deliberately rather than by omission, so
+   the case for it is real and is not dismissed. **It is declined for M3 because
+   its predicate cannot be written yet.** The investigation says so itself, at
+   section 4.1 item 4 ("the exact predicate, non-local topology, needs a real
+   charter to be written against") and again at section 8 item 4, which names
+   what settles it: the first real project charter, at M4's pilot. Writing an
+   invented predicate now would produce a check that is either trivially true or
+   fails honest charters, and building enforcement for a state the milestone
+   never enters is the M1-P3 shape risk 1 exists to prevent. What M3 DOES take
+   from the same section, because it needs no predicate, is the positive
+   declaration with a required reason (D-M3-29) and the `stop-for[]` entry for a
+   change to `none` (M3-P1 step 3). Recorded here as an option for M4, not as a
+   debt.
+13. **A compactor for `delivery/` (NEW at revision 2).** M3-P8 step 2c states
+   that the tuition flow's projection model is also the repository's compaction
+   model: projections are the read layer and must stay dense, raw entries are
+   the archive layer and are read only in dispute, and once a raw entry's
+   durable residue is projected out, git history makes removing it from the
+   working tree lossless. **No compactor is built and none is proposed here.**
+   What M3 ships is the structural distinction plus the check that makes an
+   archive removal safe rather than lossy
+   (`mechanism-rule-evidence-resolves`: a projection whose evidence no longer
+   resolves fails). Recorded so a later reader can see that the model was stated
+   deliberately and the tool was not built, rather than concluding either was an
+   oversight.
