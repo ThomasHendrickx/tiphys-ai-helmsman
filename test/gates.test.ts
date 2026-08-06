@@ -1370,6 +1370,242 @@ test("the workflow's gate bundle step runs the gate runner and is able to fail",
   }
 });
 
+/**
+ * Fix round, M2-P1, mechanism 2 (found by M2-P5's implementer isolating
+ * their own citation-linter gate; refined after M2-P4's implementer
+ * independently derived the same class plus two more members: --only
+ * errors rather than silently drifting, and the PR step is exposed too,
+ * through a DIFFERENT missing parameter). THE MECHANISM: this interim CI
+ * wiring cannot absorb a PARAMETERIZED gate, on either bundle step. THE
+ * DANGEROUS STATE, two structurally different members:
+ *
+ *   1. The PUSH step's shape (no --base, no --head, no --phase) pointed at
+ *      a manifest carrying a REQUIRED diff-touches gate. M2-C-3 fails that
+ *      gate closed as `error` (no --base), which is right for the gate and
+ *      wrong for a step that invites it to run where it structurally
+ *      cannot evaluate.
+ *   2. The PULL-REQUEST step's shape (--base and --head ARE present, but
+ *      --phase never is) pointed at a manifest carrying a REQUIRED
+ *      branch-matches gate (the shape M2-P4's scope gate takes). Supplying
+ *      --base and --head does not help this gate; it needs the one
+ *      parameter neither generic step is written to carry.
+ *
+ * Both directions are `error`, which is a nonzero exit for the whole bundle
+ * (`decideAggregate`: `counts.error > 0` forces `EXIT_GATE_ERROR`). `--only
+ * manifest-self-check` fixes both by never handing either gate to a
+ * precondition evaluation at all (`runClaimedBundle` filters `selected`
+ * before any precondition runs), and the falsifiability arm (an
+ * empty-manifest substitution) must still redden under the new shape on
+ * BOTH steps, this time via `--only names no such gate` rather than the
+ * original "zero applicable gates" reason.
+ */
+test("both bundle steps' --only shape survives a required gate that its own step cannot evaluate", {
+  skip: existsSync(distEntry)
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, () => {
+  const dir = scratch();
+  try {
+    const commands = bundleStepCommands();
+    const push = commands.find((c) => !c.includes("--base")) as string;
+    const pullRequest = commands.find((c) => c.includes("--base")) as string;
+    assert.ok(push, "no push-event bundle step (the one with no --base)");
+    assert.ok(pullRequest, "no pull-request bundle step (the one with --base)");
+    // The fixture manifest is the one hazard variable; every other token in
+    // each step (the binary, --evidence, and this round's --only) is the
+    // REAL text from the workflow file, not a hand-written stand-in for it.
+    assert.match(push, /--only manifest-self-check/);
+    assert.match(pullRequest, /--only manifest-self-check/);
+
+    /* ---- Member 1: the push step against a required diff-touches gate ---- */
+
+    const diffGateCommand = writeGate(dir, "diffgate", {
+      record: gateRecord("g-diff-required", "green", 1),
+      exit: 0,
+    });
+    const diffManifest = writeManifest(dir, [
+      {
+        id: "manifest-self-check",
+        command: writeGate(dir, "selfcheck-stand-in-1", {
+          record: gateRecord("manifest-self-check", "green", 2),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+      {
+        id: "g-diff-required",
+        command: diffGateCommand,
+        unitLabel: "fixture units",
+        applicability: "required",
+        precondition: { id: "touches-src", kind: "diff-touches", paths: ["src/"] },
+      },
+    ]);
+
+    // DIRECTION 1a: the DANGEROUS shape, --only stripped back out. This is
+    // the exact hazard M2-P5's implementer hit for real once their gate
+    // landed in the shared manifest: error naming the absent parameter.
+    const pushWithoutOnly = push
+      .replace("--only manifest-self-check", "")
+      .replace("gates.manifest.json", diffManifest);
+    const dangerousTemp = join(dir, "dangerous-push");
+    mkdirSync(dangerousTemp, { recursive: true });
+    const dangerousPush = spawnSync(
+      "bash",
+      ["-c", pushWithoutOnly.replaceAll("${{ runner.temp }}", dangerousTemp)],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.notEqual(
+      dangerousPush.status,
+      0,
+      `the unpinned push shape exited 0 over a required diff-touches gate with no --base: ${dangerousPush.stdout}${dangerousPush.stderr}`,
+    );
+    const diffRecord = JSON.parse(
+      readFileSync(
+        join(dangerousTemp, "gate-evidence", "g-diff-required", "result.json"),
+        "utf8",
+      ),
+    ) as { status: string; detail: string };
+    assert.equal(diffRecord.status, "error");
+    assert.match(diffRecord.detail, /--base/);
+
+    // DIRECTION 1b: the ACTUAL, current push step text (with its --only).
+    // The diff-touches gate is never evaluated at all (filtered out before
+    // any precondition runs), so the bundle is green over the one gate the
+    // main-bundle column says runs here, with no record for the other.
+    const pushWithOnly = push.replace("gates.manifest.json", diffManifest);
+    const safeTemp = join(dir, "safe-push");
+    mkdirSync(safeTemp, { recursive: true });
+    const safePush = spawnSync(
+      "bash",
+      ["-c", pushWithOnly.replaceAll("${{ runner.temp }}", safeTemp)],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(safePush.status, 0, safePush.stdout + safePush.stderr);
+    const safePushSummary = readSummary(join(safeTemp, "gate-evidence"));
+    assert.ok(
+      safePushSummary.counts["green"] >= 1,
+      `the pinned push shape measured nothing: ${JSON.stringify(safePushSummary.counts)}`,
+    );
+    assert.equal(
+      existsSync(join(safeTemp, "gate-evidence", "g-diff-required", "result.json")),
+      false,
+      "the diff-touches gate must have no record at all when --only excludes it",
+    );
+
+    /* ---- Member 2: the pull-request step against a required branch-matches gate ---- */
+    // Structurally different from member 1: --base and --head ARE present
+    // here (this step carries them), so this member proves the hazard is
+    // "a parameter this step's shape does not carry" in general, not
+    // specifically "no --base".
+
+    const { base } = scratchRepo(dir);
+    const phaseGateCommand = writeGate(dir, "phasegate", {
+      record: gateRecord("g-phase-required", "green", 1),
+      exit: 0,
+    });
+    const phaseManifest = writeManifest(dir, [
+      {
+        id: "manifest-self-check",
+        command: writeGate(dir, "selfcheck-stand-in-2", {
+          record: gateRecord("manifest-self-check", "green", 2),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+      {
+        id: "g-phase-required",
+        command: phaseGateCommand,
+        unitLabel: "fixture units",
+        applicability: "required",
+        precondition: { id: "on-phase", kind: "branch-matches", pattern: "claude/{phase}" },
+      },
+    ]);
+    const prSubstituted = pullRequest
+      .replace('--base "${{ github.event.pull_request.base.sha }}"', `--base "${base}"`)
+      .replace('--head "${{ github.event.pull_request.head.sha }}"', '--head "HEAD"');
+
+    // DIRECTION 2a: the DANGEROUS shape, --only stripped back out. --base
+    // and --head are supplied (this step always has them); --phase is not,
+    // and no PR-event token supplies it. Error naming the absent parameter,
+    // not the absent --base a naive reading of mechanism 2 might expect.
+    const prWithoutOnly = prSubstituted
+      .replace("--only manifest-self-check", "")
+      .replace("gates.manifest.json", phaseManifest);
+    const dangerousPrTemp = join(dir, "dangerous-pr");
+    mkdirSync(dangerousPrTemp, { recursive: true });
+    const dangerousPr = spawnSync(
+      "bash",
+      ["-c", prWithoutOnly.replaceAll("${{ runner.temp }}", dangerousPrTemp)],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.notEqual(
+      dangerousPr.status,
+      0,
+      `the unpinned PR shape exited 0 over a required branch-matches gate with no --phase: ${dangerousPr.stdout}${dangerousPr.stderr}`,
+    );
+    const phaseRecord = JSON.parse(
+      readFileSync(
+        join(dangerousPrTemp, "gate-evidence", "g-phase-required", "result.json"),
+        "utf8",
+      ),
+    ) as { status: string; detail: string };
+    assert.equal(phaseRecord.status, "error");
+    assert.match(phaseRecord.detail, /--phase/);
+
+    // DIRECTION 2b: the ACTUAL, current PR step text (with its --only).
+    const prWithOnly = prSubstituted.replace("gates.manifest.json", phaseManifest);
+    const safePrTemp = join(dir, "safe-pr");
+    mkdirSync(safePrTemp, { recursive: true });
+    const safePr = spawnSync(
+      "bash",
+      ["-c", prWithOnly.replaceAll("${{ runner.temp }}", safePrTemp)],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(safePr.status, 0, safePr.stdout + safePr.stderr);
+    const safePrSummary = readSummary(join(safePrTemp, "gate-evidence"));
+    assert.ok(
+      safePrSummary.counts["green"] >= 1,
+      `the pinned PR shape measured nothing: ${JSON.stringify(safePrSummary.counts)}`,
+    );
+    assert.equal(
+      existsSync(join(safePrTemp, "gate-evidence", "g-phase-required", "result.json")),
+      false,
+      "the branch-matches gate must have no record at all when --only excludes it",
+    );
+
+    /* ---- Falsifiability, both steps, under the new --only shape ---- */
+
+    const emptyManifest = writeManifest(dir, [], "empty-for-only.json");
+    for (const [label, step, tempName] of [
+      ["push", push, "empty-only-push"],
+      ["pull-request", prSubstituted, "empty-only-pr"],
+    ] as const) {
+      const stepWithOnlyEmpty = step.replace("gates.manifest.json", emptyManifest);
+      const emptyTemp = join(dir, tempName);
+      mkdirSync(emptyTemp, { recursive: true });
+      const emptyResult = spawnSync(
+        "bash",
+        ["-c", stepWithOnlyEmpty.replaceAll("${{ runner.temp }}", emptyTemp)],
+        { encoding: "utf8", cwd: repoRoot },
+      );
+      assert.notEqual(
+        emptyResult.status,
+        0,
+        `the pinned ${label} shape exited 0 over an empty manifest: ${emptyResult.stdout}${emptyResult.stderr}`,
+      );
+      assert.match(
+        emptyResult.stdout + emptyResult.stderr,
+        /--only names no such gate/,
+        `${label}: ${emptyResult.stdout}${emptyResult.stderr}`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /* M2-C-2 at the constructor, and the exit-code/status seam             */
 /* ------------------------------------------------------------------ */
@@ -2384,6 +2620,124 @@ test("manifest-self-check reports one unit per schema document", () => {
     // The manifest validation is real work and is still reported.
     assert.match(record.detail, /gates\.manifest\.json/);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Fix round, M2-P1: schemaDocumentPaths() enumerates src/gates/schemas/
+ * instead of naming two files. The DANGEROUS state this guards against is
+ * not "a schema document is missing" (that was already covered); it is a
+ * growing directory that the inventory function never looks at again once
+ * written, so a phase (M2-P2, M2-P4, M2-P5, M2-P6, M2-P7 each add one) ships
+ * a schema document that manifest-self-check silently never validates,
+ * while `unitLabel` keeps claiming "schema documents validated". The two
+ * cases below are structurally different members of that one class: the
+ * first shows the new document is COUNTED, the second shows its CONTENT is
+ * actually loaded and checked against the closed keyword set, not merely
+ * tallied as a file that exists.
+ *
+ * node --test runs the tests inside one file sequentially by default (no
+ * per-test concurrency is set anywhere in this file, and package.json's
+ * "test" script passes no concurrency flag), so the temporary document
+ * written here and removed in `finally` cannot be observed mid-flight by
+ * the CR-812 test above or any other test in this file.
+ */
+test("manifest-self-check picks up a schema document dropped into the directory after the fact", () => {
+  const schemaDir = fileURLToPath(
+    new URL("../src/gates/schemas/", import.meta.url),
+  );
+  const dir = scratch();
+  const baselineSchemas = readdirSync(schemaDir).filter((name) =>
+    name.endsWith(".schema.json"),
+  );
+  const tempName = "zz-fixture-temp.schema.json";
+  const tempPath = join(schemaDir, tempName);
+  assert.equal(
+    existsSync(tempPath),
+    false,
+    "fixture name must not collide with a real shipped schema",
+  );
+  try {
+    const before = runCli([
+      "gates",
+      "self-check",
+      "--manifest",
+      join(repoRoot, "gates.manifest.json"),
+      "--result",
+      join(dir, "before.json"),
+    ]);
+    assert.equal(before.status, 0, before.stdout + before.stderr);
+    const beforeRecord = JSON.parse(
+      readFileSync(join(dir, "before.json"), "utf8"),
+    ) as { units: number };
+    assert.equal(beforeRecord.units, baselineSchemas.length);
+
+    // A valid document, expressed entirely in the closed keyword set, so
+    // this test isolates the enumeration mechanism from the load contract.
+    writeFileSync(
+      tempPath,
+      JSON.stringify(
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["ok"],
+          properties: { ok: { type: "string" } },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const after = runCli([
+      "gates",
+      "self-check",
+      "--manifest",
+      join(repoRoot, "gates.manifest.json"),
+      "--result",
+      join(dir, "after.json"),
+    ]);
+    assert.equal(after.status, 0, after.stdout + after.stderr);
+    const afterRecord = JSON.parse(
+      readFileSync(join(dir, "after.json"), "utf8"),
+    ) as { units: number; detail: string };
+    assert.equal(afterRecord.units, baselineSchemas.length + 1);
+    assert.match(afterRecord.detail, new RegExp(tempName.replace(/\./g, "\\.")));
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
+
+  // Second, structurally different member: a document that IS enumerated
+  // but carries a keyword outside the closed set must fail loudly, naming
+  // the keyword, rather than being counted as validated. This is the
+  // load-error contract of src/gates/validate.ts (loadSchema), exercised
+  // here through the CLI so the assertion is on captured self-check output
+  // and not on a hand-written string.
+  const badPath = join(schemaDir, tempName);
+  try {
+    writeFileSync(
+      badPath,
+      JSON.stringify({ type: "string", maxLength: 5 }, null, 2) + "\n",
+    );
+    const result = runCli([
+      "gates",
+      "self-check",
+      "--manifest",
+      join(repoRoot, "gates.manifest.json"),
+      "--result",
+      join(dir, "bad.json"),
+    ]);
+    // A red self-check exits non-zero (EXIT_RED); only the result FILE, not
+    // the process exit code, carries the pass/fail this test asserts on.
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    const badRecord = JSON.parse(
+      readFileSync(join(dir, "bad.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(badRecord.status, "red");
+    assert.match(badRecord.detail, /maxLength/);
+    assert.match(badRecord.detail, new RegExp(tempName.replace(/\./g, "\\.")));
+  } finally {
+    rmSync(badPath, { force: true });
     rmSync(dir, { recursive: true, force: true });
   }
 });

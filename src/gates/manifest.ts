@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readRegularFileIfPresent } from "../task.ts";
 import {
@@ -118,12 +119,32 @@ export function resultSchema(): SchemaDocument {
   return cachedResultSchema;
 }
 
-/** Absolute paths of every schema document `manifest-self-check` validates. */
+/**
+ * Absolute paths of every schema document `manifest-self-check` validates.
+ *
+ * ENUMERATED, NOT ENUMERABLE-BY-HAND (fix round, M2-P1). This milestone's
+ * plan (kernel-plan-v1.md) adds four more schema documents to this same
+ * directory across M2-P2, M2-P4, M2-P5, M2-P6 and M2-P7. A fixed two-entry
+ * list here was the mechanism, not a fluke: it named the two documents that
+ * existed at the time this function was written and would keep returning
+ * exactly those two forever, so manifest-self-check would silently stop
+ * validating every document a later phase ships, while test/gates.test.ts's
+ * independent readdir-based parity check reddens correctly the moment a
+ * phase adds one (CR-812's test, `test/gates.test.ts` near line 2378). The
+ * fix is to make the SAME enumeration the source of truth here: read the
+ * directory beside this module, keep entries matching `*.schema.json`, and
+ * sort them by filename so the order is deterministic across platforms and
+ * across runs (readdir order is not guaranteed by POSIX). Every document a
+ * phase drops into `src/gates/schemas/` is then validated automatically,
+ * and the parity property the test checks becomes structural rather than
+ * a thing two call sites have to be kept in sync by hand.
+ */
 export function schemaDocumentPaths(): string[] {
-  return [
-    fileURLToPath(new URL("gate-manifest.schema.json", schemaDirectory)),
-    fileURLToPath(new URL("gate-result.schema.json", schemaDirectory)),
-  ];
+  const directory = fileURLToPath(schemaDirectory);
+  return readdirSync(directory)
+    .filter((name) => name.endsWith(".schema.json"))
+    .sort()
+    .map((name) => fileURLToPath(new URL(name, schemaDirectory)));
 }
 
 /**

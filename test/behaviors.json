@@ -222,5 +222,7 @@
   "coverage-evidence-write-refused-is-error": "a refused or failed evidence write makes the gate error instead of a silent green",
   "coverage-regex-malformed-pattern-is-error": "a malformed config pattern is a named config error with a written result record, never an uncaught exception",
   "coverage-regex-redos-bounded": "a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging",
-  "coverage-ambiguous-bucket-kind": "a bucket value matching more than one declared kind is red naming every match, never a silent first match"
+  "coverage-ambiguous-bucket-kind": "a bucket value matching more than one declared kind is red naming every match, never a silent first match",
+  "gate-self-check-schema-enumeration": "manifest-self-check picks up a schema document dropped into the directory after the fact",
+  "gate-bundle-steps-only-survives-parameterized-gate": "both bundle steps' --only shape survives a required gate that its own step cannot evaluate"
 }
