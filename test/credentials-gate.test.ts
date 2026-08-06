@@ -531,6 +531,23 @@ test("credential-scrub probes report resolvable sources when the redirection is 
   assert.equal(envProbe.outcome, "resolvable", envProbe.detail);
   assert.match(envProbe.detail, /GH_TOKEN/);
   assert.equal(credentialsModule.verdictFromProbes(probesToken).status, "red");
+
+  // Member 4, the declared hazard itself: an allowlist WIDENED to admit a
+  // token variable. The name is now permitted, so the stray-name arm
+  // cannot catch it; only the derived gh-vocabulary tripwire can, which
+  // is what makes widening the list cost a red instead of succeeding.
+  const widened = envModule.permittedChildEnvNames(["GH_TOKEN"]);
+  const probesWidened = credentialsModule.probeCredentialSources(
+    { PATH: bin, HOME: emptyHome, GH_TOKEN: "ghp_leaked" },
+    { permittedNames: widened },
+  );
+  const widenedProbe = probesWidened.find(
+    (probe) => probe.source === "environment",
+  );
+  assert.ok(widenedProbe !== undefined);
+  assert.equal(widenedProbe.outcome, "resolvable", widenedProbe.detail);
+  assert.match(widenedProbe.detail, /token variable/);
+  assert.equal(credentialsModule.verdictFromProbes(probesWidened).status, "red");
 });
 
 // ---------------------------------------------------------------------------
