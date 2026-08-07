@@ -178,6 +178,121 @@ test("--self-test rejects a vacuous-green fixture and a required-not-applicable 
   }
 });
 
+test("the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018)", (t) => {
+  // DR-0018 red-witness. The assertion code was changed so a REQUIRED diff-scoped
+  // gate reporting not-applicable on the exit head (its trigger legitimately
+  // unmet) is NOT a failure, while a diff-scoped gate that is not-applicable with
+  // NO evaluated precondition (a silently skipped or mis-declared gate) STILL is.
+  // This is exercised end to end against the SAME assertion program the harness
+  // ships (extracted from a real run), over two crafted bundles that differ ONLY
+  // in whether the not-applicable record carries an evaluated, unmet precondition.
+  if (!existsSync(distEntry)) {
+    t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
+    return;
+  }
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    // Obtain the exact m2-assert.mjs the harness writes (it is emitted before any
+    // mode branch, so a --self-test run leaves it on disk regardless of outcome).
+    const harnessEvidence = join(root, "harness-evidence");
+    run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
+    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+
+    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+
+    // A bundle carrying a single diff-scoped gate reported not-applicable.
+    const buildBundle = (dir: string, precondition: unknown): void => {
+      mkdirSync(join(dir, "red-witness"), { recursive: true });
+      const summary = {
+        gates: [
+          { id: "red-witness", status: "not-applicable", applicable: false, vacuous: false, units: 0 },
+        ],
+        counts: {
+          declared: 1, applicable: 0, verdict: 0, green: 0, red: 0,
+          "not-applicable": 1, error: 0, vacuous: 0,
+        },
+      };
+      writeFileSync(join(dir, "summary.json"), JSON.stringify(summary));
+      const record: Record<string, unknown> = {
+        gate: "red-witness",
+        status: "not-applicable",
+        detail:
+          precondition === undefined
+            ? "not run in this bundle"
+            : "precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/",
+      };
+      if (precondition !== undefined) {
+        record["precondition"] = precondition;
+      }
+      writeFileSync(join(dir, "red-witness", "result.json"), JSON.stringify(record));
+    };
+
+    const expect = {
+      label: "dr-0018 diff-scoped",
+      gates: [{ id: "red-witness", expect: "green|not-applicable", required: true, diffScoped: true }],
+      absent: [] as string[],
+    };
+    const expectPath = join(root, "expect.json");
+    writeFileSync(expectPath, JSON.stringify(expect));
+
+    const runAssert = (dir: string): RunResult =>
+      run(
+        distEntry.endsWith(".js") ? process.execPath : "node",
+        [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir, "--expect", expectPath, "--manifest", manifest],
+        { cwd: root, env },
+      );
+
+    // VALID: not-applicable WITH an evaluated, unmet precondition -> accepted.
+    const validDir = join(root, "valid");
+    buildBundle(validDir, { id: "red-witness-diff", met: false, reason: "no changed path under src/, bin/", evidence: [] });
+    const valid = runAssert(validDir);
+    assert.equal(
+      valid.status,
+      0,
+      `a diff-scoped gate not-applicable WITH an evaluated precondition must be accepted (DR-0018): ${valid.stdout}\n${valid.stderr}`,
+    );
+
+    // INVALID: not-applicable with NO evaluated precondition -> rejected, naming it.
+    const invalidDir = join(root, "invalid");
+    buildBundle(invalidDir, undefined);
+    const invalid = runAssert(invalidDir);
+    assert.notEqual(
+      invalid.status,
+      0,
+      "a diff-scoped gate not-applicable with NO evaluated precondition must be rejected (a silently skipped gate cannot pass as legitimately N/A)",
+    );
+    assert.match(
+      invalid.stdout + invalid.stderr,
+      /red-witness/,
+      "the rejection did not name the offending diff-scoped gate",
+    );
+
+    // COUNTERFACTUAL 2: a diff-scoped gate reported error is rejected even with a
+    // precondition record present, so "diff-scoped" never becomes a pass for a
+    // genuinely broken gate.
+    const erroredDir = join(root, "errored");
+    mkdirSync(join(erroredDir, "red-witness"), { recursive: true });
+    writeFileSync(
+      join(erroredDir, "summary.json"),
+      JSON.stringify({
+        gates: [{ id: "red-witness", status: "error", applicable: true, vacuous: false, units: 0 }],
+        counts: { declared: 1, applicable: 1, verdict: 0, green: 0, red: 0, "not-applicable": 0, error: 1, vacuous: 0 },
+      }),
+    );
+    writeFileSync(join(erroredDir, "red-witness", "result.json"), JSON.stringify({ gate: "red-witness", status: "error", detail: "broke" }));
+    const errored = runAssert(erroredDir);
+    assert.notEqual(
+      errored.status,
+      0,
+      "a diff-scoped gate reported error must still fail the harness (a broken gate is never accepted as diff-scoped)",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("no environment variable changes a production gate's reported status (grep over the gate sources)", () => {
   // Criterion 3, the anti-override property. A production gate must not read an
   // environment variable that changes its reported status; the one env a gate

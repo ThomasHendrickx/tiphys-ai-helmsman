@@ -298,8 +298,36 @@ for (const spec of expect.gates ?? []) {
     fail(spec.id, `expected status ${allow.join(" or ")}, observed ${row.status}` +
       (row.detail ? ` (${row.detail})` : ""));
   }
-  if (spec.required === true && row.status !== "green") {
+  // A NON-diff-scoped required gate must be green: it has no diff trigger it
+  // could legitimately miss (manifest-self-check, suite, coverage,
+  // credential-scrub). A diff-scoped required gate is handled by DR-0018 below.
+  if (spec.required === true && spec.diffScoped !== true && row.status !== "green") {
     fail(spec.id, `is a REQUIRED gate but its status is ${row.status}, not green`);
+  }
+  // DR-0018: a diff-scoped gate on the exit head is either green (its trigger
+  // is touched) or not-applicable WITH a valid, recorded, evaluated precondition
+  // (id + met:false + reason). allowed() above already rejects red/error; here
+  // we reject a not-applicable that does not carry an evaluated precondition, so
+  // a silently-skipped or mis-declared gate cannot pass as "legitimately N/A".
+  // A green diff-scoped gate must still examine units > 0 (checked below), and a
+  // vacuous or error one is caught by the zero-error/zero-vacuous checks.
+  if (spec.diffScoped === true && row.status === "not-applicable") {
+    const scopedRec = readJson(join(evidenceDir, spec.id, "result.json"), `result record for ${spec.id}`);
+    if (!scopedRec.ok) {
+      fail(spec.id, `is a diff-scoped gate reporting not-applicable but ${scopedRec.reason}`);
+    } else {
+      const pre = scopedRec.value.precondition;
+      const evaluatedUnmet =
+        pre !== undefined && pre !== null && pre.met === false &&
+        typeof pre.id === "string" && pre.id !== "" &&
+        typeof pre.reason === "string" && pre.reason !== "";
+      if (!evaluatedUnmet) {
+        fail(spec.id,
+          "is a diff-scoped gate reporting not-applicable WITHOUT an evaluated, unmet precondition " +
+          "(precondition{id, met:false, reason}); DR-0018 accepts a diff-scoped N/A only when its " +
+          "trigger was evaluated and legitimately unmet, distinguishable from a skipped or errored gate");
+      }
+    }
   }
   if (row.status === "green" && !(Number(row.units) > 0)) {
     fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
@@ -454,6 +482,262 @@ run_assert() {
   ASSERT_EXIT="${rc}"
 }
 
+# ---------------------------------------------------------------------------
+# Per-phase green-path evidence (DR-0018 point 3). The exit head does NOT
+# exercise every diff-scoped gate's green path: red-witness is not-applicable
+# there (no src/ change), and scope is only green once its declaration governs
+# the head. Accepting a not-applicable red-witness on the exit head is not, by
+# itself, evidence that red-witness WORKS. So the bundle ALSO demonstrates each
+# diff-scoped gate GREEN against a state that genuinely triggers it, and records
+# the green result. The state is chosen per gate and recorded:
+#
+#   red-witness -> its own phase's merged diff (M2-P2), read from the git object
+#                  database (git show base..head); the runner evaluates the
+#                  diff-touches precondition (met, src/ is touched) and the gate
+#                  evaluates the four M2-P2 witnesses green. Real history, no
+#                  fixture, deterministic on any full clone.
+#   scope       -> a scratch git repository whose merge-base declaration governs
+#                  a phase branch whose diff touches only declared files. The
+#                  squash-merged M2-P4 commit batched paperwork beyond M2-P4's
+#                  scope, so its raw range is legitimately red; a purpose-built
+#                  repository exercises the gate's real green path (declaration
+#                  read at the merge base, current branch matched, head matched,
+#                  every touched path declared) without that noise.
+#   citations   -> a scratch git repository whose changed citation-required
+#                  document carries a citation that resolves against a real file.
+#                  The squash-merged M2-P5 range batched documents whose then-
+#                  unresolvable citations red the gate, so a purpose-built
+#                  repository exercises the real green path.
+#
+# Each demonstration asserts status green with units > 0 (a green having
+# examined nothing would be vacuous and is rejected here too), naming the gate.
+GREEN="${evidence}/m2-green.mjs"
+cat >"${GREEN}" <<'GREEN_EOF'
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+function arg(name) {
+  const i = process.argv.indexOf(name);
+  return i === -1 ? undefined : process.argv[i + 1];
+}
+
+const repo = arg("--repo");
+const tiphys = arg("--tiphys");
+const manifest = arg("--manifest");
+const out = arg("--out");
+const scratch = arg("--scratch");
+if (!repo || !tiphys || !manifest || !out || !scratch) {
+  console.error("m2-green: --repo --tiphys --manifest --out --scratch are all required");
+  process.exit(2);
+}
+
+const GIT_ENV = {
+  ...process.env,
+  GIT_AUTHOR_NAME: "M2 green demo",
+  GIT_AUTHOR_EMAIL: "green-demo@tiphys.invalid",
+  GIT_COMMITTER_NAME: "M2 green demo",
+  GIT_COMMITTER_EMAIL: "green-demo@tiphys.invalid",
+  GIT_CONFIG_GLOBAL: join(scratch, "no-global"),
+  GIT_CONFIG_SYSTEM: join(scratch, "no-system"),
+};
+
+function git(cwd, args) {
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: GIT_ENV });
+  if (r.status !== 0) {
+    throw new Error(`git ${args.join(" ")} (in ${cwd}) exited ${String(r.status)}: ${r.stderr}`);
+  }
+  return (r.stdout ?? "").trim();
+}
+
+const failures = [];
+const results = [];
+
+function record(gate, resultPath) {
+  if (!existsSync(resultPath)) {
+    failures.push(`[${gate}] wrote no result record at ${resultPath}`);
+    return;
+  }
+  let rec;
+  try {
+    rec = JSON.parse(readFileSync(resultPath, "utf8"));
+  } catch (error) {
+    failures.push(`[${gate}] result record ${resultPath} does not parse: ${error.message}`);
+    return;
+  }
+  const green = rec.status === "green" && Number(rec.units) > 0 && rec.vacuous !== true;
+  results.push({ gate, status: rec.status, units: rec.units, state: rec.__state, resultPath });
+  if (!green) {
+    failures.push(
+      `[${gate}] green-path demonstration is not a non-vacuous green: status ${String(rec.status)}, ` +
+      `units ${String(rec.units)}${rec.detail ? ` (${String(rec.detail).slice(0, 160)})` : ""}`,
+    );
+  } else {
+    console.log(`m2-green: ${gate} GREEN with ${String(rec.units)} unit(s) against ${String(rec.__state)}`);
+  }
+}
+
+mkdirSync(out, { recursive: true });
+
+// -- red-witness: its own merged phase diff (M2-P2), from the object database.
+{
+  const gate = "red-witness";
+  const log = spawnSync("git", ["-C", repo, "log", "--format=%H %s"], { encoding: "utf8", env: GIT_ENV });
+  const line = (log.stdout ?? "").split("\n").find((l) => /\bM2-P2:/.test(l));
+  if (!line) {
+    failures.push(`[${gate}] could not find the M2-P2 merge commit in git history`);
+  } else {
+    const sha = line.split(" ")[0];
+    const runDir = join(out, "red-witness-run");
+    rmSync(runDir, { recursive: true, force: true });
+    const r = spawnSync(
+      process.execPath,
+      [tiphys, "gates", "run", "--manifest", manifest, "--evidence", runDir,
+       "--only", "red-witness", "--base", `${sha}^`, "--head", sha, "--phase", "m2-p2"],
+      { cwd: repo, encoding: "utf8", env: GIT_ENV },
+    );
+    const resultPath = join(runDir, "red-witness", "result.json");
+    if (existsSync(resultPath)) {
+      const rec = JSON.parse(readFileSync(resultPath, "utf8"));
+      rec.__state = `M2-P2 merged diff ${sha.slice(0, 12)}^..${sha.slice(0, 12)} (real history)`;
+      writeFileSync(resultPath, JSON.stringify(rec, null, 2) + "\n");
+    } else {
+      console.error(r.stdout, r.stderr);
+    }
+    record(gate, resultPath);
+  }
+}
+
+// -- scope: a scratch repository exercising the real green path.
+{
+  const gate = "scope";
+  const dir = join(scratch, "scope-repo");
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(join(dir, "src"), { recursive: true });
+  mkdirSync(join(dir, "delivery/plan/phase-declarations"), { recursive: true });
+  git(dir, ["init", "-q", "-b", "main"]);
+  writeFileSync(join(dir, "src", "a.ts"), "1\n");
+  writeFileSync(join(dir, "src", "b.ts"), "1\n");
+  writeFileSync(
+    join(dir, "delivery/plan/phase-declarations", "m2-p4.json"),
+    JSON.stringify({
+      id: "M2-P4",
+      branch: "claude/m2-p4-scope-auditor",
+      filesToTouch: ["src/a.ts", "src/b.ts"],
+      declaredExtras: [],
+      citations: [],
+    }, null, 2) + "\n",
+  );
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "base"]);
+  const base = git(dir, ["rev-parse", "HEAD"]);
+  git(dir, ["checkout", "-q", "-b", "claude/m2-p4-scope-auditor"]);
+  writeFileSync(join(dir, "src", "a.ts"), "2\n");
+  writeFileSync(join(dir, "src", "b.ts"), "2\n");
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "touch declared files"]);
+  const head = git(dir, ["rev-parse", "HEAD"]);
+  const resultPath = join(out, "scope-result.json");
+  mkdirSync(join(out, "scope-ev"), { recursive: true });
+  const r = spawnSync(
+    process.execPath,
+    [join(repo, "src/gates/scope.ts"),
+     "--declarations", "delivery/plan/phase-declarations",
+     "--result", resultPath, "--evidence", join(out, "scope-ev"),
+     "--base", base, "--head", head, "--phase", "m2-p4"],
+    { cwd: dir, encoding: "utf8", env: GIT_ENV },
+  );
+  if (existsSync(resultPath)) {
+    const rec = JSON.parse(readFileSync(resultPath, "utf8"));
+    rec.__state = "scratch repo: declaration governs claude/m2-p4-scope-auditor, diff touches only src/a.ts and src/b.ts";
+    writeFileSync(resultPath, JSON.stringify(rec, null, 2) + "\n");
+  } else {
+    console.error(r.stdout, r.stderr);
+  }
+  record(gate, resultPath);
+}
+
+// -- citations: a scratch repository whose changed document resolves a citation.
+{
+  const gate = "citations";
+  const dir = join(scratch, "citations-repo");
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(join(dir, "src"), { recursive: true });
+  mkdirSync(join(dir, "delivery/plan"), { recursive: true });
+  git(dir, ["init", "-q", "-b", "main"]);
+  writeFileSync(join(dir, "src", "target.ts"), "a\nb\nc\n");
+  writeFileSync(join(dir, "delivery/plan", "fixture.md"), "baseline\n");
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "base"]);
+  const base = git(dir, ["rev-parse", "HEAD"]);
+  writeFileSync(
+    join(dir, "delivery/plan", "fixture.md"),
+    "the implementation lives at src/target.ts:1 and is covered there.\n",
+  );
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "cite a resolving line"]);
+  const head = git(dir, ["rev-parse", "HEAD"]);
+  const resultPath = join(out, "citations-result.json");
+  mkdirSync(join(out, "citations-ev"), { recursive: true });
+  const r = spawnSync(
+    process.execPath,
+    [join(repo, "src/gates/citations.ts"),
+     "--result", resultPath, "--evidence", join(out, "citations-ev"),
+     "--base", base, "--head", head],
+    { cwd: dir, encoding: "utf8", env: GIT_ENV },
+  );
+  if (existsSync(resultPath)) {
+    const rec = JSON.parse(readFileSync(resultPath, "utf8"));
+    rec.__state = "scratch repo: changed delivery/plan/fixture.md cites src/target.ts:1 which resolves";
+    writeFileSync(resultPath, JSON.stringify(rec, null, 2) + "\n");
+  } else {
+    console.error(r.stdout, r.stderr);
+  }
+  record(gate, resultPath);
+}
+
+writeFileSync(join(out, "summary.json"), JSON.stringify({ results, failures }, null, 2) + "\n");
+
+if (failures.length > 0) {
+  console.error(`m2-green: FAIL with ${failures.length} finding(s):`);
+  for (const f of failures) {
+    console.error(`  - ${f}`);
+  }
+  process.exit(1);
+}
+console.log(`m2-green: OK. ${results.length} diff-scoped gate(s) demonstrated green on a triggering state.`);
+process.exit(0);
+GREEN_EOF
+
+# run_per_phase_green <evidence-out-dir>
+# Runs the three green-path demonstrations and records the outcome. Dies on any
+# non-green demonstration, naming the gate.
+run_per_phase_green() {
+  local out="$1"
+  local scratch_dir="${evidence}/per-phase-green-scratch"
+  rm -rf "${out}" "${scratch_dir}"
+  mkdir -p "${out}" "${scratch_dir}"
+  record_seq=$((record_seq + 1))
+  local seq; seq=$(printf '%03d' "${record_seq}")
+  local out_rel="output/${seq}.out"
+  local out_path="${evidence}/${out_rel}"
+  local rc=0
+  node "${GREEN}" --repo "${repo_root}" --tiphys "${TIPHYS}" \
+    --manifest "${MANIFEST}" --out "${out}" --scratch "${scratch_dir}" \
+    >"${out_path}" 2>&1 || rc=$?
+  json_object \
+    kind per-phase-green \
+    label "diff-scoped gate green-path demonstrations (DR-0018 point 3)" \
+    'exitCode#' "${rc}" \
+    outputFile "${out_rel}" \
+    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    >"${evidence}/records/${seq}.json"
+  cat "${out_path}"
+  if [ "${rc}" -ne 0 ]; then
+    die "per-phase green-path evidence failed: a diff-scoped gate could not be shown green on a triggering state (exit ${rc})"
+  fi
+}
+
 # write_expect writes an expectations JSON document to a path, from a compact
 # spec passed as a single argument the node helper parses. Kept in node so no
 # JSON is hand-quoted in bash.
@@ -466,14 +750,24 @@ write_expect() {
 # The expectations tables (section 1.4), written once here.
 # ---------------------------------------------------------------------------
 
+# PR-bundle expectations, section 1.4 as amended by DR-0018. The three
+# diff-scoped gates (red-witness, scope, citations) are marked "diffScoped":
+# on the exit-test head each is EITHER green (its trigger is touched) OR
+# not-applicable with a valid recorded reason (an evaluated, unmet
+# precondition). red-witness is not-applicable on the M2-P9 head because the
+# diff touches no src/ or bin/; scope and citations are green because the head
+# has a phase diff and touches a citation-required document. A required
+# diff-scoped gate reporting not-applicable-with-reason is NOT a failure
+# (DR-0018 point 2); a red, error, or vacuous diff-scoped gate, or a
+# not-applicable one with no evaluated precondition, STILL fails the harness.
 PR_EXPECT_JSON='{
   "label": "PR bundle",
   "gates": [
     {"id": "manifest-self-check", "expect": "green", "required": true},
-    {"id": "red-witness", "expect": "green", "required": true},
+    {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "suite", "expect": "green", "required": true},
-    {"id": "scope", "expect": "green", "required": true},
-    {"id": "citations", "expect": "green", "required": true},
+    {"id": "scope", "expect": "green|not-applicable", "required": true, "diffScoped": true},
+    {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "coverage", "expect": "green", "required": true},
     {"id": "credential-scrub", "expect": "green", "required": true},
     {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
@@ -544,6 +838,10 @@ run_pr_bundle() {
   if [ "${ASSERT_EXIT}" -ne 0 ]; then
     die "the PR bundle does not match section 1.4's PR-bundle column (assertion exit ${ASSERT_EXIT})"
   fi
+  # DR-0018 point 3: the PR bundle also carries green-path evidence for each
+  # diff-scoped gate (red-witness, scope, citations), proving they WORK and are
+  # not merely reported not-applicable on a head that does not exercise them.
+  run_per_phase_green "${evidence}/per-phase-green"
 }
 
 # ---------------------------------------------------------------------------
