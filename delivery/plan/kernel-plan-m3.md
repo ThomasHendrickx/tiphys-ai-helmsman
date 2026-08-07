@@ -2939,6 +2939,16 @@ hazard it is matched to.
   admits an empty review as a thorough one; and a composition path that blocks
   forever on a non-regular mandated-reading entry, which is this phase's own
   inherited hazard (D-M3-27, above).
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a clause present as a heading with text under it that says the OPPOSITE of the row it discharges | **NO CRITERION CAN REACH THE GENERAL CASE, section 2.6 reason 1**, and the phase's own hazard sentence says why: the clause map proves presence, never content. What IS covered is the one clause where the difference between rule and sentiment has a measured cost: criterion 6b's registered grep asserts `incremental-output`'s text names the artifact-within-the-first-minutes rule rather than "report as you go". The general case is the hazard reviewer's, through M3-P7's `clause-text-matches-row` probe, and `verdict-hazard-classes-addressed` requires a statement for this class |
+| a `mandated-reading` list that resolves because every path exists while OMITTING the one document the role needs | **NO CRITERION CAN REACH THIS, section 2.6 reason 1.** Criterion 2 checks that every listed path resolves, which is the opposite direction; nothing can compute which document a role NEEDS. Named rather than left implied because criterion 2 reads, at a glance, as if it covered completeness and it covers only resolvability |
+| a brief composed correctly whose RENDERED PHASE TEXT silently drops a field the plan carries | **criterion 3b, NEW at revision 3.** Criterion 3 checks that the output contains the mandated-reading list, the body and SOME rendered phase text in order, which a renderer emitting only `id`, `branch`, `intent` and `steps[]` satisfies. That renderer would hand every dispatched agent a phase with no acceptance criteria and no hazard classes, which is the one place the hazard-review contract M3-P6, M3-P7 and M3-P9 build is actually consumed |
+| the SC-001 process-doc edit rewriting rather than annotating | criterion 4, which requires the footnote quoting the original wording and a registered test grepping BOTH files for the same visibility string, so the two cannot silently diverge |
+| a `finding` schema that admits an empty review as a thorough one | criterion 5(b), `if`/`then` on `minItems` requiring a `no-findings-statement` when `findings: []`, both directions |
+| a composition path that blocks forever on a non-regular mandated-reading entry | criterion 6c, both directions, with a real `mkfifo`, and it is explicitly NOT criterion 2's missing-path case |
 - steps:
   1. Create `schemas/role-brief.schema.json` for the frontmatter of every
      `roles/*.md` file: `role` (id from the six of blueprint section 6),
@@ -3004,7 +3014,12 @@ hazard it is matched to.
      `test/finding-schema.test.ts`.
 - files-to-touch: `schemas/role-brief.schema.json`, `schemas/finding.schema.json`,
   `roles/investigator.md`, `roles/plan-writer.md`,
-  `roles/adversarial-plan-reviewer.md`, `src/roles.ts`, `src/commands/brief.ts`,
+  `roles/adversarial-plan-reviewer.md`,
+  `roles/_shared-dispatch-contract.md` (create, NEW at revision 3: the single
+  copy of the `incremental-output` and `beacon-is-not-a-claim` clause text that
+  this phase's three briefs and M3-P6's two briefs all include, so the specific
+  wording exists once rather than five times; criterion 6b),
+  `src/roles.ts`, `src/commands/brief.ts`,
   `test/roles.test.ts`, `test/brief-compose.test.ts`,
   `test/finding-schema.test.ts` (create); `roles/README.md` (edit),
   `src/cli.ts` (edit), `src/validate.ts` (edit, type table),
@@ -3025,6 +3040,27 @@ hazard it is matched to.
      mandated-reading list, the brief body, and the named phase's rendered text;
      composing with a `--phase-id` absent from the plan exits nonzero naming the
      id.
+  3b. **The rendered phase text is a COMPLETE projection of the phase object
+     (NEW at revision 3, section 2.6; the phase's own hazard class named this
+     and criterion 3 does not reach it), both directions.** Every required
+     top-level field of `schemas/plan.schema.json`'s phase definition appears in
+     `brief compose`'s output, verbatim or by a documented transform declared in
+     the renderer, and the assertion is driven FROM THE SCHEMA rather than from
+     a hand-written field list: the test reads the schema's phase `required`
+     array and requires a rendering for each name, so adding a required phase
+     field in a later phase reddens this test until the renderer handles it,
+     rather than silently shrinking the brief. The dangerous state is the
+     realistic one: the renderer is edited to drop ONE field and the composed
+     output is observed to shrink while criterion 3 as worded stays green;
+     restoring the field returns both to green.
+     **Two structurally different members, per section 2.3 rule 6, and they are
+     structurally different because they fail in different ways**: dropping
+     `hazard-classes[]`, an ARRAY OF OBJECTS whose absence leaves the hazard
+     review contract with nothing to work from; and dropping `acceptance[]`, an
+     array whose absence leaves the criteria contract with nothing, so a brief
+     that dropped it would still compose, still validate and still be dispatched.
+     One member is not a class here because a renderer can handle scalars
+     correctly and arrays not at all.
   4. `roles/adversarial-plan-reviewer.md` states the settled visibility (input
      report, plan, code) and the process doc's role table row now matches it,
      with the footnote citing SC-001 (inspection plus a registered test that
@@ -3053,6 +3089,16 @@ hazard it is matched to.
      `incremental-output` clause text names the artifact-within-the-first-
      minutes rule rather than a generic "report as you go", which is the
      difference between the rule and a sentiment.
+     **Revision 3 makes the clause text a SINGLE COPY.** M3-P6 carries the same
+     two clauses onto two more briefs, so the specific wording would exist in
+     five places and drift independently. This phase creates
+     `roles/_shared-dispatch-contract.md`, the one copy, and all three briefs
+     here include it by the documented include the composer resolves; M3-P6's
+     two briefs include the same file and do not edit it. The grep test asserts
+     against the shared source AND against each composed brief's output, so a
+     brief that inlines its own copy instead of including the shared block is
+     caught by criterion 7's clause-id round trip (the shared block carries the
+     ids, and an inlined copy duplicates them).
   6c. **Path-type refusal in composition (D-M3-27), both directions.** With a
      named pipe staged by a real `mkfifo` at a `mandated-reading` path,
      `tiphys brief compose` exits nonzero within a bounded time naming the path
@@ -3069,7 +3115,10 @@ hazard it is matched to.
   `finding-requires-concrete-edit`, `finding-empty-set-requires-statement`,
   `finding-records-model-family`, `investigator-report-requires-repro`,
   and NEW at revision 2: `role-brief-carries-incremental-output-clause`,
-  `brief-compose-refuses-non-regular-reading-path`.
+  `brief-compose-refuses-non-regular-reading-path`,
+  and NEW at revision 3: `brief-compose-renders-every-required-phase-field`,
+  `brief-compose-dropped-hazard-classes-detected`,
+  `brief-compose-dropped-acceptance-detected`.
 - suggested model tier: strongest. Brief content is judgment-bearing and the
   SC-001 correction touches a governing document.
 - citations: R-004, R-005, R-006, R-010a, R-015a, R-029, R-092; blueprint
@@ -3139,6 +3188,17 @@ hazard it is matched to.
   artifact", which is the T-008 shape restated as a sentiment; and a
   brief-drift check wired into the workflow as a text assertion (D-M3-28,
   CR-760's live shape in the file this phase edits).
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a clause whose heading round-trips while its text says something WEAKER than the row | criterion 7 covers the round trip and explicitly does not cover the text; criteria 9(a), 9(b) and **9(d), NEW at revision 3**, cover the three clauses where the difference between rule and sentiment has a measured cost. The general case is section 2.6 reason 1 and is the hazard reviewer's, via M3-P7's `clause-text-matches-row` probe |
+| a generated gate-list block whose drift check compares the block TO ITSELF rather than to the registry | criterion 3, both directions: adding a gate to `gate-registry.yaml` WITHOUT re-rendering must make the check exit nonzero naming the gate. A check that compared the block to itself stays green there, which is exactly what the added-gate direction detects |
+| a mandated-reading list naming the mechanism index while the index is the stub nobody replaced | criterion 8, whose revision-2 form requires the SEED's mechanism-key set to be a superset of `MECHANISMS.md`'s twelve keys, failing and naming any missing key; plus M3-P8 criterion 4c, which re-witnesses the same property against the GENERATED projection so the obligation survives the replacement |
+| a `destructive-authority` clause whose third conjunct points at a manifest key M2 RENAMED | criterion 8b, which resolves `gates.manifest.json` through the same `brief compose` mandated-reading resolution, both directions. **Confirmed at revision 3 by reading `gates.manifest.json` on `main`**: `destructiveCommands` is present with four entries, so the key the clause points at exists and the criterion has something to resolve |
+| a claim-grep obligation stated WITHOUT the command, so each implementer invents their own pattern | criterion 9(a), which asserts the clause body carries the grep VERBATIM by comparing it to `CLAUDE.md`'s pattern, both directions. Labelled a text assertion in its own words: it proves the command is shipped, not that anyone runs it |
+| a dispatch-contract clause that says "report progress" instead of "write the artifact" | **criterion 9(d), NEW at revision 3.** Revision 2's criterion 9(c) required only that `incremental-output` and `beacon-is-not-a-claim` be PRESENT as body headings and round-trip against frontmatter, which is presence, and the phase's own hazard paragraph says one line above that the clause map proves presence and never content. M3-P5 criterion 6b had already built the text-specificity witness for its three briefs; this phase carried the identical clause pair onto two MORE files and did not carry the fix, which is the fix-round contract's own named failure shape reproduced inside the plan |
+| the brief-drift check wired as a text assertion | criterion 11, which extracts and EXECUTES the step under two structurally different defangs |
 - steps:
   1. Create `roles/implementer.md` with the six sections R-033a enumerates,
      each carrying a clause id: mandated reading in order; phase scope with
@@ -3268,8 +3328,20 @@ hazard it is matched to.
   `test/implementer-brief.test.ts`,
   `test/clean-room-brief.test.ts` (create); `src/roles.ts` (edit),
   `src/commands/brief.ts` (edit), `.github/workflows/gates.yml` (edit),
+  `gates.manifest.json` (edit, ADDED at revision 3: the brief-drift check is
+  registered as a gate entry with `events: [pull_request, push]` rather than
+  wired as a raw workflow step, section 2.2a and D-M3-34; the entry is promoted
+  into `gate-registry.yaml` by the same rule M3-P2 established, which by this
+  phase has already merged, so the entry goes straight into the registry),
+  `roles/_shared-dispatch-contract.md` (**READ ONLY here, and not on this
+  phase's edit list**: M3-P5 creates it and this phase's two briefs include the
+  same single copy. Added to this list at revision 3 so the dependency is
+  visible; if this phase finds it needs to CHANGE the shared text, that is an
+  escalation, because changing it changes three merged briefs),
   `package.json` (edit, files entry: `tuition` enters the published set here
   rather than at M3-P8, because the stub ships with this phase).
+  **Standing constraint on the `.github/workflows/gates.yml` edit (DR-0017,
+  DR-0004):** one job named `gates`, no matrix, no second job. See section 1.1.
 - acceptance criteria:
   1. `tiphys validate --type role-brief` exits 0 on both briefs.
   2. `tiphys brief compose --role implementer` output contains all six R-033a
@@ -3341,7 +3413,36 @@ hazard it is matched to.
      what the derivation did not cover) and cites the M1 measurement; weakening
      it to two items makes the test fail. (c) `incremental-output` and
      `beacon-is-not-a-claim` are present as body headings in both briefs and
-     round-trip against frontmatter (criterion 7's shape).
+     round-trip against frontmatter (criterion 7's shape). **This is a PRESENCE
+     check and nothing more, and revision 3 says so rather than letting it read
+     as coverage**; the text-specificity half is criterion 9(d).
+  9d. **The dispatch-contract clause TEXT is specific in both briefs (NEW at
+     revision 3, section 2.6; carries M3-P5 criterion 6b's fix to this phase's
+     two files), both directions.** A registered grep test asserts that
+     `incremental-output`'s clause text in BOTH `roles/implementer.md` and
+     `roles/clean-room-reviewer.md` names the artifact-within-the-first-minutes
+     rule and the mtime-as-beacon consequence, and that
+     `beacon-is-not-a-claim`'s text states that the guard tests FRESHNESS and
+     never existence and never completion. Weakening either to a generic
+     phrasing such as "report your progress as you work rather than only at the
+     end" makes the test fail naming the file and the clause; restoring the
+     specific text returns green.
+     **The four copies problem, and how this phase avoids it rather than
+     doubling it.** M3-P5 ships the same two clauses on three briefs and this
+     phase adds two more, so the specific text would exist in five places and
+     drift independently. The clause text is therefore shipped ONCE, as a
+     shared clause block that both phases' briefs include by a documented
+     `$ref`-style include resolved at compose time, and the grep test asserts
+     against the single source plus the composed output of each of the five
+     briefs. A brief that inlines its own copy instead of including the shared
+     block fails criterion 7's round trip, because the included block carries
+     the clause ids and an inlined copy would duplicate them.
+     **Two structurally different members, per section 2.3 rule 6**: the
+     `incremental-output` weakening above, and a `beacon-is-not-a-claim`
+     weakening to "check that the agent is still working", which is the exact
+     C-2 violation T-008's first watchdog shipped and is a different failure
+     from a vague restatement, because it is specific and wrong rather than
+     unspecific.
   10. **The two review contracts are declared and distinguishable (T-007).**
      `tiphys brief compose --role clean-room-reviewer --review-contract criteria`
      and `--review-contract hazard` both exit 0 and emit briefs whose first
@@ -3367,7 +3468,10 @@ hazard it is matched to.
   `briefs-carry-dispatch-contract-clauses`,
   `clean-room-brief-declares-review-contract`,
   `clean-room-hazard-brief-does-not-start-from-criteria`,
-  `brief-drift-check-wired-executably`.
+  `brief-drift-check-wired-executably`,
+  and NEW at revision 3: `dispatch-clause-text-is-specific-in-both-briefs`,
+  `beacon-clause-rejects-liveness-phrasing`,
+  `briefs-include-shared-dispatch-block-not-a-copy`.
 - suggested model tier: strongest for the clause text (it is the instruction
   surface every future implementer runs on), cheaper tier acceptable for the
   drift-check mechanics.
