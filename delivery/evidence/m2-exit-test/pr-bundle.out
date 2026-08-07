@@ -1,13 +1,26 @@
-gates: run 615256f931b94938df61ea08
-gates: declared 10 applicable 6 verdict 6 green 4 red 2 not-applicable 4 error 0 vacuous 0
-gates: 2 gate(s) reported red: suite, scope
-m2-assert (PR bundle): FAIL with 6 finding(s):
-  - [red-witness] expected status green, observed not-applicable (precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/)
-  - [red-witness] is a REQUIRED gate but its status is not-applicable, not green
-  - [suite] expected status green, observed red (19 finding(s): failing test: "a witness red at its dangerous state and green at head makes the gate exit 0 with pins equal and the diff verbatim" (test/witness.test.ts); failing test: "a witness green against its declared dangerous state is red naming the witness" (test/witness.test.ts); failing test: "correcting the fixture so the branch carries a commit makes the same spec green" (test/witness.test.ts); failing test: "a witness invoking a destructive command with class additive is red naming the derived class" (test/witness.test.ts); failing test: "a member preserving every asserted string that stays green makes the witness red" (test/witness.test.ts); failing test: "a behavior-executing test red under both members makes the witness green" (test/witness.test.ts); failing test: "an async-read text-asserting witness is red when its text-preserving member leaves the test green" (test/witness.test.ts); failing test: "a namespace sync-read text-asserting witness is red when its text-preserving member leaves the test green" (test/witness.test.ts); failing test: "a deterministic witness red in three of five repetitions is red carrying the rate" (test/witness.test.ts); failing test: "the same rate declared nondeterministic is green with the rate recorded" (test/witness.test.ts); and 9 more (see counts.json))
-  - [suite] is a REQUIRED gate but its status is red, not green
-  - [scope] expected status green, observed red (touched path(s) outside the declared scope: test/gates.test.ts (declaration delivery/plan/phase-declarations/m2-p9.json at merge base 1b6f0963b62f60ddf183259adb5d3e34ebc9cbee, sha256 ef2ed936b6d5f6ced9702b6b03520bf329f519d0422b26f6a725c65b081543d7) (1 declared path(s) not touched: gates.manifest.json))
-  - [scope] is a REQUIRED gate but its status is red, not green
-m2-exit-test: FAILED: the PR bundle does not match section 1.4's PR-bundle column (assertion exit 1)
-m2-exit-test: evidence in <evidence-dir>/pr
-pr harness exit 1
+# PR bundle (scripts/m2-exit-test.sh --base <main-with-paperwork> --head HEAD --phase m2-p9 --bundle pr)
+# Run on the claude/m2-p9-exit-test head with the two paperwork edits at the merge base
+# (declaration + section 1.4 amendment landed on main). Floor toolchain Node v26.6.0.
+
+gates: declared 10 applicable 6 verdict 6 green 6 red 0 not-applicable 4 error 0 vacuous 0
+gates: required gate(s) not applicable: red-witness
+
+per-gate status (from pr-bundle.summary.json):
+  manifest-self-check green
+  coverage            green
+  credential-scrub    green
+  credential-token    not-applicable
+  suite               green
+  citations           green
+  scope               green
+  deploy              not-applicable
+  migrations          not-applicable
+  red-witness         not-applicable
+
+m2-assert (PR bundle): OK. 10 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+
+per-phase green-path evidence (DR-0018 point 3):
+  red-witness GREEN 4 units  -- M2-P2 merged diff (real git history)
+  scope       GREEN 2 units  -- scratch repo, diff touches only declared files
+  citations   GREEN 1 unit   -- scratch repo, changed doc cites a resolving line
+  m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.

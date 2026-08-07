@@ -1,9 +1,9 @@
 {
-  "runId": "615256f931b94938df61ea08",
-  "manifest": "/home/user/tiphys-ai-helmsman/gates.manifest.json",
+  "runId": "83c707ba583877ef15673e6c",
+  "manifest": "<repo>/gates.manifest.json",
   "manifestSha256": "5f06b8051f418e4be58c8b8a469823885262db5cebecff52e22e3d14bc4bdf52",
-  "startedAt": "2026-08-07T08:34:27.345Z",
-  "endedAt": "2026-08-07T08:36:20.825Z",
+  "startedAt": "2026-08-07T10:35:01.982Z",
+  "endedAt": "2026-08-07T10:36:54.927Z",
   "parameters": {
     "base": "origin/main",
     "head": "HEAD",
@@ -19,10 +19,10 @@
       "unitLabel": "schema documents validated",
       "vacuous": false,
       "applicable": true,
-      "detail": "validated 8 schema document(s) against the closed keyword set (/home/user/tiphys-ai-helmsman/src/gates/schemas/citation-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/coverage-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/gate-manifest.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/gate-result.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/phase-declaration.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/release-record.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/verifier-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/manifest-self-check/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/manifest-self-check/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/manifest-self-check/stderr.txt"
+      "detail": "validated 8 schema document(s) against the closed keyword set (<repo>/src/gates/schemas/citation-config.schema.json, <repo>/src/gates/schemas/coverage-config.schema.json, <repo>/src/gates/schemas/gate-manifest.schema.json, <repo>/src/gates/schemas/gate-result.schema.json, <repo>/src/gates/schemas/phase-declaration.schema.json, <repo>/src/gates/schemas/release-record.schema.json, <repo>/src/gates/schemas/verifier-config.schema.json, <repo>/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json",
+      "record": "<evidence-dir>/pr-bundle/manifest-self-check/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/manifest-self-check/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/manifest-self-check/stderr.txt"
     },
     {
       "id": "coverage",
@@ -32,9 +32,9 @@
       "vacuous": false,
       "applicable": true,
       "detail": "115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/coverage/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/coverage/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/coverage/stderr.txt"
+      "record": "<evidence-dir>/pr-bundle/coverage/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/coverage/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/coverage/stderr.txt"
     },
     {
       "id": "credential-scrub",
@@ -44,9 +44,9 @@
       "vacuous": false,
       "applicable": true,
       "detail": "no pull-request-capable credential resolvable from any of the 7 probed sources",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/credential-scrub/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/credential-scrub/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/credential-scrub/stderr.txt"
+      "record": "<evidence-dir>/pr-bundle/credential-scrub/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/credential-scrub/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/credential-scrub/stderr.txt"
     },
     {
       "id": "credential-token",
@@ -56,19 +56,19 @@
       "vacuous": false,
       "applicable": false,
       "detail": "precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/credential-token/result.json"
+      "record": "<evidence-dir>/pr-bundle/credential-token/result.json"
     },
     {
       "id": "suite",
-      "status": "red",
-      "units": 400,
+      "status": "green",
+      "units": 402,
       "unitLabel": "tests reported",
       "vacuous": false,
       "applicable": true,
-      "detail": "19 finding(s): failing test: \"a witness red at its dangerous state and green at head makes the gate exit 0 with pins equal and the diff verbatim\" (test/witness.test.ts); failing test: \"a witness green against its declared dangerous state is red naming the witness\" (test/witness.test.ts); failing test: \"correcting the fixture so the branch carries a commit makes the same spec green\" (test/witness.test.ts); failing test: \"a witness invoking a destructive command with class additive is red naming the derived class\" (test/witness.test.ts); failing test: \"a member preserving every asserted string that stays green makes the witness red\" (test/witness.test.ts); failing test: \"a behavior-executing test red under both members makes the witness green\" (test/witness.test.ts); failing test: \"an async-read text-asserting witness is red when its text-preserving member leaves the test green\" (test/witness.test.ts); failing test: \"a namespace sync-read text-asserting witness is red when its text-preserving member leaves the test green\" (test/witness.test.ts); failing test: \"a deterministic witness red in three of five repetitions is red carrying the rate\" (test/witness.test.ts); failing test: \"the same rate declared nondeterministic is green with the rate recorded\" (test/witness.test.ts); and 9 more (see counts.json)",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/suite/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/suite/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/suite/stderr.txt"
+      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 402 test(s) from 22 file(s) (pass 402, fail 0, skipped 0, todo 0, did-not-run 0); discovered 22 file(s) walking test for .test.ts; 408 behavior(s) resolve; merge base 30e558fb3ef8",
+      "record": "<evidence-dir>/pr-bundle/suite/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/suite/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/suite/stderr.txt"
     },
     {
       "id": "citations",
@@ -77,22 +77,22 @@
       "unitLabel": "citations resolved",
       "vacuous": false,
       "applicable": true,
-      "detail": "linted 1 changed document(s) at 24880202b8f0a9408007cb0d5b4b80b0ff3e2523: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/citations/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/citations/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/citations/stderr.txt"
+      "detail": "linted 1 changed document(s) at a6444fc41a9227224f5f22de4abab74004b55cc3: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external",
+      "record": "<evidence-dir>/pr-bundle/citations/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/citations/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/citations/stderr.txt"
     },
     {
       "id": "scope",
-      "status": "red",
-      "units": 6,
+      "status": "green",
+      "units": 12,
       "unitLabel": "changed paths audited",
       "vacuous": false,
       "applicable": true,
-      "detail": "touched path(s) outside the declared scope: test/gates.test.ts (declaration delivery/plan/phase-declarations/m2-p9.json at merge base 1b6f0963b62f60ddf183259adb5d3e34ebc9cbee, sha256 ef2ed936b6d5f6ced9702b6b03520bf329f519d0422b26f6a725c65b081543d7) (1 declared path(s) not touched: gates.manifest.json)",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/scope/result.json",
-      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/scope/stdout.txt",
-      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/scope/stderr.txt"
+      "detail": "12 changed path(s) audited against declaration delivery/plan/phase-declarations/m2-p9.json at merge base 30e558fb3ef85ff0cc84d82237f881e6fec000be (sha256 364c197570efbe23b3d6be1d9d18c0bce1b60740792b638a0cf90a8e2e77af16) (1 declared path(s) not touched: gates.manifest.json)",
+      "record": "<evidence-dir>/pr-bundle/scope/result.json",
+      "stdout": "<evidence-dir>/pr-bundle/scope/stdout.txt",
+      "stderr": "<evidence-dir>/pr-bundle/scope/stderr.txt"
     },
     {
       "id": "deploy",
@@ -102,7 +102,7 @@
       "vacuous": false,
       "applicable": false,
       "detail": "precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/deploy/result.json"
+      "record": "<evidence-dir>/pr-bundle/deploy/result.json"
     },
     {
       "id": "migrations",
@@ -112,7 +112,7 @@
       "vacuous": false,
       "applicable": false,
       "detail": "precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/migrations/result.json"
+      "record": "<evidence-dir>/pr-bundle/migrations/result.json"
     },
     {
       "id": "red-witness",
@@ -122,15 +122,15 @@
       "vacuous": false,
       "applicable": false,
       "detail": "precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/",
-      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/pr/pr-bundle/red-witness/result.json"
+      "record": "<evidence-dir>/pr-bundle/red-witness/result.json"
     }
   ],
   "counts": {
     "declared": 10,
     "applicable": 6,
     "verdict": 6,
-    "green": 4,
-    "red": 2,
+    "green": 6,
+    "red": 0,
     "not-applicable": 4,
     "error": 0,
     "vacuous": 0
@@ -139,6 +139,6 @@
     "red-witness"
   ],
   "aborted": false,
-  "exitCode": 1,
-  "reason": "2 gate(s) reported red: suite, scope"
+  "exitCode": 20,
+  "reason": "required gate(s) not applicable: red-witness"
 }

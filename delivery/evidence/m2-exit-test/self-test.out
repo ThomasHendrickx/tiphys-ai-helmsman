@@ -1,3 +1,5 @@
+# scripts/m2-exit-test.sh --self-test <dir>  (exits NONZERO = working state)
+
 m2-exit-test: recorded (started: self-test invoked)
 === fixture (a), vacuous green, assertion output (exit 1) ===
 m2-assert (self-test fixture a (a gate writing green units 0)): FAIL with 4 finding(s):
@@ -7,9 +9,8 @@ m2-assert (self-test fixture a (a gate writing green units 0)): FAIL with 4 find
   - 1 vacuous gate(s): fixture-vacuous
 === fixture (b), required not-applicable, assertion output (exit 1) ===
 m2-assert (self-test fixture b (a required gate whose file-exists precondition is unmet)): FAIL with 2 finding(s):
-  - [fixture-required-na] expected status green, observed not-applicable (precondition fixture-file-must-exist evaluated and unmet: <evidence-dir>/self-test/self-test/this-file-does-not-exist.json does not exist)
+  - [fixture-required-na] expected status green, observed not-applicable (precondition fixture-file-must-exist evaluated and unmet: <evidence-dir>/self-test/this-file-does-not-exist.json does not exist)
   - [fixture-required-na] is a REQUIRED gate but its status is not-applicable, not green
 m2-exit-test: recorded (observation: no status-override environment variable (grep over src/gates, bin, gates.ts))
 m2-exit-test: self-test OK: the assertion code REJECTED both fixtures, naming fixture-vacuous (assert exit 1) and fixture-required-na (assert exit 1).
 m2-exit-test: exiting nonzero, which is the working state; the CI guard treats a nonzero self-test as good and a zero self-test as a broken assertion code.
-self-test exit 1
