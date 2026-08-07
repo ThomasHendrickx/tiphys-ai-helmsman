@@ -1339,6 +1339,51 @@ it.
 
 ## 3. Phases
 
+### 3.0 Pre-dispatch step, before the first M3 branch is created
+
+**NEW at revision 3 (A-009, D-M3-33). This is not a phase and it is not
+optional; without it M3-P1's first pull request fails the scope gate.**
+
+The M2-P4 scope auditor reads `delivery/plan/phase-declarations/<phase>.json`
+out of the MERGE BASE of the audited branch, so a declaration that is not on
+`main` when the branch forks cannot govern that branch. Every M3 branch is
+`claude/m3-pN-<slug>`, which matches the gate's `branch-matches` precondition,
+so scope RUNS on every M3 pull request and a missing declaration is a red gate,
+not a skip.
+
+The step:
+
+1. The ORCHESTRATOR authors ten documents,
+   `delivery/plan/phase-declarations/m3-p1.json` through `m3-p10.json`,
+   lowercase filenames, from this section's `files-to-touch` lists. Each is
+   `{id, branch, filesToTouch, declaredExtras, citations}` and nothing else
+   (`additionalProperties: false`). `filesToTouch` carries literal paths, or
+   literal directories with a TRAILING SLASH, never prose. `declaredExtras`
+   carries this plan's standing pre-authorized extras that the auditor does not
+   add itself: `delivery/requirements/clause-map.json` on every phase, plus
+   `delivery/evidence/m3-exit-test/` on M3-P10. The auditor adds
+   `test/behaviors.json` and the phase's own `delivery/work-history/m3-pN.md`
+   on its own, so those two are never listed.
+2. They are merged to `main` in **ONE** pull request, before the M3-P1 branch
+   is created. One rather than ten, because ten pull requests over ten
+   documents that no code reads until its phase dispatches is ten merge trains
+   for one act, and because a single document set is reviewable as a set: the
+   review that matters is "does every declaration match the plan section it
+   projects", which is a comparison over all ten at once.
+3. **No phase authors or edits its own declaration, ever.** A phase that could
+   edit the document governing its own audit could widen its own scope, and the
+   merge-base read is the only thing preventing that. Consequently no phase's
+   `files-to-touch` list in this section contains a phase declaration, and a
+   phase that finds it needs a path its declaration does not carry ESCALATES to
+   the orchestrator for a declaration amendment merged to `main`, exactly as
+   M2's `delivery/plan/phase-declarations/README.md` requires.
+4. Once M3-P1 ships `tiphys plan project`, the ten documents become a GENERATED
+   view of this plan rather than a hand-authored second source (D-M3-18), and
+   M3-P1 criterion 10 is what proves the generated form is accepted by the real
+   auditor. Until then they are hand-authored, and that is stated rather than
+   hidden: the first M3 branch forks before the generator exists, so its
+   declaration cannot have been generated.
+
 ### M3-P1: Schema foundation, validator, and the plan, charter, decision, and status-line contracts
 
 - id: M3-P1
@@ -1380,15 +1425,40 @@ it.
   hand-authored path handed to `validate` that is a named pipe, which blocks
   the command forever (D-M3-27, the M1-P5 class applied to the first kernel
   command whose ordinary input is an operator-supplied path).
+- hazard class to criterion (section 2.6, NEW at revision 3). "DR-0013 n" means
+  criterion n of the DR-0013 block below, which is part of this phase's
+  acceptance list:
+
+| Hazard item | Reddens against |
+|---|---|
+| a permissive schema whose invalid fixtures are syntax errors rather than plausible instances | criteria 3 and 4 (four structurally plausible DANGEROUS instances, each witnessed by removing and restoring its one guarding keyword), plus section 2.3 rule 1, which makes a merely-malformed fixture non-qualifying |
+| `additionalProperties: false` omitted at ONE nested level | criterion 5, which names TWO structurally different members (top level and at least two deep) precisely because one witness is not a class here |
+| a derived check registered but never reached | criterion 4c (`SKIPPED <check-id> no context` and a nonzero exit, both directions) |
+| an Ajv policy differing from DR-0013's list, most dangerously coercion or default-insertion | DR-0013 4 (unknown keyword fails compilation, naming it) and DR-0013 6 (deep-equal assertion that the validated value was not mutated, one case per kind) |
+| a diagnostic leaking Ajv's own wording into a public contract | DR-0013 8 (assert the exact `INVALID <json-pointer> <message>` text AND that no Ajv-authored wording reaches either stream) |
+| a YAML decode failure presenting as a stack trace | criterion 12 and DR-0013 9, both directions (removing the step 8b handler reproduces the trace, captured and reverted) |
+| the M2 retirement changing M2's test EXPECTATIONS rather than its engine | **NO CRITERION IN THIS PHASE, section 2.6 reason 3 (the verification needs an artifact this phase does not own).** DR-0013 10 asserts M2's tests are RE-RUN UNCHANGED and pass, which detects a rewrite only if the reviewer also diffs them. So the phase carries a step-1 obligation plus a mechanical guard: step 1 records `git diff --stat origin/main -- test/` scoped to M2's validation tests in the work history, and a nonempty diff there is an ESCALATION under D-M3-16, never an adaptation. Stated as an obligation with a command rather than as a criterion because the phase legitimately cannot make it a test: a test that asserts "these files were not edited" is asserting about the diff, which is the scope auditor's job and it already runs |
+| a named pipe at a hand-authored path handed to `validate` | criterion 5d, both directions, with a real `mkfifo`, for the file argument AND the `--context` directory |
+| a clause-map row silently absent (added at revision 3, section 2.2) | criterion 9b, which deletes an entry from `clause-map.json` for an in-force phase and requires a nonzero exit naming the row and the phase |
+| a `hazard-classes[].addressed-by` naming a criterion that does not exist (added at revision 3, section 2.6) | criterion 5f, both directions, Kind B check `plan-hazard-classes-addressed-by-resolves` |
 - steps:
   1. Verify: `schemas/` contains only `README.md`; `templates/` and
      `checklists/` absent; `package.json` `files` is `["dist"]`. Verify the real
      paths and output shapes of the M2-P5 citation linter, the M2-P6 coverage
      checker, the M2 validator module, the
      `src/gates/schemas/` location, and the phase-declaration projection
-     `delivery/plan/phases/<phase-id>.json` the M2-P4 scope auditor consumes;
-     record all of it in the work history, because later phases cite these paths
-     and the M2 plan they come from is DRAFT (section 1.1).
+     `delivery/plan/phase-declarations/<phase-id>.json` the M2-P4 scope auditor
+     consumes (**path corrected at revision 3**; revision 2 said
+     `delivery/plan/phases/`); record all of it in the work history.
+     **Revision 3 changes what this verification IS.** Revision 2 asked for it
+     "because later phases cite these paths and the M2 plan they come from is
+     DRAFT". M2 is now COMPLETE, so the source is the artifact on `main` and
+     section 1.7 already carries the per-joint result. What this step still
+     owes is therefore narrower and sharper: re-run section 1.7's commands
+     against `main` as it stands ON THE DAY OF DISPATCH, because M2 could
+     acquire a fix round between this plan's approval and this phase's branch,
+     and record any difference as an escalation under D-M3-16 rather than
+     adapting to it.
      **Two verifications rewritten at revision 2, because DR-0013 changed what
      matters about M2's validator.** Revision 1 asked this step to verify
      "the M2 validator module and its documented keyword set". Under DR-0013 the
@@ -1448,15 +1518,41 @@ it.
      first branch) is expressed as: the plan is one file, and the commit-position
      check stays parked exactly as plan v1 section 11 item 8 parked it. The
      word "markdown" in R-016 is superseded by DR-0006 and by section 1.5.
-     Projection rule (D-M3-18, accepting the M2 plan's boundary recommendation):
-     the phase object is a strict superset of the M2-P4 scope auditor's
-     phase-declaration projection (`id`, `branch`, `files-to-touch`, `extras`,
-     `citations`), and this phase adds `tiphys plan project --phase-id <id>`
+     Projection rule (D-M3-18, accepting the M2 plan's boundary recommendation;
+     **the target shape is CORRECTED at revision 3 by reading
+     `src/gates/schemas/phase-declaration.schema.json` on `main`, and revision
+     2 had all three of its observable properties wrong**): the phase object is
+     a strict superset of the M2-P4 scope auditor's phase-declaration
+     projection, and this phase adds `tiphys plan project --phase-id <id>`
      emitting exactly that projection from the plan file, so the auditor's input
      becomes a generated view of one source instead of a second hand-authored
-     source that can drift. `extras` is a required phase field, defaulting to the
-     standing pre-authorized extras, because the auditor already treats it as
-     one.
+     source that can drift. What the projection must EMIT, verbatim from the
+     delivered schema:
+     - the five required properties `id`, `branch`, `filesToTouch`,
+       `declaredExtras`, `citations`, camelCase, and **nothing else**, because
+       the delivered schema sets `additionalProperties: false` and an extra
+       property is a rejection rather than an ignored field. Revision 2 said
+       "(`id`, `branch`, `files-to-touch`, `extras`, `citations`)", which is
+       three errors in five names, and criterion 10 would have failed on its
+       first attempt;
+     - `id` matching `^M[0-9]+-P[0-9]+$` (uppercase, as the plan spells it) and
+       `branch` matching `^claude/m[0-9]+-p[0-9]+-.+$`;
+     - `filesToTouch` as literal paths, or literal directories with a TRAILING
+       SLASH, never prose (M2R-016): the auditor matches the string exactly or
+       as a directory prefix and does not interpret descriptions, so a plan
+       whose `files-to-touch` entry carries a parenthetical such as "(edit only
+       if step 4 requires it)" must project the PATH and drop the gloss, and
+       this phase's projector is where that stripping happens or does not;
+     - the output FILE the projection is written to is
+       `delivery/plan/phase-declarations/<phase-id-lowercased>.json`, because
+       CI derives `--phase` from the branch by a lowercase regex.
+     The plan phase field keeps this document's own spelling, `files-to-touch`
+     and `extras`, because this plan is markdown and the plan SCHEMA is a
+     separate artifact; the projector is the one place the two vocabularies
+     meet, and D-M3-18's whole value is that there is exactly one such place.
+     `extras` is a required phase field, defaulting to the standing
+     pre-authorized extras, because the auditor already treats `declaredExtras`
+     as required.
   3. Create `schemas/charter.schema.json` with blueprint section 7's required
      fields: `identity` (name, repo, kernel-version-pin), `delivery-mode` and
      `assurance-tier` (values constrained to the mode ids M3-P3 defines; this
@@ -1627,6 +1723,10 @@ it.
   `test/schema-suite.test.ts` (NEW at revision 2, step 11: the JSON Schema Test
   Suite cases of validator criterion 11), `test/fixtures/**`,
   `scripts/check-clause-map.mjs`,
+  `gates.manifest.json` (edit, ADDED at revision 3: registers the clause-map
+  check as a gate entry rather than a raw workflow step, section 2.2a and
+  D-M3-34; append-only and resolved as a union against the merge base, like
+  `test/behaviors.json`),
   `delivery/requirements/clause-map.json`, `src/cli.ts` (edit),
   `bin/tiphys.ts` (edit, top-level error handler only, step 8b; verify the
   dispatcher shape first),
@@ -1718,6 +1818,22 @@ it.
      phase with one entry exits 0. Witnessed by removing and restoring
      `minItems`. `templates/plan.example.yaml` carries at least one real hazard
      class, so the template teaches the field rather than declaring it empty.
+  5f. **`hazard-classes[].addressed-by` resolves (NEW at revision 3, section
+     2.6, D-M3-35), both directions.** Each `hazard-classes[]` item is
+     `{id, statement, addressed-by}` with all three required; `addressed-by` is
+     either a criterion id present in the SAME phase's `acceptance[]` or one of
+     section 2.6's three reason forms with its named target. A plan whose phase
+     declares a hazard class with `addressed-by: "criterion 99"` and no
+     criterion 99 exits 1 with a message carrying
+     `(check: plan-hazard-classes-addressed-by-resolves)`; the same fixture
+     exits 0 when the check is deregistered from `src/checks.ts` and exits 1
+     again when it is restored, both captured and reverted (Kind B, section 2.3
+     rule 3). The required-field half is Kind A and is witnessed by removing and
+     restoring `required`. **Two structurally different members, per section 2.3
+     rule 6**: one item whose `addressed-by` names a criterion id that does not
+     exist, and one whose `addressed-by` is a reason form naming a phase id that
+     does not exist in the plan. One witness is not a class here because the
+     two arms of `addressed-by` resolve against different things.
   6. `tiphys status emit --run r1 --state phase-change --detail x` in a fleet
      home exits 0, appends exactly one line to `state/status/stream.jsonl`, and
      `state/status/current.json` parses with `state` equal to `phase-change`.
@@ -1727,15 +1843,54 @@ it.
      demonstrated red against the same fixture, captured and reverted.
   8. `tiphys status emit --state progress` exits nonzero and the message names
      the `state` enum (R-084: the sparse vocabulary is enforced, not requested).
-  9. `node scripts/check-clause-map.mjs` exits 0 over this phase's twelve rows;
-     removing one clause id from its artifact makes it exit nonzero naming the
-     row and the artifact, and restoring it returns exit 0.
+  9. The clause-map check exits 0 over this phase's twelve rows; removing one
+     clause id from its artifact makes it exit nonzero naming the row and the
+     artifact, and restoring it returns exit 0. **Invoked through the gate
+     registry at revision 3 (section 2.2a, D-M3-34), not as a raw workflow
+     step**: the check is a `gate-registry.yaml` entry whose command is
+     `node scripts/check-clause-map.mjs`, with `events: [pull_request, push]`
+     and `unitLabel: "clause-map rows checked"`, so it writes one `GateResult`
+     through the M2-P1 subprocess contract and M2-C-2 makes a run that examined
+     zero rows `error` rather than green.
+  9b. **The MISSING-ROW condition (NEW at revision 3, section 2.2, A-007), both
+     directions.** The check takes Appendix A of this plan as its row INVENTORY
+     and `delivery/requirements/clause-map.json` as its coverage table, two
+     separate configured sources with id pattern `R-[0-9]+[a-z]?`, in the shape
+     `src/gates/coverage.ts` already uses on `main`. DELETING the entry for a
+     row whose owning phase is in force makes the check exit nonzero naming the
+     row and the phase; restoring it returns exit 0. Adding a map entry for a
+     row that is NOT in Appendix A also exits nonzero, naming the invented row.
+     A row whose phase is not yet in force is reported `pending <phase>` and
+     does not fail. Without this criterion the first of the check's four
+     conditions has no red witness at all, and a phase that under-seeds its own
+     rows produces a green check, which is the guard-whose-condition-is-untested
+     shape section 2.3 rule 3 forbids everywhere else in this plan.
   10. `tiphys plan project --phase-id <id>` over `templates/plan.example.yaml`
       emits a projection the M2-P4 scope auditor accepts as input (run the real
       auditor against it, exit 0); mutating one `files-to-touch` entry in the
       plan changes the projection and makes the auditor's verdict change
       accordingly, so the generated view is demonstrably derived from the plan
-      and not from a copy (both directions).
+      and not from a copy (both directions). **Three assertions added at
+      revision 3, each because revision 2 specified the target wrongly and this
+      criterion would have failed on its first attempt (A-009).** (a) The
+      emitted document validates against the DELIVERED
+      `src/gates/schemas/phase-declaration.schema.json` read from `main`, not
+      against a copy transcribed into this phase; the emitted key set is
+      exactly the five required camelCase names and a sixth key makes the
+      schema reject it, witnessed by emitting one extra key on purpose. (b)
+      The projection is written to
+      `delivery/plan/phase-declarations/<lowercased-phase-id>.json` and the
+      real auditor is invoked exactly as `gates.manifest.json` invokes it,
+      `node src/gates/scope.ts --declarations delivery/plan/phase-declarations`,
+      against a scratch git repository whose branch is `claude/m3-p1-...` and
+      whose MERGE BASE carries the declaration, because the auditor reads the
+      merge base and an auditor run against a declaration present only at the
+      head proves nothing about the property that matters. (c) A
+      `files-to-touch` entry carrying a parenthetical gloss projects to the
+      bare path, witnessed by a plan entry written as
+      `` `src/cli.ts` (edit only if step 4 requires it) `` projecting to
+      `src/cli.ts`, because the auditor matches strings literally and would
+      reject the glossed form as an undeclared path.
   11. `npm pack` produces a tarball whose listing contains `schemas/` and
       `templates/` entries and contains no `delivery/` entry.
   12. A subcommand made to throw (a malformed YAML artifact handed to
@@ -1761,7 +1916,13 @@ it.
   `schema-charter-release-verification-reserved`,
   `schema-charter-verification-none-requires-reason`,
   `schema-plan-hazard-classes-required`,
-  `validate-refuses-non-regular-input-path`.
+  `validate-refuses-non-regular-input-path`,
+  and NEW at revision 3: `clause-map-check-detects-missing-row`,
+  `clause-map-check-detects-invented-row`,
+  `check-plan-hazard-classes-addressed-by-resolves`,
+  `schema-plan-hazard-class-addressed-by-required`,
+  `plan-projection-emits-camelcase-closed-set`,
+  `plan-projection-strips-files-to-touch-gloss`.
 - suggested model tier: strongest. The schemas are the contract every later M3
   phase and every future kernel consumer is written against; a loose schema here
   is invisible until it has been depended on.
