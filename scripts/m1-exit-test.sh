@@ -162,7 +162,7 @@ A2	A	both	tiphys init a fresh fleet, provision the fleet's throwaway file:// rem
 A3	A	both	tiphys lock acquire, record the lease duration, export TIPHYS_HOLDER_ID, renew before stage B
 A4	A	both	clone the sandbox repository into the fleet's projects/ area
 A5	A	both	tiphys watch --once reports the no-wake exit code 3, then a harness-owned resident tiphys watch writes the beacon
-A6	A	local-substitute	tiphys spawn runs the stub payload; the pushed branch is evidence in both modes, the open PR is the full-mode form
+A6	A	local-substitute	tiphys spawn runs the stub payload; the pushed branch is evidence in both modes, the harness-opened PR is the full-mode form (the payload never creates PRs, R-008)
 A7	A	both	tiphys teardown refuses while the change has not landed, naming the branch, and the worktree survives
 A8	A	both	the harness-owned watcher exits 0 with the single line "signal <task-id> turn-end"
 B1	B	local-substitute	owner authorization and gh pr merge --squash (full); a harness stub squash merge into the scratch remote (local)
@@ -662,10 +662,10 @@ stage_a() {
   cat >"${brief}" <<'BRIEF'
 # M1 exit test brief
 
-Append one line to the toy sandbox README, commit it, push the task
-branch, and (in full mode) open a pull request. The payload is the
-deterministic stub scripts/stub-payload.sh, never an LLM (plan decision
-D-2).
+Append one line to the toy sandbox README, commit it, and push the task
+branch. The payload is the deterministic stub scripts/stub-payload.sh,
+never an LLM (plan decision D-2). In full mode the HARNESS then opens the
+pull request; the payload never does (R-008, M2-P8).
 BRIEF
 
   export TIPHYS_EXIT_TEST_MODE="${mode}"
@@ -703,9 +703,18 @@ BRIEF
     "stub payload commit carries the harness identity"
 
   if [ "${mode}" = "full" ]; then
-    pr_url=$(awk '/^payload pr /{ print $3; exit }' "${payload_report}")
+    # THE HARNESS OPENS THE PULL REQUEST, NEVER THE PAYLOAD (M2-P8 step 5,
+    # R-008). The payload's act ends at the pushed branch; the PR is the
+    # orchestration side's act, performed here outside the payload's
+    # scrubbed child environment, so the exercised shape matches the
+    # discipline the exit test certifies instead of contradicting it.
+    run_step A6 zero "${toy_clone}" "harness gh pr create (the payload never creates PRs)" -- \
+      gh pr create --head "${task_branch}" \
+        --title "exit-test ${TASK_ID}: trivial change" \
+        --body "Trivial change landed by the Tiphys M1 exit test (kernel plan v1 section 4, step A6). Pull request opened by the harness; the payload only pushes its branch (R-008)."
+    pr_url=$(grep -Eom1 'https?://[^[:space:]]+/pull/[0-9]+' "${LAST_OUTPUT}" || true)
     if [ -z "${pr_url}" ]; then
-      die "step A6: the stub payload did not print a PR URL in full mode"
+      die "step A6: harness gh pr create printed no pull request URL"
     fi
     run_step A6 zero "${work}" "gh pr view reports OPEN" -- \
       gh pr view "${pr_url}" --json state

@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { constants } from "node:os";
 import { assembleBrief } from "./brief.ts";
+import { buildChildEnv, scrubRoot } from "./exec/env.ts";
 import type { Fleet } from "./fleet.ts";
 import { writeTurnEndHook } from "./hooks.ts";
 import { poolCreate, poolDestroy, worktreePath } from "./pool.ts";
@@ -70,6 +71,16 @@ export interface ExecutorRequest {
   recordPath: string;
   /** Optional non-completion deadline in seconds (PR-207). */
   deadlineSeconds: number | undefined;
+  /**
+   * The EXACT environment for BOTH children this launch produces: the
+   * payload and the turn-end hook (M2-P8, M2R-004 edit 4). Built by
+   * `buildChildEnv` (src/exec/env.ts): allowlisted names only, with the
+   * five credential-store pointers redirected to harness-owned paths.
+   * `undefined` means the children inherit the parent's environment
+   * UNCHANGED, and is only ever passed under `allowPrCredentials`, the
+   * declared escape hatch; an adapter must never widen it on its own.
+   */
+  env: Record<string, string> | undefined;
 }
 
 /**
@@ -172,6 +183,10 @@ export const subprocessAdapter: ExecutorAdapter = {
     const result = spawnSync(program, args, {
       cwd: request.worktree,
       stdio: "inherit",
+      // The scrubbed environment (M2-P8). Spread rather than `env:
+      // request.env` so an undefined request.env means "no env option at
+      // all", which is Node's documented full-inheritance form.
+      ...(request.env === undefined ? {} : { env: request.env }),
     });
     if (result.error !== undefined) {
       return {
@@ -187,6 +202,12 @@ export const subprocessAdapter: ExecutorAdapter = {
     const hooked = runStep(`invoking the turn-end hook ${request.hookPath}`, () =>
       spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
         stdio: "inherit",
+        // The hook child gets the SAME scrubbed environment as the
+        // payload (M2R-004 edit 4): a second launch nobody scrubbed is
+        // exactly the leak the finding names. The generated hook script
+        // itself reads no environment at all (src/hooks.ts), so the
+        // scrub cannot break it.
+        ...(request.env === undefined ? {} : { env: request.env }),
       }),
     );
     if (!hooked.ok) {
@@ -242,6 +263,14 @@ export interface SpawnOptions {
   deadlineSeconds: number | undefined;
   /** Passed straight through to pool create (EXT-F-03); see spawnTask. */
   offline: boolean;
+  /**
+   * DECLARED ESCAPE HATCH from the credential scrub (M2-P8 criterion 1).
+   * When true, both children inherit the parent environment unchanged,
+   * including any pull-request-capable credential the parent holds. This
+   * exists for the orchestrator's own spawns, never for an implementer
+   * payload; default is false and the scrub is on.
+   */
+  allowPrCredentials?: boolean;
   adapter?: ExecutorAdapter;
 }
 
@@ -324,6 +353,16 @@ export async function spawnTask(
         // Never written, or already gone.
       }
     }
+    // The scrub root (harness-owned redirect targets, M2-P8) is created
+    // by THIS invocation strictly before the launch, and this rollback
+    // only ever runs before the payload has started, so removing it
+    // recursively removes only what this invocation staged. It sits
+    // inside the task directory, never inside the worktree.
+    try {
+      rmSync(scrubRoot(dir), { recursive: true, force: true });
+    } catch {
+      // Never created, or already gone.
+    }
     if (createdTaskDir) {
       try {
         rmdirSync(dir);
@@ -401,6 +440,26 @@ export async function spawnTask(
   const recordPath = executorRecordPath(fleet, taskId);
   createdFiles.push(recordPath);
 
+  // The child environment (M2-P8): built from the allowlist with the
+  // credential-store pointers redirected into this task's directory,
+  // unless the caller passed the declared escape hatch. Built BEFORE the
+  // launch so a staging failure is a rollback, never a half-scrubbed
+  // child.
+  let childEnv: Record<string, string> | undefined;
+  if (options.allowPrCredentials !== true) {
+    const built = runStep(
+      `constructing the scrubbed child environment for task ${taskId}`,
+      () => buildChildEnv({ parentEnv: process.env, scrubDir: scrubRoot(dir) }),
+    );
+    if (!built.ok) {
+      return rollback(built.reason);
+    }
+    if (!built.value.ok) {
+      return rollback(built.value.reason);
+    }
+    childEnv = built.value.env;
+  }
+
   const adapter = options.adapter ?? subprocessAdapter;
   const launched = runStep(`launching the payload through the ${adapter.name} adapter`, () =>
     adapter.launch({
@@ -410,6 +469,7 @@ export async function spawnTask(
       hookPath,
       recordPath,
       deadlineSeconds: options.deadlineSeconds,
+      env: childEnv,
     }),
   );
   if (!launched.ok) {
@@ -432,7 +492,23 @@ export async function spawnTask(
   }
   if (outcome.kind === "incomplete") {
     // The payload ran, so nothing is rolled back, and the reason says so.
+    // The scrub root is deliberately LEFT in place here: the hook child
+    // failed, and whatever the children left under the redirected paths
+    // is part of the state an operator inspects.
     return { ok: false, reason: outcome.reason };
+  }
+  // The scrub root is ephemeral. Both children have exited (the launch is
+  // synchronous, C-3), so the harness-owned redirect targets have no
+  // further reader; removing them returns the task directory to its
+  // documented records-only shape. This removal touches ONLY the scrub
+  // root, never the worktree, so it cannot be a V-1-shaped loss.
+  if (childEnv !== undefined) {
+    try {
+      rmSync(scrubRoot(dir), { recursive: true, force: true });
+    } catch {
+      // A leftover empty scrub directory is benign; failing a completed
+      // spawn over its cleanup would not be.
+    }
   }
   return { ok: true, value: { meta, exitCode: outcome.exitCode } };
 }
