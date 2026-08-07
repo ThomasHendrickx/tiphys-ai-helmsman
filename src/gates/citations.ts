@@ -177,8 +177,11 @@ export interface CitationConfig {
  * construction, and `classifyPathAgainstRoots` needs no precedence rule at
  * all: it checks every root and refuses ambiguity outright (CR-1022).
  *
- * DR-0019 (owner, 2026-08-07): the gate governs FORWARD-CLAIMING delivery
- * docs, NOT the historical delivery RECORD. The `delivery/review/` and
+ * Orchestrator decision (2026-08-07, under DR-0015; the owner delegated this
+ * scope call and is not an approval step in execution; reversible, owner may
+ * override): the gate governs FORWARD-CLAIMING delivery docs, NOT the
+ * historical delivery RECORD. Rationale recorded in
+ * delivery/work-history/m2-citations-scope.md. The `delivery/review/` and
  * `delivery/work-history/` trees are records of what was examined at the
  * time they were written; their `path:line` refs were valid when authored
  * and drift as the code moves. Once the exit harness runs the full gate set
