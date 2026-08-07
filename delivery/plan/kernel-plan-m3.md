@@ -769,16 +769,154 @@ ships carries clause ids: in frontmatter and body headings for briefs and
 `AGENTS.md`, as `id` fields for checklist probes and gate entries, as
 `$comment` clause tags or property names for schemas.
 
+**The row INVENTORY, specified at revision 3 (A-007), because without it the
+first of those three conditions cannot fire.** Conditions two and three are
+computable from `clause-map.json` alone. Condition one is not: "a row owned by
+a merged phase has no entry" needs an INDEPENDENT enumeration of which rows
+exist and which phase owns each, and revision 2 never said where that
+enumeration comes from. If the script takes `clause-map.json` as its own
+inventory then a phase that omits one of its rows produces a green check, and
+stage E0.1's "exits 0 over all 74 rows" is satisfied by a file containing
+seventy-three. A completeness checker whose only input is the thing whose
+completeness is in question is a presence check wearing a completeness
+checker's name, and that is the same guard-condition failure T-008's postscript
+records one level up.
+
+So the inventory is named, and it is named as a SEPARATE configured source in
+exactly the shape M2-P6 already uses:
+
+- **inventory**: Appendix A of this document, the 74-row table, parsed as a
+  markdown row table with id pattern `R-[0-9]+[a-z]?` in column 1 and the
+  owning phase `M3-P[0-9]+` in column 2. It is a second source from the map,
+  authored by a different act (planning, not implementation), which is the
+  property that makes the comparison meaningful.
+- **coverage table**: `delivery/requirements/clause-map.json`, id pattern the
+  same, one entry per row.
+- **merged-phase determination, stated mechanically rather than left to the
+  reader**: a phase is IN FORCE when its artifact file named in the inventory
+  row exists in the working tree. `git merge-base` is deliberately not used,
+  because the check must give the same answer on a phase branch, in CI on both
+  events, and in the exit run. A row whose phase is not yet in force is
+  reported as `pending <phase>` and does not fail the check; a row whose phase
+  IS in force and has no entry fails it, naming the row and the phase.
+- The check therefore fails in FOUR conditions, not three: a row in the
+  inventory owned by an in-force phase with no map entry; a map entry naming a
+  row that is not in the inventory (the reverse direction, which catches an
+  invented row); a named artifact file that does not exist; and a clause id
+  that does not occur in its artifact.
+
+M3-P1 criterion 9b (new at revision 3) is the witness that condition one is
+live: DELETING an entry from `clause-map.json` for a row whose phase is in
+force makes the check exit nonzero naming the row and the phase, and restoring
+it returns exit 0. Criterion 9 already witnesses condition three; without 9b
+the row-level condition has no red witness at all and the plan would be
+shipping a guard whose own condition was never tested, which section 2.3 rule 3
+forbids for every other check in this document.
+
 This is the same pattern as `test/behaviors.json`, which is already proven in
 this repository across three phases: one registry, appended by every phase,
 checked by name and never by count. Like `test/behaviors.json`, the clause map
 and the phase work history are standing pre-authorized extras on every M3
 phase's files-to-touch list.
 
-It is deliberately not folded into the M2-P6 coverage checker. Extending a
-merged M2 component from an M3 phase would make every M3 phase a potential
-edit of M2's gate surface. If a later milestone wants them merged, that is a
-recorded option, not a debt (Appendix C item 1).
+**Why this is a separate script rather than a second M2-P6 instance, restated
+at revision 3 because revision 2's reason was FALSE against M2 as delivered
+(A-008).** Revision 2 said: "Extending a merged M2 component from an M3 phase
+would make every M3 phase a potential edit of M2's gate surface." That is not
+what a second instance costs. `src/gates/coverage.ts` is CONFIG-DRIVEN: it
+takes `--config <path>` validated against
+`src/gates/schemas/coverage-config.schema.json` and falls back to the built-in
+`KERNEL_COVERAGE_CONFIG` only when the flag is absent, so a second coverage
+instance is one new JSON config document plus one new registry entry and edits
+no M2 source file at all.
+
+```
+$ git show origin/main:src/gates/coverage.ts | sed -n '741,744p'
+function resolveConfig(configPath: string | undefined): LoadedConfig | FailedConfig {
+  if (configPath === undefined) {
+    return { ok: true, config: KERNEL_COVERAGE_CONFIG };
+```
+
+The real reason, which survives being checked: **the two checks answer
+different questions over different shapes.** M2-P6's coverage gate compares two
+ID TABLES and asks whether every id in the inventory appears in the coverage
+table with an accepted reference type. The clause map's third and fourth
+conditions ask whether a named CLAUSE STRING occurs inside an arbitrary
+artifact of the implementer's choosing, which is a text-occurrence check over
+markdown briefs, YAML checklists and JSON schemas, and `coverage.ts`'s
+configured shape (`path` plus `idPattern` per source) has nowhere to express
+"and then grep this third file for this id". Folding the clause map into it
+would require widening the coverage config's own schema, which IS an edit to
+M2's gate surface, whereas running a second instance is not.
+
+**What is taken from M2-P6 rather than declined**, and it is the half that was
+missing: the inventory-versus-coverage-table SEPARATION above. That separation
+is not optional in the clause map, it is the thing that makes condition one
+computable, and M2 has a delivered, working, tested precedent for it. Merging
+the two tools remains a recorded option for M4 or later, not a debt (Appendix C
+item 1), and Appendix C item 1's stated cost is corrected there too.
+
+**Where the check RUNS, decided at revision 3 (D-M3-34).** It is a
+`gate-registry.yaml` entry, not a raw workflow step; see section 2.2a.
+
+### 2.2a Where M3's new checks run: through the registry, not around it
+
+**New at revision 3 (A-011, D-M3-34).** Revision 2 wired five new checks into
+`.github/workflows/gates.yml` as direct `run:` steps:
+`check-clause-map.mjs` (M3-P1), `render-agent-rules-gates.mjs --check` (M3-P2),
+`check-brief-drift.mjs` (M3-P6), `check-agents-references.mjs` and
+`check-dual-review.mjs` (M3-P9). None of them was declared as a registry entry
+anywhere in the plan. That is a plan that builds an authority and then routes
+its own checks around it, and it has three consequences the plan never stated
+it was accepting:
+
+1. **The exit test's central gate-coverage claim would not cover M3's own
+   checks.** Stage E1.6 asserts the gate runner over `gate-registry.yaml
+   --mode full` reports every applicable gate green with nothing vacuous. Five
+   of M3's checks would be outside that run, so no evidence record in the
+   bundle would name them.
+2. **R-094's property would be falsified by this plan's own additions on the
+   day M3-P2 merges.** "The single source consumed by CI and briefs" is the
+   row; five checks consumed by CI and absent from the source is the opposite.
+3. **Event applicability would be unstated, which is T-009 one level down.**
+   The workflow forks on `github.event_name`. A raw `run:` step with no `if:`
+   executes on BOTH arms; one with an `if:` executes on one. Revision 2
+   specified neither, so no one could say whether a given check is green on
+   `main`.
+
+There is a fourth fact revision 2 could not have known and revision 3 must
+respect: **M2 deliberately made the exit harness the SINGLE caller of
+`gates run`**, so that exactly one gate set runs and exactly one `summary.json`
+is produced per job. The workflow says so in its own comment, and M2-P1's two
+interim bundle steps were removed to achieve it. Adding raw steps does not
+break that property, but adding a SECOND `gates run` call would, so "just add
+another runner invocation" is not available either.
+
+**The decision (D-M3-34): every M3 check enters `gate-registry.yaml`.** Each
+one is declared with an `id`, a `command`, a `unitLabel`, an `applicability`,
+a `precondition` where one applies, and, new in the M3 registry, a required
+`events[]` field naming which CI events the check is evaluated under
+(`pull_request`, `push`, or both). Consequences, all of them binding:
+
+- The runner selects them by mode and event, so they run inside the one
+  `gates run` the harness already makes and the single-caller property is
+  preserved.
+- Each check's process is a gate subprocess under M2-P1's contract: it writes
+  ONE `GateResult` through `makeGateResult`, so M2-C-2 and M2-C-3 apply to
+  M3's checks automatically rather than by remembering. A clause-map check
+  that examined zero rows becomes `error` with `vacuous: true`, which is
+  exactly the property a raw `run:` step does not have.
+- `gates.manifest.json` joins the `files-to-touch` list of every phase that
+  registers an entry (P1, P2, P6, P9, P10), per the phase-declarations
+  README's M2R-020 rule, and those additions are unions against the merge base
+  in the same way `test/behaviors.json` is.
+- The five phases still edit `.github/workflows/gates.yml`, but only where a
+  step genuinely belongs at workflow level (M3-P10's release wiring is the one
+  clear case). Any check that stays a workflow step must state WHY in the
+  phase's step list and must declare its event arm, and section 2.3 rule 7's
+  execute-the-extracted-step criterion still applies to it.
+- Stage E1.6 then covers M3's own checks, which is what makes it worth
+  asserting.
 
 ### 2.3 Two kinds of check, and what the red-witness rule demands of each
 
@@ -850,18 +988,32 @@ The rules, binding on every phase's acceptance criteria:
    M3-P7 criterion 3b (probe-text weakening witnessed on two different probes),
    and M3-P9 criterion 3 (a gate list AND a mode table, which revision 1
    already listed as three and which therefore already complies).
-7. **A check wired into CI is a behaviour, not a text (revision 2, D-M3-28).**
-   Five M3 phases wire a new step into `.github/workflows/gates.yml`. A test
-   that asserts the step's TEXT is present catches deletion and misses
-   defanging, which M1-P6 confirmed six times across four rounds (`exit 1`
-   changed to `exit 0`, two placements of `|| true`, a step-level `if: false`,
-   a quoted YAML key the whitelist regex could not see, and the step moved into
-   a job the fan-in does not need). Every M3 criterion asserting that a check
-   is wired EXECUTES the extracted step against stubs and observes its exit
-   code, and where a text assertion is unavoidable it is labelled as such and
-   the residue is named. M1-P6's tracked low CR-760 records that the `gates`
-   fan-in's own script is still text-asserted, so this is a live condition of
-   the workflow M3 edits and not a hypothetical.
+7. **A check wired into CI is a behaviour, not a text, and its EVENT ARM is
+   part of the behaviour (revision 2, restated at revision 3, D-M3-28).**
+   Five M3 phases touch `.github/workflows/gates.yml`. A test that asserts a
+   step's TEXT is present catches deletion and misses defanging, which M1-P6
+   confirmed six times across four rounds. **The defang list is restated at
+   revision 3 against the workflow as it now is**: `exit 1` changed to
+   `exit 0`; two placements of `|| true`; a step-level `if: false`; a quoted
+   YAML key the whitelist regex could not see; and, replacing the stale sixth
+   member, an `if:` condition narrowed so the step runs on only one CI event
+   (revision 2's sixth member was "the step moved into a job the fan-in does
+   not need", and DR-0017 deleted the fan-in, so that member cannot occur and
+   a criterion written against it would be green and worthless). Every M3
+   criterion asserting that a check is wired EXECUTES the extracted step
+   against stubs and observes its exit code; where a text assertion is
+   unavoidable it is labelled as such and the residue is named.
+   **Two additions at revision 3, both from T-009.** First, a criterion
+   asserting a check is wired must also assert WHICH EVENT ARM it runs under,
+   because a gate result is evidence only for the configuration that produced
+   it and the workflow runs different bundles on `pull_request` and on `push`
+   to `main`. Second, where a check's behaviour FORKS on the event, both arms
+   need a witness: one witnessed arm and one unwitnessed arm is the exact shape
+   that left `main` red for four hours and twenty-one minutes, and the
+   unwitnessed arm is the one that broke. A check declared in
+   `gate-registry.yaml` with an `events[]` field (section 2.2a) discharges the
+   first addition by construction, which is one of the reasons D-M3-34 routes
+   the checks there.
 
 Derived checks this plan requires, by owning phase. The review's list was
 explicitly representative rather than exhaustive, so this table is the result of
@@ -869,7 +1021,10 @@ auditing every validation criterion in the plan for the pattern, and it contains
 three instances the review did not name (`checklist-probe-ids-unique`,
 `tuition-target-exists`, `charter-mode-enum-matches-modes`). **Revision 2 adds
 one row, `verdict-hazard-classes-addressed`, bringing the count to sixteen**;
-D-M3-22's "fifteen Kind B checks" is corrected there:
+D-M3-22's "fifteen Kind B checks" is corrected there. **Revision 3 adds one
+more, `plan-hazard-classes-addressed-by-resolves` (section 2.6, D-M3-35),
+bringing the count to SEVENTEEN**, owned by M3-P1, which already owns
+`src/checks.ts` and two other rows so no phase acquires a new file:
 
 | Check id | Phase | Property, and why no schema keyword reaches it |
 |---|---|---|
@@ -889,6 +1044,7 @@ D-M3-22's "fifteen Kind B checks" is corrected there:
 | `dual-review-decorrelation` | M3-P9 | compares two verdict documents' `produced-by` values and their injected probe framings (M3R-004) |
 | `tuition-target-exists` | M3-P8 | resolves an `applied` structural consequence's target path against the filesystem |
 | `mechanism-rule-evidence-resolves` | M3-P8 | resolves each mechanism-index rule's evidence references, and any `machine-readable-form` path and key, against real files (T-005's checkability rule, extended by D-M3-26 to the M2 manifest coupling) |
+| `plan-hazard-classes-addressed-by-resolves` | M3-P1 | NEW at revision 3 (section 2.6, D-M3-35): resolves each `hazard-classes[].addressed-by` criterion id INTO the SAME phase's `acceptance[]` ids, a foreign-key lookup between two sibling arrays of one phase object, and fails on one that resolves to nothing. `enum` cannot express it because the admissible values are computed per phase, not fixed |
 
 Anything an implementer finds that belongs in this table and is not in it is a
 plan defect to escalate, not a script to write quietly: D-M3-22 says so, and the
@@ -924,7 +1080,13 @@ M2-P4 scope auditor would fail the undeclared file anyway.
   in THIS phase would look like if the criteria were all met. It is the second
   review contract's input and a pre-submit self-review for the implementer. The
   hazard classes are the plan's, not the implementer's; an implementer who
-  believes one is wrong escalates rather than rewriting it. T-007's evidence is
+  believes one is wrong escalates rather than rewriting it. **Revision 3 adds
+  the obligation that makes the field checked rather than documented (section
+  2.6, D-M3-35): every item in a phase's hazard class names the numbered
+  acceptance criterion that reddens against it, or one of section 2.6's three
+  admissible reasons why none can, in a `hazard class to criterion` table
+  immediately below the paragraph. An item with neither is a plan defect.**
+  T-007's evidence is
   that two reviewers on different model families walked all fifteen of a
   phase's acceptance criteria by direct execution, agreed on every mechanical
   fact, and one found a high-severity defect that live-locked every supervision
@@ -965,7 +1127,7 @@ fields, one row per phase:**
 | M3-P5 | M3-P4 merged | P4 merges |
 | M3-P6 | M3-P5 merged | P5 merges |
 | M3-P7 | M3-P6 merged | P6 merges |
-| M3-P8 | M3-P7 merged | P7 merges |
+| M3-P8 | M3-P6 merged (**corrected at revision 3**; revision 2 said M3-P7, and P8's grounding names no P7 artifact) | P6 merges; MERGES after P7 |
 | M3-P9 | M3-P8 merged | P8 merges |
 | M3-P10 | M3-P1 to M3-P9 merged | all merge |
 
@@ -980,47 +1142,198 @@ all; P3 resolves gate-set references INTO P2's `gate-registry.yaml`; P4's
 report contract is referenced by type name from P5's and P6's briefs; P5 ships
 `schemas/role-brief.schema.json` and `brief compose`, which P6 extends rather
 than reinvents; P7's checklists must supply the probe ids P2's registry entries
-name and are referenced by P6's clean-room brief; P8 replaces P6's stub index
-and re-witnesses P6's mandated-reading path; P9 references all of them and its
-own anti-duplication check fails if any is absent.
+name and are referenced by P6's clean-room brief; **P8 consumes P6, not P7**
+(it replaces P6's stub index and re-witnesses P6's mandated-reading path, and
+names no P7 artifact anywhere in its grounding; corrected at revision 3, see
+the qualified-yes paragraph below); P9 references all of them and its own
+anti-duplication check fails if any is absent. **So the chain is genuinely a
+chain from P2 to P7 and again from P8 to P9, with one link, P7 to P8, that is
+a MERGE-ORDER constraint rather than a consumption.**
 
-**Pairwise file overlap, and where the chain would break even if the graph
-allowed it.** Nine of the ten phases edit `src/cli.ts` or `src/validate.ts` or
-both, because every phase registers its own artifact types with the validator's
-`--type` table and the `auto` resolver (M3R-001 made that edit explicit per
-phase rather than implicit). Six edit `src/checks.ts` to register derived
-checks. Six edit `package.json`'s `files` array. **These are not append-only
-registries keyed by name**, which is what let M2 resolve `test/behaviors.json`
-and `gates.manifest.json` as a union: `src/cli.ts` is a dispatch table and
-`src/validate.ts` is a type table, both hand-edited source, and a union merge
-over source is not a resolution rule, it is a hope.
+**Pairwise file overlap, RECOMPUTED at revision 3 (A-005), because revision 2's
+three counts were not derived from the lists they claimed to be derived from.**
+Revision 2 asserted "nine of the ten phases edit `src/cli.ts` or
+`src/validate.ts` or both" and "six edit `package.json`'s `files` array". The
+true numbers are SEVEN and NINE. This matters more than a typo would: DR-0011
+condition 1 asks for a disjointness CHECK, and a check computed from wrong
+inputs returns a result indistinguishable from a correct one, which is the
+fix-round contract's item 3 failure applied to a pre-pass. The counts are now
+produced by a command over the plan's own `files-to-touch` blocks, so they stay
+falsifiable across revisions rather than being re-asserted:
 
-| Pair | Overlap beyond the standing extras | Parallelizable |
+```
+$ for n in 1 2 3 4 5 6 7 8 9 10; do
+    s=$(grep -n "^### M3-P$n:" delivery/plan/kernel-plan-m3.md | cut -d: -f1)
+    e=$(awk -F: -v s=$s '$1>s{print $1; exit}' <(grep -n "^- blocked-by" delivery/plan/kernel-plan-m3.md))
+    blk=$(sed -n "${s},${e}p" delivery/plan/kernel-plan-m3.md \
+          | sed -n "/^- files-to-touch/,/^- \(conflicts-with\|acceptance\|hazard\|citations\)/p")
+    printf "M3-P%-2s cli=%s validate=%s checks=%s pkgjson=%s workflow=%s\n" "$n" \
+      "$(echo "$blk"|grep -c 'src/cli.ts')" "$(echo "$blk"|grep -c 'src/validate.ts')" \
+      "$(echo "$blk"|grep -c 'src/checks.ts')" "$(echo "$blk"|grep -c 'package.json')" \
+      "$(echo "$blk"|grep -c 'workflows/gates.yml')"
+  done
+M3-P1  cli=1 validate=1 checks=1 pkgjson=1 workflow=1
+M3-P2  cli=1 validate=1 checks=0 pkgjson=1 workflow=1
+M3-P3  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
+M3-P4  cli=0 validate=1 checks=1 pkgjson=0 workflow=0
+M3-P5  cli=1 validate=1 checks=0 pkgjson=1 workflow=0
+M3-P6  cli=0 validate=0 checks=0 pkgjson=1 workflow=1
+M3-P7  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
+M3-P8  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
+M3-P9  cli=0 validate=0 checks=1 pkgjson=1 workflow=1
+M3-P10 cli=0 validate=0 checks=0 pkgjson=1 workflow=1
+```
+
+The true counts, one line each:
+
+| File | Phases that list it | Count |
 |---|---|---|
-| P7 beside P8 | `package.json` `files` (one line each: `checklists` and `tuition`); `src/validate.ts` type table; `src/checks.ts` registry | **conditionally yes**, see below |
-| every other pair | `src/cli.ts` and/or `src/validate.ts` and/or `src/checks.ts`, plus at least one artifact the later phase reads | no |
+| `src/cli.ts` or `src/validate.ts` or both | P1, P2, P3, P4, P5, P7, P8 | **7** (revision 2 said nine) |
+| `src/cli.ts` | P1, P2, P3, P5, P7, P8 | 6 |
+| `src/validate.ts` | P1, P2, P3, P4, P5, P7, P8 | 7 |
+| `src/checks.ts` | P1, P3, P4, P7, P8, P9 | **6** (revision 2 said six; correct, and it matches the six owning phases in section 2.3's derived-check table exactly) |
+| `package.json` | all but P4 | **9** (revision 2 said six) |
+| `.github/workflows/gates.yml` | P1, P2, P6, P9, P10 | 5 (matches the five phases named throughout) |
 
-**The one qualified yes, restated honestly (revision 2 narrows revision 1's
-claim).** Revision 1 said M3-P7 and M3-P8's lists "share only the standing
-pre-authorized extras and `package.json`'s `files` array, and that overlap is
-one line each". Re-reading both files-to-touch lists as they are written shows
-that is not accurate: both also edit `src/validate.ts` (type table) and
-`src/checks.ts` (derived-check registry). So the pair is parallelizable only
-under a stronger condition than revision 1 stated, and the condition is named
-here rather than discovered at merge: **both edits are single-line appends to
-two lists, and the pair may be dispatched concurrently only if the dispatch-time
-check confirms that both phases' edits to those two files are appends and not
-restructurings.** If either phase needs to restructure the type table or the
-check registry, the pair serialises. Under DR-0011 condition 1 an overlap
-cancels the parallel start unless the resolution rule is written down first,
-and this paragraph is that rule.
+**The stated CAUSE was false as well, and it is the more useful correction.**
+Revision 2 explained the overlap with "because every phase registers its own
+artifact types with the validator's `--type` table". P6, P9 and P10 contradict
+it: they ship artifacts (`roles/implementer.md`,
+`roles/clean-room-reviewer.md`, `AGENTS.md`, the release scripts) and register
+no validator type at all, which is why they list neither file. So there are
+two different serialisation arguments in play and they have different failure
+modes, and revision 3 separates them: **P4 through P8 are constrained by FILE
+OVERLAP on the two hand-edited tables; P6, P9 and P10 are constrained by
+DEPENDENCY, because each reads an artifact an earlier phase ships.** A reader
+who conflated them would conclude that P9 must serialise for a merge reason
+when it must serialise for a consumption reason.
+
+**These are not append-only registries keyed by name**, which is what let M2
+resolve `test/behaviors.json` and `gates.manifest.json` as a union:
+`src/cli.ts` is a dispatch table and `src/validate.ts` is a type table, both
+hand-edited source, and a union merge over source is not a resolution rule, it
+is a hope.
+
+| Pair | Overlap beyond the standing extras | Parallelizable, and on which ground |
+|---|---|---|
+| P7 beside P8 | `package.json` `files` (one line each: `checklists` and `tuition`); `src/validate.ts` type table; `src/cli.ts` dispatch table; `src/checks.ts` registry | **conditionally yes**, see below |
+| P4 beside P6 | **NONE.** P4 lists `src/validate.ts` and `src/checks.ts` and not `package.json`; P6 lists `package.json` and `.github/workflows/gates.yml` and neither of P4's two. The intersection outside the standing extras is empty | **no, on DEPENDENCY grounds only**: P6's briefs reference M3-P4's report and work-history types by name. Recorded explicitly because revision 2's catch-all row asserted a file overlap here that does not exist, and a serialisation justified by a false reason is one nobody can re-check |
+| any pair involving P9 or P10 | `package.json` `files`, plus `src/checks.ts` for P9 | **no, on DEPENDENCY grounds**: P9 references every earlier artifact and its anti-duplication check fails if any is absent; P10 requires all nine merged |
+| every other pair | `src/cli.ts` and/or `src/validate.ts` and/or `src/checks.ts`, plus at least one artifact the later phase reads | no, on BOTH grounds |
+
+**The one qualified yes, restated honestly (revision 2 narrowed revision 1's
+claim; revision 3 widens the overlap it names by one file).** Revision 1 said
+M3-P7 and M3-P8's lists "share only the standing pre-authorized extras and
+`package.json`'s `files` array, and that overlap is one line each". Revision 2
+corrected that to include `src/validate.ts` and `src/checks.ts`. The recount
+above adds a third: both also list `src/cli.ts`. So the pair is parallelizable
+only under a stronger condition than either earlier revision stated, and the
+condition is named here rather than discovered at merge: **all three edits are
+single-line appends to three lists, and the pair may be dispatched concurrently
+only if the dispatch-time check confirms that both phases' edits to
+`src/cli.ts`, `src/validate.ts` and `src/checks.ts` are appends and not
+restructurings.** If either phase needs to restructure the dispatch table, the
+type table or the check registry, the pair serialises. Under DR-0011 condition
+1 an overlap cancels the parallel start unless the resolution rule is written
+down first, and this paragraph is that rule.
+
+**And the pair's other field must agree with this one (A-006).** Revision 2
+declared P7 beside P8 conditionally parallelizable while M3-P8's `blocked-by`
+read "M3-P7 merged", which is an unconditional serial dependency; the two
+fields could not both be right, and an orchestrator following section 3 would
+serialise while one following section 2.5 would not. Checking what P8 actually
+CONSUMES settles it: M3-P8's own `grounding` names `tuition/README.md`
+(M1-P1), M3-P6's seed `mechanism-index.yaml`, M3-P1's charter `retention`
+field, and the M1-P2 doctor. **No M3-P7 artifact is named anywhere in it**, and
+section 2.5's own consumption list says the same thing one line along ("P8
+replaces P6's stub index and re-witnesses P6's mandated-reading path"), which
+is a consumption of P6. So the "M3-P7 merged" in P8's `blocked-by` was an
+ordering habit, which is precisely the thing this derivation exists to detect.
+Revision 3 resolves it in the direction the evidence points: **M3-P8's
+`blocked-by` becomes "M3-P6 merged", plus the standing rule that merge order is
+dependency order so P8 merges after P7.** The consumption list at the top of
+this section is corrected to name P6 in P8's row. The real parallel question is
+therefore P6 beside P7 beside P8, and it is answered rather than left open: P6
+beside P7 is NO, because P7's checklists are referenced by P6's clean-room
+brief and P7's probe ids are named by P2's registry entries that P6's brief
+renders; P7 beside P8 is the conditional yes above. P6 must still merge before
+both.
 
 **What the derivation is worth, stated so nobody reads it as a disappointment.**
 M2's pre-pass bought roughly 22 hours of wall clock. M3's buys at most one
 phase overlap and possibly none. The value here is not the saving: it is that
 DR-0011 condition 1 is now DISCHARGED IN WRITING for M3 before dispatch,
-including the correction to revision 1's overlap claim, which is exactly the
-kind of thing that is expensive to find during a merge and cheap to find now.
+including the correction to revision 1's overlap claim and revision 2's three
+miscounts, which is exactly the kind of thing that is expensive to find during
+a merge and cheap to find now.
+
+### 2.6 Every hazard class names the criterion that reddens against it
+
+**NEW at revision 3, binding on every phase in section 3 and on the plan schema
+M3-P1 ships (D-M3-35).**
+
+Revision 2 added `hazard-classes[]` to every phase (D-M3-32) as T-007's
+structural consequence: a criteria-walking review cannot find a defect the
+criteria do not describe, so the plan states, per phase, what a defect would
+look like if every criterion were met. The field was populated with genuinely
+sharp, mechanically-checkable hazards. Then several of them appeared NOWHERE in
+the phase's acceptance criteria, which converts the field from an obligation
+back into documentation.
+
+The sharpest measured instance, and the reason this is a rule rather than a
+reminder. M3-P2's hazard class names "a promotion that silently drops M2's
+`units`-greater-than-zero rule, so a gate examining nothing reports green
+lawfully". That is M2-C-2, the anti-vacuous-green constraint the whole of M2's
+gate contract exists to enforce, and it is enforced on `main` inside
+`makeGateResult`. Round 2's reviewer ran `grep -in units` over all 4905 lines
+of revision 2 and got two hits, both inside M3-P2's own grounding and hazard
+prose: not one of the phase's seven criteria, not the sixteen-row derived-check
+table, not the behaviors list, not the exit test. The registry promotion could
+therefore have dropped M2's central safety property and passed every criterion
+the phase declared.
+
+**The rule.** Every item in a phase's `hazard-classes[]` must name EITHER the
+numbered acceptance criterion that reddens against it, OR an explicit recorded
+reason why no criterion can. A hazard class item with neither is a plan defect,
+raised as a finding rather than fixed silently by the implementer.
+
+**How it is discharged in this document**: each phase in section 3 carries,
+immediately after its hazard-class paragraph, a `hazard class to criterion`
+table with one row per item. The table is part of the plan, not a review aid,
+and revision 3 building it added criteria to four phases (M3-P2 3b and 3c,
+M3-P5 3b, M3-P6 9d, M3-P9 5b) and marked five items as structurally
+uncheckable with the reason stated.
+
+**The three admissible reasons for "no criterion can", and nothing else is
+admissible.** Anything outside this list is a criterion that was not written.
+
+1. **It is a JUDGMENT property of prose.** A clause whose text says something
+   weaker than the row it discharges is not decidable by any test; the honest
+   answer is that the second review contract's hazard reviewer is the only
+   instrument, and the row says so and names the checklist probe that asks.
+   This is not a loophole, because the probe id is itself checkable and
+   `verdict-hazard-classes-addressed` requires a statement per class.
+2. **It is a property of a state the milestone never enters.** Building an
+   enforcement for it is risk 1's shape (M1-P3). The row names the state and
+   the milestone that reaches it.
+3. **The verification requires an artifact that does not exist yet at this
+   phase.** The row names the later phase whose criterion covers it, and that
+   phase's own table carries the row. A hazard deferred this way must land
+   somewhere; a deferral naming no later phase is a plan defect.
+
+**How this rule reaches the kernel, so it is a deliverable and not only a
+repository practice.** M3-P7's verdict schema already requires
+`hazard-classes-addressed[]` with one finding-or-cleared statement per declared
+class (`verdict-hazard-classes-addressed`). Revision 3 adds the other half:
+M3-P1's plan schema gives each `hazard-classes[]` item the shape
+`{id, statement, addressed-by}` where `addressed-by` is required and is either
+a criterion id from the same phase's `acceptance[]` or one of the three reasons
+above with its named target, and a Kind B derived check
+`plan-hazard-classes-addressed-by-resolves` (section 2.3's table, added at
+revision 3) resolves each `addressed-by` criterion id INTO the same phase's
+`acceptance[]` and fails on one that resolves to nothing. So a future project
+inherits the obligation mechanically rather than inheriting a paragraph about
+it.
 
 ---
 
