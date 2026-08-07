@@ -562,6 +562,8 @@ a form not listed here is a review finding.
 | checklists (probe lists) | YAML: a list of `{id, probe, applies-to, evidence-required}` | a probe is a question with an identity and an applicability rule; that is data, and structuring it is what lets a checklist be extended, merged, and orphan-checked. Markdown here would be convenience, which DR-0006 forbids |
 | tuition entries | YAML; `what-happened`, `lesson`, and `structural-consequence[].detail` are block scalars | the header fields, the consequence list, and the `mechanisms[]` this entry constrains are enumerable; the incident narrative is not |
 | mechanism index | YAML: `{mechanism, rule, evidence[]}` entries keyed by mechanism | T-005 names the form directly ("it is small, it is structured data under DR-0006, and it is checkable"); it is a projection of the tuition feed's `mechanisms[]` field, so it has no prose of its own. **Revision 2: the INTERIM index now exists as `MECHANISMS.md`, markdown, twelve rows, committed 2026-08-05.** Its markdown form is not a counter-example to this row and is not grandfathered: it is repository paperwork under `CLAUDE.md`'s "where things live", explicitly self-described as the interim to be SUPERSEDED, and it is the SEED and INPUT for the shipped YAML index rather than a second copy of it (M3-P8 step 2b) |
+| finding set (`schemas/finding.schema.json`, M3-P5, R-029) | YAML; per-finding `analysis` and the set's `verdict-rationale` are block scalars | **ADDED at revision 3 (A-012). It was missing, and section 1.5's own enforcement clause made any form the implementer picked a review finding by construction.** Same reason as the report row and stated in the same terms: R-029's content is a `verdict`, a `produced-by`, and a severity-ranked list of typed findings, all enumerable; what is not enumerable is the ANALYSIS behind one finding, which is argument and lives inside a field. Note the asymmetry with role briefs deliberately: a finding set's structure is what the derived checks read, so structure is the artifact here and the prose is field content, whereas a brief's argument IS the artifact |
+| verdict (`schemas/verdict.schema.json`, M3-P7, R-060) | YAML; per-finding `analysis`, the `rationale` for APPROVE or FIX-ROUND-NEEDED, and each `hazard-classes-addressed[].statement` are block scalars | **ADDED at revision 3 (A-012), same omission.** A verdict is a finding set plus four cross-document completeness arrays (`criteria[]`, `deviations-judged[]`, `hazard-classes-addressed[]`, `produced-by`), every one of which is compared field-by-field by a Kind B check in a different document; a markdown verdict would make `verdict-criteria-complete`, `verdict-deviations-judged` and `verdict-hazard-classes-addressed` unimplementable. The reasoning prose sits inside the fields the checks do not read |
 | role briefs (`roles/*.md`) | markdown with YAML frontmatter | JUSTIFIED EXCEPTION. A brief is instruction prose addressed to a reasoning agent. Its effect comes from argument, ordering, and emphasis, which have no field decomposition that preserves them: splitting a brief into fields produces either one giant string field (structure that carries nothing) or a set of fragments no agent reads as an argument. The frontmatter carries everything that is enumerable (role id, clause ids, mandated reading paths in order, attached verifiers, default model tier, allowed outputs), and that frontmatter is schema-validated. The reason is not that markdown is easier: it is that the remaining content has no structure to express |
 | `AGENTS.md` | markdown with YAML frontmatter | JUSTIFIED EXCEPTION, same reason: it is the orchestrator's brief. Binding: any policy that is expressible as data (gate lists, mode tables, model tiers, stage sequences) is NOT written in `AGENTS.md`; it is referenced by path into the structured artifacts, and M3-P9 has an acceptance criterion that asserts the absence of the duplicated data |
 | fleet environment-warnings file (`warnings.md`) | markdown | JUSTIFIED EXCEPTION. Its only consumer is `src/brief.ts`, which appends it verbatim into instruction prose (R-083b, M1-P4). Structuring it would require a renderer whose only output is the prose form the file already holds, so the structure would have no reader. The reason is absence of a consumer for the structure, not convenience. M3 ships the template (R-083a), not a conversion |
@@ -637,6 +639,85 @@ re-grounded, and both are reported in the deliverable rather than summarized:
 `grep -rP '[^\x00-\x7F]'` over this file, which must report nothing, and the
 `CLAUDE.md` claim grep over the changes, whose hits are each either backed by an
 adjacent captured command or restated as an open question.
+
+### 1.7 Re-grounding record (revision 3, 2026-08-07): M2 AS DELIVERED
+
+Section 1.6 is revision 2's record and is left standing as history. This
+section is revision 3's, and it exists because revision 2's re-grounding was
+performed against the M2 PLAN while that plan was DRAFT. M2 is now COMPLETE on
+`main` at `dbba3c8`. **Every row below was produced by opening the delivered
+artifact, and the row states which.** The full derivation, the commands and
+their untruncated output, is
+`delivery/work-history/m3-plan-revision-3.md`; what appears here is the result
+plus the command that produced it.
+
+**The joints, one row each.** "Confirmed" means the plan's description
+survived being checked against the artifact. "CORRECTED" means it did not.
+
+| Joint | Artifact opened on `main` | Result |
+|---|---|---|
+| CI job structure | `.github/workflows/gates.yml` | **CORRECTED.** One job named `gates`, no matrix, no fan-in (DR-0017). Section 1.1's bullet, D-M3-28's rationale, section 2.3 rule 7's example list and M3-P2 criterion 5b's example list all named the deleted shape. Eight `fan-in` references at revision 2; zero remain as a live claim |
+| CI event fork | `.github/workflows/gates.yml` | **CORRECTED BY ADDITION.** The `pull_request` arm and the `push`-to-`main` arm run different bundles. Revision 2 was silent, which is T-009's shape. Now stated in section 1.1, carried into D-M3-28, and it is why every M3 check must declare its arm |
+| required status context | `.github/workflows/gates.yml`, DR-0017, DR-0004 | **CORRECTED BY ADDITION.** The context is the literal string `gates`; adding a matrix renames it to `gates (26)` and detaches branch protection. Now a standing constraint on the five phases that edit the file |
+| phase declarations | `src/gates/schemas/phase-declaration.schema.json`, `gates.manifest.json`, `src/gates/scope.ts`, `delivery/plan/phase-declarations/README.md` | **CORRECTED, three ways.** Path, camelCase closed field set, and merge-base timing. Plus an ownership gap: nobody created the ten `m3-pN.json` files. Section 1.1 item 3, section 3's preamble, D-M3-33 |
+| gate registry as CI's single caller | `.github/workflows/gates.yml`, `scripts/m2-exit-test.sh`, `src/commands/gates.ts` | **CORRECTED.** The M2 exit harness is the SINGLE caller of `gates run`, deliberately, so exactly one `summary.json` is produced per job. Five M3 checks were specified as raw workflow steps, which routes around the authority M3-P2 exists to establish. Section 2.2, D-M3-34 |
+| diff-scoped gate semantics | DR-0018, `scripts/m2-exit-test.sh` | **CORRECTED BY ADDITION.** A required diff-scoped gate whose trigger the head does not touch is expected `not-applicable` with a recorded reason, and the runner treats a required gate reporting not-applicable as a failure (exit 20). M3-P2 criterion 3 and exit stage E1.6 both asserted a plain "exits 0 with everything green", which DR-0018 records as unsatisfiable for exactly this reason |
+| M2-P6 coverage checker | `src/gates/coverage.ts` | **CORRECTED.** It is config-driven: `--config <path>` validated against `coverage-config.schema.json`, falling back to `KERNEL_COVERAGE_CONFIG` only when absent, with `inventory` and `coverageTable` as two separately configured sources. Section 2.2's stated reason for not reusing it ("every M3 phase a potential edit of M2's gate surface") was false; a second instance costs one config document and one registry entry and edits no M2 source |
+| M2-C-2, never green by omission | `src/gates/result.ts` lines 148 to 183, `src/gates/schemas/gate-result.schema.json` | **Confirmed, and it is the constraint M3-P2's own hazard class named and no criterion checked.** `makeGateResult` is the only constructor and rewrites green-with-zero-units to `error` with `vacuous: true`. M3-P2 gains criteria 3b and 3c |
+| M2-C-3, fail closed | `src/gates/result.ts`, `src/gates/red-witness.ts` line 454, `src/gates/citations.ts` line 1238 | **Confirmed.** A gate invoked without a parameter it needs is `error`, never not-applicable, and two delivered gates carry the M2-C-3 citation in their own refusal text |
+| `modes` reserved field | `src/gates/schemas/gate-manifest.schema.json` line 70 | **Confirmed exactly as the plan describes**: `{"type": "array", "items": {"type": "string"}}`, described as "Reserved for M3's assurance modes ... Validated if present, ignored by the M2 runner, so the promotion is additive" |
+| validator diagnostic contract | `src/gates/validate.ts` line 90 | **Confirmed.** `` return `INVALID ${diagnostic.pointer} ${diagnostic.message}`; `` is the module's public contract, so DR-0013 clause 6's "boundary preserved" retirement is keepable. M3-P1 step 1 still verifies M2's TESTS assert the contract rather than engine wording, which is a different claim and remains unverified here |
+| `src/gates/schemas/` location | `git ls-tree` | **Confirmed.** Nine schema documents live there and the root `schemas/` is empty but for `README.md`, so D-M3-20's relocation decision has the shape it assumed |
+| M2-P2 red-witness harness | `src/gates/red-witness.ts`, `src/gates/schemas/witness-spec.schema.json`, `witness/` | **CORRECTED BY SHARPENING.** The accepted proof is a durable `witness/<id>.json` spec plus the run's `witness-records.json`, not "its evidence file" singular. `dangerousStates[]` has `minItems: 1` and every member must have been red |
+| M2-P3 suite wrapper | `src/gates/suite.ts` | **Confirmed and sharpened.** The exit code is bound to the parsed counts in both directions, so R-049/R-086's `wrapper-exit-code` field travels with counts rather than instead of them |
+| M2-P5 citation linter | `src/gates/citations.ts`, `gates.manifest.json` | **CORRECTED.** It is a diff-scoped gate (`--base`/`--head`, precondition `diff-touches`), resolves only citations added or modified in the diff (M2-D-21), and never resolves a citation inside backticks or a fenced block (M2-D-22). "Attached verifier" in R-010a therefore means a pass over a diff and needs a base |
+| M2-P7 release verification | `src/gates/deploy.ts`, `src/gates/migrations.ts`, `src/gates/release.ts`, `release-record.schema.json` | **Confirmed, with one property named**: the outcome vocabulary is enforced in code as a fail-closed rule and is deliberately NOT a schema enum. M3-P3 references stage ids only, so nothing in M3 restates it |
+| M2-P8 credential scoping | `src/gates/credentials.ts`, `gates.manifest.json` | **Confirmed, with the residue named.** The allowlist in `src/exec/env.ts` is the defence; the module's denylist is a bounded tripwire and its own header says a dangerous name outside the walked vocabulary that is also allowlisted would pass green. The implementer brief may cite the scrub as structural and may not call it exhaustive |
+| `destructiveCommands` | `gates.manifest.json` | **Confirmed.** Present with four entries (`pool destroy`, `teardown`, `src/pool.ts`, `src/teardown.ts`), which is the key M3-P6's `destructive-authority` clause and M3-P8's `machine-readable-form` both point at (D-M3-26) |
+| `A-n` owner-action ids | `gates.manifest.json`, `delivery/STATE.md`, `delivery/plan/kernel-plan-m2.md` | **CORRECTED.** `A-3` is a live M2 owner action AND a literal precondition id inside `gates.manifest.json` on `main`; `A-4` is allocated by both this plan and `delivery/STATE.md` to different acts. Section 7 registers the namespace and moves this plan's ids |
+
+**Decision records and tuition entries dispositioned at revision 3.** Revision
+2's section 1.6 table has no row for any of these, and two of the three are
+newer than it.
+
+| Input | Disposition |
+|---|---|
+| `delivery/decisions/DR-0017` (single-job CI, owner, 2026-08-06) | **Cited for the first time; changed five passages.** Section 1.1's workflow bullet, the CR-760 residue statement, section 2.3 rule 7's defang list, D-M3-28's whole rationale, and M3-P2 criterion 5b's parenthetical. The plan cited DR-0017 zero times at revision 2 while five phases wired steps into the file it governs |
+| `delivery/decisions/DR-0018` (exit-test semantics for src-scoped gates, owner, 2026-08-07) | **Cited for the first time; changed two criteria.** M3-P2 criterion 3 and exit stage E1.6 both expected every required gate green from a single bundle run. DR-0018 records that a diff-scoped gate whose trigger the head does not touch is legitimately not-applicable, that the runner nonetheless fails a required not-applicable (exit 20), and that the harness therefore carries per-gate green-path evidence separately. Both criteria are rewritten to that shape |
+| `delivery/tuition/T-009` (a gate result is evidence only for the run that produced it) | **Cited for its MECHANISM for the first time; changed four passages.** Revision 2's single T-009 hit was a remark about tuition id allocation. Now: exit stage E3.1 names the event, the head sha and completion; section 1.1 states the event fork; D-M3-28 requires every wired check to declare its arm and requires BOTH arms witnessed where behaviour forks; and M3-P9's `AGENTS.md` gains a merge-completion clause with a criterion behind it |
+| `delivery/review/arbitration-m3-plan-r2.md` and the two round-2 reports | **The instrument of this revision.** Four mechanisms and eight local findings; the disposition of all twenty findings is in `delivery/work-history/m3-plan-revision-3.md` |
+
+**What revision 3's derivation did NOT cover, stated because an empty result
+from a wrongly scoped search is indistinguishable from an absence of defects,
+and this project has been bitten by that shape repeatedly.**
+
+1. **No M3 artifact was executed, because none exists.** Every correction above
+   is a document change checked against another document or against source on
+   `main`. The phases themselves remain unverified by anything except reading.
+2. **The M2 gate modules were read for their PUBLIC CONTRACT, not audited.**
+   For each of the eleven modules the derivation read the module header, the
+   usage string, the flag table, and the code sites that decide status and
+   units. It did NOT read the bodies of `src/gates/suite.ts` (1142 lines) or
+   `src/gates/citations.ts` (1509 lines) line by line, and it did not run any
+   of them. A defect living inside a body whose header describes it correctly
+   would not have been found.
+3. **M2's TEST suites were not opened.** M3-P1 step 1's obligation is that
+   M2's own validation tests assert the `INVALID <json-pointer> <message>`
+   contract rather than engine wording. Revision 3 confirmed the module emits
+   that string; it did NOT read `test/` to confirm what the tests assert. That
+   remains M3-P1's first step and it is a real, unverified precondition of
+   DR-0013 clause 6.
+4. **`scripts/m2-exit-test.sh` was read for its documented modes and flags, not
+   for its assertion code.** The bundle definitions, the `--self-test`
+   semantics and the single-caller property come from its header comment and
+   from the workflow that invokes it.
+5. **Appendix C was not re-audited.** Neither round-2 reviewer audited it, and
+   revision 3 touched only item 1 (the coverage-checker option, which is
+   downstream of a corrected joint). The other twelve items are unexamined.
+6. **The clause-by-clause content of M3-P5 and M3-P6 was not re-derived.**
+   Round-2 reviewer B recorded the same exclusion. Revision 3 added the two
+   criteria the hazard-class rule forced (M3-P5 criterion 3b, M3-P6 criterion
+   9d) and did not otherwise re-examine the remaining cited clauses.
 
 ---
 
