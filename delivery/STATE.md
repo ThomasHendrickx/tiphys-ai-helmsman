@@ -61,8 +61,10 @@ carries the full 10-gate set (manifest-self-check, red-witness, suite, scope,
 citations, coverage, deploy, migrations, credential-scrub, credential-token)
 and the exit harness as the single caller of `gates run` in the single-job CI
 (DR-0017). The M2 exit test PASSED with recorded evidence at
-`delivery/evidence/m2-exit-test/` (PR bundle: 6 green, 4 not-applicable, 0 red,
-0 error, 0 vacuous; per-phase green demonstrated; `--self-test` fails both
+`delivery/evidence/m2-exit-test/`; the PR bundle counts (6 green, 4
+not-applicable, 0 red, 0 error, 0 vacuous) are recorded at
+delivery/evidence/m2-exit-test/pr-bundle.summary.json:128-136; per-phase green
+demonstrated; `--self-test` fails both
 fixtures). Presented to the owner unasked (DR-0015).
 
 CI decision this milestone: **DR-0017** collapsed CI to a single job named
