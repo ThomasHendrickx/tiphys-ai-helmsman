@@ -214,6 +214,38 @@ in, reported success, and said nothing. A guard whose condition does not test
 the property that matters is green and worthless, which is the red-witness rule
 one level up.
 
+## Green is scoped to the run that produced it (T-009, binding)
+
+Measured 2026-08-07: `main` was red for **four hours and twenty-one minutes**
+across five consecutive push runs while every pull-request check was green, and
+the orchestrator merged four more PRs onto it without noticing. The owner
+surfaced it, not the process.
+
+The `gates` workflow fires on two events and they run DIFFERENT bundles: the
+`pull_request` event runs the strong PR bundle with `--phase` from
+`github.head_ref`, and a `push` to `main` runs `--bundle main` with no `--phase`.
+A defect on the arm only one event takes is invisible to the other.
+
+**The mechanism: a gate result is evidence only for the configuration it ran
+under.** "CI is green" is never a complete sentence here. The complete sentence
+names the event and the head sha.
+
+Two rules, both mechanical:
+
+1. **A merge is not complete until the post-merge `push` run on the new `main`
+   head is observed to completion.** Not the PR check on the branch: the run
+   whose head sha is the new tip. The phase does not close until that run is
+   green. Watch it with the same watchdog discipline T-008 requires.
+2. **Where behavior forks on the CI event, BOTH arms need a witness.** One
+   witnessed arm and one unwitnessed arm is the exact shape that broke here, and
+   the unwitnessed one is the one that broke.
+
+Corollary, paid for in the same incident: an orchestrator-side hotfix to shared
+harness code IS a fix round and owes the full fix-round contract above. PR #27
+fixed one arm of "the harness assumes a run has a phase" and left the sibling
+arm twelve lines away, because it was treated as too small to open the contract
+for. PR #30 is what that exemption cost.
+
 ## Identifier schemes
 
 Stable IDs, never renumbered, cited across documents:

@@ -254,3 +254,8 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
   adversarial review (DR-0011, recorded consequence).
 - Process paperwork must reach `main`, not only a side branch. This file
   exists because it once did not.
+- A merge is not complete until the post-merge `push` run on the new `main`
+  head is observed green. The PR check and the push run execute DIFFERENT
+  bundles, so a green PR check is not evidence about `main` (tuition T-009,
+  which cost four hours and twenty-one minutes of red `main` and four merges
+  landed on top of it).
