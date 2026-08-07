@@ -522,13 +522,13 @@ test("--head selects the CONTENT judged, not only the file list: a broken rev re
   const dir = scratch();
   try {
     initRepo(dir);
-    mkdirSync(join(dir, "delivery", "review"), { recursive: true });
+    mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
     mkdirSync(join(dir, "src"), { recursive: true });
     writeFileSync(join(dir, "src", "fleet.ts"), "l1\n");
     const base = commit(dir, "base");
-    writeFileSync(join(dir, "delivery", "review", "rev.md"), "cites src/does-not-exist-anywhere.ts:1\n");
+    writeFileSync(join(dir, "delivery", "plan", "rev.md"), "cites src/does-not-exist-anywhere.ts:1\n");
     const broken = commit(dir, "broken");
-    writeFileSync(join(dir, "delivery", "review", "rev.md"), "cites src/fleet.ts:1\n");
+    writeFileSync(join(dir, "delivery", "plan", "rev.md"), "cites src/fleet.ts:1\n");
     const fixed = commit(dir, "fixed");
 
     const a = runCitationsGate({ cwd: dir, base, head: fixed });
@@ -770,10 +770,10 @@ test("a document that cites only itself does not satisfy the vacuous guard (CR-1
   const dir = scratch();
   try {
     initRepo(dir);
-    mkdirSync(join(dir, "delivery", "review"), { recursive: true });
-    writeFileSync(join(dir, "delivery", "review", "self.md"), "placeholder\n");
+    mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
+    writeFileSync(join(dir, "delivery", "plan", "self.md"), "placeholder\n");
     const base = commit(dir, "base");
-    writeFileSync(join(dir, "delivery", "review", "self.md"), "delivery/review/self.md:1 is this line.\n");
+    writeFileSync(join(dir, "delivery", "plan", "self.md"), "delivery/plan/self.md:1 is this line.\n");
     const head = commit(dir, "self-cite");
     const fields = runCitationsGate({ cwd: dir, base, head });
     assert.equal(fields.status, "red", JSON.stringify(fields));
@@ -783,18 +783,73 @@ test("a document that cites only itself does not satisfy the vacuous guard (CR-1
   }
 });
 
-test("a review citing only an external root verifies nothing and reaches not-applicable, not red (disposition unchanged; the required/not-applicable policy question is escalated, not this gate's to answer)", () => {
+test("a citationRequired document citing only an external root verifies nothing and reaches not-applicable, not red (disposition unchanged; the required/not-applicable policy question is escalated, not this gate's to answer)", () => {
   const dir = scratch();
   try {
     initRepo(dir);
-    mkdirSync(join(dir, "delivery", "review"), { recursive: true });
-    writeFileSync(join(dir, "delivery", "review", "ext.md"), "placeholder\n");
+    mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
+    writeFileSync(join(dir, "delivery", "plan", "ext.md"), "placeholder\n");
     const base = commit(dir, "base");
-    writeFileSync(join(dir, "delivery", "review", "ext.md"), "cites bin/fm-lock.sh:1-5\n");
+    writeFileSync(join(dir, "delivery", "plan", "ext.md"), "cites bin/fm-lock.sh:1-5\n");
     const head = commit(dir, "external-only");
     const fields = runCitationsGate({ cwd: dir, base, head });
     assert.equal(fields.status, "not-applicable", JSON.stringify(fields));
     assert.notEqual(fields.status, "red");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0019: the gate governs FORWARD-claiming docs, not the historical   */
+/* RECORD. delivery/review/** and delivery/work-history/** are records    */
+/* whose citations were valid when written and drift; they are no longer */
+/* configured documents. The class has TWO structurally different members */
+/* (review, work-history), and the co-located forward doc proves the gate */
+/* is scoped, not gutted.                                                 */
+/* ------------------------------------------------------------------ */
+
+test("DR-0019: a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds", () => {
+  // Two structurally different record members, one dangerous shape each: a
+  // MADE citation that does not resolve at head. Under the pre-DR-0019 config
+  // both reddened; under the new scope neither is a configured document, so
+  // the diff touches nothing gated and reaches not-applicable.
+  for (const recordDir of ["review", "work-history"]) {
+    const dir = scratch();
+    try {
+      initRepo(dir);
+      mkdirSync(join(dir, "delivery", recordDir), { recursive: true });
+      writeFileSync(join(dir, "delivery", recordDir, "rec.md"), "placeholder\n");
+      const base = commit(dir, "base");
+      writeFileSync(
+        join(dir, "delivery", recordDir, "rec.md"),
+        "examined src/nope.ts:999 at the time this was written\n",
+      );
+      const head = commit(dir, "record-with-drifted-citation");
+      const fields = runCitationsGate({ cwd: dir, base, head });
+      assert.equal(fields.status, "not-applicable", `${recordDir}: ${JSON.stringify(fields)}`);
+      assert.notEqual(fields.status, "red", `${recordDir} must not red`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // The gate is scoped, not gutted: the SAME dangerous shape in a forward-
+  // claiming doc (delivery/plan, still configured and citationRequired) reds.
+  const dir = scratch();
+  try {
+    initRepo(dir);
+    mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
+    writeFileSync(join(dir, "delivery", "plan", "fwd.md"), "placeholder\n");
+    const base = commit(dir, "base");
+    writeFileSync(
+      join(dir, "delivery", "plan", "fwd.md"),
+      "claims src/nope.ts:999 resolves at head\n",
+    );
+    const head = commit(dir, "forward-with-bad-citation");
+    const fields = runCitationsGate({ cwd: dir, base, head });
+    assert.equal(fields.status, "red", JSON.stringify(fields));
+    assert.match(fields.detail, /src\/nope\.ts/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -825,12 +880,12 @@ test("listConfiguredDocuments and inventoryDeliveryTree walk a fixture tree and 
   const dir = scratch();
   try {
     mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
-    mkdirSync(join(dir, "delivery", "review"), { recursive: true });
+    mkdirSync(join(dir, "delivery", "verification"), { recursive: true });
     mkdirSync(join(dir, "delivery", "decisions"), { recursive: true });
     mkdirSync(join(dir, "src"), { recursive: true });
     writeFileSync(join(dir, "src", "target.ts"), "a\nb\nc\n");
     writeFileSync(join(dir, "delivery", "plan", "a.md"), "cites src/target.ts:1\n");
-    writeFileSync(join(dir, "delivery", "review", "b.md"), "cites src/target.ts:99 (out of range)\n");
+    writeFileSync(join(dir, "delivery", "verification", "b.md"), "cites src/target.ts:99 (out of range)\n");
     writeFileSync(join(dir, "delivery", "decisions", "c.md"), "no citations, decisions are not required\n");
     writeFileSync(join(dir, "delivery", "STATE.md"), "no citations, legitimately\n");
 
@@ -839,7 +894,7 @@ test("listConfiguredDocuments and inventoryDeliveryTree walk a fixture tree and 
       "delivery/STATE.md",
       "delivery/decisions/c.md",
       "delivery/plan/a.md",
-      "delivery/review/b.md",
+      "delivery/verification/b.md",
     ]);
 
     const rows = inventoryDeliveryTree(dir);
@@ -851,8 +906,8 @@ test("listConfiguredDocuments and inventoryDeliveryTree walk a fixture tree and 
       unresolved: 0,
       unverifiableExternal: 0,
     });
-    assert.deepEqual(byPath.get("delivery/review/b.md"), {
-      path: "delivery/review/b.md",
+    assert.deepEqual(byPath.get("delivery/verification/b.md"), {
+      path: "delivery/verification/b.md",
       total: 1,
       resolved: 0,
       unresolved: 1,

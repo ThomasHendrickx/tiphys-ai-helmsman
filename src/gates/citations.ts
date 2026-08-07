@@ -176,6 +176,21 @@ export interface CitationConfig {
  * `externalRoots` glob. The two root lists are therefore DISJOINT by
  * construction, and `classifyPathAgainstRoots` needs no precedence rule at
  * all: it checks every root and refuses ambiguity outright (CR-1022).
+ *
+ * DR-0019 (owner, 2026-08-07): the gate governs FORWARD-CLAIMING delivery
+ * docs, NOT the historical delivery RECORD. The `delivery/review/` and
+ * `delivery/work-history/` trees are records of what was examined at the
+ * time they were written; their `path:line` refs were valid when authored
+ * and drift as the code moves. Once the exit harness runs the full gate set
+ * on every doc PR, requiring a record's citations to still RESOLVE at head
+ * is the wrong policy: it re-litigates settled history against current code.
+ * So both trees are removed from `documents`, and review from
+ * `citationRequired`. The docs whose claims MUST hold against current code
+ * stay gated: the `delivery/plan/`, `delivery/verification/`,
+ * `delivery/decisions/`, `delivery/requirements/` trees and `delivery/STATE.md`
+ * are documents; the `delivery/plan/` and `delivery/verification/` trees are
+ * citationRequired. Anti-fabrication is preserved on every forward-claiming
+ * doc; the drift of the historical record is no longer a gate failure.
  */
 export const DEFAULT_CITATION_CONFIG: CitationConfig = {
   version: 1,
@@ -213,17 +228,14 @@ export const DEFAULT_CITATION_CONFIG: CitationConfig = {
   ],
   documents: [
     "delivery/plan/**/*.md",
-    "delivery/review/**/*.md",
     "delivery/verification/**/*.md",
     "delivery/decisions/**/*.md",
-    "delivery/work-history/**/*.md",
     "delivery/tuition/**/*.md",
     "delivery/requirements/**/*.md",
     "delivery/STATE.md",
   ],
   citationRequired: [
     "delivery/plan/**/*.md",
-    "delivery/review/**/*.md",
     "delivery/verification/**/*.md",
   ],
 };
