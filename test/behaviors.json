@@ -409,5 +409,6 @@
   "m2-exit-dr0018-diff-scoped-na": "the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018)",
   "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS",
   "m2-exit-checkout-head-branch-by-name": "the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached",
-  "m2-exit-scope-required-green-in-pr-bundle": "the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green"
+  "m2-exit-scope-required-green-in-pr-bundle": "the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green",
+  "m2-exit-scope-nonphase-accepts-na": "the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differently for phase vs non-phase runs (M2R-026)"
 }
