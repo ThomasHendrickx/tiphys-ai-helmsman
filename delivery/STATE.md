@@ -118,17 +118,19 @@ rebased onto this `main`. That branch holds a substantial revision of
 "M3 plan revision 2: sections 6-8 and appendices re-grounded") which is NOT on
 `main` and is the reason the branch is kept rather than deleted.
 
-**Every other `claude/*` branch is CLEARED FOR DELETION but is still present.**
-The audit ran on 2026-08-07 and confirmed, for all 35 of them, that no file and
-no `delivery/` review, tuition, work-history, evidence or verification document
-existed on any of them that `main` lacked; their remaining deltas were
-superseded older versions of files `main` has since rewritten (sampled and
-verified: `DR-0008` reads `status: open (deferred)` on the old branches while
-`main` has it decided). The deletion itself did NOT happen: this container's
+**Every other `claude/*` branch was DELETED by the owner on 2026-08-07
+(action A-4), and the remote is now exactly two refs.** The audit that cleared
+them confirmed, for all of them, that no file and no `delivery/` review,
+tuition, work-history, evidence or verification document existed on any that
+`main` lacked; their remaining deltas were superseded older versions of files
+`main` has since rewritten (sampled and verified: `DR-0008` read
+`status: open (deferred)` on the old branches while `main` has it decided).
+The orchestrator could not perform the deletion itself: this container's
 credentials are refused ref deletion with **HTTP 403 on both paths**, the
 GitHub API (`DELETE /git/refs/heads/<branch>`) and `git push origin --delete`
 alike, while ordinary pushes from the same credentials succeed. That is the
-same authorization asymmetry CLAUDE.md standing warning 6 records for `gh`.
+same authorization asymmetry CLAUDE.md standing warning 6 records for `gh`,
+and it is why branch cleanup is an owner action rather than a chore.
 
 This is therefore an OWNER ACTION, listed in the section below as A-4. The
 branch tips were captured before the attempt so nothing is unrecoverable, and
@@ -286,6 +288,14 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 
 ## Owner action items
 
+**This section is the sole allocator of `A-n` ids** (CLAUDE.md identifier
+schemes). An `A-n` is an ACT the owner must perform because it needs access an
+agent does not hold; a CHOICE is a `DR-nnnn` instead. A plan that needs a new
+action asks for an id rather than picking one, because the namespace has
+already collided once: `A-4` meant two different things in two live documents
+and `A-3` meant three, one of them a literal string inside
+`gates.manifest.json` on `main`. Retired ids are never reused.
+
 1. **DR-0004: DONE (owner, 2026-08-05).** The ruleset is active and was
    witnessed refusing a merge whose branch was behind `main`, then allowing it
    after the branch was updated and CI went green on the exact merged head.
@@ -310,17 +320,30 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
    FULL mode. Local mode is unaffected and passes.
 4. **A-2, before M4.** Provide or approve a private remote per real fleet
    home, for fleet-state durability.
-5. **A-4, NEW, ready to execute.** Delete the 35 stale `claude/*` branches.
-   They are audited and cleared (see "In flight" above for the audit and the
-   re-runnable commands); the orchestrator cannot do it because this
+5. **A-4: DONE (owner, 2026-08-07).** The stale `claude/*` branches were
+   deleted through the `gh` CLI. The orchestrator could not do it: this
    container's credentials are refused ref deletion with HTTP 403 on both the
-   GitHub API and `git push --delete`, though ordinary pushes succeed. Keep
-   exactly two refs: `main` and `claude/m3-plan-regrounding`. Fastest route is
-   the GitHub branches page, or from a machine with delete rights:
-   `git fetch --prune && git branch -r | grep '^  origin/claude/' |
-   grep -v m3-plan-regrounding | sed 's#origin/##' |
-   xargs -n1 git push origin --delete`.
-   Until this runs, `main` is the source of truth but is not the ONLY ref.
+   GitHub API and `git push --delete`, though ordinary pushes from the same
+   credentials succeed. The remote is now exactly two refs, `main` and
+   `claude/m3-plan-regrounding`, which is the state this project wanted:
+   `main` is the source of truth and the M3 branch is where M3 is worked,
+   rebased onto `main` rather than diverging from it.
+6. **A-7, before the M3 exit run.** Provide the npm publish credential and
+   claim the `@tiphys` scope, per DR-0008 (public npmjs, `@tiphys/kernel` and
+   `@tiphys/claude-code-plugin`). This is elevated access the orchestrator does
+   not hold, so it is owner-reserved by construction under DR-0016. It blocks
+   M3-P10 only; M3-P1 through M3-P9 run without it.
+   **Id note:** the M3 plan called this `A-4` through revision 2, colliding
+   with the branch deletion above. Revision 3 renumbered the PLAN's id to A-7.
+   M2's `A-3` is deliberately untouched because it is embedded as a literal
+   string in `gates.manifest.json` on `main`
+   (`implementer-token-present-owner-action-a-3`), where a rename would edit
+   shipped configuration. A-5 and A-6 were already taken, which is why the
+   next free id is A-7: A-6 is the sandbox push grant at item 3 above, and A-5
+   is a standing action allocated by the M3 plan at
+   delivery/plan/kernel-plan-m3.md:2538 (DR-0004 items 2 and 3, branch
+   protection). A-5 is recorded here so this register actually holds every
+   allocated id, which is the point of naming a sole allocator.
 
 ## Standing reminders
 
