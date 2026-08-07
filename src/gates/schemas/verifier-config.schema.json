@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/verifier-config.schema.json",
+  "title": "Tiphys release-verification declaration",
+  "description": "The per-repository release-verification declaration (kernel plan M2, M2-P7 step 7; DR-0014). One document, committed at the repository root as release-verification.json, read from a COMMITTED ref (the merge base at the anti-widening call sites), never from the working tree. Silence is never permission: an absent verification field is error, not none, and mode none requires a non-empty reason. Mode-conditional requirements (none requires reason; adapter requires adapter, config and clock) need conditional composition, which is outside the closed keyword set of M2-D-04, so they are checked in code by src/gates/release.ts, which emits the same INVALID <pointer> <message> diagnostics. Expressed entirely in the closed keyword set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "repository", "integrationRef", "verifications"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "repository": {
+      "description": "The project's own identifier for itself (owner/name, or any project-declared identifier). Copied verbatim into the verification subject.",
+      "type": "string"
+    },
+    "integrationRef": {
+      "description": "The branch merges land on, normally main. Copied verbatim into the verification subject.",
+      "type": "string"
+    },
+    "verifications": {
+      "description": "The two M2 registry entries, keyed by gate id. M2 deliberately does not generalize to N charter-declared verifications (kernel plan M2 section 2 item 12); the charter field that will supersede this document is M3's reserved space.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deploy": {
+          "$ref": "#/$defs/verification"
+        },
+        "migrations": {
+          "$ref": "#/$defs/verification"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "description": "none is a POSITIVE declaration that this project has no such release state to verify, and it costs a reason. adapter names an executable that performs one bounded observation per invocation.",
+          "type": "string",
+          "enum": ["none", "adapter"]
+        },
+        "reason": {
+          "description": "Required when mode is none (checked in code). Surfaced in the gate record and the evidence bundle: disabling verification costs visibility.",
+          "type": "string"
+        },
+        "adapter": {
+          "description": "argv of the adapter executable. Committed configuration under scope audit, never assembled at run time from an environment variable: an adapter path that can be redirected at run time is a way to make a verifier report anything (investigation section 5.2).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "Adapter-specific configuration, passed through verbatim in the request. The kernel never interprets it; JSON-pointer extraction, satisfying values and platform vocabulary live here and only here.",
+          "type": "object"
+        },
+        "clock": {
+          "$ref": "#/$defs/clock"
+        },
+        "credentials": {
+          "description": "Environment variable NAMES, never values. A named variable that is not resolvable is error before any adapter spawn. Values never appear in configuration or in any evidence record (M2-P7 criterion 11).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        }
+      }
+    },
+    "clock": {
+      "description": "The kernel's clock, from configuration the kernel validated. The adapter never sleeps, never loops, never schedules and never decides what a timeout means. There are NO defaults here: the kernel's maximum deadline and default poll interval are numbers M2-P7 step 12 forbids inventing, so every project states its own.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intervalMs", "deadlineMs", "attemptTimeoutMs"],
+      "properties": {
+        "intervalMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deadlineMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attemptTimeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

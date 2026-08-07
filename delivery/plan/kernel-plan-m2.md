@@ -342,7 +342,7 @@ Phase declarations for the scope auditor are authored by the orchestrator from t
   3. Create `src/gates/scope.ts`: resolve the merge base of `--head` against `--base`; compute changed paths with `git diff --name-status`, counting renames as both paths and counting deletions; compare against the declaration plus the two standing extras, with the work-history extra scoped to `delivery/work-history/<phase-id>.md`.
   4. Read the declaration from the **merge base**, not the head, so an implementer editing it on their own branch cannot widen the audited scope. Record the declaration path and its merge-base blob sha256.
   5. `units` equals changed paths audited. A listed file not touched is not a violation and is recorded as an under-touch count in the detail line.
-  6. Register `scope` per section 1.4: `required`, precondition `branch-matches` the phase pattern `claude/m[0-9]+-p[0-9]+-*` plus a supplied `--phase`. Branch matches with no declaration at the merge base: `red`. Branch does not match (paperwork branches): `not-applicable` with the reason recorded. `--phase` or `--base` absent: `error` (M2-C-3).
+  6. Register `scope` per section 1.4: `required`, precondition `branch-matches` the phase pattern `claude/m[0-9]+-p[0-9]+-.*` plus a supplied `--phase`. Branch matches with no declaration at the merge base: `red`. Branch does not match (paperwork branches): `not-applicable` with the reason recorded. `--phase` or `--base` absent: `error` (M2-C-3).
   7. Tests in `test/scope-gate.test.ts` against scratch repositories.
 - files-to-touch: src/gates/scope.ts, src/gates/schemas/phase-declaration.schema.json, test/scope-gate.test.ts (create); gates.manifest.json, test/behaviors.json.
 - acceptance criteria:

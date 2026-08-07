@@ -1,0 +1,90 @@
+[
+  {
+    "id": "dpl_PLACEHOLDER_CURRENT_PRODUCTION",
+    "name": "PLACEHOLDER-project-name",
+    "url": "PLACEHOLDER-deployment-url",
+    "type": "LAMBDAS",
+    "state": "READY",
+    "createdAt": 1785881489393,
+    "creator": "PLACEHOLDER-creator",
+    "project": "PLACEHOLDER-project",
+    "meta": {
+      "githubCommitSha": "61b964beb868730e3c195ab032c2822fe62a65cf",
+      "githubCommitRef": "main",
+      "githubCommitOrg": "PLACEHOLDER-org",
+      "githubCommitRepo": "PLACEHOLDER-repo",
+      "githubRepoId": "PLACEHOLDER-repo-id",
+      "branchAlias": "PLACEHOLDER-branch-alias"
+    },
+    "alias": [
+      "PLACEHOLDER-alias-1",
+      "PLACEHOLDER-alias-2",
+      "PLACEHOLDER-alias-3",
+      "PLACEHOLDER-alias-4",
+      "PLACEHOLDER-alias-5"
+    ],
+    "target": "production",
+    "regions": ["PLACEHOLDER-region"],
+    "buildingAt": 1785881489393,
+    "ready": 1785881807886,
+    "readyState": "READY",
+    "source": "git",
+    "aliasError": null,
+    "isRollbackCandidate": true
+  },
+  {
+    "id": "dpl_PLACEHOLDER_PRODUCTION_929D387",
+    "name": "PLACEHOLDER-project-name",
+    "url": "PLACEHOLDER-deployment-url-2",
+    "type": "LAMBDAS",
+    "state": "READY",
+    "createdAt": 1785881489393,
+    "creator": "PLACEHOLDER-creator",
+    "project": "PLACEHOLDER-project",
+    "meta": {
+      "githubCommitSha": "929d387be1fc2d1c9464d172b9610947076ccf9e",
+      "githubCommitRef": "main",
+      "githubCommitOrg": "PLACEHOLDER-org",
+      "githubCommitRepo": "PLACEHOLDER-repo",
+      "githubRepoId": "PLACEHOLDER-repo-id",
+      "branchAlias": "PLACEHOLDER-branch-alias"
+    },
+    "alias": ["PLACEHOLDER-alias-1"],
+    "target": "production",
+    "regions": ["PLACEHOLDER-region"],
+    "buildingAt": 1785881489393,
+    "ready": 1785881807886,
+    "readyState": "READY",
+    "source": "git",
+    "aliasError": null,
+    "isRollbackCandidate": true
+  },
+  {
+    "id": "dpl_PLACEHOLDER_PREVIEW_929D387",
+    "name": "PLACEHOLDER-project-name",
+    "url": "PLACEHOLDER-deployment-url-3",
+    "type": "LAMBDAS",
+    "state": "READY",
+    "createdAt": 1785881489393,
+    "creator": "PLACEHOLDER-creator",
+    "project": "PLACEHOLDER-project",
+    "meta": {
+      "githubCommitSha": "929d387be1fc2d1c9464d172b9610947076ccf9e",
+      "githubCommitRef": "PLACEHOLDER-branch-ref",
+      "githubCommitOrg": "PLACEHOLDER-org",
+      "githubCommitRepo": "PLACEHOLDER-repo",
+      "githubRepoId": "PLACEHOLDER-repo-id",
+      "githubPrId": "PLACEHOLDER-pr-id",
+      "branchAlias": "PLACEHOLDER-branch-alias"
+    },
+    "alias": ["PLACEHOLDER-alias-1"],
+    "target": null,
+    "regions": ["PLACEHOLDER-region"],
+    "buildingAt": 1785881489393,
+    "ready": 1785881807886,
+    "readyState": "READY",
+    "source": "git",
+    "aliasError": null,
+    "isRollbackCandidate": false
+  }
+]

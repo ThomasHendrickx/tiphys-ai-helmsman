@@ -312,20 +312,24 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
  *
  *   TIER 2, PINNED STRUCTURE (sound within a pinned file shape). A small
  *     set of facts that follow from the file itself rather than from
- *     Actions' evaluation rules: the guard step exists exactly once, it
- *     is INSIDE the `test` job, and the `gates` fan-in names that job in
- *     `needs`. The reader below PINS the shapes it accepts and FAILS
- *     LOUDLY on anything else, which is this project's established
- *     answer to parsing another program's format (MECHANISMS.md, "PIN
- *     the format as a controlled input rather than widening the parse").
- *     Failing closed is why a quoted key can no longer walk past it.
+ *     Actions' evaluation rules: the guard step exists exactly once and
+ *     it is INSIDE the `gates` job, which under the single-job shape
+ *     (DR-0017) IS DR-0004's required status context, so a failure of the
+ *     step is a failure of the required check directly. The reader below
+ *     PINS the shapes it accepts and FAILS LOUDLY on anything else, which
+ *     is this project's established answer to parsing another program's
+ *     format (MECHANISMS.md, "PIN the format as a controlled input rather
+ *     than widening the parse"). Failing closed is why a quoted key can no
+ *     longer walk past it.
  *
  *   TIER 3, THE TWO NEUTRALISING KEYS (bounded, NOT closed). GitHub
  *     documents exactly two keys that stop a failing step from failing
  *     its job: `if:` and `continue-on-error:`. Both are refused on the
- *     guard step, on the `test` job, and on the `gates` job's own step,
- *     and `continue-on-error:` is refused on the `gates` job. This is a
- *     DENYLIST over a documented vocabulary, and round 3's argument
+ *     guard step and, under the single-job shape (DR-0017), both on the
+ *     `gates` job itself: it is the required-check job now, so an `if:`
+ *     there could skip the whole required check instead of failing it, and
+ *     `continue-on-error:` there would stop the guard's failure counting.
+ *     This is a DENYLIST over a documented vocabulary, and round 3's argument
  *     against denylists ("a whitelist fails on any key nobody thought
  *     of") is answered by measurement rather than by rhetoric: the
  *     whitelist did not close the class (CR-720, CR-721, CR-722) and did
@@ -344,9 +348,11 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
  *      pull-request diff and the scope audit.
  *   c. A neutralising key outside {`if`, `continue-on-error`}. Bounded by
  *      GitHub's documented workflow syntax, not measured on a runner.
- *   d. Actions' `needs` semantics themselves. Tier 2 asserts the fan-in
- *      NAMES the job; that naming it means consuming its result is read
- *      from the documentation.
+ *   d. (Removed with the fan-in, DR-0017.) The two-job shape had a
+ *      `needs:` link whose semantics tier 2 could only read from the
+ *      documentation, not run. The single job has no second job and no
+ *      `needs:`, so the guard's failure is the required job's failure
+ *      directly, with no cross-job result to interpret.
  *
  * WHAT ENFORCES (a) AND (c) INSTEAD, empirically and per run: the guard
  * step prints one distinctive line on its success path, asserted in tier
@@ -357,7 +363,7 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
  * A step that did not run prints nothing. So on any head, the live check
  * is the job log itself, which needs no assumption about YAML at all:
  *
- *     gh run view <run-id> --log --job <test job id> | grep -F \
+ *     gh run view <run-id> --log --job <gates job id> | grep -F \
  *       "falsifiability guard witnessed at C2"
  *
  * WHAT REDDENS THIS TEST ON PURPOSE (CR-724: an obstruction that is not
@@ -367,19 +373,18 @@ test("a failed harness step is fatal to the run and is recorded as failed", () =
  *
  *   - renaming the guard step so "falsifiability guard" no longer
  *     matches it, or adding a second step whose name also matches;
- *   - putting `if:` or `continue-on-error:` on the guard step, the
- *     `test` job, the `gates` job's step, or (for continue-on-error)
- *     the `gates` job;
- *   - moving the guard step out of the `test` job, or dropping that job
- *     from the `gates` fan-in's `needs`;
+ *   - putting `if:` or `continue-on-error:` on the guard step or on the
+ *     `gates` job (both refused there under the single-job shape);
+ *   - moving the guard step out of the `gates` job, for example into a
+ *     second job that the required check does not run;
  *   - filtering the `pull_request:` trigger;
- *   - changing the `gates` job's `if:` to anything but `always()`;
  *   - changing the witness line quoted above.
  *
  * Everything else is free. `permissions:`, `timeout-minutes:`, `env:`,
- * `defaults:`, extra steps, extra jobs, and `needs: [test, lint]` in any
- * of its three spellings all pass, which is the CR-724 regression this
- * round is repaying.
+ * `defaults:`, extra steps, and extra jobs (with any `needs:`) all pass;
+ * only the `gates` job and the guard step inside it are constrained,
+ * because that job is the required check. Keeping ordinary edits green is
+ * the CR-724 regression this approach repays.
  */
 
 const WORKFLOW_PATH = fileURLToPath(
@@ -541,65 +546,24 @@ function workflowStep(
     .join("\n");
   assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
   // CR-720: a step that scans as present anywhere in the file proves
-  // nothing about the job whose result the fan-in consumes. "Extract the
+  // nothing about the job the required check actually runs. "Extract the
   // expensive guard into its own job to parallelise" is an ordinary edit
   // that breaks the chain while leaving every other assertion green.
   assert.ok(
     start > job.start && end <= job.end,
     `the "${nameFragment}" step is not inside the job this test was asked about ` +
       `(step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). ` +
-      "A guard in a job the required check does not consume gates nothing.",
+      "A guard in a job that is not the required check gates nothing.",
   );
   return { start, end, lines: slice, keys, script };
 }
 
-/**
- * The job names one job depends on, in all three spellings YAML gives
- * for a sequence: `needs: test`, `needs: [test, lint]`, and a block
- * sequence on the following lines.
- *
- * CR-724 F3: round 3 matched /^\s{4}needs: test$/ and therefore reddened
- * `needs: [test, lint]`, an edit that makes the fan-in consume MORE jobs
- * and so STRENGTHENS the property this test exists to protect. Rejecting
- * it taught the next maintainer that the guard is wrong.
- */
-function needsOf(job: Block, jobName: string): string[] {
-  const raw = job.keys.get("needs");
-  assert.ok(
-    raw !== undefined,
-    `the ${jobName} job declares no needs:, so no other job's result reaches it`,
-  );
-  const unquote = (s: string): string => s.trim().replace(/^["']|["']$/g, "");
-  if (raw === "") {
-    const at = job.lines.findIndex((l) => /^ {4}(?:"needs"|'needs'|needs) *: *$/.test(l));
-    const out: string[] = [];
-    for (let i = at + 1; i < job.lines.length; i += 1) {
-      const line = job.lines[i] ?? "";
-      if (line.trim() === "" || /^\s*#/.test(line)) {
-        continue;
-      }
-      const item = /^ {6}- +(.*)$/.exec(line);
-      if (!item) {
-        break;
-      }
-      out.push(unquote(item[1] as string));
-    }
-    assert.ok(
-      out.length > 0,
-      `the ${jobName} job's needs: is empty, so no other job's result reaches it`,
-    );
-    return out;
-  }
-  if (raw.startsWith("[")) {
-    return raw
-      .replace(/^\[/, "")
-      .replace(/\]$/, "")
-      .split(",")
-      .map(unquote)
-      .filter((s) => s.length > 0);
-  }
-  return [unquote(raw)];
-}
+// needsOf was deleted with the two-job fan-in (DR-0017). It read a `gates`
+// job's `needs:` to confirm the fan-in consumed the `test` job's result.
+// Under one job there is no cross-job `needs:` link to check: the guard runs
+// inside the required job, so its failure is the required check's failure with
+// no result to relay. Leaving a dead helper here would invite a future reader
+// to re-add a link the single-job shape does not have.
 
 /**
  * The keys refused, DERIVED rather than guessed.
@@ -666,7 +630,10 @@ test("the gates falsifiability guard fails the job when the harness cannot fail"
   // code is the assertion. A mutation that preserves the text but
   // inverts the meaning now reddens this test, because the meaning is
   // what is measured.
-  const { script: stepScript } = workflowStep(workflowJob("test"), "falsifiability guard");
+  // DR-0017: the guard step lives in the single job named `gates` now, not in
+  // a separate matrix `test` job. Only the job lookup changed; the behavioural
+  // assertions below are untouched, because the step's own script is unchanged.
+  const { script: stepScript } = workflowStep(workflowJob("gates"), "falsifiability guard");
   const root = scratch();
   try {
     // A stub harness standing in for scripts/m1-exit-test.sh. `exit` is
@@ -785,21 +752,45 @@ test("the falsifiability guard sits inside the job the required check consumes",
   // a key whitelist: this test HAD one, it did not close the class, and
   // it reddened four legitimate edits (CR-720 to CR-724).
   //
+  // DR-0017 collapsed the workflow from two jobs (a matrix `test` job whose
+  // result a non-matrix `gates` fan-in consumed) to ONE job named `gates`,
+  // which IS DR-0004's required status context. The chain a failing guard
+  // must travel to reach the required check is now SHORTER, not gone.
+  //
   // A failing step reaches the required check only if every link holds:
   //
   //   1. the workflow runs on the event that gates a pull request
-  //   2. the guard step is in a job, and executes           (tier 3)
-  //   3. its failure fails the step                          (tier 3)
-  //   4. that fails the job                                  (tier 3)
-  //   5. the fan-in job consumes THAT job's result       (tier 2, CR-720)
+  //   2. the guard step is INSIDE the `gates` job, and executes  (tier 2)
+  //   3. its failure fails the step                              (tier 3)
+  //   4. that fails the `gates` job, which IS the required check (tier 3)
   //
   // Link 3's shell half is witnessed by executing the script in the test
   // above. The rest are properties of the YAML around it, asserted here
   // within the bound the comment above names.
+  //
+  // REMOVED LINKS, and why each no longer applies under one job (recorded so
+  // no reader mistakes the shorter chain for a weakened guard):
+  //
+  //   - Old link 5, "the fan-in job consumes the `test` job's result"
+  //     (needsOf(gatesJob).includes("test")): there is no second job to
+  //     consume a result. The guard runs INSIDE the required job now, so
+  //     workflowStep's containment check below (link 2) is the single-job
+  //     replacement: a failure in the required job needs no cross-job relay.
+  //   - Old links 5b/5c, the fan-in's `needs.test.result != "success"` /
+  //     `exit 1` step and the refuseKeys over it: that step existed only to
+  //     translate a matrix leg's result into the required job's exit code.
+  //     With the real work in the required job, there is nothing to
+  //     translate and no fan-in step to defang.
+  //   - Old link 5d, `gates.if == always()`: always() existed to force the
+  //     fan-in to RUN after a FAILED upstream job. With no upstream job the
+  //     `gates` job must carry NO `if:` at all. An `if:` here could skip the
+  //     whole required check (whether a skipped required check blocks a
+  //     merge is branch-protection config this test cannot read), so `if` is
+  //     now REFUSED on the `gates` job like `continue-on-error`, via
+  //     REFUSED_JOB_KEYS with no allow-list, rather than pinned to a value.
   const lines = gatesWorkflowLines();
-  const testJob = workflowJob("test");
   const gatesJob = workflowJob("gates");
-  const step = workflowStep(testJob, "falsifiability guard");
+  const step = workflowStep(gatesJob, "falsifiability guard");
 
   // 1. The workflow runs on pull requests, UNFILTERED.
   //
@@ -847,15 +838,24 @@ test("the falsifiability guard sits inside the job the required check consumes",
       "produces a run (CR-723). Adding one is a decision about what is gated.",
   );
 
+  // 2. The guard step is inside the `gates` job. workflowStep already
+  //    asserted this (it fails loudly if the named step is not within the
+  //    block it was handed), which is the single-job replacement for the
+  //    old fan-in `needs:` link: the required job runs the guard directly.
+
   // 2, 3. The guard step carries none of the derived step keys. Every
   //       other documented step key is allowed: `env:`, `timeout-minutes:`,
   //       `id:`, `with:` and the rest cannot decouple the guard from the
   //       check, and round 3 reddened them for no property (CR-724 F4).
   refuseKeys(step.keys, REFUSED_STEP_KEYS, "the falsifiability guard step");
 
-  // 4. Nor does the job containing it. `permissions:`, `timeout-minutes:`
-  //    and friends are fine here too (CR-724 F1, F2).
-  refuseKeys(testJob.keys, REFUSED_JOB_KEYS, "the test job");
+  // 4. Nor does the `gates` job. Under one job this is the required-check
+  //    job itself, so BOTH neutralising keys are refused: `if:` (which
+  //    could skip the whole required check) and `continue-on-error:`. There
+  //    is no always() fan-in that needs an `if:` here anymore, so there is
+  //    no allow-list. `permissions:`, `timeout-minutes:` and friends are
+  //    still fine here (CR-724 F1, F2).
+  refuseKeys(gatesJob.keys, REFUSED_JOB_KEYS, "the gates job");
 
   // 4b. The shell hole, closed once for the whole file rather than three
   //     times. A CUSTOM shell is a command template carrying `{0}`, the
@@ -882,53 +882,6 @@ test("the falsifiability guard sits inside the job the required check consumes",
         "block. A plain interpreter name such as `shell: bash` is accepted.",
     );
   }
-
-  // 5. The fan-in job names the job the guard is in. workflowStep has
-  //    already asserted the step is inside `testJob`; this closes the
-  //    other half of CR-720.
-  assert.ok(
-    needsOf(gatesJob, "gates").includes("test"),
-    `the gates job needs ${JSON.stringify(gatesJob.keys.get("needs"))}, which does not ` +
-      "include the test job, so the guard's failure reaches nothing",
-  );
-
-  // 5b. And the fan-in still fails when that job did not succeed. These
-  //     two are assertions about a shell script's text, the same
-  //     character as the ones tier 1 executes, not about YAML semantics.
-  assert.match(
-    gatesJob.lines.join("\n"),
-    /needs\.test\.result\s*\}\}"\s*!=\s*"success"/,
-    "the gates job no longer fails when the test job did not succeed",
-  );
-  assert.match(
-    gatesJob.lines.join("\n"),
-    /exit 1/,
-    "the gates job no longer exits nonzero on a failed test job",
-  );
-
-  // 5c. CR-721: the fan-in's OWN step was checked by nothing. A step-level
-  //     `if: false` there leaves `needs: test`, the `!= "success"`
-  //     comparison and the `exit 1` all in place and turns the required
-  //     check green with zero executed steps, which defangs every gate in
-  //     the workflow at once and not just this guard.
-  const fanIn = workflowStep(gatesJob, "fail unless every matrix leg succeeded");
-  refuseKeys(fanIn.keys, REFUSED_STEP_KEYS, "the gates fan-in step");
-
-  // 5d. The fan-in job legitimately carries `if: always()`; that is what
-  //     makes it run after a FAILED test job, which is the whole point of
-  //     it. So `if:` is allowed there and pinned to that one value rather
-  //     than refused, and `continue-on-error:` is refused as everywhere
-  //     else.
-  refuseKeys(gatesJob.keys, REFUSED_JOB_KEYS, "the gates job", ["if"]);
-  assert.equal(
-    gatesJob.keys.get("if"),
-    "always()",
-    `the gates job's if: is ${JSON.stringify(gatesJob.keys.get("if"))}, not always(). ` +
-      "always() is what makes the fan-in run after a failed test job; any other " +
-      "condition can skip the required check instead of failing it, and whether a " +
-      "skipped required check blocks a merge is branch-protection configuration " +
-      "this test cannot read.",
-  );
 });
 
 test("the three exit-test scripts declare one harness identity", () => {
