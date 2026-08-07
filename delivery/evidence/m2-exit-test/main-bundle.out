@@ -1,5 +1,8 @@
-# main bundle (scripts/m2-exit-test.sh --base <main> --bundle main)
-# The weaker second run: six gates, three diff-scoped gates and credential-token NOT run.
+# main bundle (scripts/m2-exit-test.sh --base main --bundle main)
+# The weaker second run: six gates, three diff-scoped gates and credential-token
+# NOT run. Unaffected by the fix-round-2 checkout change (scope is not in this
+# bundle, and a push to main leaves github.head_ref empty so the checkout falls
+# back to the pushed ref). Floor toolchain Node v26.6.0.
 
 gates: declared 6 applicable 4 verdict 4 green 4 red 0 not-applicable 2 error 0 vacuous 0
 gates: every applicable gate is green

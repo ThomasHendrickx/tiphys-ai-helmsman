@@ -1,11 +1,11 @@
 {
-  "runId": "83c707ba583877ef15673e6c",
+  "runId": "3a210d327a6bc8cce6406fb6",
   "manifest": "<repo>/gates.manifest.json",
   "manifestSha256": "5f06b8051f418e4be58c8b8a469823885262db5cebecff52e22e3d14bc4bdf52",
-  "startedAt": "2026-08-07T10:35:01.982Z",
-  "endedAt": "2026-08-07T10:36:54.927Z",
+  "startedAt": "2026-08-07T12:05:39.141Z",
+  "endedAt": "2026-08-07T12:07:37.883Z",
   "parameters": {
-    "base": "origin/main",
+    "base": "main",
     "head": "HEAD",
     "phase": "m2-p9"
   },
@@ -61,11 +61,11 @@
     {
       "id": "suite",
       "status": "green",
-      "units": 402,
+      "units": 404,
       "unitLabel": "tests reported",
       "vacuous": false,
       "applicable": true,
-      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 402 test(s) from 22 file(s) (pass 402, fail 0, skipped 0, todo 0, did-not-run 0); discovered 22 file(s) walking test for .test.ts; 408 behavior(s) resolve; merge base 30e558fb3ef8",
+      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 404 test(s) from 22 file(s) (pass 404, fail 0, skipped 0, todo 0, did-not-run 0); discovered 22 file(s) walking test for .test.ts; 410 behavior(s) resolve; merge base ef6a796209bc",
       "record": "<evidence-dir>/pr-bundle/suite/result.json",
       "stdout": "<evidence-dir>/pr-bundle/suite/stdout.txt",
       "stderr": "<evidence-dir>/pr-bundle/suite/stderr.txt"
@@ -77,7 +77,7 @@
       "unitLabel": "citations resolved",
       "vacuous": false,
       "applicable": true,
-      "detail": "linted 1 changed document(s) at a6444fc41a9227224f5f22de4abab74004b55cc3: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external",
+      "detail": "linted 1 changed document(s) at e68be4e1e268264c61e0641ed966309e478ace4a: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external",
       "record": "<evidence-dir>/pr-bundle/citations/result.json",
       "stdout": "<evidence-dir>/pr-bundle/citations/stdout.txt",
       "stderr": "<evidence-dir>/pr-bundle/citations/stderr.txt"
@@ -89,7 +89,7 @@
       "unitLabel": "changed paths audited",
       "vacuous": false,
       "applicable": true,
-      "detail": "12 changed path(s) audited against declaration delivery/plan/phase-declarations/m2-p9.json at merge base 30e558fb3ef85ff0cc84d82237f881e6fec000be (sha256 364c197570efbe23b3d6be1d9d18c0bce1b60740792b638a0cf90a8e2e77af16) (1 declared path(s) not touched: gates.manifest.json)",
+      "detail": "12 changed path(s) audited against declaration delivery/plan/phase-declarations/m2-p9.json at merge base ef6a796209bc7798dbd6ca1d2f86b096a4117fcb (sha256 364c197570efbe23b3d6be1d9d18c0bce1b60740792b638a0cf90a8e2e77af16) (1 declared path(s) not touched: gates.manifest.json)",
       "record": "<evidence-dir>/pr-bundle/scope/result.json",
       "stdout": "<evidence-dir>/pr-bundle/scope/stdout.txt",
       "stderr": "<evidence-dir>/pr-bundle/scope/stderr.txt"

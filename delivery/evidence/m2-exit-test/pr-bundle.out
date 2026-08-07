@@ -1,6 +1,12 @@
-# PR bundle (scripts/m2-exit-test.sh --base <main-with-paperwork> --head HEAD --phase m2-p9 --bundle pr)
-# Run on the claude/m2-p9-exit-test head with the two paperwork edits at the merge base
-# (declaration + section 1.4 amendment landed on main). Floor toolchain Node v26.6.0.
+# PR bundle (scripts/m2-exit-test.sh --base main --head HEAD --phase m2-p9 --bundle pr)
+# FIX ROUND 2 re-capture. Run under the FAITHFUL CI-checkout state: the head
+# branch checked out BY NAME (claude/m2-p9-exit-test), which is exactly what the
+# workflow's `ref: ${{ github.head_ref }}` now produces on a pull_request event.
+# The prior bundle was captured under a named-branch shortcut that did NOT
+# reproduce CI's detached HEAD, where `scope` reported not-applicable; see the
+# README and work-history section 10. Merge base is real origin/main (ef6a796);
+# the declaration (with test/gates.test.ts and the evidence dir) and the section
+# 1.4 amendment are on main. Floor toolchain Node v26.6.0.
 
 gates: declared 10 applicable 6 verdict 6 green 6 red 0 not-applicable 4 error 0 vacuous 0
 gates: required gate(s) not applicable: red-witness
@@ -12,12 +18,18 @@ per-gate status (from pr-bundle.summary.json):
   credential-token    not-applicable
   suite               green
   citations           green
-  scope               green
+  scope               green   <- genuinely audits 12 changed paths at merge base ef6a796
   deploy              not-applicable
   migrations          not-applicable
   red-witness         not-applicable
 
 m2-assert (PR bundle): OK. 10 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+
+# NOTE: PR_EXPECT for scope is now "green" (not "green|not-applicable"): scope is
+# never legitimately not-applicable in a PR bundle (its precondition is
+# branch-matches and a PR is always on a phase branch), so the harness REQUIRES
+# scope green here. A scope not-applicable (e.g. a detached-HEAD regression) now
+# FAILS the harness instead of passing vacuously.
 
 per-phase green-path evidence (DR-0018 point 3):
   red-witness GREEN 4 units  -- M2-P2 merged diff (real git history)

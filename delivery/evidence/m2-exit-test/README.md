@@ -6,10 +6,30 @@ This bundle supersedes the first-run bundle: blocker B (the suite gate reporter
 leak) is fixed on `main` (#23), and blocker A is settled by owner decision
 DR-0018.
 
+## Fix round 2 re-capture (the scope gate now audits in CI)
+
+A clean-room criteria review found that `scope` reported `not-applicable` on
+EVERY CI `pull_request` run and never audited a diff: `actions/checkout` with no
+`ref:` leaves a DETACHED HEAD, so `git rev-parse --abbrev-ref HEAD` returns
+`"HEAD"`, the branch-matches precondition never matches `^claude/mN-pM-...$`, and
+the exit harness accepted that N/A and passed vacuously for `scope`. The prior
+bundle's `scope: green` had been captured under a NAMED-branch shortcut that did
+not reproduce CI's detached state, so it never verified the deployed condition.
+
+The fix (work-history section 10): `.github/workflows/gates.yml` checks the head
+branch out BY NAME (`ref: ${{ github.head_ref }}`, `fetch-depth: 0` preserved),
+so `scope` genuinely audits; and `scripts/m2-exit-test.sh` tightens the PR-bundle
+expectation for `scope` from `green|not-applicable` to `green` (scope is never
+legitimately N/A in a PR bundle). The captures in THIS bundle are re-run under
+the faithful CI-checkout state (the head branch checked out by name, which the
+`ref:` change now guarantees in CI), against the real `origin/main` (`ef6a796`)
+merge base, with `scope` GREEN (12 changed paths audited).
+
 This bundle is committed as paperwork per M2-P9 step 6; the orchestrator routes
 it. Files here are the harness stdout captures (scratch absolute paths replaced
-by `<evidence-dir>`, the repository root by `<repo>`, and the merge-base commit
-by `<main-with-paperwork>`) plus the two `gates run` summaries.
+by `<evidence-dir>` and the repository root by `<repo>`; the merge-base commit is
+the real `origin/main`, `ef6a796`, left verbatim) plus the two `gates run`
+summaries.
 
 ## The one orchestrator prerequisite (main-side paperwork)
 
@@ -26,9 +46,12 @@ phase branch, and an implementer never pushes `main`):
    branch would red `citations` (the plan is a citation-required document that
    carries zero substantive path:line citations), so it too lands on `main`.
 
-The captures below are from a run with both edits at the merge base (a faithful
-local simulation of that landing), on the `claude/m2-p9-exit-test` branch name so
-`scope`'s branch-matches precondition holds.
+Both edits are now on `origin/main` (the declaration at `ef6a796` carries
+`test/gates.test.ts` in `filesToTouch` and `delivery/evidence/m2-exit-test/` in
+`declaredExtras`), so the captures below are from a run against the REAL
+`origin/main` merge base, with the head branch checked out by name (the state
+the `ref:` fix in fix round 2 now guarantees on a CI `pull_request` run, not the
+old named-branch shortcut).
 
 ## What the exit test proves (delivered, DR-0018)
 
@@ -66,9 +89,12 @@ scripts/m2-exit-test.sh --self-test <dir>                     # exits nonzero, w
 scripts/m2-exit-test.sh --base main --head HEAD --phase m2-p9 <dir>   # both bundles, exits 0
 ```
 
-With the two paperwork edits on `origin/main` and the branch re-merged onto it,
-`--base main` resolves the merge base to that `main`, `scope` reads the amended
-declaration and is green, `citations` is green (the plan doc is in the merge
-base, not the phase diff), and `red-witness` is the accepted not-applicable.
-`--phase m2-p9` is LOWERCASE, matching the phase-declaration filename the scope
-gate reads (it uppercases only for its id check).
+Run this on the phase branch checked out BY NAME (`claude/m2-p9-exit-test`),
+which is the state a CI `pull_request` run is in after the `ref:` fix. With the
+paperwork on `origin/main`, `--base main` resolves the merge base to that `main`,
+`scope` reads the declaration and is green (it audits the diff; a detached HEAD
+would report not-applicable instead, which the PR-bundle expectation now
+REJECTS), `citations` is green (the plan doc is in the merge base, not the phase
+diff), and `red-witness` is the accepted not-applicable. `--phase m2-p9` is
+LOWERCASE, matching the phase-declaration filename the scope gate reads (it
+uppercases only for its id check).

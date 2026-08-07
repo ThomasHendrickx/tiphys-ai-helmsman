@@ -1,11 +1,11 @@
 {
-  "runId": "abfc92305d2a47472709a008",
+  "runId": "1aad0163b6c2c5a9eb8f138b",
   "manifest": "<repo>/gates.manifest.json",
   "manifestSha256": "5f06b8051f418e4be58c8b8a469823885262db5cebecff52e22e3d14bc4bdf52",
-  "startedAt": "2026-08-07T10:37:02.605Z",
-  "endedAt": "2026-08-07T10:38:57.878Z",
+  "startedAt": "2026-08-07T12:07:46.379Z",
+  "endedAt": "2026-08-07T12:09:43.678Z",
   "parameters": {
-    "base": "origin/main"
+    "base": "main"
   },
   "only": [
     "manifest-self-check",
@@ -56,11 +56,11 @@
     {
       "id": "suite",
       "status": "green",
-      "units": 402,
+      "units": 404,
       "unitLabel": "tests reported",
       "vacuous": false,
       "applicable": true,
-      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 402 test(s) from 22 file(s) (pass 402, fail 0, skipped 0, todo 0, did-not-run 0); discovered 22 file(s) walking test for .test.ts; 408 behavior(s) resolve; merge base 30e558fb3ef8",
+      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 404 test(s) from 22 file(s) (pass 404, fail 0, skipped 0, todo 0, did-not-run 0); discovered 22 file(s) walking test for .test.ts; 410 behavior(s) resolve; merge base ef6a796209bc",
       "record": "<evidence-dir>/main-bundle/suite/result.json",
       "stdout": "<evidence-dir>/main-bundle/suite/stdout.txt",
       "stderr": "<evidence-dir>/main-bundle/suite/stderr.txt"
