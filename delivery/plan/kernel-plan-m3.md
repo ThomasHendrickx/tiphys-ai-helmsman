@@ -4303,6 +4303,23 @@ hazard it is matched to.
   whose content moved; and the whole document drifting into a restatement of
   the registry and the modes, which is risk 5 and which the criterion 3 check
   is the structural answer to.
+  **Added at revision 3 (T-009):** a merge-completion duty that says "CI is
+  green" without naming the EVENT and the head sha, which is satisfiable by
+  reading the already-green `pull_request` check on the source branch while the
+  `push` run on the new `main` tip is red, and which cost this project four
+  hours and twenty-one minutes across five consecutive runs with four more
+  merges landing on top.
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a supervision section that names lease freshness and the beacon and still leaves "wait for the agent to report" as the OPERATIVE instruction | criterion 7c, which requires the `dispatch-requires-a-guard` clause text to contain FRESHNESS and "newest mtime" and to contain neither "exists" nor "completion" as the watched condition, plus criterion 5's vocabulary scan forbidding the liveness vocabulary anywhere in the document. Both are text assertions and both say so |
+| a duty stated WITHOUT the mechanism that discharges it, so it depends on attention | **NO CRITERION CAN REACH THE GENERAL CASE, section 2.6 reason 1.** Criterion 7c covers the one duty whose mechanism-free form has a measured price. The instrument for the rest is the hazard review contract; risk 5 carries the residue |
+| a decorrelation clause satisfied by two verdicts differing in `produced-by` while both ran the CRITERIA contract | criterion 7b, witnessed separately from criteria 7's family and framing dimensions precisely because T-007's finding is that they are different properties |
+| an anti-duplication check that passes because the duplicated data was REWORDED rather than removed | criterion 3 covers the pasted-verbatim case. **The reworded case is NOT covered and is section 2.6 reason 1**: "the same table in different words" is a semantic relation. Named because criterion 3 reads as if it covered the item and the phase's own hazard sentence is explicit that it does not |
+| a reference that resolves to a file whose CONTENT moved | criterion 2 covers deletion of the referenced file. **Content movement is NOT covered and is section 2.6 reason 3 with a named later target**: it is the same shape as the clause map's third condition, and the honest position is that `check-agents-references.mjs` should assert the referenced ANCHOR and not only the path. Revision 3 makes that criterion 2b rather than leaving it a residue |
+| the whole document drifting into a restatement of the registry and the modes | criterion 3, plus risk 5 |
+| a merge-completion duty that says "CI is green" without naming the event and the head sha (T-009) | **criterion 5b, NEW at revision 3.** No clause and no criterion covered this at revision 2; T-009's single appearance in the whole plan was a remark about tuition id allocation |
 - steps:
   1. Create `AGENTS.md` (markdown with frontmatter validated by
      `schemas/role-brief.schema.json` with `role: orchestrator`), clause ids in
@@ -4480,13 +4497,37 @@ hazard it is matched to.
   `scripts/check-dual-review.mjs`, `test/agents-policy.test.ts`,
   `test/dual-review.test.ts` (create); `src/checks.ts` (edit, register
   `dual-review-decorrelation`), `.github/workflows/gates.yml` (edit),
+  `gate-registry.yaml` (edit, ADDED at revision 3: both scripts are registered
+  as registry entries with their `events[]` rather than wired as raw workflow
+  steps, section 2.2a and D-M3-34. `check-agents-references` is
+  `events: [pull_request, push]` because a broken reference on `main` is the
+  state that matters; `check-dual-review` is `events: [pull_request]` with a
+  precondition, because a merged head has no pair of verdicts to compare and a
+  gate that cannot reach a verdict must be not-applicable-with-a-reason rather
+  than green, which is M2-C-3 applied to M3's own check),
   `package.json` (edit, add `AGENTS.md` to files).
+  **Standing constraint on the `.github/workflows/gates.yml` edit (DR-0017,
+  DR-0004):** one job named `gates`, no matrix, no second job. See section 1.1.
 - acceptance criteria:
   1. `tiphys validate --type role-brief AGENTS.md` exits 0 with `role:
      orchestrator`.
   2. `node scripts/check-agents-references.mjs` exits 0; deleting any file
      `AGENTS.md` references makes it exit nonzero naming the reference;
      restoring it returns exit 0 (both directions).
+  2b. **References resolve to an ANCHOR, not only to a path (NEW at revision 3,
+     section 2.6), both directions.** Every `AGENTS.md` reference is written as
+     a path plus a clause id, heading anchor or field pointer inside the target,
+     and `check-agents-references.mjs` asserts the anchor occurs in the target
+     file. Deleting the anchor while leaving the file present makes it exit
+     nonzero naming the reference and the missing anchor; restoring it returns
+     exit 0. Criterion 2 covers the file-deleted case only, which is the loud
+     failure; the file-present-but-content-moved case is the silent one and is
+     the one this phase's hazard class names. **Two structurally different
+     members, per section 2.3 rule 6**: a heading anchor removed from a
+     markdown target (`roles/implementer.md`), and a field pointer whose key
+     was renamed inside a YAML target (`assurance-modes.yaml`), because the two
+     are located by different means and a checker can handle one and not the
+     other.
   3. The same script exits nonzero when a gate id list, a mode table, or a
      model-tier table is pasted into `AGENTS.md`, witnessed by pasting one and
      reverting (the anti-duplication rule of section 1.5 is enforced, which is
@@ -4499,6 +4540,33 @@ hazard it is matched to.
      that its supervision section names lease freshness and the beacon (C-2,
      C-3, falsifiable in both directions by inserting and removing a violating
      line).
+  5b. **The merge-completion clause names the EVENT and the head sha (NEW at
+     revision 3, T-009, D-M3-36), both directions.** `AGENTS.md` carries a
+     `merge-is-not-complete-until` clause as a body heading resolving from
+     frontmatter, and a registered grep test asserts its text states all four
+     of: that the run to be observed is the one whose EVENT is `push`; that its
+     head sha equals the new `main` tip; that it is observed TO COMPLETION with
+     the same watchdog discipline T-008 requires; and that a `pull_request`
+     check on the source branch does NOT discharge it. Weakening the text to
+     "confirm CI is green on main after merging" makes the test fail naming the
+     clause; restoring the four elements returns green.
+     A second registered test asserts the clause cites T-009 by id, per
+     criterion 8's rule that a clause encoding a reversal carries its record.
+     **Two structurally different members, per section 2.3 rule 6, chosen
+     because the two ways this clause degrades are different**: the vague
+     weakening above, which drops all four elements at once; and a SPECIFIC
+     weakening that keeps "observe the run on the new `main` tip" and drops the
+     event name, which is the more likely edit and is exactly the state T-009
+     records, where the PR check and the push run were both real runs on
+     related shas and the wrong one was read.
+     **And the general rule behind the clause, which is the part that outlives
+     this instance**: `AGENTS.md` also carries `gate-result-is-scoped-to-its-run`
+     stating that "CI is green" is never a complete sentence and that a
+     complete one names the event and the head sha, with the corollary that
+     where behaviour forks on the CI event, BOTH arms need a witness. This is a
+     text assertion over prose and is labelled as one, per D-M3-28's honesty
+     rule; what it buys is that a future orchestrator reading this document
+     finds the rule rather than reconstructing it from an incident.
   6. The four plan-assigned duties of step 2 are each present with a citation to
      their source record (D-4/PR-012, D-6/SC-008, D-8/SC-010, PR-201), asserted
      by a registered test that greps for the four citation tokens.
@@ -4559,7 +4627,12 @@ hazard it is matched to.
   `agents-supervision-tests-freshness`,
   `agents-carries-escalation-threshold`,
   `agents-carries-two-review-contract-duty`,
-  `agents-cites-decisions-behind-reversed-clauses`.
+  `agents-cites-decisions-behind-reversed-clauses`,
+  and NEW at revision 3: `agents-merge-completion-names-event-and-sha`,
+  `agents-merge-completion-rejects-pull-request-check`,
+  `agents-carries-gate-result-scoping-rule`,
+  `agents-references-resolve-to-anchor`,
+  `agents-anchor-check-detects-renamed-yaml-key`.
 - suggested model tier: strongest. This is the document the orchestrator runs
   on, and four of its clauses encode settled owner resolutions.
 - citations: R-001b, R-002, R-013, R-030, R-061, R-062, R-065b, R-067, R-073,
@@ -4572,7 +4645,12 @@ hazard it is matched to.
   (`escalation-threshold` and `stalled-phase-response`, step 2b, with the
   measurement); **T-007** (`two-review-contracts`, step 2c, and the fifth
   distinctness dimension in step 3b); **T-008** (the three supervision clauses
-  of step 4, D-M3-31, and the nine-hour-eleven-minute measurement they carry).
+  of step 4, D-M3-31, and the nine-hour-eleven-minute measurement they carry);
+  **NEW at revision 3: T-009** (the `merge-is-not-complete-until` and
+  `gate-result-is-scoped-to-its-run` clauses of criterion 5b, D-M3-36, and the
+  four-hour-twenty-one-minute measurement they carry), **DR-0017** (the
+  single-job workflow this phase edits), and D-M3-34 (both scripts registered
+  as gate entries rather than raw workflow steps).
 - conflicts-with: M3-P10 (files entry).
 - blocked-by: M3-P8 merged.
 
