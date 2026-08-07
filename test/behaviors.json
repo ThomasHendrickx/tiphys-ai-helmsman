@@ -114,7 +114,7 @@
   "watcher-cadence-on-disk": "the heartbeat schedule is on disk and shared by single passes",
   "watcher-signal-surfaced-once": "a surfaced turn-end is not surfaced again by the next pass",
   "watcher-race-single-surfacing": "two passes racing on one turn-end surface it exactly once",
-  "watcher-resident-versus-once-race": "a resident watcher and a concurrent single pass never both surface a wake",
+  "watcher-resident-versus-once-race": "a resident watcher and a concurrent single pass never drop a wake",
   "watcher-no-wake-advances-beacon": "a no-wake single pass strictly advances the beacon",
   "watcher-deadline-stale": "an open task past its executor deadline with no turn-end is stale",
   "watcher-abandoned-spawn-detected": "a spawn stopped mid-payload is detected as an abandoned task",
