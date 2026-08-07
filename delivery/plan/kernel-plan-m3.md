@@ -1,8 +1,34 @@
 # Tiphys Kernel Plan M3: Judgment Layer
 
-- Status: DRAFT, revision 2 (**re-grounded 2026-08-06** under DR-0011's recorded
-  consequence, as the explicit step BEFORE adversarial review round 2. Revision 1
-  applied plan-review round 1.)
+- Status: DRAFT, revision 3 (**re-grounded 2026-08-07 against M2 AS DELIVERED**,
+  applying the arbitration of adversarial review round 2,
+  `delivery/review/arbitration-m3-plan-r2.md`. Revision 2 re-grounded against
+  the M2 PLAN while that plan was still DRAFT. Revision 1 applied plan-review
+  round 1.)
+- Revision 3 (2026-08-07): applies `delivery/review/arbitration-m3-plan-r2.md`,
+  which reduces the round's twenty findings to four mechanisms plus eight local
+  findings. **What changed.** (1) Every joint with M2 is re-derived by OPENING
+  THE DELIVERED ARTIFACT on `main` at `dbba3c8` instead of reading the M2 plan;
+  the per-joint result, confirmed or corrected, is section 1.7, and the
+  corrections are the CI shape (one job named `gates`, DR-0017), the
+  phase-declaration path, field names and ownership, the routing of M3's five
+  new checks through the gate registry, DR-0018's diff-scoped-gate semantics,
+  and section 2.2's reason for not reusing the M2-P6 coverage checker. (2)
+  Section 2.6 is new and binding: every item in a phase's hazard class names
+  the numbered acceptance criterion that reddens against it, or records why no
+  criterion can; the ten per-phase maps are in section 3 and they added
+  criteria to M3-P2, M3-P5, M3-P6 and M3-P9. (3) The exit test's witnesses now
+  cover the arms they claim: E3.1 names the CI EVENT and the head sha (T-009),
+  and E0.5 carries three structurally different falsification controls plus an
+  explicit statement of what remains unwitnessed. (4) The `A-n` owner-action
+  namespace is registered to one allocator and this plan's own ids are moved
+  off the collisions. Local findings A-004 to A-014 are applied in place.
+  **What did NOT change, and this is a constraint of the round rather than an
+  observation**: no requirement row moves between phases, no phase is
+  renumbered, no decision id `D-M3-nn` is reused or renumbered (revision 3 adds
+  D-M3-33 to D-M3-36 and rewrites the body of D-M3-28 under its own number),
+  and Appendix A's arithmetic is untouched at 74 rows with the same per-phase
+  counts.
 - Revision 2 (2026-08-06): re-grounding only. No requirement row moves, no phase
   is renumbered, no decision id is reused. The inputs absorbed and the inputs
   read-and-declined are tabulated in section 1.6, which is the instrument by
@@ -35,6 +61,21 @@
   bundle and a falsification control that exits 1, so the pass is a measurement.
   M2 has not started and is held by the owner's hard stop at the M1 boundary,
   which permits document work such as this re-grounding and permits no dispatch.
+  **State at revision 3 (2026-08-07), superseding the M2 sentence above, which
+  was false when revision 2 shipped it and is corrected here rather than
+  quietly deleted.** M2 is COMPLETE on `main` at `dbba3c8`, including its
+  post-exit-test fix round. All nine M2 phases are merged, the M2 exit test has
+  passed, and two further owner decisions were recorded during it (DR-0017,
+  single-job CI; DR-0018, exit-test semantics for src-scoped gates). Every M2
+  joint this plan describes is therefore an artifact that can be READ, and
+  revision 3 reads it. Evidence:
+
+```
+$ git log --oneline -1 origin/main
+dbba3c8 STATE: correct the branch-cleanup claim, which asserted a deletion that failed (#34)
+$ grep -n 'milestone: M2' delivery/STATE.md
+  milestone: M2 (gate registry), COMPLETE including its post-exit-test fix
+```
 - Binding rule: "If it is not written here, it is not being made. Unanswered
   questions go to the orchestrator."
 - Relationship to `delivery/plan/kernel-plan-v1.md`: this document replaces
@@ -73,6 +114,24 @@
   binding external review finding EXT-F-07. The remaining three phases are the
   v1 outline's other items: M3-P1 (schemas, outline item 1), M3-P2 (gate
   registry, outline item 3), and M3-P10 (release engineering, outline item 5).
+  **Outline item 2, and the fold this plan makes rather than leaves implicit
+  (A-004, revision 3).** Plan v1 section 6's outline has FIVE items, and item 2
+  is the role-brief phase: "role briefs ported from the process doc:
+  investigator, plan writer, adversarial plan reviewer, implementer, clean-room
+  reviewer, orchestrator (`AGENTS.md`)". It is delivered here by M3-P5, M3-P6
+  and M3-P9, not by a phase of its own. That is a DELIBERATE FOLD into the
+  EXT-F-07 family decomposition, taken because v1's own item 4 lists those same
+  artifacts as families 1 and 3 of the migration walk, so item 2 and item 4
+  double-book them and a plan that honoured both would ship the briefs twice.
+  Item 2's three named obligations are carried, each at a cited location, so
+  the fold absorbs them rather than losing them: the SC-001 correction of the
+  process doc's role table (M3-P5 step 4 and criterion 4, plus D-M3-12); the
+  SC-008 merge-authority resolution D-6 (M3-P3's `merge-authority` enum and
+  `AGENTS.md` in M3-P9 step 2, witnessed by M3-P9 criterion 6); and the SC-010
+  scoped read-only rule D-8 (`AGENTS.md`, M3-P9 step 2, same criterion 6).
+  Without this sentence the phase list
+  above claims to enumerate a five-item partition while covering four of it,
+  and a reader could not tell absorption from omission.
 
 ---
 
@@ -99,8 +158,37 @@ From M1 (walking skeleton, plan v1 section 3):
 - `schemas/README.md`, `roles/README.md`, `tuition/README.md`: placeholders
   created by M1-P1 that name M3 as the milestone that fills them.
 - `scripts/m1-exit-test.sh`, `scripts/stub-payload.sh`, `sandbox/`.
-- `.github/workflows/gates.yml` with the `test` matrix job and the `gates`
-  fan-in job.
+- `.github/workflows/gates.yml`. **Corrected at revision 3 by reading the file
+  on `main`; revision 2 said "the `test` matrix job and the `gates` fan-in
+  job", and that shape no longer exists.** The workflow is ONE job named
+  `gates` with no matrix, node 26 pinned (DR-0017, owner, 2026-08-06). DR-0004's
+  required status context is the literal string `gates`, and a job named
+  `gates` with no matrix publishes exactly that context, so branch protection
+  is satisfied by the job directly rather than by a fan-in over a matrix. The
+  two-job shape was removed because the fan-in needed a second runner
+  acquisition and starved in the queue under contention (DR-0017 records the
+  measurement: fifteen minutes queued and then cancelled on PR #15). Evidence:
+
+```
+$ git show origin/main:.github/workflows/gates.yml | grep -nE '^(jobs:|  [a-z-]+:|on:)'
+3:on:
+4:  pull_request:
+27:jobs:
+28:  gates:
+```
+
+  **Two consequences bind every M3 phase that edits this file (P1, P2, P6, P9,
+  P10), and both are new at revision 3.** First, the job stays NAMED `gates`
+  with NO matrix: adding a matrix renames the published context to `gates (26)`
+  and silently detaches branch protection, so an M3 phase that adds a job or a
+  matrix to satisfy some other criterion has broken the required check. This is
+  a standing constraint, stated in D-M3-28 and repeated in each of the five
+  phases' files-to-touch notes. Second, the workflow FORKS ON THE CI EVENT: the
+  `pull_request` arm runs `scripts/m2-exit-test.sh --bundle pr` with `--base`,
+  `--head` and `--phase`, and the `push`-to-`main` arm runs `--bundle main`
+  with none of the three, which means the two events run DIFFERENT gate sets.
+  That is exactly T-009's mechanism, and every M3 check wired into this file
+  must declare which arm it runs on (section 2.3 rule 7, D-M3-28).
 - the M1 exit-test evidence. **Path corrected at revision 2**: revision 1 said
   `delivery/evidence/m1-exit-test/`, and that directory does not exist. The
   delivered artifact is `delivery/verification/m1-exit-test-evidence.md`
@@ -144,14 +232,20 @@ M3 phase:
    binary fact over a suite with a known non-deterministic member**, and every
    M3 phase's criterion 1 inherits it. Risk 11 records this and M3-P2's
    grounding requires the state to be verified rather than assumed.
-3. **The other two tracked M1-P6 lows.** CR-760: the `gates` fan-in job's own
-   `run:` script is asserted by TEXT, so two structurally different edits leave
-   it green. This bites M3 directly, because five M3 phases (P1, P2, P6, P9,
-   P10) wire a new check into `.github/workflows/gates.yml`, and a text
-   assertion over a workflow is the exact class `MECHANISMS.md` row "Asserting
-   a CI step is wired" was paid for six times in M1-P6. D-M3-28 states what M3
-   phases do instead. CR-761 is a documentation narrowing in M1-P6's own
-   residue statement and touches no M3 artifact.
+3. **The other two tracked M1-P6 lows.** CR-760: a workflow step's own `run:`
+   script is asserted by TEXT, so two structurally different edits leave it
+   green. **Restated at revision 3**: CR-760 was recorded against "the `gates`
+   fan-in job's own `run:` script", and DR-0017 deleted the fan-in job, so the
+   INSTANCE is gone. The MECHANISM is not: the workflow on `main` still carries
+   several `run:` blocks (the two `m2-exit-test.sh` bundle steps, the
+   `--self-test` falsifiability guard, the M1 harness and its guard) whose
+   behaviour a text assertion cannot see. This bites M3 directly, because five
+   M3 phases (P1, P2, P6, P9, P10) wire a new check into
+   `.github/workflows/gates.yml`, and a text assertion over a workflow is the
+   exact class `MECHANISMS.md` row "Asserting a CI step is wired" was paid for
+   six times in M1-P6. D-M3-28 states what M3 phases do instead, restated at
+   revision 3 against the single-job shape. CR-761 is a documentation narrowing
+   in M1-P6's own residue statement and touches no M3 artifact.
 4. **T-008, and it is not a residue so much as the milestone's strongest single
    piece of evidence for what M3 ships.** On 2026-08-06 two review agents died
    within minutes of dispatch and the orchestrator did not notice for nine
@@ -163,24 +257,29 @@ M3 phase:
    cited in section 4.5 as the reason the supervision clauses are not
    decoration.
 
-From M2 (deterministic gates), the eight components M3 consumes by name. Phase
-ids and artifact paths below follow `delivery/plan/kernel-plan-m2.md`, the M2
-detailed plan written concurrently with this one under DR-0011, and not plan
-v1 section 5's outline numbering, which differs (D-M3-17):
+From M2 (deterministic gates), the eight components M3 consumes by name.
+**Revision 3 replaces the M2 PLAN with the M2 ARTIFACT as the source of every
+row below.** Revision 2's rows were taken from `delivery/plan/kernel-plan-m2.md`
+while that document was DRAFT; the delivered module, its CLI contract and its
+delivered path are now on `main` and each row names them. The per-joint
+confirmed-or-corrected record, with the commands that produced it, is section
+1.7. Phase ids still follow the M2 detailed plan and not plan v1 section 5's
+outline numbering, which differs (D-M3-17):
 
-| M2 component | What M3 uses it for |
-|---|---|
-| M2-P2 red-witness harness | the implementer brief's red-witness clause and the plan-review and clean-room test-honesty probes cite its evidence file as the accepted proof (R-028a, R-056a) |
-| M2-P3 full-suite wrapper | the report contract's "all green means the wrapper's exit code" field (R-049, R-086) |
-| M2-P4 scope auditor | the plan schema's `files-to-touch` field is the auditor's input, through the phase-declaration projection named below |
-| M2-P5 citation linter | the verifier attached to the investigator and plan-writer briefs (R-010a) |
-| M2-P6 coverage checker | accepted reference types phase, decision, parked (D-7) constrain the plan schema's open-questions and parked sections; its finding-to-outcome parity mode validates the final report (R-089b, consumed by R-089a) |
-| M2-P1 gate manifest and gate runner | the seed the canonical gate registry promotes, with its SC-011 precondition semantics (R-094) |
-| M2-P7 deploy and migration verifiers | named stages in the full assurance mode's pipeline definition (R-096) |
-| M2-P8 credential scoping | the structural fact the implementer brief must not contradict (R-008 is M2; the brief clause is M3) |
+| M2 component | Delivered as | What M3 uses it for |
+|---|---|---|
+| M2-P2 red-witness harness | `src/gates/red-witness.ts`, invoked `node src/gates/red-witness.ts --result <path> --evidence <dir> --base <ref> [--head <ref>]`. Durable witness SPECS live at `witness/<behavior-id>.json` and validate against `src/gates/schemas/witness-spec.schema.json`; captured external output lives at `witness/captures/`; the run writes `witness-records.json` into the evidence directory | the implementer brief's red-witness clause and the plan-review and clean-room test-honesty probes cite the accepted proof (R-028a, R-056a). **Corrected at revision 3**: the accepted proof is the PAIR, a committed `witness/<id>.json` spec whose `dangerousStates[]` has at least one member, plus the run's `witness-records.json`. Revision 2 said "its evidence file", singular, which names only the second and lets a probe be answered by a run with no durable spec behind it |
+| M2-P3 full-suite wrapper | `src/gates/suite.ts`, manifest id `suite`, unitLabel `tests reported` | the report contract's "all green means the wrapper's exit code" field (R-049, R-086). **Confirmed at revision 3 and sharpened**: the gate binds the child's exit code to the parsed counts in BOTH directions (exit 0 with a failing or did-not-run test is a failure, and a nonzero exit with no failing test in the stream is a failure), so the report contract's `wrapper-exit-code` field is one half of a pair and M3-P4 carries the counts beside it rather than instead of it |
+| M2-P4 scope auditor | `src/gates/scope.ts`, manifest id `scope`, invoked with `--declarations delivery/plan/phase-declarations`, reading `<dir>/<phase>.json` out of the MERGE BASE | the plan schema's `files-to-touch` field is the auditor's input, through the phase-declaration projection named below. **Corrected at revision 3**: path, field names and the merge-base timing were all wrong at revision 2; see item 3 |
+| M2-P5 citation linter | `src/gates/citations.ts`, manifest id `citations`, invoked `node src/gates/citations.ts --result <file> --evidence <dir> --base <ref> [--head <ref>]`, precondition `diff-touches` on six `delivery/` paths | the verifier attached to the investigator and plan-writer briefs (R-010a). **Corrected at revision 3**: it is a GATE with a diff-scoped precondition, not a free-standing linter over a file. It resolves only citations ADDED OR MODIFIED in `base...head` (M2-D-21) and treats a citation inside backticks or a fenced block as QUOTED and never resolves it (M2-D-22). So R-010a's "verification pass" is a pass over a DIFF, and the brief clause must say which base, or the attached verifier is not runnable as specified |
+| M2-P6 coverage checker | `src/gates/coverage.ts`, manifest id `coverage`, `--config <path>` validated against `src/gates/schemas/coverage-config.schema.json`, falling back to the built-in `KERNEL_COVERAGE_CONFIG` when the flag is absent | accepted reference types phase, decision, parked (D-7) constrain the plan schema's open-questions and parked sections; its finding-to-outcome parity mode validates the final report (R-089b, consumed by R-089a). **Corrected at revision 3**: it is CONFIG-DRIVEN, with an `inventory` document and a `coverageTable` document as two separately configured sources each with an id regex. Section 2.2 is rewritten against that fact |
+| M2-P1 gate manifest and gate runner | `gates.manifest.json`, `src/gates/schemas/gate-manifest.schema.json`, the runner `src/gates/run.ts` behind `tiphys gates run --manifest <file> --evidence <dir> [--base] [--head] [--phase] [--only]`, and the record constructor `src/gates/result.ts` | the seed the canonical gate registry promotes, with its SC-011 precondition semantics (R-094). **Confirmed at revision 3, with the two constraints named**: `makeGateResult` is THE ONLY CONSTRUCTOR and it rewrites a green record with `units` 0 to `error` with `vacuous: true` (M2-C-2, `src/gates/result.ts` lines 148 to 183), and a gate invoked without a parameter it needs is `error` and never not-applicable (M2-C-3). M3-P2's promotion must preserve both, and revision 3 gives it criteria that redden if it does not |
+| M2-P7 deploy and migration verifiers | `src/gates/deploy.ts` and `src/gates/migrations.ts`, two thin entries over the one contract module `src/gates/release.ts`, with `src/gates/schemas/release-record.schema.json` and two reference adapters under `src/gates/adapters/` | named stages in the full assurance mode's pipeline definition (R-096). **Confirmed at revision 3, with one property M3-P3 must not contradict**: the outcome vocabulary (satisfied, failed, pending, absent, not-applicable, error) is DELIBERATELY NOT a schema enum, because an out-of-enum outcome is a named fail-closed error rather than a generic schema failure. M3-P3 references stage ids and never the outcome enum, so nothing in M3 needs to restate it |
+| M2-P8 credential scoping | `src/gates/credentials.ts`, two manifest entries `credential-scrub` (required) and `credential-token` (conditional, precondition id `implementer-token-present-owner-action-a-3`) | the structural fact the implementer brief must not contradict (R-008 is M2; the brief clause is M3). **Confirmed at revision 3, with the residue named**: the real defence is the allowlist in `src/exec/env.ts`; the module's derived denylist is a bounded TRIPWIRE and says so in its own header. The implementer brief's no-pull-request clause may cite the scrub as structural, and may not claim it is exhaustive |
 
-Four M2 artifacts are named by path because the M2 plan names them, and each
-one is a joint this plan has to fit against rather than guess at:
+Six M2 artifacts are named by path because M3 fits against them directly. Each
+one is a joint this plan has to fit against rather than guess at, and at
+revision 3 each was READ on `main` rather than taken from the M2 plan:
 
 1. `gates.manifest.json`, the per-repository gate manifest with preconditions
    and applicability (M2-P1). Its schema reserves a `modes` field that the M2
@@ -189,12 +288,64 @@ one is a joint this plan has to fit against rather than guess at:
 2. `src/gates/schemas/`, where M2's own schema documents live, because
    `CLAUDE.md` reserves the root `schemas/` for M3. M2 leaves the relocation
    decision to M3; this plan takes it (D-M3-20).
-3. `delivery/plan/phases/<phase-id>.json`, the phase-declaration projection the
-   M2-P4 scope auditor consumes (id, branch, files-to-touch, extras,
-   citations). The M2 plan recommends that the M3 plan schema's phase object be
-   a superset so the projection becomes a generated view of one source rather
-   than a second source that can drift. This plan accepts that (M3-P1 step 2,
-   D-M3-18).
+3. `delivery/plan/phase-declarations/<phase-id>.json`, the phase-declaration
+   projection the M2-P4 scope auditor consumes. **Corrected at revision 3 in
+   all three of its observable properties, by reading the delivered schema and
+   manifest rather than the M2 plan's prose; revision 2 was wrong about the
+   path, the field names and the timing, and M3-P1 criterion 10 would have
+   failed on its first attempt.**
+   - **Path.** `delivery/plan/phase-declarations/`, not `delivery/plan/phases/`.
+     The directory is passed to the gate from `gates.manifest.json`, and the
+     filename is the phase id LOWERCASED (`m3-p1.json`), because the CI harness
+     derives `--phase` from the branch name by a lowercase regex.
+   - **Field names, and the set is CLOSED.** Required: `id`, `branch`,
+     `filesToTouch`, `declaredExtras`, `citations`, all camelCase, with
+     `additionalProperties: false`. Revision 2 said "(`id`, `branch`,
+     `files-to-touch`, `extras`, `citations`)" and made `extras` a required
+     phase field; a projection emitting those names is rejected by the schema
+     rather than merely ignored. `filesToTouch` holds literal paths, or literal
+     directories written with a TRAILING SLASH, and never a description
+     (M2R-016): the auditor matches the string exactly or as a directory
+     prefix. `declaredExtras` is over and above two standing extras the auditor
+     adds itself, `test/behaviors.json` and the phase's own
+     `delivery/work-history/<id>.md`.
+   - **Timing, and it is an operational prerequisite the plan previously did
+     not carry at all.** The auditor reads the declaration out of the MERGE
+     BASE of the audited branch, never from the head, which is the whole
+     anti-widening property: a declaration that is not on `main` when the
+     branch forks CANNOT govern that branch, and editing it on the branch
+     cannot widen the audited scope. Every M3 branch is `claude/m3-pN-<slug>`,
+     which matches the scope gate's `branch-matches` precondition, so scope
+     RUNS on every M3 pull request and a missing declaration is a red gate.
+   - **Ownership, assigned here because no phase owned it (A-009).** The ten
+     `delivery/plan/phase-declarations/m3-p1.json` to `m3-p10.json` documents
+     are authored by the ORCHESTRATOR from section 3's `files-to-touch` lists
+     and merged to `main` in ONE pull request BEFORE the first M3 branch is
+     created. They are not on any phase's files-to-touch list and must not be,
+     because a phase that could author its own declaration could widen its own
+     audit. Section 3's preamble states the step; D-M3-33 records the decision
+     and why it is one pull request rather than ten.
+   - Evidence for all of the above:
+
+```
+$ git ls-tree -r origin/main --name-only delivery/plan/phase-declarations/ | head -3
+delivery/plan/phase-declarations/README.md
+delivery/plan/phase-declarations/m2-p2.json
+delivery/plan/phase-declarations/m2-p3.json
+$ git show origin/main:src/gates/schemas/phase-declaration.schema.json \
+    | python3 -c "import json,sys;print(json.load(sys.stdin)['required'])"
+['id', 'branch', 'filesToTouch', 'declaredExtras', 'citations']
+$ git show origin/main:gates.manifest.json | python3 -c "import json,sys;print([g for g in json.load(sys.stdin)['gates'] if g['id']=='scope'][0]['command'])"
+['node', 'src/gates/scope.ts', '--declarations', 'delivery/plan/phase-declarations']
+$ git show origin/main:.github/workflows/gates.yml | grep -n 'phase '
+92:          --phase "$(printf '%s' "${{ github.head_ref }}" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')"
+```
+
+   The M2 plan recommends that the M3 plan schema's phase object be a superset
+   so the projection becomes a generated view of one source rather than a
+   second source that can drift. This plan accepts that (M3-P1 step 2,
+   D-M3-18), and revision 3 corrects what the generated view must EMIT so the
+   consumer accepts it.
 4. M2-P6's coverage input contract: a findings inventory plus a coverage table
    in a declared shape, defined by M2 because the report contract does not
    exist yet. M3-P4's report and final-report schemas must emit that shape or
@@ -223,13 +374,25 @@ one is a joint this plan has to fit against rather than guess at:
 
 Everything else is verified before use: every M3 phase that consumes an M2
 artifact confirms its real path and output shape before editing and records the
-confirmation in its work history. **At revision 2 the M2 plan is DRAFT at
-revision 2, re-grounded 2026-08-05 and pending its own adversarial review round
-2**, so a path taken from it is a starting point for that verification, never a
-substitute for it. This is not a formality: M2's revision 2 rewrote M2-P7
-substantially, rebuilt its section 1.5 traceability table from thirteen rows to
-twenty-two, added constraint M2-C-6, and changed its parallel structure. Any of
-those can move again.
+confirmation in its work history.
+
+**Revision 2's version of this paragraph, and what it cost, recorded because it
+is the round's whole lesson.** Revision 2 read: "At revision 2 the M2 plan is
+DRAFT at revision 2 ... so a path taken from it is a starting point for that
+verification, never a substitute for it." That sentence states the hazard
+CORRECTLY, and revision 2 then relied on the M2 plan anyway. Adversarial review
+round 2 opened five of M2's delivered artifacts and found three of the five
+mis-specified. Revision 3 opens the rest (section 1.7 lists which, and which
+were confirmed) because a base rate of three in five is not a base rate at
+which the unread ones may be assumed sound.
+
+**The rule that replaces it, binding from revision 3 onward.** M2 is COMPLETE
+and every joint is readable, so no M3 phase may take a path, a field name, a
+flag or an output shape from `delivery/plan/kernel-plan-m2.md`. The source is
+the file on `main`, and the verification a phase records in its work history is
+a captured command against that file, not a citation to the M2 plan's prose.
+Where this plan quotes a shape, section 1.7 carries the command that produced
+it, so a later reader can re-run the derivation instead of re-trusting it.
 
 ### 1.2 What M3 therefore builds
 
