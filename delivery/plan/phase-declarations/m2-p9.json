@@ -6,8 +6,11 @@
     "test/m2-exit-test.test.ts",
     ".github/workflows/gates.yml",
     "gates.manifest.json",
-    "test/behaviors.json"
+    "test/behaviors.json",
+    "test/gates.test.ts"
   ],
-  "declaredExtras": [],
+  "declaredExtras": [
+    "delivery/evidence/m2-exit-test/"
+  ],
   "citations": ["SC-011", "CR-602", "CR-604", "CR-720", "CR-721", "CR-722", "M2R-003", "M2R-011", "M2R-026"]
 }
