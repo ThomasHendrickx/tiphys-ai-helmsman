@@ -1101,31 +1101,43 @@ if [ "${self_test}" = "yes" ]; then
   run_self_test
 fi
 
-# Derive the phase from the branch when not supplied, lowercase to match the
-# phase-declaration filename the scope gate reads.
-if [ -z "${phase}" ]; then
-  branch=$(git -C "${repo_root}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  case "${branch}" in
-    claude/*)
-      phase=$(printf '%s' "${branch}" | sed -n 's#^claude/\(m[0-9][0-9]*-p[0-9][0-9]*\).*#\1#p')
-      ;;
-  esac
+# The phase and the resolved scope expectation are needed ONLY by the PR
+# bundle, the single bundle that runs the diff-scoped scope gate. The main
+# bundle runs no diff-scoped gate (run_main_bundle passes neither --phase nor
+# --head and uses --only to exclude scope, red-witness and citations), so it
+# needs no phase at all. Deriving one unconditionally made a push to main
+# (branch "main", no --phase) DIE here before ever reaching the main bundle,
+# reddening every push-to-main run. Guard the derivation to any run that will
+# actually produce a PR bundle; the main-only bundle skips it.
+scope_expect=""
+if [ "${bundle}" = "pr" ] || [ "${bundle}" = "both" ]; then
+  # Derive the phase from the branch when not supplied, lowercase to match the
+  # phase-declaration filename the scope gate reads.
   if [ -z "${phase}" ]; then
-    die "could not derive --phase from branch \"${branch}\"; pass --phase explicitly (lowercase, e.g. m2-p9)"
+    branch=$(git -C "${repo_root}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    case "${branch}" in
+      claude/*)
+        phase=$(printf '%s' "${branch}" | sed -n 's#^claude/\(m[0-9][0-9]*-p[0-9][0-9]*\).*#\1#p')
+        ;;
+    esac
+    if [ -z "${phase}" ]; then
+      die "could not derive --phase from branch \"${branch}\"; pass --phase explicitly (lowercase, e.g. m2-p9)"
+    fi
+    note_step observation "phase derived from the branch" "branch ${branch} -> phase ${phase}"
   fi
-  note_step observation "phase derived from the branch" "branch ${branch} -> phase ${phase}"
-fi
 
-# Resolve scope's expected status for the PR bundle (see PR_EXPECT_JSON's
-# comment and resolve_scope_expect above). Detected from the harness's own
-# inputs (--phase and the checked-out head branch), never from process liveness
-# or a flag that could make a gate lie. scope is required GREEN only on a
-# PHASE-branch run; on a non-phase run scope is legitimately not-applicable and
-# is accepted with a valid evaluated precondition (DR-0018 diff-scoped handling).
-head_branch=$(git -C "${repo_root}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-scope_expect=$(resolve_scope_expect "${phase}" "${head_branch}")
-note_step observation "scope expectation resolved for this run" \
-  "phase=${phase}, head branch=${head_branch}: scope expect=${scope_expect} (green only on a phase-branch run; a phase-branch scope N/A still FAILS)"
+  # Resolve scope's expected status for the PR bundle (see PR_EXPECT_JSON's
+  # comment and resolve_scope_expect above). Detected from the harness's own
+  # inputs (--phase and the checked-out head branch), never from process
+  # liveness or a flag that could make a gate lie. scope is required GREEN only
+  # on a PHASE-branch run; on a non-phase run scope is legitimately
+  # not-applicable and is accepted with a valid evaluated precondition (DR-0018
+  # diff-scoped handling).
+  head_branch=$(git -C "${repo_root}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  scope_expect=$(resolve_scope_expect "${phase}" "${head_branch}")
+  note_step observation "scope expectation resolved for this run" \
+    "phase=${phase}, head branch=${head_branch}: scope expect=${scope_expect} (green only on a phase-branch run; a phase-branch scope N/A still FAILS)"
+fi
 
 if [ "${do_build}" = "yes" ]; then
   build_kernel
