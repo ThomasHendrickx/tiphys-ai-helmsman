@@ -4691,12 +4691,29 @@ hazard it is matched to.
   M1-P6 CR-680 shape exactly; a supervising intervention that filled a gap
   without either party noticing, which E0.3 exists for; and a publish that
   reaches the registry in a form nobody intended, which is the one action in
-  this milestone with no clean undo. **One open question inside that last
+  this milestone with no clean undo.
+  **Added at revision 3 (T-009):** a post-merge witness discharged from the
+  already-green `pull_request` check on the source branch rather than from the
+  `push` run on the new `main` tip, so the exit test certifies a `main` that
+  may be red and the certification is not detectably wrong from inside the
+  bundle.
+  **One open question inside that last
   hazard, stated rather than asserted**: whether an unclaimed `@tiphys` scope
   refuses a publish or accepts it is a property of npmjs this plan has NOT
   executed. The implementer establishes it against the real registry before
   step 4's workflow can run, and records the command and its output, rather
   than reasoning about what npm will do.
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a `files` list that packs every DIRECTORY and omits one file inside one of them | criterion 3, which copies a template OUT OF THE INSTALLED PACKAGE and validates it against a schema copied from the same install, so a `$ref` that fails to resolve from inside an installed tree reddens. Criterion 2's listing assertion alone would not catch it, and the two are kept separate for that reason |
+| a license gate that inventories `dependencies` while the TRANSITIVE production set is what ships | criterion 1b, both directions, including the vacuous-pass direction (removing `ajv` from the inventory logic must make the gate exit 0 over a tree that contains it, captured and reverted) |
+| a release-verify script run from a directory that still has the SOURCE TREE on its resolution path | criterion 5, "from a clean directory with a clean cache", and criterion 3's temporary prefix. **Residue named at revision 3**: "clean" is a property of the environment the script is invoked in, not of the script, so a criterion cannot fully own it. Criterion 5 is strengthened below to require the evidence record to carry the RESOLVED path of the package under test, so the bundle shows which tree answered rather than asserting which one should have |
+| an exit-test evidence bundle internally consistent that records a claim that was FALSE | stage E0.5's falsification controls, rewritten at revision 3 to cover three structurally different mechanisms instead of one, plus criterion 6's requirement that a control be present and FAILED at its declared stage. **The residue is real and section 4.5 carries it**: no bundle can certify its own truthfulness, which is why the controls exist and why section 4.5 now states which E1 mechanisms remain unwitnessed |
+| a supervising INTERVENTION that filled a gap without either party noticing | stage E0.3's binding rule plus criterion 6's "no stage records a substituted or skipped step without the documented substitution marker". **Section 2.6 reason 1 applies to the unnoticed case by construction**: an intervention nobody noticed is not recorded, and no check over the record can see it. Section 4.5 item 1 carries it |
+| a publish that reaches the registry in a form nobody intended | criteria 2, 3 and 4 before publication and criterion 5 after it. **Section 2.6 reason 2 applies to the irreversibility itself**: nothing checks a publish that has already happened, which is what makes the pre-publication criteria the whole defence and why the `@tiphys` scope behaviour is established against the real registry before step 4's workflow can run |
+| a post-merge witness discharged from the `pull_request` check rather than the `push` run on the new `main` tip (T-009) | exit stage E3.1 as rewritten at revision 3, which names the event, requires the run's head sha to equal the new `main` tip, requires it observed TO COMPLETION, and records run id, event, head sha and conclusion as an evidence record; plus criterion 6, which requires that record to be present in the bundle |
 - steps:
   1. Update `package.json`: name per DR-0008's outcome, `version` 0.1.0, remove
      `private`, and set `files` to exactly `dist`, `schemas`, `templates`,
@@ -4735,7 +4752,39 @@ hazard it is matched to.
   `.github/workflows/release.yml`, `THIRD-PARTY-NOTICES` (create only if a
   declaration requires it), `test/license-gate.test.ts` (create);
   `package.json` (edit), `src/commands/init.ts` (edit),
-  `test/init.test.ts` (edit), `.github/workflows/gates.yml` (edit).
+  `test/init.test.ts` (edit), `.github/workflows/gates.yml` (edit),
+  `gate-registry.yaml` (edit, ADDED at revision 3: the license gate is a
+  registry entry with `events: [pull_request, push]` rather than a raw workflow
+  step, section 2.2a and D-M3-34. The RELEASE workflow's own steps stay in
+  `.github/workflows/release.yml` and are deliberately workflow-level, because
+  they run on a tag event the gate bundle never sees; this phase states that
+  reason rather than leaving it implicit, which is what D-M3-34 requires of any
+  check that stays at workflow level),
+  `delivery/evidence/m3-exit-test/` (a DIRECTORY entry, ADDED at revision 3,
+  A-013).
+  **Why the evidence directory has to be declared, and it is not a formality.**
+  Section 4 requires two artifacts under it and neither was on any list:
+  `supervision-rules.md`, which stage E0.2 requires to exist BEFORE the run and
+  whose commit E0.5 requires to PRECEDE the first E1 evidence record; and the
+  full bundle, which E4.4 commits through a pull request. The scope audit is a
+  hard phase-completion condition and an undeclared path is a red gate, not a
+  warning. That bites the supervision file specifically: its whole value is the
+  commit ORDERING E0.5 asserts, so discovering the declaration gap after a
+  scope audit rejects the file, and re-committing it afterwards, destroys the
+  property the file exists to have. M2-P9 hit exactly this shape and declared
+  `delivery/evidence/m2-exit-test/` in its `declaredExtras`; this phase has
+  strictly more evidence to commit.
+  **Where each lands, stated because E0.2 and E4.4 pull in opposite
+  directions.** `supervision-rules.md` is committed to `main` in the SAME
+  pre-dispatch pull request as section 3.0's ten phase declarations, before the
+  M3-P10 branch is created, because E0.2 requires it to exist before the run
+  and E0.5 requires its commit to precede the first E1 record; a file committed
+  on the phase branch would have its ordering entangled with the run it is
+  supposed to bound. The BUNDLE is committed on the phase branch and reaches
+  `main` through M3-P10's own pull request per E4.4. Both sit under
+  `delivery/evidence/m3-exit-test/`, so the one directory entry in
+  `declaredExtras` covers the bundle, and the pre-dispatch commit needs no
+  declaration at all, being a commit to `main` rather than a phase diff.
 - acceptance criteria:
   1. `node scripts/license-gate.mjs` exits 0 on the repository as shipped; with
      a fixture dependency tree containing a package whose `license` field is
@@ -4771,7 +4820,15 @@ hazard it is matched to.
      the local tarball).
   5. `scripts/release-verify.sh <name> 0.1.0` exits 0 from a clean directory
      with a clean cache and emits one JSON evidence record per command with its
-     exit code (SC-011).
+     exit code (SC-011). **Each record also carries the RESOLVED path of the
+     package under test (NEW at revision 3), so the bundle shows which tree
+     answered rather than asserting which one should have.** A record whose
+     resolved path lies inside the repository working tree rather than inside
+     the temporary install prefix fails the criterion, witnessed both
+     directions by running the script once from the repository root (must fail,
+     naming the resolved path) and once from the clean directory (must pass).
+     This is the falsifiable half of "clean", which is otherwise a property of
+     the invoking environment that no assertion inside the script can reach.
   6. Section 4's exit test passes with its evidence bundle committed, and the
      bundle validates: every stage has its records, the AUTHORIZATION artifact
      of stage E2 is present (the dual cross-model clean review with
@@ -4779,6 +4836,18 @@ hazard it is matched to.
      at revision 2 under DR-0015), the falsification control of stage E0.5 is
      present and FAILED at its declared stage, and no stage records a
      substituted or skipped step without the documented substitution marker.
+     **Extended at revision 3, three ways.** (a) ALL THREE of stage E0.5's
+     falsification controls are present and each FAILED at its own declared
+     stage, not one of the three; a bundle carrying one control and a claim
+     about "the stages" is the one-witness-is-not-a-class shape section 2.3
+     rule 6 forbids everywhere else. (b) Stage E3.1's post-merge record is
+     present and carries the run id, the EVENT (`push`), the head sha, and the
+     conclusion, and the head sha in that record equals the merge commit sha
+     recorded beside it, compared as strings rather than asserted to match
+     (T-009). (c) The bundle carries section 4.5's explicit list of which E1
+     mechanisms the controls do and do not cover, so the exit test's own
+     coverage claim is bounded inside the artifact rather than only in this
+     plan.
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; earlier
      mappings still resolve.
 - new behaviors: `license-gate-missing-metadata`,
