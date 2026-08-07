@@ -605,6 +605,63 @@ Hits and their disposition, one line each:
 - **"always" / "never" inside quoted plan text** (the D-M3-34 row, the section
   2.6 rule): quotations of the deliverable, whose own claims are settled inside
   it.
+- **"Never a description (M2R-016)"** (J3): a verbatim quotation of
+  `phase-declaration.schema.json`'s own `filesToTouch` description. The command
+  that produced the surrounding capture is in J3.
+- **"a citation inside backticks or a fenced block is QUOTED and never
+  resolved"** (J13): a paraphrase of `src/gates/citations.ts`'s module header,
+  which states M2-D-22 in those terms. The usage capture is in J13; the header
+  text is at `src/gates/citations.ts` lines 41 to 44 on `main`, reachable with
+  `git show origin/main:src/gates/citations.ts | sed -n '41,44p'`.
+- **"'attached verifier' is a pass over a diff and needs a base"** (J13):
+  settled by the usage string captured immediately above it, which lists
+  `--base <ref>` as required and `--head <ref>` as optional, and by the
+  M2-C-3 refusal line captured at J8
+  (`gate citations requires --base`).
+- **"M3-P3 references the stage ids and never the adapter"** (1.4 item 1): this
+  is a claim about the M3 PLAN's own text, and it is settled inside the
+  deliverable rather than by a command here: the plan's Appendix B M3-P3 row
+  states "M3 references by stage id and never by adapter", and section 1.7's
+  M2-P7 row records the same. It is a design commitment this revision made, not
+  an observation about the world, and it is falsifiable by grepping the M3-P3
+  section for an adapter name.
+- **"a tag event the bundle never sees"** (A-011 row, and M3-P10's
+  files-to-touch note): **RESTATED as a design statement, because it is not an
+  observation.** `.github/workflows/release.yml` does not exist; M3-P10 creates
+  it. The sentence means: this plan SPECIFIES the release workflow to trigger on
+  a tag, and the gate bundle runs under `pull_request` and `push` to `main`
+  only, per the workflow captured at J2. Whether a future release workflow could
+  be made to run inside the bundle is a question nobody has asked and I am not
+  answering it; what I am recording is the reason D-M3-34 grants the exception.
+- **"would catch"** (section 3 item 6): explicitly labelled as my judgment in
+  the same sentence, and item 6 exists to bound it.
+- **"never green by omission" / "zero units cannot be constructed" /
+  "the phase diff cannot be computed"** (J7 and J8): all three are inside
+  fenced captures, and each capture's `git show ... | sed -n` command is on the
+  line above it. They are M2's statements about M2, reproduced with the command
+  that produced them.
+- **"cannot be written into this ASCII-only file"** (section 5.2's
+  parenthetical): settled by the `grep -cP '[^\x00-\x7F]'` result of 0 two
+  lines above it, which is the definition of the file being ASCII-only.
+
+Two claims in this discharge were themselves verified rather than asserted,
+because a discharge that is itself unexecuted is the shape T-006 records:
+
+```
+$ grep -n 'never by adapter' delivery/plan/kernel-plan-m3.md
+6461:| M3-P3 | M2-P1 (gate set references), M2-P7's post-merge verification contract ... which M3 references by stage id and never by adapter |
+$ awk '/^### M3-P3:/,/^### M3-P4:/' delivery/plan/kernel-plan-m3.md | grep -c 'adapter'
+1
+$ git show origin/main:src/gates/citations.ts | sed -n '41,44p'
+ *   M2-D-22 (made vs quoted): a citation inside an inline code span
+ *   (backticks) or a fenced code block is QUOTED, not made, and is never
+ *   resolved. This is the convention the repository already follows
+ *   (writing `src/nope.ts:1` in prose to mean "this does not resolve").
+```
+
+The single `adapter` occurrence in M3-P3 is inside the phrase "never by
+adapter" itself, which is what makes the design commitment checkable: any
+second occurrence would be a violation.
 
 ASCII check on this file:
 
@@ -629,9 +686,98 @@ $ npm test
 (exit code and counts recorded in section 5.1)
 ```
 
-### 5.1 Recorded run
+### 5.1 Recorded run, 2026-08-07, on the branch at the final commit
 
-See the block appended below at the end of the work.
+```
+$ node --version
+v26.6.0
+$ npm --version
+11.18.0
+$ npm ci
+added 4 packages, and audited 5 packages in 3s
+found 0 vulnerabilities
+(exit 0, and no EBADENGINE line, because the floor toolchain satisfies >=26)
+
+$ npm run build
+> @tiphys/kernel@0.0.0 build:schemas
+> node --input-type=module -e "import { cpSync } from 'node:fs'; cpSync('src/gates/schemas', 'dist/src/gates/schemas', { recursive: true });"
+(exit 0)
+
+$ git status --porcelain
+(empty: clean tree after build, which is the standing acceptance criterion;
+ dist/ and *.tsbuildinfo are gitignored deliberately)
+
+$ npm test
+i tests 408
+i suites 0
+i pass 408
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 114128.30349
+(exit 0)
+```
+
+**408 tests, 408 pass, 0 fail, 0 skipped.** For comparison, `CLAUDE.md`'s
+environment note records 106 tests on `main` at `bcefc98`, which was before M2
+merged; the count has grown with M2's nine phases and this run is on `main` at
+`dbba3c8` plus this branch's document-only changes.
+
+**What the run does and does not tell us about THIS change.** It tells us the
+branch does not break the repository. It tells us nothing about the plan,
+because the change is two markdown documents and no test reads either. Stated
+so a green suite is not mistaken for evidence about the deliverable, which is
+the vacuous-pass shape this milestone spends section 2.3 preventing.
+
+### 5.2 Document checks
+
+```
+$ grep -cP '[^\x00-\x7F]' delivery/plan/kernel-plan-m3.md
+0
+$ grep -cP '[^\x00-\x7F]' delivery/work-history/m3-plan-revision-3.md
+0
+$ grep -c -- '[em dash]' delivery/plan/kernel-plan-m3.md delivery/work-history/m3-plan-revision-3.md
+delivery/plan/kernel-plan-m3.md:0
+delivery/work-history/m3-plan-revision-3.md:0
+$ wc -l delivery/plan/kernel-plan-m3.md
+6573 delivery/plan/kernel-plan-m3.md
+```
+
+(The em-dash grep was run with the literal character, which cannot be written
+into this ASCII-only file; both files report 0, which the ASCII check above
+already implies since an em dash is non-ASCII.)
+
+Appendix A re-verified, per the round's hard constraint:
+
+```
+$ git diff 70b8f05 -- delivery/plan/kernel-plan-m3.md | grep -cE '^[+-]\| R-'
+0
+$ awk '/^## Appendix A/,/^## Appendix B/' delivery/plan/kernel-plan-m3.md | grep -c '^| R-'
+74
+$ ... | awk -F'|' '{gsub(/ /,"",$3); print $3}' | sort | uniq -c
+     12 M3-P1
+      3 M3-P2
+      3 M3-P3
+      9 M3-P4
+      7 M3-P5
+     13 M3-P6
+     13 M3-P7
+      3 M3-P8
+     11 M3-P9
+(M3-P10 = 0, as the appendix states)
+$ ... | awk -F'|' '{gsub(/ /,"",$2); print $2}' | sort | uniq -d
+(empty: no duplicate row id)
+$ awk -F'|' '/^\| R-/ {gsub(/ /,"",$2); gsub(/ /,"",$3); if($3=="M3") print $2}' \
+    delivery/plan/kernel-plan-v1.md | sort > /tmp/v1rows.txt
+$ wc -l < /tmp/v1rows.txt
+74
+$ comm -23 /tmp/m3rows.txt /tmp/v1rows.txt; comm -13 /tmp/m3rows.txt /tmp/v1rows.txt
+(both empty: exact set match in both directions)
+```
+
+**Zero changed row lines** is the strongest of these: the table was not edited
+at all, so the arithmetic could not have been disturbed.
 
 ---
 
