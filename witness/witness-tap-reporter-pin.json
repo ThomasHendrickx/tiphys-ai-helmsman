@@ -1,0 +1,23 @@
+{
+  "id": "witness-tap-reporter-pin",
+  "behavior": "witness-tap-reporter-pin",
+  "tests": [
+    "the tap parser accepts the pinned reporter stream and refuses a foreign format"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "if (!first.startsWith(\"TAP version\")) {",
+      "replace": "if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node --test --test-reporter tap",
+    "captures": ["witness/captures/node-test-tap-real.txt"],
+    "provenance": "Captured 2026-08-06 on Node v22.22.2 by running `node --test --test-reporter tap sample.test.ts` against a two-test sample (one passing, one failing assertion) and redirecting stdout verbatim; the M2-P2 work history records the command and exit code. Real reporter output, not a hand-written string (CLAUDE.md warning 10; MECHANISMS.md, Parsing another program's reporter output)."
+  }
+}

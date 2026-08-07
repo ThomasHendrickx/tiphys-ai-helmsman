@@ -1,0 +1,18 @@
+{
+  "id": "red-witness-base-absent-error",
+  "behavior": "red-witness-base-absent-error",
+  "tests": [
+    "the red-witness gate without base writes an error record naming the missing base"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "if (options.base === undefined) {",
+      "replace": "if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

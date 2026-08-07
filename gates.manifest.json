@@ -16,6 +16,20 @@
       "applicability": "required"
     },
     {
+      "id": "coverage",
+      "command": [
+        "node",
+        "src/gates/coverage.ts"
+      ],
+      "unitLabel": "finding ids checked",
+      "applicability": "required",
+      "precondition": {
+        "id": "coverage-inventory-exists",
+        "kind": "file-exists",
+        "path": "delivery/requirements/migration-table.md"
+      }
+    },
+    {
       "id": "credential-scrub",
       "command": [
         "node",
@@ -42,20 +56,6 @@
           "-e",
           "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"
         ]
-      }
-    },
-    {
-      "id": "coverage",
-      "command": [
-        "node",
-        "src/gates/coverage.ts"
-      ],
-      "unitLabel": "finding ids checked",
-      "applicability": "required",
-      "precondition": {
-        "id": "coverage-inventory-exists",
-        "kind": "file-exists",
-        "path": "delivery/requirements/migration-table.md"
       }
     },
     {
@@ -145,6 +145,27 @@
         "id": "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
         "kind": "file-exists",
         "path": "release-verification.json"
+      }
+    },
+    {
+      "id": "red-witness",
+      "command": [
+        "node",
+        "src/gates/red-witness.ts"
+      ],
+      "unitLabel": "witnesses evaluated",
+      "applicability": "required",
+      "parameters": [
+        "base",
+        "head"
+      ],
+      "precondition": {
+        "id": "red-witness-diff",
+        "kind": "diff-touches",
+        "paths": [
+          "src/",
+          "bin/"
+        ]
       }
     }
   ],

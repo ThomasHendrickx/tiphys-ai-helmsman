@@ -1,0 +1,18 @@
+{
+  "id": "witness-member-kind-diagnostics",
+  "behavior": "witness-member-kind-diagnostics",
+  "tests": [
+    "a mutation member missing its replace field is rejected naming the field"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "      if (member[field] === undefined) {",
+      "replace": "      if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
