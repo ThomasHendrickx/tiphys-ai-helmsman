@@ -16,6 +16,29 @@
       "applicability": "required"
     },
     {
+      "id": "citations",
+      "command": [
+        "node",
+        "src/gates/citations.ts"
+      ],
+      "unitLabel": "citations resolved",
+      "applicability": "required",
+      "precondition": {
+        "id": "citations-diff-touches-documents",
+        "kind": "diff-touches",
+        "paths": [
+          "delivery/plan/",
+          "delivery/review/",
+          "delivery/verification/",
+          "delivery/decisions/",
+          "delivery/work-history/",
+          "delivery/tuition/",
+          "delivery/requirements/",
+          "delivery/STATE.md"
+        ]
+      }
+    },
+    {
       "id": "coverage",
       "command": [
         "node",
