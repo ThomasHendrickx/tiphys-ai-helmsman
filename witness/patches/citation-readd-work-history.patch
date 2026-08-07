@@ -1,0 +1,12 @@
+diff --git a/src/gates/citations.ts b/src/gates/citations.ts
+index f4cd380..3791480 100644
+--- a/src/gates/citations.ts
++++ b/src/gates/citations.ts
+@@ -233,6 +233,7 @@ export const DEFAULT_CITATION_CONFIG: CitationConfig = {
+     "delivery/plan/**/*.md",
+     "delivery/verification/**/*.md",
+     "delivery/decisions/**/*.md",
++    "delivery/work-history/**/*.md",
+     "delivery/tuition/**/*.md",
+     "delivery/requirements/**/*.md",
+     "delivery/STATE.md",
