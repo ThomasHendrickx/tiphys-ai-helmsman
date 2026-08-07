@@ -627,3 +627,227 @@ test("the m2 exit-test bundle step and its self-test guard sit inside the requir
     );
   }
 });
+
+/* -------------------------------------------------------------------- */
+/* The scope-detached-HEAD fix (fix round 2). Two guards: the workflow    */
+/* checks out the head branch BY NAME so scope is not detached (a pinned  */
+/* value, the same class as the pull_request: "" pin above); and the      */
+/* PR-bundle expectations REQUIRE scope green, so a scope not-applicable  */
+/* (the detached-HEAD artifact, or any regression to it) is REJECTED      */
+/* rather than accepted as legitimately N/A.                              */
+/* -------------------------------------------------------------------- */
+
+/** The `with:` mapping of the first `- uses: actions/checkout` step, indent 10. */
+function checkoutWithKeys(): Map<string, string> {
+  const lines = gatesWorkflowLines();
+  const stepAt = lines.findIndex((l) => /^ {6}- uses: actions\/checkout/.test(l));
+  assert.notEqual(stepAt, -1, "gates.yml has no `- uses: actions/checkout` step");
+  // Step body runs until the next `      - ` list item or a dedent to <= 6.
+  let end = lines.length;
+  for (let i = stepAt + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      continue;
+    }
+    const lead = (/^ */.exec(line)?.[0] ?? "").length;
+    if (/^ {6}- /.test(line) || lead <= 6) {
+      end = i;
+      break;
+    }
+  }
+  const slice = lines.slice(stepAt, end);
+  const withAt = slice.findIndex((l) => /^ {8}(?:"with"|'with'|with) *:\s*$/.test(l));
+  assert.notEqual(withAt, -1, "the actions/checkout step declares no `with:` block");
+  return declaredKeys(slice.slice(withAt + 1), 10, "checkout with:");
+}
+
+test("the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached", () => {
+  // On a pull_request event actions/checkout defaults to a DETACHED HEAD at the
+  // ephemeral merge commit, so `git rev-parse --abbrev-ref HEAD` returns "HEAD"
+  // and the scope gate's branch-matches precondition (and the gate's own
+  // current-branch cross-check) never match ^claude/mN-pM-...$: scope reports
+  // not-applicable and never audits a real diff. Checking the head branch out
+  // BY NAME (ref: github.head_ref) is what keeps scope auditing in CI, so this
+  // value is pinned exactly, the same class as the pull_request: "" pin above.
+  // A pinned value is not the guard-that-guesses class (CR-722): it reads one
+  // named key and fails loudly if the value is anything else or the key is gone.
+  const keys = checkoutWithKeys();
+  assert.ok(
+    keys.has("ref"),
+    "the actions/checkout step declares no `ref:`; on a pull_request event it then " +
+      "defaults to a detached HEAD, and the scope gate reports not-applicable on every " +
+      "CI run (never auditing a real diff). Set `ref: ${{ github.head_ref }}`.",
+  );
+  assert.equal(
+    keys.get("ref"),
+    "${{ github.head_ref }}",
+    "the actions/checkout `ref:` is not `${{ github.head_ref }}`; only the head-branch-by-name " +
+      "form puts the runner on claude/mN-pM-... so the scope gate audits. A SHA there re-detaches " +
+      "HEAD and reintroduces the vacuous scope pass.",
+  );
+  // fetch-depth: 0 must be preserved alongside ref: the diff-scoped gates need
+  // full history to compute merge bases against the base ref.
+  assert.equal(
+    keys.get("fetch-depth"),
+    "0",
+    "the actions/checkout step must keep `fetch-depth: 0`; a shallow checkout has no merge base " +
+      "for the diff-scoped gates to compute against.",
+  );
+});
+
+test("the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green", (t) => {
+  // Fix round 2. scope's precondition is branch-matches, and a PR bundle is by
+  // construction run on a phase branch, so scope is NEVER legitimately N/A in a
+  // PR bundle: the only way it reported N/A was the detached-HEAD artifact. The
+  // PR-bundle expectations therefore require scope "green", not
+  // "green|not-applicable". This is exercised end to end against the SAME
+  // assertion program the harness ships (extracted from a real --self-test run),
+  // over crafted bundles that differ only in scope's status, and shows both
+  // arms: a scope N/A is REJECTED naming scope (the dangerous state, the vacuous
+  // pass), a scope green with units is ACCEPTED (not merely always-red), and a
+  // control with the OLD "green|not-applicable" expect ACCEPTS the very same N/A
+  // bundle, isolating the tightening as the cause of the rejection.
+  if (!existsSync(distEntry)) {
+    t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
+    return;
+  }
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const harnessEvidence = join(root, "harness-evidence");
+    run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
+    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+
+    // A single-gate bundle carrying scope in a chosen status. For not-applicable
+    // it also writes the evaluated, unmet precondition record DR-0018 would need
+    // to accept it: this is exactly the detached-HEAD shape, so the ONLY reason
+    // the tightened expect rejects it is the required-green tightening itself.
+    const buildScopeBundle = (
+      dir: string,
+      status: "green" | "not-applicable",
+    ): void => {
+      mkdirSync(join(dir, "scope"), { recursive: true });
+      const green = status === "green";
+      const summary = {
+        gates: [
+          {
+            id: "scope",
+            status,
+            applicable: green,
+            vacuous: false,
+            units: green ? 3 : 0,
+          },
+        ],
+        counts: {
+          declared: 1,
+          applicable: green ? 1 : 0,
+          verdict: green ? 1 : 0,
+          green: green ? 1 : 0,
+          red: 0,
+          "not-applicable": green ? 0 : 1,
+          error: 0,
+          vacuous: 0,
+        },
+      };
+      writeFileSync(join(dir, "summary.json"), JSON.stringify(summary));
+      const record: Record<string, unknown> = {
+        gate: "scope",
+        status,
+        units: green ? 3 : 0,
+        detail: green
+          ? "3 changed path(s) audited against declaration ...m2-p9.json"
+          : "precondition scope-branch-is-a-phase-branch evaluated and unmet: branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
+      };
+      if (!green) {
+        record["precondition"] = {
+          id: "scope-branch-is-a-phase-branch",
+          met: false,
+          reason: "branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
+        };
+      }
+      writeFileSync(join(dir, "scope", "result.json"), JSON.stringify(record));
+    };
+
+    const expectDoc = (scopeExpect: string): string => {
+      const path = join(root, `expect-${scopeExpect.replace(/[^a-z]/g, "")}.json`);
+      writeFileSync(
+        path,
+        JSON.stringify({
+          label: `scope ${scopeExpect}`,
+          gates: [{ id: "scope", expect: scopeExpect, required: true, diffScoped: true }],
+          absent: [],
+        }),
+      );
+      return path;
+    };
+
+    const runAssert = (dir: string, expectPath: string): RunResult =>
+      run(
+        process.execPath,
+        [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir, "--expect", expectPath, "--manifest", manifest],
+        { cwd: root, env },
+      );
+
+    const naDir = join(root, "scope-na");
+    buildScopeBundle(naDir, "not-applicable");
+    const greenDir = join(root, "scope-green");
+    buildScopeBundle(greenDir, "green");
+
+    const tightened = expectDoc("green");
+    const original = expectDoc("green|not-applicable");
+
+    // DANGEROUS STATE: a scope not-applicable under the tightened expect is REJECTED, naming scope.
+    const rejected = runAssert(naDir, tightened);
+    assert.notEqual(
+      rejected.status,
+      0,
+      `the tightened PR expect must REJECT a scope not-applicable (the detached-HEAD vacuous pass): ${rejected.stdout}\n${rejected.stderr}`,
+    );
+    assert.match(
+      rejected.stdout + rejected.stderr,
+      /\[scope\]/,
+      "the rejection did not name scope",
+    );
+
+    // NOT MERELY ALWAYS-RED: a scope green with units is ACCEPTED under the tightened expect.
+    const acceptedGreen = runAssert(greenDir, tightened);
+    assert.equal(
+      acceptedGreen.status,
+      0,
+      `the tightened PR expect must ACCEPT a scope green with units: ${acceptedGreen.stdout}\n${acceptedGreen.stderr}`,
+    );
+
+    // CONTROL: the OLD "green|not-applicable" expect ACCEPTS the same N/A bundle,
+    // so the rejection above is caused by the tightening, not by a malformed bundle.
+    const controlAccepts = runAssert(naDir, original);
+    assert.equal(
+      controlAccepts.status,
+      0,
+      `the original green|not-applicable expect must ACCEPT the scope N/A bundle (isolating the tightening as the cause): ${controlAccepts.stdout}\n${controlAccepts.stderr}`,
+    );
+
+    // And the harness's OWN PR-bundle expectations must actually carry the
+    // tightened scope value, or the arms above guard a capability the harness
+    // does not use. This is a pinned value (the same class as the workflow ref
+    // pin and the pull_request: "" pin), not a behaviour asserted over text: it
+    // reads the one scope entry of PR_EXPECT_JSON and fails if it regresses to
+    // accepting not-applicable.
+    const harnessText = readFileSync(harness, "utf8");
+    assert.match(
+      harnessText,
+      /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/,
+      "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer requires scope green; the exit test would " +
+        "again accept a scope not-applicable (the detached-HEAD vacuous pass).",
+    );
+    assert.doesNotMatch(
+      harnessText,
+      /\{"id": "scope", "expect": "green\|not-applicable"/,
+      "scripts/m2-exit-test.sh PR_EXPECT_JSON accepts scope not-applicable again; scope is never " +
+        "legitimately N/A in a PR bundle, so this reopens the vacuous pass.",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

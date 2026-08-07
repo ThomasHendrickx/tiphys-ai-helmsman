@@ -755,18 +755,32 @@ write_expect() {
 # on the exit-test head each is EITHER green (its trigger is touched) OR
 # not-applicable with a valid recorded reason (an evaluated, unmet
 # precondition). red-witness is not-applicable on the M2-P9 head because the
-# diff touches no src/ or bin/; scope and citations are green because the head
-# has a phase diff and touches a citation-required document. A required
-# diff-scoped gate reporting not-applicable-with-reason is NOT a failure
-# (DR-0018 point 2); a red, error, or vacuous diff-scoped gate, or a
-# not-applicable one with no evaluated precondition, STILL fails the harness.
+# diff touches no src/ or bin/; citations is green because the head touches a
+# citation-required document. A required diff-scoped gate reporting
+# not-applicable-with-reason is NOT a failure for those two (DR-0018 point 2);
+# a red, error, or vacuous diff-scoped gate, or a not-applicable one with no
+# evaluated precondition, STILL fails the harness.
+#
+# scope is the EXCEPTION and its expected status is "green", not
+# "green|not-applicable". scope's precondition is branch-matches, and a PR
+# bundle is BY CONSTRUCTION run on a phase branch (claude/mN-pM-...), so that
+# precondition is ALWAYS met in a real PR: scope is never LEGITIMATELY
+# not-applicable here. The only way scope reported not-applicable in CI was the
+# detached-HEAD checkout artifact (fixed at its root in .github/workflows/
+# gates.yml by checking the head branch out by name); accepting that N/A is
+# what let the exit test pass vacuously for scope. Requiring green here means
+# the exit test genuinely REQUIRES scope to audit the diff, and a recurrence of
+# a scope N/A (detached HEAD, a missing declaration, a branch-name regression)
+# now FAILS the harness instead of slipping through. red-witness and citations
+# stay "green|not-applicable" because each CAN be legitimately N/A on a head
+# that does not touch its trigger.
 PR_EXPECT_JSON='{
   "label": "PR bundle",
   "gates": [
     {"id": "manifest-self-check", "expect": "green", "required": true},
     {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "suite", "expect": "green", "required": true},
-    {"id": "scope", "expect": "green|not-applicable", "required": true, "diffScoped": true},
+    {"id": "scope", "expect": "green", "required": true, "diffScoped": true},
     {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "coverage", "expect": "green", "required": true},
     {"id": "credential-scrub", "expect": "green", "required": true},

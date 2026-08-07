@@ -34,9 +34,29 @@ jobs:
       # gates, and M2-P9's exit harness all need real history from the suites
       # `npm test` exercises, and none of those phases' files-to-touch lists
       # include this workflow file. Full history costs one slower checkout.
+      # ref is load-bearing for the scope gate. On a pull_request event
+      # actions/checkout DEFAULTS to a DETACHED HEAD (it checks out the
+      # ephemeral merge commit, refs/pull/N/merge, not the source branch), so
+      # `git rev-parse --abbrev-ref HEAD` returns the literal string "HEAD".
+      # The scope gate's branch-matches precondition (src/gates/run.ts) and the
+      # gate's own current-branch cross-check (src/gates/scope.ts) both read
+      # that value; against a detached "HEAD" neither can ever match
+      # ^claude/mN-pM-...$, so on EVERY CI pull_request run scope reported
+      # not-applicable and never audited a real diff, and the exit harness
+      # accepted that N/A and passed vacuously for scope (the very hazard M2-P9
+      # exists to prevent, one layer up). Checking out the head branch BY NAME
+      # (github.head_ref) puts the runner on claude/mN-pM-..., so
+      # `git rev-parse --abbrev-ref HEAD` returns the branch name and scope
+      # genuinely audits the diff. The bundle step below still passes
+      # --head <pull_request.head.sha>; checking out the branch by name leaves
+      # HEAD at that same tip, and the scope gate's --head-equals-checked-out
+      # cross-check confirms they agree. On a push to main github.head_ref is
+      # empty, so checkout falls back to the pushed ref exactly as before; the
+      # push (main) bundle does not run scope, so it is unaffected either way.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 26
