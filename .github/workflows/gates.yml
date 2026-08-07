@@ -43,43 +43,61 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      # The M2 gate bundle (kernel plan M2, M2-P1 step 9). It carries one gate
-      # today, `manifest-self-check`, deliberately: a runner wired to an empty
-      # gate set reports a green bundle over nothing measured (M2R-012), so the
-      # first CI run measures something real. M2-P9 replaces this step with the
-      # exit harness so the set runs once (M2R-026).
+      # The M2 exit-test harness (kernel plan M2, M2-P9 step 5, M2R-026). This
+      # REPLACES M2-P1's two interim `--only manifest-self-check` bundle steps:
+      # the harness is now the SINGLE caller of `gates run`, so the gate set
+      # runs ONCE per run and exactly one `summary.json` is produced per job
+      # (criterion 5). npm ci and npm run build already ran above, so `--no-build`
+      # skips the harness's own step 1 rebuild rather than paying it twice.
       #
-      # Two steps rather than one: on a pull request the base and head SHAs
-      # exist and are passed; on a push to main they do not.
-      #
-      # --head is `github.event.pull_request.head.sha`, NOT `github.sha`
-      # (CR-830-1). On a pull_request trigger `github.sha` is the ephemeral merge
-      # commit checked out, so a diff against it answers a different question.
-      #
-      # --only manifest-self-check ON BOTH STEPS (fix round, M2-P1, mechanism 2):
-      # this interim wiring cannot absorb a PARAMETERIZED gate, on either step.
-      # A diff-touches gate needs --base, which the push step never has (M2-C-3,
-      # fails closed correctly); a branch-matches gate needs --phase, which
-      # neither generic step supplies. `--only` errors loudly on a name absent
-      # from the manifest (src/gates/run.ts), so the static list can only ever be
-      # too narrow, never wrong. Widening it belongs to M2-P9 (M2R-026), which
-      # replaces both steps outright.
-      - name: M2 gate bundle (pull request)
+      # Two steps, mutually exclusive by event, so only one bundle runs per job:
+      #   pull request  the STRONG PR bundle, --base/--head from the PR event and
+      #                 --phase derived from the source branch (lowercase, to
+      #                 match the phase-declaration filename the scope gate reads).
+      #                 --head is `pull_request.head.sha`, NOT `github.sha`, which
+      #                 on a pull_request trigger is the ephemeral merge commit
+      #                 (CR-830-1). The harness asserts the bundle against section
+      #                 1.4's PR-bundle column.
+      #   push          the WEAKER main bundle (--bundle main), which needs no
+      #                 base, head or phase; the three diff-scoped gates are not
+      #                 run and the harness asserts their absence explicitly.
+      - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
         run: >
-          node dist/bin/tiphys.js gates run
-          --manifest gates.manifest.json
-          --evidence "${{ runner.temp }}/gate-evidence"
+          scripts/m2-exit-test.sh
+          --no-build
+          --bundle pr
           --base "${{ github.event.pull_request.base.sha }}"
           --head "${{ github.event.pull_request.head.sha }}"
-          --only manifest-self-check
-      - name: M2 gate bundle (push)
+          --phase "$(printf '%s' "${{ github.head_ref }}" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')"
+          "${{ runner.temp }}/m2-exit-evidence"
+      - name: M2 exit test (push)
         if: github.event_name != 'pull_request'
         run: >
-          node dist/bin/tiphys.js gates run
-          --manifest gates.manifest.json
-          --evidence "${{ runner.temp }}/gate-evidence"
-          --only manifest-self-check
+          scripts/m2-exit-test.sh
+          --no-build
+          --bundle main
+          "${{ runner.temp }}/m2-exit-evidence"
+      # The falsifiability guard of M2-P9 criterion 3, run as a gate rather than
+      # trusted to a work history (mirrors the M1-P6 pattern, CR-605). The exit
+      # test's whole value is that its assertion code REFUSES a vacuous bundle,
+      # so the assertion code must be shown to fail on a vacuous one. `--self-test`
+      # runs that assertion code over two fixture manifests (a gate reporting
+      # green with units 0, and a required gate whose file-exists precondition is
+      # unmet) and exits NONZERO when it correctly rejects both. This step FAILS
+      # THE JOB if `--self-test` exits 0, which is the state where the assertion
+      # code let a vacuous bundle through and can no longer be trusted. It tests
+      # BEHAVIOUR, not text: the assertion code is exercised, not asserted about.
+      - name: M2 exit test self-test guard (the assertion code must reject a vacuous bundle)
+        run: |
+          set -u
+          evidence="${{ runner.temp }}/m2-self-test"
+          if scripts/m2-exit-test.sh --self-test "${evidence}"; then
+            echo "FALSIFIABILITY GUARD BROKEN: m2-exit-test.sh --self-test exited 0." >&2
+            echo "The assertion code failed to reject a vacuous fixture bundle, so it cannot be trusted to reject a vacuous real one." >&2
+            exit 1
+          fi
+          echo "m2 self-test falsifiability guard witnessed: --self-test exited nonzero, so the assertion code rejects a vacuous bundle."
       # The M1 exit-test harness in local mode (kernel plan v1, M1-P6 step 4):
       # the skeleton plumbing exercised end to end on every kernel PR. It
       # re-runs the three gates above as its own A1 precondition (section 4's
