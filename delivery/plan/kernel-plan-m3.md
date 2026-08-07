@@ -6300,6 +6300,33 @@ revision in which real scope was added and no row moved**, which is what the
 "artifacts, not rows" discipline is for and which is worth stating because the
 alternative reading, that nothing was added, is false.
 
+**Revision 3 moved no row, changed no count, and did not edit a single line of
+the table below.** It is the third consecutive revision to add real scope
+without moving a row: the artifacts revision 3 added (the ten phase
+declarations, the `events[]` registry field, the `hazard-classes[].addressed-by`
+field and its derived check, the shared dispatch-contract clause block, the
+clause map's inventory source, two more falsification controls, the
+`merge-is-not-complete-until` and `gate-result-is-scoped-to-its-run` clauses,
+the checklist's `verifies-gate` field, and thirteen new acceptance criteria)
+are all delivered under rows that already existed: R-019 for the plan phase
+fields, R-094 for the registry, R-033a and R-009b for the brief clauses, R-053
+and R-060 for the checklist and verdict additions, R-002 and R-061 for the
+`AGENTS.md` duties. Verified rather than asserted, at revision 3:
+
+```
+$ git diff 70b8f05 -- delivery/plan/kernel-plan-m3.md | grep -cE '^[+-]\| R-'
+0
+$ awk '/^## Appendix A/,/^## Appendix B/' delivery/plan/kernel-plan-m3.md | grep -c '^| R-'
+74
+$ ... | awk -F'|' '{gsub(/ /,"",$3); print $3}' | sort | uniq -c
+     12 M3-P1   3 M3-P2   3 M3-P3   9 M3-P4   7 M3-P5
+     13 M3-P6  13 M3-P7   3 M3-P8  11 M3-P9   (M3-P10 = 0)
+$ ... | awk -F'|' '{gsub(/ /,"",$2); print $2}' | sort | uniq -d
+(empty: no duplicate row id)
+$ comm -23 <(M3 Appendix A row ids) <(plan v1 rows bucketed M3); comm -13 ...
+(both empty: exact set match in both directions, 74 and 74)
+```
+
 | Row | Phase | Artifact and note |
 |---|---|---|
 | R-001b | M3-P9 | `AGENTS.md` clause: never writes feature code in projects, infra-hotfix carve-out named |
