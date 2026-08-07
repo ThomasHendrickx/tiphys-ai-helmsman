@@ -3666,6 +3666,44 @@ hazard it is matched to.
      checklist that is the criteria checklist reworded reproduces T-007's exact
      failure while appearing to fix it, and criterion 6b asserts the two files'
      probe-id sets are disjoint.
+     **Four more canonical probes, NEW at revision 3 and each one required by a
+     hazard-class row that defers to it (section 2.6 reason 1).** Section 2.6
+     forbids a deferral that names no instrument, and building the per-phase
+     hazard maps produced exactly four hazard items whose only instrument is
+     the hazard reviewer. Each is enumerated here so the deferral has a real
+     target rather than a probe name invented in a table:
+     - `c2-liveness-vocabulary` (deferred to by M3-P3's map). Asks whether any
+       stage, clause or duty in the artifact under review defines completion in
+       terms of a process being alive, in ANY wording, not only in the four
+       tokens M3-P3 criterion 5 and M3-P9 criterion 5 grep for. The probe text
+       carries the contrast the grep cannot make: "the stage completes when the
+       agent finishes" against "the stage completes when the lease is renewed
+       past T". `evidence-required: true`, `applies-to` covering
+       `assurance-modes.yaml`, `AGENTS.md` and the role briefs.
+     - `clause-text-matches-row` (deferred to by M3-P5's and M3-P6's maps).
+       Asks, for each clause id the clause map resolves, whether the TEXT under
+       that heading discharges the requirement row it is mapped to or says
+       something weaker. This is the general case of what M3-P5 criterion 6b
+       and M3-P6 criterion 9d each cover for one clause, and it is the one the
+       clause map explicitly cannot see because it proves presence and never
+       content. `evidence-required: true`: the answer quotes the clause text
+       and the row.
+     - `honest-failure-substance` (deferred to by M3-P4's map). Asks whether
+       each `honest-failures[]` entry's `cause`, `exposure-window` and
+       `structural-fix` say something a reader could act on, given that M3-P4
+       criterion 2e makes them non-empty and non-whitespace and can do no more.
+       `evidence-required: true`.
+     - `contract-avoidance` (deferred to by M3-P4's map). Asks whether any
+       record in the phase routed AROUND a required field rather than filling
+       it: a `claims[]` section left empty while the prose makes an
+       impossibility claim, a `fix-round` absent from a round that happened, a
+       deviation described in a narrative rather than declared in
+       `deviations[]`. This is the probe for M3-P4's own worst-named hazard,
+       that a schema can make an honest record more expensive to write than a
+       dishonest one, which no fixture exhibits because it is a property of the
+       ratio between two authoring costs. `evidence-required: true`.
+     All four are hazard-family probes and none restates a criteria probe, so
+     criterion 6b's disjointness assertion is unaffected.
   4. Create `checklists/flake-playbook.yaml` (R-066: extract the failure, judge
      fail-pattern against a local run, known signature means re-kick, unknown
      means investigate first, because a real bug looks identical to a flake
