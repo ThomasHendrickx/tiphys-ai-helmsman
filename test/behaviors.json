@@ -399,5 +399,6 @@
   "witness-text-namespace-rootdoc-detection": "deriveTextAssertions recognises the namespace and root-doc reads and leaves the named residue not-text",
   "witness-text-namespace-no-overreach": "deriveTextAssertions does not falsely redden a namespace derived-value behaviour witness",
   "witness-shell-spawn-capture-red": "a diff touching a spawning shell script without the capture field is red naming the derivation",
-  "witness-shell-spawn-capture-green": "a spawning shell script witness citing the real capture is green"
+  "witness-shell-spawn-capture-green": "a spawning shell script witness citing the real capture is green",
+  "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS"
 }
