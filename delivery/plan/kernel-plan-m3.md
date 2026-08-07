@@ -2067,6 +2067,21 @@ regression contract, it is a new contract wearing the old one's name.
   misconfiguration (M2-C-3); and a promotion that silently drops M2's
   `units`-greater-than-zero rule, so a gate examining nothing reports green
   lawfully.
+- hazard class to criterion (section 2.6, NEW at revision 3). **This phase is
+  the reason section 2.6 exists**: round 2's `grep -in units` over all 4905
+  lines of revision 2 hit only the hazard prose above, so the phase's central
+  named hazard had no criterion behind it at all:
+
+| Hazard item | Reddens against |
+|---|---|
+| a promoted entry that lost SC-011's precondition semantics, so an unmet precondition reads green | criterion 3, whose parity assertion consumes the runner's REAL output and requires zero gates green with an unmet precondition |
+| a `modes[]` field made live in a shape M2's runner validates-if-present and silently accepts while meaning something else | criterion 1 plus step 1's escalation clause. Step 1 captures the reserved field's DELIVERED shape (`{"type": "array", "items": {"type": "string"}}`, `gate-manifest.schema.json` line 70) and a difference from what step 2 needs is a D-M3-16 escalation rather than a unilateral edit to a merged M2 gate |
+| a gate declared with no precondition at all | criterion 4, Kind A, `required` removed and restored |
+| the rendered `CLAUDE.md` block and the registry agreeing because the renderer reads the block rather than deriving from the registry | criterion 5, both directions: adding a gate to `gate-registry.yaml` WITHOUT re-rendering must make `--check` exit nonzero naming the added gate. A renderer that read the block would stay green there |
+| the drift check wired as a TEXT assertion that survives being defanged | criterion 5b, which extracts and EXECUTES the step and observes its exit code, with two structurally different defangs |
+| a not-applicable that is really a misconfiguration (M2-C-3) | **criterion 3c, NEW at revision 3.** No criterion covered this at revision 2 |
+| a promotion that silently drops M2's `units`-greater-than-zero rule (M2-C-2) | **criterion 3b, NEW at revision 3.** No criterion covered this at revision 2, which is the finding that produced section 2.6 |
+| the `test/liveness.test.ts:671` flake making `suite` a binary gate over a non-deterministic suite | **NO CRITERION IN THIS PHASE, section 2.6 reason 3.** The defect is in an M1-P5 file that this phase does not acquire and must not edit. Step 1(c) requires the observed state to be RECORDED in the work history and in risk 11, and if still open, in the promoted entry's `$comment`. Recording is not checking, and this row says so rather than implying otherwise |
 - steps:
   1. Verify `gates.manifest.json`, its schema (including the reserved `modes`
      field's declared shape), and one real captured run of the M2 gate runner
@@ -2100,7 +2115,25 @@ regression contract, it is a new contract wearing the old one's name.
      drift. Replace `CLAUDE.md`'s hand-written gate list with the rendered block
      and a pointer to `gate-registry.yaml` (R-094: single source consumed by CI
      and briefs; this is the drift gate that makes "single source" true rather
-     than asserted). Wire `--check` into the gates workflow.
+     than asserted).
+     **Register `--check` as a `gate-registry.yaml` ENTRY, not as a raw
+     workflow step (corrected at revision 3, section 2.2a, D-M3-34).** Revision
+     2 said "wire `--check` into the gates workflow", which routes this phase's
+     own check around the authority the phase exists to establish and would
+     falsify R-094 on the day the phase merges. The entry declares
+     `id: agent-rules-drift`, `command: ["node",
+     "scripts/render-agent-rules-gates.mjs", "--check"]`,
+     `unitLabel: "rendered gate rows compared"`, `applicability: required`, and
+     `events: [pull_request, push]`. The same step adds the `events[]` field to
+     `schemas/gate-registry.schema.json` (step 2) and back-fills it on every
+     promoted entry, deriving each entry's value from the two bundle
+     definitions in `scripts/m2-exit-test.sh` rather than assigning it by
+     judgment: the `main` bundle runs `manifest-self-check`, `suite`,
+     `coverage`, `credential-scrub`, `deploy` and `migrations`, and the three
+     diff-scoped gates plus `credential-token` run only on the PR bundle. That
+     mapping is captured from the harness in step 1 and recorded, because
+     assigning `events[]` from memory is how the registry acquires a claim
+     nothing checked.
   6. Register the `gate-registry` type with the validator's `--type` table and
      the `auto` resolver, mirroring M3-P1 step 10 (M3R-001: this phase's
      criterion 1 cannot be met without this edit, so the edit is declared).
@@ -2112,7 +2145,16 @@ regression contract, it is a new contract wearing the old one's name.
   section only), `.github/workflows/gates.yml` (edit), `package.json` (edit,
   add `gate-registry.yaml` to `files`), the M2 gate runner source (edit only if
   step 4 requires it; verify first), `src/cli.ts` (edit only if step 4 requires
-  it).
+  it), `gates.manifest.json` (edit, ADDED at revision 3: this phase promotes
+  the manifest and must carry M3-P1's clause-map entry across, section 2.2a and
+  D-M3-34; append-only, union-resolved against the merge base).
+  **Standing constraint on the `.github/workflows/gates.yml` edit, NEW at
+  revision 3 (DR-0017, DR-0004):** the workflow is ONE job named `gates` with
+  no matrix, and the required status context is that literal string. This phase
+  may not add a job and may not add a matrix; doing either renames the
+  published context and detaches branch protection. The edit here is narrow by
+  design, because D-M3-34 moves the drift check into the registry and the
+  registry runs inside the bundle the harness already invokes.
 - acceptance criteria:
   1. `tiphys validate --type gate-registry gate-registry.yaml` exits 0.
   2. A registry entry with `verified-by: clean-room-checklist` and no `probe`
@@ -2120,10 +2162,61 @@ regression contract, it is a new contract wearing the old one's name.
      directions).
   3. Running the M2 gate runner against the registry with `--mode full` on the
      kernel repository exits 0 and its report, parsed from the run's own output,
-     lists every kernel-generic gate as green and every project-specific gate as
-     not-applicable, with zero gates reported green whose precondition is unmet
-     (SC-011). The assertion consumes the runner's real output, not a fixture
-     transcribed by hand.
+     accounts for every gate, with zero gates reported green whose precondition
+     is unmet (SC-011). The assertion consumes the runner's real output, not a
+     fixture transcribed by hand.
+     **The expected-status table is CORRECTED at revision 3 against DR-0018,
+     which revision 2 predates.** Revision 2 said "every kernel-generic gate as
+     green and every project-specific gate as not-applicable", and DR-0018
+     records that as unsatisfiable: three gates are DIFF-SCOPED (`red-witness`
+     on `diff-touches src/, bin/`, `scope` on the branch and `--phase`,
+     `citations` on `diff-touches` its configured documents), and on a head that
+     does not touch their trigger they are legitimately `not-applicable` while
+     the runner treats a REQUIRED gate reporting not-applicable as a failure
+     (exit 20). So the assertion is:
+     - every NON-diff-scoped required gate is green with `units` greater than
+       zero;
+     - every diff-scoped gate is either green (its trigger is touched by this
+       phase's own diff, which for M3-P2 is true of `citations` and `scope` and
+       false of `red-witness` unless step 4 edits the runner) or
+       `not-applicable` carrying its precondition id and the recorded
+       evaluation;
+     - every project-specific gate is `not-applicable`, and `deploy` and
+       `migrations` are not-applicable for a STRUCTURAL reason (release
+       verification runs post-merge against a commit that does not exist yet),
+       which grounding note (a) already forbids reading as "exercised";
+     - zero `error`, zero `vacuous`, and recomputed counts equal
+       `summary.json`.
+  3b. **M2-C-2 survives the promotion (NEW at revision 3; section 2.6; the
+     hazard class named this and no criterion checked it).** With the registry
+     in place and the runner extended per step 4, a fixture gate whose command
+     writes its own record with `status: green` and `units: 0` is REWRITTEN to
+     `error` with `vacuous: true`, and the bundle fails. Both directions: the
+     same fixture with `units: 1` reports green and the bundle passes. The
+     dangerous state is a HAND-WRITTEN RECORD FILE, not a synthetic switch,
+     because gates are subprocesses that author their own records (M2-D-07) and
+     `scripts/m2-exit-test.sh --self-test` on `main` already uses exactly this
+     fixture shape; the phase reuses that shape rather than inventing one.
+     A registry promotion or a `--registry`/`--mode` extension that routes
+     around `makeGateResult` and constructs a record literal is the realistic
+     way this rule gets dropped, so the test asserts on the RECORD THE RUNNER
+     INGESTED, never on the constructor being called.
+     **Two structurally different members, per section 2.3 rule 6**: a
+     zero-units green from a gate selected by `--mode full`, and a zero-units
+     green from a gate selected by `--registry` under a non-full mode, because
+     the two selection paths are where an extension can diverge.
+  3c. **M2-C-3 survives the promotion (NEW at revision 3, same reason).** A
+     gate invoked without a parameter it declares in `parameters[]` reports
+     `error` naming the missing parameter, never `not-applicable` and never
+     green. Witnessed against the real runner by selecting a `parameters:
+     ["base"]` gate with no `--base` supplied, and in the other direction with
+     `--base` supplied. The delivered gates carry this in their own refusal
+     text (`src/gates/red-witness.ts` line 454, `src/gates/citations.ts` line
+     1238), so the fixture asserts against captured real output per section 2.3
+     rule 4 rather than against a hand-written string. This is the difference
+     between "the precondition was evaluated and found unmet" and "the gate
+     could not reach a verdict", and collapsing the second into the first is
+     how a misconfiguration ships as a clean not-applicable.
   4. Kind A DANGEROUS-instance witness: a registry whose `deploy` gate declares
      no precondition is rejected by the schema `required` list (a gate with no
      precondition can only ever report green or red, which is how a vacuous pass
@@ -2142,8 +2235,19 @@ regression contract, it is a new contract wearing the old one's name.
      produced six confirmed instances of a text assertion surviving an edit that
      inverted the behaviour (`exit 1` to `exit 0`, two placements of `|| true`,
      a step-level `if: false`, a quoted YAML key the whitelist regex could not
-     see, and the step moved into a job the fan-in does not need). Two
-     structurally different defangs are witnessed, per section 2.3 rule 6.
+     see, and, replacing the stale sixth member at revision 3, an `if:`
+     narrowed so the step runs on only one CI event; DR-0017 deleted the fan-in
+     job, so revision 2's "the step moved into a job the fan-in does not need"
+     names a defang that cannot occur and a criterion written against it would
+     be green and worthless). Two structurally different defangs are witnessed,
+     per section 2.3 rule 6.
+     **And the check's EVENT ARM is asserted (NEW at revision 3, T-009,
+     D-M3-28).** The drift check is registered in `gate-registry.yaml` with
+     `events: [pull_request, push]` (section 2.2a), and the criterion asserts
+     the check is evaluated on BOTH arms, because `CLAUDE.md` drift is not a
+     property of a pull request, it is a property of `main`. A check that ran
+     only on `pull_request` would let a direct push, a rebase, or a
+     merge-queue-side edit drift the file with nothing red.
   6. `CLAUDE.md`'s gate section is the rendered block plus the registry pointer,
      and contains no hand-maintained gate list (inspection plus criterion 5).
   7. `node --test` exits 0 with 0 failing and zero unaccounted tests; behaviors
@@ -2152,12 +2256,20 @@ regression contract, it is a new contract wearing the old one's name.
 - new behaviors: `gate-registry-validates`, `gate-registry-probe-required`,
   `gate-registry-precondition-required`, `gate-registry-not-applicable-not-green`,
   `agent-rules-gate-drift-detected`,
-  and NEW at revision 2: `gate-drift-check-wired-executably`.
+  and NEW at revision 2: `gate-drift-check-wired-executably`,
+  and NEW at revision 3: `gate-registry-zero-units-green-becomes-error`,
+  `gate-registry-missing-parameter-is-error-not-na`,
+  `gate-registry-events-field-required`,
+  `gate-registry-diff-scoped-na-accepted-with-reason`.
 - suggested model tier: cheaper tier acceptable. The shape is fixed by the M2
   manifest and by SC-011; the work is promotion plus two entries.
 - citations: R-043, R-044, R-094; D-11; SC-011; blueprint section 5 (gate
   registry) and section 4; plan v1 section 5 item 5 (M2-P1 seed) and scout
-  observation 2.
+  observation 2; **NEW at revision 3**: M2-C-2 and M2-C-3 (criteria 3b and 3c,
+  and the delivered enforcement in `src/gates/result.ts`), **DR-0017** (the
+  single-job workflow and the required status context), **DR-0018** (criterion
+  3's expected-status table), **T-009** (the `events[]` field and criterion
+  5b's both-arms assertion), and D-M3-34.
 - conflicts-with: M3-P3 (reads the registry's `modes` field), M3-P6 (the
   implementer brief renders its gate list from this registry), M3-P10
   (`package.json` files entry).
