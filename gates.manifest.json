@@ -16,23 +16,6 @@
       "applicability": "required"
     },
     {
-      "id": "scope",
-      "command": [
-        "node",
-        "src/gates/scope.ts",
-        "--declarations",
-        "delivery/plan/phase-declarations"
-      ],
-      "unitLabel": "changed paths audited",
-      "applicability": "required",
-      "parameters": ["base", "head"],
-      "precondition": {
-        "id": "scope-branch-is-a-phase-branch",
-        "kind": "branch-matches",
-        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
-      }
-    },
-    {
       "id": "coverage",
       "command": [
         "node",
@@ -44,6 +27,49 @@
         "id": "coverage-inventory-exists",
         "kind": "file-exists",
         "path": "delivery/requirements/migration-table.md"
+      }
+    },
+    {
+      "id": "citations",
+      "command": [
+        "node",
+        "src/gates/citations.ts"
+      ],
+      "unitLabel": "citations resolved",
+      "applicability": "required",
+      "precondition": {
+        "id": "citations-diff-touches-documents",
+        "kind": "diff-touches",
+        "paths": [
+          "delivery/plan/",
+          "delivery/review/",
+          "delivery/verification/",
+          "delivery/decisions/",
+          "delivery/work-history/",
+          "delivery/tuition/",
+          "delivery/requirements/",
+          "delivery/STATE.md"
+        ]
+      }
+    },
+    {
+      "id": "scope",
+      "command": [
+        "node",
+        "src/gates/scope.ts",
+        "--declarations",
+        "delivery/plan/phase-declarations"
+      ],
+      "unitLabel": "changed paths audited",
+      "applicability": "required",
+      "parameters": [
+        "base",
+        "head"
+      ],
+      "precondition": {
+        "id": "scope-branch-is-a-phase-branch",
+        "kind": "branch-matches",
+        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
       }
     }
   ],
