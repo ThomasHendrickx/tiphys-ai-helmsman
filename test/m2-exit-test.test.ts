@@ -108,6 +108,58 @@ function run(
   };
 }
 
+/**
+ * Write a single-gate bundle carrying `scope` in a chosen status, for driving
+ * the harness's own m2-assert.mjs directly. `withPrecondition` controls whether
+ * a not-applicable record carries the evaluated, unmet precondition DR-0018
+ * needs to accept a diff-scoped N/A. This is the exact shape a real run
+ * produces: green with units, a not-applicable that names its unmet
+ * branch-matches precondition (the non-phase / detached-HEAD shape), or a red
+ * naming an undeclared path.
+ */
+function writeScopeBundle(
+  dir: string,
+  status: "green" | "not-applicable" | "red",
+  withPrecondition: boolean,
+): void {
+  mkdirSync(join(dir, "scope"), { recursive: true });
+  const applicable = status === "green" || status === "red";
+  const units = status === "green" ? 3 : status === "red" ? 4 : 0;
+  const summary = {
+    gates: [{ id: "scope", status, applicable, vacuous: false, units }],
+    counts: {
+      declared: 1,
+      applicable: applicable ? 1 : 0,
+      verdict: applicable ? 1 : 0,
+      green: status === "green" ? 1 : 0,
+      red: status === "red" ? 1 : 0,
+      "not-applicable": status === "not-applicable" ? 1 : 0,
+      error: 0,
+      vacuous: 0,
+    },
+  };
+  writeFileSync(join(dir, "summary.json"), JSON.stringify(summary));
+  const record: Record<string, unknown> = {
+    gate: "scope",
+    status,
+    units,
+    detail:
+      status === "green"
+        ? "3 changed path(s) audited against declaration ...m2-p9.json"
+        : status === "red"
+          ? "touched path(s) outside the declared scope: src/UNDECLARED-SCOPE-VIOLATION.ts"
+          : "precondition scope-branch-is-a-phase-branch evaluated and unmet: branch does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
+  };
+  if (status === "not-applicable" && withPrecondition) {
+    record["precondition"] = {
+      id: "scope-branch-is-a-phase-branch",
+      met: false,
+      reason: "branch does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
+    };
+  }
+  writeFileSync(join(dir, "scope", "result.json"), JSON.stringify(record));
+}
+
 /* -------------------------------------------------------------------- */
 /* Argument handling.                                                    */
 /* -------------------------------------------------------------------- */
@@ -695,18 +747,61 @@ test("the gates workflow checks out the pull-request head branch by name (ref: g
   );
 });
 
+/** Resolve scope's PR-bundle expected status from the harness's own logic. */
+function resolveScopeExpect(
+  root: string,
+  env: Record<string, string>,
+  phase: string,
+  branch: string,
+): string {
+  return run("bash", [harness, "--resolve-scope-expect", phase, branch], {
+    cwd: root,
+    env,
+  }).stdout.trim();
+}
+
+/** Run the harness's shipped m2-assert.mjs over a bundle against an expect doc. */
+function runScopeAssert(
+  root: string,
+  env: Record<string, string>,
+  assertProg: string,
+  manifest: string,
+  dir: string,
+  scopeExpect: string,
+): RunResult {
+  const expectPath = join(root, `expect-${scopeExpect.replace(/[^a-z]/g, "")}.json`);
+  writeFileSync(
+    expectPath,
+    JSON.stringify({
+      label: `scope ${scopeExpect}`,
+      gates: [{ id: "scope", expect: scopeExpect, required: true, diffScoped: true }],
+      absent: [],
+    }),
+  );
+  return run(
+    process.execPath,
+    [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir, "--expect", expectPath, "--manifest", manifest],
+    { cwd: root, env },
+  );
+}
+
 test("the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green", (t) => {
-  // Fix round 2. scope's precondition is branch-matches, and a PR bundle is by
-  // construction run on a phase branch, so scope is NEVER legitimately N/A in a
-  // PR bundle: the only way it reported N/A was the detached-HEAD artifact. The
-  // PR-bundle expectations therefore require scope "green", not
-  // "green|not-applicable". This is exercised end to end against the SAME
-  // assertion program the harness ships (extracted from a real --self-test run),
-  // over crafted bundles that differ only in scope's status, and shows both
-  // arms: a scope N/A is REJECTED naming scope (the dangerous state, the vacuous
-  // pass), a scope green with units is ACCEPTED (not merely always-red), and a
-  // control with the OLD "green|not-applicable" expect ACCEPTS the very same N/A
-  // bundle, isolating the tightening as the cause of the rejection.
+  // The PHASE-RUN arm. M2R-026 made this harness the CI for EVERY pull request,
+  // not only phase-branch PRs (the non-phase arm is the test below). On a
+  // PHASE-branch run scope is required GREEN: scope's precondition is
+  // branch-matches, and a phase-branch PR is BY CONSTRUCTION expected to audit
+  // its diff, so a scope not-applicable there is the detached-HEAD vacuous pass
+  // the M2-P9 HIGH was about (or a missing declaration, or a branch-name
+  // regression) and MUST fail. Behavioural throughout:
+  //  (1) the harness resolves scope's expected status to "green" on a phase run
+  //      (its --phase is a valid phase id OR its head branch is claude/mN-pM-);
+  //  (2) under that resolved "green" the SAME assertion program the harness ships
+  //      REJECTS a scope not-applicable naming scope (reddens if a phase-run N/A
+  //      is ever accepted) and ACCEPTS a scope green with units (not merely
+  //      always-red);
+  //  (3) the harness actually WIRES the resolved value into PR_EXPECT_JSON via
+  //      the placeholder (a pinned-value read, the same class as the workflow ref
+  //      pin), so the arms above guard a value the harness really uses.
   if (!existsSync(distEntry)) {
     t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
     return;
@@ -714,138 +809,169 @@ test("the PR bundle requires scope green: the harness assertion code rejects a s
   const root = scratch();
   const env = cleanEnv(root);
   try {
+    // (1) A phase run resolves scope to "green", by either detection arm.
+    assert.equal(
+      resolveScopeExpect(root, env, "m2-p9", "main"),
+      "green",
+      "a valid --phase id must resolve scope to green (a phase run is expected to audit its diff)",
+    );
+    assert.equal(
+      resolveScopeExpect(root, env, "not-a-phase", "claude/m2-p9-exit-test"),
+      "green",
+      "a claude/mN-pM- head branch must resolve scope to green even when --phase is not itself a phase id",
+    );
+
+    // (2) Extract the exact assertion program the harness ships and drive it.
     const harnessEvidence = join(root, "harness-evidence");
     run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
     const assertProg = join(harnessEvidence, "m2-assert.mjs");
     assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
     const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
 
-    // A single-gate bundle carrying scope in a chosen status. For not-applicable
-    // it also writes the evaluated, unmet precondition record DR-0018 would need
-    // to accept it: this is exactly the detached-HEAD shape, so the ONLY reason
-    // the tightened expect rejects it is the required-green tightening itself.
-    const buildScopeBundle = (
-      dir: string,
-      status: "green" | "not-applicable",
-    ): void => {
-      mkdirSync(join(dir, "scope"), { recursive: true });
-      const green = status === "green";
-      const summary = {
-        gates: [
-          {
-            id: "scope",
-            status,
-            applicable: green,
-            vacuous: false,
-            units: green ? 3 : 0,
-          },
-        ],
-        counts: {
-          declared: 1,
-          applicable: green ? 1 : 0,
-          verdict: green ? 1 : 0,
-          green: green ? 1 : 0,
-          red: 0,
-          "not-applicable": green ? 0 : 1,
-          error: 0,
-          vacuous: 0,
-        },
-      };
-      writeFileSync(join(dir, "summary.json"), JSON.stringify(summary));
-      const record: Record<string, unknown> = {
-        gate: "scope",
-        status,
-        units: green ? 3 : 0,
-        detail: green
-          ? "3 changed path(s) audited against declaration ...m2-p9.json"
-          : "precondition scope-branch-is-a-phase-branch evaluated and unmet: branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
-      };
-      if (!green) {
-        record["precondition"] = {
-          id: "scope-branch-is-a-phase-branch",
-          met: false,
-          reason: "branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
-        };
-      }
-      writeFileSync(join(dir, "scope", "result.json"), JSON.stringify(record));
-    };
-
-    const expectDoc = (scopeExpect: string): string => {
-      const path = join(root, `expect-${scopeExpect.replace(/[^a-z]/g, "")}.json`);
-      writeFileSync(
-        path,
-        JSON.stringify({
-          label: `scope ${scopeExpect}`,
-          gates: [{ id: "scope", expect: scopeExpect, required: true, diffScoped: true }],
-          absent: [],
-        }),
-      );
-      return path;
-    };
-
-    const runAssert = (dir: string, expectPath: string): RunResult =>
-      run(
-        process.execPath,
-        [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir, "--expect", expectPath, "--manifest", manifest],
-        { cwd: root, env },
-      );
-
+    // The not-applicable bundle carries the evaluated, unmet precondition DR-0018
+    // needs, so the ONLY reason "green" rejects it is the required-green rule for
+    // a phase run, not a malformed bundle.
     const naDir = join(root, "scope-na");
-    buildScopeBundle(naDir, "not-applicable");
+    writeScopeBundle(naDir, "not-applicable", true);
     const greenDir = join(root, "scope-green");
-    buildScopeBundle(greenDir, "green");
+    writeScopeBundle(greenDir, "green", false);
 
-    const tightened = expectDoc("green");
-    const original = expectDoc("green|not-applicable");
-
-    // DANGEROUS STATE: a scope not-applicable under the tightened expect is REJECTED, naming scope.
-    const rejected = runAssert(naDir, tightened);
+    // DANGEROUS STATE: a scope not-applicable under the phase (green) expect is
+    // REJECTED, naming scope (the vacuous pass a phase run must never accept).
+    const rejected = runScopeAssert(root, env, assertProg, manifest, naDir, "green");
     assert.notEqual(
       rejected.status,
       0,
-      `the tightened PR expect must REJECT a scope not-applicable (the detached-HEAD vacuous pass): ${rejected.stdout}\n${rejected.stderr}`,
+      `a phase-run scope not-applicable must be REJECTED under the required-green expect (the vacuous pass): ${rejected.stdout}\n${rejected.stderr}`,
     );
-    assert.match(
-      rejected.stdout + rejected.stderr,
-      /\[scope\]/,
-      "the rejection did not name scope",
-    );
+    assert.match(rejected.stdout + rejected.stderr, /\[scope\]/, "the rejection did not name scope");
 
-    // NOT MERELY ALWAYS-RED: a scope green with units is ACCEPTED under the tightened expect.
-    const acceptedGreen = runAssert(greenDir, tightened);
+    // NOT MERELY ALWAYS-RED: a scope green with units is ACCEPTED.
+    const acceptedGreen = runScopeAssert(root, env, assertProg, manifest, greenDir, "green");
     assert.equal(
       acceptedGreen.status,
       0,
-      `the tightened PR expect must ACCEPT a scope green with units: ${acceptedGreen.stdout}\n${acceptedGreen.stderr}`,
+      `a scope green with units must be ACCEPTED under the required-green expect: ${acceptedGreen.stdout}\n${acceptedGreen.stderr}`,
     );
 
-    // CONTROL: the OLD "green|not-applicable" expect ACCEPTS the same N/A bundle,
-    // so the rejection above is caused by the tightening, not by a malformed bundle.
-    const controlAccepts = runAssert(naDir, original);
+    // CONTROL: the non-phase "green|not-applicable" expect ACCEPTS the same N/A
+    // bundle, isolating the required-green rule as the cause of the rejection.
+    const controlAccepts = runScopeAssert(root, env, assertProg, manifest, naDir, "green|not-applicable");
     assert.equal(
       controlAccepts.status,
       0,
-      `the original green|not-applicable expect must ACCEPT the scope N/A bundle (isolating the tightening as the cause): ${controlAccepts.stdout}\n${controlAccepts.stderr}`,
+      `the non-phase green|not-applicable expect must ACCEPT the same scope N/A bundle (isolating required-green as the cause): ${controlAccepts.stdout}\n${controlAccepts.stderr}`,
     );
 
-    // And the harness's OWN PR-bundle expectations must actually carry the
-    // tightened scope value, or the arms above guard a capability the harness
-    // does not use. This is a pinned value (the same class as the workflow ref
-    // pin and the pull_request: "" pin), not a behaviour asserted over text: it
-    // reads the one scope entry of PR_EXPECT_JSON and fails if it regresses to
-    // accepting not-applicable.
+    // (3) The harness WIRES the resolved value in via the placeholder. A hardcoded
+    // scope expect either way is a regression: "green" would reopen the non-phase
+    // block, "green|not-applicable" would reopen the phase-run vacuous pass.
     const harnessText = readFileSync(harness, "utf8");
     assert.match(
       harnessText,
-      /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/,
-      "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer requires scope green; the exit test would " +
-        "again accept a scope not-applicable (the detached-HEAD vacuous pass).",
+      /\{"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true\}/,
+      "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer resolves scope per run via the __SCOPE_EXPECT__ " +
+        "placeholder; scope's expected status must be chosen by resolve_scope_expect, not hardcoded.",
     );
     assert.doesNotMatch(
       harnessText,
-      /\{"id": "scope", "expect": "green\|not-applicable"/,
-      "scripts/m2-exit-test.sh PR_EXPECT_JSON accepts scope not-applicable again; scope is never " +
-        "legitimately N/A in a PR bundle, so this reopens the vacuous pass.",
+      /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/,
+      "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green again; that fails every NON-phase PR " +
+        "(scope is legitimately N/A there) and reopens the block M2R-026 introduced.",
+    );
+    assert.doesNotMatch(
+      harnessText,
+      /\{"id": "scope", "expect": "green\|not-applicable", "required": true, "diffScoped": true\}/,
+      "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green|not-applicable; that accepts a scope " +
+        "not-applicable on a PHASE branch too, reopening the detached-HEAD vacuous pass.",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differently for phase vs non-phase runs (M2R-026)", (t) => {
+  // The NON-PHASE arm, the unblock. M2R-026 made this harness the CI for EVERY
+  // pull request, so a non-phase PR (a bug fix, paperwork, a harness fix) whose
+  // scope is legitimately not-applicable (its branch does not match
+  // ^claude/mN-pM-, the branch-matches precondition evaluated and unmet) must
+  // PASS, not fail with "[scope] expected green, observed not-applicable". Two
+  // halves, both behavioural, no assertion over harness text:
+  //  (1) resolve_scope_expect maps a non-phase run to "green|not-applicable" and
+  //      a phase run to "green", and the two MUST differ (or the per-run split is
+  //      dead code that resolves the same value on every branch);
+  //  (2) under the resolved "green|not-applicable" the SAME assertion program the
+  //      harness ships ACCEPTS a scope not-applicable WITH an evaluated
+  //      precondition (reddens if a non-phase N/A is ever rejected, which is the
+  //      block this fixes), while still REJECTING a scope not-applicable WITHOUT
+  //      a precondition and a scope red (a real violation is never accepted, on
+  //      any branch).
+  if (!existsSync(distEntry)) {
+    t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
+    return;
+  }
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    // (1) The per-run detection. A non-phase run accepts scope N/A; a phase run
+    // requires green; the two differ (the anti-dead-code witness).
+    const nonPhase = resolveScopeExpect(root, env, "claude/harness-scope-nonphase", "claude/harness-scope-nonphase");
+    const phase = resolveScopeExpect(root, env, "m2-p9", "main");
+    assert.equal(
+      nonPhase,
+      "green|not-applicable",
+      "a non-phase run (non-phase --phase and non-phase branch) must resolve scope to green|not-applicable, or every non-phase PR fails CI on scope",
+    );
+    assert.equal(phase, "green", "a phase run must resolve scope to green");
+    assert.notEqual(
+      nonPhase,
+      phase,
+      "phase and non-phase runs must resolve scope to DIFFERENT expectations, or the per-run split is dead code",
+    );
+    assert.equal(
+      resolveScopeExpect(root, env, "", "main"),
+      "green|not-applicable",
+      "an empty --phase on a non-phase branch is a non-phase run",
+    );
+
+    // (2) Under the resolved non-phase expect, the shipped assertion program
+    // accepts the legitimate N/A and still rejects the illegitimate shapes.
+    const harnessEvidence = join(root, "harness-evidence");
+    run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
+    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+
+    // THE UNBLOCK: scope not-applicable WITH an evaluated precondition -> ACCEPTED.
+    const naWithPre = join(root, "scope-na-pre");
+    writeScopeBundle(naWithPre, "not-applicable", true);
+    const acceptedNa = runScopeAssert(root, env, assertProg, manifest, naWithPre, nonPhase);
+    assert.equal(
+      acceptedNa.status,
+      0,
+      `a non-phase scope not-applicable WITH an evaluated precondition must be ACCEPTED (the M2R-026 unblock): ${acceptedNa.stdout}\n${acceptedNa.stderr}`,
+    );
+
+    // Still REJECTED: a not-applicable WITHOUT an evaluated precondition (a
+    // silently skipped or mis-declared gate) is not "legitimately N/A".
+    const naNoPre = join(root, "scope-na-nopre");
+    writeScopeBundle(naNoPre, "not-applicable", false);
+    const rejectedNoPre = runScopeAssert(root, env, assertProg, manifest, naNoPre, nonPhase);
+    assert.notEqual(
+      rejectedNoPre.status,
+      0,
+      "a scope not-applicable WITHOUT an evaluated precondition must still be REJECTED, even on a non-phase run",
+    );
+    assert.match(rejectedNoPre.stdout + rejectedNoPre.stderr, /\[scope\]/, "the rejection did not name scope");
+
+    // Still REJECTED: a real scope violation (red) fails on any branch.
+    const redDir = join(root, "scope-red");
+    writeScopeBundle(redDir, "red", false);
+    const rejectedRed = runScopeAssert(root, env, assertProg, manifest, redDir, nonPhase);
+    assert.notEqual(
+      rejectedRed.status,
+      0,
+      "a scope red (a real out-of-scope violation) must fail even on a non-phase run",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
