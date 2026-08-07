@@ -801,19 +801,58 @@ test("a citationRequired document citing only an external root verifies nothing 
 });
 
 /* ------------------------------------------------------------------ */
-/* DR-0019: the gate governs FORWARD-claiming docs, not the historical   */
-/* RECORD. delivery/review/** and delivery/work-history/** are records    */
-/* whose citations were valid when written and drift; they are no longer */
-/* configured documents. The class has TWO structurally different members */
-/* (review, work-history), and the co-located forward doc proves the gate */
-/* is scoped, not gutted.                                                 */
+/* Orchestrator scope decision (2026-08-07): the gate governs FORWARD-      */
+/* claiming docs, not the historical RECORD. delivery/review/** and         */
+/* delivery/work-history/** are records whose citations were valid when     */
+/* written and drift (bare filenames, ranges, reviewer shorthand); they are */
+/* no longer configured documents. The class has TWO structurally different */
+/* members (review, work-history), and the co-located forward doc proves    */
+/* the gate is scoped, not gutted. Rationale and the 139-reason measured    */
+/* evidence: delivery/work-history/m2-citations-scope.md.                    */
 /* ------------------------------------------------------------------ */
 
-test("DR-0019: a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds", () => {
+test("a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds", () => {
+  // First, anchor the resolution mechanism to REAL external-program output.
+  // src/gates/citations.ts resolves a MADE citation by spawning
+  // `git cat-file -t <rev>:<path>`; this witness covers that spawning module,
+  // so red-witness rule (f) requires a real capture and the assertions must
+  // consume it, not a hand-written string (CLAUDE.md warning 10). The capture
+  // records that a present path returns exit 0 / "blob" and an absent path
+  // exits 128 with "does not exist"; a live scratch repo must reproduce it.
+  const captureName = "citation-git-cat-file-resolution.txt";
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", captureName),
+    "utf8",
+  );
+  assert.match(captured, /present-path:.*\n\s*exit 0\n\s*stdout: blob/);
+  assert.match(captured, /absent-path:.*\n\s*exit 128/);
+  assert.match(captured, /stderr: fatal: path 'src\/nope\.ts' does not exist/);
+  {
+    const probe = scratch();
+    try {
+      initRepo(probe);
+      mkdirSync(join(probe, "src"), { recursive: true });
+      writeFileSync(join(probe, "src", "real.ts"), "a\nb\nc\n");
+      const rev = commit(probe, "probe base");
+      const present = git(probe, ["cat-file", "-t", `${rev}:src/real.ts`]);
+      assert.equal(present.status, 0, `present path: ${present.stderr}`);
+      assert.equal(present.stdout.trim(), "blob", "captured contract: present path is a blob");
+      const absent = git(probe, ["cat-file", "-t", `${rev}:src/nope.ts`]);
+      assert.equal(absent.status, 128, `absent path exit: ${absent.stdout}`);
+      assert.match(
+        absent.stderr,
+        /does not exist/,
+        `captured contract: absent path errors, live git said: ${absent.stderr}`,
+      );
+    } finally {
+      rmSync(probe, { recursive: true, force: true });
+    }
+  }
+
   // Two structurally different record members, one dangerous shape each: a
-  // MADE citation that does not resolve at head. Under the pre-DR-0019 config
-  // both reddened; under the new scope neither is a configured document, so
-  // the diff touches nothing gated and reaches not-applicable.
+  // MADE citation that does not resolve at head. Under the pre-exclusion
+  // config both reddened; under the new scope neither is a configured
+  // document, so the diff touches nothing gated and reaches not-applicable.
   for (const recordDir of ["review", "work-history"]) {
     const dir = scratch();
     try {

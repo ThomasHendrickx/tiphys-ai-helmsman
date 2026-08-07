@@ -285,7 +285,7 @@
   "citation-a-citationrequired-document-with-zero-citations-is-red": "a citationRequired document with zero citations is red, the same document with one valid citation is green, and a configured non-required document with zero citations is not red",
   "citation-a-document-that-cites-only-itself-does-not": "a document that cites only itself does not satisfy the vacuous guard (CR-1020)",
   "citation-a-review-citing-only-an-external-root-verifies": "a citationRequired document citing only an external root verifies nothing and reaches not-applicable, not red (disposition unchanged; the required/not-applicable policy question is escalated, not this gate's to answer)",
-  "citation-dr-0019-record-doc-unresolving-made-not-gated-forward-still-reds": "DR-0019: a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds",
+  "citation-record-doc-unresolving-made-not-gated-forward-still-reds": "a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds",
   "citation-a-diff-touching-no-configured-document-is-not": "a diff touching no configured document is not-applicable naming zero matched paths",
   "citation-listconfigureddocuments-and-inventorydeliverytree-walk-a-fixture-tree-and": "listConfiguredDocuments and inventoryDeliveryTree walk a fixture tree and report per-document counts using the same analysis the standing gate uses",
   "citation-the-one-shot-inventory-excludes-quoted-citations-from": "the one-shot inventory excludes quoted citations from its counts (M2-D-22 applies uniformly)",

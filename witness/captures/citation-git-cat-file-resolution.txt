@@ -1,0 +1,18 @@
+Real `git cat-file -t <rev>:<path>` output: the exact external-program
+contract src/gates/citations.ts consumes to resolve a MADE citation. The
+gate's resolver runs this command and reads its type line ("blob") or its
+nonzero exit to decide whether a cited path exists at the rev under audit.
+
+Captured 2026-08-07T16:13:08Z, git version 2.43.0, in a scratch repo whose
+base commit adds src/real.ts (a 3-line blob) and delivery/review/rec.md. The
+rev sha varies per repository, so the STABLE contract is recorded here, not
+the sha; the witness test asserts a live scratch repo reproduces it.
+
+present-path: git cat-file -t <rev>:src/real.ts
+  exit 0
+  stdout: blob
+
+absent-path: git cat-file -t <rev>:src/nope.ts
+  exit 128
+  stdout: (empty)
+  stderr: fatal: path 'src/nope.ts' does not exist in '<rev>'
