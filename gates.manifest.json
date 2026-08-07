@@ -16,6 +16,81 @@
       "applicability": "required"
     },
     {
+      "id": "coverage",
+      "command": [
+        "node",
+        "src/gates/coverage.ts"
+      ],
+      "unitLabel": "finding ids checked",
+      "applicability": "required",
+      "precondition": {
+        "id": "coverage-inventory-exists",
+        "kind": "file-exists",
+        "path": "delivery/requirements/migration-table.md"
+      }
+    },
+    {
+      "id": "suite",
+      "command": [
+        "node",
+        "src/gates/suite.ts",
+        "--pin-root",
+        "src",
+        "--pin-root",
+        "bin",
+        "--pin-root",
+        "test"
+      ],
+      "unitLabel": "tests reported",
+      "applicability": "required",
+      "parameters": [
+        "base"
+      ]
+    },
+    {
+      "id": "citations",
+      "command": [
+        "node",
+        "src/gates/citations.ts"
+      ],
+      "unitLabel": "citations resolved",
+      "applicability": "required",
+      "precondition": {
+        "id": "citations-diff-touches-documents",
+        "kind": "diff-touches",
+        "paths": [
+          "delivery/plan/",
+          "delivery/review/",
+          "delivery/verification/",
+          "delivery/decisions/",
+          "delivery/work-history/",
+          "delivery/tuition/",
+          "delivery/requirements/",
+          "delivery/STATE.md"
+        ]
+      }
+    },
+    {
+      "id": "scope",
+      "command": [
+        "node",
+        "src/gates/scope.ts",
+        "--declarations",
+        "delivery/plan/phase-declarations"
+      ],
+      "unitLabel": "changed paths audited",
+      "applicability": "required",
+      "parameters": [
+        "base",
+        "head"
+      ],
+      "precondition": {
+        "id": "scope-branch-is-a-phase-branch",
+        "kind": "branch-matches",
+        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
+      }
+    },
+    {
       "id": "deploy",
       "command": [
         "node",
@@ -41,20 +116,6 @@
         "id": "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
         "kind": "file-exists",
         "path": "release-verification.json"
-      }
-    },
-    {
-      "id": "coverage",
-      "command": [
-        "node",
-        "src/gates/coverage.ts"
-      ],
-      "unitLabel": "finding ids checked",
-      "applicability": "required",
-      "precondition": {
-        "id": "coverage-inventory-exists",
-        "kind": "file-exists",
-        "path": "delivery/requirements/migration-table.md"
       }
     }
   ],
