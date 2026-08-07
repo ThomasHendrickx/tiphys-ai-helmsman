@@ -1655,8 +1655,24 @@ The step:
      nothing else in `bin/tiphys.ts` (D-M3-21).
   9. Create `delivery/requirements/clause-map.json` and
      `scripts/check-clause-map.mjs` per section 2.2, seeded with this phase's
-     twelve rows. Wire the check into `.github/workflows/gates.yml` as a step in
-     the existing `test` job (verify the job layout first).
+     twelve rows, taking its row INVENTORY from Appendix A of this plan and its
+     coverage table from the map, as two separately configured sources in the
+     shape `src/gates/coverage.ts` on `main` already uses. **Register the check
+     as a `gates.manifest.json` ENTRY, not as a raw workflow step (corrected at
+     revision 3, section 2.2a and D-M3-34).** Revision 2 said "wire the check
+     into `.github/workflows/gates.yml` as a step in the existing `test` job",
+     and there is no `test` job: DR-0017 collapsed CI to ONE job named `gates`
+     on 2026-08-06, so that instruction names a job that does not exist. The
+     entry declares `id: clause-map`,
+     `command: ["node", "scripts/check-clause-map.mjs"]`,
+     `unitLabel: "clause-map rows checked"`, `applicability: required`, and,
+     once M3-P2 has added the field to the registry schema, `events:
+     [pull_request, push]`. This phase runs BEFORE M3-P2, so the entry goes
+     into `gates.manifest.json` in M2's own manifest shape and M3-P2's
+     promotion carries it into `gate-registry.yaml` and adds its `events[]`.
+     Registering rather than wiring also gives the check M2-C-2 for free: it
+     writes its result through `makeGateResult`, so a run that examined zero
+     rows becomes `error` with `vacuous: true` rather than exiting 0.
   10. Register every new artifact type this phase introduces (`plan`,
       `charter`, `decision-record`, `status-line`) with the validator's `--type`
       table and the `auto` resolver, and every phase after this one does the same
@@ -2044,13 +2060,17 @@ regression contract, it is a new contract wearing the old one's name.
   properties of the manifest this registry is a superset of; verify their
   delivered shape before extending, because a superset that drops a base
   constraint is a widening dressed as a promotion.
-  (c) **The state of `test/liveness.test.ts:671`.** `delivery/STATE.md` records
-  it as a real flake in a suite the rules treat as a hard binary gate, and says
-  it should be fixed early in M2. If it is still present when this phase
-  dispatches, the `suite` gate this registry promotes reads `node --test` exit 0
-  as a binary fact over a suite with a known non-deterministic member. That is
-  not this phase's to fix and it is not this phase's to hide: record the
-  observed state in the work history, and if it is still open say so in that
+  (c) **The suite's flake state at dispatch.** Revision 2 named
+  `test/liveness.test.ts:671` specifically. **M2 FIXED that instance**: the
+  assertion on `main` at `dbba3c8` matches `age (\d+)s` and range-checks the
+  captured value instead of pinning 13s (risk 11 carries the captured lines).
+  The obligation therefore CHANGES SHAPE rather than disappearing, because the
+  point was never that one test: the `suite` gate this registry promotes reads
+  `node --test` exit 0 as a binary fact, and that reading becomes the
+  definition every future project inherits. So: verify the suite's flake state
+  AT DISPATCH, not by re-reading this paragraph, and record what was observed
+  in the work history with the command that produced it. If any
+  non-deterministic member is open at that point, say so in the promoted
   entry's `$comment` and in risk 11 rather than promoting silence.
 - hazard class (T-007, D-M3-32): **a registry that can report green for a gate
   that examined nothing, in the one artifact CI and every brief both read as
@@ -6186,20 +6206,38 @@ comparison plan v1's own history makes available.
    taken, so a tree that grew between the two is a finding rather than a
    surprise at publish time.
 11. **A known flake in a suite this plan treats as a binary gate (NEW at
-   revision 2).** `test/liveness.test.ts:671` asserts a hardcoded `age 13s` and
-   fails under CPU contention; it was seen once by each of two M1-P6 reviewers
-   and was clean on serial re-run both times (tracked low CR-762).
-   `delivery/STATE.md` calls it "a real flake in a suite the rules treat as a
-   hard binary gate" and says it should be fixed early in M2. Every M3 phase's
+   revision 2; **THE INSTANCE IS CLOSED at revision 3 and the risk is narrowed
+   rather than deleted**).** `test/liveness.test.ts:671` asserted a hardcoded
+   `age 13s` and failed under CPU contention; it was seen once by each of two
+   M1-P6 reviewers and was clean on serial re-run both times (tracked low
+   CR-762). **M2 fixed it.** The assertion on `main` at `dbba3c8` now matches
+   `age (\d+)s` and range-checks the captured value against the fresh band,
+   with the fix's own reason in a comment above it ("The guarded property is
+   PASS at the exact 901s threshold with an age at least as old as stamped and
+   still inside the fresh band, not the exact second. Pinning \"13s\" flaked."):
+
+```
+$ git show origin/main:test/liveness.test.ts | sed -n '675p;684p'
+    /^CHECK beacon PASS beacon present, age (\d+)s \(freshness threshold 901s\)$/m,
+    `beacon age ${String(passAge)}s outside the fresh band [13, 901): ${doctored.stdout}`,
+```
+
+   The MECHANISM behind the risk is not closed and is why the entry stays: a
+   suite whose exit code the whole plan treats as a binary fact can acquire a
+   new non-deterministic member at any time, and M3-P2 promotes that reading
+   into `gate-registry.yaml` where it becomes the definition every future
+   project inherits. M3-P2's grounding note (c) is therefore restated rather
+   than dropped: verify the suite's flake state AT DISPATCH and record what was
+   observed, rather than reading this paragraph and concluding the question is
+   settled. Every M3 phase's
    criterion 1 reads `node --test` exit 0 as a fact, and M3-P2 PROMOTES that
    reading into `gate-registry.yaml`, where it becomes the definition every
    future project inherits. **Mitigation, and it is weak on purpose because the
-   strong version is not M3's to build**: M3-P2's grounding requires the flake's
-   state to be VERIFIED at dispatch and recorded, and if it is still open the
-   registry entry's `$comment` says so. M3 does not fix it (it is an M1-P5
-   file, no M3 phase acquires it) and M3 does not paper over it. What would
-   discharge this risk is M2 fixing the flake, which is where
-   `delivery/STATE.md` already assigns it. The failure signature to watch for
+   strong version is not M3's to build**: M3-P2's grounding requires the
+   suite's flake state to be VERIFIED at dispatch and recorded, and any open
+   instance is named in the registry entry's `$comment`. M3 fixes no test in a
+   file it does not acquire and M3 papers over nothing. The failure signature
+   to watch for
    is an M3 phase re-running a red suite until it goes green and recording the
    green run, which is exactly the re-kick behaviour M3-P7's
    `checklists/flake-playbook.yaml` exists to make a decision rather than a
@@ -6371,7 +6409,20 @@ things this plan deliberately does not build, recorded so a later reader does
 not mistake absence for oversight.
 
 1. Merging the clause map into the M2-P6 coverage checker. An option for M4 or
-   later; D-M3-04 states why it is not done now.
+   later. **The COST is corrected at revision 3 (A-008), because revision 2
+   recorded it wrongly and the wrong cost was what left M3 building a second
+   completeness checker from scratch with an input-source gap the existing one
+   does not have.** Revision 2's reason, that extending a merged M2 component
+   would make every M3 phase a potential edit of M2's gate surface, is false
+   against M2 as delivered: `src/gates/coverage.ts` takes `--config <path>`
+   validated against `coverage-config.schema.json` and falls back to a built-in
+   kernel config only when the flag is absent, so a second coverage instance is
+   one JSON config document plus one registry entry and edits no M2 source. The
+   real reason M3 still ships its own script is that the two checks answer
+   different questions over different shapes (section 2.2), and what IS taken
+   from M2-P6 rather than declined is the inventory-versus-coverage-table
+   separation, which is not optional in the clause map and is what makes its
+   missing-row condition computable at all.
 2. L1 enforcement of R-002 (mode-aware branch protection) and R-040 (a
    pre-validation push check). Both are decided as L2 for now (D-9, D-10) and
    both are ticketed as tuition entries in M3-P8, which is exactly what plan v1
@@ -6403,8 +6454,9 @@ not mistake absence for oversight.
    `src/brief.ts`** (NEW in the list at revision 2), which M3 does not close and
    does not grow, per D-M3-27 and risk 12; and **M1-P6's three tracked lows**
    (NEW at revision 2), of which CR-762 is risk 11's subject and belongs to M2,
-   CR-760 shapes D-M3-28 without M3 owning the fan-in fix, and CR-761 is a
-   documentation narrowing touching no M3 artifact.
+   CR-760's INSTANCE is gone with the fan-in job DR-0017 deleted (corrected at
+   revision 3) while its MECHANISM shapes D-M3-28, and M3 owns neither, and
+   CR-761 is a documentation narrowing touching no M3 artifact.
    **Owned by M3**: the top-level error handler, M3-P1 under D-M3-21; the
    mechanism index, M3-P8 under D-M3-23; **the second review contract per code
    phase** (NEW in the list at revision 2, from T-007), owned across M3-P1's
