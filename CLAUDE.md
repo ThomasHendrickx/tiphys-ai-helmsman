@@ -260,6 +260,17 @@ Stable IDs, never renumbered, cited across documents:
 - `T-nnn` tuition entries
 - `C-n` binding implementation constraints declared in the plan
 - `D-nn` decisions taken inside the plan
+- `A-n` owner ACTIONS: things only the owner can perform because they need
+  access an agent does not hold. Distinct from `DR-nnnn`, which is a CHOICE.
+  **`delivery/STATE.md` is the sole allocator**, and its "Owner action items"
+  section is the register; a plan that needs a new action asks for an id
+  rather than picking one. This entry exists because the namespace was
+  unregistered and collided: `A-4` meant the npm publish credential in the M3
+  plan and branch deletion in STATE.md, while `A-3` meant three different
+  things, one of them a literal string inside `gates.manifest.json` on `main`
+  (`implementer-token-present-owner-action-a-3`). A shipped configuration
+  string is why an id here is not free to renumber, so allocate a fresh id and
+  never reuse a retired one.
 
 ## Delivery protocol
 
