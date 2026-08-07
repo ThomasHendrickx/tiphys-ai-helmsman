@@ -79,6 +79,45 @@ USAGE="usage: scripts/m2-exit-test.sh [--base <ref>] [--head <ref>] [--phase <id
        scripts/m2-exit-test.sh --self-test <evidence-dir>"
 
 # ---------------------------------------------------------------------------
+# scope's expected PR-bundle status, resolved per run.
+# ---------------------------------------------------------------------------
+#
+# resolve_scope_expect <phase> <head-branch>
+#   Echoes "green" on a PHASE-branch run and "green|not-applicable" otherwise.
+#   This harness is the CI for EVERY pull request (M2R-026, the single caller of
+#   `gates run`), so scope (whose precondition is branch-matches) is required
+#   GREEN only on a phase branch; on any non-phase PR scope is legitimately
+#   not-applicable and is accepted with a valid evaluated precondition (the
+#   DR-0018 diff-scoped handling in m2-assert.mjs). A run is a phase-branch run
+#   when its --phase is a valid phase id (^m[0-9]+-p[0-9]+$) OR its checked-out
+#   head branch is a phase branch (^claude/m[0-9]+-p[0-9]+-). Kept a pure
+#   function of its two inputs so it can be exercised in isolation, red against
+#   an inverted mapping, without running the whole gate set (the
+#   --resolve-scope-expect mode below is that hook).
+resolve_scope_expect() {
+  local phase_arg="${1:-}" branch_arg="${2:-}"
+  if printf '%s' "${phase_arg}" | grep -qE '^m[0-9]+-p[0-9]+$'; then
+    printf 'green\n'
+    return 0
+  fi
+  if printf '%s' "${branch_arg}" | grep -qE '^claude/m[0-9]+-p[0-9]+-'; then
+    printf 'green\n'
+    return 0
+  fi
+  printf 'green|not-applicable\n'
+}
+
+# An internal, behaviour-testing entry point (not part of the exit-test flow):
+# resolve scope's expected status from an explicit phase and head branch and
+# exit, so a test can drive resolve_scope_expect with both inputs under its own
+# control (environment-independent) and redden if the phase-vs-non-phase mapping
+# ever inverts. It runs BEFORE any gate work, so it never re-enters the suite.
+if [ "${1:-}" = "--resolve-scope-expect" ]; then
+  resolve_scope_expect "${2:-}" "${3:-}"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 
@@ -761,26 +800,39 @@ write_expect() {
 # a red, error, or vacuous diff-scoped gate, or a not-applicable one with no
 # evaluated precondition, STILL fails the harness.
 #
-# scope is the EXCEPTION and its expected status is "green", not
-# "green|not-applicable". scope's precondition is branch-matches, and a PR
-# bundle is BY CONSTRUCTION run on a phase branch (claude/mN-pM-...), so that
-# precondition is ALWAYS met in a real PR: scope is never LEGITIMATELY
-# not-applicable here. The only way scope reported not-applicable in CI was the
-# detached-HEAD checkout artifact (fixed at its root in .github/workflows/
-# gates.yml by checking the head branch out by name); accepting that N/A is
-# what let the exit test pass vacuously for scope. Requiring green here means
-# the exit test genuinely REQUIRES scope to audit the diff, and a recurrence of
-# a scope N/A (detached HEAD, a missing declaration, a branch-name regression)
-# now FAILS the harness instead of slipping through. red-witness and citations
-# stay "green|not-applicable" because each CAN be legitimately N/A on a head
-# that does not touch its trigger.
+# scope's expected status is RESOLVED PER RUN into the "__SCOPE_EXPECT__"
+# placeholder below, because this harness is now the CI for EVERY pull request
+# (M2R-026, the single caller of `gates run`), not only for phase-branch PRs.
+# scope's precondition is branch-matches, so scope audits a diff only on a
+# claude/mN-pM-... phase branch; on any NON-phase PR (a bug fix, paperwork, a
+# harness fix) that precondition is evaluated and legitimately unmet, so scope
+# reports not-applicable-with-precondition, exactly like red-witness or
+# citations on a head that does not touch their trigger.
+#
+#   PHASE-branch run -> "green". A PR bundle produced on a phase branch is BY
+#     CONSTRUCTION expected to audit its diff, so a scope not-applicable there is
+#     the detached-HEAD vacuous pass the M2-P9 HIGH was about (or a missing
+#     declaration, or a branch-name regression) and STILL FAILS the harness.
+#     This is the round-2 behaviour, preserved exactly.
+#   NON-phase run -> "green|not-applicable". scope is treated like the other
+#     diff-scoped gates under DR-0018: green if it audited, or not-applicable
+#     WITH a valid recorded precondition (evaluated, unmet). A scope red, error,
+#     vacuous, or not-applicable-WITHOUT-an-evaluated-precondition still fails
+#     (the diffScoped handling in m2-assert.mjs, unchanged).
+#
+# A run is a phase-branch run when its --phase is a valid phase id
+# (^m[0-9]+-p[0-9]+$) OR its checked-out head branch is a phase branch
+# (^claude/m[0-9]+-p[0-9]+-); resolved in Main below into ${scope_expect} and
+# substituted for the placeholder in run_pr_bundle. red-witness and citations
+# stay "green|not-applicable" on every run because each CAN be legitimately N/A
+# on a head that does not touch its trigger.
 PR_EXPECT_JSON='{
   "label": "PR bundle",
   "gates": [
     {"id": "manifest-self-check", "expect": "green", "required": true},
     {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "suite", "expect": "green", "required": true},
-    {"id": "scope", "expect": "green", "required": true, "diffScoped": true},
+    {"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
     {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "coverage", "expect": "green", "required": true},
     {"id": "credential-scrub", "expect": "green", "required": true},
@@ -847,7 +899,12 @@ run_pr_bundle() {
     >"${evidence}/records/${seq}.json"
   cat "${evidence}/${out_rel}"
   local expect="${evidence}/pr-expect.json"
-  write_expect "${expect}" "${PR_EXPECT_JSON}"
+  # scope's expected status is resolved per run (see PR_EXPECT_JSON's comment):
+  # "green" on a phase-branch run (round-2 anti-vacuous behaviour preserved) and
+  # "green|not-applicable" on a non-phase run (scope is legitimately N/A there,
+  # like the other diff-scoped gates under DR-0018). scope_expect is set in Main.
+  local pr_expect_json="${PR_EXPECT_JSON//__SCOPE_EXPECT__/${scope_expect}}"
+  write_expect "${expect}" "${pr_expect_json}"
   run_assert "PR bundle" "${dir}/summary.json" "${dir}" "${expect}" "${MANIFEST}"
   if [ "${ASSERT_EXIT}" -ne 0 ]; then
     die "the PR bundle does not match section 1.4's PR-bundle column (assertion exit ${ASSERT_EXIT})"
@@ -1058,6 +1115,17 @@ if [ -z "${phase}" ]; then
   fi
   note_step observation "phase derived from the branch" "branch ${branch} -> phase ${phase}"
 fi
+
+# Resolve scope's expected status for the PR bundle (see PR_EXPECT_JSON's
+# comment and resolve_scope_expect above). Detected from the harness's own
+# inputs (--phase and the checked-out head branch), never from process liveness
+# or a flag that could make a gate lie. scope is required GREEN only on a
+# PHASE-branch run; on a non-phase run scope is legitimately not-applicable and
+# is accepted with a valid evaluated precondition (DR-0018 diff-scoped handling).
+head_branch=$(git -C "${repo_root}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+scope_expect=$(resolve_scope_expect "${phase}" "${head_branch}")
+note_step observation "scope expectation resolved for this run" \
+  "phase=${phase}, head branch=${head_branch}: scope expect=${scope_expect} (green only on a phase-branch run; a phase-branch scope N/A still FAILS)"
 
 if [ "${do_build}" = "yes" ]; then
   build_kernel
