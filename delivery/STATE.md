@@ -5,9 +5,11 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-06
-- milestone: M2 (gate registry), IN PROGRESS. M1 complete, exit test passed on
-  `7e1b5f1`, completion record merged to main in PR #10 at `037477e`.
+- as of: 2026-08-07
+- main head: `50bcecb`, green on BOTH CI events (pull_request and push)
+- milestone: M2 (gate registry), COMPLETE including its post-exit-test fix
+  round. M1 complete, exit test passed on `7e1b5f1`, completion record merged
+  to main in PR #10 at `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -56,24 +58,69 @@ existed and that it was released by the owner, not optimised away.
 
 ## In flight
 
-**M2 is COMPLETE (2026-08-07).** All nine phases merged; `main` at `9bb379b`
-carries the full 10-gate set (manifest-self-check, red-witness, suite, scope,
-citations, coverage, deploy, migrations, credential-scrub, credential-token)
-and the exit harness as the single caller of `gates run` in the single-job CI
-(DR-0017). The M2 exit test PASSED with recorded evidence at
-`delivery/evidence/m2-exit-test/`; the PR bundle counts (6 green, 4
-not-applicable, 0 red, 0 error, 0 vacuous) are recorded at
-delivery/evidence/m2-exit-test/pr-bundle.summary.json:128-136; per-phase green
-demonstrated; `--self-test` fails both
-fixtures). Presented to the owner unasked (DR-0015).
+**M2 is COMPLETE (2026-08-07), including its post-exit-test fix round.** All
+nine phases merged at `9bb379b`; `main` is now `50bcecb` and carries the full
+10-gate set (manifest-self-check, red-witness, suite, scope, citations,
+coverage, deploy, migrations, credential-scrub, credential-token) and the exit
+harness as the single caller of `gates run` in the single-job CI (DR-0017). The
+M2 exit test PASSED with recorded evidence at `delivery/evidence/m2-exit-test/`;
+the PR bundle counts (6 green, 4 not-applicable, 0 red, 0 error, 0 vacuous) are
+recorded at delivery/evidence/m2-exit-test/pr-bundle.summary.json:128-136;
+per-phase green demonstrated; `--self-test` fails both fixtures. Presented to
+the owner unasked (DR-0015).
 
 CI decision this milestone: **DR-0017** collapsed CI to a single job named
 `gates` after the two-job fan-in starved on runner acquisition. **DR-0018** set
 the exit-test semantics for src-scoped gates (accept not-applicable-with-reason
 on the exit head, plus per-phase green evidence).
 
-Next: M3. **M3 plan re-grounding** was dispatched on `claude/m3-plan-regrounding`
-(documents only, same DR-0011 step M2 received).
+### Post-exit-test fix round, 2026-08-07 (#26 to #32)
+
+The exit test passing did NOT leave `main` green. Seven pull requests landed
+after `9bb379b`, and the reason they were needed is itself the milestone's most
+expensive lesson (tuition T-009). Recorded here because five of the seven have
+no other `delivery/` record and would otherwise exist only in `git log`.
+
+| PR | head on main | what it fixed |
+|---|---|---|
+| #26 | `8cadeac` | real-clock test flakes: liveness exact-age bands, watcher duplicate-not-drop |
+| #27 | `f2df10a` | exit harness required scope green on non-phase PR branches; `resolve_scope_expect` added |
+| #28 | `d6a0057` | citations gate scoped to forward-claiming docs, not the historical record; `delivery/work-history/m2-citations-scope.md` carries the 139-reason measurement and the config/manifest two-halves rule |
+| #29 | `5f9b058` | M2 paperwork batch: phase arbitrations, clean-room reviews, STATE M2-complete |
+| #30 | `4515b48` | the main exit-test bundle must not require a phase |
+| #32 | `8fc2fa7` | citations gate: the content-dependent not-applicable arm names its own precondition |
+| #31 | `50bcecb` | tuition T-009 and its binding rules in CLAUDE.md |
+
+**`main` was RED for four hours and twenty-one minutes** across five
+consecutive `push` runs (`9bb379b`, `f2df10a`, `8cadeac`, `d6a0057`,
+`5f9b058`) while every `pull_request` check was green, and four more PRs were
+merged onto it before the OWNER surfaced it. Cause: the `gates` workflow runs
+different bundles per event, and the exit harness derived `--phase`
+unconditionally, so only the `push` arm could reach the failure. Full account,
+evidence and the binding consequences: `delivery/tuition/T-009-green-on-the-wrong-event.md`.
+The rule that came out of it is in CLAUDE.md and is not optional: **a merge is
+not complete until the post-merge `push` run on the new `main` head is observed
+green.** Both #32 and #31 were closed that way.
+
+**Merge-authority exception on #32, recorded rather than left silent.** #32
+changes `src/` and `test/`, so DR-0012 requires two independent cross-model
+clean-room reviews before merge. It was merged WITHOUT them, on the owner's
+direct instruction, given during the session and with an explicit constraint
+not to spend further time. DR-0012's delegation exists for owner
+UNAVAILABILITY; the owner was present and directing, which is why this is an
+owner decision overriding the delegation rather than the orchestrator
+softening it. Recorded in the squash commit body and here. The change is small
+and reviewable after the fact if the owner wants that.
+
+Next: M3. **M3 plan re-grounding** lives on `claude/m3-plan-regrounding`,
+rebased onto this `main`. That branch holds a substantial revision of
+`delivery/plan/kernel-plan-m3.md` (4905 lines there against 2799 on `main`,
+"M3 plan revision 2: sections 6-8 and appendices re-grounded") which is NOT on
+`main` and is the reason the branch is kept rather than deleted. Every other
+`claude/*` branch was deleted on 2026-08-07 after an audit confirmed no file
+and no `delivery/` review, tuition, work-history, evidence or verification
+document existed on any of them that `main` lacked; their remaining deltas were
+superseded older versions of files `main` has since rewritten.
 
 Supervision is beacon/transcript freshness, not completion notifications.
 
