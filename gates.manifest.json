@@ -16,6 +16,20 @@
       "applicability": "required"
     },
     {
+      "id": "coverage",
+      "command": [
+        "node",
+        "src/gates/coverage.ts"
+      ],
+      "unitLabel": "finding ids checked",
+      "applicability": "required",
+      "precondition": {
+        "id": "coverage-inventory-exists",
+        "kind": "file-exists",
+        "path": "delivery/requirements/migration-table.md"
+      }
+    },
+    {
       "id": "citations",
       "command": [
         "node",
@@ -39,17 +53,23 @@
       }
     },
     {
-      "id": "coverage",
+      "id": "scope",
       "command": [
         "node",
-        "src/gates/coverage.ts"
+        "src/gates/scope.ts",
+        "--declarations",
+        "delivery/plan/phase-declarations"
       ],
-      "unitLabel": "finding ids checked",
+      "unitLabel": "changed paths audited",
       "applicability": "required",
+      "parameters": [
+        "base",
+        "head"
+      ],
       "precondition": {
-        "id": "coverage-inventory-exists",
-        "kind": "file-exists",
-        "path": "delivery/requirements/migration-table.md"
+        "id": "scope-branch-is-a-phase-branch",
+        "kind": "branch-matches",
+        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
       }
     }
   ],
