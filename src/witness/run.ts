@@ -803,14 +803,29 @@ function runNamedTests(
   }
   // The pattern flags PRECEDE the positional paths (CLAUDE.md warning 7).
   argv.push(...testFilePaths);
-  // The child must not inherit the parent's node:test context: when this
-  // harness itself runs inside `node --test` (its own suite does), the
-  // inherited NODE_TEST_CONTEXT makes the child print "run() is being
-  // called recursively" and skip every file while exiting 0, which would
-  // read as an empty reporter stream. Scrub every NODE_TEST* variable.
+  // The child must not inherit the parent's node:test context OR its
+  // reporter selection. Two distinct leaks, one scrub:
+  //   NODE_TEST_*: when this harness itself runs inside `node --test` (its
+  //   own suite does), the inherited NODE_TEST_CONTEXT makes the child print
+  //   "run() is being called recursively" and skip every file while exiting
+  //   0, which would read as an empty reporter stream.
+  //   NODE_OPTIONS: the suite gate (src/gates/suite.ts) requests its pinned
+  //   reporter by setting a child-scoped NODE_OPTIONS
+  //   (--test-reporter=<data url> --test-reporter-destination=<its stream>)
+  //   on the top-level `npm test` run it spawns. That option is meant for
+  //   THAT run alone, but NODE_OPTIONS is inherited by every descendant, so
+  //   a nested `node --test` spawned here would pick it up. This child is
+  //   already invoked with `--test-reporter tap` in argv; combined with the
+  //   inherited reporter it becomes two reporters against one destination,
+  //   which node rejects at startup with ERR_INVALID_ARG_VALUE ("--test-
+  //   reporter must match the number of --test-reporter-destination"), the
+  //   child exits 1 producing no tap stream, and parseTapStream then fails.
+  //   The reporter is a top-level-run-scoped input, exactly like
+  //   NODE_TEST_CONTEXT, so it is scrubbed the same way. The child's own
+  //   reporter is set explicitly in argv and owes nothing to the ambient env.
   const env: Record<string, string> = { NO_COLOR: "1", FORCE_COLOR: "0" };
   for (const [name, value] of Object.entries(process.env)) {
-    if (value === undefined || name.startsWith("NODE_TEST")) {
+    if (value === undefined || name.startsWith("NODE_TEST") || name === "NODE_OPTIONS") {
       continue;
     }
     env[name] = value;
