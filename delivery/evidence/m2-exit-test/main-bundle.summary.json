@@ -1,0 +1,103 @@
+{
+  "runId": "f73f9017e88a3a36db8ee563",
+  "manifest": "/home/user/tiphys-ai-helmsman/gates.manifest.json",
+  "manifestSha256": "5f06b8051f418e4be58c8b8a469823885262db5cebecff52e22e3d14bc4bdf52",
+  "startedAt": "2026-08-07T08:36:31.618Z",
+  "endedAt": "2026-08-07T08:38:24.166Z",
+  "parameters": {
+    "base": "origin/main"
+  },
+  "only": [
+    "manifest-self-check",
+    "suite",
+    "coverage",
+    "credential-scrub",
+    "deploy",
+    "migrations"
+  ],
+  "manifestGates": 10,
+  "gates": [
+    {
+      "id": "manifest-self-check",
+      "status": "green",
+      "units": 8,
+      "unitLabel": "schema documents validated",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "validated 8 schema document(s) against the closed keyword set (/home/user/tiphys-ai-helmsman/src/gates/schemas/citation-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/coverage-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/gate-manifest.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/gate-result.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/phase-declaration.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/release-record.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/verifier-config.schema.json, /home/user/tiphys-ai-helmsman/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/manifest-self-check/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/manifest-self-check/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/manifest-self-check/stderr.txt"
+    },
+    {
+      "id": "coverage",
+      "status": "green",
+      "units": 115,
+      "unitLabel": "finding ids checked",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/coverage/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/coverage/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/coverage/stderr.txt"
+    },
+    {
+      "id": "credential-scrub",
+      "status": "green",
+      "units": 7,
+      "unitLabel": "credential sources probed",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "no pull-request-capable credential resolvable from any of the 7 probed sources",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/credential-scrub/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/credential-scrub/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/credential-scrub/stderr.txt"
+    },
+    {
+      "id": "suite",
+      "status": "red",
+      "units": 400,
+      "unitLabel": "tests reported",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "19 finding(s): failing test: \"a witness red at its dangerous state and green at head makes the gate exit 0 with pins equal and the diff verbatim\" (test/witness.test.ts); failing test: \"a witness green against its declared dangerous state is red naming the witness\" (test/witness.test.ts); failing test: \"correcting the fixture so the branch carries a commit makes the same spec green\" (test/witness.test.ts); failing test: \"a witness invoking a destructive command with class additive is red naming the derived class\" (test/witness.test.ts); failing test: \"a member preserving every asserted string that stays green makes the witness red\" (test/witness.test.ts); failing test: \"a behavior-executing test red under both members makes the witness green\" (test/witness.test.ts); failing test: \"an async-read text-asserting witness is red when its text-preserving member leaves the test green\" (test/witness.test.ts); failing test: \"a namespace sync-read text-asserting witness is red when its text-preserving member leaves the test green\" (test/witness.test.ts); failing test: \"a deterministic witness red in three of five repetitions is red carrying the rate\" (test/witness.test.ts); failing test: \"the same rate declared nondeterministic is green with the rate recorded\" (test/witness.test.ts); and 9 more (see counts.json)",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/suite/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/suite/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/suite/stderr.txt"
+    },
+    {
+      "id": "deploy",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "release verifications satisfied",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/deploy/result.json"
+    },
+    {
+      "id": "migrations",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "migrations compared",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/m2-p9/gen/main/main-bundle/migrations/result.json"
+    }
+  ],
+  "counts": {
+    "declared": 6,
+    "applicable": 4,
+    "verdict": 4,
+    "green": 3,
+    "red": 1,
+    "not-applicable": 2,
+    "error": 0,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [],
+  "aborted": false,
+  "exitCode": 1,
+  "reason": "1 gate(s) reported red: suite"
+}
