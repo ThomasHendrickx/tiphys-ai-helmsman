@@ -45,23 +45,37 @@ existed and that it was released by the owner, not optimised away.
 | M1-P5 watcher and liveness | merged | #8 | four fix rounds; class closed for guard, watcher and doctor, not for lock, pool and brief |
 | M1-P6 toy sandbox and exit test | merged | #9 | four fix rounds, five review passes; exit test PASSED on the merged head with a falsification control |
 | M2-P1 gate contract and runner | merged | #11 | squash `8718852` on head `4811d2e`, 2026-08-06. Three fix rounds; DR-0016's fresh-implementer response fired after round 3 and closed CR-900 at the mechanism in one round. Final clean: derivation audit (Opus) APPROVE plus criteria regression (Sonnet) APPROVE CR-960, CI green on the exact head. Arbitration: `delivery/review/arbitration-m2-p1-round4.md` |
+| M2-P6 coverage checker | merged | #14 | `arbitration-m2-p6.md` |
+| M2-P5 citation linter | merged | #15 | `arbitration-m2-p5-round2.md` |
+| M2-P4 scope auditor | merged | #16 | `arbitration-m2-p4-round2.md` |
+| M2-P3 suite wrapper | merged | #19 | `arbitration-m2-p3-round3.md` |
+| M2-P7 release verifiers | merged | #20 | `arbitration-m2-p7-round2.md` |
+| M2-P8 credential scoping | merged | #21 | `arbitration-m2-p8-round2.md` |
+| M2-P2 red-witness harness | merged | #22 | `arbitration-m2-p2-round3.md` |
+| M2-P9 exit-test harness | merged | #25 | two fix rounds (DR-0018 semantics; scope detached-HEAD HIGH); dual delta APPROVE at `fbdcc47`; `arbitration-m2-p9.md` |
 
 ## In flight
 
-**M2-P1 is MERGED (PR #11).** The serialising phase is done, so the seven-way
-parallel window is OPEN: M2-P2 through M2-P8 dispatch concurrently per
-`delivery/plan/m2-conflict-pre-pass.md`, M2-P9 last, merges in grounding
-order. Every dispatch carries the T-008 contract (incremental beacon plus a
-freshness watchdog armed in the same turn) and the M2-P1 carry-forwards
-recorded below (CR-902 section).
+**M2 is COMPLETE (2026-08-07).** All nine phases merged; `main` at `9bb379b`
+carries the full 10-gate set (manifest-self-check, red-witness, suite, scope,
+citations, coverage, deploy, migrations, credential-scrub, credential-token)
+and the exit harness as the single caller of `gates run` in the single-job CI
+(DR-0017). The M2 exit test PASSED with recorded evidence at
+`delivery/evidence/m2-exit-test/`; the PR bundle counts (6 green, 4
+not-applicable, 0 red, 0 error, 0 vacuous) are recorded at
+delivery/evidence/m2-exit-test/pr-bundle.summary.json:128-136; per-phase green
+demonstrated; `--self-test` fails both
+fixtures). Presented to the owner unasked (DR-0015).
 
-**M3 plan re-grounding: DISPATCHED** on branch `claude/m3-plan-regrounding`,
-documents only, same DR-0011 step M2 received. Inputs: DR-0013 as decided,
-DR-0014 to DR-0016, T-005 to T-008, MECHANISMS.md, the M2 revision-2 boundary,
-and M1's final defect record.
+CI decision this milestone: **DR-0017** collapsed CI to a single job named
+`gates` after the two-job fan-in starved on runner acquisition. **DR-0018** set
+the exit-test semantics for src-scoped gates (accept not-applicable-with-reason
+on the exit head, plus per-phase green evidence).
 
-A freshness watchdog is armed on both worktrees (20-minute staleness
-threshold). Supervision is beacon freshness, not completion notifications.
+Next: M3. **M3 plan re-grounding** was dispatched on `claude/m3-plan-regrounding`
+(documents only, same DR-0011 step M2 received).
+
+Supervision is beacon/transcript freshness, not completion notifications.
 
 ## Carried forward, not yet owned
 
