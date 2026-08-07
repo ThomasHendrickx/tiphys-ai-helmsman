@@ -16,6 +16,20 @@
       "applicability": "required"
     },
     {
+      "id": "coverage",
+      "command": [
+        "node",
+        "src/gates/coverage.ts"
+      ],
+      "unitLabel": "finding ids checked",
+      "applicability": "required",
+      "precondition": {
+        "id": "coverage-inventory-exists",
+        "kind": "file-exists",
+        "path": "delivery/requirements/migration-table.md"
+      }
+    },
+    {
       "id": "suite",
       "command": [
         "node",
@@ -29,21 +43,9 @@
       ],
       "unitLabel": "tests reported",
       "applicability": "required",
-      "parameters": ["base"]
-    },
-    {
-      "id": "coverage",
-      "command": [
-        "node",
-        "src/gates/coverage.ts"
-      ],
-      "unitLabel": "finding ids checked",
-      "applicability": "required",
-      "precondition": {
-        "id": "coverage-inventory-exists",
-        "kind": "file-exists",
-        "path": "delivery/requirements/migration-table.md"
-      }
+      "parameters": [
+        "base"
+      ]
     },
     {
       "id": "citations",
@@ -86,6 +88,34 @@
         "id": "scope-branch-is-a-phase-branch",
         "kind": "branch-matches",
         "pattern": "claude/m[0-9]+-p[0-9]+-.*"
+      }
+    },
+    {
+      "id": "deploy",
+      "command": [
+        "node",
+        "src/gates/deploy.ts"
+      ],
+      "unitLabel": "release verifications satisfied",
+      "applicability": "conditional",
+      "precondition": {
+        "id": "deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
+        "kind": "file-exists",
+        "path": "release-verification.json"
+      }
+    },
+    {
+      "id": "migrations",
+      "command": [
+        "node",
+        "src/gates/migrations.ts"
+      ],
+      "unitLabel": "migrations compared",
+      "applicability": "conditional",
+      "precondition": {
+        "id": "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
+        "kind": "file-exists",
+        "path": "release-verification.json"
       }
     }
   ],

@@ -1,0 +1,10 @@
+{
+  "status": "in_progress",
+  "workflow_id": 100000001,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "head_branch": "PLACEHOLDER-branch",
+  "event": "pull_request",
+  "run_attempt": 1,
+  "check_suite_id": 200000001,
+  "display_title": "PLACEHOLDER-title"
+}
