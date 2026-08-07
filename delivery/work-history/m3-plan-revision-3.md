@@ -13,9 +13,9 @@
 - toolchain: `node --version` printed `v26.6.0` from
   `scratchpad/toolchain/node-v26.6.0-linux-x64/bin` placed first on PATH.
 
-This file was written INCREMENTALLY (tuition T-008) alongside eleven commits,
-one per mechanism or phase group. Its mtime and the commit stream are the
-beacon.
+This file was written INCREMENTALLY (tuition T-008) alongside seventeen
+commits, one per mechanism or phase group. Its mtime and the commit stream are
+the beacon.
 
 ---
 
@@ -783,5 +783,7 @@ at all, so the arithmetic could not have been disturbed.
 
 ## 6. Commits in this revision
 
-Eleven commits, one per mechanism or phase group, per T-008. `git log
---oneline 70b8f05..HEAD` on this branch is the record.
+Seventeen commits on `claude/m3-plan-regrounding` above `70b8f05`, one per
+mechanism or phase group, per T-008's incremental-output rule. Not pushed, and
+no pull request opened, per the dispatch brief. `git log --oneline
+70b8f05..HEAD` is the record.
