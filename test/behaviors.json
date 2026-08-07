@@ -114,7 +114,7 @@
   "watcher-cadence-on-disk": "the heartbeat schedule is on disk and shared by single passes",
   "watcher-signal-surfaced-once": "a surfaced turn-end is not surfaced again by the next pass",
   "watcher-race-single-surfacing": "two passes racing on one turn-end surface it exactly once",
-  "watcher-resident-versus-once-race": "a resident watcher and a concurrent single pass never both surface a wake",
+  "watcher-resident-versus-once-race": "a resident watcher and a concurrent single pass never drop a wake",
   "watcher-no-wake-advances-beacon": "a no-wake single pass strictly advances the beacon",
   "watcher-deadline-stale": "an open task past its executor deadline with no turn-end is stale",
   "watcher-abandoned-spawn-detected": "a spawn stopped mid-payload is detected as an abandoned task",
@@ -284,7 +284,8 @@
   "citation-a-newly-added-document-s-citations-are-entirely": "a newly added document's citations are entirely in scope (a new file's whole content is 'this PR')",
   "citation-a-citationrequired-document-with-zero-citations-is-red": "a citationRequired document with zero citations is red, the same document with one valid citation is green, and a configured non-required document with zero citations is not red",
   "citation-a-document-that-cites-only-itself-does-not": "a document that cites only itself does not satisfy the vacuous guard (CR-1020)",
-  "citation-a-review-citing-only-an-external-root-verifies": "a review citing only an external root verifies nothing and reaches not-applicable, not red (disposition unchanged; the required/not-applicable policy question is escalated, not this gate's to answer)",
+  "citation-a-review-citing-only-an-external-root-verifies": "a citationRequired document citing only an external root verifies nothing and reaches not-applicable, not red (disposition unchanged; the required/not-applicable policy question is escalated, not this gate's to answer)",
+  "citation-record-doc-unresolving-made-not-gated-forward-still-reds": "a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds",
   "citation-a-diff-touching-no-configured-document-is-not": "a diff touching no configured document is not-applicable naming zero matched paths",
   "citation-listconfigureddocuments-and-inventorydeliverytree-walk-a-fixture-tree-and": "listConfiguredDocuments and inventoryDeliveryTree walk a fixture tree and report per-document counts using the same analysis the standing gate uses",
   "citation-the-one-shot-inventory-excludes-quoted-citations-from": "the one-shot inventory excludes quoted citations from its counts (M2-D-22 applies uniformly)",
@@ -408,5 +409,6 @@
   "m2-exit-dr0018-diff-scoped-na": "the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018)",
   "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS",
   "m2-exit-checkout-head-branch-by-name": "the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached",
-  "m2-exit-scope-required-green-in-pr-bundle": "the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green"
+  "m2-exit-scope-required-green-in-pr-bundle": "the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green",
+  "m2-exit-scope-nonphase-accepts-na": "the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differently for phase vs non-phase runs (M2R-026)"
 }

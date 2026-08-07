@@ -1,0 +1,157 @@
+Citations gate over the M2 paperwork batch, PRE-exclusion config
+================================================================
+Command: node src/gates/citations.ts --base main --head <m2-paperwork-batch merged onto main>
+Captured: 2026-08-07 (floor toolchain, Node v26.6.0)
+
+status: red
+citations resolved: 86
+total red reasons: 139
+
+By shape:
+  citationRequired, zero substantive citations (arbitration docs): 20
+  made citation matches no declared root (reviewer shorthand/bare filename): 107
+  cites a file that does not exist (moved/renamed): 8
+  not a recognized citation (malformed trailing +/ /): 4
+  other: 0
+
+Full red-reason list follows.
+----------------------------------------------------------------
+  - delivery/review/arbitration-m2-p2-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p2-round3.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p3-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p3-round3.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p3.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p4-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p4.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p5-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p5.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p6.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p7-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p7.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p8-round2.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p8.md is citationRequired and carries zero substantive citations
+  - delivery/review/arbitration-m2-p9.md is citationRequired and carries zero substantive citations
+  - delivery/review/clean-room-m2-p1-schema-fix-correctness.md is citationRequired and carries zero substantive citations
+  - delivery/review/clean-room-m2-p1-schema-fix-hazard.md: manifest.ts:146 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-criteria.md: test/witness.test.ts:1242-1280+: is not a recognized citation: malformed trailing text follows with no separator
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:370 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:331 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:332 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: red-witness.ts:145 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:266 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:974-1000 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:586-592 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:623-634 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:495 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: run.ts:766 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-hazard.md: red-witness.ts:459-466 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: red-witness.ts:234 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: run.ts:1133 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: m2-p2.md:620 cites a file that does not exist (m2-p2.md)
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: red-witness.ts:234 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: witness.test.ts:549+), is not a recognized citation: malformed trailing text follows with no separator
+  - delivery/review/clean-room-m2-p2-round2-hazard.md: m2-p2.md:620 cites a file that does not exist (m2-p2.md)
+  - delivery/review/clean-room-m2-p3-criteria.md: kernel-plan-m2.md:244 cites a file that does not exist (kernel-plan-m2.md)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:969-975 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:738-758 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:379-388 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:270-278 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:308-313 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:657-661 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: suite.ts:948-961 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-criteria.md: kernel-plan-m2.md:295-330 cites a file that does not exist (kernel-plan-m2.md)
+  - delivery/review/clean-room-m2-p3-hazard.md: gates.test.ts:1289 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-criteria.md: suite.ts:335-337 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-criteria.md: gates.test.ts:1289 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-criteria.md: liveness.test.ts:633 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-criteria.md: watcher.test.ts:269 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-hazard.md: suite.ts:928 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-hazard.md: suite.ts:945-984 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round2-hazard.md: suite.ts:3 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round3-criteria.md is citationRequired and carries zero substantive citations
+  - delivery/review/clean-room-m2-p3-round3-hazard.md: suite.ts:407 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p3-round3-hazard.md: suite.ts:952 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:346-348 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: result.ts:179 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: phase-declaration.schema.json:15-19 cites a file that does not exist (phase-declaration.schema.json)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:178-200 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:40-52 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: gates.test.ts:1289 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: gates.test.ts:2361 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:418-423 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: run.ts:703-706 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: gates.ts:89-94 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:40-52 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: scope.ts:138 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: gates.test.ts:2361 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-hazard.md: gates.test.ts:1289 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: scope.ts:702 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: scope.ts:714 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: scope.ts:629-660 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: scope.ts:589-620 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: scope.ts:284-303 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: m2-p4.md:838-844 cites a file that does not exist (m2-p4.md)
+  - delivery/review/clean-room-m2-p4-round2-hazard.md: run.ts:367-377 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-criteria.md: gates.test.ts:1289 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-criteria.md: gates.test.ts:2378 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:376 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:657 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:794 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:85-92 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:96-103 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:345 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:451 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:36-43 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:826 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:809-812 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:255 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:240-249 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-hazard.md: citations.ts:96-103 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-round2-criteria.md is citationRequired and carries zero substantive citations
+  - delivery/review/clean-room-m2-p5-round2-hazard.md: citations.ts:1279-1291 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p5-round2-hazard.md: src/nope.ts:1 cites a file that does not exist (src/nope.ts)
+  - delivery/review/clean-room-m2-p6-hazard.md: liveness.test.ts:646-657 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:240 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:213 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:214 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:230 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:34-39 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:61-64 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:571-576 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:631 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-hazard.md: coverage.ts:571-576 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-round2-criteria.md: liveness.test.ts:695 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-round2-criteria.md: watcher.test.ts:293 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-round2-criteria.md: watcher.test.ts:211 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p6-round2-hazard.md: coverage.ts:973 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-hazard.md: release.ts:85-91 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-hazard.md: release.ts:986-994 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-hazard.md: release.ts:874-941 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-hazard.md: release.ts:946-996 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release.ts:435 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release.ts:960 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: http-json.ts:159 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: migrations-command.ts:125 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: migrations-command.ts:296-306 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: migration-gate.test.ts:252 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release.ts:386 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release.ts:376-384 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release-contract.test.ts:666 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: release.ts:534 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: deploy-gate.test.ts:684 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: deploy-gate.test.ts:684 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: liveness.test.ts:633 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: watcher.test.ts:269 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: watcher.test.ts:419 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: watcher.test.ts:500 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p7-round2-hazard.md: deploy-gate.test.ts:529/566 is not a recognized citation: malformed trailing text follows with no separator
+  - delivery/review/clean-room-m2-p8-criteria.md is citationRequired and carries zero substantive citations
+  - delivery/review/clean-room-m2-p8-hazard.md: test/watcher.test.ts:189/193/196), is not a recognized citation: malformed trailing text follows with no separator
+  - delivery/review/clean-room-m2-p8-hazard.md: credentials.ts:167 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p8-hazard.md: m2-p8.md:320-322 cites a file that does not exist (m2-p8.md)
+  - delivery/review/clean-room-m2-p8-hazard.md: credentials.ts:48-53 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p8-round2-hazard.md: credentials.ts:56-64 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p8-round2-hazard.md: env.ts:57-77 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p8-round2-hazard.md: watcher.test.ts:419 matches no declared root (local or external)
+  - delivery/review/clean-room-m2-p8-round2-hazard.md: watcher.test.ts:500 matches no declared root (local or external)

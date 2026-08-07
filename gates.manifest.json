@@ -89,10 +89,8 @@
         "kind": "diff-touches",
         "paths": [
           "delivery/plan/",
-          "delivery/review/",
           "delivery/verification/",
           "delivery/decisions/",
-          "delivery/work-history/",
           "delivery/tuition/",
           "delivery/requirements/",
           "delivery/STATE.md"

@@ -666,10 +666,22 @@ test("doctor and the guard return one verdict about one beacon", (t) => {
     0,
     `the guard called a healthy watcher stale: ${doctored.stderr}`,
   );
-  assert.match(
-    doctored.stdout,
-    /^CHECK beacon PASS beacon present, age 13s \(freshness threshold 901s\)$/m,
+  // Real wall-clock elapses between stamping the beacon (13s ago) and the
+  // child doctor's read, so the reported age is 13s or a hair more under
+  // load. The guarded property is PASS at the exact 901s threshold with an
+  // age at least as old as stamped and still inside the fresh band, not the
+  // exact second. Pinning "13s" flaked.
+  const passMatch = doctored.stdout.match(
+    /^CHECK beacon PASS beacon present, age (\d+)s \(freshness threshold 901s\)$/m,
+  );
+  assert.ok(
+    passMatch,
     `doctor disagreed with the guard about one beacon: ${doctored.stdout}`,
+  );
+  const passAge = Number(passMatch[1]);
+  assert.ok(
+    passAge >= 13 && passAge < 901,
+    `beacon age ${String(passAge)}s outside the fresh band [13, 901): ${doctored.stdout}`,
   );
   const promoted = runCli(["doctor", "--for", "watch"], {
     cwd: fleet,
@@ -692,10 +704,18 @@ test("doctor and the guard return one verdict about one beacon", (t) => {
   );
   const late = runCli(["doctor"], { cwd: fleet, env: { ...baseEnv(), ...shortEnv } });
   assert.equal(staleLines(late.stderr).length, 1, `the guard stayed quiet: ${late.stderr}`);
-  assert.match(
-    late.stdout,
-    /^CHECK beacon WARN beacon present but 902s old, past the 901s freshness threshold$/m,
-    late.stdout,
+  // Same jitter: stamped 902s ago, read a hair later, so the age is 902s or
+  // more under load. The guarded property is WARN, an age genuinely past the
+  // exact 901s threshold, and that threshold named, not the exact 902.
+  // Pinning "902s" flaked.
+  const warnMatch = late.stdout.match(
+    /^CHECK beacon WARN beacon present but (\d+)s old, past the 901s freshness threshold$/m,
+  );
+  assert.ok(warnMatch, late.stdout);
+  const warnAge = Number(warnMatch[1]);
+  assert.ok(
+    warnAge >= 902,
+    `beacon age ${String(warnAge)}s not at least the stamped 902s (past the 901s threshold): ${late.stdout}`,
   );
 });
 

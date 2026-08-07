@@ -1,0 +1,25 @@
+{
+  "id": "citation-record-doc-not-gated",
+  "behavior": "citation-record-doc-unresolving-made-not-gated-forward-still-reds",
+  "tests": [
+    "a record doc (delivery/review, delivery/work-history) carrying an unresolving MADE citation is not gated (not-applicable, not red), while an identical forward doc still reds"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/citation-readd-review.patch"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/citation-readd-work-history.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git cat-file -t <rev>:<path>",
+    "captures": ["witness/captures/citation-git-cat-file-resolution.txt"],
+    "provenance": "Captured 2026-08-07 in a scratch repo (git version 2.43.0) by running `git cat-file -t <rev>:src/real.ts` (a present 3-line blob) and `git cat-file -t <rev>:src/nope.ts` (an absent path) and recording the real exit codes, stdout and stderr. src/gates/citations.ts resolves a MADE citation by spawning exactly this command; the named test reads the capture and asserts a live scratch repo reproduces the recorded contract, so the resolution behaviour under test is anchored to real git output, not a hand-written string (CLAUDE.md warning 10; red-witness rule (f))."
+  }
+}
