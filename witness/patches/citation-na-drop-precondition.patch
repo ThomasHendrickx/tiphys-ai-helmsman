@@ -1,0 +1,17 @@
+diff --git a/src/gates/citations.ts b/src/gates/citations.ts
+index 1abd594..8961e95 100644
+--- a/src/gates/citations.ts
++++ b/src/gates/citations.ts
+@@ -1384,12 +1384,6 @@ export function runCitationsGate(options: CitationsGateOptions): GateResultField
+       units: 0,
+       endedAt: now(),
+       detail: reason,
+-      precondition: {
+-        id: "citations-changed-documents-make-a-substantive-citation",
+-        met: false,
+-        reason,
+-        evidence: linted,
+-      },
+       evidence: linted,
+     };
+   }

@@ -68,6 +68,13 @@ type CitationResolution =
   | { kind: "unresolved"; detail: string }
   | { kind: "unverifiable-external"; root: string; detail: string }
   | { kind: "read-error"; path: string; reason: string };
+interface PreconditionRecord {
+  id: string;
+  met: boolean;
+  reason: string;
+  evidence?: string[];
+}
+
 interface GateResultFields {
   gate: string;
   status: string;
@@ -75,6 +82,11 @@ interface GateResultFields {
   unitLabel: string;
   startedAt: string;
   endedAt: string;
+  /**
+   * Mirrors src/gates/result.ts. Optional because only the arms that reach
+   * `not-applicable` carry one; a green or red result names none.
+   */
+  precondition?: PreconditionRecord;
   detail: string;
   evidence?: string[];
 }
@@ -1142,4 +1154,131 @@ test("gitTargetReader reads the same content readGitBlob does, at a given rev", 
   assert.equal(read.kind, "blob");
   const direct = readGitBlob(repoRoot, "HEAD", "src/cli.ts");
   assert.deepEqual(read, direct);
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0018 distinguishability for the CONTENT-DEPENDENT not-applicable */
+/* arm. The gate has two not-applicable arms. The first (no changed    */
+/* path under the documents globs) is ALSO expressible as a manifest   */
+/* precondition, and gates.manifest.json declares exactly that, so the */
+/* runner records precondition.met false and that arm is covered. This */
+/* arm's trigger is only knowable after reading the documents'         */
+/* CONTENTS, which no manifest precondition kind can ask of a diff, so */
+/* it must emit its own PreconditionRecord or DR-0018 rejects it as    */
+/* indistinguishable from a skipped or errored gate. Measured: this    */
+/* reddened CI on PRs #29 and #31. See delivery/tuition/T-009.         */
+/* ------------------------------------------------------------------ */
+
+test("the content-dependent not-applicable arm names its own evaluated unmet precondition, so a legitimate no-op is distinguishable from a skipped gate", () => {
+  // Rule (f): this witness covers src/gates/citations.ts, which spawns and
+  // parses `git cat-file -t <rev>:<path>` to resolve a MADE citation. Reaching
+  // THIS arm is a statement about that resolution finding nothing substantive,
+  // so the assertions consume the real recorded contract rather than a
+  // hand-written string (CLAUDE.md warning 10).
+  const captureName = "citation-git-cat-file-resolution.txt";
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", captureName),
+    "utf8",
+  );
+  assert.match(captured, /present-path:.*\n\s*exit 0\n\s*stdout: blob/);
+  assert.match(captured, /absent-path:.*\n\s*exit 128/);
+  {
+    const probe = scratch();
+    try {
+      initRepo(probe);
+      mkdirSync(join(probe, "src"), { recursive: true });
+      writeFileSync(join(probe, "src", "real.ts"), "a\nb\nc\n");
+      const rev = commit(probe, "probe base");
+      const present = git(probe, ["cat-file", "-t", `${rev}:src/real.ts`]);
+      assert.equal(present.status, 0, `present path: ${present.stderr}`);
+      assert.equal(present.stdout.trim(), "blob", "captured contract: present path is a blob");
+      const absent = git(probe, ["cat-file", "-t", `${rev}:src/nope.ts`]);
+      assert.equal(absent.status, 128, `absent path exit: ${absent.stdout}`);
+    } finally {
+      rmSync(probe, { recursive: true, force: true });
+    }
+  }
+
+  // TWO structurally different members of the class, both landing in the same
+  // arm by different routes: a document whose only citation is a SELF-citation
+  // (parsed, classified, deliberately not substantive) and one whose only
+  // citation is to an EXTERNAL root (parsed, unverifiable locally). Both are
+  // non-required configured documents, so neither is red; a citationRequired
+  // document with zero citations reds above and never reaches here.
+  const members = [
+    { name: "self-citation", body: "delivery/tuition/T-000-x.md:1 is this line.\n" },
+    { name: "external-root", body: "cites bin/fm-lock.sh:1-5\n" },
+  ];
+  for (const member of members) {
+    const dir = scratch();
+    try {
+      initRepo(dir);
+      mkdirSync(join(dir, "delivery", "tuition"), { recursive: true });
+      writeFileSync(join(dir, "delivery", "tuition", "T-000-x.md"), "placeholder\n");
+      const base = commit(dir, "base");
+      writeFileSync(join(dir, "delivery", "tuition", "T-000-x.md"), member.body);
+      const head = commit(dir, member.name);
+
+      const fields = runCitationsGate({ cwd: dir, base, head });
+      assert.equal(
+        fields.status,
+        "not-applicable",
+        `${member.name}: ${JSON.stringify(fields)}`,
+      );
+      assert.match(fields.detail, /zero substantive local citations resolved/);
+
+      // The behavior under test. Without it the arm returns not-applicable
+      // with precondition undefined, which is exactly what m2-assert rejects.
+      const precondition = fields.precondition;
+      assert.notEqual(
+        precondition,
+        undefined,
+        `${member.name}: the arm must name an evaluated precondition, got ${JSON.stringify(fields)}`,
+      );
+      assert.equal(
+        precondition?.id,
+        "citations-changed-documents-make-a-substantive-citation",
+        `${member.name}: precondition id`,
+      );
+      assert.equal(precondition?.met, false, `${member.name}: DR-0018 requires met:false`);
+      assert.match(
+        String(precondition?.reason),
+        /zero substantive local citations resolved/,
+        `${member.name}: the reason must say why`,
+      );
+      // Evidence proves the gate did WORK rather than declining to look: it
+      // names the document it actually read.
+      assert.deepEqual(
+        precondition?.evidence,
+        ["delivery/tuition/T-000-x.md"],
+        `${member.name}: evidence names the linted document(s)`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // The control: a configured document that DOES make a resolving substantive
+  // citation is green and names NO unmet precondition. Without this, a fix
+  // that stamped the record onto every result would pass the assertions above.
+  const dir = scratch();
+  try {
+    initRepo(dir);
+    mkdirSync(join(dir, "delivery", "tuition"), { recursive: true });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "real.ts"), "a\nb\nc\n");
+    writeFileSync(join(dir, "delivery", "tuition", "T-000-x.md"), "placeholder\n");
+    const base = commit(dir, "base");
+    writeFileSync(join(dir, "delivery", "tuition", "T-000-x.md"), "see src/real.ts:1-3 for it.\n");
+    const head = commit(dir, "substantive");
+    const fields = runCitationsGate({ cwd: dir, base, head });
+    assert.equal(fields.status, "green", JSON.stringify(fields));
+    assert.equal(
+      fields.precondition,
+      undefined,
+      `a green result must not carry an unmet precondition: ${JSON.stringify(fields)}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
