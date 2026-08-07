@@ -116,11 +116,33 @@ Next: M3. **M3 plan re-grounding** lives on `claude/m3-plan-regrounding`,
 rebased onto this `main`. That branch holds a substantial revision of
 `delivery/plan/kernel-plan-m3.md` (4905 lines there against 2799 on `main`,
 "M3 plan revision 2: sections 6-8 and appendices re-grounded") which is NOT on
-`main` and is the reason the branch is kept rather than deleted. Every other
-`claude/*` branch was deleted on 2026-08-07 after an audit confirmed no file
-and no `delivery/` review, tuition, work-history, evidence or verification
-document existed on any of them that `main` lacked; their remaining deltas were
-superseded older versions of files `main` has since rewritten.
+`main` and is the reason the branch is kept rather than deleted.
+
+**Every other `claude/*` branch is CLEARED FOR DELETION but is still present.**
+The audit ran on 2026-08-07 and confirmed, for all 35 of them, that no file and
+no `delivery/` review, tuition, work-history, evidence or verification document
+existed on any of them that `main` lacked; their remaining deltas were
+superseded older versions of files `main` has since rewritten (sampled and
+verified: `DR-0008` reads `status: open (deferred)` on the old branches while
+`main` has it decided). The deletion itself did NOT happen: this container's
+credentials are refused ref deletion with **HTTP 403 on both paths**, the
+GitHub API (`DELETE /git/refs/heads/<branch>`) and `git push origin --delete`
+alike, while ordinary pushes from the same credentials succeed. That is the
+same authorization asymmetry CLAUDE.md standing warning 6 records for `gh`.
+
+This is therefore an OWNER ACTION, listed in the section below as A-4. The
+branch tips were captured before the attempt so nothing is unrecoverable, and
+the audit is mechanical and re-runnable:
+
+```
+comm -23 <(git ls-tree -r --name-only origin/<branch> | sort) \
+         <(git ls-tree -r --name-only origin/main | sort)
+git diff --numstat origin/main..origin/<branch> -- \
+  delivery/review/ delivery/tuition/ delivery/work-history/ \
+  delivery/evidence/ delivery/verification/
+```
+
+Both return empty for every branch except `claude/m3-plan-regrounding`.
 
 Supervision is beacon/transcript freshness, not completion notifications.
 
@@ -288,6 +310,17 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
    FULL mode. Local mode is unaffected and passes.
 4. **A-2, before M4.** Provide or approve a private remote per real fleet
    home, for fleet-state durability.
+5. **A-4, NEW, ready to execute.** Delete the 35 stale `claude/*` branches.
+   They are audited and cleared (see "In flight" above for the audit and the
+   re-runnable commands); the orchestrator cannot do it because this
+   container's credentials are refused ref deletion with HTTP 403 on both the
+   GitHub API and `git push --delete`, though ordinary pushes succeed. Keep
+   exactly two refs: `main` and `claude/m3-plan-regrounding`. Fastest route is
+   the GitHub branches page, or from a machine with delete rights:
+   `git fetch --prune && git branch -r | grep '^  origin/claude/' |
+   grep -v m3-plan-regrounding | sed 's#origin/##' |
+   xargs -n1 git push origin --delete`.
+   Until this runs, `main` is the source of truth but is not the ONLY ref.
 
 ## Standing reminders
 
