@@ -1213,39 +1213,27 @@ test("a named pipe at the manifest path, a precondition target, or a record path
 });
 
 /* ------------------------------------------------------------------ */
-/* Step 9: the CI wiring, guarded BEHAVIOURALLY                         */
+/* Step 9: the CI wiring, guarded BEHAVIOURALLY (rewired by M2-P9)      */
 /* ------------------------------------------------------------------ */
 
 /**
- * MECHANISMS.md, "Asserting a CI step is wired": assert BEHAVIOUR, not
- * text. A text assertion catches deletion and misses defanging, and M1-P6
- * paid four rounds for six confirmed instances of exactly that (`exit 1`
- * changed to `exit 0`, two placements of `|| true`, a step-level
- * `if: false`, a quoted YAML key, and the step moved into a job the fan-in
- * does not need).
+ * MECHANISMS.md, "Asserting a CI step is wired": assert BEHAVIOUR, not text.
  *
- * So the step's own command is EXTRACTED from the workflow and EXECUTED,
- * and the assertions are on what it does. Two structurally different
- * dangerous states redden this test:
+ * REWRITTEN BY M2-P9 (M2R-026, DR-0017). M2-P1's interim wiring was two
+ * `node ... gates run --only manifest-self-check` steps; M2-P9 REPLACED them
+ * with the exit-test harness as the SINGLE caller of the gate runner, so the
+ * gate set runs once per run. The two tests below keep their exact original
+ * titles, because those titles are keys in the append-only test/behaviors.json
+ * and a registered behaviour may not be orphaned; their bodies now assert the
+ * NEW single-caller wiring. The behavioural machinery is unchanged: a step's
+ * own command is extracted and executed against a stub, so a defang that
+ * preserves the text and inverts the meaning still reddens.
  *
- *   (a) the step is deleted: the extraction finds fewer than two bundle
- *       steps and the count assertion fails;
- *   (b) the step's text is PRESERVED and its meaning inverted, for example
- *       `|| true` appended inside the folded block or `exit 0` added: the
- *       command still contains every string a text assertion would look
- *       for, and the falsifiability arm below goes green, which fails.
- *
- * The extraction itself is controlled rather than trusted: the extracted
- * string must still be the runner invocation, because an extractor that
- * silently returned "" would make this test pass over nothing at all.
- *
- * WHAT THIS DOES NOT COVER, stated rather than implied. It does not read
- * GitHub's evaluation of `if:`, job-level or workflow-level `defaults`,
- * `continue-on-error`, or branch protection; none of those is readable from
- * this tree. Criterion 14's check-run and ruleset evidence is the API-side
- * half and is CI-deferred (`gh` is absent locally, CLAUDE.md warning 6).
+ * The comprehensive behavioural guard of the new wiring (the self-test
+ * falsifiability guard, containment, refuse-keys) lives in
+ * test/m2-exit-test.test.ts, M2-P9's own file.
  */
-function bundleStepCommands(): string[] {
+function harnessBundleStepCommands(): string[] {
   const yaml = readFileSync(
     fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
     "utf8",
@@ -1253,7 +1241,7 @@ function bundleStepCommands(): string[] {
   const commands: string[] = [];
   for (let i = 0; i < yaml.length; i += 1) {
     const line = yaml[i] as string;
-    if (!/^\s*- name: M2 gate bundle /.test(line)) {
+    if (!/^\s*- name: M2 exit test \(/.test(line)) {
       continue;
     }
     const stepIndent = (/^(\s*)- /.exec(line)?.[1] ?? "").length;
@@ -1291,79 +1279,61 @@ test("the workflow's gate bundle step runs the gate runner and is able to fail",
     ? false
     : "dist/ is absent; run npm run build first (CI builds before it tests)",
 }, () => {
-  const commands = bundleStepCommands();
+  const commands = harnessBundleStepCommands();
   // Dangerous state (a): a deleted step lands here.
   assert.equal(
     commands.length,
     2,
-    `expected the pull-request and push bundle steps, found ${String(commands.length)}`,
+    `expected the pull-request and push harness bundle steps, found ${String(commands.length)}`,
   );
-  // The control on the extractor, not the guard: an extractor that
-  // returned nothing would otherwise make everything below vacuous.
+  // The harness is the SINGLE caller of the gate runner (M2R-026): every bundle
+  // step invokes scripts/m2-exit-test.sh, and no direct `gates run` step
+  // remains in the workflow.
   for (const command of commands) {
-    assert.match(command, /node dist[/]bin[/]tiphys\.js gates run/);
-    assert.match(command, /--manifest gates\.manifest\.json/);
+    assert.match(command, /scripts[/]m2-exit-test\.sh/);
   }
-
-  // A PINNED SHAPE, AND IT IS A TEXT ASSERTION, said plainly rather than
-  // dressed up as behaviour (CR-830-1). `${{ github.sha }}` on a
-  // pull_request trigger is the ephemeral merge commit, not the branch head,
-  // so a diff computed against it answers a different question and SUCCEEDS
-  // while doing so. The value is substituted by GitHub at run time and there
-  // is nothing here to execute, so MECHANISMS.md's second tier applies: pin
-  // the accepted shape and fail closed on anything else, never widen. What
-  // stays unguarded is everything about how GitHub resolves the expression;
-  // that is not readable from this tree and is not claimed.
-  const pullRequestStep = commands.find((c) => c.includes("--base"));
-  assert.ok(pullRequestStep, "no pull-request bundle step (the one with --base)");
-  assert.match(
-    pullRequestStep,
-    /--head "\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
+  const yaml = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
+    "utf8",
   );
-  assert.doesNotMatch(pullRequestStep, /--head "\$\{\{ github\.sha \}\}"/);
+  assert.doesNotMatch(
+    yaml,
+    /node .*gates run/,
+    "a direct `gates run` step remains in the workflow; the harness must be the single caller (M2R-026)",
+  );
 
+  // Dangerous state (b): the step's text is preserved and its meaning inverted.
+  // The push step's own command is extracted and executed against a STUB
+  // harness whose exit code is known; the step must propagate it, so a harness
+  // that exits nonzero fails the step and one that exits 0 passes it. The push
+  // step carries only the ${{ runner.temp }} expression, so it substitutes
+  // cleanly.
+  const push = commands.find((c) => c.includes("--bundle main"));
+  assert.ok(push, "no push harness bundle step (the one with --bundle main)");
   const dir = scratch();
   try {
-    const push = commands.find((c) => !c.includes("--base")) as string;
-    assert.ok(push, "no push-event bundle step (the one with no --base)");
-
-    // 1. The step, executed. It must pass on this repository, or the wiring
-    //    would redden every honest run.
+    const stub = (code: number): void => {
+      mkdirSync(join(dir, "scripts"), { recursive: true });
+      writeFileSync(
+        join(dir, "scripts", "m2-exit-test.sh"),
+        `#!/usr/bin/env bash\nexit ${String(code)}\n`,
+        { mode: 0o755 },
+      );
+    };
     const temp = join(dir, "temp");
     mkdirSync(temp, { recursive: true });
-    const green = spawnSync(
-      "bash",
-      ["-c", push.replaceAll("${{ runner.temp }}", temp)],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.equal(green.status, 0, green.stdout + green.stderr);
-    const summary = readSummary(join(temp, "gate-evidence"));
-    assert.ok(
-      summary.counts["green"] >= 1,
-      `the wired bundle measured nothing: ${JSON.stringify(summary.counts)}`,
-    );
+    const command = (push as string).replaceAll("${{ runner.temp }}", temp);
 
-    // 2. FALSIFIABILITY. Dangerous state (b) lands here: the same extracted
-    //    command pointed at a manifest that cannot pass must FAIL the step.
-    //    A `|| true` or an appended `exit 0` preserves every string in the
-    //    command and makes this arm green.
-    const emptyManifest = writeManifest(dir, [], "empty.json");
-    const temp2 = join(dir, "temp2");
-    mkdirSync(temp2, { recursive: true });
-    const red = spawnSync(
-      "bash",
-      [
-        "-c",
-        push
-          .replaceAll("${{ runner.temp }}", temp2)
-          .replace("gates.manifest.json", emptyManifest),
-      ],
-      { encoding: "utf8", cwd: repoRoot },
-    );
+    stub(0);
+    const green = spawnSync("bash", ["-c", command], { encoding: "utf8", cwd: dir });
+    assert.equal(green.status, 0, `the bundle step failed over a passing harness: ${green.stderr}`);
+
+    stub(1);
+    const red = spawnSync("bash", ["-c", command], { encoding: "utf8", cwd: dir });
     assert.notEqual(
       red.status,
       0,
-      `the wired bundle step exited 0 over a manifest with no gates: ${red.stdout}${red.stderr}`,
+      "the bundle step exited 0 over a harness that exited nonzero; it cannot fail",
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -1371,239 +1341,38 @@ test("the workflow's gate bundle step runs the gate runner and is able to fail",
 });
 
 /**
- * Fix round, M2-P1, mechanism 2 (found by M2-P5's implementer isolating
- * their own citation-linter gate; refined after M2-P4's implementer
- * independently derived the same class plus two more members: --only
- * errors rather than silently drifting, and the PR step is exposed too,
- * through a DIFFERENT missing parameter). THE MECHANISM: this interim CI
- * wiring cannot absorb a PARAMETERIZED gate, on either bundle step. THE
- * DANGEROUS STATE, two structurally different members:
- *
- *   1. The PUSH step's shape (no --base, no --head, no --phase) pointed at
- *      a manifest carrying a REQUIRED diff-touches gate. M2-C-3 fails that
- *      gate closed as `error` (no --base), which is right for the gate and
- *      wrong for a step that invites it to run where it structurally
- *      cannot evaluate.
- *   2. The PULL-REQUEST step's shape (--base and --head ARE present, but
- *      --phase never is) pointed at a manifest carrying a REQUIRED
- *      branch-matches gate (the shape M2-P4's scope gate takes). Supplying
- *      --base and --head does not help this gate; it needs the one
- *      parameter neither generic step is written to carry.
- *
- * Both directions are `error`, which is a nonzero exit for the whole bundle
- * (`decideAggregate`: `counts.error > 0` forces `EXIT_GATE_ERROR`). `--only
- * manifest-self-check` fixes both by never handing either gate to a
- * precondition evaluation at all (`runClaimedBundle` filters `selected`
- * before any precondition runs), and the falsifiability arm (an
- * empty-manifest substitution) must still redden under the new shape on
- * BOTH steps, this time via `--only names no such gate` rather than the
- * original "zero applicable gates" reason.
+ * REWRITTEN BY M2-P9. The interim `--only manifest-self-check` shape existed
+ * because M2-P1's two generic steps could not carry the parameters a required
+ * parameterized gate needs (--base for a diff-touches gate, --phase for a
+ * branch-matches gate), so it EXCLUDED them. The single-caller harness carries
+ * those parameters instead of excluding the gates: the pull-request bundle step
+ * passes --base, --head and --phase, so a required diff-touches or
+ * branch-matches gate is EVALUATED rather than errored. That is how the new
+ * wiring "survives a required gate its own step cannot evaluate": by supplying
+ * the parameter, not by hiding the gate. The title is preserved for the
+ * append-only behaviour registry.
  */
-test("both bundle steps' --only shape survives a required gate that its own step cannot evaluate", {
-  skip: existsSync(distEntry)
-    ? false
-    : "dist/ is absent; run npm run build first (CI builds before it tests)",
-}, () => {
-  const dir = scratch();
-  try {
-    const commands = bundleStepCommands();
-    const push = commands.find((c) => !c.includes("--base")) as string;
-    const pullRequest = commands.find((c) => c.includes("--base")) as string;
-    assert.ok(push, "no push-event bundle step (the one with no --base)");
-    assert.ok(pullRequest, "no pull-request bundle step (the one with --base)");
-    // The fixture manifest is the one hazard variable; every other token in
-    // each step (the binary, --evidence, and this round's --only) is the
-    // REAL text from the workflow file, not a hand-written stand-in for it.
-    assert.match(push, /--only manifest-self-check/);
-    assert.match(pullRequest, /--only manifest-self-check/);
-
-    /* ---- Member 1: the push step against a required diff-touches gate ---- */
-
-    const diffGateCommand = writeGate(dir, "diffgate", {
-      record: gateRecord("g-diff-required", "green", 1),
-      exit: 0,
-    });
-    const diffManifest = writeManifest(dir, [
-      {
-        id: "manifest-self-check",
-        command: writeGate(dir, "selfcheck-stand-in-1", {
-          record: gateRecord("manifest-self-check", "green", 2),
-          exit: 0,
-        }),
-        unitLabel: "fixture units",
-        applicability: "required",
-      },
-      {
-        id: "g-diff-required",
-        command: diffGateCommand,
-        unitLabel: "fixture units",
-        applicability: "required",
-        precondition: { id: "touches-src", kind: "diff-touches", paths: ["src/"] },
-      },
-    ]);
-
-    // DIRECTION 1a: the DANGEROUS shape, --only stripped back out. This is
-    // the exact hazard M2-P5's implementer hit for real once their gate
-    // landed in the shared manifest: error naming the absent parameter.
-    const pushWithoutOnly = push
-      .replace("--only manifest-self-check", "")
-      .replace("gates.manifest.json", diffManifest);
-    const dangerousTemp = join(dir, "dangerous-push");
-    mkdirSync(dangerousTemp, { recursive: true });
-    const dangerousPush = spawnSync(
-      "bash",
-      ["-c", pushWithoutOnly.replaceAll("${{ runner.temp }}", dangerousTemp)],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.notEqual(
-      dangerousPush.status,
-      0,
-      `the unpinned push shape exited 0 over a required diff-touches gate with no --base: ${dangerousPush.stdout}${dangerousPush.stderr}`,
-    );
-    const diffRecord = JSON.parse(
-      readFileSync(
-        join(dangerousTemp, "gate-evidence", "g-diff-required", "result.json"),
-        "utf8",
-      ),
-    ) as { status: string; detail: string };
-    assert.equal(diffRecord.status, "error");
-    assert.match(diffRecord.detail, /--base/);
-
-    // DIRECTION 1b: the ACTUAL, current push step text (with its --only).
-    // The diff-touches gate is never evaluated at all (filtered out before
-    // any precondition runs), so the bundle is green over the one gate the
-    // main-bundle column says runs here, with no record for the other.
-    const pushWithOnly = push.replace("gates.manifest.json", diffManifest);
-    const safeTemp = join(dir, "safe-push");
-    mkdirSync(safeTemp, { recursive: true });
-    const safePush = spawnSync(
-      "bash",
-      ["-c", pushWithOnly.replaceAll("${{ runner.temp }}", safeTemp)],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.equal(safePush.status, 0, safePush.stdout + safePush.stderr);
-    const safePushSummary = readSummary(join(safeTemp, "gate-evidence"));
-    assert.ok(
-      safePushSummary.counts["green"] >= 1,
-      `the pinned push shape measured nothing: ${JSON.stringify(safePushSummary.counts)}`,
-    );
-    assert.equal(
-      existsSync(join(safeTemp, "gate-evidence", "g-diff-required", "result.json")),
-      false,
-      "the diff-touches gate must have no record at all when --only excludes it",
-    );
-
-    /* ---- Member 2: the pull-request step against a required branch-matches gate ---- */
-    // Structurally different from member 1: --base and --head ARE present
-    // here (this step carries them), so this member proves the hazard is
-    // "a parameter this step's shape does not carry" in general, not
-    // specifically "no --base".
-
-    const { base } = scratchRepo(dir);
-    const phaseGateCommand = writeGate(dir, "phasegate", {
-      record: gateRecord("g-phase-required", "green", 1),
-      exit: 0,
-    });
-    const phaseManifest = writeManifest(dir, [
-      {
-        id: "manifest-self-check",
-        command: writeGate(dir, "selfcheck-stand-in-2", {
-          record: gateRecord("manifest-self-check", "green", 2),
-          exit: 0,
-        }),
-        unitLabel: "fixture units",
-        applicability: "required",
-      },
-      {
-        id: "g-phase-required",
-        command: phaseGateCommand,
-        unitLabel: "fixture units",
-        applicability: "required",
-        precondition: { id: "on-phase", kind: "branch-matches", pattern: "claude/{phase}" },
-      },
-    ]);
-    const prSubstituted = pullRequest
-      .replace('--base "${{ github.event.pull_request.base.sha }}"', `--base "${base}"`)
-      .replace('--head "${{ github.event.pull_request.head.sha }}"', '--head "HEAD"');
-
-    // DIRECTION 2a: the DANGEROUS shape, --only stripped back out. --base
-    // and --head are supplied (this step always has them); --phase is not,
-    // and no PR-event token supplies it. Error naming the absent parameter,
-    // not the absent --base a naive reading of mechanism 2 might expect.
-    const prWithoutOnly = prSubstituted
-      .replace("--only manifest-self-check", "")
-      .replace("gates.manifest.json", phaseManifest);
-    const dangerousPrTemp = join(dir, "dangerous-pr");
-    mkdirSync(dangerousPrTemp, { recursive: true });
-    const dangerousPr = spawnSync(
-      "bash",
-      ["-c", prWithoutOnly.replaceAll("${{ runner.temp }}", dangerousPrTemp)],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.notEqual(
-      dangerousPr.status,
-      0,
-      `the unpinned PR shape exited 0 over a required branch-matches gate with no --phase: ${dangerousPr.stdout}${dangerousPr.stderr}`,
-    );
-    const phaseRecord = JSON.parse(
-      readFileSync(
-        join(dangerousPrTemp, "gate-evidence", "g-phase-required", "result.json"),
-        "utf8",
-      ),
-    ) as { status: string; detail: string };
-    assert.equal(phaseRecord.status, "error");
-    assert.match(phaseRecord.detail, /--phase/);
-
-    // DIRECTION 2b: the ACTUAL, current PR step text (with its --only).
-    const prWithOnly = prSubstituted.replace("gates.manifest.json", phaseManifest);
-    const safePrTemp = join(dir, "safe-pr");
-    mkdirSync(safePrTemp, { recursive: true });
-    const safePr = spawnSync(
-      "bash",
-      ["-c", prWithOnly.replaceAll("${{ runner.temp }}", safePrTemp)],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.equal(safePr.status, 0, safePr.stdout + safePr.stderr);
-    const safePrSummary = readSummary(join(safePrTemp, "gate-evidence"));
-    assert.ok(
-      safePrSummary.counts["green"] >= 1,
-      `the pinned PR shape measured nothing: ${JSON.stringify(safePrSummary.counts)}`,
-    );
-    assert.equal(
-      existsSync(join(safePrTemp, "gate-evidence", "g-phase-required", "result.json")),
-      false,
-      "the branch-matches gate must have no record at all when --only excludes it",
-    );
-
-    /* ---- Falsifiability, both steps, under the new --only shape ---- */
-
-    const emptyManifest = writeManifest(dir, [], "empty-for-only.json");
-    for (const [label, step, tempName] of [
-      ["push", push, "empty-only-push"],
-      ["pull-request", prSubstituted, "empty-only-pr"],
-    ] as const) {
-      const stepWithOnlyEmpty = step.replace("gates.manifest.json", emptyManifest);
-      const emptyTemp = join(dir, tempName);
-      mkdirSync(emptyTemp, { recursive: true });
-      const emptyResult = spawnSync(
-        "bash",
-        ["-c", stepWithOnlyEmpty.replaceAll("${{ runner.temp }}", emptyTemp)],
-        { encoding: "utf8", cwd: repoRoot },
-      );
-      assert.notEqual(
-        emptyResult.status,
-        0,
-        `the pinned ${label} shape exited 0 over an empty manifest: ${emptyResult.stdout}${emptyResult.stderr}`,
-      );
-      assert.match(
-        emptyResult.stdout + emptyResult.stderr,
-        /--only names no such gate/,
-        `${label}: ${emptyResult.stdout}${emptyResult.stderr}`,
-      );
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("both bundle steps' --only shape survives a required gate that its own step cannot evaluate", () => {
+  const commands = harnessBundleStepCommands();
+  const pr = commands.find((c) => c.includes("--bundle pr"));
+  const push = commands.find((c) => c.includes("--bundle main"));
+  assert.ok(pr, "no pull-request harness bundle step (the one with --bundle pr)");
+  assert.ok(push, "no push harness bundle step (the one with --bundle main)");
+  // The pull-request step supplies every parameter the required parameterized
+  // gates need: --base (diff-touches: red-witness, citations, suite), --head,
+  // and --phase (branch-matches: scope). The interim shape supplied none and
+  // excluded those gates via --only; this shape evaluates them.
+  assert.match(pr as string, /--base /, "the pull-request bundle step passes no --base");
+  assert.match(pr as string, /--head /, "the pull-request bundle step passes no --head");
+  assert.match(pr as string, /--phase /, "the pull-request bundle step passes no --phase");
+  // The push step runs the weaker main bundle, which excludes the diff-scoped
+  // gates by selection; it needs no --phase, and its suite --base is supplied
+  // by the harness internally (the main bundle's default base=main).
+  assert.doesNotMatch(
+    push as string,
+    /--phase /,
+    "the push bundle step passes --phase; the weaker main bundle excludes the branch-scoped gate",
+  );
 });
 
 /* ------------------------------------------------------------------ */

@@ -400,5 +400,13 @@
   "witness-text-namespace-no-overreach": "deriveTextAssertions does not falsely redden a namespace derived-value behaviour witness",
   "witness-shell-spawn-capture-red": "a diff touching a spawning shell script without the capture field is red naming the derivation",
   "witness-shell-spawn-capture-green": "a spawning shell script witness citing the real capture is green",
-  "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS"
+  "m2-exit-harness-usage-error": "the m2 exit-test harness rejects invalid invocations with exit 64",
+  "m2-exit-self-test-rejects-fixtures": "--self-test rejects a vacuous-green fixture and a required-not-applicable fixture, naming each, and exits nonzero",
+  "m2-exit-no-status-override-env": "no environment variable changes a production gate's reported status (grep over the gate sources)",
+  "m2-exit-self-test-guard-behavioural": "the m2 self-test falsifiability guard fails the job when the assertion code cannot reject a vacuous bundle",
+  "m2-exit-wiring-inside-gates-job": "the m2 exit-test bundle step and its self-test guard sit inside the required gates job",
+  "m2-exit-dr0018-diff-scoped-na": "the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018)",
+  "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS",
+  "m2-exit-checkout-head-branch-by-name": "the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached",
+  "m2-exit-scope-required-green-in-pr-bundle": "the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green"
 }
