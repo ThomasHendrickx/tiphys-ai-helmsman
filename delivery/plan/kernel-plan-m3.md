@@ -4670,7 +4670,8 @@ hazard it is matched to.
   is a contradiction revision 2 removes: section 6 item 1, section 7's table,
   and this line all now read decided, and the M3R-008 split fallback below is
   marked historical. Owner
-  action A-4 (publish credentials and the `@tiphys` scope claim) is the one
+  action A-7 (renumbered from A-4 at revision 3, A-003: publish credentials and
+  the `@tiphys` scope claim) is the one
   remaining owner item and is elevated access the orchestrator does not hold,
   which DR-0016 keeps owner-reserved. The
   M1-P2 init writes a fleet `package.json` whose kernel dependency pin is
@@ -4868,13 +4869,20 @@ hazard it is matched to.
   blueprint section 3 (npm spine, pin is the upgrade) and section 13 (M3 exit
   test).
 - conflicts-with: none remaining (last M3 phase).
-- blocked-by: M3-P9 merged; owner action A-4 (publish credentials and the
-  `@tiphys` scope claim), which is elevated access the orchestrator does not
+- blocked-by: M3-P9 merged; **owner action A-7, renumbered from A-4 at revision
+  3 (A-003; the act is "provide npmjs publish credentials and claim the
+  `@tiphys` scope", named here as well as numbered so a stale id is still
+  readable)**, which is elevated access the orchestrator does not
   hold. **DR-0008 is DECIDED (2026-08-05) and is no longer a blocker.**
-  **Owner action A-3 is REMOVED at revision 2**: DR-0015 states in terms that
-  the M3 plan's owner action A-3, "approve the exit run's pull request", is
-  removed as an owner action, and revision 1 carried it anyway. Section 4 stage
-  E2 is rewritten to match; the mechanism is kept and the signatory changes.
+  **The exit-run approval action was REMOVED at revision 2**: DR-0015 states in
+  terms that "approve the exit run's pull request" is not an owner action, and
+  revision 1 carried it anyway. Section 4 stage E2 is rewritten to match; the
+  mechanism is kept and the signatory changes. **Revision 3 withdraws revision
+  2's further claim that the id `A-3` was thereby retired**: `A-3` in the shared
+  `A-n` namespace is M2's outstanding scoped-implementer-token action and is the
+  literal string `implementer-token-present-owner-action-a-3` inside
+  `gates.manifest.json` on `main`, so this plan never held it and cannot retire
+  it. See section 7.
 - **HISTORICAL, superseded 2026-08-05**: fallback if DR-0008 is still open at dispatch (M3R-008). DR-0008 was decided
   on 2026-08-05 (public npmjs under `@tiphys`), so this split never became
   operative and is kept only as the record of what was planned against the risk.
@@ -5516,11 +5524,17 @@ D-19, which remain in force unchanged.
 - D-M3-19 (supersedes any reading of section 1.4 convention 5 as absolute, per
   decided DR-0011): M3 phases declare `parallelizable` individually. Only
   M3-P7 beside M3-P8 can claim it, and only after DR-0011's recorded pairwise
-  disjointness check at dispatch. The reason so few qualify is not caution: nine
-  of the ten phases edit `src/cli.ts` or `src/validate.ts`, or read an artifact
-  an earlier phase creates, and DR-0011's first condition cancels a parallel
-  start on any overlap. Declaring more would be declaring something the file
-  lists contradict.
+  disjointness check at dispatch. The reason so few qualify is not caution:
+  **SEVEN** of the ten phases edit `src/cli.ts` or `src/validate.ts`
+  (recomputed at revision 3; revision 2's "nine" was not derived from the lists
+  it cited, see section 2.5), and the remaining three read an artifact an
+  earlier phase creates, so every pair is constrained by file overlap or by
+  dependency and DR-0011's first condition cancels a parallel start on any
+  overlap. Declaring more would be declaring something the file lists
+  contradict. **The pair itself is corrected at revision 3**: M3-P8's
+  `blocked-by` named M3-P7 while its grounding consumed only M3-P6, so the
+  P7-P8 link is a merge-order constraint and not a consumption, and the real
+  question is P6 beside P7 beside P8, answered in section 2.5.
 - D-M3-20: M2's schema documents move from `src/gates/schemas/` to the canonical
   `schemas/` in M3-P1, which is the choice the M2 plan's boundary item 4 leaves
   to M3. Reason: `CLAUDE.md` reserves the root `schemas/` for exactly these
@@ -5646,10 +5660,32 @@ DR-0016 requires in exchange.
   prevents was confirmed SIX times across four M1-P6 rounds: `exit 1` changed to
   `exit 0`, two placements of `|| true`, a step-level `if: false`, a quoted YAML
   key the whitelist regex could not see, and the guarded step moved into a job
-  the fan-in does not need. M1-P6's tracked low CR-760 is that shape still live
-  in the `gates` fan-in's own script, in the file M3 edits five times. **Why
-  decided rather than raised**: the alternative is cheaper tests that are known
-  not to work, which is not a comparable option.
+  the fan-in does not need. **Two corrections and one addition at revision 3,
+  under the same decision number because the DECISION is unchanged and only its
+  world model was wrong (no decision id is reused or renumbered in this
+  revision).**
+  (a) **The sixth defang cannot occur and is replaced.** DR-0017 (owner,
+  2026-08-06) collapsed CI to ONE job named `gates` with no matrix and no
+  fan-in, so "the guarded step moved into a job the fan-in does not need" names
+  a state that does not exist, and a criterion written against it would be
+  green and worthless, which is the red-witness failure this decision exists to
+  prevent. The sixth member is now: an `if:` condition narrowed so the step
+  runs on only one CI event. CR-760's INSTANCE (the fan-in's own script) is
+  likewise gone; its MECHANISM is not, because the single job still carries
+  several `run:` blocks whose behaviour a text assertion cannot see.
+  (b) **A standing constraint on the file itself.** DR-0004's required status
+  context is the literal string `gates`, and a job named `gates` with no matrix
+  publishes exactly that. Any M3 phase that adds a job or a matrix renames the
+  context to something else and silently detaches branch protection. No M3
+  phase may do either, and the five phases' files-to-touch entries repeat it.
+  (c) **The EVENT ARM is part of the behaviour (T-009).** The workflow forks on
+  `github.event_name` and the two arms run different bundles, so a criterion
+  that asserts a check is wired must also assert which arm it runs under, and
+  where behaviour forks on the event, BOTH arms need a witness. D-M3-34 routes
+  M3's checks into `gate-registry.yaml` with a required `events[]` field, which
+  discharges the first half by construction.
+  **Why decided rather than raised**: the alternative is cheaper tests that are
+  known not to work, which is not a comparable option.
 - D-M3-29 (the charter RESERVES release verification): the charter schema
   declares a required `release-verification` field admitting exactly
   `{mode: none, reason}` and `{mode: reserved, note}`, with
@@ -5724,6 +5760,73 @@ DR-0016 requires in exchange.
   otherwise**: a declared hazard class can be wrong or shallow, and nothing
   checks that. It makes the second contract DERIVABLE rather than improvised,
   which is what T-007 asks for; risk 2 owns the residue.
+- **D-M3-33 (NEW at revision 3): the ten phase declarations are authored by the
+  orchestrator and merged to `main` in one pull request before the first M3
+  branch is created.** The M2-P4 scope auditor reads
+  `delivery/plan/phase-declarations/<phase>.json` out of the MERGE BASE, so a
+  declaration absent from `main` when the branch forks cannot govern that
+  branch, and every M3 branch matches the gate's `branch-matches` precondition
+  so scope runs on every M3 pull request. Revision 2 assigned this to nobody and
+  M3-P1's first pull request would have discovered it. **Why the orchestrator
+  and not the phase**: a phase that could author the document governing its own
+  audit could widen its own scope, and the merge-base read is the only thing
+  preventing that. **Why one pull request and not ten**: the review that matters
+  is whether every declaration matches the plan section it projects, which is a
+  comparison over all ten at once, and ten merge trains for one authoring act is
+  cost with no property behind it. **Why decided rather than raised**: it is an
+  operational prerequisite with one workable shape, not a choice between
+  comparable options (DR-0016).
+- **D-M3-34 (NEW at revision 3): every M3 check enters `gate-registry.yaml`
+  with a required `events[]` field, rather than being wired as a raw workflow
+  step.** Section 2.2a carries the argument in full. In short: M3-P2 promotes
+  the registry to "the single source consumed by CI and briefs" (R-094), and
+  revision 2 then added five of M3's own checks as direct workflow steps, which
+  falsifies that property on the day M3-P2 merges, leaves those five checks
+  outside the exit test's central gate-coverage assertion at E1.6, and leaves
+  their event applicability unstated, which is T-009 one level down. Registering
+  them also gives each one M2-C-2 and M2-C-3 for free, because a registered
+  check writes its result through `makeGateResult` and a check that examined
+  nothing becomes `error` with `vacuous: true` instead of exiting 0. **The
+  constraint this respects**: M2 deliberately made the exit harness the SINGLE
+  caller of `gates run` so exactly one `summary.json` is produced per job, so
+  registration is the only way to add a check to the bundle without breaking
+  that. **What stays at workflow level**: M3-P10's release wiring, because it
+  runs on a tag event the gate bundle never sees; any other exception must
+  state its reason in the phase's step list and declare its event arm. **Why
+  decided rather than raised**: the alternative contradicts a requirement row
+  this milestone is delivering.
+- **D-M3-35 (NEW at revision 3): every hazard-class item names the criterion
+  that reddens against it, or a recorded reason none can.** Section 2.6 carries
+  the rule, the three admissible reasons, and the per-phase maps. This converts
+  `hazard-classes[]` from documentation into a checked obligation, which is what
+  T-007 asked for and what D-M3-32 declared without enforcing. It reaches the
+  kernel through the plan schema: each item is `{id, statement, addressed-by}`
+  with `addressed-by` required, and Kind B check
+  `plan-hazard-classes-addressed-by-resolves` (M3-P1 criterion 5f) resolves a
+  criterion-id `addressed-by` into the same phase's `acceptance[]`. **The
+  measured reason**: M3-P2's hazard class named M2-C-2, the constraint the whole
+  of M2's gate contract exists to enforce, and `grep -in units` over all 4905
+  lines of revision 2 hit only the hazard prose, so the registry promotion could
+  have dropped M2's central safety property and passed every criterion the phase
+  declared. **What it does not buy**: a criterion named in an `addressed-by` can
+  still be weaker than the hazard it is matched to. Three maps say so in their
+  own rows (M3-P3's C-2 grep, M3-P8's `tuition-target-exists`, M3-P9's
+  anti-duplication check), which is the honesty the rule is worth.
+- **D-M3-36 (NEW at revision 3): a gate result is evidence only for the
+  configuration that produced it, and M3's artifacts say so.** T-009's mechanism
+  lands in three places. The exit test names the EVENT and the head sha and
+  requires the run observed to completion (E0.1, E3.1, E3.1b). `AGENTS.md`
+  carries `merge-is-not-complete-until` and `gate-result-is-scoped-to-its-run`
+  as clauses with M3-P9 criterion 5b behind them. And D-M3-28 requires a wired
+  check to declare its event arm, with both arms witnessed where behaviour
+  forks. **Why this is a decision rather than a criterion**: T-009 is one day
+  old and postdates revision 2 entirely, so the plan had no position at all, and
+  the placement question (exit test only, versus exit test plus `AGENTS.md` plus
+  the CI-wiring rule) is the kind a later reader will want the reasoning for.
+  The placement is all three because the failure recurred at all three levels in
+  the incident: the orchestrator read the wrong run, the merge procedure had no
+  clause requiring the right one, and the workflow forked on an event nobody had
+  written down.
 
 ## 6. Open questions
 
@@ -5746,7 +5849,8 @@ free-floating list item. The open questions of this plan are exactly:
    which the reviewer verified and this plan re-verified by search. That
    verification is still true and is why the decision arriving when it did cost
    nothing. What remains open on this subject is not a decision but owner action
-   A-4, the publish credential and the `@tiphys` scope claim, which is elevated
+   A-7 (renumbered from A-4 at revision 3, A-003), the publish credential and
+   the `@tiphys` scope claim, which is elevated
    access the orchestrator does not hold and which DR-0016 keeps owner-reserved.
 2. DR-0010 (harness-native orchestration primitive): open, recorded as due at
    M4. Its question text explicitly includes an M3 half ("should any
@@ -5774,7 +5878,8 @@ free-floating list item. The open questions of this plan are exactly:
 
 There are no other open questions, and **no M3 phase is blocked on an owner
 DECISION** (revision 2, verified by reading every `blocked-by` field in section
-3). The one owner item remaining is A-4, which is an ACT requiring elevated
+3). The one owner item remaining is A-7 (renumbered from A-4 at revision 3,
+A-003), which is an ACT requiring elevated
 access rather than a choice, and it blocks M3-P10 only. Under DR-0016 that
 distinction matters: an act the agent cannot perform is owner-reserved by
 construction, while a choice with a defensible recommendation is the agent's.
@@ -5783,14 +5888,18 @@ construction, while a choice with a defensible recommendation is the agent's.
 
 | DR | Question | Status | Blocks |
 |---|---|---|---|
-| DR-0008 | Release registry and package naming (SC-012, SC-006) | **DECIDED 2026-08-05: public npmjs under `@tiphys`, packages `@tiphys/kernel` and `@tiphys/claude-code-plugin`.** Revision 1's "open, deferred, overdue" is superseded | nothing. M3-P10's remaining blocker is owner ACTION A-4, not this record |
+| DR-0008 | Release registry and package naming (SC-012, SC-006) | **DECIDED 2026-08-05: public npmjs under `@tiphys`, packages `@tiphys/kernel` and `@tiphys/claude-code-plugin`.** Revision 1's "open, deferred, overdue" is superseded | nothing. M3-P10's remaining blocker is owner ACTION A-7 (renumbered from A-4 at revision 3, A-003), not this record |
 | DR-0010 | Does any M3 judgment fan-out target the harness-native primitive | open, due at M4; the M3 half falls due at M3-P3 dispatch | M3-P3 only in the sense that a yes changes it; a no needs no work, and no is this plan's recorded answer |
 | DR-0013 | How is JSON Schema validation implemented in the kernel | DECIDED 2026-08-05: Ajv 8.20.0 exact, Draft 2020-12, strict; `yaml` 2.9.0 exact | discharged; M3-P1 unblocked and implements it |
 | DR-0014 | The shape of post-merge release verification | DECIDED IN PRINCIPLE 2026-08-05 (pluggable interface, kernel-shipped reference adapters); interface investigated, `delivery/verification/release-verification-interface.md` | nothing in M3. The charter field is RESERVED, not designed (D-M3-29) |
-| DR-0015 | Is the owner an approval step | DECIDED 2026-08-05: no, at milestone boundaries included; dual clean review is the signature | discharged; owner action A-3 REMOVED, section 4.2 rewritten |
+| DR-0015 | Is the owner an approval step | DECIDED 2026-08-05: no, at milestone boundaries included; dual clean review is the signature | discharged; the exit-run approval ACT is removed and section 4.2 is rewritten. **Revision 3**: the id `A-3` is NOT retired by that removal, because `A-3` belongs to M2's outstanding token action and is embedded in `gates.manifest.json`; see section 7 |
 | DR-0016 | When may an agent stop and ask the owner | DECIDED 2026-08-05: only genuine high-impact ties; recommendation-backed questions are the agent's | discharged; `escalation-bounds.on-exceeded` (M3-P3) and two `AGENTS.md` clauses (M3-P9) |
 
-**No M3 phase is blocked on an open owner decision at revision 2.**
+**No M3 phase is blocked on an open owner decision at revision 2, re-verified
+at revision 3 by reading all ten `blocked-by` fields again after the M3-P8
+correction. DR-0017 and DR-0018, both decided since revision 2, block nothing:
+they CORRECT things this plan asserted, which is section 1.7's business rather
+than this table's, and both are now cited.**
 
 ---
 
@@ -5873,26 +5982,86 @@ instructions that are false.
 
 ---
 
+### The `A-n` owner-action namespace (NEW at revision 3, A-003)
+
+**The problem, measured.** `CLAUDE.md`'s identifier-scheme registry lists
+`SC-`, `R-`, `FM-`, `PR-`/`EXT-F-`, `CR-`, `V-`/`U-`, `DR-`, `T-`, `C-` and
+`D-`, and does NOT list `A-`. Three live documents therefore allocated `A-n`
+independently and collided:
+
+```
+$ grep -o 'A-[0-9]' delivery/STATE.md | sort -u
+A-1  A-2  A-4  A-6
+$ grep -o 'A-[0-9]' delivery/plan/kernel-plan-m3.md | sort -u    # before this revision
+A-1  A-3  A-4  A-5
+$ git show origin/main:delivery/plan/kernel-plan-m2.md | grep -c 'A-3'
+(A-3 = provision the scoped implementer token, DR-0004 item 4, OUTSTANDING)
+$ git show origin/main:gates.manifest.json | python3 -c "
+import json,sys
+print([g['precondition']['id'] for g in json.load(sys.stdin)['gates'] if g['id']=='credential-token'])"
+['implementer-token-present-owner-action-a-3']
+```
+
+`A-4` meant the npm publish credential here and the deletion of thirty-five
+stale branches in `delivery/STATE.md`, which marks its own A-4 "NEW", the
+evidence that its author did not know the id was taken. `A-3` meant three
+things, one of them a literal string inside a MERGED, MACHINE-READ manifest on
+`main`. That last one is what makes this more than cosmetic: `A-3` is
+load-bearing inside a kernel artifact.
+
+**The allocator.** `delivery/STATE.md`'s owner-action table is the single
+allocator of `A-n`. It is the document `CLAUDE.md` designates as the one place
+that answers where the project stands right now, and it is what an orchestrator
+resuming cold reads first, so an id that means one thing there and another here
+is a wrong answer delivered to the reader most likely to act on it. This plan
+CITES ids and does not mint them; a new owner action is added to STATE.md's
+table and cited here by the number that table assigns.
+
+**Resolution, and the constraint on it.** The one id with a machine dependency
+KEEPS ITS NUMBER: M2's `A-3` (the scoped implementer token) is named inside
+`gates.manifest.json` on `main` and is not renamed here or anywhere. Ids in
+use elsewhere (`A-1`, `A-2`, `A-4`, `A-6` in STATE.md; `A-5` below) are left
+alone. This plan's own colliding allocation moves to a fresh id above all of
+them.
+
+**Orchestrator action, outside this plan and recorded here so it is not
+dropped**: add `A-nnn` to `CLAUDE.md`'s "Identifier schemes" list with
+`delivery/STATE.md` named as the allocator. That is an edit to a governing
+document and is not a plan edit.
+
 Owner actions (acts, not choices):
 
-- **A-3: REMOVED 2026-08-05 by DR-0015**, which names this plan's owner action
-  A-3, "approve the exit run's pull request", as removed, on the basis that the
-  owner is not an approval step anywhere in execution, milestone boundaries
-  included. Revision 1 carried it anyway; revision 2 removes it. The id is
-  retired rather than reused, per the identifier rule. Nothing replaces it as an
-  owner act: section 4.2 stage E2's authorization artifact is the dual
-  cross-model clean review of DR-0012's definition of clean, and the MECHANISM
-  is deliberately kept (the kernel stops, waits for an artifact it did not
-  produce, records it, and resumes from it), because DR-0015 records that as the
-  one place the exit test witnesses that property. What is genuinely lost is in
-  section 4.5 item 9 rather than hidden.
-- A-4, before M3-P10 dispatches: provide publish credentials for npmjs and claim
-  the `@tiphys` scope, which DR-0008 decided on 2026-08-05 along with the
-  package names `@tiphys/kernel` and `@tiphys/claude-code-plugin`. The
-  orchestrator has no such credential and will never assume one. **This is the
-  only remaining owner item on M3's critical path**, and under DR-0016 it is
-  owner-reserved by construction rather than by judgement: it is elevated access
-  the agent does not hold, not a choice with options.
+- **A-3 IS NOT THIS PLAN'S TO RETIRE, and revision 2's claim that it was is
+  withdrawn (A-003).** Revision 2 wrote that this plan's owner action A-3,
+  "approve the exit run's pull request", was removed by DR-0015 and that "the
+  id is retired rather than reused, per the identifier rule". The removal of the
+  ACT is correct and stands. The retirement of the ID is wrong: `A-3` in the
+  shared namespace belongs to M2's outstanding action, provisioning the scoped
+  implementer token under DR-0004 item 4, and it is the literal string
+  `implementer-token-present-owner-action-a-3` inside `gates.manifest.json` on
+  `main`. This plan never held that id and cannot retire it. What remains true
+  is the substance: nothing replaces the removed act, because section 4.2 stage
+  E2's authorization artifact is the dual cross-model clean review of DR-0012's
+  definition of clean, and the MECHANISM is deliberately kept (the kernel stops,
+  waits for an artifact it did not produce, records it, and resumes from it),
+  because DR-0015 records that as the one place the exit test witnesses that
+  property. What is genuinely lost is in section 4.5 item 9 rather than hidden.
+- **A-7 (was A-4 at revision 2; renumbered here, A-003), before M3-P10
+  dispatches: provide publish credentials for npmjs and claim the `@tiphys`
+  scope**, which DR-0008 decided on 2026-08-05 along with the package names
+  `@tiphys/kernel` and `@tiphys/claude-code-plugin`. The orchestrator has no
+  such credential and will never assume one. **This is the only remaining owner
+  item on M3's critical path**, and under DR-0016 it is owner-reserved by
+  construction rather than by judgement: it is elevated access the agent does
+  not hold, not a choice with options. **Why this one moved rather than
+  STATE.md's A-4**: A-7 is cited only inside this plan, which is DRAFT and not
+  yet owner-approved, so moving it costs nothing outside this document, whereas
+  STATE.md's A-4 is a live queued act. The number 7 is the lowest free id above
+  every id any of the three documents has issued (A-1 to A-6). **M3-P10's
+  `blocked-by` now cites the ACT as well as the id**, so a reader who
+  encounters a stale number still knows what is owed. Registering it: the
+  orchestrator adds the row to `delivery/STATE.md`'s owner-action table as A-7
+  in the same pass that adds `A-nnn` to `CLAUDE.md`.
 - A-5: **DONE 2026-08-05, superseding revision 1's standing item.** DR-0004
   items 2 and 3 (branch protection) are executed. `delivery/STATE.md` records
   the ruleset as active and witnessed refusing a merge whose branch was behind
