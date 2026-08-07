@@ -73,7 +73,7 @@ Ten manifest entries. Each phase's registration step is bound to this table; a r
 | id | Built by | unitLabel | applicability | precondition kind | PR bundle | main bundle |
 |---|---|---|---|---|---|---|
 | `manifest-self-check` | M2-P1 | schema documents validated | required | none | green | green |
-| `red-witness` | M2-P2 | witnesses evaluated | required | `diff-touches` src/, bin/ | green | not run (needs `--base`) |
+| `red-witness` | M2-P2 | witnesses evaluated | required | `diff-touches` src/, bin/ | not-applicable (precondition unmet on the exit head, DR-0018) | not run (needs `--base`) |
 | `suite` | M2-P3 | tests reported | required | none | green | green |
 | `scope` | M2-P4 | changed paths audited | required | `branch-matches` phase pattern, plus `--phase` | green | not run (needs `--phase`) |
 | `citations` | M2-P5 | citations resolved | required | `diff-touches` configured documents | green | not run (needs `--base`) |
@@ -84,6 +84,8 @@ Ten manifest entries. Each phase's registration step is bound to this table; a r
 | `credential-token` | M2-P8 | tokens probed | conditional | env `TIPHYS_IMPLEMENTER_TOKEN` present | green with owner action A-3, else not-applicable | same |
 
 **The two `not-applicable` rows are STRUCTURAL, not local (revision 2, `delivery/verification/release-verification-interface.md` observation O-3).** Revision 1 left a reader free to conclude that `deploy` and `migrations` report not-applicable because THIS repository has no deploy target, and that some other repository's PR bundle would exercise them. It would not. Release verification runs after a merge, against a commit that exists only once the merge has happened, so its appearance in any pre-merge bundle can only ever be `not-applicable`, on every repository, forever. The entries stay in the manifest for uniform reporting; the real call site is the orchestrator's post-merge step with the merged sha as an argument, which M2-D-11 defers to M4. **No M2 bundle exercises these two gates in anger, and section 4's not-proven list says so.**
+
+**The `red-witness` PR-bundle cell reads `not-applicable`, not `green` (DR-0018).** The exit test runs on M2-P9's own pull-request head, which touches no `src/` or `bin/`, so `red-witness`'s `diff-touches src/, bin/` precondition is correctly evaluated and unmet: the gate reports `not-applicable`, and the exit phase cannot by its own nature make a src-scoped gate green on its own diff. Revision as written (`green`) was unsatisfiable by the exit test, a plan contradiction the exit test surfaced. DR-0018 amends the expectation: on the exit head a diff-scoped gate whose trigger the head does not touch is expected `not-applicable` with a recorded, evaluated precondition (its id and `met:false` reason), NOT `green`. `scope` and `citations` stay `green` because the exit head does carry a phase diff and does touch a citation-required document; only `red-witness` is not-applicable there. DR-0018 additionally requires the exit bundle to carry per-phase GREEN-path evidence for each diff-scoped gate (`red-witness`, `scope`, `citations`), demonstrated against a state that genuinely triggers it, so the bundle proves the gates WORK and does not merely accept their not-applicable report. A `red-witness` that is `error`, `red`, vacuous, or `not-applicable` with no evaluated precondition STILL fails the exit harness.
 
 Two file-declaration rules follow from building a scope auditor in this milestone:
 
