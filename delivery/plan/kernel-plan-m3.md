@@ -4926,8 +4926,16 @@ kernel's own full mode drives one change, under current-process supervision.
 
 ### 4.0 Preconditions (stage E0, all recorded before anything runs)
 
-E0.1. M3-P1 through M3-P10's non-exit steps are merged and CI is green on
-`main`; `node scripts/check-clause-map.mjs` exits 0 over all 74 rows.
+E0.1. M3-P1 through M3-P10's non-exit steps are merged, and for EACH of those
+merges the `push`-event `gates` run whose head sha is the resulting `main` tip
+was observed to completion and was green, with run id, event, head sha and
+conclusion recorded (T-009; "CI is green on `main`", which is what revision 2
+wrote here, is not a complete sentence and is corrected at revision 3 in the
+same terms as E3.1). The clause-map check exits 0 over all 74 rows of Appendix
+A, with the row inventory taken from Appendix A and the coverage table from
+`delivery/requirements/clause-map.json` as two separate sources (section 2.2),
+so "exits 0 over all 74 rows" is a statement about the inventory and not about
+whatever the map happened to contain.
 
 E0.2. The supervision rules for the exception exist as a committed file,
 `delivery/evidence/m3-exit-test/supervision-rules.md`, written before the run
@@ -4964,17 +4972,73 @@ pass is a measurement rather than an absence of failure because the same harness
 was run against a known-bad state and exited 1 at step C2, and that control is
 in `delivery/verification/m1-exit-test-evidence.md`. Section 4 as revision 1
 wrote it required no such thing, which means a stage that silently did nothing
-would have been indistinguishable from a stage that passed. The control for this
-exit test is: re-run the E1 sequence against a deliberately broken artifact set
-(one shipped schema keyword removed, so an instance the run validated should
-now be accepted where it was rejected) and record that the run FAILS, naming the
-stage at which it fails. A control that passes is an exit-test failure, because
-it means the stages are not measuring what they claim. The control's definition
-and its expected failure stage are written into
-`delivery/evidence/m3-exit-test/supervision-rules.md` BEFORE stage E1 begins,
-and the file's commit precedes the first E1 evidence record, which is the
-checkable form of "not chosen after seeing which stages turned out to be weak".
-The commit ordering is asserted from the bundle rather than promised.
+would have been indistinguishable from a stage that passed. **THREE controls, not one, and revision 3 is where that changes.** Revision 2
+defined a single control (one shipped schema keyword removed) and then claimed
+of it, in the plural and unqualified, that a control which passes means "the
+stages are not measuring what they claim". Stage E1 spans roughly fifteen
+assurance mechanisms of at least four structurally different KINDS that this
+plan itself insists are different: Kind A schema validation (E1.1, E1.4), Kind
+B cross-document derived checks (E1.7), a real external-program gate (the M2
+gate runner and the red-witness harness at E1.6), and a prose-and-judgment
+mechanism (the two review CONTRACTS at E1.7, which M3-P6, M3-P7 and M3-P9 spend
+most of their machinery on). A schema-keyword control exercises the FIRST KIND
+ONLY. Standing one witness in for a heterogeneous plural claim is the exact
+"one witness is not a class" failure section 2.3 rule 6 polices in every other
+artifact this milestone ships, applied to the exit test itself.
+
+So the exit test carries three controls, chosen so that each reaches a
+different kind, and each names the stage at which the run must fail:
+
+- **C1, Kind A (schema validation).** Re-run the E1 sequence with ONE shipped
+  schema keyword removed, so an instance the run validated is now accepted
+  where it was rejected. Expected failure stage: **E1.1**, the charter
+  validation, whose own negative half (a charter with `escalation-contract`
+  removed) must stop exiting nonzero.
+- **C2, Kind B (a cross-document derived check actually running).** Re-run the
+  E1 sequence with one Kind B check DEREGISTERED from `src/checks.ts`, namely
+  `verdict-criteria-complete`, and with a verdict fixture whose `criteria[]`
+  omits one of the phase's acceptance ids. Expected failure stage: **E1.7**,
+  where `tiphys validate --type verdict --context <plan dir>` must stop exiting
+  0 on the deficient verdict. This reaches what C1 cannot: whether the derived
+  checks are INVOKED with `--context` during the real run rather than skipped.
+- **C3, the review-contract distinctness mechanism (prose and judgment).**
+  Re-run E1.7 dispatching BOTH review contracts with
+  `--review-contract criteria`, everything else unchanged. Expected failure
+  stage: **E1.7**, where `node scripts/check-dual-review.mjs` must exit nonzero
+  naming the shared `review-contract` value. This reaches the one property
+  T-007 exists for, that two DIFFERENT questions were actually asked, and it is
+  the property no schema-keyword control can see. It also catches a defect the
+  revision-2 control set was blind to: a `check-dual-review.mjs` invocation
+  whose exit code is captured into the bundle but is not gating anything (a
+  `|| true`, or evidence recorded from a run made after the fact rather than
+  from the one that produced the merge), because under C3 the script MUST turn
+  the run red and a non-gating invocation will not.
+
+**A control that PASSES is an exit-test failure**, per control, at its own
+declared stage. Passing at the WRONG stage is also a failure, because a control
+that fails somewhere else has not exercised the mechanism it was defined for.
+
+**What the three controls still do NOT witness, stated here rather than left to
+be inferred, because a control set with an unstated boundary reads as
+complete.** No control covers: E1.2's fleet and lock behaviour (M1 machinery,
+witnessed by the M1 exit test and not re-witnessed here); E1.3's
+stage-list-to-evidence mapping, whose failure is a missing record rather than a
+wrong one; E1.5's "findings were applied to the plan", which is witnessed as a
+state change in the plan file and has no control; E1.6's mechanism-index
+consultation, which is a work-history claim and not a machine check; E1.8's
+fix-round-verification stage, which is not-applicable on an APPROVE run and so
+may not execute at all; and the release stages E4.1 to E4.3, which run once and
+irreversibly. E1.9's and E1.10's validation are the same Kind A mechanism C1
+stands for and are covered BY KIND rather than by instance, which is a weaker
+statement than being covered and is written as the weaker statement. Section
+4.5 repeats this list, so the bound travels with the bundle rather than only
+with the plan.
+
+The three controls' definitions and their expected failure stages are written
+into `delivery/evidence/m3-exit-test/supervision-rules.md` BEFORE stage E1
+begins, and the file's commit precedes the first E1 evidence record, which is
+the checkable form of "not chosen after seeing which stages turned out to be
+weak". The commit ordering is asserted from the bundle rather than promised.
 
 ### 4.1 Stage E1: full-mode delivery of the subject change (automated witnesses)
 
@@ -5012,9 +5076,28 @@ E1.6. Implementation: `tiphys spawn` runs an implementer composed from
 the `mechanism-lookup` clause, which mechanisms it used and what the index said
 about each, including "no entry" where that is the answer (T-005, M3R-003); the
 change lands with its tests; the M2 gate runner over
-`gate-registry.yaml --mode full` exits 0 with no gate green whose precondition is
-unmet; the M2-P2 red-witness harness emits its evidence file for the new
-behavior, and that file is in the bundle.
+`gate-registry.yaml --mode full` exits 0 with no gate green whose precondition
+is unmet. **The expected-status table is DR-0018's, corrected at revision 3**:
+a required DIFF-SCOPED gate whose trigger the exit head does not touch is
+expected `not-applicable` with its precondition id and evaluation recorded, not
+`green`, and the runner treats an unexplained required not-applicable as a
+failure (exit 20). So the assertion is that every non-diff-scoped required gate
+is green with `units` greater than zero, every diff-scoped gate is green or
+not-applicable with a recorded reason, zero `error`, zero `vacuous`, and
+recomputed counts equal `summary.json`. **The designated subject change touches
+`src/commands/doctor.ts`, so `red-witness` IS triggered on this head and must
+be green rather than not-applicable**, stated because a not-applicable there
+would be the vacuous pass this exit test exists to refuse, and because the
+fallback subject rule of E0.4 could designate a change that does not touch
+`src/`, in which case the designation record must say so and E1.6 expects
+not-applicable-with-a-reason instead. The M2-P2 red-witness harness's DURABLE
+SPEC for the new behavior (`witness/<behavior-id>.json`, with at least one
+`dangerousStates[]` member) and the run's `witness-records.json` are both in
+the bundle; **corrected at revision 3 from "its evidence file", singular, which
+names only the second and would be satisfied by a run with no committed spec
+behind it.** M3's own registered checks (section 2.2a) run inside this same
+bundle, which is what makes this stage a claim about the milestone's own checks
+and not only about M2's.
 
 E1.7. Clean-room review: an agent composed from `roles/clean-room-reviewer.md`
 with `checklists/clean-room.yaml` resolved through
@@ -5093,8 +5176,47 @@ obligation, not a click, and this stage does not wait on the owner for it.
 
 ### 4.3 Stage E3: post-merge witnesses
 
-E3.1. The squash commit is on `main`; CI is green on `main`; the merged SHA is
-recorded.
+E3.1. **The post-merge run, named by EVENT and by HEAD SHA (rewritten at
+revision 3 under T-009, which postdates revision 2).** Revision 2 read: "The
+squash commit is on `main`; CI is green on `main`; the merged SHA is recorded."
+That is the exact incomplete sentence T-009 was written to ban. The `gates`
+workflow fires on two events and runs DIFFERENT bundles per event
+(`pull_request` runs `--bundle pr` with `--base`, `--head` and `--phase`; a
+push to `main` runs `--bundle main` with none of the three), so "CI is green"
+without an event name and a head sha is not a claim about anything. The old
+wording is satisfiable by looking at the already-green `pull_request` check on
+the merged branch, which is precisely the substitution that left `main` red for
+four hours and twenty-one minutes across five consecutive runs while four more
+pull requests were merged on top of it, and which the owner surfaced rather
+than the process.
+
+The criterion is:
+
+1. The squash commit is on `main`, and its sha is recorded.
+2. The `gates` workflow run whose EVENT is `push` and whose HEAD SHA equals
+   that sha is identified. The two shas are compared as strings in the
+   evidence record, not asserted to be the same.
+3. That run is OBSERVED TO COMPLETION and its conclusion is `success`. Observed
+   with the same watchdog discipline T-008 requires: a run still in progress is
+   not a green run, and an absent conclusion is not a green conclusion.
+4. The run id, the event, the head sha and the conclusion are written into the
+   bundle as one evidence record.
+5. **A `pull_request`-event check on the source branch does NOT discharge this,
+   stated as a prohibition rather than left to inference**, because the failure
+   mode is that the two are both real green runs on related shas and the wrong
+   one is read.
+
+If the run is red, the milestone does not close. The phase is not complete at
+merge; it is complete when the run whose head sha is the new tip has finished
+green.
+
+E3.1b. **Both arms of any behaviour that forks on the CI event have a witness
+(T-009's second rule, new at revision 3).** M3 adds checks to the gate registry
+with a declared `events[]` (section 2.2a), and for any check whose `events[]`
+names only one arm, the bundle records WHY that arm and records the observed
+result on the other arm being not-run rather than green. One witnessed arm and
+one unwitnessed arm is the shape that broke here, and the unwitnessed one is
+the one that broke.
 
 E3.2. `tiphys teardown --task <id>` exits 0, the worktree is removed, and the
 task meta status is `closed`. `tiphys lock release` exits 0.
@@ -5135,15 +5257,30 @@ installed tree; the license gate runs before publication.
 external authorization it does not produce, sit inert, and resume from the
 artifact (stage E2, the property DR-0015 kept when it changed the signatory).
 The exit test measures rather than merely passes, because stage E0.5's
-falsification control fails and names its failure stage. And the two review
+falsification controls fail and each names its failure stage. And the two review
 contracts of `full` mode were both run and both recorded, which is T-007's
 property witnessed once rather than asserted.
+**Revision 3 narrows the second of those three and adds one.** The
+measures-rather-than-passes claim is now bounded: THREE controls run, reaching
+Kind A schema validation, Kind B derived-check invocation, and review-contract
+distinctness, and stage E0.5 lists by name the E1 stages no control reaches
+(E1.2, E1.3, E1.5, E1.6's mechanism-index claim, E1.8, and the release stages),
+with E1.9 and E1.10 covered by KIND rather than by instance. Revision 2's
+version of this sentence stood one control in for "the stages", plural and
+unqualified, which is the shape section 2.3 rule 6 forbids. The addition: the
+post-merge state of `main` is witnessed on the run that actually governs it,
+the `push`-event run whose head sha is the new tip, observed to completion
+(E3.1, T-009), rather than on a `pull_request` check that is green about a
+different configuration.
 
 Does not prove, and these are recorded rather than assumed away:
 
 1. Unsupervised operation. The run is supervised by the current process by
    design (SC-013). Interventions are recorded, which bounds the doubt; it does
-   not remove it.
+   not remove it. **And the bound is only over interventions somebody noticed**:
+   an intervention that filled a gap without either party noticing is not
+   recorded, and no check over the record can see it (M3-P10's hazard class
+   names this, and section 2.6 reason 1 is why no criterion covers it).
 2. Judgment quality. Every criterion above checks that a role's output validates
    and that a stage ran. None of them checks that the plan was good, the review
    was searching, or the probes were the right probes. That is the standing
@@ -5184,7 +5321,21 @@ Does not prove, and these are recorded rather than assumed away:
    exist and were followed once, never that they survive the state in which they
    are needed. That is the standing limit of a layer-2 milestone and it is why
    M4's pilot is the real test of this specific property, not only of judgment.
-11. **The claim classes the record contract newly covers (NEW at revision 2,
+11b. **What the falsification controls do not reach (NEW at revision 3, and
+   repeated here from stage E0.5 so the bound travels with the bundle).** Three
+   controls run and each names its expected failure stage, which is three more
+   than a run with none and two more than revision 2 defined. They do not
+   witness E1.2's fleet and lock behaviour, E1.3's stage-to-evidence mapping,
+   E1.5's application of findings to the plan, E1.6's mechanism-index
+   consultation, E1.8's fix-round-verification stage (which is not-applicable
+   on an APPROVE run and may not execute at all), or the release stages E4.1 to
+   E4.3, which run once and irreversibly. E1.9 and E1.10 are the same Kind A
+   mechanism control C1 stands for and are covered BY KIND rather than by
+   instance, which is weaker than being covered and is written as the weaker
+   statement. An exit test whose control set has an unstated boundary reads as
+   complete, and that is the vacuous-pass shape one level up from the one
+   section 2.3 exists to prevent.
+12. **The claim classes the record contract newly covers (NEW at revision 2,
    T-006).** M3-P4 makes an impossibility, coverage or remedy claim
    unrepresentable without an executed construction, and M3-P7 adds probes that
    hunt them. The exit run produces one work history and two verdicts. Whether
