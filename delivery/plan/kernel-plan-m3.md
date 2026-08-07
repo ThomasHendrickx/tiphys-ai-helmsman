@@ -2315,6 +2315,25 @@ regression contract, it is a new contract wearing the old one's name.
   whose completion could be detected by process liveness, which is C-2 and
   which T-008 measured at nine hours eleven minutes on this project's own
   orchestrator.
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+**This phase's map came out fully covered, which is the result the rule wanted
+and is worth stating rather than passing over: every one of the seven items
+already had a criterion at revision 2. The rule found nothing to add here. It
+found something to add at M3-P2, M3-P5, M3-P6 and M3-P9, and a map that is
+uniformly full teaches nothing about whether the rule was applied.** One
+residue is named below because the criterion covering it is weaker than the
+hazard it is matched to.
+
+| Hazard item | Reddens against |
+|---|---|
+| a mode omitting a stage `full` contains with an empty `skips[]` | criterion 3(a), Kind B check `mode-no-undeclared-downgrade`, both directions with the check deregistered and restored |
+| `adversarial-plan-review` placed after `implement` in a pipeline containing both | criterion 3(b), Kind B check `mode-stage-order`, both directions |
+| a gate-set reference that resolves to nothing because the cross-document check was never run | criterion 3(d), Kind B check `mode-gate-sets-resolve` run with `--context`, plus M3-P1 criterion 4c's standing rule that the same check invoked WITHOUT `--context` prints `SKIPPED <check-id> no context` and exits nonzero, so the cross-document rule cannot pass by not being run |
+| `escalation-bounds` carrying DR-0012's numbers while recording the SUPERSEDED response | criterion 4c, the required `on-exceeded` field with its two-item enum, both directions, plus the registered test asserting `full`'s value is `fresh-implementer-and-third-contract` and not `escalate-to-owner` |
+| `merge-authority: delegated-under-conditions` with conditions that do not match DR-0012's | criterion 4b, both directions via `if`/`then` on the empty `conditions[]` and the missing `granted-by` |
+| a charter mode enum that drifts from the mode ids the first time a mode is added | criterion 4, Kind B check `charter-mode-enum-matches-modes`, whose dangerous state is correctly the ADDED-MODE case rather than the steady state |
+| a stage whose completion could be detected by process liveness (C-2) | criterion 5, a registered grep over `assurance-modes.yaml` and its schema for `pid`, `kill`, `daemon`, `background`. **Residue, named at revision 3 because matching a hazard to a criterion is worth nothing if the criterion is weaker than the hazard**: this is a fixed-token presence check, so a stage whose completion is liveness-detected WITHOUT using any of the four words passes it. The four tokens are the vocabulary C-2 and C-3 are written in, which is why they are the right first line, and the second line is the hazard review contract, which is prose-reading rather than grep. M3-P9 criterion 5 has the same shape and the same residue for `AGENTS.md`. Neither is upgraded here, because the upgrade is a semantic check over prose and inventing one is section 2.6 reason 2's shape |
 - steps:
   1. Create `schemas/assurance-modes.schema.json`: a mode is
      `{id, pipeline[], gate-sets[], merge-authority, skips[], declared-by}`
@@ -2589,6 +2608,22 @@ regression contract, it is a new contract wearing the old one's name.
   and semantically empty; and, worst because it is invisible, a schema that
   makes an honest record MORE expensive to write than a dishonest one, which is
   how a contract gets routed around rather than broken.
+- hazard class to criterion (section 2.6, NEW at revision 3). **Criterion
+  lettering was 2, 2c, 2d, 2b at revision 2 and is reordered to 2, 2b, 2c, 2d
+  here (A-014), because `verdict-criteria-complete` compares a verdict's
+  hand-transcribed `criteria[]` against this list mechanically and an
+  out-of-order id is exactly what such a transcription drops:**
+
+| Hazard item | Reddens against |
+|---|---|
+| a required field satisfied by an EMPTY STRING, so `reason`, `not-covered` and `no-findings-statement` become ceremony | **criterion 2e, NEW at revision 3.** No criterion covered this at revision 2: every rejection fixture removes a field, and `required` is satisfied by `""`. The new criterion is below |
+| an arithmetic parity rule that adds up while a row is lost | criterion 2b(a), Kind B check `report-parity-arithmetic`, and criterion 2b(b) plus criterion 4 for the final-report direction, the second checked twice on purpose |
+| a claims section whose `kind` enum is OPEN, so an impossibility claim is filed as a note | criterion 2c(d), which requires `kind: note` to exit 1 naming the enum, with three structurally different members of the claim class witnessed at 2c(a), (b) and (c) |
+| a `fix-round.derivation` accepting a SUMMARY rather than the full output | criterion 2d(c) for the empty-or-absent case, and 2d(d), which requires a registered test asserting the shipped template's `derivation` carries real multi-line captured output rather than a one-line placeholder |
+| a gate-result `green` constructible without the wrapper's exit code because the coupling lives in a different object | criterion 2(a), Kind A `if`/`then` on the same object, both directions, with criterion 3 requiring the fixture to be a VERBATIM capture of the real M2 suite wrapper rather than an authored string |
+| an `honest-failures[]` entry structurally complete and semantically empty | criterion 2(c) for the missing `exposure-window`, plus **criterion 2e** for the empty-string case. The residual, that a non-empty `exposure-window` can still be meaningless, is section 2.6 reason 1 and is the hazard reviewer's, via M3-P7's `honest-failure-substance` probe |
+| a mechanism restated as the finding it came from | **NO SCHEMA CAN REACH THIS, section 2.6 reason 1**, and criterion 2d(a) already says so in terms rather than claiming otherwise. The instrument is M3-P7's `fix-round-mechanism-named` probe; risk 2 covers the residue. What the schema buys is that the round cannot be REPORTED without `not-covered` and a full `derivation.output`, which is 2d(b) and 2d(c) |
+| a schema that makes an honest record MORE EXPENSIVE to write than a dishonest one | **NO CRITERION CAN REACH THIS, section 2.6 reason 1, and it is the item the phase's own hazard paragraph calls the worst because it is invisible.** It is a property of the ratio between two authoring costs, not of any instance, so no fixture exhibits it. Two partial instruments are named rather than pretending to one whole: the phase's own step 4 requires the four shipped templates to be filled with REAL content from this repository's existing records rather than with placeholders, so the cost of an honest record is paid once by the plan and is visible; and M3-P7's clean-room checklist carries the `contract-avoidance` probe asking whether any record in the phase routed around a field rather than filling it. Neither is a test. Recorded here because an unrecorded uncheckable hazard reads as a checked one |
 - steps:
   1. Create `schemas/report.schema.json`. Required: `kind`, `role`, `task`,
      `verdict` where applicable, `findings[]` each with `id`, `severity`,
@@ -2749,6 +2784,17 @@ regression contract, it is a new contract wearing the old one's name.
      contains "always" and which carries no `counter-experiment` (T-003, an
      `if`/`then` over a `pattern` on the same object, so it is Kind A);
      (f) a finding with `source-pinned: true` and no `pinned-evidence` (T-004).
+  2b. Kind B DANGEROUS-instance rejections, each carrying `(check: <id>)` in the
+     message and each witnessed by deregistering and restoring the check
+     (section 2.3 rule 3): (a) a report whose `gate-results[0]` has
+     `wrapper-exit-code: 0` while `discovered` exceeds
+     `passed + failed + skipped + did-not-run`, the silently-dropped-tests case
+     R-048 exists for, check `report-parity-arithmetic`; (b) a final report whose
+     `input-findings[]` omits an id present in its own `inputs[]` list, check
+     `final-report-finding-parity` (R-089a's table has a hole). The second is
+     deliberately checked twice, here by the kernel's own validator and in
+     criterion 4 by the M2-P6 coverage checker, because the artifact should be
+     self-checking and the independent checker is the one the pipeline runs.
   2c. **Claims-section rejections, NEW at revision 2 (T-006), each Kind A and
      each witnessed by removing and restoring the guarding keyword.** (a) A
      `claims[0]` with `kind: impossibility` and no `executed-construction`
@@ -2783,17 +2829,27 @@ regression contract, it is a new contract wearing the old one's name.
      the schema buys is that the round cannot be REPORTED without the two
      fields whose absence is what made twelve of thirteen re-reviewed M1 fix
      rounds produce a new finding.
-  2b. Kind B DANGEROUS-instance rejections, each carrying `(check: <id>)` in the
-     message and each witnessed by deregistering and restoring the check
-     (section 2.3 rule 3): (a) a report whose `gate-results[0]` has
-     `wrapper-exit-code: 0` while `discovered` exceeds
-     `passed + failed + skipped + did-not-run`, the silently-dropped-tests case
-     R-048 exists for, check `report-parity-arithmetic`; (b) a final report whose
-     `input-findings[]` omits an id present in its own `inputs[]` list, check
-     `final-report-finding-parity` (R-089a's table has a hole). The second is
-     deliberately checked twice, here by the kernel's own validator and in
-     criterion 4 by the M2-P6 coverage checker, because the artifact should be
-     self-checking and the independent checker is the one the pipeline runs.
+  2e. **The empty-string satisfaction class, NEW at revision 3 (section 2.6;
+     the phase's own hazard class named it first and no criterion reached it).**
+     Every rejection fixture above removes a field, and `required` alone is
+     satisfied by `""`, so a record can carry `reason: ""`, `not-covered: ""`
+     and `no-findings-statement: ""` and validate. Every field whose VALUE is
+     the point rather than its presence carries `minLength: 1` and a
+     `pattern: "\\S"` so whitespace does not satisfy it either, and each is
+     witnessed both directions: the instance with `""` exits 1 naming the
+     pointer, the instance with real text exits 0, and the fixture is accepted
+     when `minLength` is removed and rejected when it is restored (Kind A,
+     section 2.3 rule 2). **Three structurally different members, exceeding
+     section 2.3 rule 6's two, chosen because the three differ in WHERE the
+     emptiness sits**: a top-level scalar (`no-findings-statement: ""`), a
+     scalar nested inside an array element
+     (`fix-round[0].not-covered: ""`), and a whitespace-only block scalar
+     (`honest-failures[0].exposure-window` set to a newline and two spaces),
+     which is the member `minLength` alone does not catch and is why the
+     `pattern` is required beside it. The field inventory this applies to is
+     written into the phase's work history as a list, because "every field
+     whose value is the point" is a judgment made once at authoring time and a
+     later reader cannot re-derive which fields were considered.
   3. The gate-results fixtures in criterion 2 use the real captured output of
      the M2 full-suite wrapper stored in `test/fixtures/`, and a registered test
      asserts the fixture is a verbatim capture (its recorded command and exit
@@ -2822,7 +2878,10 @@ regression contract, it is a new contract wearing the old one's name.
   `report-open-question-needs-no-construction`,
   `report-fix-round-requires-not-covered`,
   `report-fix-round-requires-full-derivation-output`,
-  `claims-definition-shared-with-work-history`.
+  `claims-definition-shared-with-work-history`,
+  and NEW at revision 3: `report-empty-string-does-not-satisfy-required`,
+  `report-whitespace-block-scalar-rejected`,
+  `work-history-not-covered-rejects-empty-string`.
 - suggested model tier: strongest. This is the contract that decides whether a
   false claim is expressible, and T-003 is a record of what one false claim in a
   work history cost this project.
