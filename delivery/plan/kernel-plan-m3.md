@@ -3533,11 +3533,31 @@ hazard it is matched to.
   alongside an unaddressed hazard class; and the ordering requirement on the
   fix-round probe being expressed as a comment rather than as position, so it is
   first in the file and not first in the resolved output.
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a probe whose text is generic enough to be answered without opening anything | criterion 3b, both directions, for the five probe sets it names, **and the phase's own hazard sentence already states the residue: it "narrows for four probes and cannot for the rest".** The rest are section 2.6 reason 1, and the instrument is the phase's own suggested-tier note plus risk 2 |
+| a framing that reorders the list without changing the ENTRY POINT, so `--framing` is cosmetic | criterion 4c, which requires the two framings to differ in their first resolved probe and not merely in order |
+| a hazard checklist whose probes are the criteria probes reworded, which reproduces T-007 while appearing to fix it | criterion 4e. **Residue named at revision 3**: "reworded" is a semantic relation and no test decides it; what 4e can and does assert is that the two checklists' probe ID sets are disjoint and that the hazard checklist's first probe is `hazard-classes-addressed` rather than a criteria probe. A determined rewording that also renamed the ids would pass, and that is section 2.6 reason 1, carried by `dual-review-decorrelation` at M3-P9 comparing the two verdicts' framings |
+| an extra-probe merge that silently OVERRIDES a canonical probe instead of colliding | criterion 2, which requires a duplicate id in an `--extra` file to be an error naming both sources rather than a silent last-wins |
+| a probe id resolving to a gate entry that no longer exists IN THE OTHER DIRECTION | **NO CRITERION AT REVISION 2, and the phase's own hazard names the asymmetry: `gate-probes-resolve` runs registry-to-checklist.** Covered at revision 3 by criterion 3c, below, which adds the checklist-to-registry direction |
+| a verdict schema that admits APPROVE alongside an unaddressed hazard class | criterion 4b's Kind B `verdict-hazard-classes-addressed`, plus criterion 4(a) for the APPROVE-with-a-high-finding shape, both directions |
+| the fix-round probe's ordering expressed as a COMMENT rather than as position | criterion 4d, which asserts position in the RESOLVED OUTPUT and not in the file, which is the distinction the hazard names |
 - steps:
   1. Create `schemas/checklist.schema.json`: a checklist is
      `{id, applies-to, probes[]}` where each probe requires `id`, `probe` (the
      question), `applies-to`, and `evidence-required` (boolean), with
-     `additionalProperties: false` and unique probe ids.
+     `additionalProperties: false` and unique probe ids. **NEW at revision 3
+     (criterion 3c, section 2.6): a probe may carry an optional
+     `verifies-gate`, the id of the `gate-registry.yaml` entry whose
+     `verified-by: clean-room-checklist` names it.** It is optional because
+     most probes verify no gate, and it is what makes the checklist-to-registry
+     direction computable at all: without a back-reference there is nothing for
+     a check to resolve, and the orphan the phase's own hazard class names
+     would stay invisible by construction. Every probe named by a registry
+     entry MUST carry it, which is an `if`/`then` the registry side cannot
+     express and criterion 3c's check enforces.
   2. Create `checklists/plan-review.yaml` (R-026b hidden dependencies and
      semantic coupling above the file-overlap floor the M5 pre-pass computes;
      R-027 probe every fix shape for the state that can no longer exit, with the
@@ -3729,6 +3749,21 @@ hazard it is matched to.
      the probes are good (risk 2 stands), but it does make the specific content
      the plan's own steps demand non-optional, which is the difference between a
      checklist and a gesture.
+  3c. **The OTHER direction, checklist to registry (NEW at revision 3, section
+     2.6; the phase's own hazard class names the asymmetry and no criterion
+     covered it), both directions.** Criterion 3 walks registry entries and
+     asks whether each names a probe that exists. It cannot see a probe that
+     names a gate entry which no longer exists, because it never starts from
+     the checklist. The same Kind B check therefore runs in both directions:
+     every probe carrying a `verifies-gate` field resolves to a gate id present
+     in `gate-registry.yaml`; renaming a gate id in the registry without
+     updating the probe makes the check exit nonzero naming the probe and the
+     missing gate id, and restoring the name returns exit 0; deregistering the
+     check makes the renamed-gate fixture pass. **Two structurally different
+     members, per section 2.3 rule 6**: a gate id RENAMED (the probe points at
+     a name that never existed) and a gate entry DELETED (the probe points at a
+     name that used to exist), which fail through different lookups and are the
+     two ways a registry edit orphans a probe.
   4. Kind A DANGEROUS-instance rejections for `schemas/verdict.schema.json`,
      each witnessed by removing and restoring the guarding keyword:
      (a) `verdict: APPROVE` with a finding of severity `high` (the exact shape of
@@ -3794,7 +3829,10 @@ hazard it is matched to.
   `verdict-records-review-contract`,
   `checklist-impossibility-probe-specific`,
   `checklist-coverage-probe-specific`,
-  `checklist-class-witness-probe`.
+  `checklist-class-witness-probe`,
+  and NEW at revision 3: `checklist-probe-verifies-gate-resolves`,
+  `checklist-orphan-probe-detected-on-gate-rename`,
+  `checklist-orphan-probe-detected-on-gate-deletion`.
 - suggested model tier: strongest. Probe quality is the whole value of the
   artifact, and the verdict schema decides what a review is allowed to say.
 - citations: R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a,
@@ -3859,6 +3897,17 @@ hazard it is matched to.
   `mechanisms[]` entry whose evidence resolves to a file that exists but does
   not establish the rule; and a retention check that passes because the
   declared path is absent from the charter rather than present and tracked.
+- hazard class to criterion (section 2.6, NEW at revision 3):
+
+| Hazard item | Reddens against |
+|---|---|
+| a generated projection that silently DROPS an interim row | criterion 4c, both directions, plus M3-P6 criterion 8's seed-side superset assertion, so the property is checked once against the seed and again against the generated projection that replaces it |
+| a rule stated precisely enough to pass its evidence check and vaguely enough to be UNUSABLE | **NO CRITERION CAN REACH THIS, section 2.6 reason 1.** `mechanism-rule-evidence-resolves` checks that the evidence resolves, never that the rule is usable, and no schema keyword decides usability. The instrument is the hazard review contract; the phase's suggested tier was raised at revision 2 from "cheaper acceptable" to "strongest" for exactly this reason, which is a mitigation and not a check, and this row says so |
+| a `structural-consequence` marked `applied` whose target path EXISTS but does not contain the change claimed | criterion 3, Kind B `tuition-target-exists`, covers the path-existence half only. **The content half is NOT covered and is section 2.6 reason 1**: "contains the change claimed" is a semantic relation between a prose consequence and a file. Named rather than left to be discovered, because criterion 3 reads at a glance as if it covered the whole item, and the two halves are what this project has repeatedly found to differ |
+| a `machine-readable-form` pointing at a manifest key M2 RENAMED | criterion 4b, which resolves the declared path and key against the real `gates.manifest.json`. **Confirmed at revision 3**: `destructiveCommands` is present with four entries, so the key exists and the check has a real target rather than a hypothetical one |
+| an id collision between the two `T-nnn` spaces that grows silently | criterion 9, which asserts the two migration-ticket ids collide with nothing existing, plus step 5's resolve-at-dispatch rule and the revision-3 restatement of criterion 1 as a relation rather than a literal count. **Residue**: criterion 9 checks the two ids this phase allocates, not the ongoing collision risk between the two directories, which no artifact M3 ships can police because `delivery/tuition/` is not a kernel deliverable |
+| a `mechanisms[]` entry whose evidence resolves to a file that EXISTS but does not establish the rule | same shape as the `applied` row above and the same disposition: the resolution half is criterion 3's `mechanism-rule-evidence-resolves`, the establishment half is section 2.6 reason 1 |
+| a retention check that passes because the declared path is ABSENT from the charter rather than present and tracked | criterion 8. **Verify at implementation and redden if it is not already both directions**: the criterion must assert that a charter with NO `retention` path makes the doctor check report FAIL or not-applicable-with-a-reason, never a silent pass, because a check that is vacuously satisfied by an absent declaration is the SC-011 shape this milestone exists to police |
 - steps:
   1. Create `schemas/tuition.schema.json`: `{id, project, date, stage,
      kernel-relevant, what-happened, lesson[], mechanisms[],
@@ -4005,8 +4054,11 @@ hazard it is matched to.
      `delivery/tuition/` within thirty hours of revision 1 being written, so
      both proposed numbers were taken before the phase could dispatch. The
      lowest free id at revision 2 is T-009, and it will very likely have moved
-     again by dispatch. Resolve at dispatch; do not copy a number out of this
-     plan.
+     again by dispatch. **The rule proved itself a second time within a day:
+     that sentence was already false when revision 2 shipped, because T-009 was
+     recorded on 2026-08-07 and the lowest free id at revision 3 is T-010.**
+     Do not read the number in this sentence either. Resolve at dispatch; do
+     not copy a number out of this plan.
   6. Create `src/tuition.ts` and `src/commands/tuition.ts`:
      `tiphys tuition add --file <entry>` validates and writes an entry into the
      fleet's tuition area; `tiphys tuition list [--kernel-relevant]` prints one
@@ -4033,17 +4085,36 @@ hazard it is matched to.
   `schemas/mechanism-index.schema.json` (EDIT: created by M3-P6 for its seed,
   extended here with `machine-readable-form`; corrected at revision 2, where
   revision 1 listed it as a create and contradicted M3-P6's list),
-  `tuition/T-001.yaml`,
-  `tuition/T-002.yaml`, `tuition/T-003.yaml`, `tuition/T-004.yaml`,
-  `tuition/T-005.yaml`, `tuition/T-006.yaml`, `tuition/T-007.yaml`,
-  `tuition/T-008.yaml` (the three added at revision 2, step 3),
+  `tuition/` (a DIRECTORY entry with a trailing slash, **replacing the literal
+  enumeration `tuition/T-001.yaml` through `tuition/T-008.yaml` at revision 3,
+  A-010**). The literal list was a hard-coded enumeration of a growing set
+  handed to a checker that treats the declared list as CLOSED and
+  anti-widening: `delivery/tuition/` held nine entries on 2026-08-07, not
+  eight, because T-009 was recorded after revision 2 was written, and by
+  dispatch it may hold more. An implementer who does the right thing and
+  promotes the kernel-relevant T-009 fails the scope audit and has to escalate;
+  one who follows the list literally silently drops the newest and arguably
+  most kernel-relevant entry. The phase-declaration schema accepts a literal
+  directory written with a trailing slash (M2R-016), and the auditor matches it
+  as a prefix, so the directory entry is the form that survives the feed
+  growing. Step 3's promotion list is restated in the same terms: **every entry
+  in `delivery/tuition/` at DISPATCH, with the count and the resolved id list
+  recorded in the work history**, never a number copied out of this plan. This
+  is the identical rule the phase already states for tuition IDENTIFIERS one
+  screen earlier ("resolve at dispatch; do not copy a number out of this
+  plan"), which revision 2 stated and then contradicted for tuition FILENAMES
+  one screen later. The directory entry also absorbs the two migration tickets
+  (`T-<next>-review-enforcement` and `T-<next+1>-push-before-validation`, step
+  5), whose numbers are likewise allocated at dispatch, and the generated
+  `tuition/mechanism-index.yaml`; each is still named in the steps, and the
+  scope declaration covers them by prefix rather than by a name nobody can know
+  in advance.
   `MECHANISMS.md` (DELETE, step 2b, once every one of its twelve rows resolves
   through the generated index; declared here because a deletion must never be
-  an undeclared extra to the scope audit),
-  `tuition/T-<next>-review-enforcement-ticket.yaml`,
-  `tuition/T-<next+1>-push-before-validation-ticket.yaml` (both numbers
-  allocated at dispatch per step 5 and recorded in the work history; the
-  resolved names are what the scope audit sees), `src/tuition.ts`,
+  an undeclared extra to the scope audit; it is at the repository ROOT and is
+  therefore NOT covered by the `tuition/` prefix, which is exactly the kind of
+  path the fix-round contract's item 3 records this project missing three
+  times), `src/tuition.ts`,
   `src/commands/tuition.ts`, `test/tuition.test.ts`,
   `test/mechanism-index.test.ts` (create); `tuition/mechanism-index.yaml`
   (edit: replaces M3-P6's seed with the generated projection),
@@ -4052,10 +4123,19 @@ hazard it is matched to.
   `src/validate.ts` (edit, type table), `src/checks.ts` (edit, register this
   phase's derived checks), `package.json` (edit, files entry).
 - acceptance criteria:
-  1. `tiphys validate --type tuition` exits 0 on all TEN entries (eight promoted
-     plus two tickets; revision 1 said seven, before T-006 to T-008 existed) and
-     `tiphys validate --type mechanism-index tuition/mechanism-index.yaml`
-     exits 0.
+  1. `tiphys validate --type tuition` exits 0 on **every promoted entry plus
+     the two tickets**, and `tiphys validate --type mechanism-index
+     tuition/mechanism-index.yaml` exits 0. **The COUNT is resolved at dispatch,
+     not stated here (corrected at revision 3, A-010).** Revision 1 said seven,
+     revision 2 said TEN (eight promoted plus two tickets), and revision 2's
+     number was already wrong when it shipped, because T-009 was recorded
+     2026-08-07. The criterion is therefore written as a relation rather than a
+     number: the count of validated entries equals the count of files in
+     `delivery/tuition/` that step 3 judged kernel-relevant, plus two, and both
+     counts are recorded in the work history with the `ls` that produced them.
+     A criterion carrying a literal count of a growing set is a criterion that
+     goes stale between planning and dispatch, which this plan has now
+     demonstrated twice in two revisions.
   2. Kind A DANGEROUS-instance rejections, each witnessed by removing and
      restoring the guarding keyword: (a) an entry with `kernel-relevant: true`
      and an empty `structural-consequence[]` exits 1 naming the field; (b) a
@@ -4165,9 +4245,20 @@ hazard it is matched to.
   M3 tuition flow".
 - conflicts-with: M3-P9 (`AGENTS.md` clauses reserved here), M3-P10 (files
   entry).
-- blocked-by: M3-P7 merged; M2-P1 merged (named dependency: the
-  `destructiveCommands` list the seeded entry cites; the citation is read-only,
-  so nothing here edits a merged M2 artifact, D-M3-16).
+- blocked-by: **M3-P6 merged** (corrected at revision 3, A-006), plus M2-P1
+  merged (named dependency: the `destructiveCommands` list the seeded entry
+  cites, confirmed present with four entries in `gates.manifest.json` on
+  `main`; the citation is read-only, so nothing here edits a merged M2
+  artifact, D-M3-16). **M3-P8 MERGES AFTER M3-P7, because merge order is
+  dependency order (CLAUDE.md convention 5), but it is not blocked from
+  STARTING by P7.** Revision 2 read "M3-P7 merged", which is an unconditional
+  serial dependency that contradicted section 2.5's own declaration that the
+  pair is conditionally parallelizable; the two fields could not both be right.
+  Checking what this phase actually consumes settles it in P6's favour: the
+  `grounding` field above names `tuition/README.md` (M1-P1), M3-P6's seed
+  `mechanism-index.yaml`, M3-P1's charter `retention` field and the M1-P2
+  doctor, and no M3-P7 artifact anywhere. The old value was an ordering habit,
+  which is precisely what section 2.5's derivation exists to detect.
 
 ### M3-P9: Orchestrator policy (AGENTS.md)
 
