@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/release-record.schema.json",
+  "title": "Tiphys release-verification adapter response",
+  "description": "What an adapter writes to the kernel-supplied record path after one bounded observation (kernel plan M2, M2-P7 step 3; investigation section 2.5). The adapter returns an OUTCOME, never a status path: JSON-pointer extraction exists only inside the http-json adapter's own configuration and the kernel never learns what a statusPath is. Conditional requirements (satisfied requires resolved and observation, which are fail-closed rules 4 and 5; reason is required for failed, absent, not-applicable and error) need conditional composition, which is outside the closed keyword set of M2-D-04, so they are enforced in code by src/gates/release.ts with the response schema's own INVALID <pointer> <message> diagnostic shape. The outcome enum is deliberately NOT expressed here: an out-of-enum outcome is fail-closed rule 7's own named error, never coerced and never a generic schema failure, and the subject echo (rule 3) must be checked before the outcome is read at all. Expressed entirely in the closed keyword set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "adapter", "subject", "outcome", "observedAt"],
+  "properties": {
+    "contractVersion": {
+      "description": "The versions the kernel accepts are enumerated in src/gates/release.ts; an unrecognized value is error naming them (fail-closed rule 6).",
+      "type": "string"
+    },
+    "adapter": {
+      "description": "The adapter's own name, for the record.",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "outcome": {
+      "description": "One of satisfied, failed, pending, absent, not-applicable, error. Enforced in code as fail-closed rule 7 (see the document description).",
+      "type": "string"
+    },
+    "resolved": {
+      "description": "The platform identity the adapter actually inspected, verbatim. Required for satisfied (fail-closed rule 4): a verifier that cannot say what it looked at did not look. kind and id are the contract; everything else is platform vocabulary the adapter may record and the kernel never interprets, except createdAt, which the kernel compares against the subject's mergedAt for the older-than-the-merge observation.",
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "observedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "observation": {
+      "description": "The captured evidence behind the outcome. Required for satisfied (fail-closed rule 5): a claim with no captured evidence behind it is treated as unknown. raw is a verbatim extract of the observed response and is deliberately unconstrained; detail is one line. For pending, detail carries the observed value verbatim, because the deadline conversion names the last observed value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detail"],
+      "properties": {
+        "raw": {
+          "description": "Verbatim extract. Any JSON value."
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "reason": {
+      "description": "Required for failed, absent, not-applicable and error (checked in code as part of fail-closed rule 2's conditional half).",
+      "type": "string"
+    },
+    "units": {
+      "description": "How many units of the verification's declared unit the adapter examined (e.g. migrations compared). Absent, a satisfied verification counts 1 (kernel plan M2, M2-P7 step 3's mapping). Declared as design decision D-p7-3 in the phase work history.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "precondition": {
+      "description": "Present only with outcome not-applicable from an adapter-evaluated precondition (the declared-false state of M2-P7 step 7): the precondition id and the evidence of its evaluation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "transport": {
+      "description": "Transport-level detail for the attempt record: for HTTP, the status code; a command's exit code is observed by the kernel itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "httpStatus": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "subject": {
+      "description": "The kernel-owned subject, echoed VERBATIM from the request. The kernel compares it field by field before reading the outcome (fail-closed rule 3): an adapter that verified something else cannot report success for this subject by accident.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "integrationRef", "mergedSha", "mergedAt", "phaseId"],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "integrationRef": {
+          "type": "string"
+        },
+        "mergedSha": {
+          "type": "string"
+        },
+        "mergedAt": {
+          "type": "string"
+        },
+        "phaseId": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

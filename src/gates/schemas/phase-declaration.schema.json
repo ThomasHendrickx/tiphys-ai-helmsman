@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/phase-declaration.schema.json",
+  "title": "Tiphys phase declaration",
+  "description": "One document per plan phase, a projection of kernel plan M2 section 3's files-to-touch list, committed to main before the phase branch is created (delivery/plan/phase-declarations/README.md). Read by the scope auditor (M2-P4) from the MERGE BASE of the audited branch, never from the head, so editing the declaration on the audited branch cannot widen the audited scope (kernel plan M2, M2-P4 step 4, the anti-widening property). Shape fixed by M2-P4 step 2. Expressed entirely in the closed keyword set of M2-D-04 (src/gates/validate.ts).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "branch", "filesToTouch", "declaredExtras", "citations"],
+  "properties": {
+    "id": {
+      "description": "The phase id as the plan spells it, for example M2-P4.",
+      "type": "string",
+      "pattern": "^M[0-9]+-P[0-9]+$"
+    },
+    "branch": {
+      "description": "The phase's one governing branch (kernel plan M2 section 3: one phase, one branch, one PR).",
+      "type": "string",
+      "pattern": "^claude/m[0-9]+-p[0-9]+-.+$"
+    },
+    "filesToTouch": {
+      "description": "Literal paths, or literal directories written with a trailing slash. Never a description (M2R-016): the scope auditor matches these strings exactly or as a directory prefix and does not interpret prose.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "declaredExtras": {
+      "description": "Paths this phase is authorized to touch beyond filesToTouch, over and above the two standing pre-authorized extras (test/behaviors.json and this phase's own delivery/work-history/<id>.md), which the auditor adds itself and which never need to be listed here.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "citations": {
+      "description": "Requirement, finding, decision or constraint ids the plan cites for this phase (for example R-020, DR-0014, M2-C-6, T-003).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

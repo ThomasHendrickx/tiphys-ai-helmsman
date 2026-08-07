@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/citation-config.schema.json",
+  "title": "Tiphys citation linter configuration",
+  "description": "Roots (local and external), the configured document set, and the citationRequired subset for the `citations` gate. Kernel plan M2, M2-P5 step 2. Expressed entirely in the closed keyword set of M2-D-04 (src/gates/validate.ts): no oneOf/if-then-else, so root-kind-specific shape is not expressed here and is checked in code instead, the same split src/gates/manifest.ts already uses for precondition kinds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "roots", "externalRoots", "documents", "citationRequired"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "roots": {
+      "description": "Local roots: paths this checkout is expected to contain. A citation matching a local root's glob is resolved against the filesystem (existence, line count, optional content hash).",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/root" }
+    },
+    "externalRoots": {
+      "description": "Roots naming a repository this checkout does NOT contain (kernel plan M2 section 3, M2-P5 grounding: the firstmate scouted clone). External roots are matched FIRST, before local roots, so a bare relative path that would otherwise collide with this repository's own tree (bin/fm-lock.sh vs this repo's bin/) resolves deterministically rather than being guessed. A citation matching an external root is recorded unverifiable-external with provenance and is never counted as a resolved unit.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/root" }
+    },
+    "documents": {
+      "description": "Path globs identifying the configured document set this gate ever looks at, diff-scoped at run time (M2-D-10) and walked in full only by the one-shot inventory (kernel plan M2-P5 step 5, not a standing gate mode).",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "citationRequired": {
+      "description": "The subset of `documents` in which zero recognized citations is red (M2R-014's narrowed vacuous guard: plans, reviews, verifications). Every glob here must also appear in `documents`; checked in code, not expressible in the closed keyword set.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "match"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "match": {
+          "description": "Explicit path globs (segments separated by /, * matches within one segment, ** matches zero or more segments). A glob listed under more than one root (local or external, the identical glob string) is a config error, reported as error, never guessed (kernel plan M2-P5 criterion 5).",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

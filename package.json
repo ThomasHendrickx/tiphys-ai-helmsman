@@ -18,6 +18,7 @@
     "build": "tsc -b tsconfig.src.json tsconfig.test.json && npm run build:schemas",
     "build:schemas": "node --input-type=module -e \"import { cpSync } from 'node:fs'; cpSync('src/gates/schemas', 'dist/src/gates/schemas', { recursive: true });\"",
     "test": "node --test \"test/**/*.test.ts\"",
+    "gate:suite": "node src/gates/suite.ts --pin-root src --pin-root bin --pin-root test",
     "prepack": "npm run build"
   },
   "devDependencies": {
