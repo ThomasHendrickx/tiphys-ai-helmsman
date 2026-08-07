@@ -188,6 +188,53 @@ test("the m2 exit-test harness rejects invalid invocations with exit 64", () => 
   }
 });
 
+test("the main bundle needs no phase: a push to main (non-phase branch, no --phase) reaches the bundle instead of dying at phase derivation", () => {
+  // Regression guard. The main bundle runs no diff-scoped gate, so it needs no
+  // phase; deriving one unconditionally made a push to main (branch "main", no
+  // --phase) DIE at derivation before ever reaching the bundle, reddening every
+  // push-to-main run. The harness resolves repo_root from its OWN location
+  // (script_dir/..), never the cwd, so the only way to drive it against a
+  // controlled branch is to run a COPY from a scratch repo. That scratch has no
+  // built dist, so `--no-build` fails FAST at the build check that sits AFTER
+  // the (now guarded) derivation, never reaching the gate set: no recursion
+  // into this suite (the file header's constraint), and a clean red/green seam.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    const copy = join(root, "scripts", "m2-exit-test.sh");
+    writeFileSync(copy, readFileSync(harness, "utf8"), { mode: 0o755 });
+    // A real repo on the non-phase branch "main", the exact push-to-main shape.
+    const g = (args: string[]): void => {
+      const r = run("git", args, { cwd: root, env });
+      assert.equal(r.status, 0, `git ${args.join(" ")} failed: ${r.stderr}`);
+    };
+    g(["init", "-q", "-b", "main"]);
+    g(["-c", "user.email=t@tiphys.invalid", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"]);
+    const branch = run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: root, env });
+    assert.equal(branch.stdout.trim(), "main", "the scratch repo must be on branch main");
+
+    const result = run("bash", [copy, "--no-build", "--bundle", "main", join(root, "ev")], {
+      cwd: root,
+      env,
+    });
+    // It must NOT die deriving a phase (the bug); it must get PAST derivation to
+    // the build check, which is the proof it reached the bundle path.
+    assert.doesNotMatch(
+      result.stderr,
+      /could not derive --phase/,
+      `the main bundle died at phase derivation instead of skipping it: ${result.stderr}`,
+    );
+    assert.match(
+      result.stderr,
+      /--no-build was passed but .* does not exist/,
+      `expected the build check (proof the derivation was skipped) but got: ${result.stderr}`,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /* -------------------------------------------------------------------- */
 /* The self-test itself (criterion 3), end to end against the runner.    */
 /* -------------------------------------------------------------------- */
