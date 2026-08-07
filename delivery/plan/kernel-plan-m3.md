@@ -1173,16 +1173,34 @@ $ for n in 1 2 3 4 5 6 7 8 9 10; do
       "$(echo "$blk"|grep -c 'workflows/gates.yml')"
   done
 M3-P1  cli=1 validate=1 checks=1 pkgjson=1 workflow=1
-M3-P2  cli=1 validate=1 checks=0 pkgjson=1 workflow=1
+M3-P2  cli=1 validate=1 checks=0 pkgjson=1 workflow=2
 M3-P3  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
 M3-P4  cli=0 validate=1 checks=1 pkgjson=0 workflow=0
 M3-P5  cli=1 validate=1 checks=0 pkgjson=1 workflow=0
-M3-P6  cli=0 validate=0 checks=0 pkgjson=1 workflow=1
+M3-P6  cli=0 validate=0 checks=0 pkgjson=1 workflow=2
 M3-P7  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
 M3-P8  cli=1 validate=1 checks=1 pkgjson=1 workflow=0
-M3-P9  cli=0 validate=0 checks=1 pkgjson=1 workflow=1
+M3-P9  cli=0 validate=0 checks=1 pkgjson=1 workflow=2
 M3-P10 cli=0 validate=0 checks=0 pkgjson=1 workflow=1
 ```
+
+**Reading the `workflow` column (delta-review finding M3R3D-001).** The command
+counts STRING OCCURRENCES inside each phase's files-to-touch span, not distinct
+files. M3-P2, M3-P6 and M3-P9 print `workflow=2` because each of those spans
+carries the "Standing constraint on the `.github/workflows/gates.yml` edit"
+paragraph added elsewhere in revision 3, which names the path a second time.
+Each of the three still touches ONE workflow file, so the disjointness
+conclusion below is unaffected: six phases touch `.github/workflows/gates.yml`
+(P1, P2, P6, P9, P10 plus P3's registry step), and that is the number the
+serialisation argument uses.
+
+This correction is itself an instance of the mechanism the fix-round contract
+names. Revision 3 captured this output BEFORE appending the standing-constraint
+paragraphs, so the published derivation stopped reproducing against the
+document that contains it, and a reader re-running the command would have
+found a discrepancy with no explanation. **A derivation embedded as evidence
+must be re-run against the FINAL text of the revision that publishes it, not
+the text at the moment it was captured.** Re-run before every revision ships.
 
 The true counts, one line each:
 
