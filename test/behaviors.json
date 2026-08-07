@@ -404,5 +404,6 @@
   "m2-exit-self-test-rejects-fixtures": "--self-test rejects a vacuous-green fixture and a required-not-applicable fixture, naming each, and exits nonzero",
   "m2-exit-no-status-override-env": "no environment variable changes a production gate's reported status (grep over the gate sources)",
   "m2-exit-self-test-guard-behavioural": "the m2 self-test falsifiability guard fails the job when the assertion code cannot reject a vacuous bundle",
-  "m2-exit-wiring-inside-gates-job": "the m2 exit-test bundle step and its self-test guard sit inside the required gates job"
+  "m2-exit-wiring-inside-gates-job": "the m2 exit-test bundle step and its self-test guard sit inside the required gates job",
+  "witness-nested-run-scrubs-reporter-node-options": "a nested test run does not inherit the suite gate reporter NODE_OPTIONS"
 }

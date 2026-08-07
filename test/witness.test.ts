@@ -373,6 +373,55 @@ test("a witness red at its dangerous state and green at head makes the gate exit
   rmSync(out, { recursive: true, force: true });
 });
 
+test("a nested test run does not inherit the suite gate reporter NODE_OPTIONS", () => {
+  // The suite gate (src/gates/suite.ts) requests its pinned reporter for the
+  // top-level `npm test` run by setting a child-scoped NODE_OPTIONS
+  // (--test-reporter=... --test-reporter-destination=...). Everything that
+  // runs BELOW that inherits it, including the nested `node --test` the
+  // red-witness harness spawns per member. That nested run already carries
+  // `--test-reporter tap` in its argv, so an inherited reporter makes two
+  // reporters against one destination, which node rejects at startup
+  // (ERR_INVALID_ARG_VALUE), the child exits 1 with no tap stream, and the
+  // member evaluation errors. This reproduces that exact ambient condition
+  // and asserts the harness scrubs the reporter so the gate still greens.
+  const fixture = adderFixture();
+  const out = mkdtempSync(join(tmpdir(), "wopt-"));
+  const resultPath = join(out, "result.json");
+  const evidenceDir = join(out, "evidence");
+  const leakedDestination = join(out, "leaked-reporter-stream");
+  const child = spawnSync(
+    process.execPath,
+    [
+      gateEntryPath,
+      "--result",
+      resultPath,
+      "--evidence",
+      evidenceDir,
+      "--base",
+      fixture.base,
+      "--head",
+      fixture.head,
+    ],
+    {
+      cwd: fixture.dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=${leakedDestination}`,
+      },
+    },
+  );
+  assert.equal(child.status, 0, `${child.stdout}\n${child.stderr}`);
+  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
+    status: string;
+    units: number;
+  };
+  assert.equal(record.status, "green", child.stdout);
+  assert.equal(record.units, 1);
+  assertCallerClean(fixture);
+  rmSync(out, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // Criteria 2, 3, 3a: the V-1 shape and the derived destructive class
 // ---------------------------------------------------------------------------
