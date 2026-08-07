@@ -1,0 +1,25 @@
+{
+  "id": "citation-na-precondition",
+  "behavior": "citation-content-dependent-na-names-its-own-unmet-precondition",
+  "tests": [
+    "the content-dependent not-applicable arm names its own evaluated unmet precondition, so a legitimate no-op is distinguishable from a skipped gate"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/citation-na-drop-precondition.patch"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/citation-na-precondition-met-true.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git cat-file -t <rev>:<path>",
+    "captures": ["witness/captures/citation-git-cat-file-resolution.txt"],
+    "provenance": "src/gates/citations.ts resolves a MADE citation by spawning `git cat-file -t <rev>:<path>`, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). Reaching the arm under test is a statement ABOUT that resolution: it is the state where every parsed citation in the changed documents was self-referential or external and none resolved to a local blob. The named test therefore reads the recorded contract (present path exit 0 / \"blob\"; absent path exit 128 / \"does not exist\", captured 2026-08-07 against git 2.43.0) and asserts a live scratch repo reproduces it before exercising the arm, so the behaviour is anchored to real git output rather than a hand-written string (CLAUDE.md warning 10)."
+  }
+}

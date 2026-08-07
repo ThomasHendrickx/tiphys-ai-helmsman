@@ -1343,15 +1343,53 @@ export function runCitationsGate(options: CitationsGateOptions): GateResultField
     };
   }
   if (resolved === 0) {
+    // This arm's trigger is CONTENT-DEPENDENT, and that is why it carries its
+    // own PreconditionRecord instead of leaning on the manifest's.
+    //
+    // The gate has two not-applicable arms. The FIRST (no changed path under
+    // the `documents` globs, above) is also expressible as a manifest
+    // precondition, and `gates.manifest.json` declares exactly that:
+    // `diff-touches(citations-diff-touches-documents)` over the same path set.
+    // The runner evaluates it first, so that arm is reached through
+    // src/gates/run.ts and arrives with `precondition.met: false` recorded.
+    //
+    // THIS arm cannot be reached that way. Whether the changed documents make
+    // a substantive local citation is only knowable after reading their
+    // CONTENTS at the head sha, and no manifest precondition kind
+    // (file-exists, file-absent, branch-matches, diff-touches) can ask that
+    // question of a diff. So the runner's precondition is MET, the gate runs,
+    // and without the record below the result is a not-applicable carrying no
+    // evaluated precondition at all, which DR-0018 rejects: it is
+    // indistinguishable from a gate that was skipped or that errored.
+    //
+    // Measured 2026-08-07: that is not hypothetical. It reddened CI on both
+    // paperwork PRs that touched only non-required configured documents (#29
+    // and #31), each time with
+    // "[citations] is a diff-scoped gate reporting not-applicable WITHOUT an
+    // evaluated, unmet precondition". The state was legitimate every time; the
+    // gate simply had no way to SAY so. See delivery/tuition/T-009.
+    //
+    // The record is honest rather than cosmetic. `linted` is the list of
+    // documents actually read, so the evidence shows work was done; the reason
+    // carries the three counts that establish the arm was reached by finding
+    // nothing substantive, not by declining to look. A citationRequired
+    // document with zero citations never reaches here: it is red above.
+    const reason =
+      `${String(linted.length)} changed document(s) linted at ${headSha}: ` +
+      `${String(selfResolved)} self-citation(s), ${String(unverifiableExternal)} unverifiable-external, ` +
+      "zero substantive local citations resolved: nothing in the configured document set needed checking";
     return {
       ...base,
       status: "not-applicable",
       units: 0,
       endedAt: now(),
-      detail:
-        `${String(linted.length)} changed document(s) linted at ${headSha}: ` +
-        `${String(selfResolved)} self-citation(s), ${String(unverifiableExternal)} unverifiable-external, ` +
-        "zero substantive local citations resolved: nothing in the configured document set needed checking",
+      detail: reason,
+      precondition: {
+        id: "citations-changed-documents-make-a-substantive-citation",
+        met: false,
+        reason,
+        evidence: linted,
+      },
       evidence: linted,
     };
   }
