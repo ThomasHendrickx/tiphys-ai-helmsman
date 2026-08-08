@@ -1874,6 +1874,19 @@ test("a shallow repository is an error naming the fetch depth requirement", () =
 /* ------------------------------------------------------------------ */
 
 test("the scratch clone resolves a dependency that exists only in node_modules, and refuses outright when the audited repository has none", () => {
+  // Rule (c): this witness cites a capture of what a dependency-free clone
+  // really does, and the assertions must CONSUME it rather than restate it.
+  // The capture is the anchor for why this fails closed: the loader error is
+  // nonzero, and nonzero is exactly what a genuine red witness looks like.
+  const captureName = "witness-clone-missing-node-modules.txt";
+  const captured = readFileSync(
+    join(kernelRoot, "witness", "captures", captureName),
+    "utf8",
+  );
+  assert.match(captured, /ERR_MODULE_NOT_FOUND/);
+  assert.match(captured, /Cannot find package 'yaml'/);
+  assert.match(captured, /INDISTINGUISHABLE from a genuine red witness/);
+
   const root = mkdtempSync(join(tmpdir(), "witness-clone-deps-"));
   const git = (cwd: string, args: string[]) =>
     spawnSync("git", args, {

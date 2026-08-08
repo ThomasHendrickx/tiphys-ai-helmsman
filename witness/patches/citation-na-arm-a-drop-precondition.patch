@@ -1,0 +1,17 @@
+diff --git a/src/gates/citations.ts b/src/gates/citations.ts
+index 93187c8..549dbd6 100644
+--- a/src/gates/citations.ts
++++ b/src/gates/citations.ts
+@@ -1295,12 +1295,6 @@ export function runCitationsGate(options: CitationsGateOptions): GateResultField
+       units: 0,
+       endedAt: now(),
+       detail: reason,
+-      precondition: {
+-        id: "citations-diff-touches-a-configured-document",
+-        met: false,
+-        reason,
+-        evidence: diff.paths,
+-      },
+       evidence: diff.paths,
+     };
+   }

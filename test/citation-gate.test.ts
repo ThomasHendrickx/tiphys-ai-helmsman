@@ -1258,6 +1258,43 @@ test("the content-dependent not-applicable arm names its own evaluated unmet pre
     }
   }
 
+  // ARM A, the other not-applicable arm, added 2026-08-08. It is REACHABLE
+  // with the manifest precondition met, which PR #32's derivation asserted it
+  // was not: the precondition is a path PREFIX over delivery/plan/ etc, while
+  // every documents glob but STATE.md requires *.md, so a non-markdown file
+  // under a configured tree meets one and matches the other not at all. The
+  // ten M3 phase declarations (delivery/plan/phase-declarations/*.json) are
+  // exactly that shape and reddened CI.
+  {
+    const dir = scratch();
+    try {
+      initRepo(dir);
+      mkdirSync(join(dir, "delivery", "plan", "phase-declarations"), { recursive: true });
+      writeFileSync(join(dir, "delivery", "plan", "phase-declarations", "m9-p1.json"), "{}\n");
+      const base = commit(dir, "base");
+      writeFileSync(
+        join(dir, "delivery", "plan", "phase-declarations", "m9-p1.json"),
+        JSON.stringify({ id: "M9-P1" }) + "\n",
+      );
+      const head = commit(dir, "declaration only");
+      const fields = runCitationsGate({ cwd: dir, base, head });
+      assert.equal(fields.status, "not-applicable", JSON.stringify(fields));
+      assert.notEqual(
+        fields.precondition,
+        undefined,
+        `arm A must name an evaluated precondition too: ${JSON.stringify(fields)}`,
+      );
+      assert.equal(
+        fields.precondition?.id,
+        "citations-diff-touches-a-configured-document",
+        "arm A names its own precondition id, distinct from arm B's",
+      );
+      assert.equal(fields.precondition?.met, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   // The control: a configured document that DOES make a resolving substantive
   // citation is green and names NO unmet precondition. Without this, a fix
   // that stamped the record onto every result would pass the assertions above.

@@ -13,13 +13,19 @@
     {
       "kind": "patch",
       "patch": "witness/patches/citation-na-precondition-met-true.patch"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/citation-na-arm-a-drop-precondition.patch"
     }
   ],
   "deterministic": true,
   "repeats": 2,
   "consumesExternalOutput": {
     "program": "git cat-file -t <rev>:<path>",
-    "captures": ["witness/captures/citation-git-cat-file-resolution.txt"],
-    "provenance": "src/gates/citations.ts resolves a MADE citation by spawning `git cat-file -t <rev>:<path>`, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). Reaching the arm under test is a statement ABOUT that resolution: it is the state where every parsed citation in the changed documents was self-referential or external and none resolved to a local blob. The named test therefore reads the recorded contract (present path exit 0 / \"blob\"; absent path exit 128 / \"does not exist\", captured 2026-08-07 against git 2.43.0) and asserts a live scratch repo reproduces it before exercising the arm, so the behaviour is anchored to real git output rather than a hand-written string (CLAUDE.md warning 10)."
+    "captures": [
+      "witness/captures/citation-git-cat-file-resolution.txt"
+    ],
+    "provenance": "src/gates/citations.ts resolves a MADE citation by spawning `git cat-file -t <rev>:<path>`, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). Reaching the arm under test is a statement ABOUT that resolution: it is the state where every parsed citation in the changed documents was self-referential or external and none resolved to a local blob. The named test therefore reads the recorded contract (present path exit 0 / \"blob\"; absent path exit 128 / \"does not exist\", captured 2026-08-07 against git 2.43.0) and asserts a live scratch repo reproduces it before exercising the arm, so the behaviour is anchored to real git output rather than a hand-written string (CLAUDE.md warning 10). Extended 2026-08-08 with a THIRD member covering the gate other not-applicable arm (no changed path under the documents globs). PR #32 asserted that arm was unreachable through the runner because the manifest precondition covered the same condition; it covers a SUPERSET, since the precondition is a path prefix while every documents glob but STATE.md requires *.md, so a non-markdown file under a configured tree reaches it with the precondition met. The ten M3 phase declarations are exactly that shape and reddened CI on 2026-08-08."
   }
 }
