@@ -383,6 +383,25 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **`scripts/m2-exit-test.sh` is a structural bottleneck and is on no
+  gate-adding phase's declaration.** It is the SINGLE caller of `gates run`
+  (delivery/plan/kernel-plan-m3.md:663, settled at revision 3), so a gate is only real when
+  this file selects it and gives it an expectation row. It is declared on
+  `m2-p9.json` (its author) and nowhere else in M3. Measured: FOUR
+  orchestrator-side fixes to it already (#27, #30, #44, and the pending
+  `agent-rules-drift` one), and it has now blocked two phases in a row,
+  M3-P1 (`clause-map`) and M3-P2 (`agent-rules-drift`).
+  **Do NOT pre-emptively widen the remaining declarations**: M3-P6 and M3-P9
+  edit the registry, but neither one's acceptance criteria demand CI
+  execution, so adding the harness to them now would be inventing scope. The
+  mechanism is instead a DISPATCH-TIME CHECK: before dispatching any phase
+  that touches `gate-registry.yaml` or `gates.manifest.json`, read its
+  criteria and ask whether the gate must RUN to satisfy them. If it must, the
+  harness belongs on that phase's declaration; if it must not, expect an
+  escalation and land the harness change yourself afterwards, as was done for
+  `clause-map` in #44.
+
+
 Work that is agreed and cannot be done yet, recorded so the sequencing is a
 fact rather than a memory.
 
