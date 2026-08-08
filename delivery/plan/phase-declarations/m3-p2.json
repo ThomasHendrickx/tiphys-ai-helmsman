@@ -6,13 +6,15 @@
     "gate-registry.yaml",
     "scripts/render-agent-rules-gates.mjs",
     "test/gate-registry.test.ts",
-    "test/fixtures/gate-runner-capture.",
+    "test/fixtures/",
     "src/validate.ts",
     "CLAUDE.md",
     ".github/workflows/gates.yml",
     "package.json",
     "src/cli.ts",
-    "gates.manifest.json"
+    "gates.manifest.json",
+    "src/gates/run.ts",
+    "src/commands/gates.ts"
   ],
   "declaredExtras": [],
   "citations": [

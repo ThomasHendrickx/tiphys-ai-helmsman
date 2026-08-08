@@ -11,7 +11,7 @@
     "templates/warnings.md",
     "test/report-contract.test.ts",
     "test/work-history.test.ts",
-    "test/fixtures/wrapper-capture.",
+    "test/fixtures/",
     "src/validate.ts",
     "src/checks.ts"
   ],
