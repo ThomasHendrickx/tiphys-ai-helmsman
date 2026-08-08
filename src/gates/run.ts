@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync, mkdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,17 @@ import {
   runStep,
   singleLine,
 } from "../task.ts";
-import { loadManifest, validateResultDocument } from "./manifest.ts";
+/* M3-P2 step 4. The registry is validated by the M3-P1 Ajv engine, not by
+   M2's closed-keyword validator, because `schemas/gate-registry.schema.json`
+   uses `if`/`then`. `loadTypeSchema` is imported from the validate COMMAND
+   rather than re-deriving the shipped `schemas/` location here, because that
+   walk is already written, already tested, and already correct in both the
+   source and the dist layouts; a second copy would be a second thing to keep
+   right. */
+import { loadTypeSchema } from "../commands/validate.ts";
+import { decodeDocument, formatDiagnostics, validateInstance } from "../validate.ts";
+import type { SchemaDocument } from "../validate.ts";
+import { loadManifest, validateManifestDocument, validateResultDocument } from "./manifest.ts";
 import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
@@ -132,8 +142,36 @@ export interface RunOptions {
   head?: string;
   phase?: string;
   only?: string[];
+  /**
+   * M3-P2 step 4. When true, `manifestPath` names a canonical GATE REGISTRY
+   * (`gate-registry.yaml`, `schemas/gate-registry.schema.json`) rather than an
+   * M2-P1 gate manifest. The registry is a SUPERSET of the manifest, so it is
+   * projected down to one and every line below this point is the M2 runner
+   * unchanged: the same `runOneGate`, the same `ingestGateRun`, the same
+   * `makeGateResult`. That is deliberate and it is what makes M2-C-2 and
+   * M2-C-3 survive the promotion instead of being re-implemented beside it.
+   */
+  registry?: boolean;
+  /**
+   * Registry mode only: the assurance mode selecting entries, matched against
+   * each entry's `modes[]`. Defaults to `full`.
+   */
+  mode?: string;
   /** Working directory for gate subprocesses and git. Defaults to cwd. */
   cwd?: string;
+}
+
+/**
+ * A registry entry that declares a gate the runner CANNOT execute, because
+ * D-11 settles that it is verified by a clean-room checklist probe rather
+ * than by a script (R-043, R-044). It is reported rather than dropped, so
+ * that "the report accounts for every gate in the registry" is a property a
+ * reader can check from the run's own output instead of taking on trust.
+ */
+export interface DeclaredChecklistGate {
+  id: string;
+  probe: string;
+  applicability: "required" | "conditional";
 }
 
 export interface GateSummaryRow {
@@ -153,6 +191,18 @@ export interface RunSummary {
   /** Identity of THIS run. A bundle nobody can attribute is not evidence. */
   runId: string;
   manifest: string;
+  /** M3-P2: true when `manifest` above named a gate registry, not a manifest. */
+  registry?: boolean;
+  /** M3-P2: the assurance mode that selected these gates. Registry runs only. */
+  mode?: string;
+  /**
+   * M3-P2: registry entries selected by `mode` that the runner did not
+   * execute because they are `verified-by: clean-room-checklist`. Empty for a
+   * manifest run. `declared` in `counts` plus this array's length is the
+   * number of registry entries the mode selected, which is how a reader
+   * checks that the report accounts for every gate.
+   */
+  declaredByChecklist?: DeclaredChecklistGate[];
   manifestSha256: string;
   startedAt: string;
   endedAt: string;
@@ -207,6 +257,175 @@ export interface RunOutcome {
 }
 
 export const NO_APPLICABLE_GATE = "no applicable gate";
+
+/** The default assurance mode when `--registry` is given without `--mode`. */
+export const DEFAULT_MODE = "full";
+
+interface RegistryGateEntry {
+  id: string;
+  command?: string[];
+  unitLabel: string;
+  applicability: "required" | "conditional";
+  "verified-by": "script" | "clean-room-checklist";
+  probe?: string;
+  modes: string[];
+  events: string[];
+  parameters?: RunParameter[];
+  precondition?: PreconditionSpec;
+}
+
+export type RegistryLoad =
+  | {
+      ok: true;
+      manifest: GateManifest;
+      sha256: string;
+      body: string;
+      declaredByChecklist: DeclaredChecklistGate[];
+    }
+  | { ok: false; reason: string; diagnostics: string[] };
+
+/**
+ * LOAD A CANONICAL GATE REGISTRY AND PROJECT IT ONTO AN M2 GATE MANIFEST
+ * (kernel plan M3, M3-P2 steps 2 and 4; R-094).
+ *
+ * The registry is a SUPERSET of the M2-P1 manifest, so the promotion is a
+ * projection and not a rewrite, and this function is the whole of it. Four
+ * things happen here and each one is load-bearing:
+ *
+ *   1. The path is operator-supplied, so it is READ through the delivered
+ *      `readRegularFileIfPresent` (M2-C-6). A named pipe reports the observed
+ *      type and never blocks.
+ *   2. The document is DECODED (YAML or JSON, `decodeDocument`) and then
+ *      VALIDATED against `schemas/gate-registry.schema.json` through the
+ *      M3-P1 Ajv engine. Decoding and validation are separate stages and
+ *      produce distinguishable diagnostics (DR-0013 YAML clause 3). The
+ *      registry schema is NOT validated by `src/gates/validate.ts`: it uses
+ *      `if`/`then`, which is outside M2-D-04's closed keyword set, which is
+ *      exactly why it lives in the shipped `schemas/` directory.
+ *   3. Entries are selected by MODE and by `verified-by`. A
+ *      `clean-room-checklist` entry has no process to run (D-11: R-043 and
+ *      R-044 are not computable from a diff), so it is reported as declared
+ *      rather than silently dropped.
+ *   4. The projected manifest is validated AGAIN, against the M2 manifest
+ *      schema, by `validateManifestDocument`. That second validation is the
+ *      superset claim turned into a check: if a projection is not a valid M2
+ *      manifest then the registry is not a superset of the manifest, and the
+ *      run refuses rather than proceeding on a document the M2 contract does
+ *      not recognise.
+ *
+ * Everything after this function is the M2 runner untouched, so M2-C-2 (never
+ * green by omission) and M2-C-3 (fail closed) apply to registry runs by
+ * CONSTRUCTION rather than by being remembered. A `--registry` path that
+ * built `GateResult` literals of its own would be the realistic way those two
+ * constraints get dropped by a promotion, and there is no such path.
+ */
+export function loadRegistry(path: string, mode: string): RegistryLoad {
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return { ok: false, reason: `registry ${path} does not exist`, diagnostics: [] };
+  }
+  if (read.kind === "refused") {
+    return { ok: false, reason: read.reason, diagnostics: [] };
+  }
+  const decoded = decodeDocument(read.body, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason, diagnostics: [] };
+  }
+  let schema: SchemaDocument;
+  try {
+    schema = loadTypeSchema("gate-registry");
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `the gate-registry schema could not be loaded: ${singleLine((error as Error).message)}`,
+      diagnostics: [],
+    };
+  }
+  const diagnostics = formatDiagnostics(validateInstance(schema, decoded.value));
+  if (diagnostics.length > 0) {
+    return {
+      ok: false,
+      reason: `registry ${path} is not a valid gate registry`,
+      diagnostics,
+    };
+  }
+
+  const document = decoded.value as {
+    gates: RegistryGateEntry[];
+    destructiveCommands: string[];
+    version: number;
+  };
+  const declaredModes = new Set<string>();
+  for (const entry of document.gates) {
+    for (const name of entry.modes) {
+      declaredModes.add(name);
+    }
+  }
+  if (!declaredModes.has(mode)) {
+    // FAIL CLOSED (M2-C-3). A mode no entry declares selects nothing, and a
+    // run of nothing that exited 0 would be the vacuous pass this registry
+    // exists to prevent. The known modes are named so the operator can see
+    // the typo rather than guess at an empty bundle.
+    return {
+      ok: false,
+      reason:
+        `registry ${path} declares no gate for mode ${mode}; declared mode(s): ` +
+        `${[...declaredModes].sort().join(", ")}`,
+      diagnostics: [],
+    };
+  }
+
+  const inMode = document.gates.filter((entry) => entry.modes.includes(mode));
+  const declaredByChecklist: DeclaredChecklistGate[] = inMode
+    .filter((entry) => entry["verified-by"] === "clean-room-checklist")
+    .map((entry) => ({
+      id: entry.id,
+      probe: entry.probe as string,
+      applicability: entry.applicability,
+    }));
+
+  const gates: GateEntry[] = inMode
+    .filter((entry) => entry["verified-by"] === "script")
+    .map((entry) => {
+      const projected: GateEntry = {
+        id: entry.id,
+        command: entry.command as string[],
+        unitLabel: entry.unitLabel,
+        applicability: entry.applicability,
+        modes: entry.modes,
+      };
+      if (entry.parameters !== undefined) {
+        projected.parameters = entry.parameters;
+      }
+      if (entry.precondition !== undefined) {
+        projected.precondition = entry.precondition;
+      }
+      return projected;
+    });
+
+  const manifest: GateManifest = {
+    version: document.version,
+    gates,
+    destructiveCommands: document.destructiveCommands,
+  };
+  const projectionDiagnostics = validateManifestDocument(manifest);
+  if (projectionDiagnostics.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `registry ${path} projected onto an M2 gate manifest that the M2 schema refuses, ` +
+        "so this registry is not a superset of the manifest it promotes",
+      diagnostics: projectionDiagnostics,
+    };
+  }
+  return {
+    ok: true,
+    manifest,
+    sha256: createHash("sha256").update(read.body).digest("hex"),
+    body: read.body,
+    declaredByChecklist,
+  };
+}
 
 function now(): string {
   return new Date().toISOString();
@@ -1293,7 +1512,13 @@ function runGatesInner(options: RunOptions, runId: string): RunOutcome {
   // a measured 2.13ms the run wrote into a directory it no longer owned.
   try {
     try {
-      const loaded = loadManifest(options.manifestPath);
+      /* One load, two document shapes. A registry is projected onto a
+         manifest by `loadRegistry` and everything downstream is identical,
+         which is the property the promotion depends on. */
+      const loaded =
+        options.registry === true
+          ? loadRegistry(options.manifestPath, options.mode ?? DEFAULT_MODE)
+          : loadManifest(options.manifestPath);
       if (!loaded.ok) {
         const reason = [loaded.reason, ...loaded.diagnostics].join("\n");
         writeAbortedSummary(options, runId, reason);
@@ -1321,7 +1546,7 @@ function runClaimedBundle(
   cwd: string,
   startedAt: string,
   runId: string,
-  loaded: { manifest: GateManifest; sha256: string },
+  loaded: { manifest: GateManifest; sha256: string; declaredByChecklist?: DeclaredChecklistGate[] },
 ): RunOutcome {
   const manifest = loaded.manifest;
   const only = options.only ?? [];
@@ -1420,6 +1645,13 @@ function runClaimedBundle(
   const summary: RunSummary = {
     runId,
     manifest: options.manifestPath,
+    ...(options.registry === true
+      ? {
+          registry: true,
+          mode: options.mode ?? DEFAULT_MODE,
+          declaredByChecklist: loaded.declaredByChecklist ?? [],
+        }
+      : {}),
     manifestSha256: loaded.sha256,
     startedAt,
     endedAt: now(),

@@ -143,11 +143,44 @@ artifact behind it is treated as unknown.
 
 ## Gates
 
-Every change must pass, in order:
+**`gate-registry.yaml` is the canonical gate registry and the single source
+this section is generated from (R-094).** CI runs it through
+`tiphys gates run --registry gate-registry.yaml --mode <mode>` and the block
+below is RENDERED from it by `scripts/render-agent-rules-gates.mjs`. To change
+a gate, edit the registry and re-render with
+`node scripts/render-agent-rules-gates.mjs --write`; editing the block by hand
+turns the `agent-rules-drift` gate red on both CI events. This replaces the
+hand-maintained list that line 3 of this file promised the registry would take
+over.
 
-1. npm ci
-2. npm run build
-3. node --test
+<!-- BEGIN GENERATED GATE LIST: rendered from gate-registry.yaml by scripts/render-agent-rules-gates.mjs. Do not edit by hand; edit the registry. -->
+
+Every change must pass these, in order:
+
+1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)
+2. `npm run build` (the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards)
+3. `node --test` (sources are TypeScript run natively via Node type stripping, so the suite needs no prior build)
+
+Then the registry's gates, run by `tiphys gates run --registry gate-registry.yaml --mode <mode>`:
+
+| Gate | Verified by | Applicability | Modes | CI events | One unit is |
+|---|---|---|---|---|---|
+| `manifest-self-check` | script | required | full, direct-pr, local-only | pull_request, push | schema documents validated |
+| `coverage` | script | required | full, direct-pr | pull_request, push | finding ids checked |
+| `credential-scrub` | script | required | full, direct-pr, local-only | pull_request, push | credential sources probed |
+| `credential-token` | script | conditional | full, direct-pr | pull_request | tokens probed |
+| `suite` | script | required | full, direct-pr, local-only | pull_request, push | tests reported |
+| `citations` | script | required | full, direct-pr | pull_request | citations resolved |
+| `scope` | script | required | full, direct-pr | pull_request | changed paths audited |
+| `deploy` | script | conditional | full | pull_request, push | release verifications satisfied |
+| `migrations` | script | conditional | full | pull_request, push | migrations compared |
+| `clause-map` | script | required | full, direct-pr | pull_request | clause-map rows checked |
+| `red-witness` | script | required | full, direct-pr | pull_request | witnesses evaluated |
+| `agent-rules-drift` | script | required | full, direct-pr, local-only | pull_request, push | rendered gate rows compared |
+| `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | full, direct-pr | pull_request | changed service methods checked |
+| `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | full, direct-pr | pull_request | changed component states checked |
+
+<!-- END GENERATED GATE LIST -->
 
 Notes: sources are TypeScript run natively via Node type stripping (tests
 need no prior build); the build (tsc -b) is the type gate and emits dist/,

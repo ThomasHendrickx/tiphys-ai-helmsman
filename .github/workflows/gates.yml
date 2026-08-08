@@ -81,6 +81,35 @@ jobs:
       #   push          the WEAKER main bundle (--bundle main), which needs no
       #                 base, head or phase; the three diff-scoped gates are not
       #                 run and the harness asserts their absence explicitly.
+      # THE AGENT-RULES DRIFT CHECK (kernel plan M3, M3-P2 step 5; R-094,
+      # T-009, D-M3-34).
+      #
+      # The check is DECLARED in gate-registry.yaml as the gate
+      # `agent-rules-drift` with `events: [pull_request, push]`, which is where
+      # D-M3-34 requires every M3 check to live. It ALSO runs here, as one step
+      # in the existing single `gates` job, and the reason is measurable rather
+      # than a preference:
+      #
+      #   1. The push arm cannot reach it otherwise. scripts/m2-exit-test.sh
+      #      runs the main bundle with a HARD-CODED `--only` list of six gate
+      #      ids; a gate outside that list is never run on a push to main. That
+      #      script is owned by M2-P9 and is not on this phase's files-to-touch
+      #      list, so this phase cannot extend the list.
+      #   2. A red would not fail CI otherwise. run_pr_bundle records the
+      #      runner's exit code but does not act on it; the assertion program
+      #      decides, and it only examines gates named in its expectations
+      #      table, which is in the same out-of-scope script. That is exactly
+      #      the defect PR #44 fixed for the clause-map gate.
+      #
+      # CLAUDE.md drift is a property of `main`, not of a pull request (T-009),
+      # so this step carries NO `if:` and runs on BOTH events. Adding one would
+      # be the sixth defang in kernel plan M3 section 2.3 rule 7's list.
+      #
+      # DR-0017 and DR-0004: this is a STEP in the one job named `gates`. It
+      # adds no job and no matrix, so the published required status context is
+      # still the literal string `gates`.
+      - name: Agent-rules gate-list drift (gate-registry.yaml is the single source, R-094)
+        run: node scripts/render-agent-rules-gates.mjs --check
       - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
         run: >
