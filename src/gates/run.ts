@@ -274,6 +274,23 @@ interface RegistryGateEntry {
   precondition?: PreconditionSpec;
 }
 
+/**
+ * Does this assurance mode select this entry?
+ *
+ * A named predicate rather than an inline callback, so the SELECTION RULE and
+ * the act of filtering are two separately breakable things. The clean-room
+ * review of this phase deleted the filter outright (`inMode = document.gates`)
+ * and the whole suite stayed green, because every mode fixture declared
+ * exactly the mode it was run under and no test had an entry that had to be
+ * EXCLUDED. `gate-registry-mode-excludes-other-modes` is the witness for the
+ * exclusion, and separating the predicate from the call site is what lets the
+ * two failure shapes, "no filter at all" and "a filter whose condition does
+ * not test membership", be reddened independently.
+ */
+function selectsMode(entry: RegistryGateEntry, mode: string): boolean {
+  return entry.modes.includes(mode);
+}
+
 export type RegistryLoad =
   | {
       ok: true;
@@ -375,7 +392,7 @@ export function loadRegistry(path: string, mode: string): RegistryLoad {
     };
   }
 
-  const inMode = document.gates.filter((entry) => entry.modes.includes(mode));
+  const inMode = document.gates.filter((entry) => selectsMode(entry, mode));
   const declaredByChecklist: DeclaredChecklistGate[] = inMode
     .filter((entry) => entry["verified-by"] === "clean-room-checklist")
     .map((entry) => ({

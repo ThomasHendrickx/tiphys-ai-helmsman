@@ -2,13 +2,14 @@
  * RENDER THE AGENT-RULES GATE SECTION FROM THE CANONICAL REGISTRY
  * (kernel plan M3, M3-P2 step 5; R-094).
  *
- * R-094 asks for "a single source consumed by CI and briefs". A registry that
- * CI reads while `CLAUDE.md` carries a hand-maintained copy of the same list
- * is two sources with a convention between them, and a convention is what
- * this project has recorded three times as not surviving. This script is the
- * mechanism that makes the single source TRUE rather than asserted: the block
- * in `CLAUDE.md` is GENERATED from `gate-registry.yaml`, and `--check` fails
- * when the file and the registry disagree.
+ * R-094 asks for "a single source consumed by CI and briefs". A registry
+ * beside a `CLAUDE.md` carrying a hand-maintained copy of the same list is two
+ * sources with a convention between them, and a convention is what this
+ * project has recorded three times as not surviving. This script is the
+ * mechanism that makes the BRIEFS half true rather than asserted: the block in
+ * `CLAUDE.md` is GENERATED from `gate-registry.yaml`, and `--check` fails when
+ * the file and the registry disagree. The CI half is NOT delivered by this
+ * phase; `gate-registry.yaml`'s header states exactly how far it goes.
  *
  * THE RENDERER DERIVES, IT DOES NOT READ THE BLOCK. The whole hazard here is
  * a renderer that reads `CLAUDE.md`'s block and calls it the rendering, so
@@ -19,12 +20,18 @@
  * M3-P2 criterion 5 witnesses in both directions.
  *
  * IT IS A GATE SUBPROCESS UNDER M2-P1's CONTRACT (D-M3-34, section 2.2a).
- * Registered in `gate-registry.yaml` as `agent-rules-drift`, so it runs
- * inside the one `gates run` the harness makes rather than beside it, and it
- * writes ONE `GateResult` through `makeGateResult`. M2-C-2 therefore applies
- * for free: a run that compared ZERO rows becomes `error` with
- * `vacuous: true` instead of exiting 0, which a raw workflow `run:` step
- * could never do.
+ * Declared in `gate-registry.yaml` as `agent-rules-drift`, and when it is
+ * invoked with `--result` it writes ONE `GateResult` through
+ * `makeGateResult`, so M2-C-2 applies to it: a run that compared ZERO rows
+ * becomes `error` with `vacuous: true` instead of exiting 0.
+ *
+ * WHERE IT ACTUALLY RUNS TODAY, stated because the two are not the same
+ * thing. A registry run (`gates run --registry gate-registry.yaml`) executes
+ * it as a gate. CI does not make a registry run: `scripts/m2-exit-test.sh`
+ * passes `--manifest gates.manifest.json` on both arms, so in CI this script
+ * is executed by a direct step in `.github/workflows/gates.yml` instead, on
+ * both events. That step is a plain command and gets none of the M2-C-2
+ * treatment above; it is red or green by exit code alone.
  *
  * MODES
  *   (default)   print the rendered block to stdout

@@ -23,6 +23,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -188,6 +189,42 @@ function writeFixtureRegistry(dir: string, options: FixtureRegistryOptions): str
     destructiveCommands: [],
   };
   const path = join(dir, "fixture-registry.json");
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
+  return path;
+}
+
+/**
+ * A two-gate fixture registry: one gate in `selected`, one in `excluded`.
+ *
+ * This shape exists because the ONE-gate shape cannot witness exclusion. Every
+ * mode fixture in the first round of this phase declared exactly the mode it
+ * was run under, so deleting the mode filter entirely left them all green: the
+ * filter had nothing to remove. A gate that MUST be dropped is the only thing
+ * that reddens against that.
+ */
+function writeTwoModeFixtureRegistry(
+  dir: string,
+  selectedMode: string,
+  excludedMode: string,
+): string {
+  writeFileSync(join(dir, "fixture-gate.mjs"), FIXTURE_GATE_SOURCE);
+  const gate = (id: string, modes: string[]): Record<string, unknown> => ({
+    id,
+    command: ["node", join(dir, "fixture-gate.mjs")],
+    unitLabel: "fixture units",
+    applicability: "required",
+    "verified-by": "script",
+    modes,
+    events: ["pull_request"],
+  });
+  const document = {
+    kind: "gate-registry",
+    version: 1,
+    preflight: [{ command: ["npm", "ci"], note: "install exactly the lockfile" }],
+    gates: [gate("in-this-mode", [selectedMode]), gate("in-another-mode", [excludedMode])],
+    destructiveCommands: [],
+  };
+  const path = join(dir, "two-mode-registry.json");
   writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
   return path;
 }
@@ -893,6 +930,191 @@ test("the drift step extracted from the gates workflow is executed and its exit 
       false,
       "the event-narrowing defang was not detected: this evaluator cannot see an `if:`",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* The exclusion witness for `modes[]`, the phase's headline addition   */
+/* ------------------------------------------------------------------ */
+
+test("a gate declaring only another mode is EXCLUDED from the run, with no row, no record and no evidence directory", () => {
+  /* THE GAP THIS CLOSES, recorded because it is the round's most consequential
+     finding. Every mode fixture in the first round declared `modes: [mode]`
+     and was run under that same mode, so deleting the filter outright
+     (`inMode = document.gates`) left the WHOLE suite green: no test had an
+     entry that had to be excluded. `modes[]` made live is this phase's
+     headline addition and M3-P3 consumes it, so an unwitnessed selection rule
+     is a rule M3-P3 would build on top of nothing.
+
+     Asserted on three independent traces of exclusion, not one, because a
+     summary row is only the cheapest of them: the row, the ingested record on
+     disk, and the gate's own evidence directory. A filter that dropped the row
+     while still spawning the gate would pass the first and fail the other
+     two. */
+  for (const [selected, excluded] of [
+    ["full", "local-only"],
+    ["local-only", "full"],
+  ]) {
+    const dir = scratch(`registry-exclusion-${selected}`);
+    try {
+      const path = writeTwoModeFixtureRegistry(dir, selected as string, excluded as string);
+      const evidence = join(dir, "evidence");
+      const run = spawnSync(
+        process.execPath,
+        [cliEntry, "gates", "run", "--registry", path, "--mode", selected as string,
+          "--evidence", evidence],
+        {
+          encoding: "utf8",
+          cwd: dir,
+          env: {
+            ...process.env,
+            FIXTURE_GATE_ID: "in-this-mode",
+            FIXTURE_STATUS: "green",
+            FIXTURE_UNITS: "2",
+            FIXTURE_EXIT: "0",
+          },
+        },
+      );
+      const summary = JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as {
+        gates: { id: string }[];
+        counts: Record<string, number>;
+      };
+      const ids = summary.gates.map((row) => row.id);
+      assert.deepEqual(ids, ["in-this-mode"], `mode ${selected} selected ${ids.join(", ")}`);
+      assert.equal(summary.counts["declared"], 1);
+      assert.equal(
+        existsSync(join(evidence, "in-another-mode")),
+        false,
+        "the excluded gate was given an evidence directory, so it was reached",
+      );
+      assert.equal(
+        existsSync(join(evidence, "in-another-mode", "result.json")),
+        false,
+        "the excluded gate has an ingested record, so it was run",
+      );
+      assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* R-094 as DELIVERED: the divergence between CI and the registry       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Registry `script` gates that are NOT in `gates.manifest.json`, each with the
+ * reason it is absent. This is a DECLARED DIVERGENCE, not a count: a new entry
+ * here is a deliberate act with a written reason, and a registry-only gate
+ * added WITHOUT one reddens the test below.
+ */
+const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<string, string> = new Map([
+  [
+    "agent-rules-drift",
+    "M3-P2 declares it per D-M3-34, but CI invokes the runner with --manifest, " +
+      "so what executes it in CI is a step in .github/workflows/gates.yml. " +
+      "Adding it to gates.manifest.json needs an expectation row in " +
+      "scripts/m2-exit-test.sh, which is not on this phase's declaration.",
+  ],
+]);
+
+test("every registry gate CI does not run is a declared divergence, and the workflow step that covers the one instance is present on both arms", () => {
+  /* THE REVERSE DIRECTION. The parity assertion in criterion 1 is manifest
+     SUBSET registry: it stops the registry LOSING a gate. It says nothing
+     about a gate that exists only in the registry, and such a gate does not
+     run in CI at all, because scripts/m2-exit-test.sh passes
+     --manifest gates.manifest.json on both arms. That is precisely what
+     happened to agent-rules-drift, and nothing was red. */
+  const registry = readRegistry(registryPath);
+  const manifestIds = new Set(
+    (
+      JSON.parse(readFileSync(join(repoRoot, "gates.manifest.json"), "utf8")) as {
+        gates: { id: string }[];
+      }
+    ).gates.map((entry) => entry.id),
+  );
+  const registryOnly = registry.gates
+    .filter((gate) => gate["verified-by"] === "script" && !manifestIds.has(gate.id))
+    .map((gate) => gate.id)
+    .sort();
+  assert.deepEqual(
+    registryOnly,
+    [...REGISTRY_ONLY_SCRIPT_GATES.keys()].sort(),
+    "a script gate is declared in gate-registry.yaml and absent from gates.manifest.json " +
+      "with no recorded reason; CI runs the MANIFEST, so that gate does not run in CI",
+  );
+
+  /* THE PROSE IS CHECKED, NOT TRUSTED. Both gate-registry.yaml's header and
+     CLAUDE.md's gate section state, in the present tense, that CI reads the
+     manifest and not the registry. A document asserting a present-tense fact
+     that nothing checks is tuition T-006, and it is what this round is for. */
+  const harness = readFileSync(harnessPath, "utf8");
+  const workflow = readFileSync(workflowPath, "utf8");
+  assert.equal(harness.includes("--registry"), false, "scripts/m2-exit-test.sh now uses --registry");
+  assert.equal(
+    workflow.includes("gates run --registry"),
+    false,
+    ".github/workflows/gates.yml now makes a registry run",
+  );
+  assert.ok(harness.includes("--manifest \"${MANIFEST}\""), "the harness no longer passes --manifest");
+
+  /* And the one divergence is covered on BOTH arms by a step with no `if:`. */
+  const { step } = findDriftStep(workflow);
+  assert.equal(step.if, undefined);
+  assert.match(step.run as string, /render-agent-rules-gates\.mjs --check/);
+});
+
+test("a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status", () => {
+  /* The corrected `$comment` on the two D-11 entries says the runner does not
+     execute them and does not evaluate their precondition. The first round
+     said the opposite, in the document that DEFINES the gate, and nothing
+     checked either statement. This is that check. */
+  const dir = scratch("registry-checklist");
+  try {
+    const evidence = join(dir, "evidence");
+    const run = spawnSync(
+      process.execPath,
+      [cliEntry, "gates", "run", "--registry", "gate-registry.yaml", "--mode", "full",
+        "--only", "manifest-self-check", "--evidence", evidence],
+      { encoding: "utf8", cwd: repoRoot },
+    );
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    const summary = JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as {
+      gates: { id: string }[];
+      declaredByChecklist: { id: string; probe: string }[];
+    };
+    const registry = readRegistry(registryPath);
+    const checklistIds = registry.gates
+      .filter((gate) => gate["verified-by"] === "clean-room-checklist")
+      .map((gate) => gate.id)
+      .sort();
+    assert.ok(checklistIds.length >= 2, "the two D-11 entries are missing from the registry");
+    assert.deepEqual(
+      summary.declaredByChecklist.map((entry) => entry.id).sort(),
+      checklistIds,
+      "the run does not account for every clean-room-checklist entry the mode selects",
+    );
+    for (const id of checklistIds) {
+      assert.equal(
+        summary.gates.some((row) => row.id === id),
+        false,
+        `${id} has a summary row, so it was executed`,
+      );
+      assert.equal(existsSync(join(evidence, id)), false, `${id} has an evidence directory`);
+      assert.equal(
+        existsSync(join(evidence, id, "result.json")),
+        false,
+        `${id} has a record, so a status was produced for it`,
+      );
+      /* And each carries its probe id, which is what M3-P7 resolves. */
+      assert.match(
+        String(summary.declaredByChecklist.find((entry) => entry.id === id)?.probe),
+        /^[a-z0-9][a-z0-9-]*$/,
+      );
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

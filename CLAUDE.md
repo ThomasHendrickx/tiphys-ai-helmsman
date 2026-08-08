@@ -143,15 +143,25 @@ artifact behind it is treated as unknown.
 
 ## Gates
 
-**`gate-registry.yaml` is the canonical gate registry and the single source
-this section is generated from (R-094).** CI runs it through
-`tiphys gates run --registry gate-registry.yaml --mode <mode>` and the block
-below is RENDERED from it by `scripts/render-agent-rules-gates.mjs`. To change
-a gate, edit the registry and re-render with
-`node scripts/render-agent-rules-gates.mjs --write`; editing the block by hand
-turns the `agent-rules-drift` gate red on both CI events. This replaces the
-hand-maintained list that line 3 of this file promised the registry would take
-over.
+**`gate-registry.yaml` is the canonical gate registry and the source this
+section is generated from (R-094).** The block below is RENDERED from it by
+`scripts/render-agent-rules-gates.mjs`. To change a gate, edit the registry and
+re-render with `node scripts/render-agent-rules-gates.mjs --write`; editing the
+block by hand makes `--check` exit nonzero, and the `gates` workflow runs that
+command as a step on BOTH CI events, so a hand edit fails the build. This
+replaces the hand-maintained list that line 3 of this file promised the
+registry would take over.
+
+**R-094 is PARTIALLY delivered, and the half that is not is stated here rather
+than left to be discovered.** The briefs half is done: this section is
+generated. The CI half is not: `scripts/m2-exit-test.sh` invokes the gate
+runner with `--manifest gates.manifest.json` on both arms and `--registry`
+occurs nowhere in it or in the workflow, so a gate declared only in the
+registry does not run in CI. `agent-rules-drift` is that case and runs only
+because the workflow carries a direct step for it. `test/gate-registry.test.ts`
+asserts the divergence in both directions, so a new registry-only script gate
+reddens rather than silently not running. Closing it is an edit to
+`scripts/m2-exit-test.sh` and is tracked with the orchestrator.
 
 <!-- BEGIN GENERATED GATE LIST: rendered from gate-registry.yaml by scripts/render-agent-rules-gates.mjs. Do not edit by hand; edit the registry. -->
 

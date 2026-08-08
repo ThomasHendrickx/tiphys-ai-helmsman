@@ -1,0 +1,31 @@
+{
+  "id": "gate-registry-mode-excludes",
+  "behavior": "gate-registry-mode-excludes-other-modes",
+  "tests": [
+    "a gate declaring only another mode is EXCLUDED from the run, with no row, no record and no evidence directory"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  const inMode = document.gates.filter((entry) => selectsMode(entry, mode));",
+      "replace": "  const inMode = document.gates;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  return entry.modes.includes(mode);",
+      "replace": "  return entry.modes.length > 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the gate subprocess the runner spawns, and the runner's own summary.json",
+    "captures": [
+      "witness/captures/gate-registry-vacuous-ingest.json"
+    ],
+    "provenance": "src/gates/run.ts spawns every selected gate with spawnSync, so red-witness rule (f) binds every witness whose dangerous state touches it. Mode selection is a statement ABOUT that spawn: the property under test is that the excluded gate is never spawned, which the named test asserts by the ABSENCE of the evidence directory and the ingested record the spawn would have produced. The cited capture is verbatim output of a real registry run taken on 2026-08-08 and is the record shape whose absence is being asserted; it is referenced from the named tests' file. The first member is the exact mutation the clean-room review used to show the suite had no exclusion witness at all: with the filter deleted the whole suite stayed green. The second is the other shape, a filter whose condition does not test membership, which is the guard-condition failure this project has now recorded four times."
+  }
+}

@@ -1,11 +1,25 @@
 # THE CANONICAL GATE REGISTRY (kernel plan M3, M3-P2; R-094).
 #
-# This file is the SINGLE SOURCE for this repository's gates. CI reads it
-# through the gate runner (`tiphys gates run --registry gate-registry.yaml
-# --mode <mode>`) and the agent-rules gate section in CLAUDE.md is RENDERED
-# from it by `scripts/render-agent-rules-gates.mjs`, whose `--check` arm is
-# itself a gate here (`agent-rules-drift`). Editing CLAUDE.md's gate block by
-# hand turns that gate red; edit this file instead.
+# This file is the canonical DECLARATION of this repository's gates, and R-094
+# asks for one source that CI and the briefs both read. HOW FAR THAT IS TRUE
+# TODAY, stated in the present tense only where it is:
+#
+#   BRIEFS: delivered. The agent-rules gate section in CLAUDE.md is GENERATED
+#   from this file by `scripts/render-agent-rules-gates.mjs`. Editing that
+#   block by hand makes `node scripts/render-agent-rules-gates.mjs --check`
+#   exit nonzero, and the `gates` workflow runs that command as a step on both
+#   CI events, so a hand edit fails the build. Edit this file instead.
+#
+#   CI: NOT YET. The `gates` workflow calls `scripts/m2-exit-test.sh`, which
+#   invokes the runner with `--manifest gates.manifest.json` on both arms.
+#   `--registry` occurs nowhere in either file. So a gate declared ONLY here
+#   does not run in CI, and `agent-rules-drift` is exactly that case: it runs
+#   because the workflow also carries a direct step for it. Closing this needs
+#   an edit to `scripts/m2-exit-test.sh`, which is not on M3-P2's declaration
+#   and is tracked with the orchestrator. The divergence is not left to be
+#   noticed: `test/gate-registry.test.ts` asserts it in BOTH directions, so a
+#   NEW script gate declared only here reddens rather than silently not
+#   running.
 #
 # PROMOTED, NOT INVENTED. Every `script` entry below is the M2-P1
 # `gates.manifest.json` entry of the same id, carried across with its
@@ -171,14 +185,15 @@ gates:
   # NEW IN M3-P2, entry one of three.
   - id: agent-rules-drift
     $comment: >-
-      R-094. The check that makes "single source consumed by CI and briefs" TRUE
-      rather than asserted: it re-renders CLAUDE.md's gate block from this file
-      and fails when the two differ. It is declared HERE rather than only as a
-      workflow step (D-M3-34, section 2.2a), so this phase's own check runs
-      through the authority the phase exists to establish instead of around it,
-      and so its event arms are stated where a reader can check them. Both arms
-      are declared because CLAUDE.md drift is a property of `main`, not of a
-      pull request (T-009).
+      R-094. The check that makes the BRIEFS half of "single source consumed by
+      CI and briefs" true rather than asserted: it re-renders CLAUDE.md's gate
+      block from this file and fails when the two differ. It is declared here
+      because D-M3-34 requires every M3 check to be declared in the registry,
+      and its `events` say which arms evaluate it. What actually EXECUTES it in
+      CI today is a step in the `gates` workflow, not this entry, because CI
+      runs `--manifest gates.manifest.json`; see this file's header. Both arms
+      are declared, and the workflow step carries no `if:`, because CLAUDE.md
+      drift is a property of `main`, not of a pull request (T-009).
     command: [node, scripts/render-agent-rules-gates.mjs, --check]
     unitLabel: rendered gate rows compared
     applicability: required
@@ -195,9 +210,15 @@ gates:
       so it is verified by a clean-room checklist probe at L3 rather than by a
       script at L1, and the registry says so in `verified-by` instead of leaving
       a reader to infer it from a missing command. The probe id below is
-      M3-P7's to supply; until `checklists/clean-room.yaml` exists the
-      precondition is evaluated and unmet and this entry reports
-      not-applicable, which is SC-011's shape and not a silent skip.
+      M3-P7's to supply. WHAT THE RUNNER DOES WITH THIS ENTRY, stated exactly
+      because criterion 3c is about not confusing these two: it is NOT
+      executed and its precondition is NOT evaluated. There is no command to
+      run, so the runner selects it out before any precondition is reached and
+      reports it on stdout and in `summary.declaredByChecklist` as declared
+      and not executed. It produces no record, no evidence directory and no
+      status, and `not-applicable` is not among the things it can report. The
+      `precondition` below is a DECLARATION for M3-P7's checklist, not
+      something this runner evaluates.
     unitLabel: changed service methods checked
     applicability: conditional
     verified-by: clean-room-checklist
@@ -214,8 +235,10 @@ gates:
     $comment: >-
       R-044. Every changed component state has a story or fixture. Same shape as
       R-043 and settled the same way by D-11: "component state" is not
-      machine-enumerable, so the gate is a clean-room checklist probe. Same
-      precondition, so the two become live together with M3-P7's checklist.
+      machine-enumerable, so the gate is a clean-room checklist probe. Not
+      executed and its precondition not evaluated, for the reason spelled out
+      on the entry above. Same declared precondition, so M3-P7's checklist is
+      what both wait on.
     unitLabel: changed component states checked
     applicability: conditional
     verified-by: clean-room-checklist

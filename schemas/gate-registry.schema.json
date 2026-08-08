@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/gate-registry.schema.json",
   "title": "Tiphys canonical gate registry",
-  "$comment": "R-094: the canonical list of gates per assurance mode, the SINGLE SOURCE consumed by CI and by the role briefs. Kernel plan M3, M3-P2 step 2. A SUPERSET of the M2-P1 gate manifest (src/gates/schemas/gate-manifest.schema.json): every field that schema defines is defined here with the same meaning, and this document adds four, `modes` (made live from the field M2 reserved), `events`, `verified-by` and `probe`, plus the top-level `preflight` list. SC-011 is carried over unchanged: a gate whose precondition is unmet reports not-applicable and NEVER green.",
+  "$comment": "R-094: the canonical list of gates per assurance mode, intended as the single source consumed by CI and by the role briefs. As delivered by M3-P2 the BRIEFS half is real (CLAUDE.md's gate section is rendered from the registry) and the CI half is not (CI invokes the runner with --manifest gates.manifest.json); gate-registry.yaml's own header states the divergence and test/gate-registry.test.ts asserts it in both directions. Kernel plan M3, M3-P2 step 2. A SUPERSET of the M2-P1 gate manifest (src/gates/schemas/gate-manifest.schema.json): every field that schema defines is defined here with the same meaning, and this document adds four, `modes` (made live from the field M2 reserved), `events`, `verified-by` and `probe`, plus the top-level `preflight` list. SC-011 is carried over unchanged: a gate whose precondition is unmet reports not-applicable and NEVER green.",
   "description": "One registry per repository. Which gates exist, how each is invoked, which assurance modes select it, which CI events evaluate it, whether a script or a clean-room checklist probe verifies it, and which commands can destroy work.",
   "type": "object",
   "additionalProperties": false,
@@ -188,7 +188,7 @@
           }
         },
         "events": {
-          "$comment": "T-009, D-M3-34. A gate result is evidence only for the configuration that produced it, and this repository's workflow runs DIFFERENT bundles on `pull_request` and on `push` to `main`. An entry that does not say which events evaluate it carries a claim nobody can check. Derived per entry from the two bundle definitions in scripts/m2-exit-test.sh, never assigned by judgment.",
+          "$comment": "T-009, D-M3-34. A gate result is evidence only for the configuration that produced it, and this repository's workflow runs DIFFERENT bundles on `pull_request` and on `push` to `main`. An entry that does not say which events evaluate it carries a claim nobody can check. For every entry PROMOTED from gates.manifest.json the value is derived from the two bundle definitions in scripts/m2-exit-test.sh and never assigned by judgment; for an entry that is not in that manifest it is derived from whatever mechanism does evaluate it, which for agent-rules-drift is a workflow step carrying no `if:`. Both derivations are asserted in test/gate-registry.test.ts.",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,

@@ -472,5 +472,8 @@
   "gate-registry-missing-parameter-is-error-not-na": "a registry gate declaring a parameter that is not supplied reports error naming the flag, never not-applicable, and reports green once it is supplied",
   "gate-registry-diff-scoped-na-accepted-with-reason": "a diff-scoped registry gate whose trigger is untouched reports not-applicable carrying its evaluated precondition",
   "agent-rules-gate-drift-detected": "adding a gate to the registry without re-rendering makes --check exit nonzero naming the added gate, and re-rendering returns exit 0",
-  "gate-drift-check-wired-executably": "the drift step extracted from the gates workflow is executed and its exit code observed on a drifted and a re-rendered registry"
+  "gate-drift-check-wired-executably": "the drift step extracted from the gates workflow is executed and its exit code observed on a drifted and a re-rendered registry",
+  "gate-registry-mode-excludes-other-modes": "a gate declaring only another mode is EXCLUDED from the run, with no row, no record and no evidence directory",
+  "gate-registry-ci-divergence-declared": "every registry gate CI does not run is a declared divergence, and the workflow step that covers the one instance is present on both arms",
+  "gate-registry-checklist-entry-not-executed": "a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status"
 }

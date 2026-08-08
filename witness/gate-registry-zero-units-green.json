@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/gates/run.ts",
-      "find": "  const inMode = document.gates.filter((entry) => entry.modes.includes(mode));",
+      "find": "  const inMode = document.gates.filter((entry) => selectsMode(entry, mode));",
       "replace": "  const inMode: RegistryGateEntry[] = [];"
     }
   ],
