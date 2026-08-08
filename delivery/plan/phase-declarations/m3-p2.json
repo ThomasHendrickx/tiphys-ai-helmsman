@@ -14,7 +14,10 @@
     "src/cli.ts",
     "gates.manifest.json",
     "src/gates/run.ts",
-    "src/commands/gates.ts"
+    "src/commands/gates.ts",
+    "src/commands/validate.ts",
+    "delivery/requirements/clause-map.json",
+    "witness/"
   ],
   "declaredExtras": [],
   "citations": [
