@@ -20,7 +20,10 @@
     "src/cli.ts",
     "src/validate.ts",
     "src/checks.ts",
-    "package.json"
+    "package.json",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [

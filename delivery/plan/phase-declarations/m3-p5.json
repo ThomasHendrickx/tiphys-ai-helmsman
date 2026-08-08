@@ -17,7 +17,10 @@
     "src/cli.ts",
     "src/validate.ts",
     "package.json",
-    "delivery/intake/orchestrated-delivery-process.md"
+    "delivery/intake/orchestrated-delivery-process.md",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [

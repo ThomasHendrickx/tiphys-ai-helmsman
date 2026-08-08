@@ -16,7 +16,10 @@
     "gates.manifest.json",
     "gate-registry.yaml",
     "roles/_shared-dispatch-contract.md",
-    "package.json"
+    "package.json",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [
