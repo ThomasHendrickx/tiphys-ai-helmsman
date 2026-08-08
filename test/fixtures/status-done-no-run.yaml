@@ -1,0 +1,14 @@
+# INVALID FIXTURE, deliberately.
+# What is wrong: state is done and run is absent.
+# Why this shape: An unattributable milestone. R-084 narrates at milestones only, and a done with no run id tells the owner that something finished without saying what.
+#
+# It is a STRUCTURALLY PLAUSIBLE instance, not a syntax error: it is the
+# valid example with exactly one thing changed, so it exercises the schema
+# rule rather than the parser (kernel plan M3 section 2.3 rule 1).
+kind: status-line
+at: 2026-08-08T05:00:00Z
+project: example-service
+state: done
+detail: phase M9-P1 merged
+refs:
+  - PR-41
