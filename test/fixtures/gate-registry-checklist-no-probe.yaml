@@ -1,0 +1,26 @@
+# INVALID FIXTURE, M3-P2 criterion 2 (section 2.3 rule 1: well-formed YAML,
+# structurally plausible, violating PRECISELY the property the schema exists to
+# enforce and nothing else).
+#
+# `unit-tests-for-changed-service-methods` is verified by a clean-room
+# checklist probe (D-11) and names no probe. Every other field is present and
+# correct, so a reader would have to notice the one missing line. An entry in
+# this state declares a gate that nothing can ever verify: there is no script
+# to run and no question to ask.
+kind: gate-registry
+version: 1
+preflight:
+  - command: [npm, ci]
+    note: install exactly the lockfile
+gates:
+  - id: unit-tests-for-changed-service-methods
+    unitLabel: changed service methods checked
+    applicability: conditional
+    verified-by: clean-room-checklist
+    modes: [full]
+    events: [pull_request]
+    precondition:
+      id: clean-room-checklist-present
+      kind: file-exists
+      path: checklists/clean-room.yaml
+destructiveCommands: []

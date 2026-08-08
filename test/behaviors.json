@@ -462,5 +462,15 @@
   "schema-suite-relaxation-is-visible": "the shipped policies refuse the suite's untyped style, so the relaxation is visible",
   "schemas-avoid-prototype-chain-names": "no shipped schema declares a prototype-chain property name",
   "check-addressed-by-ambiguous-criterion": "a duplicate acceptance id makes an addressed-by resolve ambiguously and is rejected naming the check",
-  "schema-charter-release-verification-required": "a charter with no release-verification field is rejected naming the field"
+  "schema-charter-release-verification-required": "a charter with no release-verification field is rejected naming the field",
+  "gate-registry-validates": "the shipped gate-registry.yaml validates against its schema and resolves through --type auto",
+  "gate-registry-probe-required": "a clean-room-checklist entry with no probe is rejected naming the entry, and the same entry with a probe is accepted",
+  "gate-registry-precondition-required": "a conditional gate declaring no precondition is rejected by the schema required list, and is accepted once the precondition is restored",
+  "gate-registry-events-field-required": "a registry entry with no events field is rejected, and every promoted entry's events match the harness bundle definitions",
+  "gate-registry-not-applicable-not-green": "a registry run reports zero gates green with an unmet precondition, read from the runner's own summary",
+  "gate-registry-zero-units-green-becomes-error": "a registry gate writing green with zero units is rewritten to error and vacuous under --mode full and under a non-full mode",
+  "gate-registry-missing-parameter-is-error-not-na": "a registry gate declaring a parameter that is not supplied reports error naming the flag, never not-applicable, and reports green once it is supplied",
+  "gate-registry-diff-scoped-na-accepted-with-reason": "a diff-scoped registry gate whose trigger is untouched reports not-applicable carrying its evaluated precondition",
+  "agent-rules-gate-drift-detected": "adding a gate to the registry without re-rendering makes --check exit nonzero naming the added gate, and re-rendering returns exit 0",
+  "gate-drift-check-wired-executably": "the drift step extracted from the gates workflow is executed and its exit code observed on a drifted and a re-rendered registry"
 }

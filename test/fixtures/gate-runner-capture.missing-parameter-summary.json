@@ -1,0 +1,52 @@
+{
+  "runId": "5b102706b2a0f955d61c84ef",
+  "manifest": "gate-registry.yaml",
+  "registry": true,
+  "mode": "full",
+  "declaredByChecklist": [
+    {
+      "id": "unit-tests-for-changed-service-methods",
+      "probe": "unit-tests-for-changed-service-methods",
+      "applicability": "conditional"
+    },
+    {
+      "id": "fixtures-for-changed-component-states",
+      "probe": "fixtures-for-changed-component-states",
+      "applicability": "conditional"
+    }
+  ],
+  "manifestSha256": "c39f2847cd543aad96329654f88ba1e3885f3c105198209157178f6e282b341a",
+  "startedAt": "2026-08-08T15:21:28.406Z",
+  "endedAt": "2026-08-08T15:21:28.645Z",
+  "parameters": {},
+  "only": [
+    "suite"
+  ],
+  "manifestGates": 12,
+  "gates": [
+    {
+      "id": "suite",
+      "status": "error",
+      "units": 0,
+      "unitLabel": "tests reported",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "gate suite requires --base, which was not supplied",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/ev-c3c/suite/result.json"
+    }
+  ],
+  "counts": {
+    "declared": 1,
+    "applicable": 0,
+    "verdict": 0,
+    "green": 0,
+    "red": 0,
+    "not-applicable": 0,
+    "error": 1,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [],
+  "aborted": false,
+  "exitCode": 21,
+  "reason": "1 gate(s) reported error: suite"
+}

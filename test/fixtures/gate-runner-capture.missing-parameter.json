@@ -1,0 +1,10 @@
+{
+  "gate": "suite",
+  "status": "error",
+  "units": 0,
+  "unitLabel": "tests reported",
+  "startedAt": "2026-08-08T15:21:28.642Z",
+  "endedAt": "2026-08-08T15:21:28.644Z",
+  "detail": "gate suite requires --base, which was not supplied",
+  "evidence": []
+}

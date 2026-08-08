@@ -1,0 +1,22 @@
+# INVALID FIXTURE, M3-P2 criterion 4 (Kind A dangerous instance).
+#
+# `deploy` is declared `conditional`, which is the declaration that it MAY
+# report not-applicable, and it declares no precondition. SC-011 says
+# not-applicable ASSERTS an evaluated, unmet precondition, so a conditional
+# gate with nothing to evaluate can report not-applicable having examined
+# nothing, and a required-gate check that only looks at status would read that
+# as a lawful skip. Everything else about the entry is correct.
+kind: gate-registry
+version: 1
+preflight:
+  - command: [npm, ci]
+    note: install exactly the lockfile
+gates:
+  - id: deploy
+    command: [node, src/gates/deploy.ts]
+    unitLabel: release verifications satisfied
+    applicability: conditional
+    verified-by: script
+    modes: [full]
+    events: [pull_request, push]
+destructiveCommands: []
