@@ -246,6 +246,38 @@ fixed one arm of "the harness assumes a run has a phase" and left the sibling
 arm twelve lines away, because it was treated as too small to open the contract
 for. PR #30 is what that exemption cost.
 
+## Branch names are load-bearing, not labels (binding)
+
+The scope auditor derives a phase id from the BRANCH NAME. Any branch matching
+`^claude/m[0-9]+-p[0-9]+-` is treated as that phase's one branch: the gate
+reads `delivery/plan/phase-declarations/<phase-id>.json` from the MERGE BASE
+and requires the declaration's own `branch` field to equal the current branch.
+
+So a non-phase branch named after the phase it relates to is not a naming
+preference, it is a red gate. Two shapes, both measured on 2026-08-08:
+
+- `claude/m3-p1-prereqs` (a prerequisites branch) derived phase `m3-p1` and
+  looked for a declaration that the branch itself was adding. The check could
+  never pass.
+- `claude/m3-p1-reviews` (a review-evidence branch) derived `m3-p1`, found the
+  declaration, and errored because the declaration's branch is
+  `claude/m3-p1-schemas-and-validator`.
+
+**Rule: only the phase's own implementation branch may match that pattern.**
+Every other branch (prerequisites, review evidence, paperwork, harness fixes)
+puts the phase id somewhere the pattern cannot match, for example
+`claude/reviews-m3-p1` or `claude/m3-prereqs-<slug>`.
+
+This entry exists because the orchestrator made the same mistake TWICE in one
+session, the second time within an hour of fixing the first, which is the exact
+shape tuition T-005 and T-006 record: a rule that depends on remembering does
+not survive a busy session, and the answer is a written mechanism. Check the
+name before pushing:
+
+```
+node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' <branch>
+```
+
 ## Identifier schemes
 
 Stable IDs, never renumbered, cited across documents:

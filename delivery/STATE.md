@@ -5,11 +5,13 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-07
-- main head: `50bcecb`, green on BOTH CI events (pull_request and push)
-- milestone: M2 (gate registry), COMPLETE including its post-exit-test fix
-  round. M1 complete, exit test passed on `7e1b5f1`, completion record merged
-  to main in PR #10 at `037477e`.
+- as of: 2026-08-08
+- main head: `557448d`, green on BOTH CI events (pull_request and push)
+- milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 is implemented and in
+  its first fix round after a dual clean-room review; M3-P2 to M3-P10 are not
+  dispatched. M2 COMPLETE including its post-exit-test fix round; M1 complete,
+  exit test passed on `7e1b5f1`, completion record merged in PR #10 at
+  `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -112,11 +114,45 @@ owner decision overriding the delegation rather than the orchestrator
 softening it. Recorded in the squash commit body and here. The change is small
 and reviewable after the fact if the owner wants that.
 
-Next: M3. **M3 plan re-grounding** lives on `claude/m3-plan-regrounding`,
-rebased onto this `main`. That branch holds a substantial revision of
-`delivery/plan/kernel-plan-m3.md` (4905 lines there against 2799 on `main`,
-"M3 plan revision 2: sections 6-8 and appendices re-grounded") which is NOT on
-`main` and is the reason the branch is kept rather than deleted.
+## M3, in progress (2026-08-08)
+
+**The M3 plan is ON `main` at revision 3** (PR #36), reviewed and delta-approved
+as fit to dispatch M3-P1 from. Getting there: revision 2 was a DRAFT whose own
+status line said the re-grounding was the step BEFORE adversarial review round
+2, and round 2 had never run. Two cross-model reviewers with different lenses
+both returned CHANGES REQUIRED (20 findings, 10 high) and both independently
+found the same defect, the exit test's "CI is green on `main`", which is the
+exact incomplete sentence T-009 was written to ban. The arbitration reduced 20
+findings to 4 mechanisms; the primary one was that the plan had been grounded
+on a PREDICTION of M2 taken from the M2 plan while that plan was DRAFT. Reading
+M2 as delivered found three of the first five joints mis-specified, including
+that CI is ONE job under DR-0017 rather than the two-job fan-in the plan
+modelled and bound five phases to.
+
+| Item | State |
+|---|---|
+| M3 plan revision 3 + review chain | merged, #36 |
+| A-n namespace registered | merged, #35 |
+| M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
+| M3-P1 schemas and validator | PR #39 open, fix round 1 after dual review |
+| M3-P2 to M3-P10 | not dispatched |
+
+**M3 prerequisites (#38) were two blocking escalations the M3-P1 implementer
+raised and did not improvise around.** The ten `delivery/plan/phase-declarations/m3-pN.json`
+had no owner: the scope auditor reads them from the MERGE BASE so a phase
+cannot author its own, and the plan assigned that ownership to nobody. And the
+red-witness scratch clone could not resolve `node_modules`, which was harmless
+while the kernel had zero production dependencies and became blocking the
+moment M3-P1 added its first two. That fix FAILS CLOSED, because a clone that
+cannot resolve an import is red for every member and every control, which is
+the same observation a genuine witness produces.
+
+The same PR corrected a defect in PR #32: its derivation claimed the citations
+gate's other not-applicable arm was unreachable. It is reachable, because the
+manifest precondition is a path PREFIX while every documents glob but STATE.md
+requires `*.md`, so any non-markdown file under a configured tree reaches it.
+
+`claude/m3-plan-regrounding` is now redundant with `main` and can be deleted.
 
 **Every other `claude/*` branch was DELETED by the owner on 2026-08-07
 (action A-4), and the remote is now exactly two refs.** The audit that cleared
@@ -344,6 +380,24 @@ and `A-3` meant three, one of them a literal string inside
    delivery/plan/kernel-plan-m3.md:2538 (DR-0004 items 2 and 3, branch
    protection). A-5 is recorded here so this register actually holds every
    allocated id, which is the point of naming a sole allocator.
+
+## Tracked obligations, sequenced
+
+Work that is agreed and cannot be done yet, recorded so the sequencing is a
+fact rather than a memory.
+
+- **The clause-map gate has no row in the exit test's expectation tables**
+  (M3-P1 hazard review finding B-006, high, verified end to end: a red
+  clause-map produces ZERO findings in the assertion while a different red gate
+  in the same run correctly produces one, so M3's only per-phase orphan check
+  cannot fail CI). The fix is a row in `PR_EXPECT_JSON` and `MAIN_EXPECT_JSON`
+  in `scripts/m2-exit-test.sh`. **It cannot land before M3-P1 merges**: the
+  assertion fails with "no record in the bundle for a gate the table lists"
+  when a listed gate is absent, and `clause-map` enters `gates.manifest.json`
+  only with M3-P1. It is also not M3-P1's to fix, because
+  `scripts/m2-exit-test.sh` is not on that phase's declaration. So it is an
+  orchestrator-side harness fix owing the full fix-round contract, to be landed
+  IMMEDIATELY AFTER M3-P1 merges and before M3-P2 is dispatched.
 
 ## Standing reminders
 
