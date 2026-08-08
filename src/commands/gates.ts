@@ -37,8 +37,8 @@ import type { GateResultFields, GateStatus } from "../gates/result.ts";
  */
 
 const USAGE =
-  "usage: tiphys gates <run --manifest <file> --evidence <dir> " +
-  "[--base <ref>] [--head <ref>] [--phase <id>] [--only <id>] | " +
+  "usage: tiphys gates <run (--manifest <file> | --registry <file> [--mode <mode>]) " +
+  "--evidence <dir> [--base <ref>] [--head <ref>] [--phase <id>] [--only <id>] | " +
   "self-check --manifest <file> --result <file> --evidence <dir>>";
 
 function usageError(message?: string): number {
@@ -51,6 +51,14 @@ function usageError(message?: string): number {
 
 interface Flags {
   manifest?: string;
+  /* M3-P2 step 4. `--registry <file>` names a canonical gate registry
+     (gate-registry.yaml) instead of an M2 gate manifest, and `--mode <mode>`
+     selects the entries whose `modes[]` contains it. They are separate flags
+     rather than a `--manifest` that guesses at its argument's shape, because
+     deciding what a document is by pattern-matching it is the mechanism
+     MECHANISMS.md forbids and the runner's own header already refuses. */
+  registry?: string;
+  mode?: string;
   evidence?: string;
   result?: string;
   base?: string;
@@ -59,7 +67,16 @@ interface Flags {
   only: string[];
 }
 
-const VALUE_FLAGS = ["--manifest", "--evidence", "--result", "--base", "--head", "--phase"];
+const VALUE_FLAGS = [
+  "--manifest",
+  "--registry",
+  "--mode",
+  "--evidence",
+  "--result",
+  "--base",
+  "--head",
+  "--phase",
+];
 
 function parseFlags(args: string[]): Flags | undefined {
   const flags: Flags = { only: [] };
@@ -82,6 +99,10 @@ function parseFlags(args: string[]): Flags | undefined {
     }
     if (flag === "--manifest") {
       flags.manifest = value;
+    } else if (flag === "--registry") {
+      flags.registry = value;
+    } else if (flag === "--mode") {
+      flags.mode = value;
     } else if (flag === "--evidence") {
       flags.evidence = value;
     } else if (flag === "--result") {
@@ -103,14 +124,29 @@ function cmdRun(args: string[]): number {
   if (flags === undefined) {
     return usageError();
   }
-  if (flags.manifest === undefined || flags.evidence === undefined) {
-    return usageError("run requires --manifest and --evidence");
+  if (flags.manifest !== undefined && flags.registry !== undefined) {
+    // Two source documents is not a stronger run, it is an ambiguous one, and
+    // an ambiguous run's summary would name a document that governed half of
+    // it. Refuse rather than pick (M2-C-3, fail closed).
+    return usageError("--manifest and --registry are mutually exclusive; pass one");
+  }
+  if (flags.mode !== undefined && flags.registry === undefined) {
+    // A mode with nothing to select from is silently ignored otherwise, and a
+    // caller who believed the run was mode-scoped would read a wider bundle as
+    // a narrower one.
+    return usageError("--mode selects registry entries and requires --registry");
+  }
+  const source = flags.manifest ?? flags.registry;
+  if (source === undefined || flags.evidence === undefined) {
+    return usageError("run requires --manifest or --registry, and --evidence");
   }
   if (flags.result !== undefined) {
     return usageError("--result is a gate flag, not a runner flag");
   }
   const outcome = runGates({
-    manifestPath: flags.manifest,
+    manifestPath: source,
+    registry: flags.registry !== undefined,
+    mode: flags.mode,
     evidenceDir: resolve(flags.evidence),
     base: flags.base,
     head: flags.head,
@@ -131,6 +167,23 @@ function cmdRun(args: string[]): number {
     return outcome.exitCode;
   }
   const counts = outcome.summary.counts;
+  // The registry can declare a gate this runner cannot execute (D-11: R-043
+  // and R-044 are verified by a clean-room checklist probe, not by a script).
+  // Printing them is what makes "the report accounts for EVERY gate the mode
+  // selected" checkable from the run's own output: executed rows plus these.
+  const declared = outcome.summary.declaredByChecklist ?? [];
+  if (declared.length > 0) {
+    process.stdout.write(
+      `gates: ${String(declared.length)} registry gate(s) declared verified-by ` +
+        `clean-room-checklist and NOT executed by this runner: ` +
+        `${declared.map((entry) => `${entry.id} (probe ${entry.probe})`).join(", ")}\n`,
+    );
+  }
+  if (outcome.summary.registry === true) {
+    process.stdout.write(
+      `gates: registry ${outcome.summary.manifest} mode ${String(outcome.summary.mode)}\n`,
+    );
+  }
   process.stdout.write(
     `gates: declared ${String(counts.declared)} applicable ${String(counts.applicable)} ` +
       `verdict ${String(counts.verdict)} ` +

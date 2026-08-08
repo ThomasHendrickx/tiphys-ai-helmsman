@@ -1,0 +1,22 @@
+# INVALID FIXTURE, M3-P2 criterion 5b and T-009.
+#
+# `suite` declares no `events`, so nothing in the registry says which CI arm
+# evaluates it. This repository's workflow runs a DIFFERENT bundle on
+# `pull_request` and on `push` to `main`, and T-009 measured `main` red for
+# four hours and twenty-one minutes because one arm had a witness and the
+# other did not. An entry with no arm named is a gate whose evidence nobody
+# can scope. Everything else about the entry is the delivered one.
+kind: gate-registry
+version: 1
+preflight:
+  - command: [npm, ci]
+    note: install exactly the lockfile
+gates:
+  - id: suite
+    command: [node, src/gates/suite.ts, --pin-root, src]
+    unitLabel: tests reported
+    applicability: required
+    verified-by: script
+    modes: [full]
+    parameters: [base]
+destructiveCommands: []

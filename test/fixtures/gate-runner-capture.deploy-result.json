@@ -1,0 +1,18 @@
+{
+  "gate": "deploy",
+  "status": "not-applicable",
+  "units": 0,
+  "unitLabel": "release verifications satisfied",
+  "startedAt": "2026-08-08T12:06:58.909Z",
+  "endedAt": "2026-08-08T12:06:58.909Z",
+  "detail": "precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+  "evidence": [],
+  "precondition": {
+    "id": "deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)",
+    "met": false,
+    "reason": "release-verification.json does not exist",
+    "evidence": [
+      "release-verification.json"
+    ]
+  }
+}

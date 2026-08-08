@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -399,6 +400,25 @@ function stageClauseMap(): string {
   cpSync(join(repoRoot, "schemas"), join(dir, "schemas"), { recursive: true });
   cpSync(join(repoRoot, "scripts"), join(dir, "scripts"), { recursive: true });
   cpSync(join(repoRoot, "src"), join(dir, "src"), { recursive: true });
+  /* THE STAGED TREE'S INPUTS ARE DERIVED FROM THE MAP, NOT LISTED BY HAND
+     (M3-P2). The four directories above were the complete input set on the
+     day M3-P1 merged, and every artifact it named happened to live under one
+     of them. M3-P2's three rows name `gate-registry.yaml` at the repository
+     ROOT, so the hand-written list silently staged a tree in which condition
+     3 ("a named artifact file that does not exist") fired for a file that
+     does exist, and all four clause-map tests went red for a reason that had
+     nothing to do with what they assert. Copying whatever the map names
+     keeps the staging correct for every phase after this one as well. */
+  const staged = JSON.parse(
+    readFileSync(join(repoRoot, "delivery", "requirements", "clause-map.json"), "utf8"),
+  ) as Record<string, { artifact: string }>;
+  for (const artifact of new Set(Object.values(staged).map((entry) => entry.artifact))) {
+    const top = artifact.split("/")[0] as string;
+    const source = join(repoRoot, top);
+    if (!existsSync(join(dir, top)) && existsSync(source)) {
+      cpSync(source, join(dir, top), { recursive: true });
+    }
+  }
   return dir;
 }
 
@@ -407,15 +427,31 @@ test("the clause map check is green over this phase's rows, and a clause id remo
   try {
     const mapPath = join(dir, "delivery", "requirements", "clause-map.json");
     const map = JSON.parse(readFileSync(mapPath, "utf8")) as Record<string, unknown>;
-    assert.equal(
-      Object.keys(map).length,
-      12,
-      "the phase seeds exactly its twelve rows",
-    );
+    /* BY NAME, NEVER BY COUNT (M3-P2). The clause map is an APPEND-ONLY
+       registry that every later M3 phase extends by construction, exactly
+       like test/behaviors.json, and CLAUDE.md's convention 5 says such a
+       registry is "checked by name and never by count". This assertion used
+       to read `Object.keys(map).length === 12`, which is a property of the
+       registry on the day M3-P1 merged and of no day after it: M3-P2's three
+       rows (R-043, R-044, R-094) broke it, and so would every one of the
+       eight phases after that. What the test is FOR is that M3-P1's rows are
+       present and resolve, and that is asserted directly. */
+    for (const row of ["R-011", "R-012", "R-014", "R-016", "R-017", "R-018",
+      "R-019", "R-021", "R-022", "R-063", "R-084", "R-090"]) {
+      assert.ok(row in map, `M3-P1 row ${row} is missing from the clause map`);
+    }
 
     const green = runClauseMap(dir);
     assert.equal(green.status, 0, green.stdout + green.stderr);
-    assert.match(green.stdout, /clause-map: green \(12 clause-map rows checked\)/);
+    /* The count in the gate's own line is DERIVED from the map it just read,
+       so the assertion still binds the number to something real without
+       pinning it to one phase's total. */
+    assert.match(
+      green.stdout,
+      new RegExp(
+        `clause-map: green \\(${String(Object.keys(map).length)} clause-map rows checked\\)`,
+      ),
+    );
 
     /* CONDITION 4, red: remove the clause id from the artifact it is
        supposed to occur in. */
@@ -492,8 +528,26 @@ test("a row whose phase is not yet in force is reported pending and does not fai
   try {
     const run = runClauseMap(dir);
     assert.equal(run.status, 0);
-    assert.match(run.stdout, /^R-094 pending M3-P2$/m);
-    assert.match(run.stdout, /rows checked, 6[0-9] pending a phase not yet in force/);
+    /* DERIVED, NOT PINNED (M3-P2, same mechanism as above). This used to name
+       R-094 and M3-P2 specifically, and R-094 stopped being pending on the
+       day M3-P2 created gate-registry.yaml, which is its anchor. The property
+       the test is for is the PENDING BEHAVIOUR itself, so it is asserted over
+       whichever rows are pending, plus the arithmetic identity that makes the
+       report complete: every inventory row is either checked or pending. */
+    const pending = [...run.stdout.matchAll(/^(R-[0-9]+[a-z]?) pending (M3-P[0-9]+)$/gm)];
+    assert.ok(pending.length > 0, `no row was reported pending:\n${run.stdout}`);
+    const totals = /([0-9]+) rows checked, ([0-9]+) pending a phase not yet in force/.exec(
+      run.stdout,
+    );
+    assert.ok(totals !== null, `the totals line is missing:\n${run.stdout}`);
+    assert.equal(
+      Number(totals[1]) + Number(totals[2]),
+      clauseMapModule.parseInventory(
+        readFileSync(join(repoRoot, "delivery", "plan", "kernel-plan-m3.md"), "utf8"),
+      ).length,
+      "checked plus pending does not account for every inventory row",
+    );
+    assert.equal(Number(totals[2]), pending.length);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

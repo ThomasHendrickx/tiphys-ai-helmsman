@@ -1,0 +1,24 @@
+{
+  "id": "gate-registry-cli-selection",
+  "behavior": "gate-registry-missing-parameter-is-error-not-na",
+  "tests": [
+    "a registry gate declaring a parameter that is not supplied reports error naming the flag, never not-applicable, and reports green once it is supplied"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "      flags.registry = value;",
+      "replace": "      flags.registry = undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "    registry: flags.registry !== undefined,",
+      "replace": "    registry: false,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

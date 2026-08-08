@@ -1,0 +1,24 @@
+{
+  "id": "gate-registry-type-registered",
+  "behavior": "gate-registry-validates",
+  "tests": [
+    "the shipped gate-registry.yaml validates against its schema and resolves through --type auto"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"gate-registry\", \"gate-registry.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "\"gate-registry.schema.json\"",
+      "replace": "\"plan.schema.json\""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

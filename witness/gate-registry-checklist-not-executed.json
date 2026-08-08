@@ -1,0 +1,31 @@
+{
+  "id": "gate-registry-checklist-not-executed",
+  "behavior": "gate-registry-checklist-entry-not-executed",
+  "tests": [
+    "a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    .filter((entry) => entry[\"verified-by\"] === \"script\")",
+      "replace": "    .filter(() => true)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    .filter((entry) => entry[\"verified-by\"] === \"clean-room-checklist\")",
+      "replace": "    .filter(() => false)"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the gate subprocess the runner spawns, and the runner's own summary.json",
+    "captures": [
+      "witness/captures/gate-registry-vacuous-ingest.json"
+    ],
+    "provenance": "src/gates/run.ts spawns gates with spawnSync and ingests the records they author, so rule (f) binds this witness. The behaviour under test is that a clean-room-checklist entry is NEVER spawned and therefore authors no such record: D-11 settles that R-043 and R-044 are verified by a probe rather than a process. The cited capture is a verbatim real ingested record from a registry run on 2026-08-08, referenced from the named tests' file, and it is the artifact whose absence the test asserts for these two entries. The first member projects checklist entries into the runnable set (they carry no command, so the projection stops being a valid M2 manifest); the second drops them from the declared-and-not-executed report, which is how a registry entry disappears from a run silently."
+  }
+}

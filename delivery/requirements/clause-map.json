@@ -58,5 +58,20 @@
     "phase": "M3-P1",
     "artifact": "schemas/decision-record.schema.json",
     "clause": "R-090"
+  },
+  "R-043": {
+    "phase": "M3-P2",
+    "artifact": "gate-registry.yaml",
+    "clause": "R-043"
+  },
+  "R-044": {
+    "phase": "M3-P2",
+    "artifact": "gate-registry.yaml",
+    "clause": "R-044"
+  },
+  "R-094": {
+    "phase": "M3-P2",
+    "artifact": "gate-registry.yaml",
+    "clause": "R-094"
   }
 }

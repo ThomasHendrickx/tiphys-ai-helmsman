@@ -1,0 +1,260 @@
+# THE CANONICAL GATE REGISTRY (kernel plan M3, M3-P2; R-094).
+#
+# This file is the canonical DECLARATION of this repository's gates, and R-094
+# asks for one source that CI and the briefs both read. HOW FAR THAT IS TRUE
+# TODAY, stated in the present tense only where it is:
+#
+#   BRIEFS: delivered. The agent-rules gate section in CLAUDE.md is GENERATED
+#   from this file by `scripts/render-agent-rules-gates.mjs`. Editing that
+#   block by hand makes `node scripts/render-agent-rules-gates.mjs --check`
+#   exit nonzero, and the `gates` workflow runs that command as a step on both
+#   CI events, so a hand edit fails the build. Edit this file instead.
+#
+#   CI: NOT YET. The `gates` workflow calls `scripts/m2-exit-test.sh`, which
+#   invokes the runner with `--manifest gates.manifest.json` on both arms.
+#   `--registry` occurs nowhere in either file. So a gate declared ONLY here
+#   does not run in CI, and `agent-rules-drift` is exactly that case: it runs
+#   because the workflow also carries a direct step for it. Closing this needs
+#   an edit to `scripts/m2-exit-test.sh`, which is not on M3-P2's declaration
+#   and is tracked with the orchestrator. The divergence is not left to be
+#   noticed: `test/gate-registry.test.ts` asserts it in BOTH directions, so a
+#   NEW script gate declared only here reddens rather than silently not
+#   running.
+#
+# PROMOTED, NOT INVENTED. Every `script` entry below is the M2-P1
+# `gates.manifest.json` entry of the same id, carried across with its
+# `command`, `unitLabel`, `applicability`, `parameters` and `precondition`
+# byte-for-byte, plus the three fields this registry adds (`verified-by`,
+# `modes`, `events`). SC-011's precondition semantics travel with the
+# precondition blocks unchanged: a gate whose precondition is unmet reports
+# not-applicable and NEVER green.
+#
+# WHAT IS NOT HERE, stated rather than left to be noticed. Kernel plan M3
+# step 3 names project-specific gates `i18n`, `analytics`, `manifest regen`,
+# `e2e` and `docs grep` as things to keep "declared-but-not-applicable on the
+# kernel exactly as M2-P1 left them". M2-P1 left them NOWHERE: the delivered
+# `gates.manifest.json` on main at 40427b6 declares eleven gates and none of
+# those five is among them. Promoting a gate M2 never shipped would be
+# inventing it, not promoting it, so the two entries that ARE structurally
+# not-applicable on the kernel (`deploy`, `migrations`) are carried across and
+# the other five are recorded as absent here and in
+# delivery/work-history/m3-p2.md rather than fabricated.
+
+kind: gate-registry
+version: 1
+
+# The ordered local commands every change must pass. Rendered into CLAUDE.md's
+# gate section together with the table below, so that section has no
+# hand-maintained list in it (M3-P2 criterion 6).
+preflight:
+  - command: [npm, ci]
+    note: install exactly the lockfile, npm only, never pnpm or yarn
+  - command: [npm, run, build]
+    note: the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards
+  - command: [node, --test]
+    note: sources are TypeScript run natively via Node type stripping, so the suite needs no prior build
+
+gates:
+  - id: manifest-self-check
+    command: [node, bin/tiphys.ts, gates, self-check, --manifest, gates.manifest.json]
+    unitLabel: schema documents validated
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  - id: coverage
+    command: [node, src/gates/coverage.ts]
+    unitLabel: finding ids checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request, push]
+    precondition:
+      id: coverage-inventory-exists
+      kind: file-exists
+      path: delivery/requirements/migration-table.md
+
+  - id: credential-scrub
+    command: [node, src/gates/credentials.ts, credential-scrub]
+    unitLabel: credential sources probed
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  - id: credential-token
+    command: [node, src/gates/credentials.ts, credential-token]
+    unitLabel: tokens probed
+    applicability: conditional
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    precondition:
+      id: implementer-token-present-owner-action-a-3
+      kind: command-exit-zero
+      command: [node, -e, "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"]
+
+  - id: suite
+    command: [node, src/gates/suite.ts, --pin-root, src, --pin-root, bin, --pin-root, test]
+    unitLabel: tests reported
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+    parameters: [base]
+
+  - id: citations
+    command: [node, src/gates/citations.ts]
+    unitLabel: citations resolved
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    precondition:
+      id: citations-diff-touches-documents
+      kind: diff-touches
+      paths:
+        - delivery/plan/
+        - delivery/verification/
+        - delivery/decisions/
+        - delivery/tuition/
+        - delivery/requirements/
+        - delivery/STATE.md
+
+  - id: scope
+    command: [node, src/gates/scope.ts, --declarations, delivery/plan/phase-declarations]
+    unitLabel: changed paths audited
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [base, head]
+    precondition:
+      id: scope-branch-is-a-phase-branch
+      kind: branch-matches
+      pattern: claude/m[0-9]+-p[0-9]+-.*
+
+  - id: deploy
+    command: [node, src/gates/deploy.ts]
+    unitLabel: release verifications satisfied
+    applicability: conditional
+    verified-by: script
+    modes: [full]
+    events: [pull_request, push]
+    precondition:
+      id: "deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)"
+      kind: file-exists
+      path: release-verification.json
+
+  - id: migrations
+    command: [node, src/gates/migrations.ts]
+    unitLabel: migrations compared
+    applicability: conditional
+    verified-by: script
+    modes: [full]
+    events: [pull_request, push]
+    precondition:
+      id: "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)"
+      kind: file-exists
+      path: release-verification.json
+
+  - id: clause-map
+    command: [node, scripts/check-clause-map.mjs]
+    unitLabel: clause-map rows checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+
+  - id: red-witness
+    command: [node, src/gates/red-witness.ts]
+    unitLabel: witnesses evaluated
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [base, head]
+    precondition:
+      id: red-witness-diff
+      kind: diff-touches
+      paths:
+        - src/
+        - bin/
+
+  # NEW IN M3-P2, entry one of three.
+  - id: agent-rules-drift
+    $comment: >-
+      R-094. The check that makes the BRIEFS half of "single source consumed by
+      CI and briefs" true rather than asserted: it re-renders CLAUDE.md's gate
+      block from this file and fails when the two differ. It is declared here
+      because D-M3-34 requires every M3 check to be declared in the registry,
+      and its `events` say which arms evaluate it. What actually EXECUTES it in
+      CI today is a step in the `gates` workflow, not this entry, because CI
+      runs `--manifest gates.manifest.json`; see this file's header. Both arms
+      are declared, and the workflow step carries no `if:`, because CLAUDE.md
+      drift is a property of `main`, not of a pull request (T-009).
+    command: [node, scripts/render-agent-rules-gates.mjs, --check]
+    unitLabel: rendered gate rows compared
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  # NEW IN M3-P2, entry two of three (R-043, D-11).
+  - id: unit-tests-for-changed-service-methods
+    $comment: >-
+      R-043. Every changed service method has a unit test. D-11 settles that
+      this is NOT reliably computable from a diff (mapping changed methods to
+      tests produces false positives and negatives on any nontrivial codebase),
+      so it is verified by a clean-room checklist probe at L3 rather than by a
+      script at L1, and the registry says so in `verified-by` instead of leaving
+      a reader to infer it from a missing command. The probe id below is
+      M3-P7's to supply. WHAT THE RUNNER DOES WITH THIS ENTRY, stated exactly
+      because criterion 3c is about not confusing these two: it is NOT
+      executed and its precondition is NOT evaluated. There is no command to
+      run, so the runner selects it out before any precondition is reached and
+      reports it on stdout and in `summary.declaredByChecklist` as declared
+      and not executed. It produces no record, no evidence directory and no
+      status, and `not-applicable` is not among the things it can report. The
+      `precondition` below is a DECLARATION for M3-P7's checklist, not
+      something this runner evaluates.
+    unitLabel: changed service methods checked
+    applicability: conditional
+    verified-by: clean-room-checklist
+    probe: unit-tests-for-changed-service-methods
+    modes: [full, direct-pr]
+    events: [pull_request]
+    precondition:
+      id: clean-room-checklist-present
+      kind: file-exists
+      path: checklists/clean-room.yaml
+
+  # NEW IN M3-P2, entry three of three (R-044, D-11).
+  - id: fixtures-for-changed-component-states
+    $comment: >-
+      R-044. Every changed component state has a story or fixture. Same shape as
+      R-043 and settled the same way by D-11: "component state" is not
+      machine-enumerable, so the gate is a clean-room checklist probe. Not
+      executed and its precondition not evaluated, for the reason spelled out
+      on the entry above. Same declared precondition, so M3-P7's checklist is
+      what both wait on.
+    unitLabel: changed component states checked
+    applicability: conditional
+    verified-by: clean-room-checklist
+    probe: fixtures-for-changed-component-states
+    modes: [full, direct-pr]
+    events: [pull_request]
+    precondition:
+      id: clean-room-checklist-present
+      kind: file-exists
+      path: checklists/clean-room.yaml
+
+# Carried across from gates.manifest.json unchanged. M2-P2 rule (e) DERIVES a
+# witness class from this list rather than trusting an implementer to declare
+# one, so shortening it weakens the red-witness gate.
+destructiveCommands:
+  - pool destroy
+  - teardown
+  - src/pool.ts
+  - src/teardown.ts
