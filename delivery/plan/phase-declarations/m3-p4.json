@@ -13,7 +13,10 @@
     "test/work-history.test.ts",
     "test/fixtures/",
     "src/validate.ts",
-    "src/checks.ts"
+    "src/checks.ts",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [

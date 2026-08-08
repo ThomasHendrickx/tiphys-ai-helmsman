@@ -10,7 +10,10 @@
     "src/checks.ts",
     ".github/workflows/gates.yml",
     "gate-registry.yaml",
-    "package.json"
+    "package.json",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [
