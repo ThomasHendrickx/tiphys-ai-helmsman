@@ -55,7 +55,7 @@
  * rather than exiting 0, which a raw workflow `run:` step could never do.
  */
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -100,7 +100,7 @@ const ROW_PATTERN = /^\|\s*(R-[0-9]+[a-z]?)\s*\|\s*(M3-P[0-9]+)\s*\|/;
 function usage() {
   return (
     "usage: node scripts/check-clause-map.mjs [--inventory <path>] " +
-    "[--map <path>] [--result <path>]"
+    "[--map <path>] [--result <path>] [--evidence <dir>]"
   );
 }
 
@@ -109,15 +109,19 @@ function parseArgs(argv) {
     inventory: DEFAULT_INVENTORY,
     map: DEFAULT_MAP,
     result: undefined,
+    evidence: undefined,
   };
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    /* `--evidence` is DELIBERATELY NOT ACCEPTED. The gate runner passes it to
-       gates that write evidence FILES; this check writes none, and accepting a
-       flag whose value is then dropped is a flag that reads as honoured. The
-       runner tolerates a gate that does not take it (fix round 1, B-low). */
-    if (!["--inventory", "--map", "--result"].includes(flag)) {
+    /* `--evidence` IS REQUIRED BY THE RUNNER CONTRACT, not optional garnish.
+       Fix round 1 first tried to delete it as the dead flag the review
+       reported. That is measurably wrong: the runner passes `--evidence <dir>`
+       to every gate, so refusing it made this gate exit 20 with
+       "gate clause-map exited 20 without writing a result record" and turned
+       the whole PR bundle red. The finding was real and the remedy was the
+       other one: the flag is now USED. */
+    if (!["--inventory", "--map", "--result", "--evidence"].includes(flag)) {
       return { usageError: `unknown option ${String(flag)}` };
     }
     if (value === undefined || value.startsWith("--")) {
@@ -205,6 +209,37 @@ export function evaluate(inventoryRows, coverage, exists, readArtifact) {
   return { problems, pending, checked };
 }
 
+/**
+ * Write the run's full row-by-row account to `<evidence>/clause-map.txt` and
+ * return the paths for the record's `evidence` array.
+ *
+ * This is what makes `--evidence` a live flag rather than an accepted-and-
+ * dropped one (fix round 1, B-low). The bundle summary carries counts; the
+ * file carries WHICH rows were checked, which were pending and which failed,
+ * which is what a reader of a red run actually needs.
+ */
+function writeEvidence(options, lines) {
+  if (options.evidence === undefined) {
+    return [];
+  }
+  const path = join(options.evidence, "clause-map.txt");
+  const refusal = refuseOpenForWrite(path);
+  if (refusal !== undefined) {
+    process.stderr.write(`tiphys clause-map: ${refusal}\n`);
+    return [];
+  }
+  try {
+    mkdirSync(options.evidence, { recursive: true });
+    writeFileSync(path, `${lines.join("\n")}\n`);
+  } catch (error) {
+    process.stderr.write(
+      `tiphys clause-map: evidence could not be written: ${String(error)}\n`,
+    );
+    return [];
+  }
+  return [path];
+}
+
 function emit(options, fields) {
   const result = makeGateResult({
     gate: GATE_ID,
@@ -214,7 +249,7 @@ function emit(options, fields) {
     startedAt: fields.startedAt,
     endedAt: new Date().toISOString(),
     detail: fields.detail,
-    evidence: [],
+    evidence: writeEvidence(options, fields.evidenceLines ?? [fields.detail]),
   });
   process.stdout.write(
     `${GATE_ID}: ${result.status} (${String(result.units)} ${result.unitLabel})\n`,
@@ -294,6 +329,14 @@ function main(argv) {
       problems.length === 0
         ? `${String(checked)} rows checked, ${String(pending.length)} pending a phase not yet in force`
         : problems.join("; "),
+    evidenceLines: [
+      `inventory: ${options.inventory}`,
+      `coverage table: ${options.map}`,
+      `rows checked: ${String(checked)}`,
+      `rows pending a phase not yet in force: ${String(pending.length)}`,
+      ...pending,
+      ...problems.map((line) => `CLAUSE-MAP ${line}`),
+    ],
   });
 }
 
