@@ -1,0 +1,24 @@
+{
+  "id": "plan-projection-auditor-input",
+  "behavior": "plan-projection-feeds-scope-auditor",
+  "tests": [
+    "the real scope auditor accepts a generated declaration from its merge base, and mutating one files-to-touch entry in the plan changes the auditor's verdict"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/plan.ts",
+      "find": "  const target = join(out, projection.filename);",
+      "replace": "  const target = join(out, `unread-${projection.filename}`);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "    branch: String(phase[\"branch\"]),",
+      "replace": "    branch: \"claude/m0-p0-wrong\","
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

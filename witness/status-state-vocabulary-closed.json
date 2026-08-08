@@ -1,0 +1,24 @@
+{
+  "id": "status-state-vocabulary-closed",
+  "behavior": "status-state-enum-closed",
+  "tests": [
+    "status emit with a state outside the five-value enum exits nonzero naming the enum, and writes nothing"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/status.ts",
+      "find": "  if (diagnostics.length > 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/status-line.schema.json",
+      "find": "\"enum\": [\"needs-decision\", \"blocked\", \"done\", \"failed\", \"phase-change\"]",
+      "replace": "\"enum\": [\"needs-decision\", \"blocked\", \"done\", \"failed\", \"phase-change\", \"progress\"]"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

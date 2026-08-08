@@ -39,6 +39,11 @@
  * decided that question against extension.
  */
 
+import {
+  sortDiagnostics,
+  validateInstance,
+} from "../validate.ts";
+
 /** The ten validation keywords plus local `$ref`. Nothing else validates. */
 export const VALIDATION_KEYWORDS: readonly string[] = [
   "type",
@@ -370,34 +375,65 @@ function resolveRef(
   return isPlainObject(node) ? node : undefined;
 }
 
-function render(value: unknown): string {
-  return JSON.stringify(value) ?? String(value);
-}
+/* ------------------------------------------------------------------ */
+/* THE ENGINE, RETIRED (DR-0013 clause 6, M3-P1 step 8).                */
+/* ------------------------------------------------------------------ */
 
 /**
- * `refChain` holds the `$ref`s followed since the last time an INSTANCE node
- * was consumed. A schema that refers to itself without descending into the
- * instance loops forever, and this engine answered that with a RangeError
- * escaping mid-validation rather than with a diagnostic (CR-807). A
- * LEGITIMATE recursive schema always consumes an instance node between two
- * follows of the same reference, so the chain is reset on every descent into
- * `properties` or `items` and a repeat inside one chain is a genuine cycle.
+ * WHAT WAS RETIRED AND WHAT WAS KEPT, stated because the distinction is the
+ * whole of DR-0013 clause 6.
+ *
+ * RETIRED: keyword SEMANTICS. `type`, `required`, `properties`,
+ * `additionalProperties`, `enum`, `items`, `minimum`, `minItems`, `pattern`
+ * and `const` are no longer evaluated here. `validate` hands the schema and
+ * the instance to `src/validate.ts`, which is Ajv 8.20.0 under the policies
+ * DR-0013 clause 4 fixed. Two engines with potentially different semantics
+ * are not maintained.
+ *
+ * KEPT, and each for a reason DR-0013 names:
+ *
+ *   1. THE MODULE BOUNDARY. `loadSchema`, `validate`, `validateToLines`,
+ *      `formatDiagnostic`, `formatDiagnostics` and `DIAGNOSTIC_MESSAGES` are
+ *      unchanged in name, signature and meaning, so every M2 caller and every
+ *      M2 test is untouched.
+ *   2. THE CLOSED KEYWORD SET, as a POLICY LINTER. `loadSchema` still refuses
+ *      a gate schema containing a keyword outside M2-D-04's set. DR-0013
+ *      clause 7 says this explicitly: prohibiting otherwise-valid but
+ *      unapproved keywords "is a small schema-aware POLICY LINTER, never a
+ *      reimplementation of keyword semantics". Under Ajv `oneOf` compiles
+ *      fine, so without this linter M2's gate schemas would silently acquire
+ *      a vocabulary nobody approved.
+ *   3. THE REFERENCE POLICY. Measured 2026-08-08 with the pinned Ajv:
+ *      compiling `{type:"object",properties:{x:{$ref:"#/$defs/a"}},
+ *      $defs:{a:{$ref:"#/$defs/a"}}}` raises
+ *      `RangeError: Maximum call stack size exceeded`. That is CR-807's
+ *      failure wearing a different engine's clothes, so the cycle and
+ *      unresolved-reference analysis stays HERE, in front of the engine,
+ *      where it produces a diagnostic instead of a stack overflow. It
+ *      evaluates no other keyword.
  */
-function validateNode(
+
+/**
+ * Reference-only joint walk. Follows `$ref` and descends `properties` and
+ * `items`, and does nothing else. `refChain` holds the references followed
+ * since the last INSTANCE node was consumed, so a legitimate recursive schema
+ * (which always consumes an instance node between two follows) is not
+ * mistaken for a cycle. This is the same rule the retired engine used and the
+ * same diagnostics, because both are contract.
+ */
+function collectReferenceDiagnostics(
   root: SchemaDocument,
   schema: SchemaDocument,
   instance: unknown,
   pointer: string,
   into: Diagnostic[],
   refChain: string[],
+  seenNodes: Set<SchemaDocument>,
 ): void {
   const reference = schema["$ref"];
   if (typeof reference === "string") {
     if (refChain.includes(reference)) {
-      into.push({
-        pointer,
-        message: DIAGNOSTIC_MESSAGES.cyclicRef(reference),
-      });
+      into.push({ pointer, message: DIAGNOSTIC_MESSAGES.cyclicRef(reference) });
       return;
     }
     const target = resolveRef(root, reference);
@@ -408,136 +444,52 @@ function validateNode(
       });
       return;
     }
-    validateNode(root, target, instance, pointer, into, [
-      ...refChain,
-      reference,
-    ]);
+    collectReferenceDiagnostics(
+      root,
+      target,
+      instance,
+      pointer,
+      into,
+      [...refChain, reference],
+      seenNodes,
+    );
     return;
   }
 
-  const type = schema["type"];
-  if (typeof type === "string") {
-    const observed = jsonTypeOf(instance);
-    const matches =
-      observed === type || (type === "number" && observed === "integer");
-    if (!matches) {
-      into.push({ pointer, message: DIAGNOSTIC_MESSAGES.type(type, observed) });
-      // A value of the wrong type cannot be examined further without
-      // producing diagnostics about a shape that was never claimed.
-      return;
-    }
-  }
-
-  const constant = schema["const"];
-  if (constant !== undefined && render(instance) !== render(constant)) {
-    into.push({
-      pointer,
-      message: DIAGNOSTIC_MESSAGES.const(render(instance), render(constant)),
-    });
-  }
-
-  const enumeration = schema["enum"];
-  if (Array.isArray(enumeration)) {
-    const rendered = render(instance);
-    if (!enumeration.some((candidate) => render(candidate) === rendered)) {
-      into.push({
-        pointer,
-        message: DIAGNOSTIC_MESSAGES.enum(
-          rendered,
-          enumeration.map((candidate) => render(candidate)).join(", "),
-        ),
-      });
-    }
-  }
-
-  const minimum = schema["minimum"];
-  if (typeof minimum === "number" && typeof instance === "number") {
-    if (instance < minimum) {
-      into.push({
-        pointer,
-        message: DIAGNOSTIC_MESSAGES.minimum(render(instance), render(minimum)),
-      });
-    }
-  }
-
-  const pattern = schema["pattern"];
-  if (typeof pattern === "string" && typeof instance === "string") {
-    // The pattern was compiled at load, so reaching the catch means the
-    // schema was not loaded through loadSchema. Report, never throw.
-    let matched: boolean;
-    try {
-      matched = new RegExp(pattern).test(instance);
-    } catch (error) {
-      into.push({
-        pointer,
-        message: `pattern ${pattern} is not a valid expression: ${(error as Error).message}`,
-      });
-      matched = true;
-    }
-    if (!matched) {
-      into.push({
-        pointer,
-        message: DIAGNOSTIC_MESSAGES.pattern(render(instance), pattern),
-      });
-    }
-  }
-
   if (Array.isArray(instance)) {
-    const minItems = schema["minItems"];
-    if (typeof minItems === "number" && instance.length < minItems) {
-      into.push({
-        pointer,
-        message: DIAGNOSTIC_MESSAGES.minItems(
-          String(instance.length),
-          String(minItems),
-        ),
-      });
-    }
     const items = schema["items"];
     if (isPlainObject(items)) {
       for (let index = 0; index < instance.length; index += 1) {
-        validateNode(root, items, instance[index], `${pointer}/${index}`, into, []);
+        collectReferenceDiagnostics(
+          root,
+          items,
+          instance[index],
+          `${pointer}/${index}`,
+          into,
+          [],
+          seenNodes,
+        );
       }
     }
+    return;
   }
 
   if (isPlainObject(instance)) {
-    const required = schema["required"];
-    if (Array.isArray(required)) {
-      for (const name of [...required].sort()) {
-        if (
-          typeof name === "string" &&
-          !Object.prototype.hasOwnProperty.call(instance, name)
-        ) {
-          into.push({
-            pointer: childPointer(pointer, name),
-            message: DIAGNOSTIC_MESSAGES.required(name),
-          });
-        }
-      }
-    }
     const properties = isPlainObject(schema["properties"])
       ? (schema["properties"] as Record<string, unknown>)
       : {};
-    const additional = schema["additionalProperties"];
     for (const name of Object.keys(instance).sort()) {
       const subschema = ownProperty(properties, name);
       if (isPlainObject(subschema)) {
-        validateNode(
+        collectReferenceDiagnostics(
           root,
           subschema,
           ownProperty(instance, name),
           childPointer(pointer, name),
           into,
           [],
+          seenNodes,
         );
-        continue;
-      }
-      if (additional === false) {
-        into.push({
-          pointer: childPointer(pointer, name),
-          message: DIAGNOSTIC_MESSAGES.additionalProperties(name),
-        });
       }
     }
   }
@@ -546,24 +498,30 @@ function validateNode(
 /**
  * Validate an instance against a loaded schema. The returned list is sorted
  * by (pointer, message), which is the deterministic order the contract
- * promises.
+ * promises and which is now produced by `sortDiagnostics` in the shared
+ * engine so the two modules cannot drift on it.
  */
 export function validate(
   schema: SchemaDocument,
   instance: unknown,
 ): Diagnostic[] {
-  const collected: Diagnostic[] = [];
-  validateNode(schema, schema, instance, ROOT_POINTER, collected, []);
-  collected.sort((a, b) => {
-    if (a.pointer !== b.pointer) {
-      return a.pointer < b.pointer ? -1 : 1;
-    }
-    if (a.message === b.message) {
-      return 0;
-    }
-    return a.message < b.message ? -1 : 1;
-  });
-  return collected;
+  const referenceProblems: Diagnostic[] = [];
+  collectReferenceDiagnostics(
+    schema,
+    schema,
+    instance,
+    ROOT_POINTER,
+    referenceProblems,
+    [],
+    new Set(),
+  );
+  if (referenceProblems.length > 0) {
+    // A schema whose references do not resolve, or loop, cannot be compiled
+    // at all: the engine would throw. Report and stop, exactly as the retired
+    // engine returned at the offending reference node.
+    return sortDiagnostics(referenceProblems);
+  }
+  return validateInstance(schema, instance) as Diagnostic[];
 }
 
 /** Validate and format in one step: the shape most callers want. */

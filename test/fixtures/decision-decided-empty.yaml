@@ -1,0 +1,28 @@
+# INVALID FIXTURE, deliberately.
+# What is wrong: status is decided and decided is the empty string.
+# Why this shape: A record that claims an answer it does not carry. The if/then on status is the keyword that guards it, and this is the pair that makes an open question and a decided one distinguishable (D-7).
+#
+# It is a STRUCTURALLY PLAUSIBLE instance, not a syntax error: it is the
+# valid example with exactly one thing changed, so it exercises the schema
+# rule rather than the parser (kernel plan M3 section 2.3 rule 1).
+kind: decision-record
+id: DR-0021
+project: example-service
+task: m9-planning
+question: Does the importer retry a 429, and if so how many times, given that
+  the caller already retries at job level?
+options:
+  - label: Retry twice inside the importer
+    consequence: Bounded total attempts at six when multiplied by the caller's
+      three, and the failure surfaces within one job.
+  - label: Do not retry inside the importer
+    consequence: One rate-limited response fails the whole job, and the caller's
+      retry re-reads the entire catalogue.
+reversibility: reversible
+vetoable: false
+revert-cost: One constant and one test; the change is behind no data migration.
+status: decided
+decided: ""
+date: 2026-08-08
+evidence:
+  - delivery/verification/importer-retry.md

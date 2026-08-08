@@ -1,0 +1,42 @@
+# INVALID FIXTURE, deliberately.
+# What is wrong: escalation-contract is absent; every other required field is present.
+# Why this shape: R-022 and R-090: owner decisions are never pre-empted. A charter with no escalation contract is one under which an agent decides an owner question and nobody is told.
+#
+# It is a STRUCTURALLY PLAUSIBLE instance, not a syntax error: it is the
+# valid example with exactly one thing changed, so it exercises the schema
+# rule rather than the parser (kernel plan M3 section 2.3 rule 1).
+kind: charter
+identity:
+  name: example-service
+  repo: git@github.com:example/example-service.git
+  kernel-version-pin: 0.1.0
+delivery-mode: standard
+assurance-tier: standard
+yolo-permissions:
+  enabled: false
+  scope: []
+irreversible-decisions:
+  stack: Node 26, TypeScript, Postgres 16
+  language: TypeScript
+  framework: Fastify
+  core-data-model: One tenant per organization; every row carries tenant_id and
+    every query is scoped by it.
+  tenancy: shared database, row-level tenant scoping
+  auth: OIDC through the organization's identity provider, no local passwords
+  deployment-topology: single region, one managed container service
+product-intent: |
+  A service that ingests supplier catalogues, normalizes them, and exposes one
+  search endpoint. Success is that a buyer finds the right part in one query.
+  Not in scope: pricing, ordering, or anything that writes to a supplier.
+constraints:
+  - No customer data leaves the region.
+  - The search endpoint answers in under 300ms at the 95th percentile.
+release-verification:
+  mode: reserved
+  note: The real shape of this field is settled by the first real project
+    charter at M4's pilot. Until then a project declares reserved and says
+    why.
+retention:
+  work-history: delivery/work-history/
+  evidence: delivery/evidence/
+  tuition: delivery/tuition/

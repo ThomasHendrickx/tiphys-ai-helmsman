@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/plan.schema.json",
+  "title": "Tiphys delivery plan",
+  "description": "The plan artifact of the orchestrated delivery process, section 1c. Kernel plan M3, M3-P1 step 2. Every object level sets additionalProperties: false, so a misspelled property is a failure and never a silently ignored field (criterion 5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "status",
+    "baseline-commit",
+    "binding-rule",
+    "process-summary",
+    "standing-context",
+    "report-code-disagreement",
+    "phases",
+    "decisions",
+    "open-questions",
+    "parked"
+  ],
+  "properties": {
+    "kind": {
+      "$comment": "R-016. The discriminator tiphys validate --type auto reads.",
+      "type": "string",
+      "const": "plan"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "approved", "superseded"]
+    },
+    "baseline-commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "binding-rule": {
+      "$comment": "R-017. A required const carrying the process document's exact sentence (delivery/intake/orchestrated-delivery-process.md section 1c), so a plan cannot ship a softened paraphrase of the rule that keeps ten agents from improvising.",
+      "type": "string",
+      "const": "If it is not written here, it is not being made. Unanswered questions go to the orchestrator."
+    },
+    "process-summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "standing-context": {
+      "$comment": "R-018. What previous runs bought, what is already fixed, what the deploy state is.",
+      "type": "string",
+      "minLength": 1
+    },
+    "report-code-disagreement": {
+      "$comment": "R-011, and the input to the derived check plan-verification-first-present. An entry with verified: false whose owning phase has no verification-first step makes the plan invalid; that is a foreign-key lookup across two arrays and is Kind B, in src/checks.ts.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "claim", "verified"],
+        "properties": {
+          "phase": {
+            "type": "string",
+            "pattern": "^M[0-9]+-P[0-9]+$"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
+    },
+    "decisions": {
+      "$comment": "R-021. Every non-obvious call, numbered, so disagreement targets a number instead of re-litigating prose.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^D-[0-9]+$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "open-questions": {
+      "$comment": "D-7 and SC-009: an open question IS a decision record with status open, so the plan carries references and never a second parallel register.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^DR-[0-9]{4}$"
+      }
+    },
+    "parked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item", "reason"],
+        "properties": {
+          "item": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "$comment": "R-019 plus the blueprint section 5 superset (conflicts-with, parallelizable). A strict SUPERSET of the M2-P4 scope auditor's phase-declaration projection, which tiphys plan project emits (D-M3-18).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "branch",
+        "intent",
+        "grounding",
+        "severity",
+        "verified-root-cause",
+        "steps",
+        "files-to-touch",
+        "extras",
+        "acceptance",
+        "hazard-classes",
+        "migrations",
+        "conflicts-with",
+        "parallelizable",
+        "citations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^M[0-9]+-P[0-9]+$"
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^claude/m[0-9]+-p[0-9]+-.+$"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grounding": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "verified-root-cause": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "$comment": "R-012. A step that confirms a claim before building on it. The derived check plan-verification-first-present requires one in any phase named by an unverified report-code-disagreement entry.",
+                "type": "string",
+                "const": "verification-first"
+              }
+            }
+          }
+        },
+        "files-to-touch": {
+          "$comment": "M2R-016. Literal paths, or literal directories with a trailing slash. A parenthetical gloss is permitted HERE, because this document is authored for humans; tiphys plan project strips it, and that stripping is the one place the plan's vocabulary and the auditor's meet.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "extras": {
+          "$comment": "Projected as declaredExtras. Required rather than optional because the scope auditor treats declaredExtras as required; the standing pre-authorized extras (test/behaviors.json and the phase work history) are added by the auditor itself and are never listed here.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "acceptance": {
+          "$comment": "R-019: falsifiable statements. minItems 1 because a phase with no acceptance criterion has declared nothing to walk.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "criterion"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "criterion": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "hazard-classes": {
+          "$comment": "T-007, D-M3-32 and D-M3-35. minItems 1 and NOT optional: an optional field is the version of this rule that did not survive. T-007 records a phase meeting fifteen of fifteen executed criteria while live-locking every supervision command, and the reviewer who found it differed in its BRIEF, not in its model. addressed-by is resolved by the derived check plan-hazard-classes-addressed-by-resolves (section 2.6).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "statement", "addressed-by"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "addressed-by": {
+                "$comment": "Either `criterion <id>` naming a criterion in the SAME phase's acceptance list, or one of section 2.6's three admissible reasons with its named target. The pattern is the Kind A half; resolving the target is Kind B.",
+                "type": "string",
+                "pattern": "^(criterion .+|judgment-property-of-prose: .+|state-not-entered: .+|later-phase: M[0-9]+-P[0-9]+)$"
+              }
+            }
+          }
+        },
+        "migrations": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conflicts-with": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "parallelizable": {
+          "type": "boolean"
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fill-in": {
+          "$comment": "R-014. Present and unfilled means the phase is valid for REVIEW and invalid for DISPATCH. That is a computed property of the slots rather than of one field, so it is Kind B: the derived check plan-dispatchable reports it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filled", "root-cause", "fix-shape", "files"],
+          "properties": {
+            "filled": {
+              "type": "boolean"
+            },
+            "root-cause": {
+              "type": "string"
+            },
+            "fix-shape": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

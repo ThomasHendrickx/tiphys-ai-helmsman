@@ -1,0 +1,24 @@
+{
+  "id": "validate-unknown-keyword-compilation",
+  "behavior": "validate-unknown-keyword-fails-compilation",
+  "tests": [
+    "an unknown schema keyword fails compilation before any instance is examined, and names the keyword"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    strict: true,",
+      "replace": "    strict: false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    const diagnostics = compilationDiagnostics(error, ajv, schema);\n    result = {\n      ok: false,\n      diagnostics,\n      reason: formatDiagnostics(diagnostics).join(\"; \"),\n    };",
+      "replace": "    void error;\n    result = { ok: true, validator: (() => true) as unknown as ValidateFunction };"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

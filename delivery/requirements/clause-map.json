@@ -1,0 +1,62 @@
+{
+  "R-011": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-011"
+  },
+  "R-012": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-012"
+  },
+  "R-014": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-014"
+  },
+  "R-016": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-016"
+  },
+  "R-017": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-017"
+  },
+  "R-018": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-018"
+  },
+  "R-019": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-019"
+  },
+  "R-021": {
+    "phase": "M3-P1",
+    "artifact": "schemas/plan.schema.json",
+    "clause": "R-021"
+  },
+  "R-022": {
+    "phase": "M3-P1",
+    "artifact": "schemas/charter.schema.json",
+    "clause": "R-022"
+  },
+  "R-063": {
+    "phase": "M3-P1",
+    "artifact": "schemas/decision-record.schema.json",
+    "clause": "R-063"
+  },
+  "R-084": {
+    "phase": "M3-P1",
+    "artifact": "schemas/status-line.schema.json",
+    "clause": "R-084"
+  },
+  "R-090": {
+    "phase": "M3-P1",
+    "artifact": "schemas/decision-record.schema.json",
+    "clause": "R-090"
+  }
+}

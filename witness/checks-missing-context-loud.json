@@ -1,0 +1,24 @@
+{
+  "id": "checks-missing-context-loud",
+  "behavior": "check-missing-context-fails-loudly",
+  "tests": [
+    "a derived check that requires a context it was not given is SKIPPED and the run fails, and succeeds when the context is supplied"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (check.requiresContext && contextDirectory === undefined) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    failed: violationLines.length > 0 || skippedLines.length > 0,",
+      "replace": "    failed: violationLines.length > 0,"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

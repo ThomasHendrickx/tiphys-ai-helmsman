@@ -1,0 +1,24 @@
+{
+  "id": "gates-validator-engine-retired",
+  "behavior": "gate-manifest-missing-id-diagnostic",
+  "tests": [
+    "a manifest missing a gate id is rejected naming the field as INVALID with a json pointer"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/validate.ts",
+      "find": "  return validateInstance(schema, instance) as Diagnostic[];",
+      "replace": "  return [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/validate.ts",
+      "find": "  if (referenceProblems.length > 0) {",
+      "replace": "  if (true) {"
+    }
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2
+}

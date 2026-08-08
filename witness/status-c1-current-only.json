@@ -1,0 +1,24 @@
+{
+  "id": "status-c1-current-only",
+  "behavior": "status-show-ignores-stream",
+  "tests": [
+    "status show survives an unparseable stream, and an implementation of show that reads the stream is red against the same fixture"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  const path = join(fleetRoot, CURRENT_FILE);",
+      "replace": "  const path = join(fleetRoot, STREAM_FILE);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  renameSync(temporaryPath, currentPath);",
+      "replace": "  renameSync(temporaryPath, `${currentPath}.unused`);"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

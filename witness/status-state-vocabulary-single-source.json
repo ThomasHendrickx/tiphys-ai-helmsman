@@ -1,0 +1,24 @@
+{
+  "id": "status-state-vocabulary-single-source",
+  "behavior": "status-state-enum-matches-schema",
+  "tests": [
+    "the state list in src/status.ts and the enum in the shipped schema are the same set"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  \"phase-change\",\n];",
+      "replace": "  \"phase-change\",\n  \"progress\",\n];"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/status-line.schema.json",
+      "find": "\"enum\": [\"needs-decision\", \"blocked\", \"done\", \"failed\", \"phase-change\"]",
+      "replace": "\"enum\": [\"needs-decision\", \"blocked\", \"done\", \"failed\", \"phase-change\", \"progress\"]"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

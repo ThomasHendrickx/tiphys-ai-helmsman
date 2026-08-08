@@ -1,0 +1,50 @@
+# A minimal Tiphys project charter that validates against
+# schemas/charter.schema.json. Kernel plan M3, M3-P1 step 7.
+kind: charter
+identity:
+  name: example-service
+  repo: git@github.com:example/example-service.git
+  kernel-version-pin: 0.1.0
+delivery-mode: standard
+assurance-tier: standard
+yolo-permissions:
+  enabled: false
+  scope: []
+irreversible-decisions:
+  stack: Node 26, TypeScript, Postgres 16
+  language: TypeScript
+  framework: Fastify
+  core-data-model: >-
+    One tenant per organization; every row carries tenant_id and every query
+    is scoped by it.
+  tenancy: shared database, row-level tenant scoping
+  auth: OIDC through the organization's identity provider, no local passwords
+  deployment-topology: single region, one managed container service
+product-intent: |
+  A service that ingests supplier catalogues, normalizes them, and exposes one
+  search endpoint. Success is that a buyer finds the right part in one query.
+  Not in scope: pricing, ordering, or anything that writes to a supplier.
+constraints:
+  - No customer data leaves the region.
+  - The search endpoint answers in under 300ms at the 95th percentile.
+escalation-contract:
+  # The two DEFAULT stop-for entries. The second one is what makes turning
+  # verification off an owner decision instead of an implementer's edit
+  # (delivery/verification/release-verification-interface.md section 4.1).
+  # This is a default that is SHIPPED, not a rule anyone is proved to obey.
+  stop-for:
+    - any irreversible choice the charter is silent on
+    - a change from a declared release verification to `none`
+  route: >-
+    The orchestrator raises a decision record and notifies the owner
+    asynchronously; work on the affected phase stops.
+release-verification:
+  # RESERVED, NOT DESIGNED (DR-0014, D-M3-29). See the schema's $comment.
+  mode: reserved
+  note: >-
+    The real shape of this field is settled by the first real project charter
+    at M4's pilot. Until then a project declares reserved and says why.
+retention:
+  work-history: delivery/work-history/
+  evidence: delivery/evidence/
+  tuition: delivery/tuition/

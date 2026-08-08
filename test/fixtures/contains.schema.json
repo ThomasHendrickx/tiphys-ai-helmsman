@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/test-fixtures/contains.schema.json",
+  "title": "contains fixture",
+  "description": "contains is in the declared authoring vocabulary (schemas/README.md) and is used by no document M3-P1 ships. Validator criteria 2 and 3 still bind it, so its positive, negative and DISCRIMINATING cases run against this fixture rather than against nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gates"
+  ],
+  "properties": {
+    "gates": {
+      "type": "array",
+      "contains": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "required"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "const": true
+          }
+        }
+      }
+    }
+  }
+}

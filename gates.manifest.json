@@ -146,6 +146,15 @@
       }
     },
     {
+      "id": "clause-map",
+      "command": [
+        "node",
+        "scripts/check-clause-map.mjs"
+      ],
+      "unitLabel": "clause-map rows checked",
+      "applicability": "required"
+    },
+    {
       "id": "red-witness",
       "command": [
         "node",

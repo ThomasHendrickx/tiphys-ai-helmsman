@@ -1,0 +1,24 @@
+{
+  "id": "checks-verification-first-present",
+  "behavior": "check-plan-verification-first-present",
+  "tests": [
+    "an unverified claim whose owning phase has no verification-first step is rejected naming the check, and is accepted with the check deregistered"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (!hasVerificationFirst) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (entry === undefined || entry[\"verified\"] !== false) {",
+      "replace": "      if (entry === undefined || entry[\"verified\"] !== true) {"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

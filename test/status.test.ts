@@ -1,0 +1,239 @@
+/**
+ * THE STATUS-LINE TESTS (kernel plan M3, M3-P1 criteria 6, 7 and 8; R-084;
+ * constraint C-1).
+ */
+
+import { spawnSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const cliEntry = join(repoRoot, "bin", "tiphys.ts");
+
+const statusModule = (await import(
+  new URL("../src/status.ts", import.meta.url).href
+)) as {
+  STATUS_STATES: readonly string[];
+  readCurrent: (
+    fleetRoot: string,
+  ) => { ok: true; record: Record<string, unknown> } | { ok: false; reason: string };
+  renderStatus: (record: Record<string, unknown>) => string;
+};
+
+interface Run {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+function runIn(cwd: string, args: string[]): Run {
+  const run = spawnSync(process.execPath, [cliEntry, ...args], {
+    encoding: "utf8",
+    cwd,
+  });
+  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
+}
+
+/**
+ * A real fleet home, created by the delivered `tiphys init`. The git identity
+ * is command-scoped because CI runners have no git identity and this must
+ * never touch user or global config (CLAUDE.md standing warning 5); `init`
+ * already does that by design, so nothing extra is needed here beyond not
+ * undoing it.
+ */
+function fleet(): { root: string; dispose: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-status-"));
+  const root = join(dir, "fleet");
+  const created = spawnSync(process.execPath, [cliEntry, "init", root], {
+    encoding: "utf8",
+  });
+  assert.equal(created.status, 0, created.stdout + created.stderr);
+  return {
+    root,
+    dispose: () => {
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Criterion 6: emit appends one line and rewrites current              */
+/* ------------------------------------------------------------------ */
+
+test("status emit appends exactly one line to the stream and leaves current.json parsing with the emitted state", () => {
+  const { root, dispose } = fleet();
+  try {
+    const first = runIn(root, [
+      "status",
+      "emit",
+      "--run",
+      "r1",
+      "--state",
+      "phase-change",
+      "--detail",
+      "x",
+    ]);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+
+    const stream = readFileSync(join(root, "state", "status", "stream.jsonl"), "utf8");
+    assert.equal(
+      stream.split("\n").filter((line) => line !== "").length,
+      1,
+      stream,
+    );
+    const current = JSON.parse(
+      readFileSync(join(root, "state", "status", "current.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal(current["state"], "phase-change");
+    assert.equal(current["run"], "r1");
+    assert.equal(current["detail"], "x");
+
+    /* A SECOND emit APPENDS rather than replaces, and moves the pointer. The
+       first assertion alone would pass against an emitter that truncated the
+       stream every time, which is the opposite of an append-only history. */
+    const second = runIn(root, ["status", "emit", "--run", "r2", "--state", "done"]);
+    assert.equal(second.status, 0, second.stdout + second.stderr);
+    const after = readFileSync(join(root, "state", "status", "stream.jsonl"), "utf8");
+    assert.equal(after.split("\n").filter((line) => line !== "").length, 2);
+    assert.ok(after.includes('"run":"r1"'), "the first record was overwritten");
+    const moved = JSON.parse(
+      readFileSync(join(root, "state", "status", "current.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal(moved["state"], "done");
+    assert.equal(moved["run"], "r2");
+
+    /* The atomic rewrite leaves no temp file behind. */
+    const files = readdirSync(join(root, "state", "status")).sort();
+    assert.deepEqual(files, ["current.json", "stream.jsonl"]);
+  } finally {
+    dispose();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 7: C-1, and the red witness against the DANGEROUS state     */
+/* ------------------------------------------------------------------ */
+
+test("status show survives an unparseable stream, and an implementation of show that reads the stream is red against the same fixture", () => {
+  const { root, dispose } = fleet();
+  try {
+    assert.equal(
+      runIn(root, ["status", "emit", "--run", "r1", "--state", "blocked", "--detail", "waiting on DR-0021"]).status,
+      0,
+    );
+
+    /* THE DANGEROUS STATE: the append-only history is garbage. C-1 exists
+       because a tail read here would produce a wrong ANSWER rather than an
+       error, and a wrong answer about whether the fleet is blocked is what
+       reaches the owner. */
+    writeFileSync(
+      join(root, "state", "status", "stream.jsonl"),
+      "  not json at all\n{\"half\": ",
+    );
+
+    const shown = runIn(root, ["status", "show"]);
+    assert.equal(shown.status, 0, shown.stdout + shown.stderr);
+    assert.match(shown.stdout, /blocked/);
+    assert.match(shown.stdout, /run=r1/);
+
+    /* THE RED WITNESS, and it is red against the DANGEROUS STATE rather than
+       against an absent feature: this is `show` implemented the forbidden
+       way, reading the tail of the log, run against the SAME corrupted
+       fixture. It must fail. Written here rather than patched into the source
+       because a source patch would have to be reverted by hand, and the
+       revert is the step that gets forgotten. */
+    const streamPath = join(root, "state", "status", "stream.jsonl");
+    let tailReadThrew = false;
+    try {
+      const lines = readFileSync(streamPath, "utf8")
+        .split("\n")
+        .filter((line) => line !== "");
+      const last = lines[lines.length - 1] as string;
+      JSON.parse(last);
+    } catch {
+      tailReadThrew = true;
+    }
+    assert.equal(
+      tailReadThrew,
+      true,
+      "the corrupted fixture did not break a tail read, so it does not stage the dangerous state",
+    );
+
+    /* And the DELIVERED reader, on the same tree, is still right. The pair is
+       what makes this a witness: same fixture, forbidden implementation red,
+       delivered implementation green. */
+    const current = statusModule.readCurrent(root);
+    assert.equal(current.ok, true);
+    assert.equal(current.ok === true ? current.record["state"] : "", "blocked");
+
+    /* The corrupted stream is restored to a well-formed one, and `show` is
+       unchanged by that too: its answer never depended on the stream. */
+    writeFileSync(streamPath, "");
+    const afterRestore = runIn(root, ["status", "show"]);
+    assert.equal(afterRestore.status, 0);
+    assert.match(afterRestore.stdout, /blocked/);
+  } finally {
+    dispose();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 8: the state vocabulary is closed and ENFORCED              */
+/* ------------------------------------------------------------------ */
+
+test("status emit with a state outside the five-value enum exits nonzero naming the enum, and writes nothing", () => {
+  const { root, dispose } = fleet();
+  try {
+    for (const forbidden of ["progress", "info", "heartbeat"]) {
+      const run = runIn(root, ["status", "emit", "--run", "r1", "--state", forbidden]);
+      assert.notEqual(run.status, 0, forbidden);
+      assert.match(run.stderr, /INVALID #\/state value/, forbidden);
+      assert.match(run.stderr, /permitted values/, forbidden);
+      /* R-084's sparseness is worth nothing if the refusal still writes. */
+      assert.deepEqual(
+        readdirSync(join(root, "state")).filter((name) => name === "status"),
+        [],
+        `${forbidden} created the status directory`,
+      );
+    }
+
+    /* CONTROL: every one of the five permitted states IS accepted, so the
+       refusal above is about the vocabulary and not about emitting at all. */
+    for (const permitted of statusModule.STATUS_STATES) {
+      const run = runIn(root, ["status", "emit", "--run", "r1", "--state", permitted]);
+      assert.equal(run.status, 0, `${permitted}: ${run.stdout}${run.stderr}`);
+    }
+  } finally {
+    dispose();
+  }
+});
+
+test("the state list in src/status.ts and the enum in the shipped schema are the same set", () => {
+  /* A DUPLICATED VOCABULARY THAT NOTHING COMPARES IS A VOCABULARY THAT
+     DRIFTS. The CLI needs the list to compose a usage line; the schema is the
+     contract. This is the comparison that stops the two from diverging
+     silently, and it is the same shape as M3-P3's
+     charter-mode-enum-matches-modes one milestone earlier. */
+  const schema = JSON.parse(
+    readFileSync(join(repoRoot, "schemas", "status-line.schema.json"), "utf8"),
+  ) as { properties: { state: { enum: string[] } } };
+  assert.deepEqual(
+    [...schema.properties.state.enum].sort(),
+    [...statusModule.STATUS_STATES].sort(),
+  );
+  /* And neither of them contains a routine-noise state, which is the whole
+     structural claim R-084 makes. */
+  for (const noise of ["info", "progress", "heartbeat", "running"]) {
+    assert.ok(!schema.properties.state.enum.includes(noise), noise);
+  }
+});

@@ -1,0 +1,24 @@
+{
+  "id": "plan-projection-gloss-stripped",
+  "behavior": "plan-projection-strips-files-to-touch-gloss",
+  "tests": [
+    "a files-to-touch entry carrying a parenthetical gloss projects to the bare path, and a directory keeps its trailing slash"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "const TRAILING_GLOSS = /^(\\S+)\\s+\\([\\s\\S]*\\)$/;",
+      "replace": "const TRAILING_GLOSS = /^(.*?)\\s*\\([\\s\\S]*$/;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "  const trailing = TRAILING_GLOSS.exec(text);\n  if (trailing !== null) {",
+      "replace": "  const trailing = /^(\\S+)\\s*\\([\\s\\S]*\\)$/.exec(text);\n  if (trailing !== null) {"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

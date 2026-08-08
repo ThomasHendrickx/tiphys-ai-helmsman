@@ -1,0 +1,72 @@
+# A VALID plan with no fill-in on any phase, so plan-dispatchable reports
+# dispatchable: true. It is the second direction of criterion 4b; without it
+# the check could report false unconditionally and stay green.
+kind: plan
+status: approved
+baseline-commit: be84c6d
+binding-rule: If it is not written here, it is not being made. Unanswered
+  questions go to the orchestrator.
+process-summary: "Orchestrated delivery: verified plan, adversarial plan
+  review, one phase per branch, clean-room review before merge, milestone exit
+  tests as hard gates."
+standing-context: |
+  What previous runs bought: the fleet layout, the lease lock, the watcher and
+  the gate contract. What is already fixed: nothing ships without a red
+  witness. Deploy state: none, this is a library.
+report-code-disagreement:
+  - phase: M9-P1
+    claim: the report says the importer retries on a 429, and the code does not
+    verified: false
+phases:
+  - id: M9-P1
+    branch: claude/m9-p1-importer-retry
+    intent: Make the importer's retry behaviour match what the report claims.
+    grounding: The importer is on main at be84c6d and has one call site. The
+      report's retry claim has not been confirmed against it.
+    severity: high
+    verified-root-cause: To be established by step 1, which is why step 1 is
+      verification-first and the fill-in below is unfilled.
+    steps:
+      - kind: verification-first
+        text: Confirm whether the importer retries a 429 at all, capture the observed
+          behaviour, and write it down before changing anything.
+      - text: Implement the retry the verification shows is missing.
+    files-to-touch:
+      - src/importer.ts
+      - test/importer.test.ts
+      - "`src/cli.ts` (edit only if step 4 requires it)"
+    extras:
+      - delivery/requirements/clause-map.json
+    acceptance:
+      - id: "1"
+        criterion: node --test test/importer.test.ts exits 0 and reports 4 tests, 0
+          failing.
+      - id: "2"
+        criterion: A staged 429 response is retried exactly twice and the third
+          failure propagates, asserted against captured server output.
+    hazard-classes:
+      - id: H1
+        statement: A retry that masks a permanent failure, so a broken import reports
+          success after three attempts.
+        addressed-by: criterion 2
+      - id: H2
+        statement: Retry storms under concurrent imports, which no state this
+          milestone reaches can produce.
+        addressed-by: "state-not-entered: M10"
+    migrations: none
+    conflicts-with: []
+    parallelizable: false
+    citations:
+      - R-012
+      - T-003
+decisions:
+  - id: D-1
+    statement: The retry count is two rather than five, because the importer's
+      caller already has a job-level retry and five would multiply to
+      twenty-five.
+open-questions:
+  - DR-0021
+parked:
+  - item: A circuit breaker in front of the importer.
+    reason: No measured instance of the failure it prevents; building it now is
+      the shape risk 1 exists to stop.

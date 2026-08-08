@@ -2,9 +2,12 @@ import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdGates } from "./commands/gates.ts";
 import { cmdInit } from "./commands/init.ts";
 import { cmdLock } from "./commands/lock.ts";
+import { cmdPlan } from "./commands/plan.ts";
 import { cmdPool } from "./commands/pool.ts";
 import { cmdSpawn } from "./commands/spawn.ts";
+import { cmdStatus } from "./commands/status.ts";
 import { cmdTeardown } from "./commands/teardown.ts";
+import { cmdValidate } from "./commands/validate.ts";
 import { cmdWatch } from "./commands/watch.ts";
 import { printVersion } from "./version.ts";
 
@@ -22,9 +25,12 @@ const commands = new Map<string, CommandHandler>([
   ["doctor", cmdDoctor],
   ["gates", cmdGates],
   ["lock", cmdLock],
+  ["plan", cmdPlan],
   ["pool", cmdPool],
   ["spawn", cmdSpawn],
+  ["status", cmdStatus],
   ["teardown", cmdTeardown],
+  ["validate", cmdValidate],
   ["watch", cmdWatch],
 ]);
 

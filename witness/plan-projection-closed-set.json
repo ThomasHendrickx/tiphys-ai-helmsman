@@ -1,0 +1,24 @@
+{
+  "id": "plan-projection-closed-set",
+  "behavior": "plan-projection-emits-camelcase-closed-set",
+  "tests": [
+    "the projection validates against the delivered phase-declaration schema, emits exactly the five camelCase keys, and a sixth key is rejected"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "    citations: stringArray(phase[\"citations\"]),\n  };",
+      "replace": "    citations: stringArray(phase[\"citations\"]),\n    extras: stringArray(phase[\"extras\"]),\n  } as unknown as PhaseDeclaration;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "    filename: `${phaseId.toLowerCase()}.json`,",
+      "replace": "    filename: `${phaseId}.json`,"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}
