@@ -1,0 +1,25 @@
+{
+  "id": "gates-validator-engine-retired",
+  "behavior": "validate-valid-instance",
+  "tests": [
+    "each shipped example validates under its named type and under --type auto",
+    "every keyword in the declared authoring vocabulary has both a positive and a negative test"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/validate.ts",
+      "find": "  return validateInstance(schema, instance) as Diagnostic[];",
+      "replace": "  return [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/validate.ts",
+      "find": "  if (referenceProblems.length > 0) {",
+      "replace": "  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

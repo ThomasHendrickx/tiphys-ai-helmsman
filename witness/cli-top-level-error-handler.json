@@ -1,0 +1,24 @@
+{
+  "id": "cli-top-level-error-handler",
+  "behavior": "cli-errors-have-no-stack-trace",
+  "tests": [
+    "malformed YAML and a non-mapping document each give one diagnostic line, a nonzero exit and no stack frame"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "bin/tiphys.ts",
+      "find": "} catch (error) {",
+      "replace": "} finally { } if (false) { const error: unknown = undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"validate\", cmdValidate],",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

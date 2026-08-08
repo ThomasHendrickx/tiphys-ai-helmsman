@@ -1,0 +1,25 @@
+{
+  "id": "status-c1-current-only",
+  "behavior": "status-show-ignores-stream",
+  "tests": [
+    "status show survives an unparseable stream, and an implementation of show that reads the stream is red against the same fixture",
+    "status emit appends exactly one line to the stream and leaves current.json parsing with the emitted state"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  appendFileSync(streamPath, `${JSON.stringify(record)}\\n`, \"utf8\");",
+      "replace": "  writeFileSync(streamPath, `${JSON.stringify(record)}\\n`, \"utf8\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  renameSync(temporaryPath, currentPath);",
+      "replace": "  renameSync(temporaryPath, `${currentPath}.unused`);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

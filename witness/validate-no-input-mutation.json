@@ -1,0 +1,30 @@
+{
+  "id": "validate-no-input-mutation",
+  "behavior": "validate-input-not-mutated",
+  "tests": [
+    "validation does not coerce, default, strip or otherwise mutate the input, one case per kind"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "coerceTypes: false,",
+      "replace": "coerceTypes: true,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "removeAdditional: false,",
+      "replace": "removeAdditional: \"all\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "useDefaults: false,",
+      "replace": "useDefaults: true,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

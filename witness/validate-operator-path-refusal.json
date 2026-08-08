@@ -1,0 +1,24 @@
+{
+  "id": "validate-operator-path-refusal",
+  "behavior": "validate-refuses-non-regular-input-path",
+  "tests": [
+    "a named pipe at the file argument or at --context is refused within a bounded time, and a regular file at the same path is accepted"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "  if (entry.kind === \"irregular\" || entry.kind === \"unexaminable\") {\n    return { ok: false, reason: entry.reason };\n  }",
+      "replace": "  if (false) {\n    return { ok: false, reason: \"unreachable\" };\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "    const contextProblem = classifyContextDirectory(context);",
+      "replace": "    const contextProblem: string | undefined = undefined;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
