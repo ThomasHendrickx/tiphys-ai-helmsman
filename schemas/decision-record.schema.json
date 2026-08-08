@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/decision-record.schema.json",
+  "title": "Tiphys decision record",
+  "description": "Blueprint section 7's field list, plus the fields R-063 and R-090 need in order to be checkable rather than habitual. An OPEN QUESTION is a record with status open (D-7), so there is one register and never two.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "id",
+    "project",
+    "task",
+    "question",
+    "options",
+    "reversibility",
+    "vetoable",
+    "revert-cost",
+    "status",
+    "decided",
+    "date"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "decision-record"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^DR-[0-9]{4}$"
+    },
+    "project": { "type": "string", "minLength": 1 },
+    "task": { "type": "string", "minLength": 1 },
+    "question": { "type": "string", "minLength": 1 },
+    "options": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "consequence"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "consequence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reversibility": {
+      "$comment": "R-063. Exactly three values, so the cost of being wrong is stated rather than implied.",
+      "type": "string",
+      "enum": ["reversible", "costly", "irreversible"]
+    },
+    "vetoable": {
+      "$comment": "R-090: a forced owner-adjacent call is decided, FLAGGED VETOABLE, and made trivially revertible. This field and revert-cost are what turn that sentence from a habit into a required field.",
+      "type": "boolean"
+    },
+    "revert-cost": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "$comment": "D-7: an open question is a record with status open.",
+      "type": "string",
+      "enum": ["open", "deferred", "decided"]
+    },
+    "decided": {
+      "$comment": "The answer in the decider's own terms. Empty while the record is open or deferred; a record with status decided and an empty decided field is a record that claims an answer it does not carry, which is the Kind A pair the if/then below enforces.",
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "if": {
+    "type": "object",
+    "required": ["status"],
+    "properties": { "status": { "const": "decided" } }
+  },
+  "then": {
+    "type": "object",
+    "required": ["decided"],
+    "properties": { "decided": { "type": "string", "minLength": 1 } }
+  }
+}

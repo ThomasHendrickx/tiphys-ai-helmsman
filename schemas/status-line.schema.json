@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/status-line.schema.json",
+  "title": "Tiphys status-line record",
+  "description": "R-084. The orchestrator narrates to the owner at MILESTONES ONLY. The sparseness is expressed structurally rather than as an instruction: there is no info state, no progress state and no heartbeat state, so routine noise is UNREPRESENTABLE. A vocabulary that cannot say 'still working' cannot be used to say it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "at", "run", "project", "state", "detail", "refs"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "status-line"
+    },
+    "at": {
+      "$comment": "RFC 3339 UTC, so two records from two machines sort.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "$comment": "Blueprint section 5, exactly five supervisor-actionable states. Every one of them is something the owner can DO something about; that is the membership rule, and it is why info, progress and heartbeat are absent rather than merely discouraged.",
+      "type": "string",
+      "enum": ["needs-decision", "blocked", "done", "failed", "phase-change"]
+    },
+    "detail": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
