@@ -13,7 +13,7 @@
     "src/commands/checklist.ts",
     "test/checklists.test.ts",
     "test/verdict-schema.test.ts",
-    "test/fixtures/red-witness-evidence.",
+    "test/fixtures/",
     "src/cli.ts",
     "src/validate.ts",
     "src/checks.ts",
