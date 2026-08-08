@@ -498,6 +498,25 @@ test("a registry gate writing green with zero units is rewritten to error and va
         FIXTURE_UNITS: "0",
         FIXTURE_EXIT: "0",
       });
+      /* ANCHORED TO REAL CAPTURED OUTPUT (section 2.3 rule 4, red-witness
+         rule (f)). `witness/captures/gate-registry-vacuous-ingest.json` and
+         `gate-registry-vacuous-run.txt` are a verbatim capture of this same
+         dangerous state run through the real runner on 2026-08-08, stored
+         before this assertion was written. The live record must reproduce the
+         captured one field for field apart from the run's own timestamps, so
+         the sentence asserted below is the runner's, not one chosen by hand
+         to match the implementation. */
+      const capturedIngest = JSON.parse(
+        readFileSync(join(repoRoot, "witness", "captures", "gate-registry-vacuous-ingest.json"), "utf8"),
+      ) as Record<string, unknown>;
+      const capturedRun = readFileSync(
+        join(repoRoot, "witness", "captures", "gate-registry-vacuous-run.txt"),
+        "utf8",
+      );
+      assert.match(capturedRun, /error 1 vacuous 1/);
+      assert.equal(dangerous.record?.["detail"], capturedIngest["detail"]);
+      assert.equal(dangerous.record?.["status"], capturedIngest["status"]);
+      assert.equal(dangerous.record?.["vacuous"], capturedIngest["vacuous"]);
       /* On the RECORD THE RUNNER INGESTED, never on the constructor. */
       assert.equal(dangerous.record?.["status"], "error", `mode ${mode}`);
       assert.equal(dangerous.record?.["vacuous"], true, `mode ${mode}`);

@@ -1,0 +1,32 @@
+{
+  "id": "gate-registry-zero-units-green",
+  "behavior": "gate-registry-zero-units-green-becomes-error",
+  "tests": [
+    "a registry gate writing green with zero units is rewritten to error and vacuous under --mode full and under a non-full mode"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "          ? loadRegistry(options.manifestPath, options.mode ?? DEFAULT_MODE)",
+      "replace": "          ? loadManifest(options.manifestPath)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  const inMode = document.gates.filter((entry) => entry.modes.includes(mode));",
+      "replace": "  const inMode: RegistryGateEntry[] = [];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the gate subprocess the runner spawns, ingested through src/gates/run.ts ingestGateRun",
+    "captures": [
+      "witness/captures/gate-registry-vacuous-ingest.json",
+      "witness/captures/gate-registry-vacuous-run.txt"
+    ],
+    "provenance": "src/gates/run.ts spawns every gate with spawnSync and INGESTS the record that other program wrote, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). The M2-C-2 rewrite is a statement ABOUT that ingest: it is what the runner does to a record another program authored. Both captures are verbatim output of `node bin/tiphys.ts gates run --registry <scratch>/registry.json --mode full --evidence <scratch>/ev` taken on 2026-08-08 against this branch, over a one-gate registry whose gate writes its own record with status green and units 0. The named test asserts the live record reproduces the captured detail, status and vacuous flag, so the sentence under test is the runner's own and not one written to match the implementation (CLAUDE.md warning 10, T-003 lesson 4)."
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "gate": "vacuous",
+  "status": "error",
+  "units": 0,
+  "unitLabel": "fixture units",
+  "startedAt": "2026-08-08T00:00:00.000Z",
+  "endedAt": "2026-08-08T00:00:01.000Z",
+  "detail": "M2-C-2 (never green by omission): a gate reporting green with units 0 examined nothing, so this record is error; the gate reported: written by the fixture gate, not by makeGateResult",
+  "evidence": [],
+  "vacuous": true
+}

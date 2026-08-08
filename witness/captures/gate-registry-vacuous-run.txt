@@ -1,0 +1,4 @@
+gates: run 5f29392f82048468f6e58137
+gates: registry /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/vac/registry.json mode full
+gates: declared 1 applicable 1 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 1
+gates: 1 gate(s) reported error: vacuous
