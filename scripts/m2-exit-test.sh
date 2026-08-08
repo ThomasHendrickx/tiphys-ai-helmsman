@@ -835,6 +835,7 @@ PR_EXPECT_JSON='{
     {"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
     {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "coverage", "expect": "green", "required": true},
+    {"id": "clause-map", "expect": "green", "required": true},
     {"id": "credential-scrub", "expect": "green", "required": true},
     {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
     {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true},
@@ -853,7 +854,7 @@ MAIN_EXPECT_JSON='{
     {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
     {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true}
   ],
-  "absent": ["red-witness", "citations", "scope", "credential-token"]
+  "absent": ["red-witness", "citations", "scope", "credential-token", "clause-map"]
 }'
 
 # ---------------------------------------------------------------------------
