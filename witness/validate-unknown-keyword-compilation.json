@@ -14,8 +14,8 @@
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "    result = { ok: false, reason: singleLineReason(error) };",
-      "replace": "    result = { ok: true, validator: (() => true) as unknown as ValidateFunction };"
+      "find": "    const diagnostics = compilationDiagnostics(error, ajv, schema);\n    result = {\n      ok: false,\n      diagnostics,\n      reason: formatDiagnostics(diagnostics).join(\"; \"),\n    };",
+      "replace": "    void error;\n    result = { ok: true, validator: (() => true) as unknown as ValidateFunction };"
     }
   ],
   "class": "additive",

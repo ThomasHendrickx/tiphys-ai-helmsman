@@ -8,7 +8,7 @@
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "      return {\n        ok: false,\n        reason: `${label} is not valid YAML${at}: ${singleLineReason(error.message)}`,\n      };",
+      "find": "      return {\n        ok: false,\n        reason: `${label} is not valid YAML${at}: ${ajvText(error.message)}`,\n      };",
       "replace": "      throw error;"
     },
     {

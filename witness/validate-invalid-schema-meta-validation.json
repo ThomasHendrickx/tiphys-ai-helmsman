@@ -14,7 +14,7 @@
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "    result = { ok: true, validator: makeAjv().compile(schema) };",
+      "find": "    result = { ok: true, validator: ajv.compile(schema) };",
       "replace": "    result = { ok: true, validator: new (ajvModule().Ajv2020)({ allErrors: true, validateSchema: false }).compile(schema) };"
     }
   ],

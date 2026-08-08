@@ -1,0 +1,24 @@
+{
+  "id": "checks-addressed-by-ambiguity",
+  "behavior": "check-addressed-by-ambiguous-criterion",
+  "tests": [
+    "a duplicate acceptance id makes an addressed-by resolve ambiguously and is rejected naming the check"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "          if (occurrences > 1) {",
+      "replace": "          if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "          criterionCounts.set(id, (criterionCounts.get(id) ?? 0) + 1);",
+      "replace": "          criterionCounts.set(id, 1);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

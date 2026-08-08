@@ -8,14 +8,14 @@
     {
       "kind": "mutation",
       "file": "src/plan.ts",
-      "find": "  const parenthesis = text.indexOf(\"(\");",
-      "replace": "  const parenthesis = -1;"
+      "find": "const TRAILING_GLOSS = /^(\\S+)\\s+\\([\\s\\S]*\\)$/;",
+      "replace": "const TRAILING_GLOSS = /^(.*?)\\s*\\([\\s\\S]*$/;"
     },
     {
       "kind": "mutation",
       "file": "src/plan.ts",
-      "find": "  text = text.replace(/^`+/, \"\").replace(/`+$/, \"\").trim();",
-      "replace": "  text = text.trim();"
+      "find": "  const trailing = TRAILING_GLOSS.exec(text);\n  if (trailing !== null) {",
+      "replace": "  const trailing = /^(\\S+)\\s*\\([\\s\\S]*\\)$/.exec(text);\n  if (trailing !== null) {"
     }
   ],
   "class": "additive",

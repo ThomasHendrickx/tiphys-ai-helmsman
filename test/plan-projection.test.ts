@@ -49,6 +49,7 @@ const planModule = (await import(
   new URL("../src/plan.ts", import.meta.url).href
 )) as {
   stripGloss: (entry: string) => string;
+  isLiteralPath: (entry: string) => boolean;
   projectPhase: (
     plan: unknown,
     phaseId: string,
@@ -158,6 +159,59 @@ test("a files-to-touch entry carrying a parenthetical gloss projects to the bare
     "gates.manifest.json",
   );
 
+  /* ------------------------------------------------------------------ */
+  /* B-001, fix round 1: A PARENTHESIS INSIDE A PATH IS NOT A GLOSS.      */
+  /* ------------------------------------------------------------------ */
+  /* The first version truncated at the FIRST `(`, so these three entries
+     projected to `src/app/`, `src/` and `src/app/`. `src/gates/scope.ts`
+     treats a trailing slash as a DIRECTORY PREFIX GRANT, so each one turned a
+     single declared file into an entire tree, inside the projection feeding
+     the gate whose whole purpose is preventing scope widening. Parenthesised
+     path segments are ordinary (Next.js route groups are the obvious case),
+     so this is not a corner. */
+  assert.equal(
+    planModule.stripGloss("src/app/(marketing)/page.tsx"),
+    "src/app/(marketing)/page.tsx",
+    "an interior parenthesis was treated as a gloss and widened the path",
+  );
+  assert.equal(
+    planModule.stripGloss("src/(lib)/util.ts"),
+    "src/(lib)/util.ts",
+    "an interior parenthesis granted all of src/",
+  );
+  assert.equal(
+    planModule.stripGloss("src/app/(marketing)"),
+    "src/app/(marketing)",
+    "a path whose LAST segment is parenthesised was treated as a bare gloss",
+  );
+  /* And the two together: a parenthesised segment AND a real trailing gloss. */
+  assert.equal(
+    planModule.stripGloss("`src/app/(marketing)/page.tsx` (edit)"),
+    "src/app/(marketing)/page.tsx",
+  );
+  assert.equal(
+    planModule.stripGloss("src/app/(marketing) (edit)"),
+    "src/app/(marketing)",
+  );
+
+  /* PROSE IS REFUSED, NOT PROJECTED. An entry the rule does not recognise
+     keeps its whitespace, and the projector fails loudly rather than emitting
+     a declaration nobody can satisfy. Failing loudly is the right direction:
+     a silently truncated entry grants a tree. */
+  assert.equal(planModule.isLiteralPath("src/plan.ts"), true);
+  assert.equal(planModule.isLiteralPath("some prose about a file"), false);
+  const prose = planFixture();
+  {
+    const phase = (prose["phases"] as Record<string, unknown>[])[0] as Record<string, unknown>;
+    phase["files-to-touch"] = ["the importer, wherever it lives"];
+  }
+  const refused = planModule.projectPhase(prose, "M9-P1");
+  assert.equal(refused.ok, false);
+  assert.match(
+    refused.ok === false ? refused.reason : "",
+    /not a literal path/,
+  );
+
   const projection = planModule.projectPhase(planFixture(), "M9-P1");
   assert.equal(projection.ok, true);
   if (projection.ok) {
@@ -169,7 +223,6 @@ test("a files-to-touch entry carrying a parenthetical gloss projects to the bare
   }
 });
 
-/* ------------------------------------------------------------------ */
 /* Criterion 10(b): THE REAL AUDITOR, merge base, both directions        */
 /* ------------------------------------------------------------------ */
 
