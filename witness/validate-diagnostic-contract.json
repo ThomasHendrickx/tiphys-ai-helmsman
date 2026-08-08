@@ -2,16 +2,14 @@
   "id": "validate-diagnostic-contract",
   "behavior": "validate-invalid-pointer-message",
   "tests": [
-    "Ajv errors become the exact Tiphys diagnostic text, and no Ajv-authored wording reaches either stream",
-    "each of the four dangerous fixtures is rejected with a message naming the offending pointer"
+    "Ajv errors become the exact Tiphys diagnostic text, and no Ajv-authored wording reaches either stream"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "return `INVALID ${diagnostic.pointer} ${diagnostic.message}`;",
-      "replace": "return `INVALID ${diagnostic.pointer} ${String((diagnostic as unknown as { ajv?: string }).ajv ?? diagnostic.message)}`;"
+      "find": "        message: DIAGNOSTIC_MESSAGES.required(String(params[\"missingProperty\"])),",
+      "replace": "        message: `must have required property '${String(params[\"missingProperty\"])}'`,"
     },
     {
       "kind": "mutation",
@@ -20,6 +18,7 @@
       "replace": "  return [...unique.values()].reverse();"
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

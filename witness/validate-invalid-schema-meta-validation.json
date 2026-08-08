@@ -1,0 +1,24 @@
+{
+  "id": "validate-invalid-schema-meta-validation",
+  "behavior": "validate-invalid-schema-fails-meta-validation",
+  "tests": [
+    "a schema that is itself invalid fails meta-schema validation"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    validateSchema: true,",
+      "replace": "    validateSchema: false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    result = { ok: true, validator: makeAjv().compile(schema) };",
+      "replace": "    result = { ok: true, validator: new (ajvModule().Ajv2020)({ allErrors: true, validateSchema: false }).compile(schema) };"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

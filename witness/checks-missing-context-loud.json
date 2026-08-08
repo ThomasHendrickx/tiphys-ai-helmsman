@@ -4,7 +4,6 @@
   "tests": [
     "a derived check that requires a context it was not given is SKIPPED and the run fails, and succeeds when the context is supplied"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
@@ -19,6 +18,7 @@
       "replace": "    failed: violationLines.length > 0,"
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

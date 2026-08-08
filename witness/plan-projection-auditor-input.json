@@ -4,7 +4,6 @@
   "tests": [
     "the real scope auditor accepts a generated declaration from its merge base, and mutating one files-to-touch entry in the plan changes the auditor's verdict"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
@@ -19,6 +18,7 @@
       "replace": "    branch: \"claude/m0-p0-wrong\","
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

@@ -1,0 +1,24 @@
+{
+  "id": "status-emit-durable-then-pointer",
+  "behavior": "status-emit-appends-and-updates-current",
+  "tests": [
+    "status emit appends exactly one line to the stream and leaves current.json parsing with the emitted state"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  appendFileSync(streamPath, `${JSON.stringify(record)}\\n`, \"utf8\");",
+      "replace": "  writeFileSync(streamPath, `${JSON.stringify(record)}\\n`, \"utf8\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "  renameSync(temporaryPath, currentPath);",
+      "replace": "  renameSync(temporaryPath, `${currentPath}.unused`);"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

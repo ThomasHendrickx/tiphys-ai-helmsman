@@ -4,21 +4,21 @@
   "tests": [
     "an unknown schema keyword fails compilation before any instance is examined, and names the keyword"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "strict: true,",
-      "replace": "strict: false,"
+      "find": "    strict: true,",
+      "replace": "    strict: false,"
     },
     {
       "kind": "mutation",
       "file": "src/validate.ts",
-      "find": "validateSchema: true,",
-      "replace": "validateSchema: false,"
+      "find": "    result = { ok: false, reason: singleLineReason(error) };",
+      "replace": "    result = { ok: true, validator: (() => true) as unknown as ValidateFunction };"
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

@@ -1,15 +1,15 @@
 {
-  "id": "status-state-vocabulary-closed",
-  "behavior": "status-state-enum-closed",
+  "id": "status-state-vocabulary-single-source",
+  "behavior": "status-state-enum-matches-schema",
   "tests": [
-    "status emit with a state outside the five-value enum exits nonzero naming the enum, and writes nothing"
+    "the state list in src/status.ts and the enum in the shipped schema are the same set"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/commands/status.ts",
-      "find": "  if (diagnostics.length > 0) {",
-      "replace": "  if (false) {"
+      "file": "src/status.ts",
+      "find": "  \"phase-change\",\n];",
+      "replace": "  \"phase-change\",\n  \"progress\",\n];"
     },
     {
       "kind": "mutation",

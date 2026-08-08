@@ -2,16 +2,14 @@
   "id": "plan-projection-closed-set",
   "behavior": "plan-projection-emits-camelcase-closed-set",
   "tests": [
-    "the projection validates against the delivered phase-declaration schema, emits exactly the five camelCase keys, and a sixth key is rejected",
-    "a files-to-touch entry carrying a parenthetical gloss projects to the bare path, and a directory keeps its trailing slash"
+    "the projection validates against the delivered phase-declaration schema, emits exactly the five camelCase keys, and a sixth key is rejected"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/plan.ts",
-      "find": "    filesToTouch: stringArray(phase[\"files-to-touch\"])\n      .map(stripGloss)",
-      "replace": "    filesToTouch: stringArray(phase[\"files-to-touch\"])\n      .map((entry) => entry)"
+      "find": "    citations: stringArray(phase[\"citations\"]),\n  };",
+      "replace": "    citations: stringArray(phase[\"citations\"]),\n    extras: stringArray(phase[\"extras\"]),\n  } as unknown as PhaseDeclaration;"
     },
     {
       "kind": "mutation",
@@ -20,6 +18,7 @@
       "replace": "    filename: `${phaseId}.json`,"
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

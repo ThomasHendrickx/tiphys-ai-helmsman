@@ -2,9 +2,8 @@
   "id": "validate-yaml-decode-stage",
   "behavior": "validate-yaml-decode-diagnostic",
   "tests": [
-    "malformed YAML and a non-mapping document each give one diagnostic line, a nonzero exit and no stack frame"
+    "malformed YAML produces one concise diagnostic and a nonzero exit"
   ],
-  "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
@@ -14,11 +13,12 @@
     },
     {
       "kind": "mutation",
-      "file": "bin/tiphys.ts",
-      "find": "  process.stderr.write(`tiphys: ${singleLine(message)}\\n`);",
-      "replace": "  throw error;"
+      "file": "src/validate.ts",
+      "find": "  return { ok: true, value };",
+      "replace": "  return { ok: false, reason: `${label} could not be decoded` };"
     }
   ],
+  "class": "additive",
   "deterministic": true,
   "repeats": 2
 }

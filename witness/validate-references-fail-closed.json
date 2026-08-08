@@ -1,0 +1,24 @@
+{
+  "id": "validate-references-fail-closed",
+  "behavior": "validate-remote-ref-fails-closed",
+  "tests": [
+    "a local $ref resolves, and an unresolved and a remote reference each fail closed"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    result = { ok: false, reason: singleLineReason(error) };",
+      "replace": "    result = { ok: true, validator: (() => true) as unknown as ValidateFunction };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "  return sortDiagnostics([...unique.values()]);",
+      "replace": "  return [];"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

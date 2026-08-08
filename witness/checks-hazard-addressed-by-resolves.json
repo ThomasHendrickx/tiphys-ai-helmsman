@@ -1,0 +1,24 @@
+{
+  "id": "checks-hazard-addressed-by-resolves",
+  "behavior": "check-plan-hazard-classes-addressed-by-resolves",
+  "tests": [
+    "an addressed-by naming a criterion that does not exist, and one deferring to a phase that does not exist, are each rejected naming the check"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "          if (!criterionIds.has(criterionId)) {",
+      "replace": "          if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "          if (!phaseIds.has(target)) {",
+      "replace": "          if (false) {"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}
