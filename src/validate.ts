@@ -404,9 +404,12 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
     case "uniqueItems":
       return {
         pointer: toFragmentPointer(at),
+        /* Ajv reports the LATER index first. The contract sorts them, so
+           the line reads in document order and does not depend on which
+           direction the engine happened to compare in. */
         message: DIAGNOSTIC_MESSAGES.uniqueItems(
-          String(params["i"]),
-          String(params["j"]),
+          String(Math.min(Number(params["i"]), Number(params["j"]))),
+          String(Math.max(Number(params["i"]), Number(params["j"]))),
         ),
       };
     case "contains":
@@ -435,11 +438,14 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
 /**
  * Is this Ajv error a SUBSIDIARY of a composite the caller already reports?
  *
- * Ajv with allErrors reports the failing branches inside `oneOf`/`anyOf`/`not`
- * as well as the composite keyword itself. Which branch is reported depends on
- * Ajv's branch ordering, which is exactly the nondeterminism the contract
+ * Ajv with allErrors reports the failing branches inside
+ * `oneOf`/`anyOf`/`not`/`contains` as well as the composite keyword itself.
+ * Which branch is reported, and how many, depends on Ajv's branch ordering and
+ * on the instance's length, which is exactly the nondeterminism the contract
  * forbids, so only the COMPOSITE line survives: its pointer is the instance
- * location the author must look at.
+ * location the author must look at. `contains` is in this list for the second
+ * reason rather than the first: a ten-item array that contains nothing
+ * matching would otherwise emit eleven lines for one fault.
  *
  * `if`/`then`/`else` is DELIBERATELY NOT in that list. Exactly one branch
  * applies and which one is decided by the instance, not by the engine, so the
@@ -448,7 +454,7 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
  * `then` branch's `required` error carries (criterion 5b).
  */
 function isSubsidiary(error: ErrorObject): boolean {
-  return /\/(oneOf|anyOf|not)\//.test(error.schemaPath);
+  return /\/(oneOf|anyOf|not|contains)\//.test(error.schemaPath);
 }
 
 export type SchemaDocument = Record<string, unknown>;
