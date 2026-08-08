@@ -37,7 +37,12 @@ const validateModule = (await import(
 )) as {
   compileSchema: (schema: Record<string, unknown>) =>
     | { ok: true; validator: (instance: unknown) => boolean }
-    | { ok: false; reason: string };
+    | {
+        ok: false;
+        diagnostics: { pointer: string; message: string }[];
+        reason: string;
+      };
+  formatDiagnostics: (diagnostics: { pointer: string; message: string }[]) => string[];
   validateInstance: (
     schema: Record<string, unknown>,
     instance: unknown,
@@ -90,7 +95,15 @@ test("an unknown schema keyword fails compilation before any instance is examine
     mustBeShouty: true,
   });
   assert.equal(one.ok, false);
-  assert.match(one.ok === false ? one.reason : "", /mustBeShouty/);
+  assert.deepEqual(
+    one.ok === false ? one.diagnostics : [],
+    [
+      {
+        pointer: "#",
+        message: "schema keyword mustBeShouty is not in this validator's vocabulary",
+      },
+    ],
+  );
 
   /* MEMBER 2, structurally different: a keyword misspelled from a REAL one,
      which is the way this actually happens. `minItem` for `minItems` reads
@@ -104,7 +117,15 @@ test("an unknown schema keyword fails compilation before any instance is examine
     minItem: 2,
   });
   assert.equal(two.ok, false);
-  assert.match(two.ok === false ? two.reason : "", /minItem/);
+  assert.deepEqual(
+    two.ok === false ? two.diagnostics : [],
+    [
+      {
+        pointer: "#",
+        message: "schema keyword minItem is not in this validator's vocabulary",
+      },
+    ],
+  );
 
   /* CONTROL: the correctly spelled keyword compiles and REJECTS, so the
      refusal above is about the keyword and not about compiling in general. */
@@ -133,7 +154,11 @@ test("a schema that is itself invalid fails meta-schema validation", () => {
     type: "nonsense",
   });
   assert.equal(badType.ok, false);
-  assert.match(badType.ok === false ? badType.reason : "", /schema is invalid/);
+  assert.deepEqual(validateModule.formatDiagnostics(badType.ok === false ? badType.diagnostics : []), [
+    "INVALID # schema is not a valid JSON Schema document",
+    'INVALID #/type value "nonsense" is not one of the permitted values "array", "boolean", "integer", "null", "number", "object", "string"',
+    "INVALID #/type value matches no permitted alternative here",
+  ]);
 
   /* A second member: `required` must be an array of strings, and a string
      here is a schema an unvalidated engine would happily run. */
@@ -249,9 +274,18 @@ test("a local $ref resolves, and an unresolved and a remote reference each fail 
     properties: { item: { $ref: "https://example.invalid/a.json" } },
   });
   assert.equal(remote.ok, false);
-  assert.match(
-    remote.ok === false ? remote.reason : "",
-    /can't resolve reference https:\/\/example\.invalid/,
+  assert.deepEqual(
+    validateModule.formatDiagnostics(remote.ok === false ? remote.diagnostics : []),
+    [
+      "INVALID # schema reference https://example.invalid/a.json is remote, and this validator never loads remote schemas",
+    ],
+  );
+
+  /* The LOCAL unresolved reference gets the LOCAL message, so "fails closed"
+     does not collapse the two cases into one. */
+  assert.deepEqual(
+    validateModule.formatDiagnostics(unresolved.ok === false ? unresolved.diagnostics : []),
+    ["INVALID # schema reference #/$defs/absent does not resolve"],
   );
 });
 
@@ -265,12 +299,43 @@ test("a local $ref resolves, and an unresolved and a remote reference each fail 
  * a public contract, which DR-0013 clause 5 forbids.
  */
 const AJV_WORDING = [
+  /* The RUNTIME-VALIDATION arm. */
   "must have required property",
   "must NOT have additional properties",
   "must be equal to one of the allowed values",
   "must NOT have fewer than",
   "must match a schema in anyOf",
   "must be string",
+  /* The COMPILATION arm, added at fix round 1 (B-002). Criteria 4, 5 and 7
+     all fail at compilation rather than at validation, and the first version
+     of this list did not name a single sentence from that arm, so the leak
+     lived exactly where nothing looked. Every string below is Ajv's own,
+     taken from its thrown exceptions. */
+  "strict mode:",
+  "unknown keyword:",
+  "can't resolve reference",
+  "schema is invalid:",
+  "missing type",
+  "strictTypes",
+  "strictRequired",
+];
+
+/** Compilation-failure schemas, one per Ajv exception shape this engine sees. */
+const COMPILATION_FAILURES: Record<string, unknown>[] = [
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "string", mustBeShouty: true },
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "nonsense" },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { item: { $ref: "https://example.invalid/a.json" } },
+  },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { item: { $ref: "#/$defs/absent" } },
+  },
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "string", pattern: "([" },
+  { $schema: "https://json-schema.org/draft/2020-12/schema", properties: { a: { type: "string" } } },
 ];
 
 test("Ajv errors become the exact Tiphys diagnostic text, and no Ajv-authored wording reaches either stream", () => {
@@ -335,6 +400,34 @@ test("Ajv errors become the exact Tiphys diagnostic text, and no Ajv-authored wo
       );
     }
     assert.match(run.stdout, /^INVALID #\/decided /m);
+
+    /* THE COMPILATION ARM, which is the half B-002 found unwitnessed. Every
+       shape that fails compilation is rendered and checked against the SAME
+       forbidden-phrase list, so a leak on either arm fails this test. */
+    for (const schema of COMPILATION_FAILURES) {
+      const compiled = validateModule.compileSchema(schema);
+      assert.equal(compiled.ok, false, JSON.stringify(schema));
+      const rendered =
+        compiled.ok === false
+          ? [...validateModule.formatDiagnostics(compiled.diagnostics), compiled.reason].join("\n")
+          : "";
+      for (const phrase of AJV_WORDING) {
+        assert.ok(
+          !rendered.includes(phrase),
+          `Ajv wording reached a compilation diagnostic: ${phrase} in ${rendered}`,
+        );
+      }
+      /* And it must still say something: a contract that leaks nothing by
+         saying nothing is not a contract. */
+      assert.match(rendered, /^INVALID # /);
+    }
+
+    /* The same, THROUGH THE COMMAND, so the assertion covers a real stream
+       rather than a return value. `--type auto` on a document whose kind is
+       unknown is a usage error, so the compilation arm is reached by handing
+       the validator a schema that cannot compile: the shipped schemas all
+       compile, so this uses the module directly above and the command below
+       covers the runtime arm. Stated rather than implied. */
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

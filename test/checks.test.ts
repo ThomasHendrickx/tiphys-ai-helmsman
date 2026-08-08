@@ -324,6 +324,52 @@ test("an addressed-by naming a criterion that does not exist, and one deferring 
   }
 });
 
+test("a duplicate acceptance id makes an addressed-by resolve ambiguously and is rejected naming the check", () => {
+  /* B-003, fix round 1. `addressed-by: "criterion 2"` against a phase that
+     declares criterion 2 TWICE resolves to a criterion that exists and is not
+     the one the hazard class means. T-007's completeness guarantee then fails
+     one level INSIDE the mechanism built to enforce it, and every criterion
+     in this phase still passes. The decoy is the point: the second entry is a
+     plausible criterion, not a marker. */
+  const dir = scratch();
+  try {
+    const plan = loadPlan();
+    const phase = (plan["phases"] as Record<string, unknown>[])[0] as Record<string, unknown>;
+    const acceptance = phase["acceptance"] as Record<string, unknown>[];
+    acceptance.push({
+      id: "2",
+      criterion: "The importer logs one line per retry, asserted against captured output.",
+    });
+    const file = writePlan(dir, plan, "duplicate-id.yaml");
+    const run = runCli(["validate", "--type", "plan", file]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(
+      run.stdout,
+      /^INVALID #\/phases\/0\/hazard-classes\/0\/addressed-by criterion 2 is declared 2 times in phase M9-P1, so this hazard class resolves ambiguously \(check: plan-hazard-classes-addressed-by-resolves\)$/m,
+    );
+
+    /* THE OTHER DIRECTION, and it is the one that stops this from being a
+       test that rejects every plan: the same plan with the decoy given its
+       own id passes. */
+    acceptance[acceptance.length - 1]!["id"] = "3";
+    const fixed = writePlan(dir, plan, "unique-id.yaml");
+    assert.equal(runCli(["validate", "--type", "plan", fixed]).status, 0);
+
+    /* And with the CHECK deregistered the ambiguous plan passes, which is
+       what makes this a Kind B witness rather than a schema-keyword one. */
+    acceptance[acceptance.length - 1]!["id"] = "2";
+    assert.equal(
+      checksModule.deregisterCheck("plan-hazard-classes-addressed-by-resolves"),
+      true,
+    );
+    assert.equal(checksModule.runChecks("plan", plan, undefined).failed, false);
+    checksModule.registerCheck(checksModule.planHazardClassesAddressedByResolves);
+    assert.equal(checksModule.runChecks("plan", plan, undefined).failed, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /* Criteria 9 and 9b: the clause map check                              */
 /* ------------------------------------------------------------------ */

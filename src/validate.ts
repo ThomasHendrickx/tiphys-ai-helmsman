@@ -206,9 +206,33 @@ export const DIAGNOSTIC_MESSAGES = {
     `schema reference ${reference} is cyclic`,
   unresolvedRef: (reference: string): string =>
     `schema reference ${reference} does not resolve`,
-  /** A schema that cannot be compiled at all, reported at the root. */
-  uncompilable: (reason: string): string =>
-    `schema could not be compiled: ${reason}`,
+  /* ------------------------------------------------------------------ */
+  /* COMPILATION FAILURES ARE PART OF THE CONTRACT TOO (fix round 1,      */
+  /* B-002). Criteria 4, 5 and 7 all fail at COMPILATION rather than at   */
+  /* validation, and the first version of this module printed the raw     */
+  /* exception text on that path, so Ajv's wording reached a public       */
+  /* stream on the arm nobody had asserted about. That is T-009's shape   */
+  /* one layer down: one witnessed arm, one unwitnessed arm, and the      */
+  /* unwitnessed one is the one that broke. Every entry below carries     */
+  /* only an IDENTIFIER lifted out of the Ajv error (a keyword name, a    */
+  /* reference, a location), never an Ajv sentence.                      */
+  /* ------------------------------------------------------------------ */
+  unknownKeyword: (keyword: string): string =>
+    `schema keyword ${keyword} is not in this validator's vocabulary`,
+  strictPolicyUntyped: (keyword: string, expected: string): string =>
+    `schema uses keyword ${keyword} without declaring type ${expected}, which this validator's strict policy requires`,
+  strictPolicy: (): string =>
+    "schema is refused by this validator's strict policy",
+  remoteRef: (reference: string): string =>
+    `schema reference ${reference} is remote, and this validator never loads remote schemas`,
+  invalidSchemaDocument: (): string =>
+    "schema is not a valid JSON Schema document",
+  patternUncompilable: (): string =>
+    "schema contains a pattern that is not a valid regular expression",
+  cyclicCompilation: (): string =>
+    "schema references form a cycle this validator cannot compile",
+  /** Nothing above matched. Deliberately carries no Ajv text at all. */
+  uncompilable: (): string => "schema could not be compiled",
   /** A keyword Ajv reported that this table does not translate. */
   untranslated: (keyword: string): string =>
     `internal defect: no Tiphys diagnostic is defined for schema keyword ${keyword}`,
@@ -418,6 +442,16 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
         message: DIAGNOSTIC_MESSAGES.contains(String(params["minContains"] ?? 1)),
       };
     case "oneOf":
+    /* `anyOf`, `allOf` and `not` are not in the AUTHORING vocabulary, so no
+       Tiphys schema uses them. They still reach this renderer, because
+       META-SCHEMA validation runs the 2020-12 meta-schema (which uses all
+       three) over a Tiphys schema document. Mapping them here is what stopped
+       `internal defect: no Tiphys diagnostic is defined for schema keyword
+       anyOf` from being the diagnostic a bad `type` produced, which is how
+       the untranslated-keyword guard earned its keep. */
+    case "anyOf":
+    case "allOf":
+    case "not":
       return {
         pointer: toFragmentPointer(at),
         message: DIAGNOSTIC_MESSAGES.oneOf(),
@@ -481,7 +515,12 @@ export function makeAjv(): Ajv2020 {
 /** A compiled validator, or the reason the schema could not be compiled. */
 export type Compilation =
   | { ok: true; validator: ValidateFunction }
-  | { ok: false; reason: string };
+  /**
+   * `diagnostics` is the contract; `reason` is the same thing rendered as one
+   * line, kept because callers that only want to print something want a
+   * string. Both are Tiphys-owned: no Ajv sentence reaches either.
+   */
+  | { ok: false; diagnostics: Diagnostic[]; reason: string };
 
 const compiled = new WeakMap<object, Compilation>();
 
@@ -507,18 +546,118 @@ export function compileSchema(schema: SchemaDocument): Compilation {
     return cachedResult;
   }
   let result: Compilation;
+  const ajv = makeAjv();
   try {
-    result = { ok: true, validator: makeAjv().compile(schema) };
+    result = { ok: true, validator: ajv.compile(schema) };
   } catch (error) {
-    result = { ok: false, reason: singleLineReason(error) };
+    const diagnostics = compilationDiagnostics(error, ajv, schema);
+    result = {
+      ok: false,
+      diagnostics,
+      reason: formatDiagnostics(diagnostics).join("; "),
+    };
   }
   compiled.set(schema, result);
   return result;
 }
 
-function singleLineReason(error: unknown): string {
+function ajvText(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error);
   return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Translate a COMPILATION failure into the Tiphys diagnostic contract.
+ *
+ * The classification reads Ajv's exception only to EXTRACT IDENTIFIERS from
+ * it; nothing Ajv wrote is passed through. An unrecognised shape becomes the
+ * bare `schema could not be compiled`, which loses detail deliberately:
+ * losing detail is recoverable, and leaking a third party's wording into a
+ * contract nine phases are written against is not.
+ */
+export function compilationDiagnostics(
+  error: unknown,
+  ajv: Ajv2020,
+  schema: SchemaDocument,
+): Diagnostic[] {
+  const text = ajvText(error);
+
+  const unknownKeyword = /unknown keyword: "([^"]+)"/.exec(text);
+  if (unknownKeyword !== null) {
+    return [
+      {
+        pointer: ROOT_POINTER,
+        message: DIAGNOSTIC_MESSAGES.unknownKeyword(unknownKeyword[1] as string),
+      },
+    ];
+  }
+
+  const untyped = /missing type "([^"]+)" for keyword "([^"]+)" at "([^"]+)"/.exec(text);
+  if (untyped !== null) {
+    return [
+      {
+        pointer: (untyped[3] as string).startsWith("#")
+          ? (untyped[3] as string)
+          : ROOT_POINTER,
+        message: DIAGNOSTIC_MESSAGES.strictPolicyUntyped(
+          untyped[2] as string,
+          untyped[1] as string,
+        ),
+      },
+    ];
+  }
+
+  const missingRef = /can't resolve reference (\S+) from id/.exec(text);
+  if (missingRef !== null) {
+    const reference = missingRef[1] as string;
+    /* A scheme-qualified reference is REMOTE, and DR-0013 clause 4 withholds
+       the loader that would fetch it, so it fails closed rather than being
+       skipped or retrieved. A bare `#/...` that does not resolve is the local
+       case and gets the local message. */
+    const remote = /^[a-z][a-z0-9+.-]*:/i.test(reference);
+    return [
+      {
+        pointer: ROOT_POINTER,
+        message: remote
+          ? DIAGNOSTIC_MESSAGES.remoteRef(reference)
+          : DIAGNOSTIC_MESSAGES.unresolvedRef(reference),
+      },
+    ];
+  }
+
+  if (text.startsWith("schema is invalid")) {
+    /* META-SCHEMA VALIDATION. Ajv leaves the failures on the instance, and
+       they are ordinary errors over the SCHEMA as the instance, so they route
+       through the same renderer and come out with pointers INTO the schema.
+       That is strictly more useful than Ajv's sentence and owes it nothing. */
+    const metaErrors = ajv.errors ?? [];
+    const mapped = metaErrors
+      .filter((one) => !isSubsidiary(one))
+      .map((one) => renderAjvError(one, schema))
+      .filter((one): one is Diagnostic => one !== undefined);
+    return sortDiagnostics([
+      { pointer: ROOT_POINTER, message: DIAGNOSTIC_MESSAGES.invalidSchemaDocument() },
+      ...mapped,
+    ]);
+  }
+
+  if (error instanceof SyntaxError && /regular expression/i.test(text)) {
+    return [
+      { pointer: ROOT_POINTER, message: DIAGNOSTIC_MESSAGES.patternUncompilable() },
+    ];
+  }
+
+  if (error instanceof RangeError) {
+    return [
+      { pointer: ROOT_POINTER, message: DIAGNOSTIC_MESSAGES.cyclicCompilation() },
+    ];
+  }
+
+  if (text.startsWith("strict mode")) {
+    return [{ pointer: ROOT_POINTER, message: DIAGNOSTIC_MESSAGES.strictPolicy() }];
+  }
+
+  return [{ pointer: ROOT_POINTER, message: DIAGNOSTIC_MESSAGES.uncompilable() }];
 }
 
 /**
@@ -535,12 +674,7 @@ export function validateInstance(
 ): Diagnostic[] {
   const compilation = compileSchema(schema);
   if (!compilation.ok) {
-    return [
-      {
-        pointer: ROOT_POINTER,
-        message: DIAGNOSTIC_MESSAGES.uncompilable(compilation.reason),
-      },
-    ];
+    return compilation.diagnostics;
   }
   const ok = compilation.validator(instance);
   if (ok) {
@@ -605,10 +739,10 @@ export function decodeDocument(text: string, label: string): DecodeResult {
       const at = where === undefined ? "" : ` at line ${String(where.line)} column ${String(where.col)}`;
       return {
         ok: false,
-        reason: `${label} is not valid YAML${at}: ${singleLineReason(error.message)}`,
+        reason: `${label} is not valid YAML${at}: ${ajvText(error.message)}`,
       };
     }
-    return { ok: false, reason: `${label} could not be decoded: ${singleLineReason(error)}` };
+    return { ok: false, reason: `${label} could not be decoded: ${ajvText(error)}` };
   }
   return { ok: true, value };
 }
@@ -639,7 +773,7 @@ export function readOperatorPath(path: string): GuardedRead {
   try {
     return { ok: true, body: readFileSync(path, "utf8") };
   } catch (error) {
-    return { ok: false, reason: `${path} could not be read: ${singleLineReason(error)}` };
+    return { ok: false, reason: `${path} could not be read: ${ajvText(error)}` };
   }
 }
 

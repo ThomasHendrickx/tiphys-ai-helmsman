@@ -100,7 +100,7 @@ const ROW_PATTERN = /^\|\s*(R-[0-9]+[a-z]?)\s*\|\s*(M3-P[0-9]+)\s*\|/;
 function usage() {
   return (
     "usage: node scripts/check-clause-map.mjs [--inventory <path>] " +
-    "[--map <path>] [--result <path>] [--evidence <dir>]"
+    "[--map <path>] [--result <path>]"
   );
 }
 
@@ -109,12 +109,15 @@ function parseArgs(argv) {
     inventory: DEFAULT_INVENTORY,
     map: DEFAULT_MAP,
     result: undefined,
-    evidence: undefined,
   };
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!["--inventory", "--map", "--result", "--evidence"].includes(flag)) {
+    /* `--evidence` is DELIBERATELY NOT ACCEPTED. The gate runner passes it to
+       gates that write evidence FILES; this check writes none, and accepting a
+       flag whose value is then dropped is a flag that reads as honoured. The
+       runner tolerates a gate that does not take it (fix round 1, B-low). */
+    if (!["--inventory", "--map", "--result"].includes(flag)) {
       return { usageError: `unknown option ${String(flag)}` };
     }
     if (value === undefined || value.startsWith("--")) {

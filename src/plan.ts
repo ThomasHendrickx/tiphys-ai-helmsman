@@ -44,24 +44,65 @@ export interface PhaseDeclaration {
 /**
  * Reduce one plan `files-to-touch` entry to the bare path.
  *
- * Three forms occur in real plan sections and all three are handled here
- * rather than by the caller: a bare path, a path in backticks, and either of
- * those followed by a parenthetical gloss. Anything after the first
- * top-level `(` is a gloss; surrounding backticks and whitespace are
- * stripped. A directory keeps its TRAILING SLASH, because the auditor
- * distinguishes a directory prefix from a file by exactly that character.
+ * THIS FUNCTION FEEDS THE GATE THAT EXISTS TO PREVENT SCOPE WIDENING, so an
+ * over-eager strip here is worse than no strip at all.
+ *
+ * MEASURED DEFECT, fix round 1 (B-001, high). The first version truncated at
+ * the FIRST `(` and produced:
+ *
+ *   "src/app/(marketing)/page.tsx"  ->  "src/app/"
+ *   "src/(lib)/util.ts"             ->  "src/"
+ *
+ * `src/gates/scope.ts` treats a trailing slash as a DIRECTORY PREFIX GRANT, so
+ * each of those turned one declared file into an entire tree. Parenthesised
+ * path segments are ordinary in real projects (Next.js route groups are the
+ * obvious case), so this is not a corner.
+ *
+ * THE RULE NOW, and each clause is load-bearing:
+ *
+ *   1. A gloss is stripped only when it is TRAILING and the whole of it is
+ *      parenthesised: `<path> (anything)` with the closing paren at the end.
+ *   2. It is stripped only when WHITESPACE separates it from the path. A path
+ *      whose own last segment is parenthesised, `src/app/(marketing)`, has no
+ *      such whitespace and is left alone.
+ *   3. What precedes the gloss must be ONE non-whitespace token, which is what
+ *      a literal path is. That is the "plausible path" test, and it is why an
+ *      interior `(` can never trigger a strip: the interior case never matches
+ *      the trailing form at all.
+ *
+ * Anything the rule does not recognise is returned UNCHANGED and rejected
+ * loudly by `projectPhase`, because a prose entry that reaches the auditor as
+ * a literal string fails visibly, while a silently truncated one grants a
+ * tree.
  */
+const TRAILING_GLOSS = /^(\S+)\s+\([\s\S]*\)$/;
+
 export function stripGloss(entry: string): string {
   let text = entry.trim();
-  const parenthesis = text.indexOf("(");
-  if (parenthesis !== -1) {
-    text = text.slice(0, parenthesis).trim();
+  const trailing = TRAILING_GLOSS.exec(text);
+  if (trailing !== null) {
+    text = (trailing[1] as string).trim();
   }
-  /* Backticks are markdown, never part of a path. */
+  /* Backticks are markdown, never part of a path. Stripped AFTER the gloss,
+     because the plan writes `` `path` (gloss) `` and the backticks close
+     before the gloss opens. */
   text = text.replace(/^`+/, "").replace(/`+$/, "").trim();
   /* A trailing comma survives a list written inline. */
   text = text.replace(/,+$/, "").trim();
   return text;
+}
+
+/**
+ * Is this a literal path the scope auditor can match?
+ *
+ * The auditor compares strings exactly or as a directory prefix and
+ * interprets nothing, so an entry still carrying whitespace after the gloss
+ * strip is prose. The projector REFUSES rather than emitting it: an emitted
+ * prose entry is a declaration nobody can satisfy, and the failure would
+ * surface as an unrelated scope-gate red on some later branch.
+ */
+export function isLiteralPath(entry: string): boolean {
+  return entry !== "" && !/\s/.test(entry);
 }
 
 export interface ProjectionResult {
@@ -111,15 +152,28 @@ export function projectPhase(
   if (phase === undefined) {
     return { ok: false, reason: `the plan contains no phase ${phaseId}` };
   }
+  const filesToTouch = stringArray(phase["files-to-touch"])
+    .map(stripGloss)
+    .filter((path) => path !== "");
+  const declaredExtras = stringArray(phase["extras"])
+    .map(stripGloss)
+    .filter((path) => path !== "");
+  const prose = [...filesToTouch, ...declaredExtras].filter(
+    (path) => !isLiteralPath(path),
+  );
+  if (prose.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `phase ${phaseId} declares an entry that is not a literal path and ` +
+        `cannot be projected: ${prose.map((p) => JSON.stringify(p)).join(", ")}`,
+    };
+  }
   const declaration: PhaseDeclaration = {
     id: String(phase["id"]),
     branch: String(phase["branch"]),
-    filesToTouch: stringArray(phase["files-to-touch"])
-      .map(stripGloss)
-      .filter((path) => path !== ""),
-    declaredExtras: stringArray(phase["extras"])
-      .map(stripGloss)
-      .filter((path) => path !== ""),
+    filesToTouch,
+    declaredExtras,
     citations: stringArray(phase["citations"]),
   };
   return {

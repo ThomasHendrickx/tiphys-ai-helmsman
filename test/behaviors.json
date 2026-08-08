@@ -458,5 +458,9 @@
   "plan-template-carries-real-hazard-class": "the shipped plan template carries a real hazard class rather than an empty one",
   "schema-plan-addressed-by-form-constrained": "an addressed-by outside the four admissible forms is rejected by the pattern",
   "release-verification-comment-cites-dr-0014": "the release-verification field's $comment cites DR-0014 and the investigation by path",
-  "vocabulary-has-suite-coverage": "every keyword in the declared vocabulary has vendored suite coverage"
+  "schema-suite-per-keyword-coverage": "every keyword in the declared vocabulary executes a pinned number of suite cases, none of them zero",
+  "schema-suite-relaxation-is-visible": "the shipped policies refuse the suite's untyped style, so the relaxation is visible",
+  "schemas-avoid-prototype-chain-names": "no shipped schema declares a prototype-chain property name",
+  "check-addressed-by-ambiguous-criterion": "a duplicate acceptance id makes an addressed-by resolve ambiguously and is rejected naming the check",
+  "schema-charter-release-verification-required": "a charter with no release-verification field is rejected naming the field"
 }

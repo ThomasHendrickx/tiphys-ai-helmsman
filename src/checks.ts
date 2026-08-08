@@ -205,11 +205,23 @@ export const planHazardClassesAddressedByResolves: DerivedCheck = {
       if (phase === undefined) {
         continue;
       }
-      const criterionIds = new Set(
-        asArray(phase["acceptance"])
-          .map((entry) => asRecord(entry)?.["id"])
-          .filter((id): id is string => typeof id === "string"),
-      );
+      /* COUNTED, not just collected. B-003 (fix round 1): a phase with two
+         acceptance entries sharing an id lets `addressed-by: "criterion 3"`
+         resolve to a DECOY, so the hazard class points at a criterion that
+         exists and does not redden against it. T-007's completeness
+         guarantee then fails one level INSIDE the mechanism built to enforce
+         it, and the resolution still reports success. An ambiguous resolution
+         is therefore a violation of THIS check rather than a new one: what
+         the check promises is that `addressed-by` resolves to A criterion,
+         and it cannot promise that when it resolves to two. */
+      const criterionCounts = new Map<string, number>();
+      for (const entry of asArray(phase["acceptance"])) {
+        const id = asRecord(entry)?.["id"];
+        if (typeof id === "string") {
+          criterionCounts.set(id, (criterionCounts.get(id) ?? 0) + 1);
+        }
+      }
+      const criterionIds = new Set(criterionCounts.keys());
       const hazards = asArray(phase["hazard-classes"]);
       for (let hazardIndex = 0; hazardIndex < hazards.length; hazardIndex += 1) {
         const hazard = asRecord(hazards[hazardIndex]);
@@ -224,6 +236,14 @@ export const planHazardClassesAddressedByResolves: DerivedCheck = {
             violations.push({
               pointer,
               message: `criterion ${criterionId} is not an acceptance criterion of phase ${String(phase["id"])}`,
+            });
+            continue;
+          }
+          const occurrences = criterionCounts.get(criterionId) ?? 0;
+          if (occurrences > 1) {
+            violations.push({
+              pointer,
+              message: `criterion ${criterionId} is declared ${String(occurrences)} times in phase ${String(phase["id"])}, so this hazard class resolves ambiguously`,
             });
           }
           continue;
