@@ -385,7 +385,7 @@ and `A-3` meant three, one of them a literal string inside
 
 - **`scripts/m2-exit-test.sh` is a structural bottleneck and is on no
   gate-adding phase's declaration.** It is the SINGLE caller of `gates run`
-  (kernel-plan-m3.md:663, settled at revision 3), so a gate is only real when
+  (delivery/plan/kernel-plan-m3.md:663, settled at revision 3), so a gate is only real when
   this file selects it and gives it an expectation row. It is declared on
   `m2-p9.json` (its author) and nowhere else in M3. Measured: FOUR
   orchestrator-side fixes to it already (#27, #30, #44, and the pending
