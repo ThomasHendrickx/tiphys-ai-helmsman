@@ -1,0 +1,35 @@
+{
+  "id": "M3-P3",
+  "branch": "claude/m3-p3-assurance-modes",
+  "filesToTouch": [
+    "schemas/assurance-modes.schema.json",
+    "assurance-modes.yaml",
+    "schemas/role-model-config.schema.json",
+    "role-model-config.yaml",
+    "src/modes.ts",
+    "src/commands/mode.ts",
+    "test/assurance-modes.test.ts",
+    "schemas/charter.schema.json",
+    "src/validate.ts",
+    "src/checks.ts",
+    "src/cli.ts",
+    "package.json"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "R-024",
+    "R-075",
+    "R-096",
+    "SC-008",
+    "DR-0012",
+    "T-001",
+    "T-003",
+    "C-2",
+    "C-3",
+    "DR-0015",
+    "DR-0016",
+    "T-007",
+    "D-M3-32",
+    "T-008"
+  ]
+}

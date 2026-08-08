@@ -1,0 +1,25 @@
+{
+  "id": "witness-clone-resolves-dependencies",
+  "behavior": "witness-scratch-clone-resolves-installed-dependencies-or-refuses",
+  "tests": [
+    "the scratch clone resolves a dependency that exists only in node_modules, and refuses outright when the audited repository has none"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/witness-clone-drop-node-modules-link.patch"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/witness-clone-degrade-refusal.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git clone, then node --test in the clone",
+    "captures": ["witness/captures/witness-clone-missing-node-modules.txt"],
+    "provenance": "src/witness/run.ts spawns git to make the scratch clone and then spawns node to run the audited suite inside it, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). The capture is real output taken by cloning this repository with git and running the audited suite in the clone, which is exactly what makeClone plus runNamedTests do. It records the property that makes this a correctness defect rather than an inconvenience: a clone that cannot resolve an import fails with ERR_MODULE_NOT_FOUND, which is nonzero and therefore INDISTINGUISHABLE from a genuine red witness. The named test asserts against real loader behaviour in a live scratch repository rather than a hand-written string (CLAUDE.md warning 10)."
+  }
+}

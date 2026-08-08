@@ -1257,12 +1257,50 @@ export function runCitationsGate(options: CitationsGateOptions): GateResultField
   }
   const changedDocuments = diff.paths.filter((path) => matchesAny(config.documents, path)).sort();
   if (changedDocuments.length === 0) {
+    // This arm carries its own PreconditionRecord for the same reason the
+    // zero-substantive-citations arm below does, and it is REACHABLE with the
+    // manifest precondition met, which a previous round of this fix (PR #32)
+    // asserted it was not. That assertion was wrong and the correction is
+    // recorded here rather than silently applied.
+    //
+    // The two halves do not describe the same set. The manifest precondition
+    // `citations-diff-touches-documents` is a PATH PREFIX test over
+    // `delivery/plan/`, `delivery/verification/`, `delivery/decisions/`,
+    // `delivery/tuition/`, `delivery/requirements/` and `delivery/STATE.md`.
+    // The `documents` config is a GLOB set, and every glob but STATE.md
+    // requires `*.md`. So any NON-markdown file under one of those trees meets
+    // the precondition and matches no document glob: the runner runs the gate,
+    // the gate finds nothing configured to lint, and without the record below
+    // it reports a not-applicable that DR-0018 rejects as indistinguishable
+    // from a skipped or errored gate.
+    //
+    // Measured 2026-08-08: a change adding
+    // `delivery/plan/phase-declarations/m3-p*.json`, the ten M3 phase
+    // declarations, is exactly that shape and reddened CI on it.
+    //
+    // #32's derivation said "citations.ts:1262 is unreachable through the
+    // runner because the manifest's diff-touches precondition covers the same
+    // condition". It covers a SUPERSET of it. That is the fix-round contract's
+    // item 3 failure in its own right: a scope stated too narrowly returns an
+    // empty result indistinguishable from an absence of defects.
+    const reason =
+      `no changed path under the configured documents globs ` +
+      `(${String(diff.paths.length)} changed path(s) total). The diff-touches ` +
+      `precondition is a path prefix and the documents config is a glob set, so ` +
+      `a changed path under a configured tree that is not a configured document ` +
+      `reaches here with the precondition met`;
     return {
       ...base,
       status: "not-applicable",
       units: 0,
       endedAt: now(),
-      detail: `no changed path under the configured documents globs (${String(diff.paths.length)} changed path(s) total)`,
+      detail: reason,
+      precondition: {
+        id: "citations-diff-touches-a-configured-document",
+        met: false,
+        reason,
+        evidence: diff.paths,
+      },
       evidence: diff.paths,
     };
   }

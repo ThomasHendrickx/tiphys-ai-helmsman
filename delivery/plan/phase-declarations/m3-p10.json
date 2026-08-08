@@ -1,0 +1,26 @@
+{
+  "id": "M3-P10",
+  "branch": "claude/m3-p10-release-and-exit",
+  "filesToTouch": [
+    "scripts/license-gate.mjs",
+    "scripts/release-verify.sh",
+    ".github/workflows/release.yml",
+    "test/license-gate.test.ts",
+    "package.json",
+    "src/commands/init.ts",
+    "test/init.test.ts",
+    ".github/workflows/gates.yml",
+    "gate-registry.yaml",
+    "delivery/evidence/m3-exit-test/",
+    "supervision-rules.md",
+    "delivery/evidence/m2-exit-test/"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "SC-006",
+    "SC-011",
+    "SC-012",
+    "DR-0008",
+    "EXT-F-09"
+  ]
+}

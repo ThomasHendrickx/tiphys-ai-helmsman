@@ -1,0 +1,36 @@
+{
+  "id": "M3-P4",
+  "branch": "claude/m3-p4-report-and-work-history",
+  "filesToTouch": [
+    "schemas/report.schema.json",
+    "schemas/final-report.schema.json",
+    "schemas/work-history.schema.json",
+    "templates/report.example.yaml",
+    "templates/final-report.example.yaml",
+    "templates/work-history.example.yaml",
+    "templates/warnings.md",
+    "test/report-contract.test.ts",
+    "test/work-history.test.ts",
+    "test/fixtures/wrapper-capture.",
+    "src/validate.ts",
+    "src/checks.ts"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "R-035",
+    "R-049",
+    "R-052a",
+    "R-057a",
+    "R-083a",
+    "R-085",
+    "R-086",
+    "R-088",
+    "R-089a",
+    "R-089b",
+    "R-048",
+    "T-003",
+    "T-004",
+    "T-006",
+    "D-M3-30"
+  ]
+}
