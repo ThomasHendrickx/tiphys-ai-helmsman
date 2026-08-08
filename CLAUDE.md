@@ -73,7 +73,41 @@ artifact behind it is treated as unknown.
 1. English only.
 2. npm only, never pnpm or yarn.
 3. No em dashes in any authored text (commas, colons, parentheses instead).
-   Authored files must be pure ASCII; check with `grep -rP '[^\x00-\x7F]'`.
+   Authored files must be pure ASCII **and free of control characters**, and
+   that is TWO checks because one grep cannot do both:
+
+   ```
+   grep -rP '[^\x00-\x7F]' <paths>                    # non-ASCII
+   grep -rP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
+   ```
+
+   The first check ALONE is what this repository used until 2026-08-08, and it
+   is blind to control characters BY CONSTRUCTION: `NUL`, `SOH` and friends are
+   inside `\x00-\x7F`, so a file full of them is "pure ASCII" and the check
+   passes. That is not hypothetical. `test/status.test.ts` reached a pull
+   request carrying raw NUL and SOH bytes; git classified it as binary
+   (`Bin 0 -> 9332 bytes`), so it had NO REVIEWABLE DIFF at all, and every
+   "ASCII check passes" report on that branch, including the orchestrator's,
+   was TRUE and USELESS. A clean-room reviewer found it by reading the file,
+   not by running the check.
+
+   The general shape is the one this project keeps paying for: a guard whose
+   condition does not test the property that matters is green and worthless
+   (T-008's postscript, the red-witness rule one level up). Control characters
+   a test genuinely needs AS DATA belong in escapes, never as literal bytes in
+   source. A quick way to see the failure mode is `git diff --stat`: a source
+   file reported as `Bin` is unreviewable whatever the ASCII check says.
+
+   **AUTHORED is the operative word, and two exemptions are real.** Measured on
+   `main` at `dd42ccb`: ZERO tracked files carry control characters, and
+   exactly one carries non-ASCII,
+   `delivery/intake/orchestrated-delivery-process.md`, which is the
+   owner-supplied process document this build executes. It is INPUT, not
+   agent-authored, and must not be transliterated. The other exemption is
+   VENDORED fixtures such as `test/fixtures/json-schema-test-suite/**`, where
+   non-ASCII content is the thing under test and transliterating it would
+   destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
+   run both checks over `git ls-files` minus those two trees and expect zero.
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
 5. One phase = one branch = one PR, always. Parallelism is ON where a
