@@ -489,6 +489,17 @@ const compiled = new WeakMap<object, Compilation>();
  * Compile a schema. Cached by schema OBJECT IDENTITY, because a fresh Ajv per
  * call is both slow and wrong: two schemas carrying the same `$id` cannot
  * share one Ajv instance, so each schema gets its own.
+ *
+ * IDENTITY, NOT CONTENT, and it has one observable consequence worth stating
+ * rather than discovering. A caller that MUTATES a schema object in place
+ * after compiling it keeps the old validator, because the WeakMap key is
+ * unchanged. That is correct for how schemas are used here (documents read
+ * from disk and never edited), and it was measured: the first attempt at
+ * criterion 4's red witness defanged a keyword in place and the diagnostics
+ * did not move, which read exactly like a schema whose keyword was doing
+ * nothing. The witness was redone with a schema re-read from disk per arm.
+ * Any future caller that wants to compile a modified schema must hand over a
+ * NEW object.
  */
 export function compileSchema(schema: SchemaDocument): Compilation {
   const cachedResult = compiled.get(schema);
