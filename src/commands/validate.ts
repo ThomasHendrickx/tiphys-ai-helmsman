@@ -53,6 +53,11 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
   ["charter", "charter.schema.json"],
   ["decision-record", "decision-record.schema.json"],
   ["status-line", "status-line.schema.json"],
+  /* M3-P2 step 6. The registry's own `kind` field is `gate-registry`, so
+     adding this row extends `--type` and `resolveAutoType` in one act, which
+     is what M3R-001 means by registering the type in the same step that ships
+     the schema. */
+  ["gate-registry", "gate-registry.schema.json"],
 ]);
 
 /**

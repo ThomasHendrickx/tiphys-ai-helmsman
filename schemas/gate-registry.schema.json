@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/gate-registry.schema.json",
+  "title": "Tiphys canonical gate registry",
+  "$comment": "R-094: the canonical list of gates per assurance mode, the SINGLE SOURCE consumed by CI and by the role briefs. Kernel plan M3, M3-P2 step 2. A SUPERSET of the M2-P1 gate manifest (src/gates/schemas/gate-manifest.schema.json): every field that schema defines is defined here with the same meaning, and this document adds four, `modes` (made live from the field M2 reserved), `events`, `verified-by` and `probe`, plus the top-level `preflight` list. SC-011 is carried over unchanged: a gate whose precondition is unmet reports not-applicable and NEVER green.",
+  "description": "One registry per repository. Which gates exist, how each is invoked, which assurance modes select it, which CI events evaluate it, whether a script or a clean-room checklist probe verifies it, and which commands can destroy work.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "preflight", "gates", "destructiveCommands"],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told. Every M3-P1 artifact type carries one and this mirrors them.",
+      "type": "string",
+      "const": "gate-registry"
+    },
+    "note": {
+      "description": "Free prose for the registry's own readers.",
+      "type": "string"
+    },
+    "version": {
+      "$comment": "A closed set rather than a minimum, because the authoring vocabulary of schemas/README.md has no `minimum` keyword and a bare `type: integer` would admit 0 and negatives.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "preflight": {
+      "$comment": "R-094. The ordered local commands every change must pass before any registry gate means anything. They live IN the registry rather than beside it because CLAUDE.md's gate section is rendered from this document IN FULL (M3-P2 criterion 6, scripts/render-agent-rules-gates.mjs), and a step left outside the registry would be exactly the hand-maintained gate list criterion 6 forbids.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/preflightStep"
+      }
+    },
+    "gates": {
+      "description": "Append-only registry keyed by id. No minItems, matching the M2 manifest: a registry with zero gates must reach the runner and be reported as no applicable gate, not rejected at load.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "destructiveCommands": {
+      "description": "CLI commands and module paths whose operations can destroy work. Carried over from the M2 manifest unchanged; M2-P2 rule (e) DERIVES a witness class from it rather than trusting an implementer's declaration.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "commandArray": {
+      "description": "argv array. The runner appends --result and --evidence, plus one flag per declared parameter. Defined once in $defs because strict mode requires every `required` name to be declared in `properties` at the SAME level, so the conditional rules below must restate it and a second copy of the constraint would be a second thing to keep in sync.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "probeId": {
+      "description": "The checklist probe id M3-P7 must supply. Required exactly when verified-by is clean-room-checklist.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "preflightStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "note"],
+      "properties": {
+        "command": {
+          "description": "argv array, run in the repository root.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "gate": {
+      "$comment": "THREE conditional rules, chained through $ref rather than stacked in one object, because JSON Schema allows one `if`/`then` pair per schema object and `allOf` is outside the authoring vocabulary of schemas/README.md. Each link adds exactly one rule and each rule has its own acceptance criterion. This link: M3-P2 criterion 4. A gate declared `conditional` is one that MAY report not-applicable, and SC-011 says not-applicable ASSERTS an evaluated, unmet precondition; a conditional gate with no precondition can therefore report not-applicable with nothing evaluated, which is the vacuous pass this registry exists to make impossible. `deploy` and `migrations` are the two conditional entries this rule binds.",
+      "$ref": "#/$defs/gateProbeRule",
+      "if": {
+        "type": "object",
+        "required": ["applicability"],
+        "properties": {
+          "applicability": {
+            "const": "conditional"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["precondition"],
+        "properties": {
+          "precondition": {
+            "$ref": "#/$defs/precondition"
+          }
+        }
+      }
+    },
+    "gateProbeRule": {
+      "$comment": "M3-P2 criterion 2. A clean-room-checklist entry with no probe names no question, so nothing can ever verify it and the entry is a gate id with nothing behind it. D-11 settles that R-043 and R-044 are verified this way.",
+      "$ref": "#/$defs/gateCommandRule",
+      "if": {
+        "type": "object",
+        "required": ["verified-by"],
+        "properties": {
+          "verified-by": {
+            "const": "clean-room-checklist"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["probe"],
+        "properties": {
+          "probe": {
+            "$ref": "#/$defs/probeId"
+          }
+        }
+      }
+    },
+    "gateCommandRule": {
+      "$comment": "A `script` gate is verified by running a process, so it must say which one. A `clean-room-checklist` gate has no process and carries no command, which is why `command` is not in the base required list.",
+      "$ref": "#/$defs/gateShape",
+      "if": {
+        "type": "object",
+        "required": ["verified-by"],
+        "properties": {
+          "verified-by": {
+            "const": "script"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["command"],
+        "properties": {
+          "command": {
+            "$ref": "#/$defs/commandArray"
+          }
+        }
+      }
+    },
+    "gateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "unitLabel", "applicability", "verified-by", "modes", "events"],
+      "properties": {
+        "$comment": {
+          "description": "Clause ids this entry discharges, per schemas/README.md.",
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "command": {
+          "$ref": "#/$defs/commandArray"
+        },
+        "unitLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "description": "required: an unmet precondition fails the run. conditional: an unmet precondition does not.",
+          "type": "string",
+          "enum": ["required", "conditional"]
+        },
+        "verified-by": {
+          "$comment": "D-11. R-043 and R-044 are not reliably computable from a diff, so their gate is a clean-room checklist probe rather than a script, and the registry SAYS which of the two a reader is looking at instead of leaving it to be inferred from whether a command happens to be present.",
+          "type": "string",
+          "enum": ["script", "clean-room-checklist"]
+        },
+        "probe": {
+          "$ref": "#/$defs/probeId"
+        },
+        "modes": {
+          "$comment": "The field the M2 manifest schema RESERVED (src/gates/schemas/gate-manifest.schema.json line 70, validated if present and ignored by the M2 runner), made LIVE here. Blueprint section 5: the canonical list of gates PER ASSURANCE MODE. The item enum is the three mode ids M3-P3 defines.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["full", "direct-pr", "local-only"]
+          }
+        },
+        "events": {
+          "$comment": "T-009, D-M3-34. A gate result is evidence only for the configuration that produced it, and this repository's workflow runs DIFFERENT bundles on `pull_request` and on `push` to `main`. An entry that does not say which events evaluate it carries a claim nobody can check. Derived per entry from the two bundle definitions in scripts/m2-exit-test.sh, never assigned by judgment.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["pull_request", "push"]
+          }
+        },
+        "parameters": {
+          "description": "Run parameters this gate's command REQUIRES. Declared rather than inferred. An absent declared parameter makes the gate error, never not-applicable (M2-C-3).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["base", "head", "phase"]
+          }
+        },
+        "precondition": {
+          "$ref": "#/$defs/precondition"
+        }
+      }
+    },
+    "precondition": {
+      "$comment": "SC-011, carried over from the M2-P1 manifest schema UNCHANGED, field for field. A gate whose precondition is unmet reports not-applicable and never green; not-applicable ASSERTS that a precondition was evaluated and found unmet.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "The closed set. Kind-specific required fields are checked by src/gates/manifest.ts, which emits the same INVALID <pointer> <message> diagnostics.",
+          "type": "string",
+          "enum": [
+            "file-exists",
+            "file-absent",
+            "branch-matches",
+            "diff-touches",
+            "command-exit-zero"
+          ]
+        },
+        "path": {
+          "description": "file-exists and file-absent.",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "branch-matches. A JavaScript regular expression source that is ANCHORED: it is compiled as ^(?:<pattern>)$ and must match the WHOLE branch name. The token {phase} is replaced by the --phase value, REGEX-ESCAPED.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "diff-touches. Path prefixes; the precondition is met when the diff changes a path under any of them.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "command-exit-zero. argv array, run in the runner's working directory.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
