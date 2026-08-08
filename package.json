@@ -12,11 +12,15 @@
     "tiphys": "dist/bin/tiphys.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/node_modules",
+    "schemas",
+    "templates"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.src.json tsconfig.test.json && npm run build:schemas",
+    "build": "tsc -b tsconfig.src.json tsconfig.test.json && npm run build:schemas && npm run build:runtime-deps",
     "build:schemas": "node --input-type=module -e \"import { cpSync } from 'node:fs'; cpSync('src/gates/schemas', 'dist/src/gates/schemas', { recursive: true });\"",
+    "build:runtime-deps": "node --input-type=module -e \"import { cpSync, readFileSync } from 'node:fs'; const seen = new Set(); const walk = (name) => { if (seen.has(name)) return; seen.add(name); const from = 'node_modules/' + name; const meta = JSON.parse(readFileSync(from + '/package.json', 'utf8')); cpSync(from, 'dist/node_modules/' + name, { recursive: true }); for (const next of Object.keys(meta.dependencies ?? {})) walk(next); }; for (const dep of Object.keys(JSON.parse(readFileSync('package.json', 'utf8')).dependencies ?? {})) walk(dep);\"",
     "test": "node --test \"test/**/*.test.ts\"",
     "gate:suite": "node src/gates/suite.ts --pin-root src --pin-root bin --pin-root test",
     "prepack": "npm run build"

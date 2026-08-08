@@ -42,10 +42,52 @@
 
 import { readFileSync, statSync } from "node:fs";
 import type { Stats } from "node:fs";
-import { Ajv2020 } from "ajv/dist/2020.js";
+import { createRequire } from "node:module";
+import type { Ajv2020 } from "ajv/dist/2020.js";
 import type { ErrorObject, ValidateFunction } from "ajv/dist/2020.js";
-import { parse as parseYaml, YAMLParseError } from "yaml";
+import type { parse as parseYamlType, YAMLParseError as YAMLParseErrorType } from "yaml";
 import { classifyEntry } from "./task.ts";
+
+/**
+ * THE TWO PRODUCTION DEPENDENCIES ARE LOADED LAZILY, AND THIS IS NOT A
+ * MICRO-OPTIMISATION. Measured 2026-08-08 while retiring the M2 engine.
+ *
+ * Three delivered M2 tests COPY the kernel's own tree to a scratch location
+ * OUTSIDE the repository and run it there: `stagedDist` in
+ * `test/gates.test.ts` copies `dist/`, and `copyInstallation` in
+ * `test/scope-gate.test.ts` copies `src/`. Node resolves a bare specifier by
+ * walking `node_modules` UPWARD from the importing file, and a copy under
+ * `/tmp` has no `node_modules` above it. A top-level `import ... from "ajv"`
+ * in this module therefore made three previously-passing M2 tests fail with
+ * `ERR_MODULE_NOT_FOUND` at module load, exit code 1, before any of the
+ * conditions those tests exist to exercise could happen. Captured in the
+ * work history.
+ *
+ * Those tests are re-run UNCHANGED under DR-0013 clause 6 and may not be
+ * edited, so the module must not need `ajv` resolvable merely to be
+ * IMPORTED. `createRequire` defers the resolution to the first schema
+ * compilation, which a copied-out gate that fails earlier never reaches, and
+ * an unresolvable dependency then becomes a compile diagnostic rather than an
+ * uncaught crash read as a verdict (the CR-1047 property, one level up).
+ */
+const requireDependency = createRequire(import.meta.url);
+
+interface AjvModule {
+  Ajv2020: new (options: Record<string, unknown>) => Ajv2020;
+}
+
+interface YamlModule {
+  parse: typeof parseYamlType;
+  YAMLParseError: typeof YAMLParseErrorType;
+}
+
+function ajvModule(): AjvModule {
+  return requireDependency("ajv/dist/2020.js") as AjvModule;
+}
+
+function yamlModule(): YamlModule {
+  return requireDependency("yaml") as YamlModule;
+}
 
 /** The dialect every Tiphys schema declares (DR-0013 clause 3). */
 export const TIPHYS_DIALECT = "https://json-schema.org/draft/2020-12/schema";
@@ -393,15 +435,20 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
 /**
  * Is this Ajv error a SUBSIDIARY of a composite the caller already reports?
  *
- * Ajv with allErrors reports both the failing branch inside `oneOf`/`if` and
- * the composite keyword itself. Emitting both produces two lines for one
- * fault and makes the output depend on Ajv's branch ordering, which is
- * exactly the nondeterminism the contract forbids. The composite line is
- * kept, because it is the one whose pointer is the instance location the
- * author must look at.
+ * Ajv with allErrors reports the failing branches inside `oneOf`/`anyOf`/`not`
+ * as well as the composite keyword itself. Which branch is reported depends on
+ * Ajv's branch ordering, which is exactly the nondeterminism the contract
+ * forbids, so only the COMPOSITE line survives: its pointer is the instance
+ * location the author must look at.
+ *
+ * `if`/`then`/`else` is DELIBERATELY NOT in that list. Exactly one branch
+ * applies and which one is decided by the instance, not by the engine, so the
+ * branch's own diagnostics are deterministic AND are the informative ones: a
+ * charter with `mode: none` and no `reason` must say `reason`, which only the
+ * `then` branch's `required` error carries (criterion 5b).
  */
 function isSubsidiary(error: ErrorObject): boolean {
-  return /\/(oneOf|anyOf|then|else|if|not)\//.test(error.schemaPath);
+  return /\/(oneOf|anyOf|not)\//.test(error.schemaPath);
 }
 
 export type SchemaDocument = Record<string, unknown>;
@@ -412,7 +459,8 @@ export type SchemaDocument = Record<string, unknown>;
  * policy rather than as a formatting change.
  */
 export function makeAjv(): Ajv2020 {
-  return new Ajv2020({
+  const { Ajv2020: Constructor } = ajvModule();
+  return new Constructor({
     strict: true,
     allErrors: true,
     validateSchema: true,
@@ -530,6 +578,7 @@ export type DecodeResult =
  * the contract is one diagnostic line per failure.
  */
 export function decodeDocument(text: string, label: string): DecodeResult {
+  const { parse: parseYaml, YAMLParseError } = yamlModule();
   let value: unknown;
   try {
     value = parseYaml(text, { prettyErrors: false });
