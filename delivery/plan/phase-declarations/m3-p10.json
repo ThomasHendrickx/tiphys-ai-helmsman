@@ -13,7 +13,10 @@
     "gate-registry.yaml",
     "delivery/evidence/m3-exit-test/",
     "supervision-rules.md",
-    "delivery/evidence/m2-exit-test/"
+    "delivery/evidence/m2-exit-test/",
+    "src/commands/validate.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [],
   "citations": [
