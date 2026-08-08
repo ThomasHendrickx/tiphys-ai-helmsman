@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/role-model-config.schema.json",
+  "title": "Tiphys role-to-model configuration",
+  "$comment": "R-075: model tier per risk, strongest for money-path and architecture phases, investigations and all reviews; cheaper for mechanical phases. Kernel plan M3, M3-P3 step 3. THIS IS CONFIGURATION AND NOTHING RESOLVES IT IN M3. Binding is done by the harness adapter (blueprint section 6), the charter override is L4 and lands at M4, and DR-0010's M3 half is still open with 'no action required before M4', so this document names no executor, no orchestration primitive and no model. It carries a TIER and a FAMILY POLICY per role and stops there.",
+  "description": "One document per repository. Which model tier each of blueprint section 6's roles defaults to, whether a charter may override it, and what constraint the role's model FAMILY is under.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "roles"],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "role-model-config"
+    },
+    "note": {
+      "description": "Free prose for this document's own readers.",
+      "type": "string"
+    },
+    "version": {
+      "$comment": "A closed set rather than a minimum, for the same reason as the other M3 schemas: the authoring vocabulary has no `minimum` keyword.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "roles": {
+      "description": "One entry per role. The six of blueprint section 6.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/roleBinding"
+      }
+    }
+  },
+  "$defs": {
+    "roleBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "tier", "charter-override", "rationale"],
+      "properties": {
+        "role": {
+          "$comment": "The six roles of blueprint section 6, in the process document's own role table. Closed, because M3-P5's role-brief schema resolves `model-tier` against this document and a role id that matches nothing here would resolve to nothing.",
+          "type": "string",
+          "enum": [
+            "orchestrator",
+            "investigator",
+            "plan-writer",
+            "adversarial-plan-reviewer",
+            "implementer",
+            "clean-room-reviewer"
+          ]
+        },
+        "tier": {
+          "$comment": "R-075's two tiers. NAMES A TIER, NEVER A MODEL: a model id here would go stale in weeks and would put a vendor's product name inside a versioned kernel artifact. The harness adapter maps tier to model at M4.",
+          "type": "string",
+          "enum": ["strongest", "cheaper"]
+        },
+        "strongest-for": {
+          "$comment": "R-075 is PHASE-CLASS SCOPED for one role and flat for the others: 'strongest model for money-path/architecture phases, investigations, and all reviews; cheaper tier for mechanical phases'. An implementer's tier therefore depends on the phase it is given, and a document carrying only a flat `tier` would silently drop half of R-075's rule. This field is that half, as DATA: the phase classes on which the role's tier is raised to `strongest`. Nothing in M3 classifies a phase, and no resolver reads this.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["money-path", "architecture", "investigation", "review"]
+          }
+        },
+        "charter-override": {
+          "$comment": "Blueprint section 6 and R-075's migration-table note: the charter override is L4 and is resolved by the M4 harness adapter. The vocabulary is reserved here so the M4 adapter has a field to read rather than a convention to infer. Every role ships `allowed`, which is stated in delivery/work-history/m3-p3.md as a uniform value rather than presented as if it discriminated.",
+          "type": "string",
+          "enum": ["allowed", "forbidden"]
+        },
+        "review-model-family": {
+          "$comment": "T-001, and it is OPTIONAL because only review roles are under a family constraint. T-001 recorded a miss that survived three same-family review rounds and asked for 'at minimum, a charter-level option to route one review round of full-mode plans through a different family'. This is that option, expressed as a policy rather than as a family name, because naming a vendor's model family in a kernel artifact is the same staleness problem `tier` avoids.",
+          "type": "string",
+          "enum": [
+            "must-differ-from-sibling-review",
+            "must-differ-from-previous-round",
+            "unconstrained"
+          ]
+        },
+        "rationale": {
+          "description": "Why this role sits at this tier, referring to the rule it comes from. Required, so a tier cannot be lowered without someone writing down why.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

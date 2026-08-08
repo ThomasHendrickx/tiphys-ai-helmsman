@@ -1,0 +1,88 @@
+# THE KERNEL'S ROLE-TO-MODEL DEFAULTS (kernel plan M3, M3-P3; R-075).
+#
+# R-075, from process doc section 5: "Model tier per risk: strongest model for
+# money-path/architecture phases, investigations, and all reviews; cheaper tier
+# for mechanical phases (a measurement script, copy)."
+#
+# CONFIGURATION ONLY. M3 ships the data and no resolver. Binding is done by the
+# harness adapter (blueprint section 6) and the charter override is L4, which
+# lands at M4. DR-0010, which asks whether any judgment-layer fan-out should
+# target the harness's native orchestration primitive, is `status: open` with
+# "no action required before M4", so nothing here targets a harness, names an
+# executor, or names a model: a tier and a family POLICY, and nothing else.
+#
+# WHY A TIER AND NOT A MODEL. A model id in a versioned kernel artifact goes
+# stale in weeks and puts a vendor's product name inside the package. The
+# adapter maps tier to model at M4, where the mapping can change without a
+# kernel release.
+
+kind: role-model-config
+version: 1
+
+roles:
+  - role: orchestrator
+    tier: strongest
+    charter-override: allowed
+    rationale: >-
+      Arbitrates between disagreeing reviews with evidence (DR-0012 condition
+      6), decides what reaches the owner (DR-0016), and holds delegated merge
+      authority. Every one of those is a judgment call on the money path.
+
+  - role: investigator
+    tier: strongest
+    charter-override: allowed
+    rationale: >-
+      R-075 names investigations explicitly. The role's output is a root-cause
+      verdict with a runnable repro (R-015a), and a wrong verdict sends a whole
+      fix round at the wrong mechanism, which is the dominant cost shape the
+      fix-round contract was written after measuring.
+
+  - role: plan-writer
+    tier: strongest
+    charter-override: allowed
+    rationale: >-
+      R-075 names architecture phases. The plan is what every later phase is
+      measured against, and plan v1's binding rule is that what is not written
+      there is not being made.
+
+  - role: adversarial-plan-reviewer
+    tier: strongest
+    charter-override: allowed
+    # T-001: an external review on a different model family found two genuine
+    # defects that had survived three same-family internal rounds plus one
+    # targeted verification. The record's own ask was "at minimum, a
+    # charter-level option to route one review round of a full-mode plan
+    # through a different family"; this is that option, as a policy.
+    review-model-family: must-differ-from-previous-round
+    rationale: >-
+      R-075 puts all reviews at the strongest tier, and T-001 is the recorded
+      miss that made same-family review rounds a known blind spot.
+
+  - role: implementer
+    tier: cheaper
+    # R-075 IS PHASE-CLASS SCOPED FOR THIS ROLE, so a flat tier would drop half
+    # of it. The default is the mechanical case the rule names ("a measurement
+    # script, copy"); the classes below are where the same rule raises it.
+    # Nothing in M3 classifies a phase, and no resolver reads this field.
+    strongest-for:
+      - money-path
+      - architecture
+    charter-override: allowed
+    rationale: >-
+      R-075 puts mechanical phases at the cheaper tier and money-path and
+      architecture phases at the strongest one, so the implementer is the one
+      role whose tier is a function of the phase rather than of the role.
+
+  - role: clean-room-reviewer
+    tier: strongest
+    charter-override: allowed
+    # DR-0012 condition 1: two independent clean-room reviews of the same head,
+    # produced on different model families. That is a constraint between the
+    # two SIBLING reviews of one pull request, which is a different axis from
+    # T-007's two review CONTRACTS in assurance-modes.yaml; full mode requires
+    # both and they are not the same rule.
+    review-model-family: must-differ-from-sibling-review
+    rationale: >-
+      R-075 puts all reviews at the strongest tier. This is also the role
+      DR-0012 made the signature on every merge, so cheapening it would
+      cheapen the merge condition itself.

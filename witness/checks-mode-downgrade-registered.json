@@ -1,0 +1,24 @@
+{
+  "id": "checks-mode-downgrade-registered",
+  "behavior": "mode-undeclared-downgrade-rejected",
+  "tests": [
+    "a mode omitting a stage full runs without declaring it in skips is rejected, and is accepted with the check deregistered"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  modeNoUndeclaredDowngrade,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        (stage) => !own.has(stage) && !declared.has(stage),",
+      "replace": "        (stage) => !own.has(stage) && !declared.has(stage) && stage === \"intake\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -475,5 +475,21 @@
   "gate-drift-check-wired-executably": "the drift step extracted from the gates workflow is executed and its exit code observed on a drifted and a re-rendered registry",
   "gate-registry-mode-excludes-other-modes": "a gate declaring only another mode is EXCLUDED from the run, with no row, no record and no evidence directory",
   "gate-registry-ci-divergence-declared": "every registry gate CI does not run is a declared divergence, and the workflow step that covers the one instance is present on both arms",
-  "gate-registry-checklist-entry-not-executed": "a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status"
+  "gate-registry-checklist-entry-not-executed": "a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status",
+  "modes-validate": "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto",
+  "mode-show-full-stage-order": "mode show prints full's twelve stage ids in order and a non-empty skips list for the other two modes",
+  "mode-undeclared-downgrade-rejected": "a mode omitting a stage full runs without declaring it in skips is rejected, and is accepted with the check deregistered",
+  "mode-review-before-implement": "a mode that builds before its adversarial plan review is rejected, and is accepted with the check deregistered",
+  "mode-full-requires-fix-round-verification": "a full mode with no fix-round-verification stage is rejected, and is accepted with the contains keyword removed",
+  "mode-unknown-gate-set-rejected": "a mode naming a gate set the registry does not declare is rejected, and the same check without --context is SKIPPED and fails",
+  "charter-mode-enum-closed": "a charter declaring delivery-mode yolo is rejected naming the enum and a charter declaring full is accepted",
+  "charter-mode-enum-drift-detected": "a fourth mode id added without updating the charter schema enum is rejected naming both files, and updating the enum returns exit 0",
+  "mode-delegated-authority-requires-conditions": "delegated merge authority with an empty conditions list or no granted-by is rejected, and DR-0012's six conditions with its record reference are accepted",
+  "mode-full-requires-escalation-bounds": "a full mode with no escalation-bounds is rejected naming the field, and is accepted with the required entry removed",
+  "mode-escalation-bounds-require-response": "escalation-bounds with the two limits and no on-exceeded is rejected, and a value outside the enum is rejected naming the enum",
+  "mode-full-response-is-fresh-implementer": "full's escalation response is the fresh implementer and third contract, not escalation to the owner",
+  "mode-clean-room-requires-two-contracts": "a mode running clean-room-review with one review contract is rejected naming the pointer, and two named contracts are accepted",
+  "mode-review-contracts-are-distinct": "two review contracts with the same id are rejected as duplicates and full's two are distinct",
+  "modes-no-liveness-vocabulary": "assurance-modes.yaml and its schema carry no process-liveness vocabulary",
+  "role-model-config-tiers-by-risk": "the role-model configuration covers the six roles, puts every review role at the strongest tier, and names no model"
 }

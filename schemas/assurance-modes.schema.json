@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/assurance-modes.schema.json",
+  "title": "Tiphys assurance modes",
+  "$comment": "R-024, R-096. Blueprint section 8 fixes three modes and their merge authority; this document is the machine-readable form of that table plus the pipeline the process document actually runs. Kernel plan M3, M3-P3 step 1. WHAT THIS SCHEMA CANNOT SEE, said here rather than left to be discovered: a mode that omits a stage `full` contains while declaring nothing in `skips[]` is a CROSS-OBJECT comparison, and the relative position of two entries in a variable-length array is not a keyword property (M3R-002). Those are Kind B and live in src/checks.ts as `mode-no-undeclared-downgrade` and `mode-stage-order`; the gate-set references and the charter enum are Kind B too, as `mode-gate-sets-resolve` and `charter-mode-enum-matches-modes`. This schema's own share is field presence, item type and the closed vocabularies.",
+  "description": "One document per repository. Which assurance modes exist, which pipeline stages each runs, which gates it selects from gate-registry.yaml, who may merge under it, and which stages it declares itself to skip.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "modes"],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "assurance-modes"
+    },
+    "note": {
+      "description": "Free prose for this document's own readers.",
+      "type": "string"
+    },
+    "version": {
+      "$comment": "A closed set rather than a minimum, because the authoring vocabulary of schemas/README.md has no `minimum` keyword and a bare `type: integer` would admit 0 and negatives. Same shape as gate-registry.schema.json.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "modes": {
+      "description": "Every mode this repository declares. Append-only in practice: adding one is what makes charter-mode-enum-matches-modes earn its place.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/mode"
+      }
+    }
+  },
+  "$defs": {
+    "stageId": {
+      "$comment": "THE CLOSED STAGE VOCABULARY. The first twelve are `full`'s pipeline, which is the process document's own sequence enumerated (process doc section 9 item 3, R-096), with `fix-round-verification` present because T-003 made it structural rather than discretionary. `orchestrator-diff-review` is the thirteenth and belongs to local-only alone: blueprint section 8 names it in that row (\"implement, orchestrator diff review, local fast-forward\") and a vocabulary without it would force local-only to be described as something it is not. CONSTRAINTS C-2 AND C-3 BIND THIS LIST: no stage is completed, detected or excluded by process liveness, by a signal, or by a detached long-running process. A registered test scans this file and assurance-modes.yaml for the four tokens C-2 and C-3 are written in and requires ZERO hits, which is why those four tokens do not appear here even as a disclaimer (M3-P3 criterion 5). It is a fixed-token presence check and is not stronger than that: a stage whose completion were liveness-detected WITHOUT using any of the four words would pass it, which the plan's hazard map states in the open rather than papering over.",
+      "type": "string",
+      "enum": [
+        "intake",
+        "verification-pass",
+        "plan",
+        "adversarial-plan-review",
+        "implement",
+        "clean-room-review",
+        "fix-round",
+        "fix-round-verification",
+        "merge-on-green",
+        "orchestrator-diff-review",
+        "deploy-verify",
+        "migration-verify",
+        "final-report"
+      ]
+    },
+    "mode": {
+      "$comment": "FOUR conditional rules, chained through $ref rather than stacked in one object, because JSON Schema allows one `if`/`then` pair per schema object and `allOf` is outside the authoring vocabulary of schemas/README.md. Same construction as gate-registry.schema.json's `gate`. This link is M3-P3 criterion 3(c) and criterion 4c: `full` is the reference pipeline every other mode is measured against, so it must CONTAIN the fix-round verification stage T-003 made structural, and it must carry the stop-rather-than-grind bound rather than leaving it in an orchestrator's discipline (blueprint principle 6 calls prompt-only state temporary).",
+      "$ref": "#/$defs/modeAuthorityRule",
+      "if": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "const": "full"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["pipeline", "escalation-bounds"],
+        "properties": {
+          "pipeline": {
+            "type": "array",
+            "contains": {
+              "const": "fix-round-verification"
+            }
+          },
+          "escalation-bounds": {
+            "$ref": "#/$defs/escalationBounds"
+          }
+        }
+      }
+    },
+    "modeAuthorityRule": {
+      "$comment": "M3-P3 criterion 4b. `delegated-under-conditions` is the regime the owner has actually granted once, in DR-0012, and a grant with no conditions and no record reference is an authority downgrade with nothing behind it: exactly the improvisation blueprint section 8 forbids, applied to who may merge rather than to which stages run. `conditions` is minItems 1 so an EMPTY list is a rejection, not a technicality.",
+      "$ref": "#/$defs/modeReviewContractRule",
+      "if": {
+        "type": "object",
+        "required": ["merge-authority"],
+        "properties": {
+          "merge-authority": {
+            "const": "delegated-under-conditions"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["conditions", "granted-by"],
+        "properties": {
+          "conditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "granted-by": {
+            "$ref": "#/$defs/decisionRecordReference"
+          }
+        }
+      }
+    },
+    "modeReviewContractRule": {
+      "$comment": "M3-P3 criterion 4d (T-007, D-M3-32). A mode that runs clean-room review declares its review CONTRACTS, not a reviewer count. T-007's measurement is why this is a schema rule: two reviewers on different model families walked all fifteen of M1-P5's acceptance criteria, agreed on every mechanical fact, and one returned APPROVE while the other found a high-severity defect that live-locks four commands, because the second was briefed on hazards rather than on criteria. Had both been briefed on the criteria, both would have approved, on any two models. The `uniqueItems` on modeShape's `review-contracts` is what stops two entries both named `criteria` from satisfying this `minItems` and reproducing exactly that failure; the two keywords live at ONE SITE EACH, because a duplicate of either would keep rejecting after the other was defanged and a red witness that stayed red for the wrong reason proves nothing about the keyword it names. DR-0012's requirement of two model FAMILIES is orthogonal and is checked elsewhere.",
+      "$ref": "#/$defs/modeShape",
+      "if": {
+        "type": "object",
+        "required": ["pipeline"],
+        "properties": {
+          "pipeline": {
+            "type": "array",
+            "contains": {
+              "const": "clean-room-review"
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["review-contracts"],
+        "properties": {
+          "review-contracts": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "modeShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "declared-by",
+        "pipeline",
+        "skips",
+        "gate-sets",
+        "merge-authority"
+      ],
+      "properties": {
+        "$comment": {
+          "description": "Clause ids this entry discharges, per schemas/README.md.",
+          "type": "string"
+        },
+        "id": {
+          "$comment": "The three ids of blueprint section 8. Closed here and closed again in gate-registry.schema.json's `modes` item enum and in schemas/charter.schema.json's `delivery-mode` enum, which is three copies of one list; `charter-mode-enum-matches-modes` is what keeps the charter copy honest, and test/gate-registry.test.ts already binds the registry copy.",
+          "type": "string",
+          "enum": ["full", "direct-pr", "local-only"]
+        },
+        "declared-by": {
+          "description": "Where this mode's definition comes from. Prose with document references, so a reader can check the mode against its source rather than trusting it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "pipeline": {
+          "description": "The stages this mode runs, IN ORDER. Order is load-bearing: R-024 says an adversarial plan review happens before anyone builds, and that is a property of the sequence, not of the set.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stageId"
+          }
+        },
+        "skips": {
+          "$comment": "Blueprint section 8: \"Downgrades are declared, never improvised.\" This is the declaration. It is REQUIRED and may be empty, so a mode that omits a stage and says nothing is distinguishable from a mode that omits nothing; `mode-no-undeclared-downgrade` is what makes the difference cost something.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stageId"
+          }
+        },
+        "gate-sets": {
+          "$comment": "The gate ids from gate-registry.yaml this mode selects. `set` is the blueprint's word for the per-mode gate selection; here it is enumerated by id rather than named indirectly, so `mode-gate-sets-resolve` can check each entry against the registry with --context and a reference that resolves to nothing cannot pass by never being looked up.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
+        "merge-authority": {
+          "$comment": "Blueprint section 8's third column, plus the value the owner has actually granted. `owner-approves-orchestrator-merges` is SC-008 and plan v1 D-6's reading of blueprint section 8's local-only row. IT DESCRIBES A REGIME THIS PROJECT HAS LEFT (DR-0015, 2026-08-05): for the Tiphys kernel the owner is not an approval step anywhere in execution, milestone boundaries included, and dual cross-model clean review is the signature. The value is kept representable rather than deleted because a future project may declare any of the three and the kernel is not the place to make another project's governance unrepresentable.",
+          "type": "string",
+          "enum": [
+            "owner",
+            "owner-approves-orchestrator-merges",
+            "delegated-under-conditions"
+          ]
+        },
+        "conditions": {
+          "$comment": "Required, and required to be NON-EMPTY, when merge-authority is delegated-under-conditions. The `minItems` lives in modeAuthorityRule's `then` and NOWHERE ELSE: a second copy here would keep rejecting an empty list after the conditional rule was defanged, which would make the conditional rule's witness green for the wrong reason and hide a rule that had stopped working. Quoted from the decision record rather than summarized.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "granted-by": {
+          "$ref": "#/$defs/decisionRecordReference"
+        },
+        "review-contracts": {
+          "$comment": "T-007, D-M3-32. The STARTING QUESTION each clean-room review is given, by id. Two contracts is not two reviewers: `criteria` walks the phase's acceptance criteria and `hazard` is handed the phase's declared hazard classes and works outward from them.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "escalation-bounds": {
+          "$ref": "#/$defs/escalationBounds"
+        }
+      }
+    },
+    "decisionRecordReference": {
+      "description": "A decision record id, for example DR-0012. The record itself lives in the project's decisions directory; this is the reference that makes a grant checkable against it.",
+      "type": "string",
+      "pattern": "^DR-[0-9]{4}$"
+    },
+    "onExceeded": {
+      "$comment": "DR-0016. `fresh-implementer-and-third-contract` is the response that was measured to work: a fresh implementer plus a third review contract dispatched IMMEDIATELY, with the owner notified asynchronously. `escalate-to-owner` remains in the enum because DR-0016's residual guardrail is real: if the round after the fresh implementer also fails, the phase goes to the owner.",
+      "type": "string",
+      "enum": ["fresh-implementer-and-third-contract", "escalate-to-owner"]
+    },
+    "escalationBounds": {
+      "$comment": "DR-0012's stop-rather-than-grind limits, made data, plus DR-0016's response. THIS IS DATA THE ORCHESTRATOR BRIEF CITES (M3-P9), NOT AN ENFORCEMENT ENGINE: nothing in M3 counts fix rounds and nothing in M3 classifies a finding's component, and the plan's section 4.5 records that as unproven rather than implying otherwise. `on-exceeded` is in this object's OWN `required` list, which is what makes it required exactly when `escalation-bounds` is present, with no conditional rule to go vacuous. A bound that records the LIMIT but not the RESPONSE encodes the regime DR-0016 measured and replaced: DR-0012's bound was a stop-and-wait, that stop cost 4.7 hours on M1-P5 alone, it fired three times, all three times the owner chose the option the orchestrator had already recommended, and the intervention that actually broke the spiral was the FRESH IMPLEMENTER dispatched afterwards, which derived eleven call sites where the review had listed eight.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max-fix-rounds-after-review",
+        "recurrence-of-high-in-one-component",
+        "on-exceeded"
+      ],
+      "properties": {
+        "max-fix-rounds-after-review": {
+          "description": "How many fix rounds may follow the first dual review before the bound fires. DR-0012: \"more than two fix rounds after its first dual review\", so two.",
+          "type": "integer"
+        },
+        "recurrence-of-high-in-one-component": {
+          "description": "How many times a high-severity finding may recur in one component across rounds before the bound fires. DR-0012 treats any recurrence as the trigger, so one.",
+          "type": "integer"
+        },
+        "on-exceeded": {
+          "$ref": "#/$defs/onExceeded"
+        }
+      }
+    }
+  }
+}

@@ -25,6 +25,8 @@
  * PLAN DEFECT to escalate, not a script to add quietly.
  */
 
+import { join } from "node:path";
+import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
 
 /** What one derived check produced. */
@@ -263,11 +265,344 @@ export const planHazardClassesAddressedByResolves: DerivedCheck = {
   },
 };
 
+/* ================================================================== */
+/* M3-P3: the assurance-mode checks                                    */
+/* ================================================================== */
+
+/** The mode whose pipeline every other mode's downgrades are measured against. */
+const REFERENCE_MODE_ID = "full";
+
+/** The document name these checks report against when naming the instance. */
+const MODES_DOCUMENT = "assurance-modes.yaml";
+
+/** Every string in an array field, in order, with non-strings dropped. */
+function stringsAt(record: Record<string, unknown> | undefined, key: string): string[] {
+  return asArray(record?.[key]).filter(
+    (value): value is string => typeof value === "string",
+  );
+}
+
+/** `{index, record, id}` for every element of `modes[]` that is an object. */
+function eachMode(
+  instance: unknown,
+): { index: number; mode: Record<string, unknown>; id: string }[] {
+  const document = asRecord(instance);
+  const modes = asArray(document?.["modes"]);
+  const rows: { index: number; mode: Record<string, unknown>; id: string }[] = [];
+  for (let index = 0; index < modes.length; index += 1) {
+    const mode = asRecord(modes[index]);
+    if (mode === undefined) {
+      continue;
+    }
+    rows.push({ index, mode, id: String(mode["id"] ?? "") });
+  }
+  return rows;
+}
+
+/**
+ * Read and decode a document from the CONTEXT directory, or say why not.
+ *
+ * FAIL CLOSED. A cross-document rule whose other document is missing must not
+ * become a pass: that is the vacuous shape this whole module exists to
+ * prevent, one level down from `SKIPPED <id> no context`. The path is not one
+ * this program created, so it is classified before it is opened
+ * (`readOperatorPath`, D-M3-27) rather than opened and hoped about.
+ */
+function readContextDocument(
+  contextDirectory: string,
+  relativePath: string,
+): { ok: true; value: unknown; path: string } | { ok: false; reason: string } {
+  const path = join(contextDirectory, relativePath);
+  const read = readOperatorPath(path);
+  if (!read.ok) {
+    return { ok: false, reason: read.reason };
+  }
+  const decoded = decodeDocument(read.body, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  return { ok: true, value: decoded.value, path };
+}
+
+/* ------------------------------------------------------------------ */
+/* mode-no-undeclared-downgrade (blueprint section 8, M3-P3 criterion 3a) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Downgrades are declared, never improvised" (blueprint section 8), made
+ * falsifiable: every stage the reference mode `full` runs and this mode does
+ * not must appear in this mode's `skips[]`.
+ *
+ * NO SCHEMA KEYWORD REACHES THIS. It is a set difference between the
+ * `pipeline` of ONE array element and the `pipeline` of a SIBLING element,
+ * selected by id, compared against a third field of the first (M3R-002). The
+ * schema's whole share is that `skips` exists and holds stage ids.
+ *
+ * TWO STRUCTURALLY DIFFERENT WAYS TO EVADE IT, and both are violations here
+ * rather than one being left implied:
+ *
+ *   1. a mode omits a stage and declares NOTHING (`skips: []`);
+ *   2. a mode omits two stages and declares ONE of them, so the document reads
+ *      as a mode that has accounted for itself while one downgrade is silent.
+ *
+ * AND A THIRD, WHICH IS WHY THE MISSING REFERENCE IS A VIOLATION AND NOT A
+ * QUIET RETURN: deleting the `full` mode from the document disables the
+ * comparison for every remaining mode at once, so a document with one
+ * `direct-pr` mode, an empty `skips[]` and no `clean-room-review` would pass a
+ * check that returned early. That is the same defect one level up, so the
+ * absent reference fails closed.
+ */
+export const modeNoUndeclaredDowngrade: DerivedCheck = {
+  id: "mode-no-undeclared-downgrade",
+  type: "assurance-modes",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const rows = eachMode(instance);
+    if (rows.length === 0) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const reference = rows.find((row) => row.id === REFERENCE_MODE_ID);
+    if (reference === undefined) {
+      violations.push({
+        pointer: "#/modes",
+        message: `no mode declares id ${REFERENCE_MODE_ID}, so no mode's omitted stages can be measured against the reference pipeline`,
+      });
+      return { violations, reports: [] };
+    }
+    const referenceStages = stringsAt(reference.mode, "pipeline");
+    for (const row of rows) {
+      if (row.index === reference.index) {
+        continue;
+      }
+      const own = new Set(stringsAt(row.mode, "pipeline"));
+      const declared = new Set(stringsAt(row.mode, "skips"));
+      const undeclared = referenceStages.filter(
+        (stage) => !own.has(stage) && !declared.has(stage),
+      );
+      for (const stage of undeclared) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/skips`,
+          message: `mode ${row.id} omits stage ${stage}, which mode ${REFERENCE_MODE_ID} runs, and does not declare it in skips`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* mode-stage-order (R-024, M3-P3 criterion 3b)                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * R-024: an adversarial plan review happens before anyone builds.
+ *
+ * THE RELATIVE POSITION OF TWO VALUES IN A VARIABLE-LENGTH ARRAY IS NOT A
+ * KEYWORD PROPERTY (M3R-002). `contains` can say both are present and nothing
+ * in the vocabulary can say which comes first.
+ *
+ * The rule has TWO ARMS because there are two ways to build before a review,
+ * and the plan states both: reorder them, or delete the review. So a mode
+ * whose pipeline contains `implement` and NOT `adversarial-plan-review` must
+ * list the review in `skips[]`, which is the same declared-downgrade
+ * discipline applied to the one stage R-024 is about.
+ */
+export const modeStageOrder: DerivedCheck = {
+  id: "mode-stage-order",
+  type: "assurance-modes",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const violations: Diagnostic[] = [];
+    for (const row of eachMode(instance)) {
+      const pipeline = stringsAt(row.mode, "pipeline");
+      const review = pipeline.indexOf("adversarial-plan-review");
+      const implement = pipeline.indexOf("implement");
+      if (implement === -1) {
+        continue;
+      }
+      if (review === -1) {
+        if (!stringsAt(row.mode, "skips").includes("adversarial-plan-review")) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} runs implement without adversarial-plan-review and does not declare that stage in skips (R-024)`,
+          });
+        }
+        continue;
+      }
+      if (review > implement) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/pipeline`,
+          message: `mode ${row.id} places implement at position ${String(implement)} and adversarial-plan-review at position ${String(review)}, so building starts before the review (R-024)`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* mode-gate-sets-resolve (M3-P3 criterion 3d)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every `gate-sets[]` entry RESOLVES against `gate-registry.yaml`.
+ *
+ * WHAT "RESOLVES" MEANS HERE, stated because a checker whose promise is vague
+ * is a checker nobody can falsify: the entry names a gate the registry
+ * declares, AND that gate's own `modes` list names this mode. Both halves are
+ * needed, because a reference that resolves to a gate which never runs in this
+ * mode is a mode whose assurance is a name with no gates behind it, which is
+ * the hazard exactly as the plan words it.
+ *
+ * `requiresContext` is TRUE, so invoking the validator without `--context`
+ * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
+ * is the point of the mechanism (M3-P1 criterion 4c): a cross-document rule
+ * must never be able to pass BY NOT RUNNING.
+ */
+export const modeGateSetsResolve: DerivedCheck = {
+  id: "mode-gate-sets-resolve",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Kept fail-closed
+         rather than trusting a caller that reaches the check directly. */
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const registryDocument = readContextDocument(contextDirectory, "gate-registry.yaml");
+    if (!registryDocument.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/modes",
+            message: `the gate registry could not be read, so no gate set reference could be resolved: ${registryDocument.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const declared = new Map<string, Set<string>>();
+    for (const gate of asArray(asRecord(registryDocument.value)?.["gates"])) {
+      const record = asRecord(gate);
+      const id = record?.["id"];
+      if (typeof id === "string") {
+        declared.set(id, new Set(stringsAt(record, "modes")));
+      }
+    }
+    const violations: Diagnostic[] = [];
+    for (const row of eachMode(instance)) {
+      const references = stringsAt(row.mode, "gate-sets");
+      for (let position = 0; position < references.length; position += 1) {
+        const reference = references[position] as string;
+        const pointer = `#/modes/${String(row.index)}/gate-sets/${String(position)}`;
+        const modesOfGate = declared.get(reference);
+        if (modesOfGate === undefined) {
+          violations.push({
+            pointer,
+            message: `gate set ${reference} is not declared in ${registryDocument.path}`,
+          });
+          continue;
+        }
+        if (!modesOfGate.has(row.id)) {
+          violations.push({
+            pointer,
+            message: `gate set ${reference} is declared in ${registryDocument.path} and its modes list does not name ${row.id}, so it never runs in this mode`,
+          });
+        }
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* charter-mode-enum-matches-modes (M3-P3 step 4, criterion 4)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The charter schema's mode enums equal the ids declared here.
+ *
+ * `schemas/charter.schema.json` declares the mode vocabulary a project charter
+ * may use, and this document declares what those modes ARE. Two lists, one
+ * fact. Without this check they are a duplication that drifts silently the
+ * first time a mode is added, which is the same drift hole M3-P2 closed for
+ * the gate list.
+ *
+ * BOTH FIELDS, not one. The charter carries `delivery-mode` AND
+ * `assurance-tier`, M3-P1 shipped the identical placeholder enum on both, and
+ * step 4 names both ("Add `mode` and `assurance-tier` validation to the
+ * charter schema's enum"). A check that watched only one would leave the other
+ * free to drift, which is the hazard rather than a smaller version of it.
+ */
+export const charterModeEnumMatchesModes: DerivedCheck = {
+  id: "charter-mode-enum-matches-modes",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const charter = readContextDocument(
+      contextDirectory,
+      join("schemas", "charter.schema.json"),
+    );
+    if (!charter.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/modes",
+            message: `the charter schema could not be read, so its mode enum could not be compared with ${MODES_DOCUMENT}: ${charter.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const declaredIds = eachMode(instance)
+      .map((row) => row.id)
+      .sort();
+    const properties = asRecord(asRecord(charter.value)?.["properties"]);
+    const violations: Diagnostic[] = [];
+    for (const field of ["delivery-mode", "assurance-tier"]) {
+      const definition = asRecord(properties?.[field]);
+      if (definition === undefined) {
+        violations.push({
+          pointer: "#/modes",
+          message: `${charter.path} declares no ${field} property, so the mode ids in ${MODES_DOCUMENT} have nothing to agree with`,
+        });
+        continue;
+      }
+      const enumerated = stringsAt(definition, "enum").slice().sort();
+      if (enumerated.join(" ") !== declaredIds.join(" ")) {
+        violations.push({
+          pointer: "#/modes",
+          message: `${MODES_DOCUMENT} declares mode ids [${declaredIds.join(", ")}] and the ${field} enum in ${charter.path} is [${enumerated.join(", ")}]; the two must be equal`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
 /* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
 const registry: DerivedCheck[] = [
+  charterModeEnumMatchesModes,
+  modeGateSetsResolve,
+  modeNoUndeclaredDowngrade,
+  modeStageOrder,
   planDispatchable,
   planHazardClassesAddressedByResolves,
   planVerificationFirstPresent,
