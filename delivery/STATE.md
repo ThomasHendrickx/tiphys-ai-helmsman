@@ -345,6 +345,24 @@ and `A-3` meant three, one of them a literal string inside
    protection). A-5 is recorded here so this register actually holds every
    allocated id, which is the point of naming a sole allocator.
 
+## Tracked obligations, sequenced
+
+Work that is agreed and cannot be done yet, recorded so the sequencing is a
+fact rather than a memory.
+
+- **The clause-map gate has no row in the exit test's expectation tables**
+  (M3-P1 hazard review finding B-006, high, verified end to end: a red
+  clause-map produces ZERO findings in the assertion while a different red gate
+  in the same run correctly produces one, so M3's only per-phase orphan check
+  cannot fail CI). The fix is a row in `PR_EXPECT_JSON` and `MAIN_EXPECT_JSON`
+  in `scripts/m2-exit-test.sh`. **It cannot land before M3-P1 merges**: the
+  assertion fails with "no record in the bundle for a gate the table lists"
+  when a listed gate is absent, and `clause-map` enters `gates.manifest.json`
+  only with M3-P1. It is also not M3-P1's to fix, because
+  `scripts/m2-exit-test.sh` is not on that phase's declaration. So it is an
+  orchestrator-side harness fix owing the full fix-round contract, to be landed
+  IMMEDIATELY AFTER M3-P1 merges and before M3-P2 is dispatched.
+
 ## Standing reminders
 
 - Parallelism is on under DR-0011, but MERGE order is still dependency order:
