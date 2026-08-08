@@ -10,7 +10,14 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -337,10 +344,16 @@ test("Ajv errors become the exact Tiphys diagnostic text, and no Ajv-authored wo
 /* DR-0013 criterion 9 and criterion 12: malformed input, no stack      */
 /* ------------------------------------------------------------------ */
 
-test("malformed YAML and a non-mapping document each give one diagnostic line, a nonzero exit and no stack frame", () => {
+test("malformed YAML produces one concise diagnostic and a nonzero exit", () => {
+  /* DR-0013 YAML clause 3: decoding and validation are SEPARATE STAGES and a
+     failure in each must be distinguishable. This test owns the decode stage;
+     the test below owns the top-level presentation policy. They were one test
+     until fix round 1, where the behavior registry named both properties and
+     only one test existed to carry them, so one of the two names documented a
+     property nobody could point at. */
   const dir = scratch();
   try {
-    /* MEMBER 1: the bytes are not YAML at all. */
+    /* THE DECODE FAILS: the bytes are not YAML at all. */
     const broken = join(dir, "broken.yaml");
     writeFileSync(broken, "kind: plan\nphases:\n  - id: [unclosed\n");
     const first = runCli(["validate", "--type", "plan", broken]);
@@ -352,30 +365,87 @@ test("malformed YAML and a non-mapping document each give one diagnostic line, a
     );
     assert.match(first.stderr, /is not valid YAML/);
 
-    /* MEMBER 2, structurally different: VALID YAML that is not a mapping. The
-       decode succeeds and the failure is one stage later, which is the
-       distinction DR-0013 YAML clause 3 requires the two stages to preserve. */
+    /* THE DECODE SUCCEEDS AND VALIDATION FAILS, which is the OTHER side of
+       the same separation: valid YAML that is not a mapping. The diagnostic
+       names a POINTER rather than the decode, so a reader can tell which
+       stage rejected the document. Without this arm the test would pass
+       against an implementation that called every failure a decode failure. */
     const scalar = join(dir, "scalar.yaml");
     writeFileSync(scalar, "just a string\n");
     const second = runCli(["validate", "--type", "plan", scalar]);
     assert.equal(second.status, 1);
     assert.match(second.stdout, /^INVALID # expected type object but found string$/m);
+    assert.ok(
+      !second.stderr.includes("is not valid YAML"),
+      "a validation failure was reported as a decode failure",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
-    /* NO STACK FRAME ON EITHER STREAM, for both members. */
-    for (const run of [first, second]) {
+test("a subcommand that throws prints one diagnostic line, exits nonzero, and puts no stack frame on either stream", () => {
+  /* STEP 8b's HANDLER, exercised through a path that actually REACHES it.
+     Recorded as a residue in the first round and closed here: the two
+     malformed-input members above are handled INSIDE `cmdValidate`, which
+     RETURNS a code rather than throwing, so removing the try/catch in
+     `bin/tiphys.ts` leaves them unchanged and they witness the handler not at
+     all. These three DO throw. */
+  const dir = scratch();
+  try {
+    const runs = [
+      /* `loadFleet` throws "not a fleet home: ... is missing ..." */
+      runCli(["status", "show"], dir),
+      runCli(["status", "emit", "--run", "r1", "--state", "done"], dir),
+      /* `loadTypeSchema` throws when the installation has no schemas/ above
+         it, which is the load-time configuration error STATE.md carried as an
+         unowned seam. Staged by running the CLI from a copy with no schemas/
+         directory anywhere above it. */
+      (() => {
+        const island = join(dir, "island");
+        mkdirSync(join(island, "bin"), { recursive: true });
+        mkdirSync(join(island, "src", "commands"), { recursive: true });
+        cpSync(join(repoRoot, "src"), join(island, "src"), { recursive: true });
+        cpSync(join(repoRoot, "bin"), join(island, "bin"), { recursive: true });
+        cpSync(
+          join(repoRoot, "node_modules"),
+          join(island, "node_modules"),
+          { recursive: true },
+        );
+        const target = join(dir, "anything.yaml");
+        writeFileSync(target, "kind: plan\n");
+        return spawnSync(
+          process.execPath,
+          [join(island, "bin", "tiphys.ts"), "validate", "--type", "plan", target],
+          { encoding: "utf8", cwd: dir },
+        );
+      })(),
+    ];
+
+    for (const run of runs) {
+      assert.notEqual(run.status, 0, run.stdout + run.stderr);
       assert.equal(
         (run.stderr.match(/ {4}at /g) ?? []).length,
         0,
         `stderr carried a stack frame: ${run.stderr}`,
       );
-      assert.equal((run.stdout.match(/ {4}at /g) ?? []).length, 0);
+      assert.equal(
+        (run.stdout.match(/ {4}at /g) ?? []).length,
+        0,
+        `stdout carried a stack frame: ${run.stdout}`,
+      );
+      assert.equal(
+        run.stderr.split("\n").filter((line) => line !== "").length,
+        1,
+        `more than one diagnostic line: ${run.stderr}`,
+      );
+      assert.match(run.stderr, /^tiphys: /);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-/* ------------------------------------------------------------------ */
 /* Criterion 5d: path-type refusal, with a real mkfifo                  */
 /* ------------------------------------------------------------------ */
 
@@ -446,34 +516,53 @@ test("a named pipe at the file argument or at --context is refused within a boun
 /* Criterion 2: valid instances, and --type auto                        */
 /* ------------------------------------------------------------------ */
 
-test("each shipped example validates under its named type and under --type auto", () => {
+/**
+ * A status-line record, written to `dir`. It ships no template because it is
+ * EMITTED rather than authored, so the fixture lives here.
+ */
+function writeStatusRecord(dir: string): string {
+  const file = join(dir, "status.json");
+  writeFileSync(
+    file,
+    JSON.stringify({
+      kind: "status-line",
+      at: "2026-08-08T05:00:00Z",
+      run: "r1",
+      project: "example",
+      state: "phase-change",
+      detail: "",
+      refs: [],
+    }),
+  );
+  return file;
+}
+
+test("each shipped example validates under its named type and exits 0", () => {
   for (const type of ["plan", "charter", "decision-record"]) {
     const file = join(repoRoot, "templates", `${type}.example.yaml`);
     const named = runCli(["validate", "--type", type, file]);
     assert.equal(named.status, 0, named.stdout + named.stderr);
+  }
+  const dir = scratch();
+  try {
+    assert.equal(
+      runCli(["validate", "--type", "status-line", writeStatusRecord(dir)]).status,
+      0,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--type auto resolves from the kind field and is a usage error when there is none", () => {
+  for (const type of ["plan", "charter", "decision-record"]) {
+    const file = join(repoRoot, "templates", `${type}.example.yaml`);
     const auto = runCli(["validate", "--type", "auto", file]);
     assert.equal(auto.status, 0, auto.stdout + auto.stderr);
   }
-
-  /* A status-line record, which ships no template because it is emitted
-     rather than authored. */
   const dir = scratch();
   try {
-    const file = join(dir, "status.json");
-    writeFileSync(
-      file,
-      JSON.stringify({
-        kind: "status-line",
-        at: "2026-08-08T05:00:00Z",
-        run: "r1",
-        project: "example",
-        state: "phase-change",
-        detail: "",
-        refs: [],
-      }),
-    );
-    assert.equal(runCli(["validate", "--type", "status-line", file]).status, 0);
-    assert.equal(runCli(["validate", "--type", "auto", file]).status, 0);
+    assert.equal(runCli(["validate", "--type", "auto", writeStatusRecord(dir)]).status, 0);
 
     /* --type auto with no kind field is a USAGE error, not a validation
        failure: the caller asked the command to work out which contract
@@ -484,6 +573,14 @@ test("each shipped example validates under its named type and under --type auto"
     const usage = runCli(["validate", "--type", "auto", noKind]);
     assert.equal(usage.status, 64);
     assert.match(usage.stderr, /kind field/);
+
+    /* And the OTHER direction of "resolves from the kind field": a kind that
+       names no registered type is the same usage error, so the resolver is
+       reading the field rather than guessing from the filename. */
+    const wrongKind = join(dir, "wrong-kind.yaml");
+    writeFileSync(wrongKind, "kind: gate-manifest\nrun: r1\n");
+    const unknown = runCli(["validate", "--type", "auto", wrongKind]);
+    assert.equal(unknown.status, 64);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

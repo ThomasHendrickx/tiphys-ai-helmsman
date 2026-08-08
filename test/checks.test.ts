@@ -388,16 +388,15 @@ test("the clause map check is green over this phase's rows, and a clause id remo
   }
 });
 
-test("deleting a map entry for a row whose phase is in force makes the check red naming the row and the phase, and an invented row makes it red naming the row", () => {
+test("deleting a map entry for a row whose phase is in force makes the check red naming the row and the phase", () => {
+  /* CONDITION 1, the one that has no witness at all without this test. A
+     phase that UNDER-SEEDS its own rows must not produce a green check:
+     "exits 0 over all 74 rows" satisfied by a file containing seventy-three
+     is a presence check wearing a completeness checker's name. */
   const dir = stageClauseMap();
   try {
     const mapPath = join(dir, "delivery", "requirements", "clause-map.json");
     const original = readFileSync(mapPath, "utf8");
-
-    /* CONDITION 1, the one that has no witness at all without this test. A
-       phase that UNDER-SEEDS its own rows must not produce a green check:
-       "exits 0 over all 74 rows" satisfied by a file containing seventy-three
-       is a presence check wearing a completeness checker's name. */
     const missing = JSON.parse(original) as Record<string, unknown>;
     delete missing["R-084"];
     writeFileSync(mapPath, JSON.stringify(missing, undefined, 2));
@@ -410,8 +409,17 @@ test("deleting a map entry for a row whose phase is in force makes the check red
 
     writeFileSync(mapPath, original);
     assert.equal(runClauseMap(dir).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
-    /* CONDITION 2, the reverse direction: an INVENTED row. */
+test("a map entry naming a row absent from the inventory makes the check red naming the invented row", () => {
+  /* CONDITION 2, the reverse direction. */
+  const dir = stageClauseMap();
+  try {
+    const mapPath = join(dir, "delivery", "requirements", "clause-map.json");
+    const original = readFileSync(mapPath, "utf8");
     const invented = JSON.parse(original) as Record<string, unknown>;
     invented["R-999"] = {
       phase: "M3-P1",
@@ -445,7 +453,7 @@ test("a row whose phase is not yet in force is reported pending and does not fai
   }
 });
 
-test("the inventory is parsed from the plan's Appendix A and carries the plan's own stated 74 rows", () => {
+test("the inventory is parsed from the plan's Appendix A and carries the plan's own stated 74 rows and 12 M3-P1 rows", () => {
   /* The INVENTORY IS A SECOND SOURCE, authored by a different act from the
      map. This asserts the parse actually reaches it rather than returning an
      empty list, which would make condition 1 unfireable and every future

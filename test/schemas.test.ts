@@ -381,42 +381,85 @@ test("oneOf, if/then and contains each discriminate: the right branch is accepte
 /* Criterion 3: the four DANGEROUS instances                            */
 /* ------------------------------------------------------------------ */
 
-test("each of the four dangerous fixtures is rejected with a message naming the offending pointer", () => {
-  const cases: { type: string; fixture: string; pointer: RegExp }[] = [
-    {
-      type: "plan",
-      fixture: "plan-empty-acceptance.yaml",
-      pointer: /^INVALID #\/phases\/0\/acceptance array has 0 items, fewer than the required minimum 1$/m,
-    },
-    {
-      type: "charter",
-      fixture: "charter-no-escalation.yaml",
-      pointer: /^INVALID #\/escalation-contract required property escalation-contract is missing$/m,
-    },
-    {
-      type: "decision-record",
-      fixture: "decision-decided-empty.yaml",
-      pointer: /^INVALID #\/decided value "" is shorter than the required minimum length 1$/m,
-    },
-    {
-      type: "status-line",
-      fixture: "status-done-no-run.yaml",
-      pointer: /^INVALID #\/run required property run is missing$/m,
-    },
-  ];
-  for (const one of cases) {
-    const run = runCli([
-      "validate",
-      "--type",
-      one.type,
-      join(fixturesDir, one.fixture),
-    ]);
-    assert.equal(run.status, 1, `${one.fixture}: ${run.stdout}${run.stderr}`);
-    assert.match(run.stdout, one.pointer, one.fixture);
-  }
+/**
+ * The four DANGEROUS instances of criterion 3, one test each.
+ *
+ * They were ONE test until fix round 1. Four behaviors are registered for
+ * them (`schema-plan-empty-acceptance`, `schema-charter-escalation-required`,
+ * `schema-decision-decided-value-required`, `schema-status-run-required`) and
+ * the behavior registry resolves a behavior by matching its value against a
+ * REPORTED TEST NAME, so four names pointing at one test cannot all resolve.
+ * One test per behavior is also the shape a reader wants: a red line then
+ * names which contract broke.
+ */
+function assertFixtureRejected(type: string, fixture: string, pointer: RegExp): void {
+  const run = runCli(["validate", "--type", type, join(fixturesDir, fixture)]);
+  assert.equal(run.status, 1, `${fixture}: ${run.stdout}${run.stderr}`);
+  assert.match(run.stdout, pointer, fixture);
+}
+
+test("a phase with an empty acceptance array is rejected naming the pointer", () => {
+  assertFixtureRejected(
+    "plan",
+    "plan-empty-acceptance.yaml",
+    /^INVALID #\/phases\/0\/acceptance array has 0 items, fewer than the required minimum 1$/m,
+  );
 });
 
-/* ------------------------------------------------------------------ */
+test("a charter with no escalation-contract is rejected naming the field", () => {
+  assertFixtureRejected(
+    "charter",
+    "charter-no-escalation.yaml",
+    /^INVALID #\/escalation-contract required property escalation-contract is missing$/m,
+  );
+});
+
+test("a decision record with status decided and an empty decided value is rejected", () => {
+  assertFixtureRejected(
+    "decision-record",
+    "decision-decided-empty.yaml",
+    /^INVALID #\/decided value "" is shorter than the required minimum length 1$/m,
+  );
+});
+
+test("a status-line record with state done and no run is rejected naming run", () => {
+  assertFixtureRejected(
+    "status-line",
+    "status-done-no-run.yaml",
+    /^INVALID #\/run required property run is missing$/m,
+  );
+});
+
+test("a step declaring a kind other than verification-first is rejected naming the pointer", () => {
+  /* THE SCHEMA HALF of R-012, and it is a different claim from the derived
+     check `plan-verification-first-present`.
+     
+     The check answers "is a verification-first step PRESENT where an
+     unverified claim requires one", which compares two arrays and is Kind B.
+     The schema answers "is `verification-first` the only kind a step may
+     declare", which is a `const` and is Kind A. Fix round 1 found the
+     behavior `schema-plan-verification-first-required` registered with the
+     CHECK's description, so the schema half had a name and no test. This is
+     that test. The behavior id's wording ("required") is the plan's; what a
+     schema can express here is the closed vocabulary, and that is recorded in
+     the work history rather than papered over. */
+  const schema = readSchema(join(schemasDir, "plan.schema.json"));
+  const plan = yamlModule.parse(
+    readFileSync(join(repoRoot, "templates", "plan.example.yaml"), "utf8"),
+  ) as Record<string, unknown>;
+  const phase = (plan["phases"] as Record<string, unknown>[])[0] as Record<string, unknown>;
+  const steps = phase["steps"] as Record<string, unknown>[];
+  (steps[0] as Record<string, unknown>)["kind"] = "verification-second";
+  assert.deepEqual(validateModule.validateToLines(schema, plan), [
+    'INVALID #/phases/0/steps/0/kind value "verification-second" does not equal the required constant "verification-first"',
+  ]);
+
+  /* CONTROL: the permitted value is accepted, so the refusal is about the
+     vocabulary and not about the field existing. */
+  (steps[0] as Record<string, unknown>)["kind"] = "verification-first";
+  assert.deepEqual(validateModule.validateToLines(schema, plan), []);
+});
+
 /* Criterion 5b: the reserved release-verification field, all directions */
 /* ------------------------------------------------------------------ */
 
@@ -432,24 +475,24 @@ function charterWith(releaseVerification: unknown | undefined): unknown {
   return charter;
 }
 
-test("the charter's release-verification field is reserved: absent, none-without-reason and an invented shape are each rejected naming what is wrong", () => {
-  const schema = readSchema(join(schemasDir, "charter.schema.json"));
-
-  /* (1) absent, naming the field. */
+test("a charter with no release-verification field is rejected naming the field", () => {
   assert.deepEqual(
-    validateModule.validateToLines(schema, charterWith(undefined)),
+    validateModule.validateToLines(
+      readSchema(join(schemasDir, "charter.schema.json")),
+      charterWith(undefined),
+    ),
     [
       "INVALID #/release-verification required property release-verification is missing",
     ],
   );
+});
 
-  /* (2) mode none with no reason, naming `reason`. This is the investigation's
-     defence 2: silence is never permission, and disabling verification costs
-     visibility. */
-  const noReason = validateModule.validateToLines(
-    schema,
-    charterWith({ mode: "none" }),
-  );
+test("mode none with no reason is rejected naming reason and with a reason is accepted", () => {
+  const schema = readSchema(join(schemasDir, "charter.schema.json"));
+
+  /* The investigation's defence 2: silence is never permission, and disabling
+     verification costs visibility, so `mode: none` REQUIRES a stated reason. */
+  const noReason = validateModule.validateToLines(schema, charterWith({ mode: "none" }));
   assert.ok(
     noReason.some((line) =>
       line.startsWith("INVALID #/release-verification/reason required property reason is missing"),
@@ -457,8 +500,7 @@ test("the charter's release-verification field is reserved: absent, none-without
     noReason.join("\n"),
   );
 
-  /* (3) mode none WITH a reason: accepted. Without this direction the field
-     could be rejecting everything. */
+  /* THE OTHER DIRECTION. Without it the field could be rejecting everything. */
   assert.deepEqual(
     validateModule.validateToLines(
       schema,
@@ -466,11 +508,13 @@ test("the charter's release-verification field is reserved: absent, none-without
     ),
     [],
   );
+});
 
-  /* (4) an INVENTED shape, naming the offending property. This is the guard
-     that stops a project designing the field before M4's pilot decides it. */
+test("an invented release-verification shape is rejected naming the offending property", () => {
+  /* The guard that stops a project designing this field before M4's pilot
+     decides it (DR-0014, D-M3-29). */
   const invented = validateModule.validateToLines(
-    schema,
+    readSchema(join(schemasDir, "charter.schema.json")),
     charterWith({ mode: "vercel", endpoint: "https://example.invalid/deploy" }),
   );
   assert.ok(
@@ -480,6 +524,15 @@ test("the charter's release-verification field is reserved: absent, none-without
       ),
     ),
     invented.join("\n"),
+  );
+
+  /* CONTROL: the one currently-valid non-`none` shape is accepted. */
+  assert.deepEqual(
+    validateModule.validateToLines(
+      readSchema(join(schemasDir, "charter.schema.json")),
+      charterWith({ mode: "reserved", note: "settled by M4's pilot" }),
+    ),
+    [],
   );
 });
 
