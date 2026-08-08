@@ -17,7 +17,8 @@
     "src/commands/gates.ts",
     "src/commands/validate.ts",
     "delivery/requirements/clause-map.json",
-    "witness/"
+    "witness/",
+    "test/checks.test.ts"
   ],
   "declaredExtras": [],
   "citations": [

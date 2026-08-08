@@ -116,9 +116,27 @@ artifact behind it is treated as unknown.
    work order is concurrent, and the pre-pass must be written down before
    dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
    M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
-   The two shared registries (`test/behaviors.json`, `gates.manifest.json`)
-   are append-only and resolved as a union against the merge base; they never
-   re-serialise phases.
+   The shared registries (`test/behaviors.json`, `gates.manifest.json`,
+   `delivery/requirements/clause-map.json`) are append-only and resolved as a
+   union against the merge base; they never re-serialise phases.
+
+   **A test over an append-only registry asserts BY NAME and never BY COUNT,
+   and never on a specific row's presence.** The rule was written for
+   `test/behaviors.json` and it generalises to every registry above, because
+   the property that makes it necessary is the append-only-ness, not the file.
+   A count is a claim about every FUTURE phase, and it is false the moment the
+   next one appends. Measured 2026-08-08: M3-P1's `test/checks.test.ts` pinned
+   `clause-map: green (12 clause-map rows checked)`, `R-094 pending M3-P2`, and
+   a pending-row count. All three would have reddened for M3-P3 and every phase
+   after it, not only for M3-P2 which happened to find them. A fourth site no
+   grep could see was found only by execution: a test helper hand-listed the
+   four directories it staged, and M3-P2's rows name a file at the repository
+   root.
+
+   The consequence for scope: a phase that extends a registry may have to edit
+   the TEST that over-asserts on it, so that test belongs on the phase's
+   declaration. Derive counts from the registry at run time instead of pinning
+   them.
 6. Milestone exit tests are hard gates: no milestone starts before the
    previous exit test has passed with recorded evidence.
 7. Commit messages carry no AI model or tool names.
