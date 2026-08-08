@@ -1,0 +1,16 @@
+{
+  "gate": "red-witness",
+  "status": "not-applicable",
+  "units": 0,
+  "unitLabel": "witnesses evaluated",
+  "startedAt": "2026-08-08T12:06:59.010Z",
+  "endedAt": "2026-08-08T12:06:59.015Z",
+  "detail": "precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/",
+  "evidence": [],
+  "precondition": {
+    "id": "red-witness-diff",
+    "met": false,
+    "reason": "no changed path under src/, bin/",
+    "evidence": []
+  }
+}
