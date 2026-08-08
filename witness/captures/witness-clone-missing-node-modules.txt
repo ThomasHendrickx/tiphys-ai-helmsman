@@ -1,0 +1,22 @@
+Real capture, 2026-08-08, of what a dependency-free scratch clone
+does when the audited head imports an installed package. Produced by cloning
+this repository with git and running the audited suite in the clone, which is
+exactly what src/witness/run.ts makeClone + runNamedTests do.
+
+node --version: v26.6.0
+git --version:  git version 2.43.0
+
+$ git clone --quiet <repo> <clone>   # a clone carries source, never node_modules
+$ ls <clone>/node_modules
+ls: cannot access node_modules: No such file or directory
+
+$ cd <clone> && node --test --test-reporter tap test/validate.test.ts
+TAP version 13
+# node:internal/modules/package_json_reader:301
+#   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+#         ^
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'yaml' imported from <clone>/test/validate.test.ts
+#     at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+
+exit status: nonzero, and INDISTINGUISHABLE from a genuine red witness,
+which is why makeClone now refuses instead of degrading.

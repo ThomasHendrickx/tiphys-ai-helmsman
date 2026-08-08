@@ -1,0 +1,13 @@
+diff --git a/src/witness/run.ts b/src/witness/run.ts
+index 2c7d752..70ec3e2 100644
+--- a/src/witness/run.ts
++++ b/src/witness/run.ts
+@@ -1003,7 +1003,7 @@ export function makeClone(
+   }
+   if (parentModulesIsUsable) {
+     try {
+-      symlinkSync(parentModules, join(dir, "node_modules"), "dir");
++      void parentModules;
+     } catch (error) {
+       return {
+         reason: `linking node_modules into the scratch clone failed: ${singleLine(String(error))}`,

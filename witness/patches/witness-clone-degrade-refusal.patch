@@ -1,0 +1,12 @@
+diff --git a/src/witness/run.ts b/src/witness/run.ts
+index 2c7d752..9ca660b 100644
+--- a/src/witness/run.ts
++++ b/src/witness/run.ts
+@@ -1035,6 +1035,7 @@ export function makeClone(
+     }
+   }
+   if (needsModules) {
++    return { dir };
+     return {
+       reason:
+         `the audited head declares runtime dependencies but the audited repository ` +

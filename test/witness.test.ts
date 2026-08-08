@@ -31,7 +31,7 @@ const gateModule = (await import(
   new URL("../src/gates/red-witness.ts", import.meta.url).href
 )) as typeof import("../src/gates/red-witness.ts");
 
-const { deriveTextAssertions, parseTapStream } = runModule;
+const { deriveTextAssertions, parseTapStream, makeClone } = runModule;
 const { validateWitnessSpecDocument } = specModule;
 const { runRedWitnessGate } = gateModule;
 
@@ -1856,4 +1856,139 @@ test("a shallow repository is an error naming the fetch depth requirement", () =
   assert.match(outcome.result.detail, /shallow/);
   assert.match(outcome.result.detail, /fetch-depth: 0/);
   assertCallerClean(fixture);
+});
+
+/* ------------------------------------------------------------------ */
+/* The scratch clone must be able to RESOLVE what the audited head     */
+/* imports. A git clone carries source and never node_modules, and     */
+/* this clone is where the audited suite runs. Latent through M1 and   */
+/* M2 because the kernel had zero production dependencies; M3-P1 adds  */
+/* the first two (ajv, yaml, DR-0013) and from that commit a bare      */
+/* clone cannot even load the test file.                               */
+/*                                                                     */
+/* Why it FAILS CLOSED rather than warning: a clone that cannot        */
+/* resolve an import is red for every member AND every control, and    */
+/* red is the same observation a genuine witness produces. An          */
+/* unresolvable clone would let a witness appear to guard a behavior   */
+/* it never exercised.                                                 */
+/* ------------------------------------------------------------------ */
+
+test("the scratch clone resolves a dependency that exists only in node_modules, and refuses outright when the audited repository has none", () => {
+  const root = mkdtempSync(join(tmpdir(), "witness-clone-deps-"));
+  const git = (cwd: string, args: string[]) =>
+    spawnSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@e",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@e",
+      },
+    });
+  try {
+    // An audited repository whose committed source imports a package that
+    // exists ONLY as an installed module, never in git. This is the shape
+    // M3-P1 creates for real.
+    const repo = join(root, "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, ["init", "--quiet", "-b", "main"]);
+    writeFileSync(
+      join(repo, "uses-dep.mjs"),
+      "import v from 'only-installed';\nconsole.log(v);\n",
+    );
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "--quiet", "-m", "base"]);
+    const headSha = git(repo, ["rev-parse", "HEAD"]).stdout.trim();
+
+    // MEMBER 2 FIRST, while node_modules genuinely does not exist: the
+    // refusal. Structurally different from member 1: it is about the absence
+    // of the parent tree, not about the link into the clone.
+    // The predicate is "DECLARES dependencies and has none installed", never
+    // the bare absence: this harness's own fixtures are dependency-free repos
+    // with nothing to resolve, and refusing on absence alone breaks them.
+    // So the fixture must declare a dependency for the refusal to be correct.
+    writeFileSync(
+      join(repo, "package.json"),
+      JSON.stringify({ name: "audited", dependencies: { "only-installed": "1.0.0" } }),
+    );
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "--quiet", "-m", "declare the dependency"]);
+    const headWithDeps = git(repo, ["rev-parse", "HEAD"]).stdout.trim();
+    const scratchA = join(root, "scratch-a");
+    mkdirSync(scratchA, { recursive: true });
+    const refused = makeClone(repo, headWithDeps, scratchA, "m2");
+    assert.equal(
+      refused.dir,
+      undefined,
+      `expected a refusal, got a clone: ${JSON.stringify(refused)}`,
+    );
+    assert.match(
+      String(refused.reason),
+      /declares runtime dependencies/,
+      `the refusal must name why: ${String(refused.reason)}`,
+    );
+
+    // The control that keeps the predicate honest: a dependency-FREE head with
+    // no installed tree is NOT refused, because there is nothing to resolve.
+    const scratchFree = join(root, "scratch-free");
+    mkdirSync(scratchFree, { recursive: true });
+    const free = makeClone(repo, headSha, scratchFree, "free");
+    assert.notEqual(
+      free.dir,
+      undefined,
+      `a dependency-free head must clone without an installed tree: ${String(free.reason)}`,
+    );
+    assert.match(
+      String(refused.reason),
+      /red for the wrong reason/,
+      "the refusal must say WHY it refuses rather than degrading",
+    );
+
+    // Now install the dependency the way npm would, and re-clone.
+    const mod = join(repo, "node_modules", "only-installed");
+    mkdirSync(mod, { recursive: true });
+    writeFileSync(
+      join(mod, "package.json"),
+      JSON.stringify({ name: "only-installed", version: "1.0.0", main: "index.js" }),
+    );
+    writeFileSync(join(mod, "index.js"), "module.exports = 'resolved-ok';\n");
+
+    // MEMBER 1: the clone must resolve it. This is the arm that was broken.
+    const scratchB = join(root, "scratch-b");
+    mkdirSync(scratchB, { recursive: true });
+    const cloned = makeClone(repo, headWithDeps, scratchB, "m1");
+    assert.notEqual(
+      cloned.dir,
+      undefined,
+      `clone failed: ${String(cloned.reason)}`,
+    );
+    const cloneDir = cloned.dir as string;
+
+    // Assert by EXECUTION in the clone, not by inspecting the link: the
+    // property that matters is that node resolves the import there.
+    const ran = spawnSync(process.execPath, ["uses-dep.mjs"], {
+      cwd: cloneDir,
+      encoding: "utf8",
+    });
+    assert.equal(
+      ran.status,
+      0,
+      `the clone could not run the audited source: ${ran.stderr}`,
+    );
+    assert.match(ran.stdout, /resolved-ok/);
+    // And the dangerous state reproduces on demand: the same clone with the
+    // link removed fails with the real loader error, which is the observation
+    // that is indistinguishable from a genuine red.
+    rmSync(join(cloneDir, "node_modules"), { recursive: true, force: true });
+    const broken = spawnSync(process.execPath, ["uses-dep.mjs"], {
+      cwd: cloneDir,
+      encoding: "utf8",
+    });
+    assert.notEqual(broken.status, 0);
+    assert.match(broken.stderr, /ERR_MODULE_NOT_FOUND|Cannot find/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

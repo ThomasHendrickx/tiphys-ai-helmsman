@@ -1,6 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -921,7 +928,7 @@ interface CloneOutcome {
  * has one (so baselines resolve against the real remote after a fetch,
  * never a stale local ref), else at the audited repository itself.
  */
-function makeClone(
+export function makeClone(
   repoRoot: string,
   headSha: string,
   scratchRoot: string,
@@ -947,6 +954,95 @@ function makeClone(
   const checkout = gitIn(dir, ["checkout", "--detach", "--force", "--quiet", headSha]);
   if (!checkout.ok) {
     return { reason: `checkout of the audited head failed: ${checkout.reason}` };
+  }
+  // A git clone carries SOURCE, never installed dependencies, and this clone is
+  // where the audited suite is executed. So the clone must be able to resolve
+  // whatever the audited head imports, and `node_modules` is the only part of
+  // that which git does not carry.
+  //
+  // This was latent until it was not. The kernel had ZERO production
+  // dependencies through M1 and M2, so a dependency-free clone ran the suite
+  // correctly and nothing here was wrong. M3-P1 adds the kernel's first two
+  // (`ajv` and `yaml`, DR-0013), and from that commit forward a bare clone
+  // cannot even load the test file:
+  //
+  //   Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'yaml' imported from
+  //   <clone>/test/validate.test.ts
+  //
+  // The hazard is worse than a broken run, which is why this fails CLOSED
+  // rather than warning. A member is judged by whether the named test is RED
+  // under the dangerous state and GREEN without it. A clone that cannot resolve
+  // an import is red for EVERY member and every control, so an unresolvable
+  // clone does not report "the harness is broken", it reports red, which is the
+  // same observation a genuine witness produces. Guessing here would let a
+  // witness appear to guard a behavior it never exercised.
+  //
+  // A SYMLINK rather than `npm ci`: the install is environment state, not
+  // source, and every member gets its own clone (M2-C-4 isolation), so paying a
+  // network install per member is both slow and a new failure mode on an
+  // offline runner. The link is read-only in practice; nothing in a member's
+  // evaluation writes through it.
+  //
+  // Consequence, stated rather than hidden: the clone resolves against the
+  // AUDITED REPOSITORY'S installed tree, so a member whose patch edits
+  // `package.json` dependencies is evaluated against the parent's modules, not
+  // its own. No current witness does that. A member that needs different
+  // dependencies is out of scope for this mechanism and would need a real
+  // install; the failure would be visible as an unresolved import rather than
+  // as a silent wrong answer.
+  const parentModules = join(repoRoot, "node_modules");
+  // lstat, not stat, and the type is ESTABLISHED before anything is read
+  // through it (CLAUDE.md's recorded mechanism: reading a path whose type has
+  // not been established). A directory or a symlink to one both serve.
+  let parentModulesIsUsable = false;
+  try {
+    const st = lstatSync(parentModules);
+    parentModulesIsUsable = st.isDirectory() || st.isSymbolicLink();
+  } catch {
+    parentModulesIsUsable = false;
+  }
+  if (parentModulesIsUsable) {
+    try {
+      symlinkSync(parentModules, join(dir, "node_modules"), "dir");
+    } catch (error) {
+      return {
+        reason: `linking node_modules into the scratch clone failed: ${singleLine(String(error))}`,
+      };
+    }
+    return { dir };
+  }
+  // No installed tree in the audited repository. That is only a defect if the
+  // audited head actually NEEDS one, so the predicate is "declares runtime
+  // dependencies and has none installed", never the bare absence.
+  //
+  // Getting this wrong in the strict direction is not theoretical: refusing on
+  // absence alone breaks this harness's OWN fixtures, which are deliberately
+  // minimal repositories with no dependencies and nothing to resolve. Eight
+  // tests in test/witness.test.ts reddened on the first attempt at this check,
+  // which is the suite doing its job.
+  const declared = readRegularFileIfPresent(join(dir, "package.json"));
+  let needsModules = false;
+  if (declared.kind === "read") {
+    try {
+      const parsed = JSON.parse(declared.body) as { dependencies?: unknown };
+      const deps = parsed.dependencies;
+      needsModules =
+        typeof deps === "object" && deps !== null && Object.keys(deps).length > 0;
+    } catch {
+      // An unparseable package.json is not this function's error to raise; the
+      // suite that runs in the clone will say so far more precisely.
+      needsModules = false;
+    }
+  }
+  if (needsModules) {
+    return {
+      reason:
+        `the audited head declares runtime dependencies but the audited repository ` +
+        `has no installed tree at ${parentModules}, so the scratch clone cannot ` +
+        "resolve the imports of the suite it must run. Run `npm ci` in the audited " +
+        "repository first. Refusing rather than running a clone whose every member " +
+        "would be red for the wrong reason",
+    };
   }
   return { dir };
 }

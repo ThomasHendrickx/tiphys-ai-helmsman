@@ -1,0 +1,38 @@
+{
+  "id": "M3-P8",
+  "branch": "claude/m3-p8-tuition-flow",
+  "filesToTouch": [
+    "schemas/tuition.schema.json",
+    "schemas/mechanism-index.schema.json",
+    "tuition/",
+    "tuition/T-001.yaml",
+    "tuition/T-008.yaml",
+    "delivery/tuition/",
+    "tuition/mechanism-index.yaml",
+    "MECHANISMS.md",
+    "src/tuition.ts",
+    "src/commands/tuition.ts",
+    "test/tuition.test.ts",
+    "test/mechanism-index.test.ts",
+    "tuition/README.md",
+    "src/commands/doctor.ts",
+    "test/doctor.test.ts",
+    "src/cli.ts",
+    "src/validate.ts",
+    "src/checks.ts",
+    "package.json"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "R-070",
+    "R-091",
+    "R-098",
+    "T-001",
+    "T-005",
+    "T-006",
+    "T-007",
+    "T-008",
+    "T-003",
+    "D-M3-26"
+  ]
+}

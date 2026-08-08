@@ -1,0 +1,30 @@
+{
+  "id": "M3-P2",
+  "branch": "claude/m3-p2-gate-registry",
+  "filesToTouch": [
+    "schemas/gate-registry.schema.json",
+    "gate-registry.yaml",
+    "scripts/render-agent-rules-gates.mjs",
+    "test/gate-registry.test.ts",
+    "test/fixtures/gate-runner-capture.",
+    "src/validate.ts",
+    "CLAUDE.md",
+    ".github/workflows/gates.yml",
+    "package.json",
+    "src/cli.ts",
+    "gates.manifest.json"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "R-043",
+    "R-044",
+    "R-094",
+    "SC-011",
+    "M2-C-2",
+    "M2-C-3",
+    "DR-0017",
+    "DR-0018",
+    "T-009",
+    "D-M3-34"
+  ]
+}

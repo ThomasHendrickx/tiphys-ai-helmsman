@@ -1,0 +1,37 @@
+{
+  "id": "M3-P5",
+  "branch": "claude/m3-p5-authoring-role-briefs",
+  "filesToTouch": [
+    "schemas/role-brief.schema.json",
+    "schemas/finding.schema.json",
+    "roles/investigator.md",
+    "roles/plan-writer.md",
+    "roles/adversarial-plan-reviewer.md",
+    "roles/_shared-dispatch-contract.md",
+    "src/roles.ts",
+    "src/commands/brief.ts",
+    "test/roles.test.ts",
+    "test/brief-compose.test.ts",
+    "test/finding-schema.test.ts",
+    "roles/README.md",
+    "src/cli.ts",
+    "src/validate.ts",
+    "package.json",
+    "delivery/intake/orchestrated-delivery-process.md"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "R-004",
+    "R-005",
+    "R-006",
+    "R-010a",
+    "R-015a",
+    "R-029",
+    "R-092",
+    "SC-001",
+    "T-001",
+    "T-008",
+    "D-M3-31",
+    "CR-560"
+  ]
+}
