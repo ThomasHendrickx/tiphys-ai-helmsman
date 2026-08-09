@@ -498,5 +498,7 @@
   "mode-conditions-quote-their-grant": "a delegated grant whose conditions are not in the record it names is rejected naming the condition",
   "mode-conditions-complete-against-granting-record": "full carries every condition DR-0012 declares, extracted from the record rather than counted",
   "charter-mode-enum-compared-element-wise": "the charter enum comparison is element-wise, so a mode id containing a separator cannot make two different lists compare equal",
-  "mode-conditions-are-whole-quotes-not-substrings": "conditions shorter than the record's own words are rejected, because a condition must be a whole quoted item and not a substring"
+  "mode-conditions-are-whole-quotes-not-substrings": "conditions shorter than the record's own words are rejected, because a condition must be a whole quoted item and not a substring",
+  "mode-conditions-code-block-content-not-quotable": "code block content in the cited record is not a quotable unit, in the fenced form and in the indented form",
+  "mode-conditions-heading-forms-not-quotable": "heading text in the cited record is not a quotable unit, for an indented ATX heading and for a setext heading"
 }

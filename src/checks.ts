@@ -774,7 +774,63 @@ function normalizeProse(text: string): string {
 }
 
 /** A markdown list item: an ordered or unordered marker and the text after it. */
-const LIST_ITEM = /^\s*(?:[0-9]+[.)]|[-*+])\s+(.*)$/;
+const LIST_ITEM = /^(\s*)(?:[0-9]+[.)]|[-*+])\s+(.*)$/;
+
+/**
+ * A fenced code block delimiter: three or more backticks or tildes at any
+ * indent. WIDER THAN COMMONMARK ON PURPOSE (which allows at most three spaces),
+ * because every widening here excludes MORE text from the quotable set and the
+ * only direction that can lose is the one that admits more.
+ */
+const FENCE = /^\s*(`{3,}|~{3,})/;
+
+/**
+ * An ATX heading AT ANY INDENT. `^#` was the old predicate and is finding V-2:
+ * an indented `#` line was not a heading to it, so the heading's own text
+ * became quotable.
+ */
+const ATX_HEADING = /^\s*#/;
+
+/**
+ * A setext underline: a run of `=`, or of two or more `-`, alone on its line.
+ * It makes the block ABOVE it a heading, which is a property of the previous
+ * block and is exactly what a line-at-a-time scanner cannot see. Two or more
+ * `-`, not one, so a degenerate `-` bullet is not read as a heading underline.
+ */
+const SETEXT_UNDERLINE = /^\s*(?:=+|-{2,})\s*$/;
+
+/** A thematic break of `*` or `_`. It separates blocks and is part of none. */
+const THEMATIC_BREAK = /^\s*(?:\*{3,}|_{3,})\s*$/;
+
+/** Display width in columns, a tab counting as four (CommonMark's rule). */
+function columnWidth(text: string): number {
+  let columns = 0;
+  for (const character of text) {
+    columns += character === "\t" ? 4 : 1;
+  }
+  return columns;
+}
+
+/** Leading indentation in columns. */
+function indentColumns(line: string): number {
+  return columnWidth(/^[ \t]*/.exec(line)?.[0] ?? "");
+}
+
+/** An open fenced block: which delimiter opened it, and how long that run was. */
+interface OpenFence {
+  marker: string;
+  length: number;
+}
+
+/** Whether `line` closes `open`: the same character, in a run at least as long. */
+function closesFence(line: string, open: OpenFence): boolean {
+  const closing = FENCE.exec(line);
+  return (
+    closing !== null &&
+    (closing[1] as string)[0] === open.marker &&
+    (closing[1] as string).length >= open.length
+  );
+}
 
 /**
  * The QUOTABLE UNITS of a prose record: every list item and every paragraph,
@@ -806,33 +862,149 @@ const LIST_ITEM = /^\s*(?:[0-9]+[.)]|[-*+])\s+(.*)$/;
  * a violation. That is what "quoted from the decision record rather than
  * summarized" already claimed to mean, and it is now enforced rather than
  * asserted.
+ *
+ * FIX ROUND 3 REWROTE THE EXTRACTOR, and the reason is worth more than the
+ * three findings that produced it. The previous version decided each line's
+ * meaning FROM THAT LINE ALONE. Markdown does not work that way: whether a line
+ * is prose depends on which block encloses it. So the loop treated the fence
+ * MARKER as a separator and let the fenced CONTENT through as ordinary prose
+ * (V-1, demonstrated end to end: a decision record whose code fence held an
+ * illustrative sentence let a mode's merge-authority condition be satisfied by
+ * that example, `tiphys validate` exit 0, zero diagnostics), and it recognised
+ * a heading only at column zero (V-2), and it modelled no other block form at
+ * all. The comment that used to sit in the loop said "a condition can never
+ * match a heading or a fence", which was STRONGER THAN THE CODE and is how the
+ * next reader stops checking.
+ *
+ * What is modelled now, explicitly, as block state carried across lines:
+ * fenced code (content contributes nothing), indented code (same), ATX
+ * headings at any indent, setext headings (a property of the block ABOVE the
+ * underline, invisible to any one-line rule), thematic breaks, list items and
+ * their content column, and paragraphs.
+ *
+ * EVERY AMBIGUITY IS RESOLVED TOWARDS EXCLUDING MORE, because the two
+ * directions are not symmetric. Excluding a unit that should have been quotable
+ * makes a legitimate condition fail to match, which is a loud diagnostic naming
+ * the condition. Admitting a unit that should not be quotable makes a
+ * fabricated condition pass, which is silent and is the whole hazard this check
+ * exists for. So: a fence at any indent opens, an unclosed fence swallows the
+ * rest of the document, `#` at any indent is a heading, and a paragraph
+ * followed by a setext underline is discarded rather than kept.
+ *
+ * WHAT IS STILL NOT MODELLED, stated rather than left to be found: block
+ * quotes (a `> ` line keeps its marker, so quoting it requires quoting the
+ * marker too), HTML blocks, tables, and reference definitions. None of them
+ * exclude text that is currently admitted, so each is the same shape as V-1 at
+ * a different block form; `delivery/work-history/m3-p3.md` records the
+ * derivation that enumerated them and why they are not closed here.
  */
 export function quotableUnits(text: string): Set<string> {
   const units = new Set<string>();
   let current: string[] = [];
+  let currentIsListItem = false;
+  /* THE BLOCK STATE. Every field here exists because the property it holds is
+     not readable from the line in front of the loop. */
+  let fence: OpenFence | null = null;
+  let inIndentedCode = false;
+  let listContentColumn: number | null = null;
+
   const flush = (): void => {
-    if (current.length === 0) {
+    const collected = current;
+    current = [];
+    currentIsListItem = false;
+    if (collected.length === 0) {
       return;
     }
-    const unit = normalizeProse(current.join(" "));
-    current = [];
+    const unit = normalizeProse(collected.join(" "));
     if (unit !== "") {
       units.add(unit);
     }
   };
+  /* DISCARD, not flush: the block turned out to be a heading, so it belongs to
+     no unit at all. Keeping this separate from flush is what makes a setext
+     heading distinguishable from a paragraph that happens to precede a rule. */
+  const discard = (): void => {
+    current = [];
+    currentIsListItem = false;
+  };
+
   for (const raw of text.split("\n")) {
     const line = raw.replace(/\r$/, "");
-    /* A blank line, a heading and a code fence all END the unit in progress and
-       belong to none, so a condition can never match a heading or a fence. */
-    if (line.trim() === "" || line.startsWith("#") || line.trimStart().startsWith("```")) {
+
+    if (fence !== null) {
+      /* INSIDE A FENCE. Nothing here is prose, including a line that looks
+         exactly like a condition, and THE `continue` IS THE WHOLE OF V-1: the
+         previous extractor reached this line and fell through to the paragraph
+         handling below it. */
+      if (closesFence(line, fence)) {
+        fence = null;
+      }
+      continue;
+    }
+
+    if (inIndentedCode) {
+      const threshold = (listContentColumn ?? 0) + 4;
+      if (line.trim() === "" || indentColumns(line) >= threshold) {
+        continue;
+      }
+      inIndentedCode = false;
+    }
+
+    if (line.trim() === "") {
       flush();
       continue;
     }
+
+    const opening = FENCE.exec(line);
+    if (opening !== null) {
+      flush();
+      fence = { marker: (opening[1] as string)[0] as string, length: (opening[1] as string).length };
+      continue;
+    }
+
+    if (ATX_HEADING.test(line)) {
+      flush();
+      listContentColumn = null;
+      continue;
+    }
+
+    if (SETEXT_UNDERLINE.test(line)) {
+      if (currentIsListItem) {
+        flush();
+      } else {
+        discard();
+      }
+      listContentColumn = null;
+      continue;
+    }
+
+    if (THEMATIC_BREAK.test(line)) {
+      flush();
+      listContentColumn = null;
+      continue;
+    }
+
     const item = LIST_ITEM.exec(line);
     if (item !== null) {
       flush();
-      current.push(item[1] as string);
+      listContentColumn = columnWidth(line.slice(0, line.length - (item[2] as string).length));
+      currentIsListItem = true;
+      current.push(item[2] as string);
       continue;
+    }
+
+    if (current.length === 0) {
+      /* A BLOCK BOUNDARY, so this line's indent decides its block. A lazy
+         continuation never reaches here, because a block in progress means
+         current is not empty. */
+      const indent = indentColumns(line);
+      if (indent === 0) {
+        listContentColumn = null;
+      }
+      if (indent >= (listContentColumn ?? 0) + 4) {
+        inIndentedCode = true;
+        continue;
+      }
     }
     current.push(line);
   }

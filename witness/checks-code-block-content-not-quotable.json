@@ -1,0 +1,24 @@
+{
+  "id": "checks-code-block-content-not-quotable",
+  "behavior": "mode-conditions-code-block-content-not-quotable",
+  "tests": [
+    "code block content in the cited record is not a quotable unit, in the fenced form and in the indented form"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (closesFence(line, fence)) {\n        fence = null;\n      }\n      continue;\n    }",
+      "replace": "      if (closesFence(line, fence)) {\n        fence = null;\n      }\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (indent >= (listContentColumn ?? 0) + 4) {",
+      "replace": "      if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

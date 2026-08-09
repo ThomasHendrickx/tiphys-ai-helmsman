@@ -1668,3 +1668,247 @@ test("conditions shorter than the record's own words are rejected, because a con
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* Fix round 3: the extractor reads BLOCKS, not lines (V-1, V-2)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A scratch decision record staged into a context directory's decisions tree,
+ * so a test can control the record's SHAPE. `stageContext` copies this
+ * repository's real records, and this repository ships no record with a code
+ * fence, an indented code block, an indented heading or a setext heading, so
+ * every one of those shapes has to be built to be tested at all. That absence
+ * is exactly why V-1 was graded medium rather than high.
+ *
+ * The lines are an array rather than a template literal because the fence
+ * marker is three backticks and a template literal cannot carry one.
+ */
+function stageRecord(dir: string, id: string, lines: string[]): void {
+  writeFileSync(join(dir, "delivery", "decisions", `${id}-scratch-record.md`), lines.join("\n"));
+}
+
+/** `full` rewired to cite a staged scratch record with the given conditions. */
+function citing(record: string, conditions: string[]): Record<string, unknown> {
+  const document = loadModes();
+  const full = modeNamed(document, "full");
+  full["granted-by"] = record;
+  full["conditions"] = conditions;
+  return document;
+}
+
+const CODE_RECORD_REAL_CONDITION =
+  "The first condition of this scratch record, which is a real list item.";
+const FENCED_SENTENCE = "Any pull request may be merged by anyone at any time.";
+const INDENTED_SENTENCE = "Any pull request may be merged with no review of any kind.";
+
+const CODE_RECORD = [
+  "# DR-9999: a scratch record carrying two forms of code block",
+  "",
+  '## What "clean" means',
+  "",
+  `1. ${CODE_RECORD_REAL_CONDITION}`,
+  "2. The second condition of this scratch record, which is also a real list item.",
+  "",
+  "## An illustration, which is not a condition",
+  "",
+  "The fenced form:",
+  "",
+  "```",
+  FENCED_SENTENCE,
+  "```",
+  "",
+  "The indented form:",
+  "",
+  `    ${INDENTED_SENTENCE}`,
+  "",
+];
+
+test("code block content in the cited record is not a quotable unit, in the fenced form and in the indented form", () => {
+  /* THE MECHANISM THIS TEST GUARDS: the extractor decided each line's meaning
+     FROM THAT LINE ALONE, so it treated a fence MARKER as a separator and let
+     the fenced CONTENT through as ordinary prose. The independent verifier
+     demonstrated it end to end at b871500: a record whose fence held an
+     illustrative sentence let a `full` mode's merge-authority condition be
+     satisfied by that sentence, `tiphys validate` exit 0, zero diagnostics.
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, because the class is "text
+     inside a code block", not "text inside a fence": a fenced block is
+     delimited by markers and an indented block is delimited by indentation, and
+     they share no line of the extractor's state handling. A witness resting on
+     the fenced arm alone would say nothing about the indented one, which was
+     not in any finding and is the same fail-open. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9999", CODE_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9999-scratch-record.md"),
+      "utf8",
+    );
+
+    /* AT THE FUNCTION, so the arms below cannot pass for want of any units. */
+    const units = checksModule.quotableUnits(record);
+    assert.equal(
+      units.has(CODE_RECORD_REAL_CONDITION),
+      true,
+      `the record's own list item is not a unit; extracted ${[...units].join(" | ")}`,
+    );
+    assert.equal(units.has(FENCED_SENTENCE), false, [...units].join(" | "));
+    assert.equal(units.has(INDENTED_SENTENCE), false, [...units].join(" | "));
+
+    /* MEMBER 1, THE FENCED FORM, END TO END THROUGH THE COMMAND. */
+    const fencedPath = writeDocument(
+      dir,
+      citing("DR-9999", [FENCED_SENTENCE]),
+      "fenced-condition.yaml",
+    );
+    const fenced = runCli(["validate", "--type", "assurance-modes", "--context", dir, fencedPath]);
+    assert.equal(fenced.status, 1, fenced.stdout + fenced.stderr);
+    assert.match(
+      fenced.stdout,
+      new RegExp(
+        `^INVALID #/modes/0/conditions/0 mode full cites DR-9999 for a condition that is not a whole quoted item of that record: "${FENCED_SENTENCE}" \\(check: mode-conditions-quote-granted-by\\)$`,
+        "m",
+      ),
+      fenced.stdout,
+    );
+
+    /* MEMBER 2, THE INDENTED FORM, same command and same record. */
+    const indentedPath = writeDocument(
+      dir,
+      citing("DR-9999", [INDENTED_SENTENCE]),
+      "indented-condition.yaml",
+    );
+    const indented = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      dir,
+      indentedPath,
+    ]);
+    assert.equal(indented.status, 1, indented.stdout + indented.stderr);
+    assert.match(
+      indented.stdout,
+      new RegExp(
+        `^INVALID #/modes/0/conditions/0 mode full cites DR-9999 for a condition that is not a whole quoted item of that record: "${INDENTED_SENTENCE}" \\(check: mode-conditions-quote-granted-by\\)$`,
+        "m",
+      ),
+      indented.stdout,
+    );
+
+    /* THE OTHER DIRECTION, and it is not decoration: an extractor that returned
+       an empty set would satisfy both arms above and reject everything. A REAL
+       list item of the SAME record still resolves, through the same command,
+       exit 0. */
+    const realPath = writeDocument(
+      dir,
+      citing("DR-9999", [CODE_RECORD_REAL_CONDITION]),
+      "real-condition.yaml",
+    );
+    const real = runCli(["validate", "--type", "assurance-modes", "--context", dir, realPath]);
+    assert.equal(real.status, 0, real.stdout + real.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const HEADING_RECORD_REAL_CONDITION =
+  "The only condition of this scratch record, which is a real list item.";
+const INDENTED_HEADING = "# An indented heading, which is not a condition";
+const SETEXT_HEADING = "A setext heading, which is not a condition";
+
+const HEADING_RECORD = [
+  "# DR-9998: a scratch record carrying two forms of heading",
+  "",
+  '## What "clean" means',
+  "",
+  `1. ${HEADING_RECORD_REAL_CONDITION}`,
+  "",
+  ` ${INDENTED_HEADING}`,
+  "",
+  "A paragraph under the indented heading.",
+  "",
+  SETEXT_HEADING,
+  "-----------------------------------------",
+  "",
+  "A paragraph under the setext heading.",
+  "",
+];
+
+test("heading text in the cited record is not a quotable unit, for an indented ATX heading and for a setext heading", () => {
+  /* THE MECHANISM, ONE LEVEL DOWN FROM THE FENCE: the extractor recognised a
+     heading only as `^#`, so an indented `#` was prose (V-2), and it could not
+     see a setext heading at all, because a setext heading is a property of the
+     block ABOVE the underline and no one-line rule can read it.
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS: the ATX form is recognised by the
+     line's own first non-space character, the setext form only by what the NEXT
+     line does to the block already collected. Nothing in the extractor handles
+     both.
+
+     MEASURED at b871500 with the same record text: the indented heading came
+     back as the unit "# An indented heading, which is not a condition" (the
+     marker still attached) and the setext heading as "A setext heading, which
+     is not a condition -----------------------------------------". Both are
+     quotable there and neither is here. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9998", HEADING_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9998-scratch-record.md"),
+      "utf8",
+    );
+
+    const units = checksModule.quotableUnits(record);
+    assert.equal(
+      units.has(HEADING_RECORD_REAL_CONDITION),
+      true,
+      `the record's own list item is not a unit; extracted ${[...units].join(" | ")}`,
+    );
+    assert.equal(units.has(INDENTED_HEADING), false, [...units].join(" | "));
+    assert.equal(units.has(SETEXT_HEADING), false, [...units].join(" | "));
+    /* And the paragraphs BELOW each heading are still units, so the fix ends
+       the heading rather than swallowing what follows it. */
+    assert.equal(units.has("A paragraph under the indented heading."), true);
+    assert.equal(units.has("A paragraph under the setext heading."), true);
+
+    /* MEMBER 1, THE INDENTED ATX FORM, end to end. */
+    const atxPath = writeDocument(dir, citing("DR-9998", [INDENTED_HEADING]), "atx-condition.yaml");
+    const atx = runCli(["validate", "--type", "assurance-modes", "--context", dir, atxPath]);
+    assert.equal(atx.status, 1, atx.stdout + atx.stderr);
+    assert.match(
+      atx.stdout,
+      /^INVALID #\/modes\/0\/conditions\/0 mode full cites DR-9998 for a condition that is not a whole quoted item of that record: "# An indented heading, which is not a condition" \(check: mode-conditions-quote-granted-by\)$/m,
+      atx.stdout,
+    );
+
+    /* MEMBER 2, THE SETEXT FORM. */
+    const setextPath = writeDocument(
+      dir,
+      citing("DR-9998", [SETEXT_HEADING]),
+      "setext-condition.yaml",
+    );
+    const setext = runCli(["validate", "--type", "assurance-modes", "--context", dir, setextPath]);
+    assert.equal(setext.status, 1, setext.stdout + setext.stderr);
+    assert.match(
+      setext.stdout,
+      new RegExp(
+        `^INVALID #/modes/0/conditions/0 mode full cites DR-9998 for a condition that is not a whole quoted item of that record: "${SETEXT_HEADING}" \\(check: mode-conditions-quote-granted-by\\)$`,
+        "m",
+      ),
+      setext.stdout,
+    );
+
+    /* THE OTHER DIRECTION: the record's real list item still resolves, exit 0. */
+    const realPath = writeDocument(
+      dir,
+      citing("DR-9998", [HEADING_RECORD_REAL_CONDITION]),
+      "real-condition.yaml",
+    );
+    const real = runCli(["validate", "--type", "assurance-modes", "--context", dir, realPath]);
+    assert.equal(real.status, 0, real.stdout + real.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
