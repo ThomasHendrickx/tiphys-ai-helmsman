@@ -500,5 +500,8 @@
   "charter-mode-enum-compared-element-wise": "the charter enum comparison is element-wise, so a mode id containing a separator cannot make two different lists compare equal",
   "mode-conditions-are-whole-quotes-not-substrings": "conditions shorter than the record's own words are rejected, because a condition must be a whole quoted item and not a substring",
   "mode-conditions-code-block-content-not-quotable": "code block content in the cited record is not a quotable unit, in the fenced form and in the indented form",
-  "mode-conditions-heading-forms-not-quotable": "heading text in the cited record is not a quotable unit, for an indented ATX heading and for a setext heading"
+  "mode-conditions-heading-forms-not-quotable": "heading text in the cited record is not a quotable unit, for an indented ATX heading and for a setext heading",
+  "mode-show-annotates-execution-status": "mode show says which mode is the un-downgraded process and which is a declared downgrade never exercised",
+  "schemas-disclose-closed-vocabulary": "the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums really are closed",
+  "mode-show-bounds-are-data-not-enforcement": "mode show presents the escalation bounds as data and states the release limits on every mode"
 }

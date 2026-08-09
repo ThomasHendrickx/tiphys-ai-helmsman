@@ -1912,3 +1912,213 @@ test("heading text in the cited record is not a quotable unit, for an indented A
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* CR-004 (DR-0019): the limits are disclosed IN THE SHIPPED ARTIFACTS  */
+/* ------------------------------------------------------------------ */
+
+/** The line of `mode show` output that begins with `<name>: `, or undefined. */
+function headed(stdout: string, name: string): string | undefined {
+  return stdout.split("\n").find((line) => line.startsWith(`${name}: `));
+}
+
+test("mode show says which mode is the un-downgraded process and which is a declared downgrade never exercised", () => {
+  /* CR-004 MEMBER 1, MEASURED BY THE CONSUMER LENS: `mode show` printed
+     `direct-pr` and `local-only` with exactly the formatting and confidence of
+     `full`, and the one place that recorded the difference is the plan, which
+     `npm pack` excludes. An operator who has not read the plan was given a
+     printout that looked equally authoritative for a mode no phase has ever
+     been delivered under.
+
+     THE ANNOTATION IS DERIVED, NOT A LIST OF TWO IDS. The two inputs are
+     whether the document is the kernel's own (no --file) and whether the mode
+     declares any skipped stage, and blueprint section 8 is what makes the
+     second mean something: "Downgrades are declared, never improvised". This
+     test walks every mode the shipped document declares and derives the same
+     two facts itself, so a fourth mode added later is covered without an
+     edit. */
+  const declared = modesOf(loadModes()).map((mode) => String(mode["id"]));
+  assert.ok(declared.length >= 2, `only ${String(declared.length)} mode(s) declared`);
+
+  const statuses = new Map<string, string>();
+  let downgrades = 0;
+  let undowngraded = 0;
+  for (const id of declared) {
+    const run = runCli(["mode", "show", "--mode", id]);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    const status = headed(run.stdout, "execution-status");
+    assert.ok(status !== undefined, `no execution-status line for ${id}:\n${run.stdout}`);
+    statuses.set(id, status);
+
+    const skips = section(run.stdout, "skips").filter((entry) => entry !== "(none)");
+    if (skips.length === 0) {
+      undowngraded += 1;
+      assert.ok(
+        !status.includes("NEVER EXERCISED"),
+        `${id} declares no skip and was marked never exercised: ${status}`,
+      );
+      assert.match(status, /un-downgraded process/);
+      continue;
+    }
+    downgrades += 1;
+    assert.match(status, /DECLARED AND VALIDATED, NEVER EXERCISED/);
+    /* THE COUNT IS THE DISCRIMINATING PART. A constant sentence would satisfy
+       the match above; only a line carrying this mode's own skip count can
+       satisfy this, so the annotation has to be computed from the mode. */
+    assert.ok(
+      status.includes(`declares ${String(skips.length)} skipped stage(s)`),
+      `${id} skips ${String(skips.length)} stage(s) but its status says: ${status}`,
+    );
+    assert.match(status, /DR-0019/);
+  }
+  /* BOTH ARMS EXIST IN THE SHIPPED DOCUMENT, so neither branch is vacuous. */
+  assert.ok(undowngraded > 0 && downgrades > 0, `${String(undowngraded)}/${String(downgrades)}`);
+  /* AND THE TWO ARMS DIFFER, which is what a single constant string cannot do. */
+  assert.equal(new Set(statuses.values()).size >= 2, true, [...statuses.values()].join("\n"));
+
+  /* THE THIRD ARM: a document supplied with --file is NOT the kernel's own, so
+     the honest answer is that tiphys does not know. Without this the command
+     would be asserting things about a consumer's document that nothing here
+     can support. */
+  const dir = stageContext();
+  try {
+    const path = writeDocument(dir, loadModes(), "consumer-modes.yaml");
+    const supplied = runCli(["mode", "show", "--mode", "full", "--file", path]);
+    assert.equal(supplied.status, 0, supplied.stdout + supplied.stderr);
+    const status = headed(supplied.stdout, "execution-status");
+    assert.ok(status !== undefined, supplied.stdout);
+    assert.match(status, /not determinable here/);
+    /* The SAME mode, byte-identical content, read the two ways: the annotation
+       has to come from the invocation and not from the mode's fields. */
+    assert.notEqual(status, statuses.get("full"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums really are closed", () => {
+  /* CR-004 MEMBER 2, AND THE TRAP THIS REPOSITORY KEEPS PAYING FOR. Half of
+     this test asserts that the disclosure is PRESENT; the other half asserts by
+     EXECUTION that the enums really do reject a consumer's own id, because a
+     $comment that claimed more than its schema does is exactly the failure V-1
+     was an instance of (`src/checks.ts` claimed a condition could never match a
+     fence, and it could). A disclosure with no behaviour behind it is worse
+     than none. */
+  const disclosures: [string, string[]][] = [
+    ["assurance-modes.schema.json", ["$defs.modeShape.properties.id", "$defs.stageId"]],
+    ["role-model-config.schema.json", ["$defs.roleBinding.properties.role"]],
+    ["charter.schema.json", ["properties.delivery-mode", "properties.assurance-tier"]],
+  ];
+  for (const [schemaName, pointers] of disclosures) {
+    const schema = readSchema(schemaName);
+    for (const pointer of pointers) {
+      let node: unknown = schema;
+      for (const key of pointer.split(".")) {
+        node = (node as Record<string, unknown>)[key];
+        assert.ok(node !== undefined, `${schemaName} has no ${pointer}`);
+      }
+      const comment = (node as Record<string, unknown>)["$comment"];
+      assert.equal(typeof comment, "string", `${schemaName} ${pointer} carries no $comment`);
+      assert.match(comment as string, /CLOSED VOCABULARY AT v0\.1\.0/);
+      assert.match(comment as string, /DR-0019/);
+      /* The enum is really there, so the $comment is describing this node. */
+      assert.ok(
+        Array.isArray((node as Record<string, unknown>)["enum"]),
+        `${schemaName} ${pointer} carries the disclosure but no enum`,
+      );
+    }
+  }
+
+  /* THE BEHAVIOUR THE DISCLOSURE CLAIMS, exercised with the consumer lens's own
+     three ids: a mode `standard`, a stage `design`, a role `backend-developer`,
+     plus a charter selecting `standard`. Each must be REJECTED, or the
+     disclosure is the overclaim it warns about. */
+  const consumerModes = loadModes();
+  modeNamed(consumerModes, "full")["id"] = "standard";
+  assert.ok(
+    validateModule
+      .validateToLines(readSchema("assurance-modes.schema.json"), consumerModes)
+      .some((line) => line.includes('value "standard" is not one of the permitted values')),
+    "a consumer's own mode id was accepted",
+  );
+
+  const consumerStages = loadModes();
+  (modeNamed(consumerStages, "full")["pipeline"] as string[])[0] = "design";
+  assert.ok(
+    validateModule
+      .validateToLines(readSchema("assurance-modes.schema.json"), consumerStages)
+      .some((line) => line.includes('value "design" is not one of the permitted values')),
+    "a consumer's own stage id was accepted",
+  );
+
+  const consumerRoles = yamlModule.parse(readFileSync(rolesPath, "utf8")) as Record<
+    string,
+    unknown
+  >;
+  ((consumerRoles["roles"] as Record<string, unknown>[])[0] as Record<string, unknown>)["role"] =
+    "backend-developer";
+  assert.ok(
+    validateModule
+      .validateToLines(readSchema("role-model-config.schema.json"), consumerRoles)
+      .some((line) => line.includes('value "backend-developer" is not one of the permitted values')),
+    "a consumer's own role id was accepted",
+  );
+
+  const consumerCharter = charterFromTemplate();
+  consumerCharter["delivery-mode"] = "standard";
+  assert.ok(
+    validateModule
+      .validateToLines(readSchema("charter.schema.json"), consumerCharter)
+      .some((line) => line.includes('value "standard" is not one of the permitted values')),
+    "a consumer's own delivery-mode was accepted",
+  );
+
+  /* AND THE DISCLOSURE SHIPS, which is the whole reason it is in the schemas
+     and not in delivery/. `npm pack` was measured by the consumer reviewer at
+     123 files with no delivery/; this asserts the `files` list that produces
+     that, so a later edit moving schemas out or delivery in reddens here. */
+  const manifest = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+    files: string[];
+  };
+  assert.ok(manifest.files.includes("schemas"), manifest.files.join(", "));
+  assert.ok(
+    !manifest.files.some((entry) => entry.startsWith("delivery")),
+    manifest.files.join(", "),
+  );
+});
+
+test("mode show presents the escalation bounds as data and states the release limits on every mode", () => {
+  /* CR-004 ITEM 3. Nothing in this release counts a fix round or detects a
+     recurrence, so a bare `escalation-bounds:` header invites a reader to
+     assume an enforcement engine that does not exist. */
+  const full = runCli(["mode", "show", "--mode", "full"]);
+  assert.equal(full.status, 0, full.stdout + full.stderr);
+  const lines = full.stdout.split("\n");
+
+  const bounds = lines.find((line) => line.startsWith("escalation-bounds"));
+  assert.ok(bounds !== undefined, full.stdout);
+  assert.match(bounds, /data an orchestrator brief cites/);
+  assert.match(bounds, /nothing in this release counts fix rounds/);
+  /* THE DISCRIMINATING HALF: the bare header must not be what is printed. */
+  assert.equal(lines.includes("escalation-bounds:"), false, full.stdout);
+  /* The values are still there and still indented, so the disclaimer did not
+     cost the reader the data. */
+  assert.ok(
+    lines.some((line) => line.startsWith("  max-fix-rounds-after-review: ")),
+    full.stdout,
+  );
+
+  /* THE LIMITS LINE, on EVERY declared mode and not only on the one that
+     carries bounds, because a consumer reading about a downgraded mode is the
+     reader most likely to be misled about what this release can do. */
+  for (const mode of modesOf(loadModes())) {
+    const run = runCli(["mode", "show", "--mode", String(mode["id"])]);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    const limits = headed(run.stdout, "limits");
+    assert.ok(limits !== undefined, `no limits line for ${String(mode["id"])}:\n${run.stdout}`);
+    assert.match(limits, /closed enums/);
+    assert.match(limits, /cannot extend them at v0\.1\.0/);
+    assert.match(limits, /DR-0019/);
+    assert.match(limits, /nothing in this release resolves a project into a mode/);
+  }
+});

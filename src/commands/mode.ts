@@ -143,7 +143,12 @@ export function cmdMode(argv: string[]): number {
       1,
     );
   }
-  for (const line of renderMode(mode)) {
+  /* WHICH DOCUMENT THIS IS, derived from the invocation rather than from the
+     path: no `--file` means `readModes()` walked to the package root and read
+     the kernel's own document. CR-004 item 2 turns on that distinction, because
+     "no phase has been delivered under this mode" is a claim about the kernel's
+     own delivery and is not knowable for a document a consumer supplied. */
+  for (const line of renderMode(mode, { shippedDocument: parsed.options.file === undefined })) {
     process.stdout.write(`${line}\n`);
   }
   return 0;

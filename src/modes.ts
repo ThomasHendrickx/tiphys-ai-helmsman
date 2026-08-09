@@ -144,6 +144,74 @@ export function readModes(path: string = join(packageRoot(), MODES_FILENAME)): M
 }
 
 /**
+ * Where the rendered document came from. `shippedDocument` is true only when
+ * the reader was given no `--file` and therefore read the kernel's OWN
+ * `assurance-modes.yaml` from the package root.
+ *
+ * It is a REQUIRED parameter rather than an option with a default, because the
+ * execution-status line below is a claim about a specific document and a
+ * default would let a caller make that claim by omission.
+ */
+export interface RenderContext {
+  shippedDocument: boolean;
+}
+
+/**
+ * The execution status of one mode, DERIVED rather than looked up in a list of
+ * ids (CR-004 item 2, DR-0019).
+ *
+ * Two facts are available and both are checkable by the reader: whether this is
+ * the kernel's own document, and whether the mode declares any skipped stage.
+ * Blueprint section 8's sentence is what makes the second one mean something,
+ * "The current proven process is the definition of `full`. Downgrades are
+ * declared, never improvised", so a mode with a non-empty `skips` list is BY
+ * ITS OWN DECLARATION a downgrade of the un-downgraded process.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT SAY. It does not say that tiphys runs
+ * anything: nothing runs on tiphys before M4. The un-downgraded mode of the
+ * kernel's own document is the process the tiphys PROJECT follows for its own
+ * delivery; the downgraded ones have never been entered at all. And for a
+ * document that is not the kernel's own, the answer is that tiphys does not
+ * know, because it does not.
+ */
+export function executionStatus(mode: Mode, context: RenderContext): string {
+  if (!context.shippedDocument) {
+    return (
+      "not determinable here. This is not the kernel's own assurance-modes.yaml, " +
+      "so nothing tiphys ships records whether any phase has been delivered under " +
+      "this mode (DR-0019)."
+    );
+  }
+  if (mode.skips.length === 0) {
+    return (
+      "this mode declares no skipped stage, so it is the un-downgraded process, " +
+      "and it is the one the tiphys project follows for its own delivery."
+    );
+  }
+  return (
+    `DECLARED AND VALIDATED, NEVER EXERCISED. This mode declares ${String(mode.skips.length)} ` +
+    "skipped stage(s), so it is a declared downgrade of the un-downgraded process, and no " +
+    "phase of the tiphys project has ever been delivered under it. Its pipeline and its gate " +
+    "selection are checked by validation only (DR-0019)."
+  );
+}
+
+/**
+ * The standing limits of this release, printed on every invocation.
+ *
+ * IT SAYS ONLY WHAT THE SHIPPED SCHEMAS DO. The vocabularies really are closed
+ * enums, so "a document naming any other id is rejected" is the enum's own
+ * behaviour and not a claim about intent. The M4 sentence is attributed to
+ * DR-0019 rather than stated as a property of the code.
+ */
+export const RELEASE_LIMITS =
+  "limits: the mode, stage and role vocabularies in the shipped schemas are this " +
+  "repository's own closed enums, so a document naming any other id is rejected and a " +
+  "consuming project cannot extend them at v0.1.0; whether to open them is an M4 question " +
+  "(DR-0019). This command SHOWS a declared mode: nothing in this release resolves a " +
+  "project into a mode, enforces one, or runs one.";
+
+/**
  * Render one mode for a human or for a brief.
  *
  * THE SHAPE IS PART OF THE CONTRACT, because criterion 2 asserts over it: a
@@ -152,8 +220,12 @@ export function readModes(path: string = join(packageRoot(), MODES_FILENAME)): M
  * the twelve stage ids in order" something a test can extract rather than
  * something a reader has to eyeball.
  */
-export function renderMode(mode: Mode): string[] {
+export function renderMode(mode: Mode, context: RenderContext): string[] {
   const lines: string[] = [`mode: ${mode.id}`];
+  /* SECOND LINE, not a footnote. CR-004 measured that `mode show` printed a
+     never-exercised mode with exactly the confidence of the exercised one, and
+     that the only disclosure lived in `delivery/`, which the package excludes. */
+  lines.push(`execution-status: ${executionStatus(mode, context)}`);
   lines.push(`merge-authority: ${mode.mergeAuthority}`);
   if (mode.grantedBy !== undefined) {
     lines.push(`granted-by: ${mode.grantedBy}`);
@@ -176,7 +248,13 @@ export function renderMode(mode: Mode): string[] {
   section("gate-sets", mode.gateSets);
   section("review-contracts", mode.reviewContracts);
   if (mode.escalationBounds !== undefined) {
-    lines.push("escalation-bounds:");
+    /* CR-004 item 3. The bounds are DATA an orchestrator brief cites. Nothing
+       in this release counts a fix round or detects a recurrence, so a bare
+       `escalation-bounds:` header invites the reader to assume an enforcement
+       engine that does not exist. */
+    lines.push(
+      "escalation-bounds (data an orchestrator brief cites; nothing in this release counts fix rounds, detects recurrence, or enforces these):",
+    );
     for (const key of Object.keys(mode.escalationBounds).sort()) {
       lines.push(`  ${key}: ${String(mode.escalationBounds[key])}`);
     }
@@ -188,5 +266,6 @@ export function renderMode(mode: Mode): string[] {
     }
   }
   lines.push(`declared-by: ${mode.declaredBy.replace(/\s+/g, " ").trim()}`);
+  lines.push(RELEASE_LIMITS);
   return lines;
 }

@@ -1,0 +1,30 @@
+{
+  "id": "schemas-closed-vocabulary-disclosed",
+  "behavior": "schemas-disclose-closed-vocabulary",
+  "tests": [
+    "the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums really are closed"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/assurance-modes.schema.json",
+      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0019): these three are the tiphys kernel's OWN mode ids.",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/assurance-modes.schema.json",
+      "find": "\"enum\": [\"full\", \"direct-pr\", \"local-only\"]",
+      "replace": "\"enum\": [\"full\", \"direct-pr\", \"local-only\", \"standard\"]"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/role-model-config.schema.json",
+      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0019): these six are the tiphys kernel's OWN role ids.",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

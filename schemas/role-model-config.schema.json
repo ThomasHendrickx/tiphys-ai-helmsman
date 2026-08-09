@@ -39,7 +39,7 @@
       "required": ["role", "tier", "charter-override", "rationale"],
       "properties": {
         "role": {
-          "$comment": "The six roles of blueprint section 6, in the process document's own role table. Closed, because M3-P5's role-brief schema resolves `model-tier` against this document and a role id that matches nothing here would resolve to nothing.",
+          "$comment": "The six roles of blueprint section 6, in the process document's own role table. Closed, because M3-P5's role-brief schema resolves `model-tier` against this document and a role id that matches nothing here would resolve to nothing. CLOSED VOCABULARY AT v0.1.0 (DR-0019): these six are the tiphys kernel's OWN role ids. This enum rejects every other value, so a consuming project cannot bind a role of its own name at v0.1.0. Extension is an M4 question, deferred to a real pilot consumer for the same reversibility reason as the mode-id enum.",
           "type": "string",
           "enum": [
             "orchestrator",
