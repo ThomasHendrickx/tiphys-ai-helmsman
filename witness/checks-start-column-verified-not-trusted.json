@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "if (offset <= text.length && SKIPPABLE_PREFIX.test(text.slice(0, offset))) {",
+      "find": "if (offset <= text.length && isSkippablePrefix(text.slice(0, offset))) {",
       "replace": "if (offset <= text.length) {"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "const SKIPPABLE_PREFIX = /^(?:[ \\t]*(?:>[ \\t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \\t]*))*[ \\t]*$/;",
-      "replace": "const SKIPPABLE_PREFIX = /^[\\s\\S]*$/;"
+      "find": "function isSkippablePrefix(span: string): boolean {\n  let at = 0;\n  for (;;) {\n    const quote = quoteMarkerLength(span, at);\n    if (quote > 0) {\n      at += quote;\n      continue;\n    }\n    const list = listMarkerLength(span, at);\n    if (list > 0) {\n      at += list;\n      continue;\n    }\n    while (isIndent(span.charCodeAt(at))) {\n      at += 1;\n    }\n    return at === span.length;\n  }\n}\n",
+      "replace": "function isSkippablePrefix(span: string): boolean {\n  return span.length >= 0;\n}\n"
     }
   ],
   "deterministic": true,

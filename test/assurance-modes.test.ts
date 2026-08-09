@@ -2561,6 +2561,7 @@ const MULTI_MARKER_TWO = "Two list markers open on one line.";
 const MULTI_MARKER_QUOTE = "A quote opens after a list marker.";
 const MULTI_MARKER_THREE = "Three block markers open on one line.";
 const MULTI_MARKER_ORDERED = "An ordered marker nests in an unordered one.";
+const MULTI_MARKER_FIVE = "Five markers of four families on one line.";
 const MULTI_MARKER_CONTROL = "One marker only, always handled.";
 
 const MULTI_MARKER_RECORD = [
@@ -2576,13 +2577,23 @@ const MULTI_MARKER_RECORD = [
   "",
   `- 1. ${MULTI_MARKER_ORDERED}`,
   "",
+  /* THE DEEPEST MEMBER, ADDED IN ROUND 8 (verification finding V-2). Until it
+     existed the fixture's deepest member was THREE markers while the test name,
+     the registered description and the witness spec all claimed four, and a
+     predicate bounded at `{0,3}` reproduced CR-001 verbatim at depth four with
+     the whole 504-test suite green. Five markers across FOUR families
+     (unordered, quote, ordered, a second unordered glyph, quote again) is past
+     any bound a "widen it by one" fix would reach, which is the property the
+     production docstring says must hold and the fixture did not test. */
+  `- > 1. * > ${MULTI_MARKER_FIVE}`,
+  "",
   "## A plain control",
   "",
   `- ${MULTI_MARKER_CONTROL}`,
   "",
 ];
 
-test("a line opening more than one block marker leaves no marker in the unit, at two, three and four markers and with a quote after a list marker", () => {
+test("a line opening more than one block marker leaves no marker in the unit, at two, three and five markers and with a quote after a list marker", () => {
   /* THE MECHANISM THIS TEST GUARDS, which is not the shape it exercises.
      `startOffset` verifies the parser's start column instead of trusting it,
      and it verified by testing the skipped span against a model of the block
@@ -2606,13 +2617,24 @@ test("a line opening more than one block marker leaves no marker in the unit, at
        "- 1. An ordered marker nests in an unordered one."
      Four marker-carrying units, and not one of the four clean strings present.
 
-     FOUR STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, not one shape written
-     four times: two list markers, a QUOTE opened after a list marker (a
+     FIVE STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, not one shape written
+     five times: two list markers, a QUOTE opened after a list marker (a
      different marker family, and the one the old recovery path could almost
      handle), THREE markers (which is what distinguishes a completed grammar
-     from a boundary moved by one), and an ORDERED marker nested in an
-     unordered one (a different marker syntax again). A fix that widened the
-     model by one marker turns the first green and leaves the third red. */
+     from a boundary moved by one), an ORDERED marker nested in an unordered
+     one (a different marker syntax again), and FIVE markers across four
+     families. A fix that widened the model by one marker turns the first green
+     and leaves the third red.
+
+     THE FIFTH MEMBER IS ROUND 8's, and it exists because the four above did
+     not guard what this test's name claimed. Verification finding V-2: the
+     deepest member was THREE, so `SKIPPABLE_PREFIX` bounded at `{0,3}`
+     reproduced CR-001 verbatim at depth four AND SURVIVED THE WHOLE 504-TEST
+     SUITE, while the same mutant bounded at TWO was killed. The witness's
+     discriminating power stopped exactly one member past the fixture's deepest
+     member, which is a boundary the production docstring says must not exist.
+     Measured after adding the fifth member: `{0,3}` is killed, `{0,4}` is
+     killed, and the numbers are in the work history's fix round 8. */
   const dir = stageContext();
   try {
     stageRecord(dir, "DR-9991", MULTI_MARKER_RECORD);
@@ -2632,6 +2654,7 @@ test("a line opening more than one block marker leaves no marker in the unit, at
       ["quote after a list marker", MULTI_MARKER_QUOTE],
       ["three block markers", MULTI_MARKER_THREE],
       ["ordered nested in unordered", MULTI_MARKER_ORDERED],
+      ["five markers of four families", MULTI_MARKER_FIVE],
     ];
     for (const [name, clean] of MEMBERS) {
       /* FAIL-CLOSED DIRECTION: the real prose IS a unit. */
@@ -2663,6 +2686,7 @@ test("a line opening more than one block marker leaves no marker in the unit, at
       `- > ${MULTI_MARKER_QUOTE}`,
       `- - - ${MULTI_MARKER_THREE}`,
       `- 1. ${MULTI_MARKER_ORDERED}`,
+      `- > 1. * > ${MULTI_MARKER_FIVE}`,
     ];
     const leakedPath = writeDocument(
       dir,
@@ -2859,5 +2883,96 @@ test("a paragraph the parser emptied contributes no unit, at top level and insid
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ROUND 8, verification finding V-1 (HIGH): A TIME WITNESS, and the only one
+   in this file, because the defect it guards is invisible to every equality
+   assertion in the repository.
+
+   THE MECHANISM. `startOffset` decides whether a span is a block prefix. Round
+   7 decided it with an anchored pattern whose iteration could consume the same
+   run of whitespace in two places, so every gap between two markers doubled the
+   search space and a span that ultimately FAILED had to exhaust all of it.
+   Failing is precisely the arm `startOffset` exists to take. Measured at
+   `986f58a`, node v26.6.0, through `quotableUnits`: a 151-byte two-line
+   document cost 11,177 ms and a 207-byte one cost 12,575 ms, against 3.2 ms and
+   0.4 ms after this round's fix, RETURNING THE IDENTICAL UNIT SET both times.
+   The verifier measured 73 s on a 269-byte record and 88 s through the shipped
+   `tiphys validate`.
+
+   WHY NO EQUALITY ASSERTION CAN SEE IT. The unit sets are identical. That is
+   measured, not assumed: the probe in the work history compares both
+   implementations on every document below and on the whole family around them.
+   So the suite was fully green with the defect present, and the only assertion
+   that can distinguish the two is an assertion about TIME.
+
+   WHY THE DOCUMENTS LOOK LIKE THIS, rather than being a hand-made string fed to
+   an unexported predicate. Line 1 is a link reference definition behind a deep
+   container prefix, so the parser advances the paragraph's START LINE past it
+   while leaving the START COLUMN describing line 1: the exact hazard
+   `startOffset` was built for. Line 2 is a lazy continuation whose leading TAB
+   stops its own markers from interrupting the paragraph, so they are
+   continuation TEXT that merely LOOKS like a container prefix. The quote count
+   on line 1 is chosen so the offset lands ONE CHARACTER PAST line 2's marker
+   run, which is what makes the span a long NEAR MISS. This is reachability
+   through the shipped entry point, not a unit test of a private function.
+
+   TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class: a
+   BULLET run and an ORDERED run. They exercise different branches of the
+   grammar (`[-*+]` against `[0-9]{1,9}[.)]`) and they are exponential
+   independently.
+
+   THE BOUND AND ITS MARGINS, chosen against measurement rather than taste.
+   Honest cost here is 0.2 ms to 3.2 ms; pathological cost is 11.2 s and 12.6 s.
+   One second sits about 1,400 times above the honest cost and about eleven
+   times below the pathological one. Breaking the green arm needs a runner
+   ~1,400x SLOWER than this container; breaking the red arm needs one ~11x
+   FASTER, and no runner is 11x faster than exponential. The pathological arm
+   also GROWS with the marker count while the honest arm does not, so the gap
+   widens rather than narrows if the fixture is ever deepened. */
+const NEAR_MISS_BUDGET_MS = 1000;
+
+/** A two-line document whose start-column verification is handed a long span
+ *  that parses as markers until its very last character. `markers` is the run
+ *  on line 2; the quote count on line 1 is derived so the offset lands one
+ *  character past that run. */
+function nearMissRecord(marker: string, count: number): string {
+  const wanted = count * marker.length + 2;
+  assert.equal(wanted % 2, 0, `the derivation needs an even offset, got ${String(wanted)}`);
+  const opening = "> ".repeat(wanted / 2);
+  return `${opening}[r]: https://example.invalid/x\n\t${marker.repeat(count)}tail\n`;
+}
+
+test("a long near-miss block prefix is rejected in bounded time, for a bullet run and for an ordered run", () => {
+  /* WARM UP FIRST. `quotableUnits` requires `commonmark` lazily, and that one
+     require costs about 28 ms on a cold process. Paying it inside a timed
+     region would make the measurement depend on which test ran first. */
+  checksModule.quotableUnits("warm up\n");
+
+  const MEMBERS: [string, string, number][] = [
+    ["bullet run", "* ", 28],
+    ["ordered run", "1. ", 28],
+  ];
+  for (const [name, marker, count] of MEMBERS) {
+    const record = nearMissRecord(marker, count);
+    const started = process.hrtime.bigint();
+    const units = checksModule.quotableUnits(record);
+    const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
+
+    /* THE TIME ASSERTION IS THE WITNESS. Everything else here is a control. */
+    assert.ok(
+      elapsed < NEAR_MISS_BUDGET_MS,
+      `${name}: rejecting a ${String(record.length)}-byte near miss took ` +
+        `${elapsed.toFixed(1)} ms, over the ${String(NEAR_MISS_BUDGET_MS)} ms budget; ` +
+        `the block-prefix test is backtracking rather than scanning`,
+    );
+
+    /* CONTROL, so a "fix" that is fast because it stopped working cannot pass:
+       the unit is still the whole continuation text, markers and all, because
+       the tab made them text rather than containers. This is the SAME unit the
+       backtracking implementation returned, which is the point. */
+    const expected = `${marker.repeat(count).trimEnd()} tail`;
+    assert.deepEqual([...units], [expected], `${name}: ${[...units].join(" | ")}`);
   }
 });

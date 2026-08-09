@@ -916,48 +916,185 @@ function carriesProse(paragraph: CommonMarkNode): boolean {
  * A LAZY continuation line carries no marker at all, so the strip is written to
  * be a no-op when the marker is absent rather than to assume it is present.
  */
-/**
- * ONE BLOCK-QUOTE MARKER, with the indentation in front of it. Declared once
- * because BOTH recovery strips below consume exactly this and a second copy of
- * a grammar is how the three models described under `SKIPPABLE_PREFIX` came to
- * disagree in the first place. It is deliberately NARROWER than
- * `SKIPPABLE_PREFIX`: see `startOffset`.
- */
-const QUOTE_MARKER = /^[ \t]*>[ \t]?/;
+const SPACE = 0x20;
+const TAB = 0x09;
+const GREATER_THAN = 0x3e;
+const HYPHEN = 0x2d;
+const ASTERISK = 0x2a;
+const PLUS = 0x2b;
+const PERIOD = 0x2e;
+const RIGHT_PAREN = 0x29;
+const DIGIT_ZERO = 0x30;
+const DIGIT_NINE = 0x39;
+
+/** A space or a tab, the only two characters CommonMark counts as indentation
+ *  inside a container prefix. `charCodeAt` past the end is NaN, which compares
+ *  false against both, so no caller needs a separate bounds test. */
+function isIndent(code: number): boolean {
+  return code === SPACE || code === TAB;
+}
 
 /**
- * Everything a slice may legitimately skip before a node's content: ANY NUMBER
- * of block-opening markers (quote, bullet or ordered), in ANY ORDER, plus
- * indentation. Anchored at both ends, so it is a test of the WHOLE skipped span
- * and not a prefix match.
+ * ONE BLOCK-QUOTE MARKER at `from`, with the indentation in front of it, as a
+ * LENGTH: how many characters it occupies, or 0 when there is no marker there.
+ * Declared once because THREE places consume exactly this (the prefix scan
+ * below and BOTH recovery strips) and a second copy of a grammar is how the
+ * three models described under `isSkippablePrefix` came to disagree in the
+ * first place. It is deliberately NARROWER than the prefix scan: see
+ * `startOffset`.
  *
- * THIS WIDENING IS ROUND 7's CR-001 FIX, and the mechanism it closes is not
- * "the regex was incomplete". The module carried THREE models of one grammar
- * and they disagreed: this predicate allowed quote markers plus AT MOST ONE
- * list marker (its own previous comment said so in those words), while the two
- * recovery strips allow a quote marker only. CommonMark lets a container prefix
- * open ANY NUMBER of blocks on one line, in any order (`- - x`, `- 1. x`,
- * `1. - x`, `- > x`, `- - - x`), so a CORRECT column whose prefix this
- * predicate could not spell was sent down the recovery path, which strips no
- * list marker at all and returned offset 0: the raw markers became part of the
- * unit. Fail-open (a fabricated condition equal to `- - x` is accepted) and
- * fail-closed (the real unit `x` is rejected) at the same time.
+ * NOTE THE ZERO CASE. Indentation with no `>` after it is NOT a quote marker
+ * and returns 0, not the indentation's length, which is what the regex this
+ * replaced did (it matched as a whole or not at all).
  *
- * THE ANCHORING IS WHAT MAKES WIDENING SAFE, and this is the argument the fix
- * rests on rather than a table of examples. Acceptance means EVERY character of
- * the skipped span is marker-or-indentation, so the span can contain no
+ * ROUND 8 MADE THIS A SCAN RATHER THAN A SHARED REGEX OBJECT, and that is
+ * verification finding V-6 rather than a style preference. Round 7 shared one
+ * regex OBJECT between an `.exec` and a `.replace`. That was correct, but only
+ * because the literal carried no `g` flag: `lastIndex` lives on the OBJECT, so
+ * adding `g` would have made the `.exec` in `startOffset` stateful across
+ * calls and silently stopped the second iteration of its loop. A function has
+ * no `lastIndex`, so that hazard cannot be written here at all. Removing a
+ * class beats guarding an instance of it, and here it also costs nothing,
+ * because the V-1 fix below needs to consume this same grammar and would
+ * otherwise have introduced a FOURTH copy of it.
+ */
+function quoteMarkerLength(text: string, from: number): number {
+  let at = from;
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  if (text.charCodeAt(at) !== GREATER_THAN) {
+    return 0;
+  }
+  at += 1;
+  if (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  return at - from;
+}
+
+/**
+ * ONE LIST MARKER at `from`, bullet or ordered, with the indentation in front
+ * of it and the indentation after it, as a LENGTH, or 0 when there is none.
+ *
+ * The ordered form is MAX MUNCH capped at nine digits, which is CommonMark's
+ * own limit and is exactly what `[0-9]{1,9}[.)]` accepted. A run of ten or
+ * more digits therefore matches NOTHING rather than matching its first nine:
+ * every shorter prefix of the run is followed by another digit, so no shorter
+ * reading can find the `.` or `)` either. That equivalence is not asserted
+ * here, it is measured by exhaustive enumeration (see the work history).
+ */
+function listMarkerLength(text: string, from: number): number {
+  let at = from;
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  const opener = text.charCodeAt(at);
+  if (opener === HYPHEN || opener === ASTERISK || opener === PLUS) {
+    at += 1;
+  } else {
+    let digits = 0;
+    while (digits < 9) {
+      const code = text.charCodeAt(at + digits);
+      if (code < DIGIT_ZERO || code > DIGIT_NINE) {
+        break;
+      }
+      digits += 1;
+    }
+    if (digits === 0) {
+      return 0;
+    }
+    const delimiter = text.charCodeAt(at + digits);
+    if (delimiter !== PERIOD && delimiter !== RIGHT_PAREN) {
+      return 0;
+    }
+    at += digits + 1;
+  }
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  return at - from;
+}
+
+/**
+ * Is `span` ENTIRELY skippable before a node's content: ANY NUMBER of
+ * block-opening markers (quote, bullet or ordered), in ANY ORDER, plus
+ * indentation, and NOTHING ELSE. A test of the WHOLE span and not a prefix
+ * match, which is what the two anchors of the regex this replaced provided.
+ *
+ * THE WIDENING TO THE FULL CONTAINER GRAMMAR IS ROUND 7's CR-001 FIX, and the
+ * mechanism it closes is not "the regex was incomplete". The module carried
+ * THREE models of one grammar and they disagreed: this predicate allowed quote
+ * markers plus AT MOST ONE list marker (its own previous comment said so in
+ * those words), while the two recovery strips allow a quote marker only.
+ * CommonMark lets a container prefix open ANY NUMBER of blocks on one line, in
+ * any order (`- - x`, `- 1. x`, `1. - x`, `- > x`, `- - - x`), so a CORRECT
+ * column whose prefix this predicate could not spell was sent down the recovery
+ * path, which strips no list marker at all and returned offset 0: the raw
+ * markers became part of the unit. Fail-open (a fabricated condition equal to
+ * `- - x` is accepted) and fail-closed (the real unit `x` is rejected) at the
+ * same time.
+ *
+ * TESTING THE WHOLE SPAN IS WHAT MAKES WIDENING SAFE, and this is the argument
+ * the fix rests on rather than a table of examples. Acceptance means EVERY
+ * character of the span is marker-or-indentation, so the span can contain no
  * content, and skipping it is right whichever line the column came from. What
- * markers may repeat does not touch that. Measured: the four column-is-lying
- * spans this guard exists to reject ("ep", "re", "alp", "sil") are still
- * rejected, because a prose fragment contains characters no alternative here
- * can consume.
+ * markers may repeat does not touch that. The four column-is-lying spans this
+ * guard exists to reject ("ep", "re", "alp", "sil") are still rejected, because
+ * a prose fragment contains characters no branch here can consume.
  *
  * REPETITION IS UNBOUNDED ON PURPOSE. A model allowing two markers would move
  * the boundary to three and leave the same defect standing there, which is the
- * shape this project keeps paying for. Measured after the change: correct at
- * one, two, three, four, five, six and eight markers, and on `> - > - > -`.
+ * shape this project keeps paying for. A model allowing THREE is not
+ * hypothetical: round 7 shipped a witness whose deepest fixture member was
+ * three, so a `{0,3}` bound restored CR-001 verbatim at depth four with the
+ * whole suite green (verification finding V-2). The fixture now carries a
+ * five-marker member for that reason.
+ *
+ * ROUND 8 MADE THIS A SCAN RATHER THAN AN ANCHORED REGEX, and that is
+ * verification finding V-1, a HIGH. The pattern round 7 shipped was
+ *
+ *   /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*[ \t]*$/
+ *
+ * and it BACKTRACKS EXPONENTIALLY. The leading `[ \t]*` of an iteration and the
+ * trailing `[ \t]*` inside two of its three branches can consume the same run
+ * of whitespace, so every gap between two markers is an ambiguity the engine
+ * must try both ways, and the choices MULTIPLY. Acceptance is still fast, but
+ * on a subject that ultimately FAILS the engine must exhaust the whole product
+ * before it can say so, and FAILING is precisely the arm `startOffset` exists
+ * to take. Measured at `986f58a`, node v26.6.0: a 119-byte two-line document
+ * cost 45 ms through `quotableUnits` and each further marker DOUBLED it, so a
+ * 269-byte record cost 73 seconds and the same document through the shipped
+ * CLI cost 88. A gate that never returns is worse than a red gate.
+ *
+ * A SCAN CANNOT BACKTRACK, which is why this is a scan and not a cleverer
+ * pattern. Each iteration consumes at least one character and never revisits
+ * one, so the cost is linear in the span and the same for acceptance and
+ * rejection. That removes the CLASS (no ambiguity can be reintroduced by a
+ * later widening of the grammar) rather than the one instance of it that a
+ * disambiguated pattern would remove. The language is UNCHANGED, which is
+ * measured by exhaustive differential enumeration against the round-7 pattern
+ * rather than argued: see `delivery/work-history/m3-p3.md`, fix round 8.
  */
-const SKIPPABLE_PREFIX = /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*[ \t]*$/;
+function isSkippablePrefix(span: string): boolean {
+  let at = 0;
+  for (;;) {
+    const quote = quoteMarkerLength(span, at);
+    if (quote > 0) {
+      at += quote;
+      continue;
+    }
+    const list = listMarkerLength(span, at);
+    if (list > 0) {
+      at += list;
+      continue;
+    }
+    while (isIndent(span.charCodeAt(at))) {
+      at += 1;
+    }
+    return at === span.length;
+  }
+}
 
 /**
  * Where a node's content starts on its FIRST line, WITH THE START COLUMN
@@ -988,14 +1125,14 @@ const SKIPPABLE_PREFIX = /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*
  * exactly as a continuation line's are.
  *
  * WHY THE FALLBACK IS DELIBERATELY NARROWER THAN THE VERIFIER, corrected in
- * round 7 (CR-001). Until this round the guard had TWO causes it could not tell
- * apart: (1) the column is lying, which is the hazard above, and (2) the column
- * is CORRECT and merely describes a prefix richer than the verifier could
- * spell. It took this fallback on both, and on a line opening with a LIST
+ * round 7 (CR-001). Before that round the guard had TWO causes it could not
+ * tell apart: (1) the column is lying, which is the hazard above, and (2) the
+ * column is CORRECT and merely describes a prefix richer than the verifier
+ * could spell. It took this fallback on both, and on a line opening with a LIST
  * marker `quoteDepth` is 0, so the fallback returned 0 and the slice was the
- * ENTIRE RAW LINE. Widening `SKIPPABLE_PREFIX` to the full container grammar
- * removes cause (2) from the conflation, which is what made the fallback
- * dangerous; it is now reached only for cause (1).
+ * ENTIRE RAW LINE. Widening the verifier (`isSkippablePrefix`) to the full
+ * container grammar removes cause (2) from the conflation, which is what made
+ * the fallback dangerous; it is now reached only for cause (1).
  *
  * The fallback still consumes QUOTE MARKERS ONLY, bounded by `quoteDepth`, and
  * that is a choice rather than an oversight. `quoteDepth` is KNOWN STRUCTURE
@@ -1017,16 +1154,16 @@ const SKIPPABLE_PREFIX = /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*
  */
 function startOffset(text: string, startColumn: number, quoteDepth: number): number {
   const offset = startColumn - 1;
-  if (offset <= text.length && SKIPPABLE_PREFIX.test(text.slice(0, offset))) {
+  if (offset <= text.length && isSkippablePrefix(text.slice(0, offset))) {
     return offset;
   }
   let consumed = 0;
   for (let level = 0; level < quoteDepth; level += 1) {
-    const marker = QUOTE_MARKER.exec(text.slice(consumed));
-    if (marker === null) {
+    const marker = quoteMarkerLength(text, consumed);
+    if (marker === 0) {
       break;
     }
-    consumed += marker[0].length;
+    consumed += marker;
   }
   return consumed;
 }
@@ -1045,7 +1182,7 @@ function sourceSlice(
     let piece = text.slice(from, to);
     if (line !== startLine) {
       for (let level = 0; level < quoteDepth; level += 1) {
-        piece = piece.replace(QUOTE_MARKER, "");
+        piece = piece.slice(quoteMarkerLength(piece, 0));
       }
     }
     pieces.push(piece);
