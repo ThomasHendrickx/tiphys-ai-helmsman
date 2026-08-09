@@ -47,3 +47,19 @@ IN PROGRESS. Appending as work proceeds.
   Shapes included that round 7 did not name: depths 7, 9, 10, 11 and 12;
   `- 1. - > - 1. - > -` (nine markers); mixed `*`/`+`/`-`; paren ordered
   markers; tabs mixed with spaces; quote-inside-list-inside-quote.
+
+- **V-1 (HIGH) FOUND: the widened `SKIPPABLE_PREFIX` backtracks exponentially,
+  and it is REACHABLE from `quotableUnits`.** Measured: `986f58a` takes
+  **73,175 ms** on a 269-byte two-line document where `218fc12` takes 23.7 ms
+  and returns the SAME unit. Regression introduced by this round. Details and
+  reproduction in the findings section.
+- DR-0022 acceptance criterion RE-DERIVED from `git archive 18c335a`
+  (md5 `4f9ed9b66f6a7e1e04efdb2450c7da9e`, agreeing with the correctness
+  reviewer's independent derivation): **20/20 byte-identical, 504 units**,
+  probe EXIT=0. Round 7's claim CONFIRMED.
+- md5 of `218fc12:src/checks.ts` = `0d3504eadfc894d85e06b9a81d2f0db6`. Round
+  7's pin CONFIRMED.
+- Diagonal CONFIRMED: each of the three new tests is red under exactly its own
+  two witness members and green under the other four.
+- Verifier's own 23-mutant campaign run. 12 SURVIVE, including
+  `SKIPPABLE_PREFIX` bounded at THREE markers.
