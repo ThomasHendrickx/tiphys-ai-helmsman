@@ -6,18 +6,27 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-09
-- main head: `1a683fe`, green on BOTH CI events. The push arm is verified by
-  STEP, not by run conclusion: run 31307121695 step 9 `M2 exit test (push)`
-  success, step 8 correctly skipped. The three heads before it are discharged
-  the same way: `a9ab9bd` (31305337415), `1d5cca5` (31301155195), `826f27d`
+- main head: `ae674b6` (PR #63, the owner's DR-0022 answer), and its T-009 arm
+  is DISCHARGED: run 31334452662 step 9 `M2 exit test (push)` success, step 8
+  `M2 exit test (pull request)` correctly skipped, step 10 self-test guard
+  success. The head before it, `3c60acb`, is discharged: run 31331023369
+  completed success.
+  Earlier discharged heads, by STEP rather than run conclusion: `1a683fe`
+  (31307121695 step 9 `M2 exit test (push)` success, step 8 correctly
+  skipped), `a9ab9bd` (31305337415), `1d5cca5` (31301155195), `826f27d`
   (31298592287). T-009's rule is that a merge is not complete until the
   post-merge push run on the NEW tip is observed, and "the run was green" is
   not that observation; the arm is.
 - milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 and M3-P2 are MERGED.
-  M3-P3 is at `6af8e81` on its branch after four fix rounds and is under final
-  delta verification; M3-P4 to M3-P10 are not dispatched. M2 COMPLETE including its post-exit-test fix round; M1 complete,
-  exit test passed on `7e1b5f1`, completion record merged in PR #10 at
-  `037477e`.
+  M3-P3 is at `218fc12` on its branch (PR #54), round 6, executing the owner's
+  DR-0022 answer (option A2). It is under DUAL clean-room review of that head:
+  the supply-chain and regression contract returned APPROVE with zero findings
+  and is recorded in `delivery/review/clean-room-m3-p3-a2-supply-chain.md`
+  (PR #64); the correctness contract is still running. M3-P4 to M3-P10 are not
+  dispatched and are blocked strictly behind P3, because M3 is a serial chain
+  with no conflict pre-pass. M2 COMPLETE including its post-exit-test fix
+  round; M1 complete, exit test passed on `7e1b5f1`, completion record merged
+  in PR #10 at `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -142,7 +151,8 @@ modelled and bound five phases to.
 | M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
 | M3-P1 schemas and validator | MERGED #39 |
 | M3-P2 canonical gate registry | MERGED #48 |
-| M3-P3 assurance modes | PR #54 open, under DR-0016 (see below) |
+| M3-P3 assurance modes | PR #54 open, round 7 in flight on `218fc12` after CHANGES REQUIRED |
+| A2 review evidence and arbitration | PR #64 open |
 | M3-P4 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
@@ -171,10 +181,77 @@ closed enum later is backward compatible while closing an open one later is
 breaking. That decision is ORCHESTRATOR-made under DR-0016 and DR-0015, is
 reported to the owner unasked, and is reversible by the owner.
 
-Round 3 (the fresh implementer) is at `6a36b38` and is under independent delta
-verification now. It replaced the line-scanning extractor with a block-state
-machine, and the mechanism predicted two shapes nobody had named (indented code
-blocks and tilde fences), both of which were real.
+Round 3 (the fresh implementer) replaced the line-scanning extractor with a
+block-state machine, and the mechanism predicted two shapes nobody had named
+(indented code blocks and tilde fences), both of which were real.
+
+**Rounds 3, 4 and 5 then each produced a new defect in the same function**, all
+three found by independent delta verification and none by a gate: V-1 (list-item
+continuation admitted as its own unit), V-4 (four more unconditional `flush()`
+sites, the same mechanism one level up), and V-5, which was a REGRESSION, a shape
+round 4 had correct and round 5 broke. Five rounds, five defects, one function.
+Round 5 is the one that settled it, because it satisfied the whole fix-round
+contract (nine call sites enumerated with four search keys, closure argued, each
+site ruled on individually) and regressed anyway. That is evidence about the
+SHAPE of the work, not about the care of five agents.
+
+**Escalated to the owner as DR-0022, and DECIDED: option A2.** Rather than argue
+the three options, all three were prototyped and measured on a throwaway branch
+(`delivery/review/dr-0022-option-evidence.md`): a 40-shape exploit set with
+ground truth from `commonmark` 0.31.2 cross-checked against a structurally
+independent second parser, then 15,000 generated documents adjudicated only where
+both oracles agree. The current implementation scores 35.3 per cent, A2 scores
+100. The prototype also REFUTED the orchestrator's own recommendation: plain
+option A walks the parser's AST, which reads inline text and strips markup, and
+that breaks DR-0012's condition 0 on eleven of nineteen records. Only A2, which
+slices the ORIGINAL SOURCE by `sourcepos` offsets, is byte-identical, and that is
+now a falsifiable acceptance criterion so an implementer cannot pass without it.
+
+**Round 6 executed A2 at `218fc12` (PR #54) and its dual review is COMPLETE.**
+Supply chain and regression: APPROVE, zero findings (`commonmark` pinned exact,
++4 packages, 920,729 B, BSD-2 and MIT, depth 2; no `fs`, `net`, `child_process`
+or `eval` on the reachable chain; `test/behaviors.json` strictly append-only, 30
+additions and 0 removals; no assertion deleted; scope 37/37). Correctness:
+**CHANGES REQUIRED**, two mediums and a low. Both reports and the arbitration are
+on `claude/reviews-m3-p3-a2` (PR #64).
+
+They do not disagree; they asked different questions, which is why T-007 requires
+different CONTRACTS and not merely different models. DR-0012 condition 2 blocks
+merge on either medium.
+
+- **CR-001 (medium).** A unit keeps its block markers when two block markers open
+  on one line (`- - x`, `- 1. x`, `1. - x`, `- > x`, and four more). Fail-open and
+  fail-closed at once: the unit set gains a string no document contains and loses
+  the real prose.
+- **CR-002 (medium), the more serious.** Both defects round 6 reports fixing have
+  NO red witness. Fourteen of twenty mutants survive, and with the pre-fix
+  `startOffset` restored the FULL suite is 501 tests, 501 pass, exit 0.
+- **CR-003 (low).** `NOT_QUOTABLE` has no observable effect; the round's own claim
+  about that is confirmed, so the docstrings claiming an exclusion are what change.
+
+**Round 6 did NOT fail the way rounds 1 to 5 failed, and that is measured rather
+than assumed.** The orchestrator ran CR-001's shapes against the PRE-A2 head
+`18c335a`: all four leak there too, pre-A2 leaking one marker where A2 leaks both.
+So CR-001 is an old hole A2 widened, not a defect A2 introduced, and the reviewer
+reached the same conclusion independently by finding the class already graded FAIL
+for the old code. What the owner decided was delivered correctly: 20 of 20 unit
+sets byte-identical, the 40-shape exploit set at 40/40, eight fabrication variants
+rejected. Round 7 is therefore an ORDINARY fix round, not a DR-0016 escalation.
+That is an orchestrator judgment and is recorded so it can be disagreed with.
+
+**Round 7 is DISPATCHED**, fresh implementer, beacon and freshness watchdog armed
+in the same turn. Scope is ordered CR-002 first on purpose: witnesses taken before
+a fix must redden against shipped code, while witnesses taken after get written to
+match the implementation. A measured starting point for CR-001 is recorded in
+`delivery/review/orchestrator-cr-001-fix-feasibility.md` as evidence rather than
+as an instruction; the implementer owes its own derivation.
+
+One item rides along and is not optional: a REGISTERED witness asserts an answer
+both parsers call wrong, requiring a setext heading's own text to be part of a
+unit its own fixture names as one that must not be a unit. No round found it
+because the test IS the specification, so nothing existed to contradict it. The
+correctness reviewer confirms the corrected assertion is right, against
+commonmark's own HTML renderer.
 
 Plan amendments the reviews ruled for are applied: criterion 1 was
 UNSATISFIABLE once its own phase's step 2 landed, because M3-P3 ships the
