@@ -26,6 +26,7 @@
  */
 
 import { readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
@@ -773,68 +774,267 @@ function normalizeProse(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/** A markdown list item: an ordered or unordered marker and the text after it. */
-const LIST_ITEM = /^(\s*)(?:[0-9]+[.)]|[-*+])\s+(.*)$/;
+/**
+ * A CommonMark source position: `[[startLine, startColumn], [endLine, endColumn]]`,
+ * every component ONE-BASED and INCLUSIVE, and the columns are CHARACTER offsets
+ * into the raw line rather than display columns.
+ *
+ * That last sentence is load-bearing and was measured, not assumed, because the
+ * library's own documentation says "column" and a display column would make every
+ * tab-indented slice below wrong by three characters. Measured against
+ * `commonmark` 0.31.2 on 2026-08-09, four shapes whose answers differ between the
+ * two readings:
+ *
+ *   "- item\n\n\tcontinuation with tab\n"  paragraph [[3,2],[3,22]]  -> slice(1)
+ *   "  - a\n\n\t  b\n"                      paragraph [[3,4],[3,4]]   -> slice(3)
+ *   "-\tTab after the marker and more.\n"  paragraph [[1,3],[1,32]]  -> slice(2)
+ *   ">\tquoted after tab\n"                paragraph [[1,3],[1,18]]  -> slice(2)
+ *
+ * Every one lands exactly on the first content character, which only a character
+ * offset does. The captures are in `delivery/work-history/m3-p3.md`.
+ */
+type SourcePosition = [[number, number], [number, number]];
 
 /**
- * A fenced code block delimiter: three or more backticks or tildes at any
- * indent. WIDER THAN COMMONMARK ON PURPOSE (which allows at most three spaces),
- * because every widening here excludes MORE text from the quotable set and the
- * only direction that can lose is the one that admits more.
+ * The part of `commonmark`'s AST this module reads, declared locally so that
+ * `@types/commonmark` is not a dependency. Six members, all of them structure:
+ * this module never reads `literal`, and that is the whole of DR-0022's A2
+ * versus A distinction (see `quotableUnits`).
  */
-const FENCE = /^\s*(`{3,}|~{3,})/;
+interface CommonMarkNode {
+  readonly type: string;
+  readonly sourcepos: SourcePosition;
+  readonly firstChild: CommonMarkNode | null;
+  readonly next: CommonMarkNode | null;
+}
+
+interface CommonMarkModule {
+  Parser: new () => { parse(input: string): CommonMarkNode };
+}
 
 /**
- * An ATX heading AT ANY INDENT. `^#` was the old predicate and is finding V-2:
- * an indented `#` line was not a heading to it, so the heading's own text
- * became quotable.
+ * `commonmark` IS LOADED LAZILY, FOR THE REASON `src/validate.ts` STATES AT
+ * LENGTH FOR `ajv` AND `yaml`, and it is not a style choice here either.
+ *
+ * `copyInstallation` in `test/scope-gate.test.ts` copies `src/` to a scratch
+ * location outside the repository and runs it there, where no `node_modules`
+ * sits above the copy. A top-level `import ... from "commonmark"` in this
+ * module makes that test fail with `ERR_MODULE_NOT_FOUND` at module load,
+ * before the condition it exists to exercise can happen. `createRequire` defers
+ * the resolution to the first record actually parsed.
  */
-const ATX_HEADING = /^\s*#/;
+const requireDependency = createRequire(import.meta.url);
+
+function commonMarkModule(): CommonMarkModule {
+  return requireDependency("commonmark") as CommonMarkModule;
+}
 
 /**
- * A setext underline: a run of `=`, or of two or more `-`, alone on its line.
- * It makes the block ABOVE it a heading, which is a property of the previous
- * block and is exactly what a line-at-a-time scanner cannot see. Two or more
- * `-`, not one, so a degenerate `-` bullet is not read as a heading underline.
+ * The block types whose own text belongs to NO quotable unit.
+ *
+ * Headings (ATX and setext are one node type here, which is the point), code
+ * blocks (fenced and indented, likewise), HTML blocks and thematic breaks.
+ * A link reference definition produces no node at all, so it needs no entry:
+ * the parser removes it before this walk ever sees the document.
  */
-const SETEXT_UNDERLINE = /^\s*(?:=+|-{2,})\s*$/;
+const NOT_QUOTABLE = new Set(["code_block", "heading", "html_block", "thematic_break"]);
 
-/** A thematic break of `*` or `_`. It separates blocks and is part of none. */
-const THEMATIC_BREAK = /^\s*(?:\*{3,}|_{3,})\s*$/;
+/**
+ * Whether a paragraph node still carries prose, asked STRUCTURALLY.
+ *
+ * A paragraph with NO inline children is a paragraph the parser emptied, and it
+ * is not a curiosity: `commonmark` 0.31.2 leaves exactly one behind, WITH ITS
+ * ORIGINAL `sourcepos` STILL SPANNING THE TEXT IT REMOVED. The shape is a link
+ * reference definition immediately followed by a setext underline of `-`:
+ *
+ *   "[zeta]: https://example.invalid/delta\n---\n"
+ *   renders <p></p><hr />, and the AST is
+ *     paragraph [[1,1],[1,37]] firstChild=null
+ *     thematic_break [[2,1],[2,3]]
+ *
+ * The setext-heading start rule strips leading reference definitions from the
+ * paragraph and then DECLINES to make a heading because nothing is left, so the
+ * document's own reference sweep never sees them (they are already gone) and
+ * never advances the start line the way it does in every other case. Slicing
+ * that paragraph's source yields the reference definition as a quotable unit,
+ * which is the fail-open direction.
+ *
+ * FOUND BY THE DIFFERENTIAL FUZZ, NOT BY READING: 13 divergences in 4,973
+ * adjudicated documents at seed 20260809, every one this shape. Both oracles
+ * agreed the correct answer is no unit at all. Recorded in
+ * `delivery/work-history/m3-p3.md` with the captures.
+ *
+ * This is a structure question and is answered with a structure test. Reading
+ * the inline text to decide would settle the same case and would be the first
+ * step back towards option A, which is the thing DR-0022 rules out.
+ */
+function carriesProse(paragraph: CommonMarkNode): boolean {
+  return paragraph.firstChild !== null;
+}
 
-/** Display width in columns, a tab counting as four (CommonMark's rule). */
-function columnWidth(text: string): number {
-  let columns = 0;
-  for (const character of text) {
-    columns += character === "\t" ? 4 : 1;
+/**
+ * The RAW SOURCE spanned by a node, as written, markup and all.
+ *
+ * `quoteDepth` is how many block quotes enclose the node. `sourcepos` gives the
+ * FIRST line a column past the `>` markers and says nothing about the node's
+ * CONTINUATION lines, which still carry theirs, so each continuation has up to
+ * that many markers stripped. Without it a two-line quoted paragraph comes back
+ * carrying a `>` in the middle of the unit. Measured on `commonmark` 0.31.2:
+ *
+ *   "> 1. an item in a quote\n>    continued here\n"
+ *   paragraph [[1,6],[2,19]], sliced naively: "an item in a quote >    continued here"
+ *
+ * A LAZY continuation line carries no marker at all, so the strip is written to
+ * be a no-op when the marker is absent rather than to assume it is present.
+ */
+/**
+ * Everything a slice may legitimately skip before a node's content: block quote
+ * markers, indentation, and at most one list marker. Anchored at both ends, so
+ * it is a test of the WHOLE skipped span and not a prefix match.
+ */
+const SKIPPABLE_PREFIX = /^(?:[ \t]*>[ \t]?)*[ \t]*(?:(?:[0-9]{1,9}[.)]|[-*+])[ \t]*)?$/;
+
+/**
+ * Where a node's content starts on its FIRST line, WITH THE START COLUMN
+ * VERIFIED RATHER THAN TRUSTED.
+ *
+ * `sourcepos[0][0]` is advanced past leading link reference definitions but
+ * `sourcepos[0][1]` IS NOT, so after that advance the column describes a line
+ * the node no longer starts on, and the two lines need not share a prefix. The
+ * measured shape is a reference definition inside a block quote followed by a
+ * LAZY continuation:
+ *
+ *   "> [eta]: https://example.invalid/theta\nepsilon eta.\n"
+ *   paragraph [[2,3],[2,12]]; line 2 is "epsilon eta.", 12 characters long.
+ *
+ * Column 3 came from `"> "` on line 1. Line 2 has no marker, so slicing from
+ * index 2 yields "silon eta." and the unit is CORRUPT, not merely wrong: it is
+ * a truncated string that no condition can ever equal, and the same defect one
+ * character further along would silently make a fragment quotable.
+ *
+ * FOUND BY THE DIFFERENTIAL FUZZ, and only after the empty-paragraph defect
+ * above was fixed, which is why one fuzz run is not a clearance. The list form
+ * ("- [a]: ...\nreal text here\n", paragraph [[2,3],[2,14]]) is a second,
+ * structurally different member: a list marker rather than a quote marker.
+ *
+ * The test is the invariant, not the symptom: whatever the column skips on the
+ * start line must BE a block prefix. When it is not, the column is describing
+ * some other line and this line's own quote markers are stripped instead,
+ * exactly as a continuation line's are.
+ */
+function startOffset(text: string, startColumn: number, quoteDepth: number): number {
+  const offset = startColumn - 1;
+  if (offset <= text.length && SKIPPABLE_PREFIX.test(text.slice(0, offset))) {
+    return offset;
   }
-  return columns;
+  let consumed = 0;
+  for (let level = 0; level < quoteDepth; level += 1) {
+    const marker = /^[ \t]*>[ \t]?/.exec(text.slice(consumed));
+    if (marker === null) {
+      break;
+    }
+    consumed += marker[0].length;
+  }
+  return consumed;
 }
 
-/** Leading indentation in columns. */
-function indentColumns(line: string): number {
-  return columnWidth(/^[ \t]*/.exec(line)?.[0] ?? "");
-}
-
-/** An open fenced block: which delimiter opened it, and how long that run was. */
-interface OpenFence {
-  marker: string;
-  length: number;
-}
-
-/** Whether `line` closes `open`: the same character, in a run at least as long. */
-function closesFence(line: string, open: OpenFence): boolean {
-  const closing = FENCE.exec(line);
-  return (
-    closing !== null &&
-    (closing[1] as string)[0] === open.marker &&
-    (closing[1] as string).length >= open.length
-  );
+function sourceSlice(
+  lines: readonly string[],
+  position: SourcePosition,
+  quoteDepth: number,
+): string {
+  const [[startLine, startColumn], [endLine, endColumn]] = position;
+  const pieces: string[] = [];
+  for (let line = startLine; line <= endLine; line += 1) {
+    const text = lines[line - 1] ?? "";
+    const from = line === startLine ? startOffset(text, startColumn, quoteDepth) : 0;
+    const to = line === endLine ? endColumn : text.length;
+    let piece = text.slice(from, to);
+    if (line !== startLine) {
+      for (let level = 0; level < quoteDepth; level += 1) {
+        piece = piece.replace(/^[ \t]*>[ \t]?/, "");
+      }
+    }
+    pieces.push(piece);
+  }
+  return pieces.join(" ");
 }
 
 /**
- * The QUOTABLE UNITS of a prose record: every list item and every paragraph,
- * each with its marker stripped and its whitespace normalized.
+ * Every paragraph beneath `container`, in document order, joined into one
+ * string. This is what makes a LIST ITEM'S UNIT THE WHOLE ITEM: its
+ * continuation paragraphs and its nested sub-items are descendants, so they
+ * join the item rather than standing alone, and its headings, fences, indented
+ * code and rules are skipped by `NOT_QUOTABLE` without ending anything.
+ *
+ * Nested lists are deliberately NOT in `NOT_QUOTABLE`: the walk descends into
+ * them, which is what glues a sub-item into the item that encloses it.
+ */
+function paragraphsBeneath(
+  container: CommonMarkNode,
+  lines: readonly string[],
+  quoteDepth: number,
+): string {
+  const parts: string[] = [];
+  const visit = (node: CommonMarkNode, depth: number): void => {
+    for (let child = node.firstChild; child !== null; child = child.next) {
+      if (child.type === "paragraph") {
+        if (carriesProse(child)) {
+          parts.push(sourceSlice(lines, child.sourcepos, depth));
+        }
+      } else if (!NOT_QUOTABLE.has(child.type)) {
+        visit(child, child.type === "block_quote" ? depth + 1 : depth);
+      }
+    }
+  };
+  visit(container, quoteDepth);
+  return normalizeProse(parts.join(" "));
+}
+
+/**
+ * Walk one container's CHILDREN and add the units they carry.
+ *
+ * A paragraph is a unit. A list contributes one unit per OUTERMOST item. A
+ * block quote's contents are treated exactly like the document's, which is a
+ * DECLARED POLICY CHOICE and not a derivation: "nothing inside a block quote is
+ * quotable" is equally defensible, and both are defensible where the behaviour
+ * this replaces was neither, because it admitted the marker-carrying string
+ * `> A quoted sentence` while rejecting the same sentence without its marker.
+ * Flipping the policy is this one branch.
+ */
+function collectUnits(
+  node: CommonMarkNode,
+  lines: readonly string[],
+  units: Set<string>,
+  quoteDepth: number,
+): void {
+  for (let child = node.firstChild; child !== null; child = child.next) {
+    if (child.type === "paragraph") {
+      const unit = carriesProse(child)
+        ? normalizeProse(sourceSlice(lines, child.sourcepos, quoteDepth))
+        : "";
+      if (unit !== "") {
+        units.add(unit);
+      }
+    } else if (child.type === "list") {
+      for (let item = child.firstChild; item !== null; item = item.next) {
+        const unit = paragraphsBeneath(item, lines, quoteDepth);
+        if (unit !== "") {
+          units.add(unit);
+        }
+      }
+    } else if (child.type === "block_quote") {
+      collectUnits(child, lines, units, quoteDepth + 1);
+    } else if (!NOT_QUOTABLE.has(child.type)) {
+      collectUnits(child, lines, units, quoteDepth);
+    }
+  }
+}
+
+/**
+ * The QUOTABLE UNITS of a prose record: every top-level PARAGRAPH and every
+ * OUTERMOST LIST ITEM, each with its marker stripped and its whitespace
+ * normalized.
  *
  * WHY THIS EXISTS, and it is the whole of fix round 2. The first version of
  * this check asked whether each condition OCCURRED ANYWHERE in the record, as
@@ -863,267 +1063,90 @@ function closesFence(line: string, open: OpenFence): boolean {
  * summarized" already claimed to mean, and it is now enforced rather than
  * asserted.
  *
- * FIX ROUND 3 REWROTE THE EXTRACTOR, and the reason is worth more than the
- * three findings that produced it. The previous version decided each line's
- * meaning FROM THAT LINE ALONE. Markdown does not work that way: whether a line
- * is prose depends on which block encloses it. So the loop treated the fence
- * MARKER as a separator and let the fenced CONTENT through as ordinary prose
- * (V-1, demonstrated end to end: a decision record whose code fence held an
- * illustrative sentence let a mode's merge-authority condition be satisfied by
- * that example, `tiphys validate` exit 0, zero diagnostics), and it recognised
- * a heading only at column zero (V-2), and it modelled no other block form at
- * all. The comment that used to sit in the loop said "a condition can never
- * match a heading or a fence", which was STRONGER THAN THE CODE and is how the
- * next reader stops checking.
- *
- * What is modelled now, explicitly, as block state carried across lines:
- * fenced code (content contributes nothing), indented code (same), ATX
- * headings at any indent, setext headings (a property of the block ABOVE the
- * underline, invisible to any one-line rule), thematic breaks, list items with
- * ALL of their content, and paragraphs.
- *
- * A LIST ITEM'S UNIT IS THE WHOLE ITEM, which is fix round 4 and which the
- * round-3 version got wrong. An item's continuation paragraphs and its nested
- * sub-items are CONTENT OF THE ITEM in CommonMark, so emitting them as units of
- * their own left the item's FIRST PARAGRAPH standing as a whole unit while the
- * item itself carried more, which is a fragment passing as a whole quote: the
- * defect this check exists to prevent, arriving through the extractor. It was
- * live: `delivery/decisions/DR-0004-elevated-permissions.md` has the shape (an
- * item, a blank, then its commands indented under it) and
+ * A LIST ITEM'S UNIT IS THE WHOLE ITEM. An item's continuation paragraphs and
+ * its nested sub-items are CONTENT OF THE ITEM in CommonMark, so emitting them
+ * as units of their own would leave the item's FIRST PARAGRAPH standing as a
+ * whole unit while the item itself carried more, which is a fragment passing as
+ * a whole quote: the defect this check exists to prevent, arriving through the
+ * extractor. It is live in this repository:
+ * `delivery/decisions/DR-0004-elevated-permissions.md` has the shape (an item,
+ * a blank, then its commands indented under it) and
  * `delivery/decisions/DR-0013-schema-validator-implementation.md` has the
  * nested-list form. THE COST, stated because it is real: a nested sub-item is
  * not separately quotable, so a record whose conditions are sub-bullets must
  * quote the enclosing item whole.
  *
- * WHERE MARKDOWN IS AMBIGUOUS, THE RESOLUTION IS TOWARDS FEWER AND LONGER
- * UNITS, because the two directions are not symmetric. Excluding a unit that
- * should have been quotable makes a legitimate condition fail to match, which
- * is a loud diagnostic naming the condition. Admitting one that should not be
- * makes a fabricated condition pass, which is silent and is the whole hazard.
- * So: a fence at any indent opens, an unclosed fence swallows the rest of the
- * document, `#` at any indent is a heading, a paragraph followed by a setext
- * underline is discarded, and everything nested inside a list item joins it.
+ * ------------------------------------------------------------------
+ * THE BLOCK STRUCTURE IS READ FROM A COMMONMARK PARSER (DR-0022, owner
+ * decision, option A2). THE TEXT IS SLICED FROM THE ORIGINAL SOURCE.
+ * ------------------------------------------------------------------
  *
- * THAT SENTENCE IS NOT UNIVERSAL AND THE EXCEPTIONS ARE NAMED HERE, because the
- * round-3 version of it was written as universal and was falsified within the
- * round by the list-continuation case above. It governs AMBIGUOUS structure
- * only. Where markdown is unambiguous the extractor follows markdown, and that
- * really does split: a blank line between two top-level paragraphs, a thematic
- * break, and two sibling list items each end a unit.
+ * What stood here until 2026-08-09 was a HAND-ROLLED CommonMark block parser:
+ * a line loop carrying fence state, indented-code state, a list content column
+ * and a deferred-blank flag, with six sites that could end a unit. It took FIVE
+ * fix rounds and produced FIVE defects, the fifth a regression of a shape the
+ * fourth had correct. The owner's decision records the measurement that ended
+ * it: against two independent conformant parsers over 15,000 generated
+ * documents, the hand-rolled loop agreed on about 35 per cent of them.
  *
- * AND IT DOES NOT HOLD AT ALL FOR THE BLOCK FORMS THAT ARE NOT MODELLED: block
- * quotes (a `> ` line keeps its marker, so quoting one requires quoting the
- * marker too, which is mitigation and not exclusion), HTML blocks, tables, and
- * link reference definitions. Their content is admitted as ordinary prose,
- * which is the INCLUDING direction, and each is the same shape as V-1 at a
- * different block form. Measured 2026-08-09: no decision record in this
- * repository uses any of them (`grep -clP '^\s*>' delivery/decisions/*.md`
- * returns nothing), so all four are latent here in the way V-1 was.
- * `delivery/work-history/m3-p3.md` records the derivation that enumerated them
- * and why they are not closed here.
+ * The reason the rounds could not converge is worth keeping, because it is a
+ * property of the problem and not of the agents. Whether a line is prose
+ * depends on which block encloses it, and which block encloses it depends on
+ * lines above and sometimes below (a setext underline retroactively makes the
+ * block above it a heading). A loop that decides one line at a time is
+ * reconstructing a parser, and every reconstruction has to be kept in agreement
+ * with the reference BY HAND, with no mechanism that detects divergence. That
+ * is the "guard narrower than the property" family, and this repository has now
+ * recorded it five times in this one function.
  *
- * IF ANY OF THOSE FOUR IS EVER MODELLED, IT INHERITS THE V-4 QUESTION AND MUST
- * ANSWER IT IN THE SAME BREATH. V-4 was not "fences are handled wrongly": it was
- * that four line types ended a unit WITHOUT ASKING whether a list item was open,
- * so an interrupter inside an item split the item and left each half standing as
- * a whole quote. Any new block form added to this loop will need the same two
- * decisions, and a reviewer should refuse a patch that makes only the first:
- *   (a) does its own text belong to a unit (for all four current interrupters,
- *       no), and
- *   (b) does encountering it END the unit in progress, or is it CONTENT of an
- *       open list item (for all four, content, via `continuesListItem`)?
- * The rule is that (b) is never answered by omission. A new `flush()` call in
- * this loop that does not consult `continuesListItem` is V-4 again.
+ * TWO OF THE ELEVEN FINDINGS ACROSS THOSE ROUNDS WERE NOT DEFECTS AT ALL. V-3
+ * ("adjacent paragraphs merge") and the fifth member of V-5 (a nested sub-item
+ * followed by a dedented line) were both cases where a hand-reading of markdown
+ * disagreed with CommonMark and the HAND-READING WAS WRONG: lazy continuation
+ * makes both fusions correct. A round can only find defects it already believes
+ * in, which is the other half of the cost.
+ *
+ * WHY `sourcepos` SLICING AND NOT THE PARSER'S INLINE TEXT, which is the whole
+ * of A2 versus A and is the single most expensive detail here. Walking the AST
+ * and reading each paragraph's inline text is the obvious implementation and it
+ * SILENTLY CHANGES THE SHIPPED CONTRACT, because inline text drops markup:
+ * `` `delivery/review/` `` becomes `delivery/review/`. DR-0012's first
+ * merge-authority condition contains exactly that, so `assurance-modes.yaml`
+ * stops resolving, and 11 of this repository's 19 decision records produce
+ * different unit sets. Slicing the ORIGINAL SOURCE by the parser's own
+ * `sourcepos` offsets keeps the bytes as written, which is what every existing
+ * record and every existing condition relies on.
+ *
+ * SO: this function reads the parser for STRUCTURE ONLY. It never reads
+ * `literal` and never concatenates inline nodes, and a change that starts doing
+ * either is option A, which is a defect. `CommonMarkNode` above declares six
+ * members and none of them is inline text, so the type is the guard.
+ *
+ * WHAT THE FOUR PREVIOUSLY UNMODELLED BLOCK FORMS DO NOW, since the old
+ * docstring listed them as latent hazards:
+ *   - block quote: its contents are treated like the document's, so the quoted
+ *     paragraph is a unit and the `>` marker is NOT part of it. This is a
+ *     DECLARED POLICY CHOICE (see `collectUnits`), not a derivation.
+ *   - HTML block: excluded, like any other non-prose block.
+ *   - link reference definition: excluded, and by construction rather than by a
+ *     rule, because the parser removes it before this walk sees the document.
+ *   - pipe table: never was a hazard. CommonMark core has no tables, so a table
+ *     IS a paragraph and treating its lines as prose is correct.
+ *
+ * WHERE THIS IS STILL NOT AN ORACLE: it is right in the sense of "agrees with
+ * `commonmark` 0.31.2". Two conformant CommonMark implementations disagree on
+ * roughly half a per cent of generated documents (an indented line immediately
+ * after a link reference definition is the measured instance), and any
+ * structure-reading option inherits that.
  */
 export function quotableUnits(text: string): Set<string> {
+  /* SPLIT ON THE SAME LINE ENDINGS THE PARSER DOES. `sourcepos` line numbers
+     index the parser's own line array, so splitting on "\n" alone would put
+     every slice on the wrong line in a document using lone CR. */
+  const lines = text.split(/\r\n|\n|\r/);
+  const { Parser } = commonMarkModule();
   const units = new Set<string>();
-  let current: string[] = [];
-  let currentIsListItem = false;
-  /* THE BLOCK STATE. Every field here exists because the property it holds is
-     not readable from the line in front of the loop. */
-  let fence: OpenFence | null = null;
-  let inIndentedCode = false;
-  let listContentColumn: number | null = null;
-  /* A BLANK LINE IS NOT ALWAYS A UNIT BOUNDARY, which is fix round 4. Inside a
-     list item a blank separates two PARAGRAPHS OF THE SAME ITEM, and the item
-     is the quotable unit, so the blank is remembered rather than acted on and
-     the decision is taken when the next content line says what the blank
-     meant. */
-  let blankPending = false;
-
-  const flush = (): void => {
-    const collected = current;
-    current = [];
-    currentIsListItem = false;
-    blankPending = false;
-    if (collected.length === 0) {
-      return;
-    }
-    const unit = normalizeProse(collected.join(" "));
-    if (unit !== "") {
-      units.add(unit);
-    }
-  };
-  /* DISCARD, not flush: the block turned out to be a heading, so it belongs to
-     no unit at all. Keeping this separate from flush is what makes a setext
-     heading distinguishable from a paragraph that happens to precede a rule. */
-  const discard = (): void => {
-    current = [];
-    currentIsListItem = false;
-    blankPending = false;
-  };
-  /**
-   * Whether a line at this indent is CONTENT of the list item currently open,
-   * rather than a block that ends it.
-   *
-   * THIS IS THE WHOLE OF V-4. Four line types (a fence, an ATX heading, a setext
-   * underline, a thematic break) used to call `flush()` without asking, so an
-   * interrupter INSIDE an item split the item and left each half standing as a
-   * whole quotable unit. The blank-line case and the nested-marker case had
-   * already been fixed the same way and these four had not, which is one
-   * mechanism fixed at two of its six sites.
-   *
-   * THE THRESHOLD IS `indent > 0`, NOT `indent >= listContentColumn`, and the
-   * choice is deliberate. CommonMark would require content-column indentation,
-   * so a fence at column 1 under an item whose content starts at column 3 is
-   * strictly a new block. Treating it as item content instead keeps the unit
-   * longer, which is the safe direction, AND it is the same threshold the
-   * paragraph path already uses to decide that a list has ended. Two different
-   * thresholds for one question is how the next defect gets written.
-   */
-  const continuesListItem = (indent: number): boolean =>
-    listContentColumn !== null && indent > 0;
-
-  for (const raw of text.split("\n")) {
-    const line = raw.replace(/\r$/, "");
-
-    if (fence !== null) {
-      /* INSIDE A FENCE. Nothing here is prose, including a line that looks
-         exactly like a condition, and THE `continue` IS THE WHOLE OF V-1: the
-         previous extractor reached this line and fell through to the paragraph
-         handling below it. */
-      if (closesFence(line, fence)) {
-        fence = null;
-      }
-      continue;
-    }
-
-    if (inIndentedCode) {
-      const threshold = (listContentColumn ?? 0) + 4;
-      if (line.trim() === "" || indentColumns(line) >= threshold) {
-        continue;
-      }
-      inIndentedCode = false;
-    }
-
-    if (line.trim() === "") {
-      /* INSIDE AN OPEN LIST ITEM the blank is deferred: it may separate two
-         paragraphs of this item, or it may end the list, and only the next
-         content line's indent says which. Deciding here is what made a
-         continuation paragraph an independent quotable unit. */
-      if (listContentColumn === null) {
-        flush();
-      } else {
-        blankPending = true;
-      }
-      continue;
-    }
-
-    const opening = FENCE.exec(line);
-    if (opening !== null) {
-      if (continuesListItem(indentColumns(line))) {
-        /* SITE 2: a fenced block inside the item. Its content is still excluded
-           by the fence state above; what changes is that the item stays open. */
-        blankPending = false;
-      } else {
-        flush();
-      }
-      fence = { marker: (opening[1] as string)[0] as string, length: (opening[1] as string).length };
-      continue;
-    }
-
-    if (ATX_HEADING.test(line)) {
-      if (continuesListItem(indentColumns(line))) {
-        /* SITE 3: an aside heading inside the item. It belongs to no unit, as
-           at top level, and it ends none. */
-        blankPending = false;
-        continue;
-      }
-      flush();
-      listContentColumn = null;
-      continue;
-    }
-
-    if (SETEXT_UNDERLINE.test(line)) {
-      if (continuesListItem(indentColumns(line))) {
-        /* SITE 4: a setext underline inside the item. It belongs to no unit and
-           it ends none; the item's text on both sides of it stays one unit. */
-        blankPending = false;
-        continue;
-      }
-      if (currentIsListItem) {
-        flush();
-      } else {
-        discard();
-      }
-      listContentColumn = null;
-      continue;
-    }
-
-    if (THEMATIC_BREAK.test(line)) {
-      if (continuesListItem(indentColumns(line))) {
-        /* SITE 5: a rule inside the item. It belongs to no unit and ends none. */
-        blankPending = false;
-        continue;
-      }
-      flush();
-      listContentColumn = null;
-      continue;
-    }
-
-    const item = LIST_ITEM.exec(line);
-    if (item !== null) {
-      const markerIndent = columnWidth(item[1] as string);
-      if (listContentColumn !== null && markerIndent >= listContentColumn) {
-        /* A NESTED item is CONTENT of the item that encloses it, exactly as a
-           continuation paragraph is. Gluing it in is what stops the enclosing
-           item's first paragraph from being a whole unit while the item itself
-           carries more. The cost is stated in the docstring: a sub-item is not
-           separately quotable. */
-        blankPending = false;
-        current.push(item[2] as string);
-        continue;
-      }
-      flush();
-      listContentColumn = columnWidth(line.slice(0, line.length - (item[2] as string).length));
-      currentIsListItem = true;
-      current.push(item[2] as string);
-      continue;
-    }
-
-    const indent = indentColumns(line);
-    /* A BLOCK BOUNDARY is an empty accumulator OR a deferred blank line, and
-       only at a boundary does this line's indent decide anything. In the middle
-       of a block it is a lazy continuation and belongs to the block in
-       progress. */
-    const atBoundary = current.length === 0 || blankPending;
-    if (atBoundary && listContentColumn !== null && indent === 0) {
-      /* THE LIST ENDED. A top-level line after a blank is a new block, not more
-         of the item, so the item's unit closes here. */
-      flush();
-      listContentColumn = null;
-    }
-    if (atBoundary && indent >= (listContentColumn ?? 0) + 4) {
-      inIndentedCode = true;
-      blankPending = false;
-      continue;
-    }
-    /* Everything left is content of the block in progress: the item's second
-       paragraph, its lazy continuation, or an ordinary paragraph. */
-    blankPending = false;
-    current.push(line);
-  }
-  flush();
+  collectUnits(new Parser().parse(text), lines, units, 0);
   return units;
 }
 
