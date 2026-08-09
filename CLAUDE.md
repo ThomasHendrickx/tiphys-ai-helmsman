@@ -77,9 +77,32 @@ artifact behind it is treated as unknown.
    that is TWO checks because one grep cannot do both:
 
    ```
-   grep -rP '[^\x00-\x7F]' <paths>                    # non-ASCII
-   grep -rP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
+   grep -raP '[^\x00-\x7F]' <paths>                    # non-ASCII
+   grep -raP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
    ```
+
+   **The `-a` is LOAD-BEARING and its absence is why the second check was
+   itself blind until 2026-08-09.** Without `-a`, GNU grep detects a file
+   containing NUL as binary and stops reporting matches from it, so the check
+   silently skips exactly the file it exists to catch. Measured, GNU grep 3.11,
+   one byte per fixture:
+
+   | fixture | `grep -qP` | `grep -qaP` |
+   |---|---|---|
+   | `hello\x00world` | **MISSED** | detected |
+   | `hello\x01world` | detected | detected |
+   | `hello\x1bworld` | detected | detected |
+   | `hello world` | miss (correct) | miss (correct) |
+
+   NUL is the one byte it cannot see, and NUL is the one that makes git call a
+   source file binary and strip its diff. `test/status.test.ts` was caught in
+   the incident below only because it ALSO carried SOH. Two files were then
+   found on `main` that the fixed check catches and the old one did not, one of
+   them `delivery/review/arbitration-m3-p1.md`, which is the document that RULED
+   on that incident: its sentence saying control characters belong in escapes
+   contained a literal NUL inside the backticks meant to hold the escape. Every
+   "ASCII clean" report since, the orchestrator's and CI's alike, was true and
+   useless. Recorded as `delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md`.
 
    The first check ALONE is what this repository used until 2026-08-08, and it
    is blind to control characters BY CONSTRUCTION: `NUL`, `SOH` and friends are
@@ -513,6 +536,45 @@ Each of these bit someone once. Forward them to every implementer.
     forced contention (delivery/tuition/T-003).
 11. Suite wall time grows with real-clock lease waits. Budget harness
     timeouts accordingly rather than shortening the waits.
+
+## The orchestrator does not decide when it is finished (binding)
+
+Measured 2026-08-08 and 2026-08-09: the orchestrator stopped mid-milestone
+THREE times while the owner was asleep and had asked for exactly the opposite.
+Each stop was a JUDGMENT ("nothing appears to be in flight", "I have reported,
+so I am done") presented as a status report, and each time a report was
+mistaken for a deliverable.
+
+Two separate defects, and fixing either alone leaves the other:
+
+1. **The keep-going mechanism was not durable.** `CronCreate` jobs are
+   in-memory and session-only, so they die with the session. One was armed,
+   VERIFIED PRESENT, and reported to the owner as safety; it then vanished
+   twice, silently. Verifying a thing once says nothing about it an hour later.
+2. **Even when the kick fired, the orchestrator decided whether work existed.**
+   A prompt that asks "is there anything to do?" can be answered "no". That is
+   the false stop, and it is the one that kept recurring.
+
+**The mechanism, and it is two layers because one is not enough:**
+
+- `.claude/orchestrator-next.mjs` computes the stop condition from git and
+  files, never from conversation memory: which phases are merged, which
+  branches are pushed and unmerged, which worktrees are stale by mtime. It
+  prints ONE next action and **exits nonzero whenever work remains**. A nonzero
+  exit is a fact that cannot be reported around. It also prints what it CANNOT
+  see (open PRs, CI conclusions, post-merge push runs) rather than letting an
+  absence of network read as an absence of work.
+- A server-side Routine (`create_trigger`, hourly, the durable floor) whose
+  FIRST step is to re-create the in-memory 20-minute kick if it is missing.
+  The durable layer resurrects the fast one. Neither interval alone works:
+  Routines have a one-hour minimum, and `CronCreate` does not survive a
+  session.
+
+**None of these is a reason to stop, and every one has been used:** having just
+answered the owner (answering is an interruption to the work, not the end of
+it), having just written a status report, a subagent being in flight (verify
+its beacon, then do orchestrator work meanwhile), or something looking blocked
+(name the blocker in one line and do everything that is not blocked).
 
 ## Never
 
