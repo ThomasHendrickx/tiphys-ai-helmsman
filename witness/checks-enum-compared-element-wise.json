@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  if (left.length !== right.length) {\n    return false;\n  }\n  return left.every((value, index) => value === right[index]);",
-      "replace": "  return left.length === right.length;"
+      "find": "      if (!sameStringList(enumerated, declaredIds)) {",
+      "replace": "      if (enumerated.length !== declaredIds.length) {"
     }
   ],
   "deterministic": true,
