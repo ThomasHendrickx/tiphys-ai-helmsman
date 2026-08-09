@@ -537,6 +537,45 @@ Each of these bit someone once. Forward them to every implementer.
 11. Suite wall time grows with real-clock lease waits. Budget harness
     timeouts accordingly rather than shortening the waits.
 
+## The orchestrator does not decide when it is finished (binding)
+
+Measured 2026-08-08 and 2026-08-09: the orchestrator stopped mid-milestone
+THREE times while the owner was asleep and had asked for exactly the opposite.
+Each stop was a JUDGMENT ("nothing appears to be in flight", "I have reported,
+so I am done") presented as a status report, and each time a report was
+mistaken for a deliverable.
+
+Two separate defects, and fixing either alone leaves the other:
+
+1. **The keep-going mechanism was not durable.** `CronCreate` jobs are
+   in-memory and session-only, so they die with the session. One was armed,
+   VERIFIED PRESENT, and reported to the owner as safety; it then vanished
+   twice, silently. Verifying a thing once says nothing about it an hour later.
+2. **Even when the kick fired, the orchestrator decided whether work existed.**
+   A prompt that asks "is there anything to do?" can be answered "no". That is
+   the false stop, and it is the one that kept recurring.
+
+**The mechanism, and it is two layers because one is not enough:**
+
+- `.claude/orchestrator-next.mjs` computes the stop condition from git and
+  files, never from conversation memory: which phases are merged, which
+  branches are pushed and unmerged, which worktrees are stale by mtime. It
+  prints ONE next action and **exits nonzero whenever work remains**. A nonzero
+  exit is a fact that cannot be reported around. It also prints what it CANNOT
+  see (open PRs, CI conclusions, post-merge push runs) rather than letting an
+  absence of network read as an absence of work.
+- A server-side Routine (`create_trigger`, hourly, the durable floor) whose
+  FIRST step is to re-create the in-memory 20-minute kick if it is missing.
+  The durable layer resurrects the fast one. Neither interval alone works:
+  Routines have a one-hour minimum, and `CronCreate` does not survive a
+  session.
+
+**None of these is a reason to stop, and every one has been used:** having just
+answered the owner (answering is an interruption to the work, not the end of
+it), having just written a status report, a subagent being in flight (verify
+its beacon, then do orchestrator work meanwhile), or something looking blocked
+(name the blocker in one line and do everything that is not blocked).
+
 ## Never
 
 - Never push to `main` directly; never merge your own work.
