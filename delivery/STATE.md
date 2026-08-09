@@ -134,8 +134,46 @@ modelled and bound five phases to.
 | M3 plan revision 3 + review chain | merged, #36 |
 | A-n namespace registered | merged, #35 |
 | M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
-| M3-P1 schemas and validator | PR #39 open, fix round 1 after dual review |
-| M3-P2 to M3-P10 | not dispatched |
+| M3-P1 schemas and validator | MERGED #39 |
+| M3-P2 canonical gate registry | MERGED #48 |
+| M3-P3 assurance modes | PR #54 open, under DR-0016 (see below) |
+| M3-P4 to M3-P10 | not dispatched |
+
+### M3-P3 status, 2026-08-09
+
+Dual clean-room review of `7b3afbf` (criteria and hazard lenses, different model
+families) returned CHANGES REQUIRED from both: ten findings, four high, no
+disagreements. Arbitration in `delivery/review/arbitration-m3-p3.md`.
+
+Two fix rounds closed the four mechanisms, each verified by the orchestrator
+re-running the reviewers' own exploits rather than reading the reports.
+Independent delta verification then found one MEDIUM plus two low in
+`quotableUnits()`, the helper round 2 introduced.
+
+**A medium blocks merge under DR-0012 condition 2**, and two fix rounds is the
+limit, so **DR-0016 applied**: a FRESH implementer and a THIRD review contract
+were dispatched immediately rather than the phase waiting on the owner. Both
+have reported.
+
+The third contract was given the CONSUMER LENS, a framing neither earlier
+reviewer had: it built a scratch consuming project outside this repository and
+pointed the shipped tools at it, which both earlier reviews had recorded under
+their own non-coverage as undone. **It found two highs neither of them found**,
+and they are decided in `delivery/decisions/DR-0019-closed-vocabulary-at-v0-1-0.md`
+rather than fixed: the vocabularies ship CLOSED at v0.1.0, because widening a
+closed enum later is backward compatible while closing an open one later is
+breaking. That decision is ORCHESTRATOR-made under DR-0016 and DR-0015, is
+reported to the owner unasked, and is reversible by the owner.
+
+Round 3 (the fresh implementer) is at `6a36b38` and is under independent delta
+verification now. It replaced the line-scanning extractor with a block-state
+machine, and the mechanism predicted two shapes nobody had named (indented code
+blocks and tilde fences), both of which were real.
+
+Plan amendments the reviews ruled for are applied: criterion 1 was
+UNSATISFIABLE once its own phase's step 2 landed, because M3-P3 ships the
+repository's first two `requiresContext` checks; criterion 4's "update the enum"
+is four coordinated edits.
 
 **M3 prerequisites (#38) were two blocking escalations the M3-P1 implementer
 raised and did not improvise around.** The ten `delivery/plan/phase-declarations/m3-pN.json`
@@ -382,6 +420,35 @@ and `A-3` meant three, one of them a literal string inside
    allocated id, which is the point of naming a sole allocator.
 
 ## Tracked obligations, sequenced
+
+- **BLOCKING ON M3-P10: `package.json` must reach `version` 0.1.0.** M3-P3's
+  five shipped `$comment` disclosures name v0.1.0 (DR-0019), while
+  `package.json` declares `"version": "0.0.0"`. M3-P10 step 1
+  (delivery/plan/kernel-plan-m3.md:4823) makes it true, so the forward
+  reference is correct AS LONG AS that step happens. If M3-P10 ships without
+  the bump, a package declaring 0.0.0 carries five present-tense claims about
+  a version that does not exist, which is tuition T-006's exact shape. Nothing
+  mechanical checks this today; if M3-P10 can make it checkable cheaply, it
+  should. Raised by the M3-P3 fresh implementer, which handed it back rather
+  than resolving it because neither side is on its declaration.
+
+- **The two-member witness rule is enforced on a strict subset of what it is
+  written as.** CLAUDE.md states it without qualification; `src/witness/run.ts`
+  gates it on `spec.class === "classification" || derivation.textAsserting`, so
+  an `additive` spec may declare two members that collapse to one with the gate
+  green. Measured by the delta verifier: 22 of 43 specs exempt, 4 single-member,
+  2 of those without a good excuse. Full record and the reason it is NOT being
+  fixed in passing: `delivery/verification/red-witness-rule-g-exemption.md`. The
+  guard is not wrong, it is narrower than its own statement, and which reading is
+  right decides whether the fix belongs in the gate or in the sentence.
+
+- **Two other sites carry the block-state mechanism M3-P3 round 3 fixed**, both
+  reported with reproductions and neither edited because both are other phases'
+  files: `src/gates/coverage.ts` `extractIdRows` admitted a fenced table row, and
+  `scripts/check-clause-map.mjs` `parseInventory` admitted a fenced inventory row.
+  The second compounds with the containment defect already reported at line 195
+  of that same file. Awaiting independent confirmation by the round-3 delta
+  verifier before being assigned.
 
 - **`scripts/m2-exit-test.sh` is a structural bottleneck and is on no
   gate-adding phase's declaration.** It is the SINGLE caller of `gates run`

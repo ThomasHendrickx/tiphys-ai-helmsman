@@ -2507,8 +2507,27 @@ hazard it is matched to.
   table), `src/checks.ts` (edit, register this phase's derived checks),
   `src/cli.ts` (edit), `package.json` (edit, files entry).
 - acceptance criteria:
-  1. `tiphys validate --type assurance-modes assurance-modes.yaml` exits 0, and
-     the same for `role-model-config.yaml`.
+  1. `tiphys validate --type assurance-modes --context . assurance-modes.yaml`
+     exits 0, and the same for `role-model-config.yaml`.
+     **AMENDED 2026-08-09, and the amendment is the point rather than a
+     typo fix.** This criterion originally omitted `--context`, and as written it
+     was UNSATISFIABLE the moment step 2 of this same phase landed. Section 2.3's
+     standing rule (line 946) is that a derived check needing a context it was
+     not given reports `SKIPPED <check-id> no context` and the command exits
+     NONZERO, precisely so a cross-document rule cannot pass by not being run.
+     M3-P3 ships the repository's FIRST TWO `requiresContext: true` checks
+     (`mode-gate-sets-resolve` and `charter-mode-enum-matches-modes`), so the
+     convention every earlier criterion 1 was written against stopped holding
+     inside this phase, and criterion 1 contradicted both the standing rule and
+     the phase's own hazard-to-criterion map, which requires those checks to be
+     context-requiring.
+     The implementer found the contradiction, took the hazard-covering reading,
+     asserted BOTH forms rather than choosing quietly, and referred it up. The
+     criteria-lens clean-room reviewer ruled the PLAN wrong and the
+     implementation right (`delivery/review/arbitration-m3-p3.md`, mechanism 5).
+     Recorded here rather than silently corrected, because a criterion that a
+     phase cannot satisfy is a plan defect and the next phase to add a
+     context-requiring check needs to know the class exists.
   2. `tiphys mode show --mode full` exits 0 and prints exactly the twelve stage
      ids of step 2 in order; `--mode direct-pr` and `--mode local-only` exit 0
      and each print a `skips` list that is non-empty.
@@ -2530,6 +2549,15 @@ hazard it is matched to.
      to `assurance-modes.yaml` without updating the charter schema's enum makes
      `charter-mode-enum-matches-modes` exit 1 naming both files; updating the
      enum returns exit 0 (Kind B, both directions).
+     **AMENDED 2026-08-09.** "Updating the enum" reads as ONE edit and is FOUR
+     coordinated ones, which the criteria-lens reviewer measured while walking
+     this criterion (finding A-005). The charter schema carries the same enum on
+     BOTH `delivery-mode` and `assurance-tier`, and the added mode must also be
+     declared in `assurance-modes.yaml` and reachable by `mode show`. A reader
+     budgeting one edit will leave the sibling field behind, and a check watching
+     only one field would not catch it, which is why the phase's implementation
+     watches both. Stated here so the next phase adding a mode id knows the real
+     shape of the change.
   4b. A mode with `merge-authority: delegated-under-conditions` and an empty
      `conditions[]` or a missing `granted-by` exits 1 naming the field; the same
      mode carrying DR-0012's six conditions and its record reference exits 0
