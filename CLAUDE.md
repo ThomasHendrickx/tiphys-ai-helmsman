@@ -556,6 +556,40 @@ Each of these bit someone once. Forward them to every implementer.
     forced contention (delivery/tuition/T-003).
 11. Suite wall time grows with real-clock lease waits. Budget harness
     timeouts accordingly rather than shortening the waits.
+12. **Running the suite without building first SILENTLY SKIPS NINE TESTS, and
+    the run still exits 0.** Warning 1 says correctly that the suite needs no
+    prior build to RUN; that is true and it is not the whole story. Nine tests
+    exercise the built CLI and skip themselves when `dist/` is absent: five in
+    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts`, each skip message
+    naming the dist entry it wanted. Measured 2026-08-09 on node v26.6.0, same
+    head, both arms exit 0:
+
+    | state | reported |
+    |---|---|
+    | `dist/` built | 504 tests, 504 pass, **0 skipped** |
+    | `rm -rf dist` | 504 tests, 495 pass, **9 skipped** |
+
+    This is why two honest agents reported different totals for the same commit
+    and neither was wrong: the gate order in this file runs `npm run build`
+    before `node --test`, so CI and anyone following it sees the full suite,
+    while anyone running the suite alone silently measures nine tests fewer.
+    A skipped test is not a passing test, and "exit 0" does not distinguish
+    them. Quote the SKIPPED count alongside the pass count, always; a bare
+    "N pass, exit 0" is the incomplete sentence here, exactly as "CI is green"
+    is under T-009.
+
+    **The complete sentence for a suite result names the toolchain AND the
+    build state**, because the two axes skip different tests and they compose.
+    Measured at the same head: node v26.6.0 with `dist/` built gives 504 pass
+    and 0 skipped, and the DEFAULT toolchain (`bash -lc`, node v22.22.2) gives
+    502 pass and **2** skipped, those two being the floor-gated `doctor` tests.
+    The floor accounts for two, never nine. That matters because the obvious
+    first guess for a skip discrepancy here is warning 1, the Node floor, and on
+    this occasion that guess was WRONG; the round measured both axes instead of
+    stopping at the plausible one.
+
+    Found by the M3-P3 round-7 implementer while settling a discrepancy the
+    orchestrator had flagged rather than averaged away.
 
 ## The orchestrator does not decide when it is finished (binding)
 
