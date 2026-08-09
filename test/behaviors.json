@@ -504,5 +504,6 @@
   "mode-show-annotates-execution-status": "mode show says which mode is the un-downgraded process and which is a declared downgrade never exercised",
   "schemas-disclose-closed-vocabulary": "the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums really are closed",
   "mode-show-bounds-are-data-not-enforcement": "mode show presents the escalation bounds as data and states the release limits on every mode",
-  "mode-conditions-list-item-content-belongs-to-the-item": "a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own"
+  "mode-conditions-list-item-content-belongs-to-the-item": "a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own",
+  "mode-conditions-interrupters-inside-an-item-end-no-unit": "a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole"
 }

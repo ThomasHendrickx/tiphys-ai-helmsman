@@ -1818,12 +1818,26 @@ const HEADING_RECORD_REAL_CONDITION =
 const INDENTED_HEADING = "# An indented heading, which is not a condition";
 const SETEXT_HEADING = "A setext heading, which is not a condition";
 
+const LIST_ENDING_PARAGRAPH = "A top-level paragraph, which ends the list above.";
+
+/**
+ * FIX ROUND 5 MOVED THE LIST-ENDING PARAGRAPH IN HERE, and the reason is a trap
+ * this phase has now hit twice. Before round 5 the indented heading sat directly
+ * under the list item, so once V-4 made an interrupter INSIDE an item stop
+ * ending the item, this record's indented `#` became item content rather than a
+ * top-level heading. The witness member still reddened, but on a DIFFERENT
+ * assertion, so it had stopped demonstrating V-2 while still looking green in
+ * the gate. A top-level paragraph closes the list first, so the heading below it
+ * is unambiguously at top level and the member means what it says.
+ */
 const HEADING_RECORD = [
   "# DR-9998: a scratch record carrying two forms of heading",
   "",
   '## What "clean" means',
   "",
   `1. ${HEADING_RECORD_REAL_CONDITION}`,
+  "",
+  LIST_ENDING_PARAGRAPH,
   "",
   ` ${INDENTED_HEADING}`,
   "",
@@ -1872,6 +1886,12 @@ test("heading text in the cited record is not a quotable unit, for an indented A
        the heading rather than swallowing what follows it. */
     assert.equal(units.has("A paragraph under the indented heading."), true);
     assert.equal(units.has("A paragraph under the setext heading."), true);
+    /* THE PREMISE OF BOTH ARMS, ASSERTED RATHER THAN ASSUMED: the list really
+       has ended before either heading, so neither is being judged as content of
+       a list item. Without this the arms could pass or fail for V-4's reason
+       instead of V-2's, which is what happened before round 5 moved this line
+       into the record. */
+    assert.equal(units.has(LIST_ENDING_PARAGRAPH), true, [...units].join(" | "));
 
     /* MEMBER 1, THE INDENTED ATX FORM, end to end. */
     const atxPath = writeDocument(dir, citing("DR-9998", [INDENTED_HEADING]), "atx-condition.yaml");
@@ -2285,4 +2305,198 @@ test("a list item's continuation paragraph and its nested sub-items are part of 
     ),
   );
   assert.equal(dr0013.has("strict mode enabled"), false, "a DR-0013 sub-bullet is quotable alone");
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 5: an interrupter inside a list item ends nothing (V-4)    */
+/* ------------------------------------------------------------------ */
+
+const FENCE_ITEM_OPEN = "The fence item opens here.";
+const FENCE_ITEM_CLOSE = "and the fence item ends here.";
+const FENCED_ASIDE = "an illustrative command, not a condition";
+const ATX_ITEM_OPEN = "The heading item opens here.";
+const ATX_ITEM_CLOSE = "and the heading item ends here.";
+const ATX_ASIDE = "### An aside heading inside the item";
+const SETEXT_ITEM_OPEN = "The setext item opens here.";
+const SETEXT_ASIDE = "An aside underlined inside the item";
+const SETEXT_ITEM_CLOSE = "and the setext item ends here.";
+const BREAK_ITEM_OPEN = "The rule item opens here.";
+const BREAK_ITEM_CLOSE = "and the rule item ends here.";
+
+/**
+ * ONE ITEM PER INTERRUPTER KIND, on purpose. The four guards are independent
+ * lines of the extractor, so four independent items let each witness member
+ * break assertions that only IT can break. A single item carrying all four
+ * would let one surviving guard hold the item together and make three of the
+ * four members look green.
+ */
+const INTERRUPTER_RECORD = [
+  "# DR-9996: a scratch record whose items carry interrupters",
+  "",
+  '## What "clean" means',
+  "",
+  `1. ${FENCE_ITEM_OPEN}`,
+  "",
+  "   ```",
+  `   ${FENCED_ASIDE}`,
+  "   ```",
+  "",
+  `   ${FENCE_ITEM_CLOSE}`,
+  "",
+  `2. ${ATX_ITEM_OPEN}`,
+  "",
+  `   ${ATX_ASIDE}`,
+  "",
+  `   ${ATX_ITEM_CLOSE}`,
+  "",
+  `3. ${SETEXT_ITEM_OPEN}`,
+  "",
+  `   ${SETEXT_ASIDE}`,
+  "   ----------------------------------",
+  "",
+  `   ${SETEXT_ITEM_CLOSE}`,
+  "",
+  `4. ${BREAK_ITEM_OPEN}`,
+  "",
+  "   ***",
+  "",
+  `   ${BREAK_ITEM_CLOSE}`,
+  "",
+];
+
+/** What each item's single unit must be once its interrupter ends nothing. */
+const WHOLE_ITEMS: [string, string, string][] = [
+  ["fence", FENCE_ITEM_OPEN, `${FENCE_ITEM_OPEN} ${FENCE_ITEM_CLOSE}`],
+  ["ATX heading", ATX_ITEM_OPEN, `${ATX_ITEM_OPEN} ${ATX_ITEM_CLOSE}`],
+  [
+    "setext heading",
+    SETEXT_ITEM_OPEN,
+    `${SETEXT_ITEM_OPEN} ${SETEXT_ASIDE} ${SETEXT_ITEM_CLOSE}`,
+  ],
+  ["thematic break", BREAK_ITEM_OPEN, `${BREAK_ITEM_OPEN} ${BREAK_ITEM_CLOSE}`],
+];
+
+test("a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole", () => {
+  /* THE MECHANISM, and it is the one rounds 3 and 4 both left half-closed.
+     `quotableUnits` ends a unit at six sites in its loop. Rounds 3 and 4 made
+     two of them ask whether a list item was open (the blank line and the nested
+     marker) and left four calling `flush()` unconditionally. So an interrupter
+     INSIDE an item split the item, and each half stood as a whole quotable
+     unit: a FRAGMENT passing as a whole quote, which is the defect this check
+     exists to prevent.
+
+     MEASURED at 6af8e81, before this round's edit, on the fence item below:
+     ["The item opens here.", "and the item continues here.", "A second item."]
+     Three units where there should be two, and the first is half an item.
+
+     THE FOUR ITEMS ARE INDEPENDENT so each witness member breaks only its own
+     item's assertions. That is the difference between four members of a class
+     and one shape written four times. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9996", INTERRUPTER_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9996-scratch-record.md"),
+      "utf8",
+    );
+    const units = checksModule.quotableUnits(record);
+    const shown = [...units].join(" | ");
+
+    for (const [kind, half, whole] of WHOLE_ITEMS) {
+      assert.equal(units.has(whole), true, `${kind}: the item is not one whole unit; got ${shown}`);
+      assert.equal(units.has(half), false, `${kind}: half the item is quotable; got ${shown}`);
+    }
+    /* The closing halves are not units either, which is the same fragment from
+       the other end and is what a fix that merged forwards only would miss. */
+    for (const half of [FENCE_ITEM_CLOSE, ATX_ITEM_CLOSE, SETEXT_ITEM_CLOSE, BREAK_ITEM_CLOSE]) {
+      assert.equal(units.has(half), false, `a closing half is quotable; got ${shown}`);
+    }
+    /* THE INTERRUPTERS THEMSELVES STILL BELONG TO NO UNIT OF THEIR OWN, which is
+       the property a fix that simply stopped recognising them would break.
+       Fenced content in particular must stay excluded (V-1), and this asserts
+       the round-3 guarantee has not been traded away for the round-5 one. */
+    assert.equal(units.has(FENCED_ASIDE), false, shown);
+    assert.equal(units.has(ATX_ASIDE), false, shown);
+    assert.equal(units.has(SETEXT_ASIDE), false, shown);
+    assert.equal(
+      [...units].some((unit) => unit.includes(FENCED_ASIDE)),
+      false,
+      `fenced content leaked into a unit; got ${shown}`,
+    );
+
+    /* END TO END, ALL FOUR FRAGMENTS AT ONCE. Four conditions, four violations,
+       each naming its own fragment, so a check that caught one and stopped
+       could not pass. */
+    const fragmentsPath = writeDocument(
+      dir,
+      citing(
+        "DR-9996",
+        WHOLE_ITEMS.map(([, half]) => half),
+      ),
+      "interrupter-fragments.yaml",
+    );
+    const fragments = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      dir,
+      fragmentsPath,
+    ]);
+    assert.equal(fragments.status, 1, fragments.stdout + fragments.stderr);
+    for (let position = 0; position < WHOLE_ITEMS.length; position += 1) {
+      const half = (WHOLE_ITEMS[position] as [string, string, string])[1];
+      assert.match(
+        fragments.stdout,
+        new RegExp(
+          `^INVALID #/modes/0/conditions/${String(position)} mode full cites DR-9996 for a condition that is not a whole quoted item of that record: "${half}" \\(check: mode-conditions-quote-granted-by\\)$`,
+          "m",
+        ),
+        fragments.stdout,
+      );
+    }
+
+    /* THE OTHER DIRECTION, and it is what stops all of the above from being
+       satisfied by an extractor that returns nothing: the four WHOLE items
+       resolve, through the same command, exit 0. */
+    const wholePath = writeDocument(
+      dir,
+      citing(
+        "DR-9996",
+        WHOLE_ITEMS.map(([, , whole]) => whole),
+      ),
+      "interrupter-whole-items.yaml",
+    );
+    const whole = runCli(["validate", "--type", "assurance-modes", "--context", dir, wholePath]);
+    assert.equal(whole.status, 0, whole.stdout + whole.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  /* AND THE TOP-LEVEL BEHAVIOUR IS UNCHANGED, asserted because this fix could
+     have been made by simply never flushing on these four line types, which
+     would have destroyed the round-3 guarantees. At column zero each of them
+     still ends the block in progress. */
+  const topLevel = checksModule.quotableUnits(
+    [
+      "A top-level paragraph.",
+      "",
+      "```",
+      "code at top level",
+      "```",
+      "",
+      "# A heading at column zero",
+      "",
+      "Another top-level paragraph.",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(topLevel.has("A top-level paragraph."), true, [...topLevel].join(" | "));
+  assert.equal(topLevel.has("Another top-level paragraph."), true, [...topLevel].join(" | "));
+  assert.equal(
+    topLevel.has("A top-level paragraph. Another top-level paragraph."),
+    false,
+    [...topLevel].join(" | "),
+  );
+  assert.equal(topLevel.has("code at top level"), false, [...topLevel].join(" | "));
 });

@@ -921,6 +921,19 @@ function closesFence(line: string, open: OpenFence): boolean {
  * returns nothing), so all four are latent here in the way V-1 was.
  * `delivery/work-history/m3-p3.md` records the derivation that enumerated them
  * and why they are not closed here.
+ *
+ * IF ANY OF THOSE FOUR IS EVER MODELLED, IT INHERITS THE V-4 QUESTION AND MUST
+ * ANSWER IT IN THE SAME BREATH. V-4 was not "fences are handled wrongly": it was
+ * that four line types ended a unit WITHOUT ASKING whether a list item was open,
+ * so an interrupter inside an item split the item and left each half standing as
+ * a whole quote. Any new block form added to this loop will need the same two
+ * decisions, and a reviewer should refuse a patch that makes only the first:
+ *   (a) does its own text belong to a unit (for all four current interrupters,
+ *       no), and
+ *   (b) does encountering it END the unit in progress, or is it CONTENT of an
+ *       open list item (for all four, content, via `continuesListItem`)?
+ * The rule is that (b) is never answered by omission. A new `flush()` call in
+ * this loop that does not consult `continuesListItem` is V-4 again.
  */
 export function quotableUnits(text: string): Set<string> {
   const units = new Set<string>();
@@ -959,6 +972,27 @@ export function quotableUnits(text: string): Set<string> {
     currentIsListItem = false;
     blankPending = false;
   };
+  /**
+   * Whether a line at this indent is CONTENT of the list item currently open,
+   * rather than a block that ends it.
+   *
+   * THIS IS THE WHOLE OF V-4. Four line types (a fence, an ATX heading, a setext
+   * underline, a thematic break) used to call `flush()` without asking, so an
+   * interrupter INSIDE an item split the item and left each half standing as a
+   * whole quotable unit. The blank-line case and the nested-marker case had
+   * already been fixed the same way and these four had not, which is one
+   * mechanism fixed at two of its six sites.
+   *
+   * THE THRESHOLD IS `indent > 0`, NOT `indent >= listContentColumn`, and the
+   * choice is deliberate. CommonMark would require content-column indentation,
+   * so a fence at column 1 under an item whose content starts at column 3 is
+   * strictly a new block. Treating it as item content instead keeps the unit
+   * longer, which is the safe direction, AND it is the same threshold the
+   * paragraph path already uses to decide that a list has ended. Two different
+   * thresholds for one question is how the next defect gets written.
+   */
+  const continuesListItem = (indent: number): boolean =>
+    listContentColumn !== null && indent > 0;
 
   for (const raw of text.split("\n")) {
     const line = raw.replace(/\r$/, "");
@@ -997,18 +1031,36 @@ export function quotableUnits(text: string): Set<string> {
 
     const opening = FENCE.exec(line);
     if (opening !== null) {
-      flush();
+      if (continuesListItem(indentColumns(line))) {
+        /* SITE 2: a fenced block inside the item. Its content is still excluded
+           by the fence state above; what changes is that the item stays open. */
+        blankPending = false;
+      } else {
+        flush();
+      }
       fence = { marker: (opening[1] as string)[0] as string, length: (opening[1] as string).length };
       continue;
     }
 
     if (ATX_HEADING.test(line)) {
+      if (continuesListItem(indentColumns(line))) {
+        /* SITE 3: an aside heading inside the item. It belongs to no unit, as
+           at top level, and it ends none. */
+        blankPending = false;
+        continue;
+      }
       flush();
       listContentColumn = null;
       continue;
     }
 
     if (SETEXT_UNDERLINE.test(line)) {
+      if (continuesListItem(indentColumns(line))) {
+        /* SITE 4: a setext underline inside the item. It belongs to no unit and
+           it ends none; the item's text on both sides of it stays one unit. */
+        blankPending = false;
+        continue;
+      }
       if (currentIsListItem) {
         flush();
       } else {
@@ -1019,6 +1071,11 @@ export function quotableUnits(text: string): Set<string> {
     }
 
     if (THEMATIC_BREAK.test(line)) {
+      if (continuesListItem(indentColumns(line))) {
+        /* SITE 5: a rule inside the item. It belongs to no unit and ends none. */
+        blankPending = false;
+        continue;
+      }
       flush();
       listContentColumn = null;
       continue;

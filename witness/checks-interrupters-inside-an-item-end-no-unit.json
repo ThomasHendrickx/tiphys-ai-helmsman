@@ -1,0 +1,36 @@
+{
+  "id": "checks-interrupters-inside-an-item-end-no-unit",
+  "behavior": "mode-conditions-interrupters-inside-an-item-end-no-unit",
+  "tests": [
+    "a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 2: a fenced block inside the item.",
+      "replace": "      if (false) {\n        /* SITE 2: a fenced block inside the item."
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 3: an aside heading inside the item.",
+      "replace": "      if (false) {\n        /* SITE 3: an aside heading inside the item."
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 4: a setext underline inside the item.",
+      "replace": "      if (false) {\n        /* SITE 4: a setext underline inside the item."
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 5: a rule inside the item.",
+      "replace": "      if (false) {\n        /* SITE 5: a rule inside the item."
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
