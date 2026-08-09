@@ -505,5 +505,8 @@
   "schemas-disclose-closed-vocabulary": "the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums really are closed",
   "mode-show-bounds-are-data-not-enforcement": "mode show presents the escalation bounds as data and states the release limits on every mode",
   "mode-conditions-list-item-content-belongs-to-the-item": "a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own",
-  "mode-conditions-interrupters-inside-an-item-end-no-unit": "a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole"
+  "mode-conditions-interrupters-inside-an-item-end-no-unit": "a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole",
+  "mode-conditions-multi-marker-lines-strip-every-marker": "a line opening more than one block marker leaves no marker in the unit, at two, three and four markers and with a quote after a list marker",
+  "mode-conditions-start-column-verified-not-trusted": "the parser start column is verified rather than trusted, so a paragraph advanced past a link reference definition is not truncated, in the quote form and in the list form",
+  "mode-conditions-emptied-paragraph-contributes-no-unit": "a paragraph the parser emptied contributes no unit, at top level and inside a list item"
 }

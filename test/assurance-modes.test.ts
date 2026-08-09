@@ -2528,3 +2528,336 @@ test("a fence, an ATX heading, a setext underline or a thematic break inside a l
   );
   assert.equal(topLevel.has("code at top level"), false, [...topLevel].join(" | "));
 });
+
+/* ------------------------------------------------------------------ */
+/* Round 7: the witnesses CR-002 found missing, and the CR-001 class    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WHY THESE THREE TESTS EXIST, and it is worth stating because a reader will
+ * ask why a fix round adds tests for code that was already shipped.
+ *
+ * A clean-room review mutated twenty sites in this phase's extractor and
+ * FOURTEEN mutants survived the whole suite. Two of the survivors were the
+ * LITERAL PRE-FIX STATE of the two defects round 6 reported fixing: reverting
+ * `startOffset` to trust the parser's column, and reverting `carriesProse` to
+ * `return true`, each left `npm test` at 501 tests, 501 pass, exit 0. A fix
+ * with no red witness is a fix that can be undone in place while every gate
+ * stays green.
+ *
+ * The mechanism, and it generalises past this phase: a behavior can be
+ * registered in `test/behaviors.json` and resolve green with NO witness spec
+ * naming the code that implements it. The registry couples a NAME to a test,
+ * the red-witness rule couples a test to a DANGEROUS STATE, and nothing
+ * couples those two automatically, so a round that adds no specs is SILENT
+ * rather than red.
+ *
+ * Each test below carries at least two structurally different members of its
+ * class, and each has a witness spec under `witness/` whose `dangerousStates`
+ * are the mutations measured to redden it.
+ */
+
+const MULTI_MARKER_TWO = "Two list markers open on one line.";
+const MULTI_MARKER_QUOTE = "A quote opens after a list marker.";
+const MULTI_MARKER_THREE = "Three block markers open on one line.";
+const MULTI_MARKER_ORDERED = "An ordered marker nests in an unordered one.";
+const MULTI_MARKER_CONTROL = "One marker only, always handled.";
+
+const MULTI_MARKER_RECORD = [
+  "# DR-9991: a scratch record whose conditions open two block markers on one line",
+  "",
+  "## The conditions",
+  "",
+  `- - ${MULTI_MARKER_TWO}`,
+  "",
+  `- > ${MULTI_MARKER_QUOTE}`,
+  "",
+  `- - - ${MULTI_MARKER_THREE}`,
+  "",
+  `- 1. ${MULTI_MARKER_ORDERED}`,
+  "",
+  "## A plain control",
+  "",
+  `- ${MULTI_MARKER_CONTROL}`,
+  "",
+];
+
+test("a line opening more than one block marker leaves no marker in the unit, at two, three and four markers and with a quote after a list marker", () => {
+  /* THE MECHANISM THIS TEST GUARDS, which is not the shape it exercises.
+     `startOffset` verifies the parser's start column instead of trusting it,
+     and it verified by testing the skipped span against a model of the block
+     prefix. Until round 7 that model allowed AT MOST ONE list marker, so the
+     guard had two causes it could not tell apart: the column is LYING, which is
+     the hazard it exists for, and the column is CORRECT but describes a prefix
+     richer than the model can spell. It took the same recovery on both, and
+     that recovery consumes quote markers only; on a line opening with a list
+     marker `quoteDepth` is 0, so it returned offset 0 and the slice was the
+     ENTIRE RAW LINE.
+
+     BOTH DIRECTIONS ARE LIVE AT ONCE, which is why this asserts both. The unit
+     set GAINS a marker-carrying string no document contains, so a fabricated
+     condition equal to it is accepted; and it LOSES the real prose unit, so a
+     legitimately quoted condition is rejected.
+
+     MEASURED RED at 218fc12, before the fix, on this record:
+       "- - Two list markers open on one line."
+       "- > A quote opens after a list marker."
+       "- - - Three block markers open on one line."
+       "- 1. An ordered marker nests in an unordered one."
+     Four marker-carrying units, and not one of the four clean strings present.
+
+     FOUR STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, not one shape written
+     four times: two list markers, a QUOTE opened after a list marker (a
+     different marker family, and the one the old recovery path could almost
+     handle), THREE markers (which is what distinguishes a completed grammar
+     from a boundary moved by one), and an ORDERED marker nested in an
+     unordered one (a different marker syntax again). A fix that widened the
+     model by one marker turns the first green and leaves the third red. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9991", MULTI_MARKER_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9991-scratch-record.md"),
+      "utf8",
+    );
+    const units = checksModule.quotableUnits(record);
+    const shown = [...units].join(" | ");
+
+    /* THE CONTROL FIRST, so none of the arms below can pass for want of any
+       units at all: the single-marker item was always correct and stays so. */
+    assert.equal(units.has(MULTI_MARKER_CONTROL), true, shown);
+
+    const MEMBERS: [string, string][] = [
+      ["two list markers", MULTI_MARKER_TWO],
+      ["quote after a list marker", MULTI_MARKER_QUOTE],
+      ["three block markers", MULTI_MARKER_THREE],
+      ["ordered nested in unordered", MULTI_MARKER_ORDERED],
+    ];
+    for (const [name, clean] of MEMBERS) {
+      /* FAIL-CLOSED DIRECTION: the real prose IS a unit. */
+      assert.equal(units.has(clean), true, `${name}: the prose is not a unit; got ${shown}`);
+    }
+    /* FAIL-OPEN DIRECTION: no unit carries a leading block marker, asserted
+       over the whole set rather than against four hand-written strings, so a
+       marker shape nobody thought of also reddens this. */
+    const leaking = [...units].filter((unit) => /^(?:>|[0-9]{1,9}[.)]|[-*+])[ \t]/.test(unit));
+    assert.deepEqual(leaking, [], `units carry leading block markers; got ${shown}`);
+
+    /* END TO END THROUGH THE COMMAND, both directions. The four clean
+       conditions resolve, exit 0. */
+    const cleanPath = writeDocument(
+      dir,
+      citing(
+        "DR-9991",
+        MEMBERS.map(([, clean]) => clean),
+      ),
+      "multi-marker-clean.yaml",
+    );
+    const clean = runCli(["validate", "--type", "assurance-modes", "--context", dir, cleanPath]);
+    assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+
+    /* And the marker-carrying strings, which are what the defect ADMITTED, are
+       rejected one diagnostic each. */
+    const fabricated = [
+      `- - ${MULTI_MARKER_TWO}`,
+      `- > ${MULTI_MARKER_QUOTE}`,
+      `- - - ${MULTI_MARKER_THREE}`,
+      `- 1. ${MULTI_MARKER_ORDERED}`,
+    ];
+    const leakedPath = writeDocument(
+      dir,
+      citing("DR-9991", fabricated),
+      "multi-marker-leaked.yaml",
+    );
+    const leaked = runCli(["validate", "--type", "assurance-modes", "--context", dir, leakedPath]);
+    assert.equal(leaked.status, 1, leaked.stdout + leaked.stderr);
+    for (let position = 0; position < fabricated.length; position += 1) {
+      const carrying = fabricated[position] as string;
+      assert.match(
+        leaked.stdout,
+        new RegExp(
+          `^INVALID #/modes/0/conditions/${String(position)} mode full cites DR-9991 for a ` +
+            `condition that is not a whole quoted item of that record: ` +
+            `"${carrying.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" ` +
+            `\\(check: mode-conditions-quote-granted-by\\)$`,
+          "m",
+        ),
+        leaked.stdout,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const ADVANCED_QUOTE_UNIT = "epsilon eta and the rest of this sentence.";
+const ADVANCED_LIST_UNIT = "lambda mu and the rest of this sentence.";
+
+const ADVANCED_COLUMN_RECORD = [
+  "# DR-9990: a scratch record whose paragraphs start past a link reference definition",
+  "",
+  "## The quote form",
+  "",
+  "> [eta]: https://example.invalid/theta",
+  ADVANCED_QUOTE_UNIT,
+  "",
+  "## The list form",
+  "",
+  "- [iota]: https://example.invalid/kappa",
+  ADVANCED_LIST_UNIT,
+  "",
+];
+
+test("the parser start column is verified rather than trusted, so a paragraph advanced past a link reference definition is not truncated, in the quote form and in the list form", () => {
+  /* THE MECHANISM: `commonmark` advances a paragraph's sourcepos START LINE
+     past leading link reference definitions and DOES NOT advance its START
+     COLUMN, so the column describes a line the node no longer starts on. Here
+     the column comes from `"> "` on line 1 while the node starts on line 2,
+     which carries no marker, and slicing from the trusted index yields
+     "silon eta and the rest of this sentence.": a truncated string no
+     condition can ever equal, and one character further along it would silently
+     make a FRAGMENT quotable.
+
+     THIS TEST EXISTS BECAUSE THE FIX HAD NO WITNESS. A clean-room review
+     reverted `startOffset` to the pre-fix `if (offset <= text.length)` and the
+     entire suite stayed at 501 pass, exit 0. Measured under that revert on this
+     record: ["mbda mu and the rest of this sentence.",
+     "silon eta and the rest of this sentence."]. Both units corrupt, nothing
+     red.
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS: a QUOTE marker supplies the false
+     column in the first, a LIST marker in the second, and the recovery path
+     treats those differently (it strips quote markers and never strips list
+     markers), so a witness resting on the quote arm alone would say nothing
+     about the list arm. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9990", ADVANCED_COLUMN_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9990-scratch-record.md"),
+      "utf8",
+    );
+    const units = checksModule.quotableUnits(record);
+    const shown = [...units].join(" | ");
+
+    assert.equal(units.has(ADVANCED_QUOTE_UNIT), true, `quote form truncated; got ${shown}`);
+    assert.equal(units.has(ADVANCED_LIST_UNIT), true, `list form truncated; got ${shown}`);
+    /* THE TRUNCATIONS THEMSELVES, named, so a partial fix that produced a
+       DIFFERENT truncation could not pass by merely adding the right string. */
+    assert.equal(units.has("silon eta and the rest of this sentence."), false, shown);
+    assert.equal(units.has("mbda mu and the rest of this sentence."), false, shown);
+    /* AND NO UNIT IS A PROPER SUFFIX OF EITHER SENTENCE, which is the class
+       rather than the two measured offsets. */
+    for (const unit of units) {
+      for (const whole of [ADVANCED_QUOTE_UNIT, ADVANCED_LIST_UNIT]) {
+        assert.equal(
+          unit !== whole && whole.endsWith(unit),
+          false,
+          `a truncated suffix is a unit: ${JSON.stringify(unit)}; got ${shown}`,
+        );
+      }
+    }
+
+    /* END TO END: both whole sentences resolve as conditions, exit 0. A
+       truncating extractor cannot satisfy this, because the record's own
+       sentence is then absent from the unit set. */
+    const path = writeDocument(
+      dir,
+      citing("DR-9990", [ADVANCED_QUOTE_UNIT, ADVANCED_LIST_UNIT]),
+      "advanced-column.yaml",
+    );
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const EMPTIED_TOP_LEVEL_DEFINITION = "[zeta]: https://example.invalid/delta";
+const EMPTIED_ITEM_DEFINITION = "[omega]: https://example.invalid/psi";
+const EMPTIED_REAL_UNIT = "A real paragraph so this record is not empty.";
+
+const EMPTIED_RECORD = [
+  "# DR-9989: a scratch record whose paragraphs the parser empties",
+  "",
+  "## The top-level form",
+  "",
+  EMPTIED_TOP_LEVEL_DEFINITION,
+  "---",
+  "",
+  "## The list-item form",
+  "",
+  `- ${EMPTIED_ITEM_DEFINITION}`,
+  "  ---",
+  "",
+  EMPTIED_REAL_UNIT,
+  "",
+];
+
+test("a paragraph the parser emptied contributes no unit, at top level and inside a list item", () => {
+  /* THE MECHANISM: a link reference definition immediately followed by a setext
+     `-` underline leaves `commonmark` 0.31.2 holding a paragraph node with NO
+     inline children WHOSE SOURCEPOS STILL SPANS THE TEXT THE PARSER REMOVED.
+     The setext start rule strips the definitions and then declines to make a
+     heading because nothing is left, so the document's reference sweep never
+     advances the start line the way it does everywhere else. Slicing that
+     paragraph's source yields the definition itself as a quotable unit, which
+     is the fail-open direction: a condition fabricated to equal a URL line is
+     then accepted as a quote of the record.
+
+     THIS TEST EXISTS BECAUSE THE FIX HAD NO WITNESS. `carriesProse` reduced to
+     `return true` left the whole suite at 501 pass, exit 0. Measured under that
+     revert on this record, the unit set gains BOTH definition lines.
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS: the two walkers are different code.
+     `collectUnits` handles the top-level form and `paragraphsBeneath` the
+     in-item form, each with its own `carriesProse` call site, so removing the
+     guard from one leaves the other correct. Measured: removing the
+     `paragraphsBeneath` guard alone adds the item's definition and NOT the
+     top-level one. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9989", EMPTIED_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9989-scratch-record.md"),
+      "utf8",
+    );
+    const units = checksModule.quotableUnits(record);
+    const shown = [...units].join(" | ");
+
+    /* NOT VACUOUS: the record's real paragraph is a unit. */
+    assert.equal(units.has(EMPTIED_REAL_UNIT), true, shown);
+    assert.equal(units.has(EMPTIED_TOP_LEVEL_DEFINITION), false, `top-level form; got ${shown}`);
+    assert.equal(units.has(EMPTIED_ITEM_DEFINITION), false, `list-item form; got ${shown}`);
+    /* THE CLASS RATHER THAN THE TWO STRINGS: no unit is or contains a link
+       reference definition. */
+    assert.deepEqual(
+      [...units].filter((unit) => unit.includes("https://example.invalid/")),
+      [],
+      `a link reference definition leaked into a unit; got ${shown}`,
+    );
+
+    /* END TO END, THE FAIL-OPEN DIRECTION THE DEFECT OPENED: a condition equal
+       to either definition line is rejected, one diagnostic each. */
+    const fabricated = [EMPTIED_TOP_LEVEL_DEFINITION, EMPTIED_ITEM_DEFINITION];
+    const path = writeDocument(dir, citing("DR-9989", fabricated), "emptied-paragraph.yaml");
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    for (let position = 0; position < fabricated.length; position += 1) {
+      const definition = fabricated[position] as string;
+      assert.match(
+        run.stdout,
+        new RegExp(
+          `^INVALID #/modes/0/conditions/${String(position)} mode full cites DR-9989 for a ` +
+            `condition that is not a whole quoted item of that record: ` +
+            `"${definition.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" ` +
+            `\\(check: mode-conditions-quote-granted-by\\)$`,
+          "m",
+        ),
+        run.stdout,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

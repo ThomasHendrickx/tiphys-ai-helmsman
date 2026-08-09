@@ -830,12 +830,41 @@ function commonMarkModule(): CommonMarkModule {
 }
 
 /**
- * The block types whose own text belongs to NO quotable unit.
+ * The block types whose own text belongs to NO quotable unit: DECLARED INTENT,
+ * NOT THE MECHANISM THAT PERFORMS THE EXCLUSION. Read the next paragraph before
+ * relying on this set for anything.
  *
  * Headings (ATX and setext are one node type here, which is the point), code
  * blocks (fenced and indented, likewise), HTML blocks and thematic breaks.
  * A link reference definition produces no node at all, so it needs no entry:
  * the parser removes it before this walk ever sees the document.
+ *
+ * WHAT THIS SET ACTUALLY DOES TODAY, corrected after a clean-room review found
+ * the docstring claiming more than the code performs (CR-003, round 7). Under
+ * `commonmark` 0.31.2 EMPTYING THIS SET CHANGES NO ANSWER, and the reason is
+ * structural rather than "no test covers it": all four types are LEAF blocks in
+ * that parser's AST. `code_block`, `html_block` and `thematic_break` have no
+ * children at all, and a `heading`'s children are INLINE nodes, never
+ * `paragraph`. Both walkers below emit a unit only for a `paragraph` child, so
+ * descending into any of these four reaches nothing that can produce a unit.
+ * Measured, `commonmark` 0.31.2, node v26.6.0:
+ *
+ *   heading         children: ["text","code","text","strong"]
+ *   code_block      children: []
+ *   html_block      children: []
+ *   thematic_break  children: []
+ *
+ * The true sentence is therefore: these types cannot contribute a unit under
+ * `commonmark` 0.31.2 whether or not they appear here; THE SET EXISTS SO THAT A
+ * PARSER CHANGE CANNOT MAKE THEM CONTRIBUTE ONE. Keeping it is what makes the
+ * exclusion intentional rather than incidental to one parser version, and a
+ * release that gave `html_block` block children, or a Markdown extension in a
+ * consuming project, is exactly the event it is here for.
+ *
+ * The registered tests named "code block content ... is not a quotable unit"
+ * and "heading text ... is not a quotable unit" therefore guard the shared
+ * `paragraph`-versus-`else` branches, not this set; their witness specs mutate
+ * those branches for that reason.
  */
 const NOT_QUOTABLE = new Set(["code_block", "heading", "html_block", "thematic_break"]);
 
@@ -888,11 +917,47 @@ function carriesProse(paragraph: CommonMarkNode): boolean {
  * be a no-op when the marker is absent rather than to assume it is present.
  */
 /**
- * Everything a slice may legitimately skip before a node's content: block quote
- * markers, indentation, and at most one list marker. Anchored at both ends, so
- * it is a test of the WHOLE skipped span and not a prefix match.
+ * ONE BLOCK-QUOTE MARKER, with the indentation in front of it. Declared once
+ * because BOTH recovery strips below consume exactly this and a second copy of
+ * a grammar is how the three models described under `SKIPPABLE_PREFIX` came to
+ * disagree in the first place. It is deliberately NARROWER than
+ * `SKIPPABLE_PREFIX`: see `startOffset`.
  */
-const SKIPPABLE_PREFIX = /^(?:[ \t]*>[ \t]?)*[ \t]*(?:(?:[0-9]{1,9}[.)]|[-*+])[ \t]*)?$/;
+const QUOTE_MARKER = /^[ \t]*>[ \t]?/;
+
+/**
+ * Everything a slice may legitimately skip before a node's content: ANY NUMBER
+ * of block-opening markers (quote, bullet or ordered), in ANY ORDER, plus
+ * indentation. Anchored at both ends, so it is a test of the WHOLE skipped span
+ * and not a prefix match.
+ *
+ * THIS WIDENING IS ROUND 7's CR-001 FIX, and the mechanism it closes is not
+ * "the regex was incomplete". The module carried THREE models of one grammar
+ * and they disagreed: this predicate allowed quote markers plus AT MOST ONE
+ * list marker (its own previous comment said so in those words), while the two
+ * recovery strips allow a quote marker only. CommonMark lets a container prefix
+ * open ANY NUMBER of blocks on one line, in any order (`- - x`, `- 1. x`,
+ * `1. - x`, `- > x`, `- - - x`), so a CORRECT column whose prefix this
+ * predicate could not spell was sent down the recovery path, which strips no
+ * list marker at all and returned offset 0: the raw markers became part of the
+ * unit. Fail-open (a fabricated condition equal to `- - x` is accepted) and
+ * fail-closed (the real unit `x` is rejected) at the same time.
+ *
+ * THE ANCHORING IS WHAT MAKES WIDENING SAFE, and this is the argument the fix
+ * rests on rather than a table of examples. Acceptance means EVERY character of
+ * the skipped span is marker-or-indentation, so the span can contain no
+ * content, and skipping it is right whichever line the column came from. What
+ * markers may repeat does not touch that. Measured: the four column-is-lying
+ * spans this guard exists to reject ("ep", "re", "alp", "sil") are still
+ * rejected, because a prose fragment contains characters no alternative here
+ * can consume.
+ *
+ * REPETITION IS UNBOUNDED ON PURPOSE. A model allowing two markers would move
+ * the boundary to three and leave the same defect standing there, which is the
+ * shape this project keeps paying for. Measured after the change: correct at
+ * one, two, three, four, five, six and eight markers, and on `> - > - > -`.
+ */
+const SKIPPABLE_PREFIX = /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*[ \t]*$/;
 
 /**
  * Where a node's content starts on its FIRST line, WITH THE START COLUMN
@@ -921,6 +986,34 @@ const SKIPPABLE_PREFIX = /^(?:[ \t]*>[ \t]?)*[ \t]*(?:(?:[0-9]{1,9}[.)]|[-*+])[ 
  * start line must BE a block prefix. When it is not, the column is describing
  * some other line and this line's own quote markers are stripped instead,
  * exactly as a continuation line's are.
+ *
+ * WHY THE FALLBACK IS DELIBERATELY NARROWER THAN THE VERIFIER, corrected in
+ * round 7 (CR-001). Until this round the guard had TWO causes it could not tell
+ * apart: (1) the column is lying, which is the hazard above, and (2) the column
+ * is CORRECT and merely describes a prefix richer than the verifier could
+ * spell. It took this fallback on both, and on a line opening with a LIST
+ * marker `quoteDepth` is 0, so the fallback returned 0 and the slice was the
+ * ENTIRE RAW LINE. Widening `SKIPPABLE_PREFIX` to the full container grammar
+ * removes cause (2) from the conflation, which is what made the fallback
+ * dangerous; it is now reached only for cause (1).
+ *
+ * The fallback still consumes QUOTE MARKERS ONLY, bounded by `quoteDepth`, and
+ * that is a choice rather than an oversight. `quoteDepth` is KNOWN STRUCTURE
+ * (the walk counted the enclosing block quotes), so the strip cannot eat prose;
+ * an unbounded grammar-shaped strip here would have no such bound. A cause-(1)
+ * line is a paragraph CONTINUATION line, and a continuation line cannot carry a
+ * list marker without ending the paragraph it continues, so there should be
+ * nothing else on it to strip.
+ *
+ * MEASURED rather than asserted, round 7, `commonmark` 0.31.2, node v26.6.0: an
+ * instrumented copy over a 6,000-document differential fuzz (seed 20260809)
+ * entered this fallback 1,463 times, and in ZERO of them did the line carry a
+ * leading block marker. I did not find a way to force this arm with a
+ * marker-carrying line; that is a statement about my search and not a proof
+ * that none exists, and the derivation is in
+ * `delivery/work-history/m3-p3.md`. Because no probe I could build reddens a
+ * wider strip here, widening it would be code no witness could guard, which is
+ * exactly what CR-002 was raised about.
  */
 function startOffset(text: string, startColumn: number, quoteDepth: number): number {
   const offset = startColumn - 1;
@@ -929,7 +1022,7 @@ function startOffset(text: string, startColumn: number, quoteDepth: number): num
   }
   let consumed = 0;
   for (let level = 0; level < quoteDepth; level += 1) {
-    const marker = /^[ \t]*>[ \t]?/.exec(text.slice(consumed));
+    const marker = QUOTE_MARKER.exec(text.slice(consumed));
     if (marker === null) {
       break;
     }
@@ -952,7 +1045,7 @@ function sourceSlice(
     let piece = text.slice(from, to);
     if (line !== startLine) {
       for (let level = 0; level < quoteDepth; level += 1) {
-        piece = piece.replace(/^[ \t]*>[ \t]?/, "");
+        piece = piece.replace(QUOTE_MARKER, "");
       }
     }
     pieces.push(piece);
@@ -965,7 +1058,11 @@ function sourceSlice(
  * string. This is what makes a LIST ITEM'S UNIT THE WHOLE ITEM: its
  * continuation paragraphs and its nested sub-items are descendants, so they
  * join the item rather than standing alone, and its headings, fences, indented
- * code and rules are skipped by `NOT_QUOTABLE` without ending anything.
+ * code and rules contribute nothing while ending nothing. That last part is
+ * what makes an interrupter inside an item not split the item; the walk simply
+ * never emits for a non-`paragraph` child. `NOT_QUOTABLE` states the intent and
+ * would stop a future parser handing those types block children, but under
+ * `commonmark` 0.31.2 it is not what performs the exclusion (CR-003, round 7).
  *
  * Nested lists are deliberately NOT in `NOT_QUOTABLE`: the walk descends into
  * them, which is what glues a sub-item into the item that encloses it.
@@ -1127,7 +1224,12 @@ function collectUnits(
  *   - block quote: its contents are treated like the document's, so the quoted
  *     paragraph is a unit and the `>` marker is NOT part of it. This is a
  *     DECLARED POLICY CHOICE (see `collectUnits`), not a derivation.
- *   - HTML block: excluded, like any other non-prose block.
+ *   - HTML block: contributes no unit. Corrected in round 7 (CR-003): it is
+ *     listed in `NOT_QUOTABLE`, but under `commonmark` 0.31.2 that listing is
+ *     not what excludes it. An `html_block` is an AST LEAF, and a unit is only
+ *     ever emitted for a `paragraph` child, so it could contribute nothing even
+ *     if the set were empty. Read `NOT_QUOTABLE`'s own docstring for what the
+ *     set is really for.
  *   - link reference definition: excluded, and by construction rather than by a
  *     rule, because the parser removes it before this walk sees the document.
  *   - pipe table: never was a hazard. CommonMark core has no tables, so a table

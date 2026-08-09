@@ -16,7 +16,7 @@
       "kind": "mutation",
       "file": "src/checks.ts",
       "find": "    } else if (!NOT_QUOTABLE.has(child.type)) {\n      collectUnits(child, lines, units, quoteDepth);\n    }",
-      "replace": "    } else {\n      const leaked = normalizeProse(sourceSlice(lines, child.sourcepos, quoteDepth));\n      if (leaked !== \"\") {\n        units.add(leaked);\n      }\n    }"
+      "replace": "    } else if (child.type === \"code_block\") {\n      const leaked = normalizeProse(sourceSlice(lines, child.sourcepos, quoteDepth));\n      if (leaked !== \"\") {\n        units.add(leaked);\n      }\n    } else if (!NOT_QUOTABLE.has(child.type)) {\n      collectUnits(child, lines, units, quoteDepth);\n    }"
     }
   ],
   "deterministic": true,

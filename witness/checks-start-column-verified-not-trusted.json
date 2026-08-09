@@ -1,0 +1,24 @@
+{
+  "id": "checks-start-column-verified-not-trusted",
+  "behavior": "mode-conditions-start-column-verified-not-trusted",
+  "tests": [
+    "the parser start column is verified rather than trusted, so a paragraph advanced past a link reference definition is not truncated, in the quote form and in the list form"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "if (offset <= text.length && SKIPPABLE_PREFIX.test(text.slice(0, offset))) {",
+      "replace": "if (offset <= text.length) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "const SKIPPABLE_PREFIX = /^(?:[ \\t]*(?:>[ \\t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \\t]*))*[ \\t]*$/;",
+      "replace": "const SKIPPABLE_PREFIX = /^[\\s\\S]*$/;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
