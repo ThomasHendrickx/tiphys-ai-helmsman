@@ -427,6 +427,17 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **A witness can stop witnessing while every gate stays green (T-011).** Two
+  instances in two consecutive M3-P3 rounds, both self-reported by the
+  implementer and both confirmed independently. A `find` that stops matching is
+  caught by `red-witness` rule (d); a `find` that STILL MATCHES a line whose
+  meaning drifted is caught by nothing. The 97-member sweep is structurally blind
+  to the second kind, because the drift was in a FIXTURE the witness reads rather
+  than in the source its `find` points at. Whether `red-witness` should detect it
+  is an open design question on M2-P2's file and may not be decidable
+  mechanically; full record in
+  `delivery/tuition/T-011-a-witness-can-stop-witnessing-silently.md`. Not assigned.
+
 - **BLOCKING ON M3-P10: `package.json` must reach `version` 0.1.0.** M3-P3's
   five shipped `$comment` disclosures name v0.1.0 (DR-0020), while
   `package.json` declares `"version": "0.0.0"`. M3-P10 step 1
