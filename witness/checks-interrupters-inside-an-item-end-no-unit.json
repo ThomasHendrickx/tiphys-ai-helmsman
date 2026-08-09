@@ -9,26 +9,26 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 2: a fenced block inside the item.",
-      "replace": "      if (false) {\n        /* SITE 2: a fenced block inside the item."
+      "find": "  visit(container, quoteDepth);\n  return normalizeProse(parts.join(\" \"));",
+      "replace": "  visit(container, quoteDepth);\n  return normalizeProse(parts[0] ?? \"\");"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 3: an aside heading inside the item.",
-      "replace": "      if (false) {\n        /* SITE 3: an aside heading inside the item."
+      "find": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }",
+      "replace": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      } else {\n        break;\n      }"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 4: a setext underline inside the item.",
-      "replace": "      if (false) {\n        /* SITE 4: a setext underline inside the item."
+      "find": "      if (child.type === \"paragraph\") {\n        if (carriesProse(child)) {\n          parts.push(sourceSlice(lines, child.sourcepos, depth));\n        }",
+      "replace": "      if (child.type === \"paragraph\" || NOT_QUOTABLE.has(child.type)) {\n        if (NOT_QUOTABLE.has(child.type) || carriesProse(child)) {\n          parts.push(sourceSlice(lines, child.sourcepos, depth));\n        }"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (continuesListItem(indentColumns(line))) {\n        /* SITE 5: a rule inside the item.",
-      "replace": "      if (false) {\n        /* SITE 5: a rule inside the item."
+      "find": "        const unit = paragraphsBeneath(item, lines, quoteDepth);",
+      "replace": "        collectUnits(item, lines, units, quoteDepth);\n        const unit = paragraphsBeneath(item, lines, quoteDepth);"
     }
   ],
   "deterministic": true,

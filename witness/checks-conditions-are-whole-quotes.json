@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (unit !== \"\") {\n      units.add(unit);\n    }",
-      "replace": "    if (unit !== \"\") {\n      units.add(unit);\n      for (const word of unit.split(\" \")) {\n        units.add(word.toLowerCase().replace(/[^a-z0-9-]/g, \"\"));\n      }\n    }"
+      "find": "      if (unit !== \"\") {\n        units.add(unit);\n      }",
+      "replace": "      if (unit !== \"\") {\n        units.add(unit);\n        for (const word of unit.split(\" \")) {\n          units.add(word.toLowerCase().replace(/[^a-z0-9-]/g, \"\"));\n        }\n      }"
     }
   ],
   "deterministic": true,

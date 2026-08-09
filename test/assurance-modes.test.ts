@@ -2364,15 +2364,43 @@ const INTERRUPTER_RECORD = [
   "",
 ];
 
-/** What each item's single unit must be once its interrupter ends nothing. */
+/**
+ * What each item's single unit must be once its interrupter ends nothing.
+ *
+ * THE INTERRUPTER'S OWN TEXT IS NEVER PART OF THE UNIT, in all four rows, and
+ * the setext row said otherwise until 2026-08-09. That row demanded
+ * `"... opens here. An aside underlined inside the item ... ends here."`, which
+ * is an answer NEITHER conformant parser gives, inside a constant whose sibling
+ * assertion twelve lines below already says the same aside is not a unit. It
+ * survived five fix rounds because the test WAS the specification: the
+ * hand-rolled block loop it graded was written to satisfy it, so nothing
+ * existed to contradict it until a real parser did (DR-0022, option A2).
+ *
+ * MEASURED on the item below, `markdown-it` 14.1.0 in its `commonmark` preset
+ * and `commonmark` 0.31.2, node v26.6.0. Byte-identical renderings:
+ *
+ *   <ol start="3">
+ *   <li>
+ *   <p>The setext item opens here.</p>
+ *   <h2>An aside underlined inside the item</h2>
+ *   <p>and the setext item ends here.</p>
+ *   </li>
+ *   </ol>
+ *
+ * markdown-it's token stream is
+ * `list_item_open paragraph_open inline paragraph_close heading_open inline
+ * heading_close paragraph_open inline paragraph_close list_item_close`, and
+ * commonmark's AST is `item paragraph heading(level=2) paragraph`. The aside is
+ * a SETEXT HEADING, and a heading's text belongs to no unit: that is the rule
+ * the ATX row on the line above has always encoded, and the setext row is now
+ * the same claim about the same block type. The `-----` underline still ends
+ * NOTHING, which is what this test is for: the item's two paragraphs remain one
+ * unit across it.
+ */
 const WHOLE_ITEMS: [string, string, string][] = [
   ["fence", FENCE_ITEM_OPEN, `${FENCE_ITEM_OPEN} ${FENCE_ITEM_CLOSE}`],
   ["ATX heading", ATX_ITEM_OPEN, `${ATX_ITEM_OPEN} ${ATX_ITEM_CLOSE}`],
-  [
-    "setext heading",
-    SETEXT_ITEM_OPEN,
-    `${SETEXT_ITEM_OPEN} ${SETEXT_ASIDE} ${SETEXT_ITEM_CLOSE}`,
-  ],
+  ["setext heading", SETEXT_ITEM_OPEN, `${SETEXT_ITEM_OPEN} ${SETEXT_ITEM_CLOSE}`],
   ["thematic break", BREAK_ITEM_OPEN, `${BREAK_ITEM_OPEN} ${BREAK_ITEM_CLOSE}`],
 ];
 

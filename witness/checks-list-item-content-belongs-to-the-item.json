@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (listContentColumn === null) {\n        flush();\n      } else {\n        blankPending = true;\n      }",
-      "replace": "      flush();"
+      "find": "        const unit = paragraphsBeneath(item, lines, quoteDepth);",
+      "replace": "        const first = item.firstChild;\n        const unit =\n          first === null ? \"\" : normalizeProse(sourceSlice(lines, first.sourcepos, quoteDepth));"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (listContentColumn !== null && markerIndent >= listContentColumn) {",
-      "replace": "      if (listContentColumn !== null && markerIndent < 0) {"
+      "find": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }",
+      "replace": "      } else if (!NOT_QUOTABLE.has(child.type) && child.type !== \"list\") {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }"
     }
   ],
   "deterministic": true,
