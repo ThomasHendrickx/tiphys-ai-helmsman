@@ -6,10 +6,12 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-09
-- main head: `ae674b6` (PR #63, the owner's DR-0022 answer), and its T-009 arm
-  is DISCHARGED: run 31334452662 step 9 `M2 exit test (push)` success, step 8
-  `M2 exit test (pull request)` correctly skipped, step 10 self-test guard
-  success. The head before it, `3c60acb`, is discharged: run 31331023369
+- main head: `d718221` (PR #64, the A2 review evidence and arbitration), and its
+  T-009 arm is DISCHARGED: run 31336255684 step 9 `M2 exit test (push)` success,
+  step 8 `M2 exit test (pull request)` correctly skipped, step 10 self-test
+  guard success. The head before it, `ae674b6` (PR #63, the owner's DR-0022
+  answer), is discharged the same way: run 31334452662 step 9 success, step 8
+  correctly skipped, step 10 success. Before that, `3c60acb`: run 31331023369
   completed success.
   Earlier discharged heads, by STEP rather than run conclusion: `1a683fe`
   (31307121695 step 9 `M2 exit test (push)` success, step 8 correctly
