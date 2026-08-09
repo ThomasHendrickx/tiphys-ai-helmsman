@@ -9,8 +9,10 @@
 - reversibility: option A adds a RUNTIME DEPENDENCY to a package that ships on
   npm, which is costly to reverse after v0.1.0; option B changes a shipped
   check's contract; option C is cheap to reverse and buys nothing new
-- status: **OPEN, raised to the owner 2026-08-09.** Not decided by the
-  orchestrator. See "why this one goes to you" below.
+- status: **DECIDED BY THE OWNER, 2026-08-09: option A2.** `commonmark` for
+  block structure, `sourcepos` slicing of the original source for text, with
+  the acceptance criterion that unit sets are byte-identical on all nineteen
+  records. Executing under `claude/m3-p3-assurance-modes`.
 - date: 2026-08-09
 
 ## Why this one goes to the owner, when the last three did not
