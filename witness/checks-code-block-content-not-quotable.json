@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      if (indent >= (listContentColumn ?? 0) + 4) {",
-      "replace": "      if (false) {"
+      "find": "    if (atBoundary && indent >= (listContentColumn ?? 0) + 4) {",
+      "replace": "    if (false) {"
     }
   ],
   "deterministic": true,
