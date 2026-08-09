@@ -151,8 +151,8 @@ modelled and bound five phases to.
 | M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
 | M3-P1 schemas and validator | MERGED #39 |
 | M3-P2 canonical gate registry | MERGED #48 |
-| M3-P3 assurance modes | PR #54 open at `218fc12`, round 6 (DR-0022 option A2), one of two reviews back with APPROVE |
-| A2 supply-chain review evidence | PR #64 open |
+| M3-P3 assurance modes | PR #54 open, round 7 in flight on `218fc12` after CHANGES REQUIRED |
+| A2 review evidence and arbitration | PR #64 open |
 | M3-P4 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
@@ -207,20 +207,51 @@ that breaks DR-0012's condition 0 on eleven of nineteen records. Only A2, which
 slices the ORIGINAL SOURCE by `sourcepos` offsets, is byte-identical, and that is
 now a falsifiable acceptance criterion so an implementer cannot pass without it.
 
-**Round 6 executes A2 and is at `218fc12` (PR #54), under dual clean-room review
-of that head.** The supply-chain and regression contract has returned APPROVE
-with zero findings: `commonmark` pinned exact (+4 packages, 920,729 B, BSD-2 and
-MIT, depth 2), no `fs`, `net`, `child_process` or `eval` on the reachable chain,
-`test/behaviors.json` strictly append-only against the merge base (30 additions,
-0 removals), no assertion deleted, suite 501/501, scope gate 37/37. Its report is
-`delivery/review/clean-room-m3-p3-a2-supply-chain.md`, PR #64. The correctness
-contract on the same head is still running; merge waits on it, because DR-0012
-requires BOTH.
+**Round 6 executed A2 at `218fc12` (PR #54) and its dual review is COMPLETE.**
+Supply chain and regression: APPROVE, zero findings (`commonmark` pinned exact,
++4 packages, 920,729 B, BSD-2 and MIT, depth 2; no `fs`, `net`, `child_process`
+or `eval` on the reachable chain; `test/behaviors.json` strictly append-only, 30
+additions and 0 removals; no assertion deleted; scope 37/37). Correctness:
+**CHANGES REQUIRED**, two mediums and a low. Both reports and the arbitration are
+on `claude/reviews-m3-p3-a2` (PR #64).
+
+They do not disagree; they asked different questions, which is why T-007 requires
+different CONTRACTS and not merely different models. DR-0012 condition 2 blocks
+merge on either medium.
+
+- **CR-001 (medium).** A unit keeps its block markers when two block markers open
+  on one line (`- - x`, `- 1. x`, `1. - x`, `- > x`, and four more). Fail-open and
+  fail-closed at once: the unit set gains a string no document contains and loses
+  the real prose.
+- **CR-002 (medium), the more serious.** Both defects round 6 reports fixing have
+  NO red witness. Fourteen of twenty mutants survive, and with the pre-fix
+  `startOffset` restored the FULL suite is 501 tests, 501 pass, exit 0.
+- **CR-003 (low).** `NOT_QUOTABLE` has no observable effect; the round's own claim
+  about that is confirmed, so the docstrings claiming an exclusion are what change.
+
+**Round 6 did NOT fail the way rounds 1 to 5 failed, and that is measured rather
+than assumed.** The orchestrator ran CR-001's shapes against the PRE-A2 head
+`18c335a`: all four leak there too, pre-A2 leaking one marker where A2 leaks both.
+So CR-001 is an old hole A2 widened, not a defect A2 introduced, and the reviewer
+reached the same conclusion independently by finding the class already graded FAIL
+for the old code. What the owner decided was delivered correctly: 20 of 20 unit
+sets byte-identical, the 40-shape exploit set at 40/40, eight fabrication variants
+rejected. Round 7 is therefore an ORDINARY fix round, not a DR-0016 escalation.
+That is an orchestrator judgment and is recorded so it can be disagreed with.
+
+**Round 7 is DISPATCHED**, fresh implementer, beacon and freshness watchdog armed
+in the same turn. Scope is ordered CR-002 first on purpose: witnesses taken before
+a fix must redden against shipped code, while witnesses taken after get written to
+match the implementation. A measured starting point for CR-001 is recorded in
+`delivery/review/orchestrator-cr-001-fix-feasibility.md` as evidence rather than
+as an instruction; the implementer owes its own derivation.
 
 One item rides along and is not optional: a REGISTERED witness asserts an answer
 both parsers call wrong, requiring a setext heading's own text to be part of a
 unit its own fixture names as one that must not be a unit. No round found it
-because the test IS the specification, so nothing existed to contradict it.
+because the test IS the specification, so nothing existed to contradict it. The
+correctness reviewer confirms the corrected assertion is right, against
+commonmark's own HTML renderer.
 
 Plan amendments the reviews ruled for are applied: criterion 1 was
 UNSATISFIABLE once its own phase's step 2 landed, because M3-P3 ships the
