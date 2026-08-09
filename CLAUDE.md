@@ -578,6 +578,16 @@ Each of these bit someone once. Forward them to every implementer.
     "N pass, exit 0" is the incomplete sentence here, exactly as "CI is green"
     is under T-009.
 
+    **The complete sentence for a suite result names the toolchain AND the
+    build state**, because the two axes skip different tests and they compose.
+    Measured at the same head: node v26.6.0 with `dist/` built gives 504 pass
+    and 0 skipped, and the DEFAULT toolchain (`bash -lc`, node v22.22.2) gives
+    502 pass and **2** skipped, those two being the floor-gated `doctor` tests.
+    The floor accounts for two, never nine. That matters because the obvious
+    first guess for a skip discrepancy here is warning 1, the Node floor, and on
+    this occasion that guess was WRONG; the round measured both axes instead of
+    stopping at the plausible one.
+
     Found by the M3-P3 round-7 implementer while settling a discrepancy the
     orchestrator had flagged rather than averaged away.
 
