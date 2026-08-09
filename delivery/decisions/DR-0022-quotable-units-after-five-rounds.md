@@ -94,7 +94,81 @@ read that rather than infer structure from prose.
 - Cheap, reversible, and the base rate says it produces another defect. Five for
   five so far.
 
-## The orchestrator's recommendation, stated so the question is answerable
+## AMENDED 2026-08-09: the options were PROTOTYPED, and the recommendation below
+## was WRONG as written
+
+Rather than leave the owner to decide from argument, all three options were built
+on a throwaway branch and measured. The full report is
+`delivery/review/dr-0022-option-evidence.md`. Read it before deciding; this is a
+summary of what it changes.
+
+Method, because the method is why the result can be trusted: an exploit set of
+**40 shapes** covering every finding from all five rounds plus the four
+documented-unmodelled forms, with ground truth taken from `commonmark` 0.31.2
+AND cross-checked against a structurally independent second parser
+(`markdown-it` 14.1.0). The two oracles agree 40 out of 40. Then a differential
+fuzz of **15,000 generated documents** across three seeds, adjudicated only where
+both oracles agree.
+
+| | current | **A2** | B | C |
+|---|---|---|---|---|
+| exploit set | 32/40, 8 fail-open | **40/40** | 39/40 stop being questions | 35/40, 5 fail-open |
+| fuzz, 15k documents | 35.3% | **100%** | structure never read | 35.4% |
+| unit sets on 19 real records | baseline | **byte-identical** | replaced wholesale | near-baseline |
+| DR-0012's six conditions | 6/6 | **6/6** | 6/6 after a 14-line record edit | 6/6 |
+| dependency | none | +4 packages, 920,729 B, depth 2, BSD-2/MIT | **none** | none |
+| consumer cost | none | **none** | every cited record, plus a contract change | none |
+| lines | 153 | **78** | 84 | 155 |
+
+**The finding that matters most: OPTION A AS THIS RECORD ORIGINALLY DESCRIBED IT
+IS WRONG.** A plain walk of the parser's AST reads INLINE text, which strips
+markup, and that BREAKS DR-0012's condition 0, whose text contains
+`` `delivery/review/` ``. Eleven of nineteen records change under it. Only the
+variant that slices the ORIGINAL SOURCE using the parser's `sourcepos` offsets is
+byte-identical to today's behaviour. That variant is called **A2**.
+
+So if the owner had approved "option A" and an implementer had written the obvious
+thing, that would have been defect six on day one, shipped under a decision that
+looked settled. The orchestrator's recommendation was right about the direction
+and wrong about the specification, and the prototype is what caught it.
+
+**Second finding, a live defect independent of the decision.** A REGISTERED
+witness at `test/assurance-modes.test.ts:2379` asserts an answer BOTH parsers call
+wrong: it requires a setext heading's own text to be part of the item's unit, in a
+string its own fixture names as one "that must not be a unit". No round found this
+because the test IS the specification, so nothing existed to contradict it. This
+must be corrected whichever option is chosen.
+
+**Third: option C was prototyped rather than dismissed by base rate.** The minimal
+V-5 fix scores 35/40, swaps one wrong answer for a different one at a fourth site,
+and moves the fuzz result by one document in five thousand.
+
+**Fourth: two entries in the record are withdrawn.** V-5's fifth member (the
+nested item) and V-3 were never defects. CommonMark lazy continuation makes both
+fusions correct.
+
+**Amended recommendation: A2**, with a falsifiable acceptance criterion that the
+original framing lacked: *unit sets byte-identical on all nineteen records*. That
+criterion is exactly what would have caught the A-versus-A2 error, and it is
+stated here so the implementer cannot pass without it.
+
+Option B's one genuine advantage, which this record did not state before: it makes
+the OMISSION direction detectable, which `src/checks.ts` currently says is
+underivable from prose. That capability can be layered onto A2 later as an
+optional block; the path is open under A2 and spent under B.
+
+The single measurement the owner should weigh: **35 per cent against 100 per cent
+over 15,000 documents adjudicated by two independent parsers.** It is the only
+number in this record not bounded by the imagination of whoever wrote the test
+cases, and five rounds have established that is precisely where this function
+fails.
+
+Known gap, stated by the prototype against itself: the fuzz emits no inline
+markup, so it cannot tell A from A2 and rates both 100 per cent. The difference
+between them, the most consequential finding in the report, came only from running
+the real records.
+
+## The orchestrator's ORIGINAL recommendation, left in place because the amendment above is the point
 
 **Option A**, with `commonmark` pinned exact like `ajv` and `yaml`.
 
