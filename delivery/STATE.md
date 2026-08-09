@@ -6,13 +6,14 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-09
-- main head: `d718221` (PR #64, the A2 review evidence and arbitration), and its
-  T-009 arm is DISCHARGED: run 31336255684 step 9 `M2 exit test (push)` success,
+- main head: `5f0b1e4` (PR #66, the round-7 delta verification), and its T-009
+  arm is DISCHARGED: the post-merge push run's `M2 exit test (push)` step
+  reports success. The head before it, `d718221` (PR #64, the A2 review evidence
+  and arbitration), is discharged the same way: run 31336255684 step 9 success,
   step 8 `M2 exit test (pull request)` correctly skipped, step 10 self-test
-  guard success. The head before it, `ae674b6` (PR #63, the owner's DR-0022
-  answer), is discharged the same way: run 31334452662 step 9 success, step 8
-  correctly skipped, step 10 success. Before that, `3c60acb`: run 31331023369
-  completed success.
+  guard success. Before that, `ae674b6` (PR #63, the owner's DR-0022 answer):
+  run 31334452662 step 9 success, step 8 correctly skipped, step 10 success.
+  And `3c60acb`: run 31331023369 completed success.
   Earlier discharged heads, by STEP rather than run conclusion: `1a683fe`
   (31307121695 step 9 `M2 exit test (push)` success, step 8 correctly
   skipped), `a9ab9bd` (31305337415), `1d5cca5` (31301155195), `826f27d`
