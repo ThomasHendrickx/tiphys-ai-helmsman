@@ -5,11 +5,17 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-08
-- main head: `557448d`, green on BOTH CI events (pull_request and push)
-- milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 is implemented and in
-  its first fix round after a dual clean-room review; M3-P2 to M3-P10 are not
-  dispatched. M2 COMPLETE including its post-exit-test fix round; M1 complete,
+- as of: 2026-08-09
+- main head: `1a683fe`, green on BOTH CI events. The push arm is verified by
+  STEP, not by run conclusion: run 31307121695 step 9 `M2 exit test (push)`
+  success, step 8 correctly skipped. The three heads before it are discharged
+  the same way: `a9ab9bd` (31305337415), `1d5cca5` (31301155195), `826f27d`
+  (31298592287). T-009's rule is that a merge is not complete until the
+  post-merge push run on the NEW tip is observed, and "the run was green" is
+  not that observation; the arm is.
+- milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 and M3-P2 are MERGED.
+  M3-P3 is at `6af8e81` on its branch after four fix rounds and is under final
+  delta verification; M3-P4 to M3-P10 are not dispatched. M2 COMPLETE including its post-exit-test fix round; M1 complete,
   exit test passed on `7e1b5f1`, completion record merged in PR #10 at
   `037477e`.
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
@@ -421,6 +427,17 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **A witness can stop witnessing while every gate stays green (T-011).** Two
+  instances in two consecutive M3-P3 rounds, both self-reported by the
+  implementer and both confirmed independently. A `find` that stops matching is
+  caught by `red-witness` rule (d); a `find` that STILL MATCHES a line whose
+  meaning drifted is caught by nothing. The 97-member sweep is structurally blind
+  to the second kind, because the drift was in a FIXTURE the witness reads rather
+  than in the source its `find` points at. Whether `red-witness` should detect it
+  is an open design question on M2-P2's file and may not be decidable
+  mechanically; full record in
+  `delivery/tuition/T-011-a-witness-can-stop-witnessing-silently.md`. Not assigned.
+
 - **BLOCKING ON M3-P10: `package.json` must reach `version` 0.1.0.** M3-P3's
   five shipped `$comment` disclosures name v0.1.0 (DR-0020), while
   `package.json` declares `"version": "0.0.0"`. M3-P10 step 1
@@ -447,8 +464,26 @@ and `A-3` meant three, one of them a literal string inside
   files: `src/gates/coverage.ts` `extractIdRows` admitted a fenced table row, and
   `scripts/check-clause-map.mjs` `parseInventory` admitted a fenced inventory row.
   The second compounds with the containment defect already reported at line 195
-  of that same file. Awaiting independent confirmation by the round-3 delta
-  verifier before being assigned.
+  of that same file.
+
+  **CONFIRMED 2026-08-09, no longer provisional.** The round-3 delta verifier
+  reproduced both independently (its finding V-7) and did not edit either, as
+  instructed. So each has been demonstrated twice, by two agents that did not
+  share a context: once by the implementer that found the mechanism and once by
+  a verifier told only to confirm or refute.
+
+  **Neither is assigned yet, and that is the honest state.** `src/gates/coverage.ts`
+  is on M2-P6's declaration and `scripts/check-clause-map.mjs` on M3-P1's, so
+  fixing either is an orchestrator-side change to shared harness code and owes the
+  full fix-round contract under the T-009 corollary. Neither is urgent: both admit
+  a FENCED example as real data, and no shipped artifact currently contains the
+  triggering shape, which is the same "latent, not live" position V-1's fenced form
+  held before `DR-0004` turned out to contain it. That precedent is the reason this
+  entry does not read as safe: a latent shape becomes live the first time someone
+  writes an ordinary document.
+
+  The cheap check, if either is picked up: grep the artifacts each one parses for
+  a fenced block, and say what the search did not cover.
 
 - **`scripts/m2-exit-test.sh` is a structural bottleneck and is on no
   gate-adding phase's declaration.** It is the SINGLE caller of `gates run`
