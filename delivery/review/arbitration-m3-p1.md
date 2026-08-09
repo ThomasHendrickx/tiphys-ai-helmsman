@@ -172,7 +172,7 @@ failing only on vendored fixtures.
 hygiene issue; the orchestrator grades it high because it defeats the review
 contract itself, and because it means criterion 13's deviation report was
 incomplete: it named the vendored suite files and not this one. Control
-characters that a test genuinely needs as DATA belong in escapes (` `),
+characters that a test genuinely needs as DATA belong in escapes (a backslash-x-zero-zero sequence),
 never as literal bytes in the source.
 
 ## Remaining findings, accepted as written

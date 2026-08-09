@@ -77,9 +77,32 @@ artifact behind it is treated as unknown.
    that is TWO checks because one grep cannot do both:
 
    ```
-   grep -rP '[^\x00-\x7F]' <paths>                    # non-ASCII
-   grep -rP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
+   grep -raP '[^\x00-\x7F]' <paths>                    # non-ASCII
+   grep -raP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
    ```
+
+   **The `-a` is LOAD-BEARING and its absence is why the second check was
+   itself blind until 2026-08-09.** Without `-a`, GNU grep detects a file
+   containing NUL as binary and stops reporting matches from it, so the check
+   silently skips exactly the file it exists to catch. Measured, GNU grep 3.11,
+   one byte per fixture:
+
+   | fixture | `grep -qP` | `grep -qaP` |
+   |---|---|---|
+   | `hello\x00world` | **MISSED** | detected |
+   | `hello\x01world` | detected | detected |
+   | `hello\x1bworld` | detected | detected |
+   | `hello world` | miss (correct) | miss (correct) |
+
+   NUL is the one byte it cannot see, and NUL is the one that makes git call a
+   source file binary and strip its diff. `test/status.test.ts` was caught in
+   the incident below only because it ALSO carried SOH. Two files were then
+   found on `main` that the fixed check catches and the old one did not, one of
+   them `delivery/review/arbitration-m3-p1.md`, which is the document that RULED
+   on that incident: its sentence saying control characters belong in escapes
+   contained a literal NUL inside the backticks meant to hold the escape. Every
+   "ASCII clean" report since, the orchestrator's and CI's alike, was true and
+   useless. Recorded as `delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md`.
 
    The first check ALONE is what this repository used until 2026-08-08, and it
    is blind to control characters BY CONSTRUCTION: `NUL`, `SOH` and friends are
