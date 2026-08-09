@@ -10,6 +10,8 @@
     "src/commands/mode.ts",
     "test/assurance-modes.test.ts",
     "schemas/charter.schema.json",
+    "templates/charter.example.yaml",
+    "test/fixtures/charter-no-escalation.yaml",
     "src/validate.ts",
     "src/checks.ts",
     "src/cli.ts",
