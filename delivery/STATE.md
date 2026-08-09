@@ -159,7 +159,7 @@ The third contract was given the CONSUMER LENS, a framing neither earlier
 reviewer had: it built a scratch consuming project outside this repository and
 pointed the shipped tools at it, which both earlier reviews had recorded under
 their own non-coverage as undone. **It found two highs neither of them found**,
-and they are decided in `delivery/decisions/DR-0019-closed-vocabulary-at-v0-1-0.md`
+and they are decided in `delivery/decisions/DR-0020-closed-vocabulary-at-v0-1-0.md`
 rather than fixed: the vocabularies ship CLOSED at v0.1.0, because widening a
 closed enum later is backward compatible while closing an open one later is
 breaking. That decision is ORCHESTRATOR-made under DR-0016 and DR-0015, is
@@ -422,7 +422,7 @@ and `A-3` meant three, one of them a literal string inside
 ## Tracked obligations, sequenced
 
 - **BLOCKING ON M3-P10: `package.json` must reach `version` 0.1.0.** M3-P3's
-  five shipped `$comment` disclosures name v0.1.0 (DR-0019), while
+  five shipped `$comment` disclosures name v0.1.0 (DR-0020), while
   `package.json` declares `"version": "0.0.0"`. M3-P10 step 1
   (delivery/plan/kernel-plan-m3.md:4823) makes it true, so the forward
   reference is correct AS LONG AS that step happens. If M3-P10 ships without

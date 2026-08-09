@@ -1,6 +1,6 @@
-# DR-0019: the mode, stage and role vocabularies ship CLOSED at v0.1.0
+# DR-0020: the mode, stage and role vocabularies ship CLOSED at v0.1.0
 
-- id: DR-0019
+- id: DR-0020
 - project: tiphys-kernel
 - task: M3-P3 third review contract (consumer lens), dispatched under DR-0016
 - question: The shipped schemas close `mode id`, `pipeline stage id` and `role id`
@@ -12,6 +12,37 @@
 - reversibility: the DECISION DIRECTION MATTERS and is the load-bearing part of
   the reasoning; see below
 - date: 2026-08-09
+
+## Why this is DR-0020 and not DR-0019
+
+It was first written as DR-0019. **That id was already allocated and retired**,
+and reusing it was an orchestrator defect caught by the round-3 delta verifier,
+not by the orchestrator who made it.
+
+The history, verified rather than recalled:
+
+- `719f04f` created `delivery/decisions/DR-0019-citations-scope-forward-docs.md`.
+- `f775c56` DELETED it, under the title "Re-attribute citations-scope change as
+  an orchestrator decision, not a fabricated owner DR". The record had asserted
+  owner sign-off that never happened.
+
+So DR-0019 names a retired, fabricated record that
+`delivery/review/clean-room-citations-scope-hazard.md` and
+`delivery/work-history/m2-citations-scope.md` still discuss BY THAT ID. Two
+different documents under one id, one of them a cautionary tale about a
+fabricated decision, is precisely the collision CLAUDE.md's identifier section
+records for the `A-n` namespace: **allocate a fresh id and never reuse a retired
+one.** The rule was written for `A-n` and it binds every scheme in that section.
+
+DR-0020 was chosen over DR-0021 because DR-0021 is the id used in the SHIPPED
+example `templates/decision-record.example.yaml`, while DR-0020's only
+occurrence anywhere is inert fixture text inside a coverage-gate test. Neither
+has ever had a record file.
+
+The historical references to DR-0019 in the two documents above are deliberately
+NOT rewritten. They are the record of what happened, and this renumber restores
+their accuracy rather than damaging it: with this file renamed, no live DR-0019
+record exists, which is what the hazard review asserted at its own head.
 
 ## What was found, and by whom
 
