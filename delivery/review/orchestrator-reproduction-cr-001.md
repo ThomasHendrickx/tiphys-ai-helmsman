@@ -160,5 +160,27 @@ that three times.
   mutants survive the phase's own suite, is NOT reproduced here and is
   independent of this finding. It is the more serious of the two and is
   arbitrated separately.
-- No claim is made here about whether any real decision record in
-  `delivery/decisions/` contains such a line. That was not measured.
+- The mutation-campaign non-coverage above stands; nothing here speaks to it.
+
+## Severity bound, measured after the fact
+
+The gap above about real records was closed rather than left open. Two searches,
+both at this head:
+
+- All twenty records under `delivery/decisions/` were run through
+  `quotableUnits` and filtered for marker-leaking units. **20 scanned, 0 with
+  any.**
+- Every tracked markdown file in the repository was searched for a line carrying
+  two block markers, with `grep -nP` for a list marker followed by a list or
+  quote marker. **Zero matching lines anywhere.**
+
+So this is a LATENT hole, not a live corruption: no document this repository
+ships or governs currently trips it, which is also the second independent reason
+the owner's byte-identical criterion held. That bounds the severity and it does
+NOT excuse the defect, because the check exists to be pointed at a consuming
+project's records, and a consumer writing a nested list is doing nothing unusual.
+The whole point of DR-0020 is that v0.1.0 goes to a real consumer at M4.
+
+One thing this bound is not: an argument for deferring. A fail-open unit set is
+the shape where "no current document trips it" is true right up until the first
+one does, silently.
