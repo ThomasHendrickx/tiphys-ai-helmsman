@@ -68,6 +68,7 @@ const checksModule = (await import(
   deregisterCheck: (id: string) => boolean;
   charterModeEnumMatchesModes: DerivedCheck;
   modeConditionsQuoteGrantedBy: DerivedCheck;
+  quotableUnits: (text: string) => Set<string>;
   modeGateSetsResolve: DerivedCheck;
   modeIdsAreUnique: DerivedCheck;
   modeNoUndeclaredDowngrade: DerivedCheck;
@@ -1342,7 +1343,7 @@ test("a delegated grant whose conditions are not in the record it names is rejec
     assert.equal(run.status, 1, run.stdout + run.stderr);
     assert.match(
       run.stdout,
-      /^INVALID #\/modes\/0\/conditions\/0 mode full cites DR-0012 for a condition that record does not contain: "fabricated condition one, unrelated to DR-0012" \(check: mode-conditions-quote-granted-by\)$/m,
+      /^INVALID #\/modes\/0\/conditions\/0 mode full cites DR-0012 for a condition that is not a whole quoted item of that record: "fabricated condition one, unrelated to DR-0012" \(check: mode-conditions-quote-granted-by\)$/m,
       run.stdout,
     );
     /* ALL SIX, not just the first: a check that reported one fabrication and
@@ -1354,7 +1355,42 @@ test("a delegated grant whose conditions are not in the record it names is rejec
       run.stdout,
     );
 
-    /* MEMBER 2, STRUCTURALLY DIFFERENT: the conditions are real and the RECORD
+    /* MEMBER 2, STRUCTURALLY DIFFERENT AND ADDED IN FIX ROUND 2: a FRAGMENT of
+       a real condition. It IS contained in the record, verbatim, so the
+       containment predicate this check used to apply accepted it; it is not a
+       whole quoted item, so an equality predicate rejects it. This is the arm
+       that distinguishes the two predicates on REAL text rather than on
+       fabricated text. */
+    const fragment = loadModes();
+    const realConditions = modeNamed(fragment, "full")["conditions"] as string[];
+    const firstClause = (realConditions[0] as string).split(",")[0] as string;
+    modeNamed(fragment, "full")["conditions"] = [firstClause, ...realConditions.slice(1)];
+    const fragmentPath = writeDocument(dir, fragment, "fragment-condition.yaml");
+    const fragmentRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      dir,
+      fragmentPath,
+    ]);
+    assert.equal(fragmentRun.status, 1, fragmentRun.stdout + fragmentRun.stderr);
+    assert.match(
+      fragmentRun.stdout,
+      /^INVALID #\/modes\/0\/conditions\/0 mode full cites DR-0012 for a condition that is not a whole quoted item of that record: /m,
+      fragmentRun.stdout,
+    );
+    /* And ONLY that one, so the other five whole quotes still resolve and the
+       check is discriminating rather than rejecting the document wholesale. */
+    assert.equal(
+      fragmentRun.stdout
+        .split("\n")
+        .filter((line) => line.includes("mode-conditions-quote-granted-by")).length,
+      1,
+      fragmentRun.stdout,
+    );
+
+    /* MEMBER 3, STRUCTURALLY DIFFERENT: the conditions are real and the RECORD
        cannot be resolved, which is the other way the binding can be empty. It
        fails closed rather than passing for want of something to compare with. */
     const noRecords = scratch();
@@ -1519,6 +1555,105 @@ test("the charter enum comparison is element-wise, so a mode id containing a sep
       matching.lines.filter((line) => line.includes("charter-mode-enum-matches-modes")).length,
       0,
       matching.lines.join("\n"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 2: containment is not equality (the short-string class)    */
+/* ------------------------------------------------------------------ */
+
+test("conditions shorter than the record's own words are rejected, because a condition must be a whole quoted item and not a substring", () => {
+  /* THE MECHANISM THIS TEST GUARDS: a containment predicate standing in for an
+     equality predicate. `mode-conditions-quote-granted-by` first asked whether
+     each condition OCCURRED ANYWHERE in the record, as one normalized blob, and
+     containment is trivially satisfiable by short strings.
+
+     MEASURED on dd4e906, before the fix: replacing all six of DR-0012's
+     merge-authority conditions with `["a", "the", "review", "merge", "is",
+     "of"]` produced NO violation and `validate` exited 0. Every one of those
+     words occurs in the record.
+
+     THIS ARM IS SEPARATE FROM THE FABRICATED-SENTENCE TEST ABOVE ON PURPOSE.
+     Long fabrications are caught by containment too, so a witness resting on
+     them stays red when the predicate is reverted and proves nothing about
+     which predicate is in force. Only the short-string arm distinguishes them,
+     which is why it has its own behavior and its own witness spec. */
+  const dir = stageContext();
+  try {
+    const shortStrings = ["a", "the", "review", "merge", "is", "of"];
+
+    /* THE PREMISE, ASSERTED RATHER THAN ASSUMED: every one of these really does
+       occur in DR-0012, so the arm exercises the containment/equality
+       difference and not merely "these words are absent". Without this the test
+       would pass for the wrong reason on any record. */
+    const record = readFileSync(
+      join(repoRoot, "delivery", "decisions", "DR-0012-delegated-merge-authority.md"),
+      "utf8",
+    ).toLowerCase();
+    for (const word of shortStrings) {
+      assert.ok(record.includes(word), `"${word}" does not occur in DR-0012 at all`);
+    }
+
+    const junk = loadModes();
+    modeNamed(junk, "full")["conditions"] = shortStrings;
+    assert.deepEqual(
+      validateModule.validateToLines(readSchema("assurance-modes.schema.json"), junk),
+      [],
+      "the junk conditions must be SCHEMA-VALID, or this tests the schema and not the check",
+    );
+
+    const path = writeDocument(dir, junk, "short-string-conditions.yaml");
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    /* ALL SIX, one per condition, so a check that caught the longest and
+       stopped could not pass. */
+    for (let position = 0; position < shortStrings.length; position += 1) {
+      assert.match(
+        run.stdout,
+        new RegExp(
+          `^INVALID #/modes/0/conditions/${String(position)} mode full cites DR-0012 for a condition that is not a whole quoted item of that record: "${shortStrings[position] as string}" \\(check: mode-conditions-quote-granted-by\\)$`,
+          "m",
+        ),
+        run.stdout,
+      );
+    }
+
+    /* THE EXTRACTOR IS NOT VACUOUS. If `quotableUnits` returned nothing this
+       test would pass for the wrong reason, and so would every condition
+       rejection above. The six real conditions ARE units of the record. */
+    const units = checksModule.quotableUnits(
+      readFileSync(
+        join(repoRoot, "delivery", "decisions", "DR-0012-delegated-merge-authority.md"),
+        "utf8",
+      ),
+    );
+    assert.ok(units.size > 10, `quotableUnits extracted ${String(units.size)} units`);
+    for (const condition of modeNamed(loadModes(), "full")["conditions"] as string[]) {
+      assert.ok(
+        units.has(condition.replace(/\s+/g, " ").trim()),
+        `a shipped condition is not a quotable unit of DR-0012:\n  ${condition}`,
+      );
+    }
+    /* And a unit is a WHOLE item: the first clause of the first condition is in
+       the record and is NOT a unit, which is the equality half in one line. */
+    const firstCondition = (modeNamed(loadModes(), "full")["conditions"] as string[])[0] as string;
+    assert.equal(units.has((firstCondition.split(",")[0] as string).trim()), false);
+
+    /* THE OTHER DIRECTION, Kind B: the check removed and restored. */
+    assert.equal(checksModule.deregisterCheck("mode-conditions-quote-granted-by"), true);
+    assert.ok(
+      !checkLines(junk, dir).lines.some((line) =>
+        line.includes("mode-conditions-quote-granted-by"),
+      ),
+    );
+    checksModule.registerCheck(checksModule.modeConditionsQuoteGrantedBy);
+    assert.ok(
+      checkLines(junk, dir).lines.some((line) =>
+        line.includes("(check: mode-conditions-quote-granted-by)"),
+      ),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

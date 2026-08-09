@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "        if (condition !== \"\" && !resolved.text.includes(condition)) {",
-      "replace": "        if (condition !== \"\" && !resolved.text.includes(condition.slice(0, 0))) {"
+      "find": "      const conditions = stringsAt(row.mode, \"conditions\");",
+      "replace": "      const conditions: string[] = [];"
     }
   ],
   "deterministic": true,

@@ -773,6 +773,73 @@ function normalizeProse(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** A markdown list item: an ordered or unordered marker and the text after it. */
+const LIST_ITEM = /^\s*(?:[0-9]+[.)]|[-*+])\s+(.*)$/;
+
+/**
+ * The QUOTABLE UNITS of a prose record: every list item and every paragraph,
+ * each with its marker stripped and its whitespace normalized.
+ *
+ * WHY THIS EXISTS, and it is the whole of fix round 2. The first version of
+ * this check asked whether each condition OCCURRED ANYWHERE in the record, as
+ * one normalized blob. That is a CONTAINMENT predicate standing in for an
+ * EQUALITY predicate, and containment is trivially satisfiable by short
+ * strings: `conditions: ["a", "the", "review", "merge", "is", "of"]` replaced
+ * every one of DR-0012's six merge-authority conditions with junk and the
+ * check exited 0. Every one of those words occurs in the record.
+ *
+ * The signal was already in this phase's own evidence and was read past: an
+ * earlier probe fabricated `"one"` through `"six"` and got findings for
+ * indices 3, 4 and 5 ONLY, because "one", "two" and "three" occur inside the
+ * record's prose. Three of six caught looked like the check working.
+ *
+ * Comparing against UNITS rather than against the blob makes the predicate an
+ * equality: a condition matches only if it is a WHOLE quoted item of the
+ * record. Both halves matter. Whole, so a fragment cannot match; item rather
+ * than whole document, so a record may carry other prose around the conditions
+ * without anyone having to say which section holds them, which is the
+ * structure assumption that would have made this check project-specific.
+ *
+ * THE COST, stated because it is a real constraint on a consuming project: a
+ * condition must be quoted as a complete list item or paragraph of the record.
+ * A condition that paraphrases, or that quotes half of a longer item, is now
+ * a violation. That is what "quoted from the decision record rather than
+ * summarized" already claimed to mean, and it is now enforced rather than
+ * asserted.
+ */
+export function quotableUnits(text: string): Set<string> {
+  const units = new Set<string>();
+  let current: string[] = [];
+  const flush = (): void => {
+    if (current.length === 0) {
+      return;
+    }
+    const unit = normalizeProse(current.join(" "));
+    current = [];
+    if (unit !== "") {
+      units.add(unit);
+    }
+  };
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    /* A blank line, a heading and a code fence all END the unit in progress and
+       belong to none, so a condition can never match a heading or a fence. */
+    if (line.trim() === "" || line.startsWith("#") || line.trimStart().startsWith("```")) {
+      flush();
+      continue;
+    }
+    const item = LIST_ITEM.exec(line);
+    if (item !== null) {
+      flush();
+      current.push(item[1] as string);
+      continue;
+    }
+    current.push(line);
+  }
+  flush();
+  return units;
+}
+
 export const modeConditionsQuoteGrantedBy: DerivedCheck = {
   id: "mode-conditions-quote-granted-by",
   type: "assurance-modes",
@@ -787,11 +854,14 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
       };
     }
     const violations: Diagnostic[] = [];
-    const cache = new Map<string, { ok: true; text: string } | { ok: false; reason: string }>();
+    const cache = new Map<
+      string,
+      { ok: true; units: Set<string> } | { ok: false; reason: string }
+    >();
 
     const resolveRecord = (
       record: string,
-    ): { ok: true; text: string } | { ok: false; reason: string } => {
+    ): { ok: true; units: Set<string> } | { ok: false; reason: string } => {
       const cached = cache.get(record);
       if (cached !== undefined) {
         return cached;
@@ -813,7 +883,7 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
           }
         }
       }
-      let outcome: { ok: true; text: string } | { ok: false; reason: string };
+      let outcome: { ok: true; units: Set<string> } | { ok: false; reason: string };
       if (matches.length === 0) {
         outcome = {
           ok: false,
@@ -827,7 +897,7 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
       } else {
         const read = readOperatorPath(matches[0] as string);
         outcome = read.ok
-          ? { ok: true, text: normalizeProse(read.body) }
+          ? { ok: true, units: quotableUnits(read.body) }
           : { ok: false, reason: read.reason };
       }
       cache.set(record, outcome);
@@ -856,12 +926,16 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
         continue;
       }
       for (let position = 0; position < conditions.length; position += 1) {
+        /* EQUALITY AGAINST A WHOLE UNIT, never containment in the blob. An
+           EMPTY condition is a violation here rather than a skip: the schema
+           already forbids it, and a check that quietly accepted one would be
+           accepting the shortest fabrication of all. */
         const condition = normalizeProse(conditions[position] as string);
-        if (condition !== "" && !resolved.text.includes(condition)) {
+        if (!resolved.units.has(condition)) {
           const opening = condition.length > 60 ? `${condition.slice(0, 60)}...` : condition;
           violations.push({
             pointer: `#/modes/${String(row.index)}/conditions/${String(position)}`,
-            message: `mode ${row.id} cites ${grantedBy} for a condition that record does not contain: "${opening}"`,
+            message: `mode ${row.id} cites ${grantedBy} for a condition that is not a whole quoted item of that record: "${opening}"`,
           });
         }
       }
