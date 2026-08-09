@@ -427,6 +427,15 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **DR-0022 is DECIDED (owner, 2026-08-09): option A2.** `commonmark` for block
+  structure, `sourcepos` slicing for text, acceptance criterion "unit sets
+  byte-identical on all nineteen records". M3-P3 round 6 is executing it on
+  `claude/m3-p3-assurance-modes`. The declaration amendment that answer requires,
+  adding `package-lock.json`, is PR #62. Two items ride along, both recorded in
+  the decision: a registered witness at `test/assurance-modes.test.ts:2379`
+  asserts an answer both parsers call wrong, and V-5's fifth member and V-3 are
+  WITHDRAWN as never having been defects.
+
 - **A witness can stop witnessing while every gate stays green (T-011).** Two
   instances in two consecutive M3-P3 rounds, both self-reported by the
   implementer and both confirmed independently. A `find` that stops matching is
