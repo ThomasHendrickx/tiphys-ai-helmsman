@@ -16,6 +16,7 @@
     "src/checks.ts",
     "src/cli.ts",
     "package.json",
+    "package-lock.json",
     "src/commands/validate.ts",
     "witness/",
     "delivery/requirements/clause-map.json"
