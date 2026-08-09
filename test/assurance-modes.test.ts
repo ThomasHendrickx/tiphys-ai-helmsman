@@ -1642,6 +1642,15 @@ test("conditions shorter than the record's own words are rejected, because a con
     const firstCondition = (modeNamed(loadModes(), "full")["conditions"] as string[])[0] as string;
     assert.equal(units.has((firstCondition.split(",")[0] as string).trim()), false);
 
+    /* HEADINGS ARE NOT UNITS. Asserted rather than claimed in a comment: a
+       heading terminates the unit in progress and belongs to none, so no
+       condition can match one however exactly it is copied. */
+    assert.equal(
+      units.has('What "clean" means, defined here so it cannot be softened later'),
+      false,
+    );
+    assert.equal(units.has("Decision"), false);
+
     /* THE OTHER DIRECTION, Kind B: the check removed and restored. */
     assert.equal(checksModule.deregisterCheck("mode-conditions-quote-granted-by"), true);
     assert.ok(
