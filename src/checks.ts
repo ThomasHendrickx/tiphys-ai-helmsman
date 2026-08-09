@@ -879,24 +879,48 @@ function closesFence(line: string, open: OpenFence): boolean {
  * What is modelled now, explicitly, as block state carried across lines:
  * fenced code (content contributes nothing), indented code (same), ATX
  * headings at any indent, setext headings (a property of the block ABOVE the
- * underline, invisible to any one-line rule), thematic breaks, list items and
- * their content column, and paragraphs.
+ * underline, invisible to any one-line rule), thematic breaks, list items with
+ * ALL of their content, and paragraphs.
  *
- * EVERY AMBIGUITY IS RESOLVED TOWARDS EXCLUDING MORE, because the two
- * directions are not symmetric. Excluding a unit that should have been quotable
- * makes a legitimate condition fail to match, which is a loud diagnostic naming
- * the condition. Admitting a unit that should not be quotable makes a
- * fabricated condition pass, which is silent and is the whole hazard this check
- * exists for. So: a fence at any indent opens, an unclosed fence swallows the
- * rest of the document, `#` at any indent is a heading, and a paragraph
- * followed by a setext underline is discarded rather than kept.
+ * A LIST ITEM'S UNIT IS THE WHOLE ITEM, which is fix round 4 and which the
+ * round-3 version got wrong. An item's continuation paragraphs and its nested
+ * sub-items are CONTENT OF THE ITEM in CommonMark, so emitting them as units of
+ * their own left the item's FIRST PARAGRAPH standing as a whole unit while the
+ * item itself carried more, which is a fragment passing as a whole quote: the
+ * defect this check exists to prevent, arriving through the extractor. It was
+ * live: `delivery/decisions/DR-0004-elevated-permissions.md` has the shape (an
+ * item, a blank, then its commands indented under it) and
+ * `delivery/decisions/DR-0013-schema-validator-implementation.md` has the
+ * nested-list form. THE COST, stated because it is real: a nested sub-item is
+ * not separately quotable, so a record whose conditions are sub-bullets must
+ * quote the enclosing item whole.
  *
- * WHAT IS STILL NOT MODELLED, stated rather than left to be found: block
- * quotes (a `> ` line keeps its marker, so quoting it requires quoting the
- * marker too), HTML blocks, tables, and reference definitions. None of them
- * exclude text that is currently admitted, so each is the same shape as V-1 at
- * a different block form; `delivery/work-history/m3-p3.md` records the
- * derivation that enumerated them and why they are not closed here.
+ * WHERE MARKDOWN IS AMBIGUOUS, THE RESOLUTION IS TOWARDS FEWER AND LONGER
+ * UNITS, because the two directions are not symmetric. Excluding a unit that
+ * should have been quotable makes a legitimate condition fail to match, which
+ * is a loud diagnostic naming the condition. Admitting one that should not be
+ * makes a fabricated condition pass, which is silent and is the whole hazard.
+ * So: a fence at any indent opens, an unclosed fence swallows the rest of the
+ * document, `#` at any indent is a heading, a paragraph followed by a setext
+ * underline is discarded, and everything nested inside a list item joins it.
+ *
+ * THAT SENTENCE IS NOT UNIVERSAL AND THE EXCEPTIONS ARE NAMED HERE, because the
+ * round-3 version of it was written as universal and was falsified within the
+ * round by the list-continuation case above. It governs AMBIGUOUS structure
+ * only. Where markdown is unambiguous the extractor follows markdown, and that
+ * really does split: a blank line between two top-level paragraphs, a thematic
+ * break, and two sibling list items each end a unit.
+ *
+ * AND IT DOES NOT HOLD AT ALL FOR THE BLOCK FORMS THAT ARE NOT MODELLED: block
+ * quotes (a `> ` line keeps its marker, so quoting one requires quoting the
+ * marker too, which is mitigation and not exclusion), HTML blocks, tables, and
+ * link reference definitions. Their content is admitted as ordinary prose,
+ * which is the INCLUDING direction, and each is the same shape as V-1 at a
+ * different block form. Measured 2026-08-09: no decision record in this
+ * repository uses any of them (`grep -clP '^\s*>' delivery/decisions/*.md`
+ * returns nothing), so all four are latent here in the way V-1 was.
+ * `delivery/work-history/m3-p3.md` records the derivation that enumerated them
+ * and why they are not closed here.
  */
 export function quotableUnits(text: string): Set<string> {
   const units = new Set<string>();
@@ -907,11 +931,18 @@ export function quotableUnits(text: string): Set<string> {
   let fence: OpenFence | null = null;
   let inIndentedCode = false;
   let listContentColumn: number | null = null;
+  /* A BLANK LINE IS NOT ALWAYS A UNIT BOUNDARY, which is fix round 4. Inside a
+     list item a blank separates two PARAGRAPHS OF THE SAME ITEM, and the item
+     is the quotable unit, so the blank is remembered rather than acted on and
+     the decision is taken when the next content line says what the blank
+     meant. */
+  let blankPending = false;
 
   const flush = (): void => {
     const collected = current;
     current = [];
     currentIsListItem = false;
+    blankPending = false;
     if (collected.length === 0) {
       return;
     }
@@ -926,6 +957,7 @@ export function quotableUnits(text: string): Set<string> {
   const discard = (): void => {
     current = [];
     currentIsListItem = false;
+    blankPending = false;
   };
 
   for (const raw of text.split("\n")) {
@@ -951,7 +983,15 @@ export function quotableUnits(text: string): Set<string> {
     }
 
     if (line.trim() === "") {
-      flush();
+      /* INSIDE AN OPEN LIST ITEM the blank is deferred: it may separate two
+         paragraphs of this item, or it may end the list, and only the next
+         content line's indent says which. Deciding here is what made a
+         continuation paragraph an independent quotable unit. */
+      if (listContentColumn === null) {
+        flush();
+      } else {
+        blankPending = true;
+      }
       continue;
     }
 
@@ -986,6 +1026,17 @@ export function quotableUnits(text: string): Set<string> {
 
     const item = LIST_ITEM.exec(line);
     if (item !== null) {
+      const markerIndent = columnWidth(item[1] as string);
+      if (listContentColumn !== null && markerIndent >= listContentColumn) {
+        /* A NESTED item is CONTENT of the item that encloses it, exactly as a
+           continuation paragraph is. Gluing it in is what stops the enclosing
+           item's first paragraph from being a whole unit while the item itself
+           carries more. The cost is stated in the docstring: a sub-item is not
+           separately quotable. */
+        blankPending = false;
+        current.push(item[2] as string);
+        continue;
+      }
       flush();
       listContentColumn = columnWidth(line.slice(0, line.length - (item[2] as string).length));
       currentIsListItem = true;
@@ -993,19 +1044,26 @@ export function quotableUnits(text: string): Set<string> {
       continue;
     }
 
-    if (current.length === 0) {
-      /* A BLOCK BOUNDARY, so this line's indent decides its block. A lazy
-         continuation never reaches here, because a block in progress means
-         current is not empty. */
-      const indent = indentColumns(line);
-      if (indent === 0) {
-        listContentColumn = null;
-      }
-      if (indent >= (listContentColumn ?? 0) + 4) {
-        inIndentedCode = true;
-        continue;
-      }
+    const indent = indentColumns(line);
+    /* A BLOCK BOUNDARY is an empty accumulator OR a deferred blank line, and
+       only at a boundary does this line's indent decide anything. In the middle
+       of a block it is a lazy continuation and belongs to the block in
+       progress. */
+    const atBoundary = current.length === 0 || blankPending;
+    if (atBoundary && listContentColumn !== null && indent === 0) {
+      /* THE LIST ENDED. A top-level line after a blank is a new block, not more
+         of the item, so the item's unit closes here. */
+      flush();
+      listContentColumn = null;
     }
+    if (atBoundary && indent >= (listContentColumn ?? 0) + 4) {
+      inIndentedCode = true;
+      blankPending = false;
+      continue;
+    }
+    /* Everything left is content of the block in progress: the item's second
+       paragraph, its lazy continuation, or an ordinary paragraph. */
+    blankPending = false;
     current.push(line);
   }
   flush();

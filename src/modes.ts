@@ -158,7 +158,7 @@ export interface RenderContext {
 
 /**
  * The execution status of one mode, DERIVED rather than looked up in a list of
- * ids (CR-004 item 2, DR-0019).
+ * ids (CR-004 item 2, DR-0020).
  *
  * Two facts are available and both are checkable by the reader: whether this is
  * the kernel's own document, and whether the mode declares any skipped stage.
@@ -179,7 +179,7 @@ export function executionStatus(mode: Mode, context: RenderContext): string {
     return (
       "not determinable here. This is not the kernel's own assurance-modes.yaml, " +
       "so nothing tiphys ships records whether any phase has been delivered under " +
-      "this mode (DR-0019)."
+      "this mode (DR-0020)."
     );
   }
   if (mode.skips.length === 0) {
@@ -192,7 +192,7 @@ export function executionStatus(mode: Mode, context: RenderContext): string {
     `DECLARED AND VALIDATED, NEVER EXERCISED. This mode declares ${String(mode.skips.length)} ` +
     "skipped stage(s), so it is a declared downgrade of the un-downgraded process, and no " +
     "phase of the tiphys project has ever been delivered under it. Its pipeline and its gate " +
-    "selection are checked by validation only (DR-0019)."
+    "selection are checked by validation only (DR-0020)."
   );
 }
 
@@ -202,13 +202,13 @@ export function executionStatus(mode: Mode, context: RenderContext): string {
  * IT SAYS ONLY WHAT THE SHIPPED SCHEMAS DO. The vocabularies really are closed
  * enums, so "a document naming any other id is rejected" is the enum's own
  * behaviour and not a claim about intent. The M4 sentence is attributed to
- * DR-0019 rather than stated as a property of the code.
+ * DR-0020 rather than stated as a property of the code.
  */
 export const RELEASE_LIMITS =
   "limits: the mode, stage and role vocabularies in the shipped schemas are this " +
   "repository's own closed enums, so a document naming any other id is rejected and a " +
   "consuming project cannot extend them at v0.1.0; whether to open them is an M4 question " +
-  "(DR-0019). This command SHOWS a declared mode: nothing in this release resolves a " +
+  "(DR-0020). This command SHOWS a declared mode: nothing in this release resolves a " +
   "project into a mode, enforces one, or runs one.";
 
 /**

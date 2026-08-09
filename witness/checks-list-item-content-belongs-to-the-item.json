@@ -1,0 +1,24 @@
+{
+  "id": "checks-list-item-content-belongs-to-the-item",
+  "behavior": "mode-conditions-list-item-content-belongs-to-the-item",
+  "tests": [
+    "a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (listContentColumn === null) {\n        flush();\n      } else {\n        blankPending = true;\n      }",
+      "replace": "      flush();"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (listContentColumn !== null && markerIndent >= listContentColumn) {",
+      "replace": "      if (listContentColumn !== null && markerIndent < 0) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

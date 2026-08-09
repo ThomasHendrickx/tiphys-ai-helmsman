@@ -1914,7 +1914,7 @@ test("heading text in the cited record is not a quotable unit, for an indented A
 });
 
 /* ------------------------------------------------------------------ */
-/* CR-004 (DR-0019): the limits are disclosed IN THE SHIPPED ARTIFACTS  */
+/* CR-004 (DR-0020): the limits are disclosed IN THE SHIPPED ARTIFACTS  */
 /* ------------------------------------------------------------------ */
 
 /** The line of `mode show` output that begins with `<name>: `, or undefined. */
@@ -1969,7 +1969,7 @@ test("mode show says which mode is the un-downgraded process and which is a decl
       status.includes(`declares ${String(skips.length)} skipped stage(s)`),
       `${id} skips ${String(skips.length)} stage(s) but its status says: ${status}`,
     );
-    assert.match(status, /DR-0019/);
+    assert.match(status, /DR-0020/);
   }
   /* BOTH ARMS EXIST IN THE SHIPPED DOCUMENT, so neither branch is vacuous. */
   assert.ok(undowngraded > 0 && downgrades > 0, `${String(undowngraded)}/${String(downgrades)}`);
@@ -2020,7 +2020,7 @@ test("the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums
       const comment = (node as Record<string, unknown>)["$comment"];
       assert.equal(typeof comment, "string", `${schemaName} ${pointer} carries no $comment`);
       assert.match(comment as string, /CLOSED VOCABULARY AT v0\.1\.0/);
-      assert.match(comment as string, /DR-0019/);
+      assert.match(comment as string, /DR-0020/);
       /* The enum is really there, so the $comment is describing this node. */
       assert.ok(
         Array.isArray((node as Record<string, unknown>)["enum"]),
@@ -2118,7 +2118,171 @@ test("mode show presents the escalation bounds as data and states the release li
     assert.ok(limits !== undefined, `no limits line for ${String(mode["id"])}:\n${run.stdout}`);
     assert.match(limits, /closed enums/);
     assert.match(limits, /cannot extend them at v0\.1\.0/);
-    assert.match(limits, /DR-0019/);
+    assert.match(limits, /DR-0020/);
     assert.match(limits, /nothing in this release resolves a project into a mode/);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 4: a list item's unit is the WHOLE item (V-1, DR-0004)     */
+/* ------------------------------------------------------------------ */
+
+const ITEM_FIRST_PARAGRAPH = "Run the first command, which opens this item.";
+const ITEM_CONTINUATION = "tiphys gates run --registry gate-registry.yaml --mode full";
+const PARENT_ITEM = "The validator uses these policies:";
+const NESTED_SUB_ITEM = "strict mode enabled";
+
+/**
+ * A record carrying BOTH shapes of list-item content: a continuation paragraph
+ * separated by a blank line (DR-0004's shape, which is the live one) and a
+ * nested sub-item (DR-0013's shape).
+ *
+ * The continuation is indented THREE columns, which is the enclosing item's
+ * content column, not four past it: that is what makes it a continuation
+ * paragraph rather than an indented code block, and it is exactly how DR-0004
+ * is written.
+ */
+const LIST_CONTENT_RECORD = [
+  "# DR-9997: a scratch record whose list items carry more than one block",
+  "",
+  '## What "clean" means',
+  "",
+  `1. ${ITEM_FIRST_PARAGRAPH}`,
+  "",
+  `   ${ITEM_CONTINUATION}`,
+  "",
+  `2. ${PARENT_ITEM}`,
+  `   - ${NESTED_SUB_ITEM}`,
+  "   - all errors enabled",
+  "",
+  "3. A flat item with no second block at all.",
+  "",
+];
+
+test("a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own", () => {
+  /* THE MECHANISM, and it is the one the round-3 extractor still had. A blank
+     line was treated as a unit boundary unconditionally, and a nested marker
+     flushed the item that encloses it. Both leave the item's FIRST PARAGRAPH
+     standing as a whole quotable unit while the item itself carries more, which
+     is a FRAGMENT passing as a whole quote: precisely the defect
+     `mode-conditions-quote-granted-by` exists to prevent, arriving through the
+     extractor instead of through the comparison.
+
+     THIS ONE WAS LIVE, which V-1's fenced form never was. Measured at the
+     round-3 head against this repository's own records:
+     `delivery/decisions/DR-0004-elevated-permissions.md` yielded 22 units, four
+     of them command blocks standing alone as independent units and their items
+     standing alone without them; at this head it yields 18 and neither half is
+     separately quotable. `DR-0013-schema-validator-implementation.md` has the
+     nested form. Both are asserted below against the REAL files, not against a
+     fixture, because a fixture cannot go stale the way a shipped record can. */
+  const dir = stageContext();
+  try {
+    stageRecord(dir, "DR-9997", LIST_CONTENT_RECORD);
+    const record = readFileSync(
+      join(dir, "delivery", "decisions", "DR-9997-scratch-record.md"),
+      "utf8",
+    );
+    const units = checksModule.quotableUnits(record);
+
+    /* AT THE FUNCTION. The item is ONE unit carrying both blocks, and neither
+       block is a unit by itself. */
+    assert.equal(
+      units.has(`${ITEM_FIRST_PARAGRAPH} ${ITEM_CONTINUATION}`),
+      true,
+      [...units].join(" | "),
+    );
+    assert.equal(units.has(ITEM_FIRST_PARAGRAPH), false, [...units].join(" | "));
+    assert.equal(units.has(ITEM_CONTINUATION), false, [...units].join(" | "));
+    assert.equal(units.has(PARENT_ITEM), false, [...units].join(" | "));
+    assert.equal(units.has(NESTED_SUB_ITEM), false, [...units].join(" | "));
+    /* AND THE OTHER DIRECTION: a flat item is still exactly itself, so the fix
+       did not simply glue the whole document into one unit. */
+    assert.equal(units.has("A flat item with no second block at all."), true, [...units].join(" | "));
+
+    /* MEMBER 1, END TO END, THE DR-0004 SHAPE: a condition equal to the item's
+       first paragraph is a fragment and is rejected. */
+    const fragmentPath = writeDocument(
+      dir,
+      citing("DR-9997", [ITEM_FIRST_PARAGRAPH]),
+      "item-first-paragraph.yaml",
+    );
+    const fragment = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      dir,
+      fragmentPath,
+    ]);
+    assert.equal(fragment.status, 1, fragment.stdout + fragment.stderr);
+    assert.match(
+      fragment.stdout,
+      new RegExp(
+        `^INVALID #/modes/0/conditions/0 mode full cites DR-9997 for a condition that is not a whole quoted item of that record: "${ITEM_FIRST_PARAGRAPH}" \\(check: mode-conditions-quote-granted-by\\)$`,
+        "m",
+      ),
+      fragment.stdout,
+    );
+
+    /* MEMBER 2, END TO END, THE NESTED FORM: a sub-item is content of the item
+       above it and is not a whole quoted item either. */
+    const nestedPath = writeDocument(
+      dir,
+      citing("DR-9997", [PARENT_ITEM]),
+      "parent-item-only.yaml",
+    );
+    const nested = runCli(["validate", "--type", "assurance-modes", "--context", dir, nestedPath]);
+    assert.equal(nested.status, 1, nested.stdout + nested.stderr);
+    assert.match(
+      nested.stdout,
+      new RegExp(
+        `^INVALID #/modes/0/conditions/0 mode full cites DR-9997 for a condition that is not a whole quoted item of that record: "${PARENT_ITEM}" \\(check: mode-conditions-quote-granted-by\\)$`,
+        "m",
+      ),
+      nested.stdout,
+    );
+
+    /* THE OTHER DIRECTION, END TO END: the WHOLE item resolves, exit 0. Without
+       this the extractor could be returning nothing and both arms above would
+       pass for the wrong reason. */
+    const wholePath = writeDocument(
+      dir,
+      citing("DR-9997", [`${ITEM_FIRST_PARAGRAPH} ${ITEM_CONTINUATION}`]),
+      "whole-item.yaml",
+    );
+    const whole = runCli(["validate", "--type", "assurance-modes", "--context", dir, wholePath]);
+    assert.equal(whole.status, 0, whole.stdout + whole.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  /* AND AGAINST THE TWO REAL RECORDS THAT CARRY THESE SHAPES TODAY. This is the
+     half a fixture cannot give: if either record is reformatted into a shape
+     the extractor mishandles, this reddens. */
+  const dr0004 = checksModule.quotableUnits(
+    readFileSync(
+      join(repoRoot, "delivery", "decisions", "DR-0004-elevated-permissions.md"),
+      "utf8",
+    ),
+  );
+  assert.ok(dr0004.size > 0, "DR-0004 extracted no units at all");
+  const commandBlocks = [...dr0004].filter((unit) => unit.startsWith("gh api "));
+  assert.deepEqual(
+    commandBlocks,
+    [],
+    `DR-0004 command blocks are quotable on their own:\n  ${commandBlocks.join("\n  ")}`,
+  );
+  assert.ok(
+    [...dr0004].some((unit) => unit.startsWith("Confirm the default branch") && unit.includes("gh api ")),
+    "DR-0004 item 1 did not come back as one unit carrying its commands",
+  );
+
+  const dr0013 = checksModule.quotableUnits(
+    readFileSync(
+      join(repoRoot, "delivery", "decisions", "DR-0013-schema-validator-implementation.md"),
+      "utf8",
+    ),
+  );
+  assert.equal(dr0013.has("strict mode enabled"), false, "a DR-0013 sub-bullet is quotable alone");
 });

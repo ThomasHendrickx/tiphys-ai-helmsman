@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "schemas/assurance-modes.schema.json",
-      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0019): these three are the tiphys kernel's OWN mode ids.",
+      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0020): these three are the tiphys kernel's OWN mode ids.",
       "replace": ""
     },
     {
@@ -21,7 +21,7 @@
     {
       "kind": "mutation",
       "file": "schemas/role-model-config.schema.json",
-      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0019): these six are the tiphys kernel's OWN role ids.",
+      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0020): these six are the tiphys kernel's OWN role ids.",
       "replace": ""
     }
   ],
