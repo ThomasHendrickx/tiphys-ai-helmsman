@@ -96,6 +96,55 @@ document that never contained that unit. The legitimate condition `alpha one` is
 simultaneously rejected, so the check is wrong in both directions at once on
 these shapes.
 
+## CR-001 IS NOT A REGRESSION, and this changes how the round should be framed
+
+The obvious reading of a new finding on round 6 is "five for five became six for
+six". That reading is WRONG here, and it was worth ten minutes to establish
+rather than assume.
+
+The identical probe was run against the PRE-A2 implementation, `18c335a`, in a
+separate worktree with the same toolchain:
+
+```
+"- - alpha one"
+   pre-A2 (18c335a): ["- alpha one"]      LEAK
+   A2     (218fc12): ["- - alpha one"]    LEAK
+"- 1. alpha two"
+   pre-A2 (18c335a): ["1. alpha two"]     LEAK
+   A2     (218fc12): ["- 1. alpha two"]   LEAK
+"1. - alpha three"
+   pre-A2 (18c335a): ["- alpha three"]    LEAK
+   A2     (218fc12): ["1. - alpha three"] LEAK
+"- > alpha four"
+   pre-A2 (18c335a): ["> alpha four"]     LEAK
+   A2     (218fc12): ["- > alpha four"]   LEAK
+"- alpha five"
+   pre-A2 (18c335a): ["alpha five"]       ok
+   A2     (218fc12): ["alpha five"]       ok
+```
+
+Both implementations are wrong on all four shapes. The pre-A2 line loop strips
+the OUTER marker and leaks the inner one; A2 leaks BOTH. So A2 is strictly worse
+on these inputs, and the CLASS is pre-existing and was never fixed by any of the
+six rounds.
+
+Three consequences, and each matters to the arbitration:
+
+1. **This is not the sixth consecutive self-inflicted defect.** It is an old hole
+   that A2 widened, which is a different and much less alarming shape than the
+   regression V-5 was.
+2. **The owner's acceptance criterion is not undermined.** Unit sets are
+   byte-identical on all nineteen records precisely because no real decision
+   record contains a two-marker line, so both implementations are wrong in the
+   same invisible place. The criterion did its job and did not pretend to cover
+   what it does not.
+3. **It is exactly the limit DR-0022 stated against itself.** That record's known
+   gap says the measurement is bounded by the imagination of whoever wrote the
+   cases. The 40-shape exploit set and the 15,000-document fuzz both score A2 at
+   100 per cent, and neither ever emitted two block markers on one line. A
+   reviewer's fresh lens found in an hour what 15,000 generated documents could
+   not, which is an argument about generator coverage rather than about fuzzing.
+
 ## What this reproduction did NOT cover
 
 Stated because a search whose scope is wrong returns an empty result
