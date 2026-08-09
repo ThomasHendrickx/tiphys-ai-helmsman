@@ -982,3 +982,12 @@ code. Nothing in the diff is out of declared scope.
 3. V-3, V-4, V-6: one distinct dangerous state, one sentence, and a decision on
    whether the shared regex object wants a guard.
 
+
+---
+
+*End of report. Head verified: `986f58a`. Compared against `218fc12` and
+`18c335a`. This report is published on branch `claude/verify-m3p3-r7`. No
+change was made to any source, test, witness spec or registry by this
+verification; every mutation was applied to a scratch worktree and restored by
+`cp` from a pristine copy, never by `git checkout --`, with `md5sum` printed
+after each restore.*
