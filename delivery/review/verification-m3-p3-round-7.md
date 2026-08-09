@@ -34,3 +34,16 @@ IN PROGRESS. Appending as work proceeds.
   Only ONE hunk changes behaviour: the `SKIPPABLE_PREFIX` widening.
   `QUOTE_MARKER` has no `g`/`y` flag, so sharing one regex object across
   `.exec` and `.replace` carries no `lastIndex` state. Confirmed by reading.
+
+- T-011 mechanical check: EVERY `dangerousStates.find` in all 19 witness specs
+  under `witness/` (38 mutation states) resolves to EXACTLY ONE occurrence in
+  `src/checks.ts` at `986f58a`. Zero non-unique. Command in the report body.
+- Verifier's OWN 69-shape set, markup-free, scored against TWO structurally
+  independent oracles (`commonmark` 0.31.2 AST inline text, and `markdown-it`
+  14.1.0 token stream). Both oracles agree on 68; on those 68 the
+  implementation matches 68/68. The one split (T6, `>\t>\t- x`) is a genuine
+  tab-handling disagreement BETWEEN the two parsers; the implementation follows
+  `commonmark`, which is the project's chosen parser.
+  Shapes included that round 7 did not name: depths 7, 9, 10, 11 and 12;
+  `- 1. - > - 1. - > -` (nine markers); mixed `*`/`+`/`-`; paren ordered
+  markers; tabs mixed with spaces; quote-inside-list-inside-quote.
