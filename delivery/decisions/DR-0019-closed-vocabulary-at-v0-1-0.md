@@ -92,6 +92,26 @@ So CR-004 is IN SCOPE for the current fix round and is not deferred:
 3. The escalation bounds are shown as DATA that a brief cites, never as an
    enforcement engine, because nothing in M3 counts fix rounds.
 
+## A dependency this record CREATES, recorded so it cannot be forgotten
+
+The disclosures required above name **v0.1.0**. `package.json` currently declares
+`"version": "0.0.0"`, and the fresh implementer handed this back rather than
+resolving it, correctly, because neither side is on its declaration.
+
+M3-P10 step 1 (delivery/plan/kernel-plan-m3.md:4823) sets `version` to 0.1.0, so
+the forward reference becomes true at release and the disclosures are correct as
+written. **But only if that step happens.** If M3-P10 ships without the bump, a
+package declaring 0.0.0 carries five `$comment`s asserting a fact about v0.1.0,
+which is a present-tense claim about a version that does not exist: the exact
+shape tuition T-006 records.
+
+This is therefore a BLOCKING obligation on M3-P10, not a nicety, and it is
+recorded in `delivery/STATE.md`. It is stated as a dependency rather than as a
+reminder because this project has twice measured that a rule depending on
+memory does not survive a busy session. The honest position is that nothing
+mechanical currently checks it; if M3-P10 can make it checkable cheaply, it
+should.
+
 ## Consequences accepted
 
 - v0.1.0 is honestly a kernel that runs THIS project's delivery, published so
