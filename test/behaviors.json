@@ -491,5 +491,11 @@
   "mode-clean-room-requires-two-contracts": "a mode running clean-room-review with one review contract is rejected naming the pointer, and two named contracts are accepted",
   "mode-review-contracts-are-distinct": "two review contracts with the same id are rejected as duplicates and full's two are distinct",
   "modes-no-liveness-vocabulary": "assurance-modes.yaml and its schema carry no process-liveness vocabulary",
-  "role-model-config-tiers-by-risk": "the role-model configuration covers the six roles, puts every review role at the strongest tier, and names no model"
+  "role-model-config-tiers-by-risk": "the role-model configuration covers the six roles, puts every review role at the strongest tier, and names no model",
+  "mode-ids-unique-by-id": "two modes sharing an id are rejected by id, whether their bodies differ or match",
+  "role-ids-unique-by-id": "two role bindings sharing a role id are rejected by id, whether their bodies differ or match",
+  "mode-show-refuses-invalid-document": "mode show validates before it serves and refuses a document that is invalid for reasons unrelated to duplicate ids",
+  "mode-conditions-quote-their-grant": "a delegated grant whose conditions are not in the record it names is rejected naming the condition",
+  "mode-conditions-complete-against-granting-record": "full carries every condition DR-0012 declares, extracted from the record rather than counted",
+  "charter-mode-enum-compared-element-wise": "the charter enum comparison is element-wise, so a mode id containing a separator cannot make two different lists compare equal"
 }

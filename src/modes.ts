@@ -72,7 +72,14 @@ export interface Mode {
 }
 
 export type ModesRead =
-  | { ok: true; path: string; modes: Mode[] }
+  /**
+   * `raw` is the DECODED DOCUMENT before this module projects it into `Mode`
+   * records. It is returned because a caller must be able to validate what it
+   * is about to serve, and the projection is lossy by design (it drops
+   * anything the projection does not name). Handing a caller only the
+   * projection would force it to validate a shape no schema describes.
+   */
+  | { ok: true; path: string; raw: unknown; modes: Mode[] }
   | { ok: false; reason: string };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -133,7 +140,7 @@ export function readModes(path: string = join(packageRoot(), MODES_FILENAME)): M
       escalationBounds: asRecord(record["escalation-bounds"]),
     });
   }
-  return { ok: true, path, modes };
+  return { ok: true, path, raw: decoded.value, modes };
 }
 
 /**

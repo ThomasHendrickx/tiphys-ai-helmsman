@@ -1,0 +1,24 @@
+{
+  "id": "checks-conditions-quote-granted-by",
+  "behavior": "mode-conditions-quote-their-grant",
+  "tests": [
+    "a delegated grant whose conditions are not in the record it names is rejected naming the condition"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  modeConditionsQuoteGrantedBy,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (condition !== \"\" && !resolved.text.includes(condition)) {",
+      "replace": "        if (condition !== \"\" && !resolved.text.includes(condition.slice(0, 0))) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -114,7 +114,7 @@ modes:
     conditions:
       - >-
         Two independent clean-room reviews exist for the current head, produced
-        on different model families, each written to the review directory and
+        on different model families, each written to `delivery/review/` and
         committed.
       - >-
         Neither review carries an unresolved finding at high or medium

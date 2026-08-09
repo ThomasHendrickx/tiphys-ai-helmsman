@@ -25,6 +25,7 @@
  * PLAN DEFECT to escalate, not a script to add quietly.
  */
 
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
@@ -274,6 +275,42 @@ const REFERENCE_MODE_ID = "full";
 
 /** The document name these checks report against when naming the instance. */
 const MODES_DOCUMENT = "assurance-modes.yaml";
+
+/**
+ * Do two string lists hold the same values in the same order?
+ *
+ * ELEMENT-WISE, WITH NO SEPARATOR (M3-P3 fix round 1, finding A-001/B-001).
+ * This comparison was written as `a.join(sep) !== b.join(sep)`, and the
+ * separator in the source was two LITERAL NUL BYTES. Two things were wrong and
+ * only one of them was the bytes.
+ *
+ *   The bytes: `src/checks.ts` is the file every later M3 phase extends, and a
+ *   NUL past git's sniff window is worse than an unreviewable diff, because
+ *   `git diff --stat` reports no `Bin` and the hunk renders as `join("")`,
+ *   which LOOKS CORRECT. CLAUDE.md's prescribed control-character grep could
+ *   not see it either, for the reason T-010 records.
+ *
+ *   The mechanism: a separator join answers "are these lists equal" with a
+ *   PROXY, and the proxy is only faithful for separators the values cannot
+ *   contain. That is the same shape as the two findings this fix round is
+ *   mostly about, one layer down. Replacing NUL with a space would have been
+ *   the instance fix and would have made `["a b"]` compare equal to
+ *   `["a", "b"]`.
+ *
+ * SO THE SEMANTICS DID CHANGE, and it is stated rather than slipped in: this
+ * is now exact list equality for every input, where `join(NUL)` was exact list
+ * equality for every input that contains no NUL. No caller can produce one
+ * today (both lists come from YAML/JSON decoding of documents whose values are
+ * enum-constrained), so no behaviour observable from any test moved. The
+ * registered test `charter-mode-enum-drift-detected` covers both arms and a
+ * new arm covers the separator class directly.
+ */
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
+}
 
 /** Every string in an array field, in order, with non-strings dropped. */
 function stringsAt(record: Record<string, unknown> | undefined, key: string): string[] {
@@ -583,11 +620,250 @@ export const charterModeEnumMatchesModes: DerivedCheck = {
         continue;
       }
       const enumerated = stringsAt(definition, "enum").slice().sort();
-      if (enumerated.join(" ") !== declaredIds.join(" ")) {
+      if (!sameStringList(enumerated, declaredIds)) {
         violations.push({
           pointer: "#/modes",
           message: `${MODES_DOCUMENT} declares mode ids [${declaredIds.join(", ")}] and the ${field} enum in ${charter.path} is [${enumerated.join(", ")}]; the two must be equal`,
         });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* IDENTITY UNIQUENESS (M3-P3 fix round 1, findings B-002 and B-004)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM, named before the instances: A UNIQUENESS CONSTRAINT ASSERTED
+ * BY A PREDICATE THAT DOES NOT TEST IDENTITY.
+ *
+ * `uniqueItems` is DEEP-OBJECT equality. On an array of records keyed by an id
+ * field it says "no two entries are identical", which is not the property
+ * anything relies on: two entries may share an `id` and differ anywhere else
+ * and the array is `uniqueItems`-clean. Every consumer that looks an entry up
+ * BY ID then silently takes one of them, and which one depends on document
+ * order.
+ *
+ * Measured on `assurance-modes.yaml` with a crippled duplicate placed FIRST:
+ * `tiphys mode show --mode full` printed eleven stages with
+ * `clean-room-review` absent and `skips` empty, exit 0. That is the invisible
+ * downgrade this whole phase exists to prevent, on the path a brief uses.
+ *
+ * IT IS A RECURRENCE. M3-P1's B-003 was the same predicate on
+ * `acceptance[].id`, fixed at the instance (that check counts occurrences).
+ * The class was not swept, so it came back one phase later in a different
+ * document. The sweep is published in delivery/work-history/m3-p3.md.
+ *
+ * `charter-mode-enum-matches-modes` DOES currently reject a duplicate id, and
+ * that is not a defence: it compares the declared id LIST against the charter
+ * enum, so it is multiplicity-sensitive BY ACCIDENT. The accident disappears
+ * the moment that comparison is rewritten to compare sets, and
+ * `role-model-config.yaml` never had it at all.
+ */
+function makeIdUniquenessCheck(
+  id: string,
+  type: string,
+  arrayField: string,
+  idField: string,
+  noun: string,
+): DerivedCheck {
+  return {
+    id,
+    type,
+    requiresContext: false,
+    run(instance: unknown): CheckOutcome {
+      const document = asRecord(instance);
+      const entries = asArray(document?.[arrayField]);
+      const seen = new Map<string, number[]>();
+      for (let index = 0; index < entries.length; index += 1) {
+        const value = asRecord(entries[index])?.[idField];
+        if (typeof value !== "string") {
+          continue;
+        }
+        const at = seen.get(value);
+        if (at === undefined) {
+          seen.set(value, [index]);
+        } else {
+          at.push(index);
+        }
+      }
+      const violations: Diagnostic[] = [];
+      for (const [value, indexes] of [...seen.entries()].sort()) {
+        if (indexes.length < 2) {
+          continue;
+        }
+        /* Reported at the SECOND occurrence and later, so the pointer names an
+           entry a reader can delete, and the message names every index so the
+           first one is findable too. */
+        for (const index of indexes.slice(1)) {
+          violations.push({
+            pointer: `#/${arrayField}/${String(index)}/${idField}`,
+            message: `${noun} ${value} is declared ${String(indexes.length)} times, at ${arrayField} ${indexes.map(String).join(", ")}; an id selects one entry and these select ${String(indexes.length)}`,
+          });
+        }
+      }
+      return { violations, reports: [] };
+    },
+  };
+}
+
+/** `modes[].id` selects exactly one mode. */
+export const modeIdsAreUnique: DerivedCheck = makeIdUniquenessCheck(
+  "mode-ids-are-unique",
+  "assurance-modes",
+  "modes",
+  "id",
+  "mode id",
+);
+
+/**
+ * `roles[].role` selects exactly one binding. B-004: the SAME defect, in the
+ * document nothing consumes yet, which is why it was latent rather than
+ * demonstrable. It is fixed in the same act because the mechanism is one thing.
+ */
+export const roleIdsAreUnique: DerivedCheck = makeIdUniquenessCheck(
+  "role-ids-are-unique",
+  "role-model-config",
+  "roles",
+  "role",
+  "role id",
+);
+
+/* ------------------------------------------------------------------ */
+/* mode-conditions-quote-granted-by (fix round 1, finding B-003)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM: A CONSTRAINT VERIFIED BY CARDINALITY INSTEAD OF CONTENT.
+ *
+ * `merge-authority: delegated-under-conditions` requires `conditions[]` and a
+ * `granted-by` decision-record reference. Until this round, the only thing
+ * anyone compared was HOW MANY conditions there were: the schema required a
+ * non-empty array of non-empty strings, `granted-by` had to match a pattern,
+ * and one registered test asserted `length === 6`. So all six sentences could
+ * be replaced with fabrications, keeping the count, and the schema, every
+ * derived check and the test all stayed green. The document that says who may
+ * merge could be rewritten to say something else.
+ *
+ * THIS CHECK BINDS THE CONDITIONS TO THEIR SOURCE. `granted-by` already names
+ * the record, so the record is resolved and every condition must OCCUR in it,
+ * compared on whitespace-normalized text because YAML folded scalars re-wrap
+ * lines and markdown wraps them differently again. A condition that is not in
+ * the record it cites is a violation naming the index and quoting the opening
+ * of the offending text.
+ *
+ * WHAT THIS DOES NOT DO, stated here and not only in the work history: it is
+ * the NO-FABRICATION direction only. It cannot see an OMISSION, because
+ * "which paragraphs of a prose decision record are its conditions" is not
+ * derivable without assuming that record's internal structure, and a kernel
+ * check that hard-coded one project's heading text would be a check that
+ * reddens on formatting. The omission direction is covered one layer up, by a
+ * registered test that parses THIS repository's DR-0012 and requires every
+ * condition it declares to be present; that test may know the record's shape
+ * because it ships with the record.
+ *
+ * FAIL CLOSED at every step: no decisions directory, no matching record, or
+ * more than one matching record are all violations, never a quiet pass.
+ */
+const DECISION_DIRECTORIES = [join("delivery", "decisions"), "decisions"];
+
+function normalizeProse(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+export const modeConditionsQuoteGrantedBy: DerivedCheck = {
+  id: "mode-conditions-quote-granted-by",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const violations: Diagnostic[] = [];
+    const cache = new Map<string, { ok: true; text: string } | { ok: false; reason: string }>();
+
+    const resolveRecord = (
+      record: string,
+    ): { ok: true; text: string } | { ok: false; reason: string } => {
+      const cached = cache.get(record);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const matches: string[] = [];
+      const searched: string[] = [];
+      for (const directory of DECISION_DIRECTORIES) {
+        const path = join(contextDirectory, directory);
+        searched.push(directory);
+        let entries: string[];
+        try {
+          entries = readdirSync(path);
+        } catch {
+          continue;
+        }
+        for (const name of entries.sort()) {
+          if (name === `${record}.md` || name.startsWith(`${record}-`)) {
+            matches.push(join(path, name));
+          }
+        }
+      }
+      let outcome: { ok: true; text: string } | { ok: false; reason: string };
+      if (matches.length === 0) {
+        outcome = {
+          ok: false,
+          reason: `no decision record ${record} was found under ${searched.join(" or ")} of the context, so the grant it names cannot be checked`,
+        };
+      } else if (matches.length > 1) {
+        outcome = {
+          ok: false,
+          reason: `${String(matches.length)} files match decision record ${record} (${matches.join(", ")}), so the grant it names resolves ambiguously`,
+        };
+      } else {
+        const read = readOperatorPath(matches[0] as string);
+        outcome = read.ok
+          ? { ok: true, text: normalizeProse(read.body) }
+          : { ok: false, reason: read.reason };
+      }
+      cache.set(record, outcome);
+      return outcome;
+    };
+
+    for (const row of eachMode(instance)) {
+      const conditions = stringsAt(row.mode, "conditions");
+      if (conditions.length === 0) {
+        continue;
+      }
+      const grantedBy = row.mode["granted-by"];
+      if (typeof grantedBy !== "string") {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/conditions`,
+          message: `mode ${row.id} declares ${String(conditions.length)} condition(s) and names no granted-by record, so nothing can be compared against them`,
+        });
+        continue;
+      }
+      const resolved = resolveRecord(grantedBy);
+      if (!resolved.ok) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/granted-by`,
+          message: resolved.reason,
+        });
+        continue;
+      }
+      for (let position = 0; position < conditions.length; position += 1) {
+        const condition = normalizeProse(conditions[position] as string);
+        if (condition !== "" && !resolved.text.includes(condition)) {
+          const opening = condition.length > 60 ? `${condition.slice(0, 60)}...` : condition;
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/conditions/${String(position)}`,
+            message: `mode ${row.id} cites ${grantedBy} for a condition that record does not contain: "${opening}"`,
+          });
+        }
       }
     }
     return { violations, reports: [] };
@@ -600,12 +876,15 @@ export const charterModeEnumMatchesModes: DerivedCheck = {
 
 const registry: DerivedCheck[] = [
   charterModeEnumMatchesModes,
+  modeConditionsQuoteGrantedBy,
   modeGateSetsResolve,
+  modeIdsAreUnique,
   modeNoUndeclaredDowngrade,
   modeStageOrder,
   planDispatchable,
   planHazardClassesAddressedByResolves,
   planVerificationFirstPresent,
+  roleIdsAreUnique,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

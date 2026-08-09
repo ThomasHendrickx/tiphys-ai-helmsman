@@ -67,9 +67,12 @@ const checksModule = (await import(
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
   charterModeEnumMatchesModes: DerivedCheck;
+  modeConditionsQuoteGrantedBy: DerivedCheck;
   modeGateSetsResolve: DerivedCheck;
+  modeIdsAreUnique: DerivedCheck;
   modeNoUndeclaredDowngrade: DerivedCheck;
   modeStageOrder: DerivedCheck;
+  roleIdsAreUnique: DerivedCheck;
 };
 
 const modesModule = (await import(
@@ -131,6 +134,12 @@ function stageContext(): string {
   const dir = scratch();
   cpSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
   cpSync(schemasDir, join(dir, "schemas"), { recursive: true });
+  /* The decision records too, since fix round 1: `mode-conditions-quote-granted-by`
+     resolves `granted-by` against them, and a staged context without them would
+     make that check fail for the staging rather than for the document. */
+  cpSync(join(repoRoot, "delivery", "decisions"), join(dir, "delivery", "decisions"), {
+    recursive: true,
+  });
   return dir;
 }
 
@@ -450,9 +459,15 @@ test("a full mode with no fix-round-verification stage is rejected, and is accep
     (stage) => stage !== "fix-round-verification",
   );
 
+  /* THE MESSAGE NAMES THE MISSING STAGE (CR-004, fix round 1). It used to read
+     "array contains no item matching the required shape", which told an author
+     that something was absent and not WHAT, on the one stage T-003 made
+     structural. The generic wording survives for every `contains` whose
+     subschema is not a bare `const`, and `test/schemas.test.ts`'s fixture is
+     exactly that case, which is why its two assertions are untouched. */
   assert.deepEqual(validateModule.validateToLines(readSchema("assurance-modes.schema.json"), document), [
     "INVALID #/modes/0 value does not satisfy the requirements its own shape triggers here",
-    "INVALID #/modes/0/pipeline array contains no item matching the required shape, and 1 is required",
+    'INVALID #/modes/0/pipeline array contains no item equal to "fix-round-verification", and 1 is required',
   ]);
 
   /* THE KEYWORD REMOVED. A FRESH schema object, because compileSchema caches
@@ -470,7 +485,7 @@ test("a full mode with no fix-round-verification stage is rejected, and is accep
   assert.ok(
     validateModule
       .validateToLines(readSchema("assurance-modes.schema.json"), document)
-      .some((line) => line.includes("array contains no item matching the required shape")),
+      .some((line) => line.includes("array contains no item equal to")),
   );
 
   /* CONTROL: the shipped document, which carries the stage, is accepted. */
@@ -807,7 +822,12 @@ test("delegated merge authority with an empty conditions list or no granted-by i
      matched to. */
   const shipped = loadModes();
   const full = modeNamed(shipped, "full");
-  assert.equal((full["conditions"] as string[]).length, 6);
+  /* THE COUNT IS GONE (B-003, fix round 1). This assertion read
+     `(full["conditions"] as string[]).length === 6`, which is cardinality
+     standing in for content: the hazard reviewer replaced all six conditions
+     with fabricated one-liners, kept the count at six, and this test plus the
+     schema plus every check stayed green. Content is asserted by the two tests
+     at the end of this file, one per direction, and neither counts. */
   assert.equal(full["granted-by"], "DR-0012");
   assert.equal(full["merge-authority"], "delegated-under-conditions");
   assert.deepEqual(validateModule.validateToLines(readSchema(schemaName), shipped), []);
@@ -985,11 +1005,16 @@ test("two review contracts with the same id are rejected as duplicates and full'
 /* ------------------------------------------------------------------ */
 
 /**
- * The four tokens C-2 and C-3 are written in. Assembled from fragments so that
- * this file's own scan cannot be satisfied by the file that performs it, and
- * so a future reader does not have to wonder why the words appear here.
+ * The four tokens C-2 and C-3 are written in.
+ *
+ * WRITTEN PLAINLY, and the first version was not (CR-006, fix round 1). It read
+ * `["p" + "id", "ki" + "ll", ...]`, which made the four tokens invisible to a
+ * grep of this file: a source file that does not contain what it appears to
+ * contain, which is the same habit as the NUL bytes one severity up. The
+ * concatenation was defending against nothing, because the scan below reads
+ * `assurance-modes.yaml` and its schema and never reads this file.
  */
-const LIVENESS_TOKENS = ["p" + "id", "ki" + "ll", "dae" + "mon", "back" + "ground"];
+const LIVENESS_TOKENS = ["pid", "kill", "daemon", "background"];
 
 function livenessHits(text: string): string[] {
   const lower = text.toLowerCase();
@@ -1062,4 +1087,440 @@ test("the role-model configuration covers the six roles, puts every review role 
      tier alone would drop half the rule. */
   const implementer = document.roles.find((entry) => entry["role"] === "implementer");
   assert.deepEqual(implementer?.["strongest-for"], ["money-path", "architecture"]);
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1, mechanism 1: identity uniqueness (B-002, B-004)         */
+/* ------------------------------------------------------------------ */
+
+test("two modes sharing an id are rejected by id, whether their bodies differ or match", () => {
+  const dir = stageContext();
+  try {
+    /* MEMBER 1, THE DANGEROUS ONE: same id, DIFFERENT bodies. `uniqueItems` is
+       deep-object equality, so this array is uniqueItems-clean and the schema
+       has nothing to say. It is the reviewer's own reproduction: the crippled
+       entry FIRST, with clean-room review dropped and skips emptied, which is
+       what `mode show` then served with exit 0. */
+    const differing = loadModes();
+    const crippled = JSON.parse(JSON.stringify(modeNamed(differing, "full"))) as Record<
+      string,
+      unknown
+    >;
+    crippled["pipeline"] = (crippled["pipeline"] as string[]).filter(
+      (stage) => stage !== "clean-room-review",
+    );
+    delete crippled["review-contracts"];
+    crippled["skips"] = [];
+    modesOf(differing).unshift(crippled);
+
+    /* THE TRAP, ASSERTED RATHER THAN ASSUMED: this member is genuinely outside
+       `uniqueItems`' reach. If the schema were already rejecting it, a witness
+       resting on it would prove nothing about the new check. */
+    assert.equal(
+      validateModule
+        .validateToLines(readSchema("assurance-modes.schema.json"), differing)
+        .filter((line) => line.includes("duplicates and must be unique")).length,
+      0,
+      "uniqueItems caught a differing-body duplicate, so this member is the wrong witness",
+    );
+
+    const differingLines = checkLines(differing, dir);
+    assert.ok(
+      differingLines.lines.some(
+        (line) =>
+          line.startsWith("INVALID #/modes/1/id mode id full is declared 2 times, at modes 0, 1") &&
+          line.endsWith("(check: mode-ids-are-unique)"),
+      ),
+      differingLines.lines.join("\n"),
+    );
+
+    /* MEMBER 2, STRUCTURALLY DIFFERENT: same id, IDENTICAL bodies. `uniqueItems`
+       DOES catch this one at the schema layer, which is exactly why it cannot
+       be the only member: a witness resting on it would redden through the old
+       keyword and say nothing about the new check. Driven through `runChecks`,
+       which runs no schema at all, so the red is attributable to the check. */
+    const identical = loadModes();
+    modesOf(identical).unshift(
+      JSON.parse(JSON.stringify(modeNamed(identical, "full"))) as Record<string, unknown>,
+    );
+    assert.ok(
+      checkLines(identical, dir).lines.some((line) =>
+        line.includes("(check: mode-ids-are-unique)"),
+      ),
+      "the check must catch identical-body duplicates without uniqueItems' help",
+    );
+
+    /* THE OTHER DIRECTION, Kind B: the CHECK removed and restored. */
+    assert.equal(checksModule.deregisterCheck("mode-ids-are-unique"), true);
+    assert.ok(
+      !checkLines(differing, dir).lines.some((line) => line.includes("mode-ids-are-unique")),
+    );
+    checksModule.registerCheck(checksModule.modeIdsAreUnique);
+    assert.ok(
+      checkLines(differing, dir).lines.some((line) => line.includes("(check: mode-ids-are-unique)")),
+    );
+
+    /* CONTROL: the shipped document's three ids are distinct. */
+    assert.equal(
+      checkLines(loadModes(), dir).lines.filter((line) => line.includes("mode-ids-are-unique"))
+        .length,
+      0,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("two role bindings sharing a role id are rejected by id, whether their bodies differ or match", () => {
+  /* B-004: the SAME defect in `role-model-config.yaml`, latent only because
+     nothing consumes that document yet. Fixed in the same act, because one
+     mechanism is one thing and fixing the instance is what let this class come
+     back one phase after M3-P1 closed it on `acceptance[].id`. */
+  const load = (): Record<string, unknown> =>
+    yamlModule.parse(readFileSync(rolesPath, "utf8")) as Record<string, unknown>;
+  const rolesOf = (document: Record<string, unknown>): Record<string, unknown>[] =>
+    document["roles"] as Record<string, unknown>[];
+
+  const differing = load();
+  const shadow = JSON.parse(
+    JSON.stringify(rolesOf(differing).find((entry) => entry["role"] === "clean-room-reviewer")),
+  ) as Record<string, unknown>;
+  shadow["tier"] = "cheaper";
+  delete shadow["review-model-family"];
+  rolesOf(differing).unshift(shadow);
+  /* DERIVED, NOT PINNED. The shadow is prepended, so the original slides to the
+     end and the violation is reported at the LAST index, not at 1. Computing it
+     keeps the assertion exact without hard-coding a number that changes the
+     moment a seventh role is added. */
+  const duplicateAt = rolesOf(differing).length - 1;
+  assert.equal(
+    validateModule
+      .validateToLines(readSchema("role-model-config.schema.json"), differing)
+      .filter((line) => line.includes("duplicates and must be unique")).length,
+    0,
+    "uniqueItems caught a differing-body duplicate, so this member is the wrong witness",
+  );
+  const differingLines = checksModule.runChecks("role-model-config", differing, undefined);
+  assert.ok(
+    differingLines.lines.some(
+      (line) =>
+        line ===
+        `INVALID #/roles/${String(duplicateAt)}/role role id clean-room-reviewer is declared 2 times, at roles 0, ${String(duplicateAt)}; an id selects one entry and these select 2 (check: role-ids-are-unique)`,
+    ),
+    differingLines.lines.join("\n"),
+  );
+  /* AND THE CONSEQUENCE, not just the shape: the shadow entry cheapens the one
+     role DR-0012 made the signature on every merge, and a consumer resolving
+     `clean-room-reviewer` by id would take whichever came first. */
+  assert.equal(shadow["tier"], "cheaper");
+
+  const identical = load();
+  rolesOf(identical).unshift(
+    JSON.parse(JSON.stringify(rolesOf(identical)[0])) as Record<string, unknown>,
+  );
+  assert.ok(
+    checksModule
+      .runChecks("role-model-config", identical, undefined)
+      .lines.some((line) => line.includes("(check: role-ids-are-unique)")),
+  );
+
+  assert.equal(checksModule.deregisterCheck("role-ids-are-unique"), true);
+  assert.ok(
+    !checksModule
+      .runChecks("role-model-config", differing, undefined)
+      .lines.some((line) => line.includes("role-ids-are-unique")),
+  );
+  checksModule.registerCheck(checksModule.roleIdsAreUnique);
+  assert.ok(
+    checksModule
+      .runChecks("role-model-config", differing, undefined)
+      .lines.some((line) => line.includes("(check: role-ids-are-unique)")),
+  );
+
+  assert.equal(
+    checksModule
+      .runChecks("role-model-config", load(), undefined)
+      .lines.filter((line) => line.includes("role-ids-are-unique")).length,
+    0,
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1, mechanism 2: the reader validates before it serves      */
+/* ------------------------------------------------------------------ */
+
+test("mode show validates before it serves and refuses a document that is invalid for reasons unrelated to duplicate ids", () => {
+  const dir = stageContext();
+  try {
+    /* THE WITNESS IS DELIBERATELY NOT ABOUT DUPLICATE IDS. Mechanism 1 makes
+       one more document state detectable; mechanism 2 is that this command did
+       not LOOK. A witness built on a duplicate id would pass through the new
+       uniqueness check and tell us nothing about the validation call. */
+
+    /* ARM 1: invalid at the SCHEMA layer, an enum this command never reads. */
+    const badEnum = loadModes();
+    modeNamed(badEnum, "direct-pr")["merge-authority"] = "nobody";
+    const badEnumPath = writeDocument(dir, badEnum, "authority-not-in-enum.yaml");
+    const enumRun = runCli(["mode", "show", "--mode", "full", "--file", badEnumPath]);
+    assert.equal(enumRun.status, 1, enumRun.stdout + enumRun.stderr);
+    assert.equal(enumRun.stdout, "", `an invalid document must not be served:\n${enumRun.stdout}`);
+    assert.match(enumRun.stderr, /is not a valid assurance-modes document, so it is not served/);
+    assert.match(enumRun.stderr, /INVALID #\/modes\/1\/merge-authority value "nobody" is not one of the permitted values/);
+
+    /* ARM 2, STRUCTURALLY DIFFERENT: valid against the schema and rejected by a
+       DERIVED CHECK. The two layers are separate code paths in this command and
+       an implementation that called only the first would pass arm 1. */
+    const badOrder = loadModes();
+    modeNamed(badOrder, "full")["pipeline"] = [
+      "intake",
+      "verification-pass",
+      "plan",
+      "implement",
+      "adversarial-plan-review",
+      "clean-room-review",
+      "fix-round",
+      "fix-round-verification",
+      "merge-on-green",
+      "deploy-verify",
+      "migration-verify",
+      "final-report",
+    ];
+    const badOrderPath = writeDocument(dir, badOrder, "builds-before-review.yaml");
+    assert.deepEqual(
+      validateModule.validateToLines(readSchema("assurance-modes.schema.json"), badOrder),
+      [],
+      "arm 2 must be SCHEMA-VALID, or it does not test the derived-check layer",
+    );
+    const orderRun = runCli(["mode", "show", "--mode", "full", "--file", badOrderPath]);
+    assert.equal(orderRun.status, 1, orderRun.stdout + orderRun.stderr);
+    assert.equal(orderRun.stdout, "");
+    assert.match(orderRun.stderr, /\(check: mode-stage-order\)/);
+
+    /* THE OTHER DIRECTION: the same command, the same staged directory, a VALID
+       document, served with exit 0. Without it the command could be refusing
+       everything, which is the failure mode a refusal path invites. */
+    const goodPath = writeDocument(dir, loadModes(), "assurance-modes.yaml");
+    const good = runCli(["mode", "show", "--mode", "full", "--file", goodPath]);
+    assert.equal(good.status, 0, good.stdout + good.stderr);
+    assert.deepEqual(section(good.stdout, "pipeline").length, 12);
+
+    /* AND THE SHIPPED DOCUMENT, through the default path with no --file, which
+       is the invocation a brief actually makes. */
+    assert.equal(runCli(["mode", "show", "--mode", "full"]).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1, mechanism 3: conditions bound to their grant (B-003)    */
+/* ------------------------------------------------------------------ */
+
+test("a delegated grant whose conditions are not in the record it names is rejected naming the condition", () => {
+  const dir = stageContext();
+  try {
+    /* THE HAZARD REVIEWER'S OWN REPRODUCTION: all six conditions replaced by
+       fabrications, COUNT KEPT AT SIX so the one count-based guard cannot fire.
+       Before this round that document validated, exit 0, with every check and
+       the registered test green. */
+    const fabricated = loadModes();
+    modeNamed(fabricated, "full")["conditions"] = [
+      "fabricated condition one, unrelated to DR-0012",
+      "fabricated condition two, unrelated to DR-0012",
+      "fabricated condition three, unrelated to DR-0012",
+      "fabricated condition four, unrelated to DR-0012",
+      "fabricated condition five, unrelated to DR-0012",
+      "fabricated condition six, unrelated to DR-0012",
+    ];
+    assert.deepEqual(
+      validateModule.validateToLines(readSchema("assurance-modes.schema.json"), fabricated),
+      [],
+      "the fabrication must be SCHEMA-VALID, or it does not reproduce the finding",
+    );
+    const path = writeDocument(dir, fabricated, "fabricated-conditions.yaml");
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(
+      run.stdout,
+      /^INVALID #\/modes\/0\/conditions\/0 mode full cites DR-0012 for a condition that record does not contain: "fabricated condition one, unrelated to DR-0012" \(check: mode-conditions-quote-granted-by\)$/m,
+      run.stdout,
+    );
+    /* ALL SIX, not just the first: a check that reported one fabrication and
+       stopped would let an author fix that line and ship the other five. */
+    assert.equal(
+      run.stdout.split("\n").filter((line) => line.includes("mode-conditions-quote-granted-by"))
+        .length,
+      6,
+      run.stdout,
+    );
+
+    /* MEMBER 2, STRUCTURALLY DIFFERENT: the conditions are real and the RECORD
+       cannot be resolved, which is the other way the binding can be empty. It
+       fails closed rather than passing for want of something to compare with. */
+    const noRecords = scratch();
+    try {
+      cpSync(join(dir, "gate-registry.yaml"), join(noRecords, "gate-registry.yaml"));
+      cpSync(join(dir, "schemas"), join(noRecords, "schemas"), { recursive: true });
+      const unresolvable = runCli([
+        "validate",
+        "--type",
+        "assurance-modes",
+        "--context",
+        noRecords,
+        modesPath,
+      ]);
+      assert.equal(unresolvable.status, 1, unresolvable.stdout);
+      assert.match(
+        unresolvable.stdout,
+        /^INVALID #\/modes\/0\/granted-by no decision record DR-0012 was found under .* of the context, so the grant it names cannot be checked \(check: mode-conditions-quote-granted-by\)$/m,
+        unresolvable.stdout,
+      );
+    } finally {
+      rmSync(noRecords, { recursive: true, force: true });
+    }
+
+    /* THE OTHER DIRECTION, Kind B. */
+    assert.equal(checksModule.deregisterCheck("mode-conditions-quote-granted-by"), true);
+    assert.ok(
+      !checkLines(fabricated, dir).lines.some((line) =>
+        line.includes("mode-conditions-quote-granted-by"),
+      ),
+    );
+    checksModule.registerCheck(checksModule.modeConditionsQuoteGrantedBy);
+    assert.ok(
+      checkLines(fabricated, dir).lines.some((line) =>
+        line.includes("(check: mode-conditions-quote-granted-by)"),
+      ),
+    );
+
+    /* CONTROL: the shipped document's six conditions all resolve. */
+    assert.equal(
+      checkLines(loadModes(), repoRoot).lines.filter((line) =>
+        line.includes("mode-conditions-quote-granted-by"),
+      ).length,
+      0,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("full carries every condition DR-0012 declares, extracted from the record rather than counted", () => {
+  /* THE OMISSION DIRECTION, which the shipped check deliberately does not
+     cover: "which paragraphs of a prose decision record are its conditions" is
+     not derivable without assuming that record's structure, and a kernel check
+     that hard-coded one project's heading would redden on formatting. A TEST
+     may know the record's shape, because it ships beside the record.
+
+     NOTHING HERE IS A COUNT. The expected list is EXTRACTED from DR-0012, so a
+     seventh condition added to the record makes this red without anyone
+     editing a number, and six conditions replaced by six others makes it red
+     too. */
+  const record = readFileSync(
+    join(repoRoot, "delivery", "decisions", "DR-0012-delegated-merge-authority.md"),
+    "utf8",
+  );
+  const lines = record.split("\n");
+  const start = lines.findIndex((line) => /^## What "clean" means/.test(line));
+  assert.notEqual(start, -1, "DR-0012 no longer has the section this test reads");
+  const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+  const declared = lines
+    .slice(start, end === -1 ? lines.length : end)
+    .map((line) => /^[0-9]+\.\s+(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => (match[1] as string).replace(/\s+/g, " ").trim());
+  assert.ok(declared.length > 0, "no numbered condition was extracted from DR-0012");
+
+  const carried = (modeNamed(loadModes(), "full")["conditions"] as string[]).map((condition) =>
+    condition.replace(/\s+/g, " ").trim(),
+  );
+  for (const condition of declared) {
+    assert.ok(
+      carried.includes(condition),
+      `assurance-modes.yaml omits a condition DR-0012 declares:\n  ${condition}`,
+    );
+  }
+  /* And no invented extras, which is the same equality from the other side and
+     is what the shipped check enforces generally. */
+  assert.deepEqual([...carried].sort(), [...declared].sort());
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1, mechanism 4: the comparison that needed a separator     */
+/* ------------------------------------------------------------------ */
+
+test("the charter enum comparison is element-wise, so a mode id containing a separator cannot make two different lists compare equal", () => {
+  const dir = stageContext();
+  try {
+    /* WHY THIS TEST EXISTS. `charter-mode-enum-matches-modes` compared the two
+       lists by joining each with a separator, and the separator in the source
+       was two LITERAL NUL BYTES (A-001/B-001). Replacing NUL with a space
+       would have been the instance fix and would have introduced this bug;
+       the comparison is now element-wise and has no separator at all.
+
+       The arm below discriminates: under a space separator the two lists join
+       to the same string and the check would stay silent. */
+    assert.equal(["a b"].join(" "), ["a", "b"].join(" "));
+
+    const charterPath = join(dir, "schemas", "charter.schema.json");
+    const staged = JSON.parse(readFileSync(charterPath, "utf8")) as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    for (const field of ["delivery-mode", "assurance-tier"]) {
+      (staged["properties"] as Record<string, Record<string, unknown>>)[field]!["enum"] = ["a", "b"];
+    }
+    writeFileSync(charterPath, JSON.stringify(staged, undefined, 2));
+
+    const separated = checksModule.runChecks(
+      "assurance-modes",
+      { kind: "assurance-modes", version: 1, modes: [{ id: "a b" }] },
+      dir,
+    );
+    assert.ok(
+      separated.lines.some(
+        (line) =>
+          line.includes("(check: charter-mode-enum-matches-modes)") &&
+          line.includes("declares mode ids [a b]") &&
+          line.includes("is [a, b]"),
+      ),
+      separated.lines.join("\n"),
+    );
+
+    /* ARM 2, AND IT EXISTS BECAUSE ARM 1 ALONE WAS NOT A WITNESS. The first
+       version of this test carried only arm 1, and arm 1 differs in LENGTH, so
+       a defang that kept a length comparison and threw the content away stayed
+       green: the witness member built on it came back green and proved nothing.
+       This arm is length-EQUAL and content-different, so the two arms together
+       pin both halves of the comparison and each has a member that breaks it. */
+    const contentOnly = checksModule.runChecks(
+      "assurance-modes",
+      { kind: "assurance-modes", version: 1, modes: [{ id: "a" }, { id: "c" }] },
+      dir,
+    );
+    assert.ok(
+      contentOnly.lines.some(
+        (line) =>
+          line.includes("(check: charter-mode-enum-matches-modes)") &&
+          line.includes("declares mode ids [a, c]") &&
+          line.includes("is [a, b]"),
+      ),
+      contentOnly.lines.join("\n"),
+    );
+
+    /* CONTROL: the same staged enum against the matching ids is silent, so the
+       check is comparing rather than always complaining. */
+    const matching = checksModule.runChecks(
+      "assurance-modes",
+      { kind: "assurance-modes", version: 1, modes: [{ id: "a" }, { id: "b" }] },
+      dir,
+    );
+    assert.equal(
+      matching.lines.filter((line) => line.includes("charter-mode-enum-matches-modes")).length,
+      0,
+      matching.lines.join("\n"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

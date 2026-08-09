@@ -195,6 +195,15 @@ export const DIAGNOSTIC_MESSAGES = {
     `array items ${first} and ${second} are duplicates and must be unique`,
   contains: (minimum: string): string =>
     `array contains no item matching the required shape, and ${minimum} is required`,
+  /* CR-004 (M3-P3 fix round 1). The generic `contains` line above names the
+     FIELD and not the required value, so an author reading it is told an array
+     is missing something and not WHAT. When the `contains` subschema is a bare
+     `const`, the value is knowable and is named. The generic form stays for
+     every other shape, because a subschema with `properties` and `required`
+     has no single value to quote and inventing a rendering of it would be
+     worse than saying "the required shape". */
+  containsValue: (value: string, minimum: string): string =>
+    `array contains no item equal to ${value}, and ${minimum} is required`,
   oneOf: (): string => "value matches no permitted alternative here",
   ifThen: (): string =>
     "value does not satisfy the requirements its own shape triggers here",
@@ -333,7 +342,17 @@ const MESSAGE_BY_KEYWORD = new Set<string>([
  * failing branch of `oneOf`/`if` as well as the composite), and the caller
  * drops it.
  */
-function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | undefined {
+function renderAjvError(
+  error: ErrorObject,
+  instance: unknown,
+  /**
+   * `contains` subschema path -> the `const` that subschema requires, for the
+   * errors where it is a bare `const`. Built by the caller from the SUBSIDIARY
+   * errors Ajv reports beside the composite, which `isSubsidiary` then drops:
+   * the value is already in the error stream and was being thrown away.
+   */
+  containsConst: ReadonlyMap<string, unknown> = new Map(),
+): Diagnostic | undefined {
   const params = error.params as Record<string, unknown>;
   const at = error.instancePath;
   switch (error.keyword) {
@@ -436,11 +455,17 @@ function renderAjvError(error: ErrorObject, instance: unknown): Diagnostic | und
           String(Math.max(Number(params["i"]), Number(params["j"]))),
         ),
       };
-    case "contains":
+    case "contains": {
+      const minimum = String(params["minContains"] ?? 1);
+      const required = containsConst.get(error.schemaPath);
       return {
         pointer: toFragmentPointer(at),
-        message: DIAGNOSTIC_MESSAGES.contains(String(params["minContains"] ?? 1)),
+        message:
+          required === undefined
+            ? DIAGNOSTIC_MESSAGES.contains(minimum)
+            : DIAGNOSTIC_MESSAGES.containsValue(render(required), minimum),
       };
+    }
     case "oneOf":
     /* `anyOf`, `allOf` and `not` are not in the AUTHORING vocabulary, so no
        Tiphys schema uses them. They still reach this renderer, because
@@ -681,12 +706,28 @@ export function validateInstance(
     return [];
   }
   const errors = compilation.validator.errors ?? [];
+  /* CR-004. Ajv reports, beside every failing `contains`, one subsidiary
+     `const` error per array item carrying the required value in
+     `params.allowedValue`. `isSubsidiary` drops those (they are one fault
+     reported N times), so the value was being discarded a few lines before the
+     message that needed it. Harvest it first, keyed by the contains
+     subschema's own schemaPath, which is the subsidiary's path minus the
+     trailing `/const`. */
+  const containsConst = new Map<string, unknown>();
+  for (const error of errors) {
+    if (error.keyword === "const" && error.schemaPath.endsWith("/contains/const")) {
+      containsConst.set(
+        error.schemaPath.slice(0, -"/const".length),
+        (error.params as Record<string, unknown>)["allowedValue"],
+      );
+    }
+  }
   const diagnostics: Diagnostic[] = [];
   for (const error of errors) {
     if (isSubsidiary(error)) {
       continue;
     }
-    const diagnostic = renderAjvError(error, instance);
+    const diagnostic = renderAjvError(error, instance, containsConst);
     if (diagnostic !== undefined) {
       diagnostics.push(diagnostic);
     }

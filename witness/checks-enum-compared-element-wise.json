@@ -1,0 +1,24 @@
+{
+  "id": "checks-enum-compared-element-wise",
+  "behavior": "charter-mode-enum-compared-element-wise",
+  "tests": [
+    "the charter enum comparison is element-wise, so a mode id containing a separator cannot make two different lists compare equal"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  if (left.length !== right.length) {\n    return false;\n  }\n  return left.every((value, index) => value === right[index]);",
+      "replace": "  return left.join(\" \") === right.join(\" \");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  if (left.length !== right.length) {\n    return false;\n  }\n  return left.every((value, index) => value === right[index]);",
+      "replace": "  return left.length === right.length;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
