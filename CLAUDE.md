@@ -398,7 +398,27 @@ node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' <branch
 
 ## Identifier schemes
 
-Stable IDs, never renumbered, cited across documents:
+Stable IDs, never renumbered, cited across documents.
+
+**A RETIRED id is never reused, in ANY of these schemes.** The rule is stated
+under `A-n` below because that is where the namespace first collided, but it
+binds all of them, and it has now been paid for twice. Measured 2026-08-09: the
+orchestrator allocated `DR-0019` for the closed-vocabulary decision without
+checking, and `DR-0019` had already been created (`719f04f`) and then DELETED
+(`f775c56`) as a fabricated owner decision. Two unrelated documents under one
+id, one of them a cautionary record about a fabricated sign-off. It was caught by
+a delta verifier, not by the author, and the record was renumbered to `DR-0020`.
+
+Deletion does NOT free an id, because the retired one keeps being cited by the
+documents that discuss the retirement. Before allocating, check the whole
+history, not the current tree:
+
+```
+git log --all --oneline -- 'delivery/decisions/DR-nnnn*'
+git log --all --oneline -S'DR-nnnn'
+```
+
+The schemes:
 
 - `SC-nnn` spec-coherence findings (intake verification)
 - `R-nnn` requirement rows (migration table)
