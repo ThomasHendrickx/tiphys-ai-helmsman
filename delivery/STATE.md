@@ -6,20 +6,36 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-10
-- main head: `c7a7ce9` (PR #54, **M3-P3 MERGED**), and its T-009 arm is
-  DISCHARGED BY STEP, not inferred from the run conclusion: job success,
-  `M2 exit test (push)` step success, `M2 exit test (pull request)` step
-  correctly skipped. All six M3-P3 deliverables were then confirmed present at
-  that head with `git cat-file`, because a green merge is not the same claim as
-  the files having landed.
-  THREE PULL REQUESTS were open at that head and all three were M3-P3 evidence
-  that TRAILED the merge: #76 (round-10 clean-room review), #77 (round-10 delta
-  verification), #78 (the merge arbitration). See the standing note below on why
-  that ordering was a mistake. #77 has since merged at `f70c712`, which is the
-  head this revision is written against; #76 and #78 are rebasing behind it,
-  because branch protection requires up-to-date-with-base and so 405s every
-  other open PR each time one lands. **Their T-009 push arms are OWED and not
-  yet observed at the time of writing.**
+- main head: `ba9f35e` (PR #79). **ZERO OPEN PULL REQUESTS.** The whole M3-P3
+  evidence chain, all ten rounds, is on `main` rather than on side branches.
+- **THE T-009 DISCHARGE PICTURE FOR THIS BATCH, STATED AS MEASURED RATHER THAN
+  ROUNDED UP.** Five merges landed in quick succession and the workflow's
+  concurrency group cancelled the push runs of the intermediate heads:
+
+  | head | PR | push run | conclusion |
+  |---|---|---|---|
+  | `c7a7ce9` | #54, M3-P3 | 31381226164 | success, discharged by step |
+  | `f70c712` | #77 | 31382497764 | **cancelled**, step 9 reached success |
+  | `0c6ca35` | #76 | 31383185512 | **success, all 12 steps** |
+  | `80925bc` | #78 | 31384190575 | **cancelled** at step 11 |
+  | `ba9f35e` | #79 | 31385057964 | the head that owes a complete run |
+
+  Two of the five were cancelled, and one of those (`80925bc`) was cancelled by
+  the orchestrator's own decision to merge #79 while it sat on step 11. That was
+  a deliberate trade, not an accident, and it is recorded as one.
+  **The rule this batch establishes, and it is in the standing reminders below:
+  discharge the FINAL head, and say plainly that the intermediates were
+  SUPERSEDED rather than verified.** Their content is contained in the final
+  head, so nothing is unverified; what is unavailable is a per-head claim, and
+  the fix is to stop making one. `ba9f35e` has no open PR behind it, so nothing
+  will cancel it.
+  All six M3-P3 deliverables were confirmed present at `c7a7ce9` with
+  `git cat-file`, because a green merge is not the same claim as the files
+  having landed.
+  Those three heads carried M3-P3 evidence that TRAILED the phase merge: #76
+  (round-10 clean-room review), #77 (round-10 delta verification), #78 (the
+  merge arbitration). See the standing note below on why that ordering was a
+  mistake and what it cost.
   The previous head `e33fe4c` (PR #67, the round-8 paperwork, tuition T-012 and
   T-013, the arbitrations and the stop record) is discharged the same way. The
   three heads before it are discharged
@@ -196,8 +212,9 @@ modelled and bound five phases to.
 | Round-8 criteria review | MERGED #69 |
 | M3 round-8 paperwork | MERGED #67 |
 | Round-10 delta verification | MERGED #77 at `f70c712` |
-| Round-10 criteria review | PR #76 open, rebasing |
-| M3-P3 merge arbitration | PR #78 open, rebasing |
+| Round-10 criteria review | MERGED #76 at `0c6ca35` |
+| M3-P3 merge arbitration | MERGED #78 at `80925bc` |
+| STATE currency, assurance-modes correction, M3-P5 pre-check | MERGED #79 at `ba9f35e` |
 | M3-P4 report and work-history contracts | IN FLIGHT, branch pushed at `b1ddc1b` |
 | M3-P5 to M3-P10 | not dispatched |
 
@@ -781,6 +798,25 @@ fact rather than a memory.
   bundles, so a green PR check is not evidence about `main` (tuition T-009,
   which cost four hours and twenty-one minutes of red `main` and four merges
   landed on top of it).
+- **A CITATION IS STALE THE MOMENT YOUR OWN INSERTION MOVES ITS TARGET, and the
+  author is the last person who will notice.** Measured 2026-08-10, by the
+  orchestrator, against itself. `assurance-modes.yaml` cites the
+  one-directional-check bullet in this file. It was verified correct at
+  `delivery/STATE.md:425` when written. Editing the main-head section ABOVE it,
+  in a later commit on the same branch, moved the bullet to 442 and left the
+  citation pointing at an unrelated sentence.
+  This is the SAME defect M3-P3 round 10 shipped twice and that this file tracks
+  as a merge low, and the orchestrator had warned the M3-P4 implementer about
+  this exact trap thirty minutes earlier. Knowing the rule did not prevent it;
+  running a check did.
+  **`assurance-modes.yaml` is at the repository root, so it is NOT under the
+  citations gate's `documents` globs** (all of which are `delivery/**/*.md` plus
+  `delivery/STATE.md`). Nothing in this repository could have caught it.
+  The mechanical form, and it is the only form that works: **resolve every
+  `path:line` you wrote LAST, after your final edit to the cited file**, and
+  check the line MEANS what it is cited for rather than merely existing. Doing
+  it when you write the citation verifies a state your own later commits then
+  invalidate.
 - **CONSECUTIVE MERGES CANCEL EACH OTHER'S PUSH RUNS, so a per-head T-009
   discharge is not always achievable and must not be claimed.** Measured
   2026-08-10 while landing the M3-P3 evidence PRs: the push run on `f70c712`
