@@ -722,11 +722,23 @@ and `A-3` meant three, one of them a literal string inside
    **The reason for the change, in one line: this repository runs two gates whose
    whole purpose is keeping credentials out of artifacts, and the better move is
    to have no credential rather than a well-guarded one.**
-   **AND ONE OPEN QUESTION RIDES ON IT**, stated in DR-0024 rather than guessed:
-   it is not established whether npm permits configuring a trusted publisher for
-   a package that has NEVER been published. If it does not, the first publish
-   cannot use OIDC and M3-P10 needs a bootstrap. M3-P10's FIRST step settles
-   that against npm's documentation, before any workflow is written.
+   **THE BOOTSTRAP IS SETTLED BY THE OWNER (2026-08-10), and it makes M3-P10
+   NON-AUTONOMOUS.** The owner will publish a `0.0.0` stub for both package
+   names, deprecate it immediately, and prime the packages that way, and needs
+   the release workflow FILENAME before doing so. That does not answer the open
+   question about never-published packages; it makes it moot, which is recorded
+   as the different thing it is.
+   **The owner step therefore lands in the MIDDLE of M3-P10, not at its end:**
+   (1) M3-P10 writes the workflow and does NOT publish; (2) OWNER stub-publishes,
+   deprecates, and configures the trusted publisher against that workflow;
+   (3) M3-P10's exit run publishes `0.1.0` over OIDC. Every other M3 phase has
+   been dispatch-to-merge with the owner outside the loop. **Read the M3-P10 plan
+   with that in mind BEFORE dispatching it**, so it is not designed as one
+   uninterrupted run and then found to have a hole in the middle.
+   One benefit falls out and is worth naming: once the `0.0.0` stub exists, npm
+   refuses to republish that version, so an M3-P10 that forgot the `0.1.0` bump
+   FAILS CLOSED at publish time instead of shipping a package contradicting its
+   own five disclosures.
    **Id note:** the M3 plan called this `A-4` through revision 2, colliding
    with the branch deletion above. Revision 3 renumbered the PLAN's id to A-7.
    M2's `A-3` is deliberately untouched because it is embedded as a literal
