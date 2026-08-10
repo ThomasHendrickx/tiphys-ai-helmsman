@@ -6,12 +6,17 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-09
-- main head: `a8d7016` (PR #65, the M3 paperwork batch carrying tuition T-012
-  and T-013 and the round-8 arbitration), and its T-009 arm is DISCHARGED: the
-  post-merge push run completed with job success AND its `M2 exit test (push)`
-  step success, checked as the step rather than inferred from the run. Before
-  it, `5f0b1e4` (PR #66, the round-7 delta verification) is discharged the same
-  way. Before that, `d718221` (PR #64, the A2 review evidence
+- main head: `e33fe4c` (PR #67, the round-8 paperwork, tuition T-012 and T-013,
+  the arbitrations and the stop record), and its T-009 arm is DISCHARGED: job
+  success AND its `M2 exit test (push)` step success. **Zero open pull requests
+  at this head**, so the whole evidence chain for M3-P3's eight rounds is on
+  `main` rather than on side branches. The three heads before it are discharged
+  the same way, each checked as the STEP and not inferred from the run:
+  `3dca8ec` (PR #69, the round-8 criteria clean-room review), `0299634`
+  (PR #68, the round-8 delta verification), and `a8d7016` (PR #65, the earlier
+  paperwork batch). Before those, `5f0b1e4` (PR #66, the round-7 delta
+  verification) is discharged the same way. Before that, `d718221` (PR #64, the
+  A2 review evidence
   and arbitration): run 31336255684 step 9 success,
   step 8 `M2 exit test (pull request)` correctly skipped, step 10 self-test
   guard success. Before that, `ae674b6` (PR #63, the owner's DR-0022 answer):
