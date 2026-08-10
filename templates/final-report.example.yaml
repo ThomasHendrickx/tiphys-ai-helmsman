@@ -1,0 +1,80 @@
+# Tiphys final report, worked example.
+#
+# FILLED WITH REAL CONTENT FROM THIS REPOSITORY (kernel plan M3, M3-P4 step 4).
+# The findings below are the six the M3-P3 round-8 adversarial verification
+# raised, with the outcomes that verification recorded, at
+# delivery/review/verification-m3-p3-round-8.md:766.
+#
+# THE FINAL REPORT IS A PROJECTION, NOT A SUMMARY. Nothing here is authored:
+# every row is derived from a record that already exists, which is why the
+# document can be dense while the archive stays verbose.
+
+kind: final-report
+subject: M3-P3, assurance modes and role-to-model configuration, rounds 1 to 10
+
+inputs:
+  - V-1
+  - V-2
+  - V-3
+  - V-4
+  - V-5
+  - V-6
+
+input-findings:
+  - id: V-1
+    outcome: >-
+      CLOSED. 128 runs through the shipped CLI with byte-identical output,
+      flat growth to 3584 markers, a 23.4M-string language equivalence, and a
+      time witness red 2 of 2 on both members and green with 58x headroom.
+  - id: V-2
+    outcome: >-
+      CLOSED. The {0,2}, {0,3} and {0,4} mutants and three loop-bound mutants
+      were all killed; name, description, spec and fixture agree. Residual
+      W-3 is LOW.
+  - id: V-3
+    outcome: CLOSED. The replacement member reddens one test out of 505, was fourteen.
+  - id: V-4
+    outcome: CLOSED. Both sweeps re-run by the reviewer; exit codes and hits reproduce exactly.
+  - id: V-5
+    outcome: >-
+      OUT OF SCOPE by orchestrator decision in
+      delivery/review/arbitration-m3-p3-round-8.md; not re-measured and no
+      claim made.
+  - id: V-6
+    outcome: >-
+      CLOSED BY REMOVAL. git grep for both constants outside delivery/
+      returns nothing at exit 1, and the derivation is stated in the true
+      form rather than as an impossibility.
+
+decisions-owed:
+  none: false
+  entries:
+    - id: todo-bucket
+      statement: >-
+        The report contract's gate-result count vocabulary has five fields and
+        the M2-P3 wrapper reports six buckets; a run with todo greater than
+        zero cannot be recorded without breaking parity. Whether to add the
+        field or to state the gap is a plan question, not an implementer one.
+      owner: orchestrator
+
+owner-verification:
+  none: false
+  entries:
+    - id: A-4
+      statement: >-
+        The npm publish credential is an owner action; no agent in this
+        container holds it and no gate can stand in for it.
+      owner: owner
+
+infrastructure-left:
+  none: true
+
+out-of-band:
+  none: false
+  entries:
+    - id: beacon-branch-correction
+      statement: >-
+        The M3-P4 beacon commit landed on local main and was moved onto the
+        phase branch by the orchestrator with git branch -f; no file content
+        changed and nothing was pushed while HEAD was wrong.
+      owner: orchestrator

@@ -1,0 +1,26 @@
+{
+  "$comment": "VERBATIM CAPTURE of one real run of the M2-P3 full-suite wrapper (kernel plan M3 section 2.3 rule 4, T-003 lesson 4). wrapper-capture.counts.json and wrapper-capture.stdout.txt in this directory are the wrapper's own evidence files, copied byte for byte and edited in no way. This file records HOW they were produced, so a reader can tell a capture from an authored string: it names the command, the exit code the command returned, the working directory and the HEAD the run was made at. The result path and evidence directory were under a scratch directory outside the repository and are written as placeholders here because their absolute paths are container-specific and carry no information; nothing else is elided.",
+  "command": [
+    "node",
+    "src/gates/suite.ts",
+    "--pin-root",
+    "src",
+    "--pin-root",
+    "bin",
+    "--pin-root",
+    "test",
+    "--base",
+    "origin/main",
+    "--result",
+    "<scratch>/suite-result.json",
+    "--evidence",
+    "<scratch>/ev-suite"
+  ],
+  "exit-code": 0,
+  "cwd": "/home/user/tiphys-ai-helmsman",
+  "head": "9fd800a597993b4d947d57b7367ac8e14c808b22",
+  "started-at": "2026-08-10T11:02:43.167Z",
+  "ended-at": "2026-08-10T11:05:34.463Z",
+  "counts-file": "wrapper-capture.counts.json",
+  "stdout-file": "wrapper-capture.stdout.txt"
+}

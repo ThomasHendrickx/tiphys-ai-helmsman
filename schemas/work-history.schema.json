@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/work-history.schema.json",
+  "title": "Tiphys work history",
+  "$comment": "R-035, R-052a, R-083a. Kernel plan M3, M3-P4 step 3. THE WORK HISTORY IS THE ARTIFACT A LATER REVIEWER TRUSTS and the one CLAUDE.md says must never be softened, which is why `claims[]`, `fix-round[]` and `gate-evidence[]` are the REPORT SCHEMA'S OWN DEFINITIONS reached by $ref into report.schema.json rather than restated here. A shared definition is not a convenience: two independently-drifting copies of the honesty contract is the drift hole M3-P2 closes for gates and M3-P3 closes for mode ids, and a registered test asserts that both documents resolve to the SAME definition object rather than to two equal ones. HOW THE $ref RESOLVES: the reference is RELATIVE, so it resolves against this document's $id to https://tiphys.dev/schemas/report.schema.json and matches that document's own $id. Nothing is fetched. `src/commands/validate.ts` declares report.schema.json as this type's COMPANION and registers it with the same compiler before this document is compiled, which is a named, in-directory, shipped-schema registration and not the remote loading DR-0013 clause 4 withholds. R-083a's ACCUMULATION HALF is `environment-warnings[]`; its template half is templates/warnings.md.",
+  "description": "One document per phase branch. The prompt verbatim, what was touched, what was decided and why, what was verified before any code was written, every deviation, the gate evidence, the claims made and how each was settled, and the environment warnings the phase accumulated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "phase",
+    "prompt",
+    "files-touched",
+    "per-step-commits",
+    "key-decisions",
+    "verification-first",
+    "deviations",
+    "gate-evidence",
+    "claims",
+    "environment-warnings"
+  ],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "work-history"
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "prompt": {
+      "$comment": "R-052a: VERBATIM. A block scalar, and the schema cannot tell verbatim from paraphrased; what it can do is refuse an empty or whitespace-only one.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "files-touched": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+    },
+    "per-step-commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha", "subject"],
+        "properties": {
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+          "subject": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "key-decisions": {
+      "$comment": "R-052a: the WHY that is invisible in the diff. `why` is required, so a decision cannot be recorded as a bare fact.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision", "why"],
+        "properties": {
+          "decision": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "verification-first": {
+      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/verificationFirst" }
+    },
+    "deviations": {
+      "$comment": "R-057a, the same shape the report carries.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plan-clause", "why"],
+        "properties": {
+          "plan-clause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "gate-evidence": {
+      "$comment": "R-049, R-086. THE REPORT SCHEMA'S gate-results DEFINITION, by $ref, not a copy of it.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/gateResult" }
+    },
+    "claims": {
+      "$comment": "T-006, D-M3-30. THE REPORT SCHEMA'S claims DEFINITION, by $ref, not a copy of it.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/claim" }
+    },
+    "fix-round": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30. THE REPORT SCHEMA'S fix-round DEFINITION, by $ref, not a copy of it. An ARRAY here and a single object in the report, because a phase branch carries many rounds and one report answers one of them; the ELEMENT is the same definition in both. Optional, because a phase with no fix round has none to record.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/fixRound" }
+    },
+    "environment-warnings": {
+      "$comment": "R-083a's ACCUMULATION HALF. Its template half is templates/warnings.md, which src/brief.ts appends verbatim to every brief. A warning recorded here without evidence is still a warning, so `evidence` is optional and `warning` is not; making evidence mandatory would price an honest note out of the record, which is this phase's own worst hazard one size down.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["warning"],
+        "properties": {
+          "warning": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "evidence": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verificationFirst": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding", "contradicts-plan"],
+      "properties": {
+        "finding": {
+          "$comment": "Recorded VERBATIM (R-035).",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "contradicts-plan": { "type": "boolean" },
+        "stopped-and-reported": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "if": {
+        "$comment": "Kind A, both sides on the SAME object, so the escalation cannot be satisfied by a reference recorded elsewhere in the document.",
+        "type": "object",
+        "required": ["contradicts-plan"],
+        "properties": { "contradicts-plan": { "const": true } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["stopped-and-reported"],
+        "properties": {
+          "stopped-and-reported": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    }
+  }
+}

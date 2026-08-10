@@ -1,0 +1,184 @@
+# Tiphys work history, worked example.
+#
+# FILLED WITH REAL CONTENT FROM THIS REPOSITORY (kernel plan M3, M3-P4 step 4):
+# this is M3-P4's own record, in the machine-readable form the contract
+# defines. The prose work history at delivery/work-history/m3-p4.md is the
+# same phase's record in the form this repository's own process uses; the two
+# are kept in step deliberately, because a template nobody fills is a template
+# nobody can tell has drifted.
+#
+# THE claims[], fix-round[] AND gate-evidence[] SECTIONS BELOW ARE THE REPORT
+# SCHEMA'S OWN DEFINITIONS, reached by $ref rather than restated, so the
+# honesty contract has one definition and not two that can drift.
+
+kind: work-history
+phase: M3-P4
+
+prompt: |
+  You are the IMPLEMENTER for M3-P4 in the Tiphys kernel repository. You do
+  not open pull requests and you do not merge. You implement, commit, push,
+  and hand back. Your full brief is at the dispatch brief path; read it FIRST
+  and follow it. It carries ten lessons M3-P3 paid ten rounds for, and they
+  are repeated there rather than left to CLAUDE.md because a brief that only
+  says "read CLAUDE.md" is how they get skipped.
+
+files-touched:
+  - schemas/report.schema.json
+  - schemas/final-report.schema.json
+  - schemas/work-history.schema.json
+  - templates/report.example.yaml
+  - templates/final-report.example.yaml
+  - templates/work-history.example.yaml
+  - templates/warnings.md
+  - test/report-contract.test.ts
+  - test/work-history.test.ts
+  - test/fixtures/wrapper-capture.counts.json
+  - test/fixtures/wrapper-capture.stdout.txt
+  - test/fixtures/wrapper-capture.invocation.json
+  - src/validate.ts
+  - src/checks.ts
+  - src/commands/validate.ts
+  - delivery/requirements/clause-map.json
+  - test/behaviors.json
+  - delivery/work-history/m3-p4.md
+
+per-step-commits:
+  - sha: "9fd800a"
+    subject: "M3-P4: open the work history beacon"
+  - sha: "b1ddc1b"
+    subject: "M3-P4: record the misplaced beacon commit, and the report schema first draft"
+
+key-decisions:
+  - decision: >-
+      Add a declared COMPANION_TABLE beside the type table and an optional
+      companions argument to compileSchema, rather than bundling the shared
+      definitions into the work-history document at load time.
+    why: >-
+      The plan requires the two schemas to resolve to the SAME definition
+      object rather than to two equal ones. Bundling would satisfy that by a
+      caching accident; a declared companion satisfies it because there is one
+      physical definition and the second document points at it. It also keeps
+      the property DR-0013 clause 4 protects: the set of documents a schema
+      may reach is declared in one auditable place and is never derived from
+      the reference itself.
+  - decision: >-
+      Record the pre-existing RangeError in collectUnits rather than fix it.
+    why: >-
+      Its red witness would have to live in test/checks.test.ts, which is not
+      on this phase's declaration, and a fix with no witness is the shape the
+      red-witness rule exists to forbid. It is re-measured at this head so the
+      record is a measurement rather than an inherited claim.
+  - decision: >-
+      Express the universal-quantifier rule as a two-branch oneOf rather than
+      the if/then the criterion's letter names.
+    why: >-
+      One object level carries one if/then, the finding object already spends
+      it on T-004's source-pinned coupling, and allOf is outside the declared
+      authoring vocabulary. Declared as a deviation rather than done quietly.
+
+verification-first:
+  - finding: >-
+      compileSchema builds a fresh Ajv per document and registers nothing
+      beside it, and makeAjv withholds loadSchema on purpose, so a $ref that
+      leaves the document fails compilation. Shipping the plan's cross-document
+      $ref without a change to the compile path would fail acceptance
+      criterion 1 on this phase's own example.
+    contradicts-plan: true
+    stopped-and-reported: >-
+      Reported in delivery/work-history/m3-p4.md as VF-1 before any schema was
+      authored, with the decision and its reasoning recorded above rather than
+      taken silently.
+  - finding: >-
+      The M2-P6 coverage checker exposes checkFindingOutcomeParity as a
+      function and its CLI accepts only --result, --evidence and --config, so
+      there is no flag that reaches finding-to-outcome parity mode.
+    contradicts-plan: false
+
+deviations:
+  - plan-clause: M3-P4 acceptance criterion 2(e)
+    why: >-
+      The criterion calls for an if/then over a pattern on the same object;
+      the object's one if/then slot is spent on T-004's coupling and allOf is
+      outside the declared authoring vocabulary, so the rule is a two-branch
+      oneOf. It remains Kind A and is witnessed by removing and restoring
+      oneOf.
+  - plan-clause: M3-P4 acceptance criterion 4
+    why: >-
+      The criterion says the M2-P6 coverage checker is RUN in
+      finding-to-outcome parity mode with an exit code on both arms. That mode
+      has no CLI flag and src/gates/coverage.ts is not on this phase's
+      declaration, so the registered test invokes the exported checker in a
+      subprocess. The checker itself is unmodified and the exit code is a real
+      process exit code.
+
+gate-evidence:
+  - gate: suite
+    result: green
+    wrapper-exit-code: 0
+    discovered: 507
+    passed: 505
+    failed: 0
+    skipped: 2
+    did-not-run: 0
+
+claims:
+  - id: W-1
+    kind: open-question
+    statement: >-
+      I did not find a way to express "this array is empty" in the declared
+      authoring vocabulary, so the rule that a report with no findings must
+      carry a no-findings-statement is not schema-enforced.
+
+  - id: W-2
+    kind: coverage
+    statement: >-
+      Registering report.schema.json as a companion is what makes the
+      work-history schema compile; without it the compilation fails closed.
+    settled-by:
+      executed-construction:
+        command: >-
+          node --input-type=module -e "import {compileSchema} from
+          './src/validate.ts'; import {readFileSync} from 'node:fs'; const s =
+          JSON.parse(readFileSync('schemas/work-history.schema.json','utf8'));
+          const r = compileSchema(s); console.log(r.ok ? 'compiled' : r.reason);"
+        exit-code: 0
+        output: |
+          INVALID # schema reference report.schema.json#/$defs/gateResult does not resolve
+
+fix-round:
+  - mechanism: >-
+      A schema document compiled without the sibling documents its references
+      reach, so a reference that leaves the document fails closed at
+      compilation rather than resolving.
+    derivation:
+      command: "grep -rn 'compileSchema(\\|validateInstance(\\|validateToLines(' src/ bin/ | grep -v '^src/validate.ts:'"
+      output: |
+        src/gates/run.ts:361:  const diagnostics = formatDiagnostics(validateInstance(schema, decoded.value));
+        src/gates/validate.ts:524:  return validateInstance(schema, instance) as Diagnostic[];
+        src/gates/validate.ts:528:export function validateToLines(
+        src/commands/mode.ts:125:  const lines = formatDiagnostics(validateInstance(loadTypeSchema(MODES_TYPE), read.raw));
+        src/commands/validate.ts:273:  const diagnostics = validateInstance(
+        src/commands/status.ts:127:  const diagnostics = validateInstance(loadTypeSchema("status-line"), record);
+    not-covered: >-
+      The search covered src/ and bin/ only. It did NOT cover test/, where the
+      same functions are reached through a computed dynamic import and a
+      literal grep would find the import rather than the call; it did not cover
+      scripts/, which reaches the validator only through src/gates/result.ts
+      and compiles no schema of its own; and it did not cover dist/, which is
+      generated and never committed.
+
+environment-warnings:
+  - warning: >-
+      A checkout whose node_modules predates M3-P3 fails npm run build at
+      build:runtime-deps, because commonmark is a dependency added by that
+      phase and the copy step reads its package.json directly.
+    evidence: >-
+      npm run build exited 1 with ENOENT on node_modules/commonmark/package.json;
+      npm ci then npm run build exited 0.
+  - warning: >-
+      This container's default toolchain is node v22.22.2, below the declared
+      engine floor, so EBADENGINE warnings appear on every npm operation and
+      two floor-gated tests skip.
+    evidence: >-
+      node --version printed v22.22.2 in the shell that ran the suite, and the
+      captured wrapper run reports 507 reported, 505 pass, 2 skipped.

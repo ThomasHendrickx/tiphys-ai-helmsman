@@ -149,24 +149,11 @@
         "required": ["pinned-evidence"],
         "properties": {
           "pinned-evidence": { "type": "string", "minLength": 1, "pattern": "\\S" }
-        },
-        "$comment": "T-003 lesson 3, NESTED because one object level carries one if/then and this rule is conditional on a different field. The nesting is exact: `source-pinned: true` AND a universal `analysis` requires both fields; the universal rule for an UNPINNED finding is carried by the sibling `oneOf` below, which is why that keyword is there.",
-        "if": {
-          "type": "object",
-          "required": ["analysis"],
-          "properties": { "analysis": { "$ref": "#/$defs/universalQuantifier" } }
-        },
-        "then": {
-          "type": "object",
-          "required": ["counter-experiment"],
-          "properties": {
-            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
-          }
         }
       },
       "oneOf": [
         {
-          "$comment": "THE UNIVERSAL-CLAIM RULE, expressed so that it binds whatever `source-pinned` says. Branch 1: the analysis carries no universal quantifier, so no counter-experiment is owed.",
+          "$comment": "THE UNIVERSAL-CLAIM RULE (T-003 lesson 3). DECLARED DEVIATION from plan criterion 2(e)'s letter, which calls for an `if`/`then` over a `pattern` on the same object: this object already spends its ONE `if`/`then` slot on T-004's source-pinned coupling, `allOf` is outside the declared authoring vocabulary (schemas/README.md), and two independent conditional rules cannot share one slot. It is still Kind A (schema keywords over one document) and its guarding keyword is `oneOf`, which is what the witness removes and restores. Branch 1: the analysis carries no universal quantifier, so no counter-experiment is owed.",
           "type": "object",
           "required": ["analysis"],
           "properties": {

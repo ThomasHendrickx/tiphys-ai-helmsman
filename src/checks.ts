@@ -1583,11 +1583,197 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* report-parity-arithmetic (M3-P4, R-048, R-049, R-086)                */
+/* ------------------------------------------------------------------ */
+
+/** The four buckets whose sum must equal `discovered`. */
+const PARITY_BUCKETS = ["passed", "failed", "skipped", "did-not-run"] as const;
+
+/** Every count field a gate result may carry, `discovered` first. */
+const COUNT_FIELDS = ["discovered", ...PARITY_BUCKETS] as const;
+
+/**
+ * `discovered == passed + failed + skipped + did-not-run`, over one gate
+ * result's sibling fields.
+ *
+ * NO SCHEMA KEYWORD COMPUTES ARITHMETIC over sibling fields, which is what
+ * makes this Kind B rather than a keyword (M3R-002 corrected revision 0's
+ * classification of exactly this check). The property it guards is R-048's:
+ * a suite that reports fewer tests than it discovered is the
+ * silently-dropped-tests case, and it adds up to a green everywhere else.
+ *
+ * THREE THINGS THIS CHECKS, and the second and third are the CONVERSES the
+ * criterion's letter does not name. The plan's criterion 2b(a) names only
+ * `discovered` EXCEEDING the sum. A check that tested only that direction
+ * would pass a record whose sum exceeds `discovered`, which is a different
+ * lie with the same shape, so the test here is EQUALITY. And a count field
+ * that is NEGATIVE is arithmetic nonsense that equality alone can satisfy
+ * (`discovered: 0` with `passed: 1` and `failed: -1` adds up); negativity is
+ * not reachable by any keyword in the declared authoring vocabulary, which
+ * has no `minimum`, so it is checked here beside the sum rather than left to
+ * a keyword that does not exist.
+ *
+ * WHAT IT DOES NOT REACH, stated rather than implied: a gate result carrying
+ * NO count field at all is not examined, because the schema requires the five
+ * counts only of a `green`, and a `red` result that records none of them is a
+ * legitimate record rather than a false one. So this check cannot see a
+ * dropped test in a run nobody counted; it sees one in a run that claims a
+ * count.
+ */
+export const reportParityArithmetic: DerivedCheck = {
+  id: "report-parity-arithmetic",
+  type: "report",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const results = asArray(record["gate-results"]);
+    results.forEach((entry, index) => {
+      const result = asRecord(entry);
+      if (result === undefined) {
+        return;
+      }
+      const present = COUNT_FIELDS.filter((field) => result[field] !== undefined);
+      if (present.length === 0) {
+        return;
+      }
+      const pointer = `#/gate-results/${String(index)}`;
+      const missing = COUNT_FIELDS.filter((field) => result[field] === undefined);
+      if (missing.length > 0) {
+        violations.push({
+          pointer,
+          message: `gate result records ${String(present.length)} of the 5 counts and omits ${missing.join(", ")}, so parity cannot be computed`,
+        });
+        return;
+      }
+      const values = new Map<string, number>();
+      for (const field of COUNT_FIELDS) {
+        const value = result[field];
+        if (typeof value !== "number" || !Number.isInteger(value)) {
+          /* The schema already rejects a non-integer here; this is the
+             belt that stops the arithmetic below producing NaN if this
+             check is ever run on an instance that skipped validation. */
+          return;
+        }
+        values.set(field, value);
+      }
+      const negative = COUNT_FIELDS.filter((field) => (values.get(field) as number) < 0);
+      if (negative.length > 0) {
+        violations.push({
+          pointer,
+          message: `count(s) ${negative.join(", ")} are negative, which no run can produce`,
+        });
+        return;
+      }
+      const sum = PARITY_BUCKETS.reduce(
+        (total, field) => total + (values.get(field) as number),
+        0,
+      );
+      const discovered = values.get("discovered") as number;
+      if (discovered !== sum) {
+        violations.push({
+          pointer,
+          message: `discovered ${String(discovered)} does not equal passed + failed + skipped + did-not-run = ${String(sum)}`,
+        });
+      }
+    });
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* final-report-finding-parity (M3-P4, R-089a)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every id in `inputs[]` appears in `input-findings[]`, exactly once, and no
+ * `input-findings[]` row names an id `inputs[]` does not carry.
+ *
+ * A CROSS-ARRAY COMPLETENESS PROPERTY, which no keyword reaches: `contains`
+ * asks about a fixed shape, not about a value computed from a sibling array.
+ * Revision 0 of the plan listed this once as a schema witness, which was
+ * wrong (M3R-002).
+ *
+ * THREE DIRECTIONS, and only the first is in the criterion's letter. The
+ * criterion names the ORPHAN: an id in `inputs[]` with no row. The PHANTOM
+ * (a row whose id is not an input) and the DUPLICATE (two rows for one id)
+ * are the converses, and they are here because M2-P6 paid for both by
+ * measurement rather than by argument: CR-988 records that its parity mode
+ * scanned inventory ids only, so a row for a renumbered id was silently
+ * accepted, and CR-985 records that a duplicated id defeated the orphan and
+ * phantom checks TOGETHER while inflating every count. A guard narrower than
+ * its own description is what this project keeps re-buying, so the check is
+ * as wide as the relation.
+ *
+ * WHAT IT DOES NOT REACH: a finding dropped from BOTH arrays. The two
+ * documents then agree with each other, and no comparison between them can
+ * see it. That is the same residue `src/gates/coverage.ts` answers with a
+ * config-stated `expectedUnits` anchor, and this schema has no such anchor
+ * because nothing in the plan states one.
+ */
+export const finalReportFindingParity: DerivedCheck = {
+  id: "final-report-finding-parity",
+  type: "final-report",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const inputs = asArray(record["inputs"]).filter(
+      (value): value is string => typeof value === "string",
+    );
+    const rows = asArray(record["input-findings"]);
+    const rowIds: string[] = [];
+    for (const row of rows) {
+      const entry = asRecord(row);
+      const id = entry?.["id"];
+      rowIds.push(typeof id === "string" ? id : "");
+    }
+    const counts = new Map<string, number>();
+    for (const id of rowIds) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    inputs.forEach((id, index) => {
+      const seen = counts.get(id) ?? 0;
+      if (seen === 0) {
+        violations.push({
+          pointer: `#/inputs/${String(index)}`,
+          message: `finding ${id} has no row in input-findings, so the table has a hole`,
+        });
+        return;
+      }
+      if (seen > 1) {
+        violations.push({
+          pointer: `#/inputs/${String(index)}`,
+          message: `finding ${id} has ${String(seen)} rows in input-findings and must have exactly one`,
+        });
+      }
+    });
+    const inputSet = new Set(inputs);
+    rowIds.forEach((id, index) => {
+      if (!inputSet.has(id)) {
+        violations.push({
+          pointer: `#/input-findings/${String(index)}`,
+          message: `input-findings names ${id === "" ? "an id-less row" : id}, which is not in inputs, so the coverage is phantom`,
+        });
+      }
+    });
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
 const registry: DerivedCheck[] = [
   charterModeEnumMatchesModes,
+  finalReportFindingParity,
   modeConditionsQuoteGrantedBy,
   modeGateSetsResolve,
   modeIdsAreUnique,
@@ -1596,6 +1782,7 @@ const registry: DerivedCheck[] = [
   planDispatchable,
   planHazardClassesAddressedByResolves,
   planVerificationFirstPresent,
+  reportParityArithmetic,
   roleIdsAreUnique,
 ];
 
