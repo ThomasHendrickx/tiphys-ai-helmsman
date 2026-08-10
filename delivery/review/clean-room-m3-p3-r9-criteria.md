@@ -401,3 +401,122 @@ because the schema hunk is a `$comment`, and `$comment` is inert by the
 specification. Had it been any other keyword, "the schema changed" would have
 put every criterion back on the list. I checked that it is a `$comment` rather
 than assuming it.
+
+## The witness set, which round 9 changed and which criterion 3's witnesses row rests on
+
+Two specs changed: `witness/checks-mode-skips-sound.json` is new, and
+`witness/modes-execution-status-derived.json` gained a third dangerous state.
+
+**The point of the round is that the new dangerous states are DATA, not code,
+and they are.** Two of the three states in the new spec name
+`assurance-modes.yaml` as their `file`, and the state added to the existing spec
+names it too. That is the gap CR-002 exposed: every prior state in this
+repository mutated source, so a data edit had no witness at all.
+
+**Two structurally different members, and the difference is a real branch.**
+State 1 targets `full`, the REFERENCE mode, which the completeness loop
+`continue`s past entirely (src/checks.ts:448); state 2 targets `local-only`, a
+non-reference mode that the loop does traverse. A soundness predicate written
+inside the completeness loop would have been green against the sharper of the
+two. I read the code and confirmed the soundness loop at src/checks.ts:427 runs
+over EVERY row and runs BEFORE the reference is resolved at src/checks.ts:438,
+so its violations survive an absent `full`.
+
+**Every `find` string resolves to exactly one occurrence** (T-011), measured by
+counting substring occurrences in the named file at this head rather than by
+eye:
+
+```
+witness checks-mode-skips-sound
+  assurance-modes.yaml  occurrences=1  "    skips: []"
+  assurance-modes.yaml  occurrences=1  "    skips:\n      - intake"
+  src/checks.ts         occurrences=1  "        if (running.has(stage)) {"
+witness modes-execution-status-derived
+  src/modes.ts          occurrences=1  "  if (mode.id === UNDOWNGRADED_MODE_ID) {"
+  src/modes.ts          occurrences=1  "  if (!context.shippedDocument) {"
+  assurance-modes.yaml  occurrences=1  "      - deploy-verify\n      - migration-verify\n      - final-report\n    skips: []"
+```
+
+The behavior is registered by name (`mode-skips-describe-only-omitted-stages`,
+test/behaviors.json:482) and the registry grew by exactly one entry: 511 keys at
+`108eed0`, 512 here, counted from the JSON rather than from the diff.
+
+**The `red-witness` GATE, run by me at this head: GREEN.**
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --only red-witness --evidence <dir> --base 3c60acbe --head HEAD --phase m3-p3
+RED_WITNESS_EXIT=0
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+detail: 36 witness(es) evaluated (23 own, 13 stored re-evaluated in 139746ms);
+        every witness red against every declared dangerous state and green at head
+```
+
+Round 8 measured 35 (22 own, 13 stored); 36 (23 own) is that plus this round's
+one new spec, which is the arithmetic I expected and checked rather than took.
+
+Per-member, read out of the gate's own `witness-records.json` rather than
+summarised from the verdict line, each member showing 2 RED mutated runs and 1
+green control:
+
+| witness | member | file mutated | test it reddens |
+|---|---|---|---|
+| `checks-mode-skips-sound` | 0 | **assurance-modes.yaml** | `a mode declaring a stage in skips that its own pipeline runs is rejected, and the shipped document is green` |
+| `checks-mode-skips-sound` | 1 | **assurance-modes.yaml** | same |
+| `checks-mode-skips-sound` | 2 | src/checks.ts | same |
+| `modes-execution-status-derived` | 0 | src/modes.ts | `mode show says which mode is the un-downgraded process and which is a declared downgrade never exercised` |
+| `modes-execution-status-derived` | 1 | src/modes.ts | same |
+| `modes-execution-status-derived` | 2 | **assurance-modes.yaml** | same |
+
+**The gate left no mutant behind.** I md5-compared all 450 tracked files before
+and after the run: `TREE_MD5_DIFF_EXIT=0`, zero differing lines, and
+`git status --porcelain` in `CRB9-head` is 0 lines.
+
+## Final state of everything I touched
+
+- `CRB9-head` (detached b5c01f0): `git status --porcelain` 0 lines.
+- `CRB9-194` (detached 194b489): created by me for one control measurement, no
+  mutation beyond `npm ci` and `npm run build`.
+- The staged install `CRB9-inst`, the context copy `CRB9-ctx` and the foreign
+  document `CRB9-foreign` are outside any git tree and are kept as evidence.
+- The main repository at `/home/user/tiphys-ai-helmsman` was never written to.
+- `wt-m3p3-delta4`, borrowed read-only as the DR-0022 baseline tree, is
+  unchanged: 1 line of `git status --porcelain`, the same untracked review
+  document it carried before I read from it.
+
+No captured output in this report or its evidence bundle contains a non-ASCII
+byte or a control character. Both CLAUDE.md checks with the load-bearing `-a`
+return GREP exit 1 over the report and the whole evidence directory.
+**No transliteration was needed for anything quoted in the report body**, because
+every capture quoted here came from the CLI, the gate runner or the reporter's
+`tests/pass/fail/skipped` summary lines. The ONE place the glyph problem arises
+is the suite's own summary: node's spec reporter prefixes those lines with
+U+2139, so where I quote counts I quote the NUMBERS and not the prefixed lines.
+Nothing was hand-written to avoid a glyph and no captured value was altered.
+
+## Handover, in one line for the orchestrator
+
+The changed surface is DISCHARGED: CR-002 is closed at the mechanism with all
+three members re-measured, DR-0020 and DR-0022 hold, and the `pull_request` CI
+arm is GREEN and OBSERVED at b5c01f0. Two LOWs (CRB9-01, a citation pointing at
+a blank line; CRB9-02, the successor hazard closed by a test rather than by the
+validator) and one recorded observation (the suite's invocation axis). What
+remains owed is T-009 rule 1: the post-merge `push` run on the new `main` tip.
+
+## Evidence committed alongside this report
+
+`delivery/review/evidence/clean-room-m3-p3-r9-criteria/`:
+
+| file | what it is |
+|---|---|
+| `CRB9-member1.sh`, `CRB9-member2.sh`, `CRB9-member3.sh` | the three CR-002 reproductions, members 1 and 2 derived from the round-8 report's own scripts, each self-restoring from a pristine trap with md5 printed |
+| `CRB9-succ.sh` | CRB9-02: an honestly-declared downgrade of `full`, validating at exit 0 |
+| `CRB9-succwit.sh` | the red witness for the new `full`-declares-no-skip assertion, green then red then restored |
+| `mode-show-full.txt`, `mode-show-direct-pr.txt`, `mode-show-local-only.txt` | the three shipped `mode show` outputs in full, which is where the execution-status sentences are read from |
+| `mode-show-file-foreign-full.txt` | the `--file` arm, showing `not determinable here` for a mode named `full` in a document that is not the kernel's own |
+| `successor-hazard-mode-show-full.txt` | the self-contradicting output CRB9-02 describes |
+| `units-head-b5c01f0.json`, `units-baseline-18c335a.json`, `units-md5.txt` | the DR-0022 re-derivation and its md5 on both sides |
+| `red-witness-result.json`, `red-witness-evaluations-summary.json` | the gate's own verdict and a per-member summary of all 36 evaluations (the full 15 MB record is not committed) |
+| `tree-md5-diff-after-red-witness.txt` | empty, which is the claim that the gate left no mutant behind |
+| `suite-counts.txt` | all five suite measurements with toolchain, build state and INVOCATION named |
+| `ci-run.txt` | the observed CI run, its ids, its conclusion and its per-step outcome |
