@@ -1,0 +1,326 @@
+{
+  "base": "3c60acbee541711aca2b046269aa35a03f22bb8e",
+  "head": "108eed04e57991717dce8695b1c11ea505efda62",
+  "spawningChangedFiles": [
+    "test/assurance-modes.test.ts"
+  ],
+  "uncoveredSources": [],
+  "reEvaluationMs": 124170,
+  "evaluations": [
+    {
+      "witness": "checks-charter-mode-enum-drift",
+      "behavior": "charter-mode-enum-drift-detected",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-code-block-content-not-quotable",
+      "behavior": "mode-conditions-code-block-content-not-quotable",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-conditions-are-whole-quotes",
+      "behavior": "mode-conditions-are-whole-quotes-not-substrings",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-conditions-quote-granted-by",
+      "behavior": "mode-conditions-quote-their-grant",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-emptied-paragraph-contributes-no-unit",
+      "behavior": "mode-conditions-emptied-paragraph-contributes-no-unit",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-enum-compared-element-wise",
+      "behavior": "charter-mode-enum-compared-element-wise",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-heading-forms-not-quotable",
+      "behavior": "mode-conditions-heading-forms-not-quotable",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-interrupters-inside-an-item-end-no-unit",
+      "behavior": "mode-conditions-interrupters-inside-an-item-end-no-unit",
+      "status": "green",
+      "members": 4,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-list-item-content-belongs-to-the-item",
+      "behavior": "mode-conditions-list-item-content-belongs-to-the-item",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-mode-downgrade-registered",
+      "behavior": "mode-undeclared-downgrade-rejected",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-mode-ids-unique-by-id",
+      "behavior": "mode-ids-unique-by-id",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-multi-marker-lines-strip-every-marker",
+      "behavior": "mode-conditions-multi-marker-lines-strip-every-marker",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-near-miss-prefix-bounded-time",
+      "behavior": "mode-conditions-near-miss-prefix-bounded-time",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-role-ids-unique-by-id",
+      "behavior": "role-ids-unique-by-id",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-start-column-verified-not-trusted",
+      "behavior": "mode-conditions-start-column-verified-not-trusted",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "mode-show-resolves-the-named-mode",
+      "behavior": "mode-show-full-stage-order",
+      "status": "green",
+      "members": 3,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "mode-show-validates-before-serving",
+      "behavior": "mode-show-refuses-invalid-document",
+      "status": "green",
+      "members": 3,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "modes-bounds-are-data-not-enforcement",
+      "behavior": "mode-show-bounds-are-data-not-enforcement",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "modes-execution-status-derived",
+      "behavior": "mode-show-annotates-execution-status",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "modes-type-registered",
+      "behavior": "modes-validate",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "schemas-closed-vocabulary-disclosed",
+      "behavior": "schemas-disclose-closed-vocabulary",
+      "status": "green",
+      "members": 3,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-contains-names-required-value",
+      "behavior": "mode-full-requires-fix-round-verification",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/assurance-modes.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-addressed-by-ambiguity",
+      "behavior": "check-addressed-by-ambiguous-criterion",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/checks.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-hazard-addressed-by-resolves",
+      "behavior": "check-plan-hazard-classes-addressed-by-resolves",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/checks.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-missing-context-loud",
+      "behavior": "check-missing-context-fails-loudly",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/checks.test.ts"
+      ]
+    },
+    {
+      "witness": "checks-verification-first-present",
+      "behavior": "check-plan-verification-first-present",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/checks.test.ts"
+      ]
+    },
+    {
+      "witness": "cli-top-level-error-handler",
+      "behavior": "cli-errors-have-no-stack-trace",
+      "status": "green",
+      "members": 3,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "gate-registry-type-registered",
+      "behavior": "gate-registry-validates",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/gate-registry.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-diagnostic-contract",
+      "behavior": "validate-invalid-pointer-message",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-invalid-schema-meta-validation",
+      "behavior": "validate-invalid-schema-fails-meta-validation",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-no-input-mutation",
+      "behavior": "validate-input-not-mutated",
+      "status": "green",
+      "members": 3,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-operator-path-refusal",
+      "behavior": "validate-refuses-non-regular-input-path",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-references-fail-closed",
+      "behavior": "validate-remote-ref-fails-closed",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-unknown-keyword-compilation",
+      "behavior": "validate-unknown-keyword-fails-compilation",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    },
+    {
+      "witness": "validate-yaml-decode-stage",
+      "behavior": "validate-yaml-decode-diagnostic",
+      "status": "green",
+      "members": 2,
+      "tests": [
+        "test/validate.test.ts"
+      ]
+    }
+  ]
+}

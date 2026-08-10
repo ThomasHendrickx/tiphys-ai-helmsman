@@ -1,0 +1,58 @@
+{
+  "runId": "62815f56b095407c0410900d",
+  "manifest": "gate-registry.yaml",
+  "registry": true,
+  "mode": "full",
+  "declaredByChecklist": [
+    {
+      "id": "unit-tests-for-changed-service-methods",
+      "probe": "unit-tests-for-changed-service-methods",
+      "applicability": "conditional"
+    },
+    {
+      "id": "fixtures-for-changed-component-states",
+      "probe": "fixtures-for-changed-component-states",
+      "applicability": "conditional"
+    }
+  ],
+  "manifestSha256": "478f5ac151b6db74deaedd2959817723f499642565b68c2d83fa4e8596d882e8",
+  "startedAt": "2026-08-10T01:39:14.389Z",
+  "endedAt": "2026-08-10T01:44:59.166Z",
+  "parameters": {
+    "base": "3c60acbee541711aca2b046269aa35a03f22bb8e",
+    "head": "108eed0",
+    "phase": "m3-p3"
+  },
+  "only": [
+    "red-witness"
+  ],
+  "manifestGates": 12,
+  "gates": [
+    {
+      "id": "red-witness",
+      "status": "green",
+      "units": 35,
+      "unitLabel": "witnesses evaluated",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "35 witness(es) evaluated (22 own, 13 stored re-evaluated in 124170ms); every witness red against every declared dangerous state and green at head",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev4/red-witness/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev4/red-witness/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev4/red-witness/stderr.txt"
+    }
+  ],
+  "counts": {
+    "declared": 1,
+    "applicable": 1,
+    "verdict": 1,
+    "green": 1,
+    "red": 0,
+    "not-applicable": 0,
+    "error": 0,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [],
+  "aborted": false,
+  "exitCode": 0,
+  "reason": "every applicable gate is green"
+}
