@@ -781,3 +781,20 @@ fact rather than a memory.
   bundles, so a green PR check is not evidence about `main` (tuition T-009,
   which cost four hours and twenty-one minutes of red `main` and four merges
   landed on top of it).
+- **CONSECUTIVE MERGES CANCEL EACH OTHER'S PUSH RUNS, so a per-head T-009
+  discharge is not always achievable and must not be claimed.** Measured
+  2026-08-10 while landing the M3-P3 evidence PRs: the push run on `f70c712`
+  (run 31382497764) reports conclusion **cancelled**, because merging #76
+  seconds later superseded it under the workflow's concurrency group. Its step 9
+  `M2 exit test (push)` did reach **success**, and steps 10 and 11 too, but step
+  12 was cancelled, so the run as a whole never completed.
+  The honest reading, and the one to use: **step 9 succeeded, the run did not
+  finish, and that is a PARTIAL observation rather than a discharge.** The trap
+  is that step 9 is exactly the arm T-009 names, so quoting it alone produces a
+  true sentence that reads as a complete one, which is the same shape T-009 and
+  warning 12 both record.
+  The rule when merges are batched: **discharge the FINAL head of the batch with
+  a run that completed**, and say plainly that the intermediate heads were
+  superseded rather than verified. An intermediate head's content is contained
+  in the final head, so nothing is unverified; what is missing is a per-head
+  claim, and the fix is to stop making one.
