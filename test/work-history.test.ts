@@ -303,6 +303,102 @@ test("a work history whose verification-first entry contradicts the plan and nam
   assert.deepEqual(workHistoryLines(volunteered), []);
 });
 
+test("a verification-first finding whose own prose names a divergence from the plan cannot be recorded as contradicting nothing, and prose that merely mentions the plan still can", () => {
+  /* THE MECHANISM (M3-P4 round-2 delta finding DV-002), and it is NOT the
+     sentence that was wrong: round 2 declared this site closed to every
+     keyword on the ground that each open site "compares a document to
+     something that is not in any document". That argument is FALSE HERE.
+     `finding` is prose recorded verbatim in the SAME OBJECT as the boolean,
+     so the site is content-discriminated and the negative-lookahead pattern
+     that narrowed `#/$defs/claim`'s open-question statement narrows it too.
+     The general lesson the round paid for is that a class argument is not a
+     derivation, and this test is the per-site derivation for this site. */
+  const withFinding = (finding: string): Record<string, unknown> => {
+    const document = readTemplate("work-history.example.yaml");
+    const entry = (document["verification-first"] as Record<string, unknown>[])[1] as Record<
+      string,
+      unknown
+    >;
+    entry["finding"] = finding;
+    assert.equal(entry["contradicts-plan"], false, "the fixture entry must be the false one");
+    return document;
+  };
+
+  /* MEMBER 1: the relation is named outright. */
+  const named = withFinding(
+    "This contradicts the plan section 2.3, which names five counts where the wrapper reports six.",
+  );
+  assert.deepEqual(workHistoryLines(named), [
+    "INVALID #/verification-first/1 value matches no permitted alternative here",
+  ]);
+
+  /* MEMBER 2, STRUCTURALLY DIFFERENT: no contradiction word anywhere, and the
+     sentence's subject is the PLAN rather than the finding. A guard built
+     around the verb "contradict" alone would be green here. */
+  const wrong = withFinding(
+    "The plan is wrong here: it names five counts where the M2-P3 wrapper reports six, and I wrote six.",
+  );
+  assert.deepEqual(workHistoryLines(wrong), [
+    "INVALID #/verification-first/1 value matches no permitted alternative here",
+  ]);
+
+  /* MEMBER 3, DIFFERENT AGAIN: a divergence stated as a property of the work,
+     with the possessive form of the noun the boundary has to survive. */
+  const deviates = withFinding(
+    "The M2-P3 wrapper reports six counts and this deviates from the plan's five, which I saw before writing anything.",
+  );
+  assert.deepEqual(workHistoryLines(deviates), [
+    "INVALID #/verification-first/1 value matches no permitted alternative here",
+  ]);
+
+  /* THE GUARDING KEYWORD REMOVED, and it is the `oneOf` rather than the
+     if/then above it: the two are separate rules on one object and the
+     escalation coupling is untouched by this round. All three members are
+     accepted with it gone, so the pattern and nothing else is doing the work. */
+  const defanged = readSchema("work-history.schema.json");
+  delete nodeAt(defanged, ["$defs", "verificationFirst"])["oneOf"];
+  for (const document of [named, wrong, deviates]) {
+    assert.deepEqual(workHistoryLines(document, defanged), []);
+  }
+  /* RESTORED: a fresh read of the shipped file rejects them again. */
+  assert.ok(workHistoryLines(named).length > 0);
+
+  /* THE OVER-REJECTION CONTROLS, and they are the reason the token list names
+     the plan in every token rather than listing divergence words on their
+     own. Each of these is an honest finding that contradicts nothing, and a
+     wider list would have priced it out, which is this phase's own worst
+     hazard rather than a hypothetical one. */
+  for (const honest of [
+    "The plan section 2.3 authorises three derived-check rows and three are registered, so nothing here needs escalating.",
+    "The plan requires a deviations section and the M2 schemas already model one, so I reused the shape.",
+    "The two schema comments contradict each other about which check guards the definition.",
+    "This deviates from the M2 schema shape, and the plan says nothing either way.",
+    "I did not find a way to reconcile this with the plan, so I am recording it and asking.",
+  ]) {
+    assert.deepEqual(workHistoryLines(withFinding(honest)), [], honest);
+  }
+
+  /* AND THE SHIPPED TEMPLATE, unmodified, which is the control that would
+     catch a pattern that rejects everything. */
+  assert.deepEqual(workHistoryLines(readTemplate("work-history.example.yaml")), []);
+
+  /* THE SAME PROSE UNDER `contradicts-plan: true` IS ACCEPTED. The rule
+     redirects the record rather than forbidding the sentence, which is the
+     same shape as CR-002's remedy on `#/$defs/claim`: an impossibility is
+     fileable at its own price. Without this arm the pattern would read as a
+     ban on naming the plan at all. */
+  const declared = withFinding(
+    "This contradicts the plan section 2.3, which names five counts where the wrapper reports six.",
+  );
+  const entry = (declared["verification-first"] as Record<string, unknown>[])[1] as Record<
+    string,
+    unknown
+  >;
+  entry["contradicts-plan"] = true;
+  entry["stopped-and-reported"] = "Raised with the orchestrator before any schema was written.";
+  assert.deepEqual(workHistoryLines(declared), []);
+});
+
 /* ------------------------------------------------------------------ */
 /* Criterion 2e's array-element member, over the SHARED definition       */
 /* ------------------------------------------------------------------ */
@@ -541,6 +637,46 @@ test("a work history gate-evidence entry obeys the same green-and-todo keywords 
     [],
   );
   assert.ok(workHistoryLines(failing).length > 0);
+});
+
+test("the exit-code obligation on a gate result that ran travels to a work history's gate-evidence, and not-applicable stays free there too", () => {
+  /* MEASURED RATHER THAN INHERITED. DV-003's rule is a keyword, so it ought
+     to travel through the `$ref` exactly as the green-and-todo rules above
+     do; CR-001 is this branch's own record of what happens when a rule is
+     ASSUMED to have travelled, so the assumption is spent here instead. */
+  const ran = readTemplate("work-history.example.yaml");
+  (ran["gate-evidence"] as Record<string, unknown>[]).push({ gate: "citations", result: "red" });
+  assert.deepEqual(workHistoryLines(ran), [
+    "INVALID #/gate-evidence/1 value matches no permitted alternative here",
+  ]);
+
+  /* THE KEYWORD REMOVED FROM THE REPORT SCHEMA: the work-history document has
+     no copy of the definition to defang, which is what "shared" means here. */
+  const defangedCompanion = readSchema("report.schema.json");
+  delete nodeAt(defangedCompanion, ["$defs", "gateResult"])["oneOf"];
+  assert.deepEqual(
+    workHistoryLines(ran, readSchema("work-history.schema.json"), defangedCompanion),
+    [],
+  );
+  assert.ok(workHistoryLines(ran).length > 0);
+
+  /* AND THE TWO ACCEPTING DIRECTIONS, so the travelling rule is not simply a
+     rule that reddens everything here: the residue and the gate that did not
+     run are both still writable in a work history. */
+  const residue = readTemplate("work-history.example.yaml");
+  (residue["gate-evidence"] as Record<string, unknown>[]).push({
+    gate: "citations",
+    result: "red",
+    "wrapper-exit-code": 0,
+  });
+  assert.deepEqual(workHistoryLines(residue), []);
+
+  const notApplicable = readTemplate("work-history.example.yaml");
+  (notApplicable["gate-evidence"] as Record<string, unknown>[]).push({
+    gate: "migrations",
+    result: "not-applicable",
+  });
+  assert.deepEqual(workHistoryLines(notApplicable), []);
 });
 
 test("an impossibility filed as an open question is rejected in a work history too, through the shared definition", () => {

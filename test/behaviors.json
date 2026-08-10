@@ -550,5 +550,8 @@
   "empty-findings-requires-a-statement": "a report with no findings and no statement is rejected, and so is a statement beside real findings",
   "parity-check-runs-on-work-history-gate-evidence": "the parity check runs on a work history's gate-evidence, through the shared definition it guards",
   "work-history-gate-evidence-shares-green-keywords": "a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition",
-  "work-history-open-question-cannot-assert-a-settlement": "an impossibility filed as an open question is rejected in a work history too, through the shared definition"
+  "work-history-open-question-cannot-assert-a-settlement": "an impossibility filed as an open question is rejected in a work history too, through the shared definition",
+  "verification-first-false-cannot-name-a-plan-divergence": "a verification-first finding whose own prose names a divergence from the plan cannot be recorded as contradicting nothing, and prose that merely mentions the plan still can",
+  "gate-result-that-ran-carries-the-wrapper-exit-code": "a gate result that ran and is not green must carry the wrapper exit code, while not-applicable owes nothing and the declared-open exit-0 residue survives",
+  "work-history-gate-evidence-shares-the-exit-code-obligation": "the exit-code obligation on a gate result that ran travels to a work history's gate-evidence, and not-applicable stays free there too"
 }

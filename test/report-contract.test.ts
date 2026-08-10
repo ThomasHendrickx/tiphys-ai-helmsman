@@ -1305,6 +1305,76 @@ test("a green gate result carrying failures is rejected, and the guard is the sa
   assert.deepEqual(reportLines(notGreen), []);
 });
 
+test("a gate result that ran and is not green must carry the wrapper exit code, while not-applicable owes nothing and the declared-open exit-0 residue survives", () => {
+  /* THE MECHANISM (M3-P4 round-2 delta finding DV-003). Round 2 wrote that
+     `result: red` owes nothing at all, no exit code and no counts, and called
+     the whole thing structurally open. The COUNTS half is right: a red run
+     frequently has no counts to give. The EXIT CODE half was not, and the
+     distinction is the fix: a gate that RAN has a wrapper exit code by
+     construction, so requiring its PRESENCE refuses no honest record, while
+     requiring its VALUE would close the residue the schema deliberately
+     leaves open. This test asserts both halves of that distinction. */
+  const withResult = (record: Record<string, unknown>): Record<string, unknown> => {
+    const document = readTemplate("report.example.yaml");
+    (document["gate-results"] as Record<string, unknown>[]).push(record);
+    return document;
+  };
+
+  /* THREE MEMBERS, one per result value that means THE GATE RAN. They are not
+     three spellings of one shape: `red` is the value the finding named,
+     `error` is a harness failure rather than a gate verdict, and `amber` is
+     the partial one an author reaches for when neither fits. */
+  for (const result of ["red", "amber", "error"]) {
+    assert.deepEqual(
+      reportLines(withResult({ gate: "citations", result })),
+      ["INVALID #/gate-results/1 value matches no permitted alternative here"],
+      result,
+    );
+  }
+
+  /* THE GUARDING KEYWORD REMOVED: the `oneOf`, which sits BESIDE the if/then
+     that pins green rather than replacing it. Removing it leaves every green
+     obligation in place, so this arm names the new rule and nothing else. */
+  const defanged = readSchema("report.schema.json");
+  delete nodeAt(defanged, ["$defs", "gateResult"])["oneOf"];
+  for (const result of ["red", "amber", "error"]) {
+    assert.deepEqual(reportLines(withResult({ gate: "citations", result }), defanged), []);
+  }
+  /* RESTORED. */
+  assert.ok(reportLines(withResult({ gate: "citations", result: "red" })).length > 0);
+
+  /* THE DECLARED-OPEN RESIDUE, ASSERTED RATHER THAN ASSUMED, because trading
+     it away is exactly how this fix could have gone wrong: a NOT-green result
+     carrying `wrapper-exit-code: 0` is still accepted. The branch constrains
+     presence and never value. */
+  assert.deepEqual(
+    reportLines(withResult({ gate: "citations", result: "red", "wrapper-exit-code": 0 })),
+    [],
+  );
+  assert.deepEqual(
+    reportLines(withResult({ gate: "citations", result: "red", "wrapper-exit-code": 1 })),
+    [],
+  );
+
+  /* AND THE GATE THAT DID NOT RUN OWES NOTHING, which is the over-rejection
+     control: `not-applicable` has no exit code to give and a branch split on
+     "is not green" rather than on "ran" would have made that record
+     unwritable. */
+  assert.deepEqual(reportLines(withResult({ gate: "migrations", result: "not-applicable" })), []);
+
+  /* THE GREEN DIAGNOSTICS ARE UNCHANGED BY THIS RULE, asserted because the
+     `oneOf` could have doubled them: a green missing its exit code still
+     reports the if/then's two lines and not a third from the alternation. */
+  const greenMissing = readTemplate("report.example.yaml");
+  delete (
+    (greenMissing["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["wrapper-exit-code"];
+  assert.deepEqual(reportLines(greenMissing), [
+    "INVALID #/gate-results/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/gate-results/0/wrapper-exit-code required property wrapper-exit-code is missing",
+  ]);
+});
+
 test("a green gate result must carry the todo bucket, and parity counts it", () => {
   /* THE SIXTH COUNT. The M2-P3 wrapper's identity is
      `pass + fail + skipped + todo + did-not-run == reported`
