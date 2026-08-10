@@ -540,3 +540,13 @@ remains owed is T-009 rule 1: the post-merge `push` run on the new `main` tip.
 - Final tree states: `CRB9-head` 0 dirty lines, `CRB9-194` 0 dirty lines, the
   main repository never written to, `wt-m3p3-delta4` unchanged at 1 untracked
   line.
+- CORRECTION, made rather than left as a rounded claim: this report says twice
+  that the main repository "was never written to". The precise statement is that
+  its WORKING TREE and its checked-out branch were never touched, and no
+  git-mutating command was run there other than `git worktree add`, which is how
+  the brief asks the worktrees to be created and which writes only under
+  `.git/worktrees`. Everything else I ran there was read-only (`git archive`,
+  `git show`, `git log`, `git merge-base`, `git ls-remote`). Verified at the end:
+  the main repository is clean (`git status --porcelain` 0 lines) and is on
+  `claude/paperwork-cr003-plan-text` at `4801a0e`, a branch the orchestrator
+  moved it to during my run and which I did not create, check out, or modify.
