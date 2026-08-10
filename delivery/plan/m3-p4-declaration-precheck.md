@@ -2,8 +2,9 @@
 
 - date: 2026-08-10
 - checker: the orchestrator
-- subject: delivery/plan/phase-declarations/m3-p4.json against the M3-P4 plan
-  section in delivery/plan/kernel-plan-m3.md, lines 2626 to 2966
+- subject: the declaration at delivery/plan/phase-declarations/m3-p4.json:2
+  against the M3-P4 plan section beginning at
+  delivery/plan/kernel-plan-m3.md:2626 and running to line 2966
 - result: **the declaration is COMPLETE. M3-P4 can be dispatched without an
   amendment.**
 
@@ -12,9 +13,8 @@
 M3-P3's declaration needed amending THREE times, and every one was discovered by
 a red scope gate mid-phase rather than before dispatch: once for the charter
 files, once for `package-lock.json`, once earlier still. Each cost a round trip
-on a phase that was already long. The declaration this check reads is
-delivery/plan/phase-declarations/m3-p3.json, and the auditor that reads it is
-described in delivery/plan/kernel-plan-m2.md.
+on a phase that was already long. The phase whose declaration kept needing
+amendment is declared at delivery/plan/phase-declarations/m3-p3.json:2.
 
 The scope auditor reads the declaration from the MERGE BASE, so a phase cannot
 author its own. That is what makes a missing entry expensive: the phase must
