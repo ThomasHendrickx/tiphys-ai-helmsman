@@ -111,3 +111,25 @@ what the converse admits before writing the description.
 T-009 rule 1: the post-merge `push` run on the new `main` tip, verified by its
 ARM and not by the run conclusion. The phase does not close until that is
 observed.
+
+## ADDENDUM: the branch was updated onto `main`, and condition 1 was re-checked
+
+Branch protection refused the merge with a 405 because the phase branch was
+behind `main`. Bringing it up to date produces a NEW HEAD, `d272780`, and
+DR-0012 condition 1 requires two reviews of the CURRENT head. That could have
+invalidated both reviews, so it was MEASURED rather than argued:
+
+```
+$ git diff --stat 676c050..d272780 -- src/ test/ witness/ schemas/ '*.yaml' package.json
+(no output)
+```
+
+Empty. Everything the update brought in is `delivery/` paperwork and `CLAUDE.md`:
+the arbitrations, the tuition entries, the review reports and their evidence
+bundles, DR-0023, and the plan-text correction. **Not one file either reviewer
+examined differs between the reviewed head and the merged head.**
+
+So condition 1 holds in substance at `d272780`: the reviews are of the same
+content, and the delta is exclusively the paperwork that documents them. Stating
+this as a measured diff rather than as "it is only paperwork" is the point, since
+"only paperwork" is an assertion and the diff is a fact.
