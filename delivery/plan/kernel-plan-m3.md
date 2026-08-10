@@ -2549,15 +2549,23 @@ hazard it is matched to.
      to `assurance-modes.yaml` without updating the charter schema's enum makes
      `charter-mode-enum-matches-modes` exit 1 naming both files; updating the
      enum returns exit 0 (Kind B, both directions).
-     **AMENDED 2026-08-09.** "Updating the enum" reads as ONE edit and is FOUR
-     coordinated ones, which the criteria-lens reviewer measured while walking
-     this criterion (finding A-005). The charter schema carries the same enum on
-     BOTH `delivery-mode` and `assurance-tier`, and the added mode must also be
-     declared in `assurance-modes.yaml` and reachable by `mode show`. A reader
-     budgeting one edit will leave the sibling field behind, and a check watching
-     only one field would not catch it, which is why the phase's implementation
-     watches both. Stated here so the next phase adding a mode id knows the real
-     shape of the change.
+     **AMENDED 2026-08-09, CORRECTED 2026-08-10 (CR-003).** "Updating the enum"
+     reads as ONE edit. Measured, adding a fourth mode id is SIX coordinated
+     edits, and three of them are on paths this amendment used to omit:
+     (1) `assurance-modes.yaml`, declaring the mode;
+     (2) `schemas/assurance-modes.schema.json`, the mode-id `enum`, which is the
+     FIRST thing that fails and fails before any of the others is reached;
+     (3) `gate-registry.yaml`, the `modes` list of every gate the new mode
+     selects, unavoidable because `gate-sets` has `minItems: 1`;
+     (4) `schemas/gate-registry.schema.json`, its own `modes` item `enum`;
+     (5) and (6) `schemas/charter.schema.json`, which carries the same enum on
+     BOTH `delivery-mode` and `assurance-tier`.
+     A reader budgeting one edit will leave the sibling field behind, and a check
+     watching only one field would not catch it, which is why the phase's
+     implementation watches both. The mode must also be reachable by
+     `tiphys mode show`, which is a consequence of the six rather than a seventh
+     edit. Stated here so the next phase adding a mode id knows the real shape of
+     the change.
   4b. A mode with `merge-authority: delegated-under-conditions` and an empty
      `conditions[]` or a missing `granted-by` exits 1 naming the field; the same
      mode carrying DR-0012's six conditions and its record reference exits 0
