@@ -63,3 +63,18 @@ the shell that runs each command.
 - Full registry gate bundle running in a scratch CLONE under the real branch
   name `claude/m3-p3-assurance-modes`, base 3c60acb, `--phase m3-p3`.
 
+- Differential fuzz, reviewer-authored: 20000 random three-mode documents, the
+  check's flagged-row set compared against an oracle written from the
+  document's own sentence. AGREE=20000, DISAGREE=0. The same fuzz against the
+  ROUND-9 check disagrees in 1416 of 20000, so the oracle is discriminating and
+  not vacuous (19057 rejected, 943 accepted at head).
+- Round 10's corrected V-4 citations verified individually against
+  origin/main's copy of the round-8 review: :217 CR-002 heading, :220 the
+  mechanism sentence, :228/:250/:266 members 1/2/3, :283 the fix-shape
+  predicate, :318 blank. All correct.
+- FINDING FOUND: two citations round 10 ADDED to test/assurance-modes.test.ts
+  are stale at the head that added them. Written up as CR-001 below.
+- Open question independently reproduced: dropping `deploy` from `full`'s
+  `gate-sets` while gate-registry.yaml still declares `modes: [full]` for it
+  validates at exit 0 with no diagnostic. Written up as CR-002 below.
+
