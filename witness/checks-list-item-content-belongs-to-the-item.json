@@ -1,0 +1,24 @@
+{
+  "id": "checks-list-item-content-belongs-to-the-item",
+  "behavior": "mode-conditions-list-item-content-belongs-to-the-item",
+  "tests": [
+    "a list item's continuation paragraph and its nested sub-items are part of the item, not quotable units of their own"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        const unit = paragraphsBeneath(item, lines, quoteDepth);",
+      "replace": "        const first = item.firstChild;\n        const unit =\n          first === null ? \"\" : normalizeProse(sourceSlice(lines, first.sourcepos, quoteDepth));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }",
+      "replace": "      } else if (!NOT_QUOTABLE.has(child.type) && child.type !== \"list\") {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "checks-role-ids-unique-by-id",
+  "behavior": "role-ids-unique-by-id",
+  "tests": [
+    "two role bindings sharing a role id are rejected by id, whether their bodies differ or match"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  roleIdsAreUnique,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        const value = asRecord(entries[index])?.[idField];",
+      "replace": "        const value = asRecord(entries[index])?.[idField] === undefined ? undefined : String(index);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

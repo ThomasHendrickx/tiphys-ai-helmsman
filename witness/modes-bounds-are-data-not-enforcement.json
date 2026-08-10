@@ -1,0 +1,24 @@
+{
+  "id": "modes-bounds-are-data-not-enforcement",
+  "behavior": "mode-show-bounds-are-data-not-enforcement",
+  "tests": [
+    "mode show presents the escalation bounds as data and states the release limits on every mode"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "      \"escalation-bounds (data an orchestrator brief cites; nothing in this release counts fix rounds, detects recurrence, or enforces these):\",",
+      "replace": "      \"escalation-bounds:\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  lines.push(RELEASE_LIMITS);\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

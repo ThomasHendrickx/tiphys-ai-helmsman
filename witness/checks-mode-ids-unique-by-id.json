@@ -1,0 +1,24 @@
+{
+  "id": "checks-mode-ids-unique-by-id",
+  "behavior": "mode-ids-unique-by-id",
+  "tests": [
+    "two modes sharing an id are rejected by id, whether their bodies differ or match"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  modeIdsAreUnique,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (indexes.length < 2) {",
+      "replace": "        if (indexes.length < 2 || true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

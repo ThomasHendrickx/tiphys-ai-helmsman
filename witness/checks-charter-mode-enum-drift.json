@@ -1,0 +1,24 @@
+{
+  "id": "checks-charter-mode-enum-drift",
+  "behavior": "charter-mode-enum-drift-detected",
+  "tests": [
+    "a fourth mode id added without updating the charter schema enum is rejected naming both files, and updating the enum returns exit 0"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  charterModeEnumMatchesModes,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    for (const field of [\"delivery-mode\", \"assurance-tier\"]) {",
+      "replace": "    for (const field of []) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

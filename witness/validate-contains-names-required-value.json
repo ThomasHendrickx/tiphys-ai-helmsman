@@ -1,0 +1,24 @@
+{
+  "id": "validate-contains-names-required-value",
+  "behavior": "mode-full-requires-fix-round-verification",
+  "tests": [
+    "a full mode with no fix-round-verification stage is rejected, and is accepted with the contains keyword removed"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "      const required = containsConst.get(error.schemaPath);",
+      "replace": "      const required = undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/validate.ts",
+      "find": "    if (error.keyword === \"const\" && error.schemaPath.endsWith(\"/contains/const\")) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

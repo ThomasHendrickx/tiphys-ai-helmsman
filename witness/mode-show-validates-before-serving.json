@@ -1,0 +1,30 @@
+{
+  "id": "mode-show-validates-before-serving",
+  "behavior": "mode-show-refuses-invalid-document",
+  "tests": [
+    "mode show validates before it serves and refuses a document that is invalid for reasons unrelated to duplicate ids"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/mode.ts",
+      "find": "  if (lines.length > 0 || checks.failed) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/mode.ts",
+      "find": "  const checks = runChecks(MODES_TYPE, read.raw, dirname(read.path));",
+      "replace": "  const checks = { lines: [] as string[], failed: false };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  return { ok: true, path, raw: decoded.value, modes };",
+      "replace": "  return { ok: true, path, raw: { kind: \"assurance-modes\", version: 1, modes: [] }, modes };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

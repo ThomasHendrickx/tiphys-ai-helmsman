@@ -1,0 +1,30 @@
+{
+  "id": "modes-execution-status-derived",
+  "behavior": "mode-show-annotates-execution-status",
+  "tests": [
+    "mode show says which mode is the un-downgraded process and which is a declared downgrade never exercised"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  if (mode.id === UNDOWNGRADED_MODE_ID) {",
+      "replace": "  if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  if (!context.shippedDocument) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "      - deploy-verify\n      - migration-verify\n      - final-report\n    skips: []",
+      "replace": "      - migration-verify\n      - final-report\n    skips:\n      - deploy-verify"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
