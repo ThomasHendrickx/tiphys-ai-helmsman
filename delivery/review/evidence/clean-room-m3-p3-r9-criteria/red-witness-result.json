@@ -1,0 +1,12 @@
+{
+  "gate": "red-witness",
+  "status": "green",
+  "units": 36,
+  "unitLabel": "witnesses evaluated",
+  "startedAt": "2026-08-10T08:23:13.292Z",
+  "endedAt": "2026-08-10T08:29:53.032Z",
+  "detail": "36 witness(es) evaluated (23 own, 13 stored re-evaluated in 139746ms); every witness red against every declared dangerous state and green at head",
+  "evidence": [
+    "witness-records.json"
+  ]
+}

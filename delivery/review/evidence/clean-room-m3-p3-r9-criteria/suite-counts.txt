@@ -1,0 +1,11 @@
+head b5c01f0, node v26.6.0, npm 11.18.0 (floor prefix first on PATH)
+
+npm test, dist/ present      : exit 0   tests 506  pass 506  fail 0  skipped 0
+npm test, dist/ removed      : exit 0   tests 506  pass 497  fail 0  skipped 9
+bare node --test, dist built : exit 0   tests 508  pass 508  fail 0  skipped 0
+bare node --test at 194b489  : exit 0   tests 508  pass 508  fail 0  skipped 0
+CI gates/pull_request, npm test: success tests 506 pass 506 fail 0 skipped 0
+
+The 2-test gap between the bare invocation and npm test is
+sandbox/test/greet.test.js, a tracked fixture excluded by package.json's
+"test": "node --test \"test/**/*.test.ts\"".

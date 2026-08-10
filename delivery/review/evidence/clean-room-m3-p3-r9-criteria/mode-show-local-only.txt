@@ -1,0 +1,25 @@
+mode: local-only
+execution-status: DECLARED AND VALIDATED, NEVER EXERCISED. This mode is not full, which blueprint section 8 defines by name as the un-downgraded process, so no phase of the tiphys project has ever been delivered under it. It declares 10 skipped stage(s). Its pipeline and its gate selection are checked by validation only (DR-0020).
+merge-authority: owner-approves-orchestrator-merges
+pipeline:
+  implement
+  orchestrator-diff-review
+  merge-on-green
+skips:
+  intake
+  verification-pass
+  plan
+  adversarial-plan-review
+  clean-room-review
+  fix-round
+  fix-round-verification
+  deploy-verify
+  migration-verify
+  final-report
+gate-sets:
+  manifest-self-check
+  credential-scrub
+  suite
+  agent-rules-drift
+declared-by: blueprint section 8 row 3, "implement, orchestrator diff review, local fast-forward", with merge authority "owner approves, orchestrator merges", which SC-008 and plan v1 D-6 read as owner-approves-orchestrator-merges.
+limits: the mode, stage and role vocabularies in the shipped schemas are this repository's own closed enums, so a document naming any other id is rejected and a consuming project cannot extend them at v0.1.0; whether to open them is an M4 question (DR-0020). This command SHOWS a declared mode: nothing in this release resolves a project into a mode, enforces one, or runs one.
