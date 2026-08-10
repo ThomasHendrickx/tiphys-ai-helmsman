@@ -552,7 +552,9 @@
   "work-history-gate-evidence-shares-green-keywords": "a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition",
   "work-history-open-question-cannot-assert-a-settlement": "an impossibility filed as an open question is rejected in a work history too, through the shared definition",
   "verification-first-false-cannot-name-a-plan-divergence": "a verification-first finding whose own prose names a divergence from the plan cannot be recorded as contradicting nothing, and prose that merely mentions the plan still can",
-  "gate-result-that-ran-carries-the-wrapper-exit-code": "a gate result that ran and is not green must carry the wrapper exit code, while not-applicable owes nothing and the declared-open exit-0 residue survives",
+  "gate-result-that-ran-carries-the-wrapper-exit-code": "a non-green gate result carries the wrapper exit code or says why there is none, and each derived member with no exit code is writable",
   "work-history-gate-evidence-shares-the-exit-code-obligation": "the exit-code obligation on a gate result that ran travels to a work history's gate-evidence, and not-applicable stays free there too",
-  "guards-pointer-through-a-chain-is-enumerated": "a check guarding a definition reached through a chain of references is caught, where the one-hop enumeration fix round 2 shipped saw nothing"
+  "guards-pointer-through-a-chain-is-enumerated": "a check guarding a definition reached through a chain of references is caught, where the one-hop enumeration fix round 2 shipped saw nothing",
+  "open-question-carrying-a-guarded-token-declares-why-it-is-open": "an honest open question whose prose carries a guarded token is writable once it declares why it is still open",
+  "verification-first-denial-of-a-plan-divergence-is-writable": "a verification-first finding that DENIES a plan divergence is writable once it declares why its prose carries the token"
 }

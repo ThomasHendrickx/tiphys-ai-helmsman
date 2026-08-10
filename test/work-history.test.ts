@@ -399,6 +399,137 @@ test("a verification-first finding whose own prose names a divergence from the p
   assert.deepEqual(workHistoryLines(declared), []);
 });
 
+test("a verification-first finding that DENIES a plan divergence is writable once it declares why its prose carries the token", () => {
+  /* THE MECHANISM (M3-P4 round-3 delta finding DV3-002). Round 3's shipped
+     comment justified the token list with "EVERY TOKEN NAMES THE PLAN, and
+     that is the whole design". Naming the plan is exactly what an ASSERTION
+     of divergence and a DENIAL of one have in common, so the pattern refused
+     both, and the denial is the plainest sentence a `contradicts-plan: false`
+     record carries. R-035 records the finding VERBATIM, so rewording it was
+     never available: the record was unwritable rather than awkward.
+
+     THE MEMBERS ARE STRUCTURALLY DIFFERENT NEGATIONS, which matters because
+     one negator is not a class: an auxiliary negation ("does not"), a
+     negative subject ("Nothing here"), an anaphoric denial answering a
+     question ("It does not"), and a negation of a different token
+     ("is not at odds with"). A repair that enumerated negations would have
+     to cover all four and every form nobody has thought of, which is why the
+     repair is a declared field instead. */
+  const withFinding = (finding: string, extra: Record<string, unknown> = {}) => {
+    const document = readTemplate("work-history.example.yaml");
+    const entry = (document["verification-first"] as Record<string, unknown>[])[1] as Record<
+      string,
+      unknown
+    >;
+    entry["finding"] = finding;
+    assert.equal(entry["contradicts-plan"], false, "the fixture entry must be the false one");
+    Object.assign(entry, extra);
+    return document;
+  };
+
+  const denials: readonly (readonly [string, string])[] = [
+    ["auxiliary negation", "This does not contradict the plan; I checked section 2.3 first."],
+    ["negative subject", "Nothing here contradicts the plan, and I read section 2.3 twice."],
+    [
+      "anaphoric denial",
+      "The reviewer asked whether this deviates from the plan. It does not; the plan is silent.",
+    ],
+    [
+      "a different token negated",
+      "This is not at odds with the plan, which names the field and leaves the count open.",
+    ],
+  ];
+
+  /* ARM 1: without the declaration each denial is refused. That is the
+     sibling branch doing its job, and it is why the repair adds a branch
+     rather than trying to teach the pattern English. */
+  for (const [member, finding] of denials) {
+    assert.deepEqual(
+      workHistoryLines(withFinding(finding)),
+      ["INVALID #/verification-first/1 value matches no permitted alternative here"],
+      member,
+    );
+  }
+
+  /* ARM 2: with the declaration each is writable. Red on all four members
+     before the repair. */
+  for (const [member, finding] of denials) {
+    assert.deepEqual(
+      workHistoryLines(
+        withFinding(finding, {
+          "plan-language-note": "the sentence denies a divergence rather than asserting one",
+        }),
+      ),
+      [],
+      member,
+    );
+  }
+
+  /* ARM 3, DV-002 UNREOPENED: the assertion with no declaration is still
+     refused, and the token-free honest finding still owes nothing. */
+  assert.deepEqual(
+    workHistoryLines(withFinding("This contradicts the plan section 2.3.")),
+    ["INVALID #/verification-first/1 value matches no permitted alternative here"],
+  );
+  assert.deepEqual(
+    workHistoryLines(
+      withFinding("The two schema comments contradict each other about which check guards it."),
+    ),
+    [],
+  );
+
+  /* ARM 4, THE MISDECLARATION: token-free prose carrying the note matches
+     both branches, and `oneOf`'s exactly-one rule refuses it. An exception
+     marker declared where the exception does not apply is a misdeclaration,
+     which is the discipline the final report's `none: true` marker already
+     uses. */
+  assert.deepEqual(
+    workHistoryLines(
+      withFinding("The two schema comments contradict each other about which check guards it.", {
+        "plan-language-note": "not needed",
+      }),
+    ),
+    ["INVALID #/verification-first/1 value matches no permitted alternative here"],
+  );
+
+  /* THE GUARDING KEYWORD REMOVED AND RESTORED: the third `oneOf` branch. */
+  const defanged = readSchema("work-history.schema.json");
+  const branches = nodeAt(defanged, ["$defs", "verificationFirst"])["oneOf"] as unknown[];
+  assert.equal(branches.length, 3);
+  branches.pop();
+  for (const [member, finding] of denials) {
+    assert.deepEqual(
+      workHistoryLines(
+        withFinding(finding, { "plan-language-note": "the sentence denies a divergence" }),
+        defanged,
+      ),
+      ["INVALID #/verification-first/1 value matches no permitted alternative here"],
+      member,
+    );
+  }
+  assert.deepEqual(
+    workHistoryLines(
+      withFinding(denials[0]?.[1] as string, {
+        "plan-language-note": "the sentence denies a divergence rather than asserting one",
+      }),
+    ),
+    [],
+  );
+
+  /* WHAT THIS DOES NOT REACH, ASSERTED RATHER THAN CLAIMED: the note is prose
+     and no keyword tells a true one from a false one, so the assertion with a
+     false note validates. Recorded as a measurement so the schema comment
+     does not have to assert it. */
+  assert.deepEqual(
+    workHistoryLines(
+      withFinding("This contradicts the plan section 2.3.", {
+        "plan-language-note": "I say it does not",
+      }),
+    ),
+    [],
+  );
+});
+
 /* ------------------------------------------------------------------ */
 /* Criterion 2e's array-element member, over the SHARED definition       */
 /* ------------------------------------------------------------------ */
@@ -677,6 +808,39 @@ test("the exit-code obligation on a gate result that ran travels to a work histo
     result: "not-applicable",
   });
   assert.deepEqual(workHistoryLines(notApplicable), []);
+
+  /* AND ROUND 4's HALF OF THE SAME RULE TRAVELS TOO, measured for the same
+     reason: the record that has no exit code to give is writable HERE, in a
+     work history, which is the document the honest failure is most often
+     written into. Two members, and they are different: a gate the runner
+     refused before spawning, and a gate the runner never executes at all. */
+  const declared = readTemplate("work-history.example.yaml");
+  (declared["gate-evidence"] as Record<string, unknown>[]).push(
+    {
+      gate: "scope",
+      result: "error",
+      "no-wrapper-exit-code":
+        "the runner refused the gate for a missing --phase before spawning a child",
+    },
+    {
+      gate: "unit-tests-for-changed-service-methods",
+      result: "red",
+      "no-wrapper-exit-code": "verified-by clean-room-checklist, so no program runs",
+    },
+  );
+  assert.deepEqual(workHistoryLines(declared), []);
+
+  /* AND THE MISDECLARATION TRAVELS: both fields at once is refused here too. */
+  const both = readTemplate("work-history.example.yaml");
+  (both["gate-evidence"] as Record<string, unknown>[]).push({
+    gate: "citations",
+    result: "red",
+    "wrapper-exit-code": 20,
+    "no-wrapper-exit-code": "there is none",
+  });
+  assert.deepEqual(workHistoryLines(both), [
+    "INVALID #/gate-evidence/1 value matches no permitted alternative here",
+  ]);
 });
 
 test("an impossibility filed as an open question is rejected in a work history too, through the shared definition", () => {

@@ -1525,23 +1525,39 @@ test("a green gate result carrying failures is rejected, and the guard is the sa
   assert.deepEqual(reportLines(notGreen), []);
 });
 
-test("a gate result that ran and is not green must carry the wrapper exit code, while not-applicable owes nothing and the declared-open exit-0 residue survives", () => {
-  /* THE MECHANISM (M3-P4 round-2 delta finding DV-003). Round 2 wrote that
-     `result: red` owes nothing at all, no exit code and no counts, and called
-     the whole thing structurally open. The COUNTS half is right: a red run
-     frequently has no counts to give. The EXIT CODE half was not, and the
-     distinction is the fix: a gate that RAN has a wrapper exit code by
-     construction, so requiring its PRESENCE refuses no honest record, while
-     requiring its VALUE would close the residue the schema deliberately
-     leaves open. This test asserts both halves of that distinction. */
+test("a non-green gate result carries the wrapper exit code or says why there is none, and each derived member with no exit code is writable", () => {
+  /* THE MECHANISM (M3-P4 round-3 delta finding DV3-001). Round 3 closed
+     DV-003 with a two-branch split keyed on the STATUS WORD, justified by "a
+     gate that RAN and did not pass has a wrapper exit code by construction,
+     so requiring its PRESENCE refuses no honest record". That sentence
+     quantified over a class no round had enumerated. Round 4 enumerated it
+     from the PRODUCER instead of from the schema, and the members below are
+     what src/gates/run.ts actually emits.
+
+     THE MEMBERS ARE STRUCTURALLY DIFFERENT, which is the point: (a) a
+     pre-spawn refusal, where the runner writes the record itself and no
+     process ever exists (src/gates/run.ts:844 is one of seven such sites
+     above the spawn at src/gates/run.ts:943); (b) a spawn that FAILS, so
+     `spawnSync` returns with `child.error` set and again no process exists
+     (src/gates/run.ts:992); (c) a child terminated by a SIGNAL, where a
+     process did exist and `child.status` is null, so there is a signal name
+     and no exit code (src/gates/run.ts:999); and (d) `amber`, which is in
+     this schema's enum and is not one of the runner's four statuses
+     (src/gates/result.ts:46), so no producer defines an exit code for it.
+
+     The repair is not a better guess about the class. The author declares
+     which member the record is, by carrying `wrapper-exit-code` or
+     `no-wrapper-exit-code`, and this test asserts the honest record of every
+     derived member is writable, that the silent omission DV-003 named is
+     still refused, and that claiming both is a rejection. */
   const withResult = (record: Record<string, unknown>): Record<string, unknown> => {
     const document = readTemplate("report.example.yaml");
     (document["gate-results"] as Record<string, unknown>[]).push(record);
     return document;
   };
 
-  /* THREE MEMBERS, one per result value that means THE GATE RAN. They are not
-     three spellings of one shape: `red` is the value the finding named,
+  /* ARM 1, DV-003 UNREOPENED: the silent omission is still refused. Three
+     members, one per result value: `red` is the value the finding named,
      `error` is a harness failure rather than a gate verdict, and `amber` is
      the partial one an author reaches for when neither fits. */
   for (const result of ["red", "amber", "error"]) {
@@ -1581,6 +1597,84 @@ test("a gate result that ran and is not green must carry the wrapper exit code, 
      "is not green" rather than on "ran" would have made that record
      unwritable. */
   assert.deepEqual(reportLines(withResult({ gate: "migrations", result: "not-applicable" })), []);
+
+  /* ARM 2, THE OVER-REJECTION DV3-001 NAMED, one row per DERIVED member. Each
+     of these is a record src/gates/run.ts can produce, and round 3's shape
+     made every one of them unwritable while the same record with a fabricated
+     integer validated. The reasons are the ones the runner's own detail
+     strings give. */
+  const noExitCodeMembers: readonly (readonly [string, string, string])[] = [
+    [
+      "pre-spawn refusal",
+      "error",
+      "the runner refused the gate for a missing --phase before spawning a child, so no process existed",
+    ],
+    [
+      "spawn failure",
+      "error",
+      "spawnSync returned with child.error set, so the gate command never became a process",
+    ],
+    [
+      "signal-killed child",
+      "error",
+      "the child was terminated by SIGKILL, so child.status is null and there is a signal name and no exit code",
+    ],
+    [
+      "amber, which no producer emits",
+      "amber",
+      "amber is not one of the runner's four statuses, so nothing defines an exit code for it",
+    ],
+    [
+      "a gate the runner never executes",
+      "red",
+      "verified-by clean-room-checklist, so the runner does not execute it and no program has an exit code",
+    ],
+  ];
+  for (const [member, result, why] of noExitCodeMembers) {
+    assert.deepEqual(
+      reportLines(
+        withResult({ gate: "citations", result, "no-wrapper-exit-code": why }),
+      ),
+      [],
+      member,
+    );
+  }
+
+  /* ARM 3, THE MISDECLARATIONS. Claiming both an exit code and that there is
+     none is a contradiction, and `oneOf`'s exactly-one rule is what refuses
+     it. A whitespace-only reason is refused by criterion 2e's pair of
+     keywords at the new field, which is the empty-string satisfaction class
+     one field over. */
+  assert.deepEqual(
+    reportLines(
+      withResult({
+        gate: "citations",
+        result: "red",
+        "wrapper-exit-code": 20,
+        "no-wrapper-exit-code": "there is none",
+      }),
+    ),
+    ["INVALID #/gate-results/1 value matches no permitted alternative here"],
+  );
+  assert.ok(
+    reportLines(
+      withResult({ gate: "citations", result: "error", "no-wrapper-exit-code": "   " }),
+    ).some((line) => line.includes("no-wrapper-exit-code")),
+  );
+
+  /* ARM 4, A RESIDUE MEASURED RATHER THAN ASSUMED, and asserted so that a
+     later reader finds it recorded instead of rediscovering it: the third
+     branch constrains only `result`, so a GREEN or a NOT-APPLICABLE carrying
+     the reason field validates. The field is meaningless on those two and
+     nothing refuses it. */
+  const greenWithReason = readTemplate("report.example.yaml");
+  (
+    (greenWithReason["gate-results"] as Record<string, unknown>[])[0] as Record<
+      string,
+      unknown
+    >
+  )["no-wrapper-exit-code"] = "meaningless here, and accepted";
+  assert.deepEqual(reportLines(greenWithReason), []);
 
   /* THE GREEN DIAGNOSTICS ARE UNCHANGED BY THIS RULE, asserted because the
      `oneOf` could have doubled them: a green missing its exit code still
@@ -1721,6 +1815,140 @@ test("an impossibility filed as an open question is rejected, while an honest op
   assert.deepEqual(reportLines(asserted, defanged), []);
   assert.deepEqual(reportLines(emphatic, defanged), []);
   assert.ok(reportLines(asserted).length > 0);
+});
+
+test("an honest open question whose prose carries a guarded token is writable once it declares why it is still open", () => {
+  /* THE MECHANISM, AND THIS SITE WAS FOUND BY THE METHOD RATHER THAN BY A
+     REVIEWER (M3-P4 round 4). The sibling branch's shipped comment claimed
+     the statement pattern "KEEPS CHEAP" the honest open question, offering
+     one sentence as its evidence. One instance is not a class, so round 4
+     tried to break the claim instead of believing it, and it broke on four
+     members. Each was validated against the shipped template through the CLI
+     before any repair and each exited 1; the table is in
+     delivery/work-history/m3-p4.md.
+
+     WHY UNWRITABLE RATHER THAN MERELY EXPENSIVE: `impossibility` was no
+     escape, because that kind owes an EXECUTED CONSTRUCTION, and an author
+     whose question is genuinely open has none to give. So the honest record
+     had no home at all.
+
+     THE FOUR MEMBERS ARE STRUCTURALLY DIFFERENT: one states what a derivation
+     did NOT cover (which CLAUDE.md's fix-round contract asks for in so many
+     words, and which carries `every`); one DENIES an impossibility; one
+     QUOTES somebody else's assertion; and one names the UNIVERSAL it did not
+     test. They fail on different tokens and for different reasons. */
+  const withStatement = (statement: string, extra: Record<string, unknown> = {}) => {
+    const document = readTemplate("report.example.yaml");
+    (document["claims"] as Record<string, unknown>[])[0] = {
+      id: "X-9",
+      kind: "open-question",
+      statement,
+      ...extra,
+    };
+    return document;
+  };
+
+  const members: readonly (readonly [string, string])[] = [
+    ["states what it did not cover", "I did not check every call site, so this is still open."],
+    ["denies an impossibility", "I could not show that this is impossible, so it stays open."],
+    [
+      "quotes another agent",
+      "The reviewer wrote that there is no way to force this arm; I have neither confirmed nor refuted that.",
+    ],
+    [
+      "names the universal it did not test",
+      "Whether the lease is never held twice is open; I did not build the contention harness.",
+    ],
+  ];
+
+  /* ARM 1: without the declaration each member is still refused, which is the
+     sibling branch doing its job and is why the repair adds a branch rather
+     than weakening the pattern. */
+  for (const [member, statement] of members) {
+    assert.deepEqual(
+      reportLines(withStatement(statement)),
+      ["INVALID #/claims/0 value matches no permitted alternative here"],
+      member,
+    );
+  }
+
+  /* ARM 2: with the declaration each member is writable. This is the arm that
+     was red before the repair, on all four members. */
+  for (const [member, statement] of members) {
+    assert.deepEqual(
+      reportLines(
+        withStatement(statement, {
+          "still-open-because": "the construction that would settle it has not been run",
+        }),
+      ),
+      [],
+      member,
+    );
+  }
+
+  /* ARM 3, CR-002 UNREOPENED: the settled assertion filed as an open question
+     with no declaration is still refused, which is the finding this whole
+     pattern exists for. */
+  assert.deepEqual(
+    reportLines(withStatement("This arm cannot be forced here.")),
+    ["INVALID #/claims/0 value matches no permitted alternative here"],
+  );
+
+  /* ARM 4: the new field is confined to `open-question`. On any other kind
+     the branches that accept that kind set `additionalProperties: false` and
+     do not name it, so the claim matches no alternative. */
+  const smuggled = readTemplate("report.example.yaml");
+  (smuggled["claims"] as Record<string, unknown>[])[2] = {
+    ...((smuggled["claims"] as Record<string, unknown>[])[2] as Record<string, unknown>),
+    "still-open-because": "smuggled",
+  };
+  assert.ok(
+    reportLines(smuggled).some((line) =>
+      line.includes("#/claims/2 value matches no permitted alternative here"),
+    ),
+  );
+
+  /* THE GUARDING KEYWORD REMOVED AND RESTORED. The keyword is the fourth
+     `oneOf` branch, so removing it must make arm 2 red again; that is the
+     defang that names this rule and nothing else. */
+  const defanged = readSchema("report.schema.json");
+  const branches = nodeAt(defanged, ["$defs", "claim"])["oneOf"] as unknown[];
+  assert.equal(branches.length, 4);
+  branches.pop();
+  for (const [member, statement] of members) {
+    assert.deepEqual(
+      reportLines(
+        withStatement(statement, {
+          "still-open-because": "the construction that would settle it has not been run",
+        }),
+        defanged,
+      ),
+      ["INVALID #/claims/0 value matches no permitted alternative here"],
+      member,
+    );
+  }
+  /* RESTORED. */
+  assert.deepEqual(
+    reportLines(
+      withStatement(members[0]?.[1] as string, {
+        "still-open-because": "the construction that would settle it has not been run",
+      }),
+    ),
+    [],
+  );
+
+  /* WHAT THIS DOES NOT REACH, ASSERTED RATHER THAN CLAIMED. The declaration
+     is prose and no keyword tells a true one from a false one, so the
+     settled assertion WITH a declaration validates. The test records that
+     measurement instead of the schema comment asserting it. */
+  assert.deepEqual(
+    reportLines(
+      withStatement("This arm cannot be forced here.", {
+        "still-open-because": "I have not run the construction",
+      }),
+    ),
+    [],
+  );
 });
 
 test("an impossibility filed as a universal claim is rejected, and an ordinary universal claim is not", () => {
