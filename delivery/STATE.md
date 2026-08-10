@@ -6,8 +6,36 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-10
-- main head: `ba9f35e` (PR #79). **ZERO OPEN PULL REQUESTS.** The whole M3-P3
-  evidence chain, all ten rounds, is on `main` rather than on side branches.
+- main head: `d0d55e4` (PR #80), then `90ebedf` (PR #82, the M3-P4 round-1
+  reviews and arbitration). Both T-009 arms DISCHARGED BY STEP and each run
+  COMPLETED rather than being cancelled: `d0d55e4` and `90ebedf` each report all
+  15 steps success, step 9 `M2 exit test (push)` success, step 8 correctly
+  skipped, steps 10 and 12 (the two guards) success.
+  The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
+  M3-P4's round-1 evidence.
+- **M3-P4 IS IN FIX ROUND 2 (2026-08-10).** Round 1 was dual clean-room reviewed
+  at `a3ea489` and BOTH contracts returned CHANGES REQUIRED. The arbitration is
+  delivery/review/arbitration-m3-p4-round-1.md:1; the reports are
+  delivery/review/clean-room-m3-p4-expressible-lie.md:1 (2 high, 2 medium, 3
+  low) and delivery/review/clean-room-m3-p4-criteria.md:1 (1 medium, 2 low, no
+  high). They agreed on the verdict and shared almost no finding, which is the
+  T-007 pairing working rather than two models duplicating one contract.
+  **The two HIGH findings, both ruled at the MECHANISM:**
+  CR-001, a derived check registered PER TYPE reads a TYPE-SPECIFIC KEY while
+  the `$defs` it guards are SHARED ACROSS TYPES, so sharing a definition does
+  not share its check. This is the FOURTH occurrence of the one-directional
+  shape in M3 and the first where the phase's own converse table asserted the
+  opposite.
+  CR-002, an enum branch requiring NOTHING makes every sibling branch that
+  requires something optional, because the author picks the branch;
+  `kind: open-question` was the free escape from every other claim kind.
+  **TWO PLAN CHANGES were DECIDED by the orchestrator under DR-0016 rather than
+  escalated**, both recorded with reasoning in the arbitration: the `todo`
+  bucket gets a sixth gate-result field (the M2-P3 wrapper reports six buckets
+  and the five-field vocabulary made a legitimate run unrecordable), and the
+  empty-`findings` hole gets a THIRD derived check (verified independently:
+  `AUTHORING_VOCABULARY` is sixteen keywords and `maxItems` is ABSENT, so no
+  permitted schema keyword can express "this array is empty").
 - **THE T-009 DISCHARGE PICTURE FOR THIS BATCH, STATED AS MEASURED RATHER THAN
   ROUNDED UP.** Five merges landed in quick succession and the workflow's
   concurrency group cancelled the push runs of the intermediate heads:
@@ -18,7 +46,9 @@ is wrong: verify against git and the PR list before trusting it.
   | `f70c712` | #77 | 31382497764 | **cancelled**, step 9 reached success |
   | `0c6ca35` | #76 | 31383185512 | **success, all 12 steps** |
   | `80925bc` | #78 | 31384190575 | **cancelled** at step 11 |
-  | `ba9f35e` | #79 | 31385057964 | the head that owes a complete run |
+  | `ba9f35e` | #79 | 31385057964 | **success, all 15 steps**, verified by step |
+  | `d0d55e4` | #80 | 31386206998 | **success, all 15 steps** |
+  | `90ebedf` | #82 | 31390555506 | **success, all 15 steps** |
 
   Two of the five were cancelled, and one of those (`80925bc`) was cancelled by
   the orchestrator's own decision to merge #79 while it sat on step 11. That was
@@ -27,8 +57,8 @@ is wrong: verify against git and the PR list before trusting it.
   discharge the FINAL head, and say plainly that the intermediates were
   SUPERSEDED rather than verified.** Their content is contained in the final
   head, so nothing is unverified; what is unavailable is a per-head claim, and
-  the fix is to stop making one. `ba9f35e` has no open PR behind it, so nothing
-  will cancel it.
+  the fix is to stop making one. The three heads after the cancellations each
+  had nothing open behind them and each completed.
   All six M3-P3 deliverables were confirmed present at `c7a7ce9` with
   `git cat-file`, because a green merge is not the same claim as the files
   having landed.
@@ -69,12 +99,12 @@ is wrong: verify against git and the PR list before trusting it.
   under DR-0012 condition 2 and are listed under "Carried forward" below.
   Round 10 is the first round of this phase that both changed behaviour and
   introduced no defect in the executable change.
-- **M3-P4 IS IN FLIGHT (2026-08-10)**, branch
-  `claude/m3-p4-report-and-work-history`, declaration pre-checked complete
-  before dispatch at delivery/plan/m3-p4-declaration-precheck.md:8 so that the
-  three mid-phase declaration amendments M3-P3 needed are not repeated.
+- M3-P4's declaration was pre-checked complete BEFORE dispatch at
+  delivery/plan/m3-p4-declaration-precheck.md:8, so the three mid-phase
+  declaration amendments M3-P3 needed were not repeated. It has held: `scope`
+  green at 18 paths with the declaration unamended through the whole phase.
 - milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1, M3-P2 and M3-P3 are
-  MERGED. M3-P4 is dispatched. M3-P5 to M3-P10 are not dispatched and remain
+  MERGED. M3-P4 is in fix round 2. M3-P5 to M3-P10 are not dispatched and remain
   blocked strictly behind their predecessor, because M3 is a serial chain with
   no conflict pre-pass. M2 COMPLETE including its post-exit-test fix
   round; M1 complete, exit test passed on `7e1b5f1`, completion record merged
@@ -215,7 +245,8 @@ modelled and bound five phases to.
 | Round-10 criteria review | MERGED #76 at `0c6ca35` |
 | M3-P3 merge arbitration | MERGED #78 at `80925bc` |
 | STATE currency, assurance-modes correction, M3-P5 pre-check | MERGED #79 at `ba9f35e` |
-| M3-P4 report and work-history contracts | IN FLIGHT, branch pushed at `b1ddc1b` |
+| M3-P4 report and work-history contracts | ROUND 1 REVIEWED, both CHANGES REQUIRED; FIX ROUND 2 in flight; PR #81 open |
+| M3-P4 round-1 reviews and arbitration | MERGED #82 at `90ebedf` |
 | M3-P5 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
@@ -373,11 +404,26 @@ Supervision is beacon/transcript freshness, not completion notifications.
 Items discovered during M1 that belong to a later milestone and have no owner
 yet. Recorded here so they are not rediscovered the expensive way.
 
-- **Uncaught `RangeError` in `collectUnits` above roughly 8,000 nested quote
-  markers.** Found by the round-8 delta verifier, measured IDENTICAL at both
-  `986f58a` and `108eed0`, so it is pre-existing and was correctly refused as a
-  round-8 finding. **Named for M3-P4**, which touches `src/checks.ts`. Evidence
-  in delivery/review/verification-m3-p3-round-8.md:1.
+- **Uncaught `RangeError` in `collectUnits` under deep nested quote markers.
+  THE THRESHOLD IS A FUNCTION OF AVAILABLE STACK, NOT A CONSTANT, and this
+  entry stated a constant until 2026-08-10.** The round-8 delta verifier
+  measured "roughly 8,000" and the M3-P4 implementer measured 5,000 to 6,000.
+  **Both are true of their own probes and NEITHER is a property of the code.**
+  The correction came from the M3-P4 implementer, unprompted, about a number
+  this file had been carrying as fact.
+  Pre-existing either way: measured IDENTICAL at `986f58a` and `108eed0` by the
+  round-8 verifier, and identical again at the M3-P4 merge base and head, so it
+  was correctly refused as a finding by both rounds. Evidence in
+  delivery/review/verification-m3-p3-round-8.md:1.
+  **STILL NOT FIXED, and the reason is mechanical rather than a judgement:** its
+  red witness would have to live in `test/checks.test.ts` or
+  `test/assurance-modes.test.ts`, neither of which is on M3-P4's declaration, so
+  the only options were a scope violation or an unwitnessed fix. It needs a phase
+  whose declaration covers one of those files.
+  The general lesson, which is why this is written at length: **a measured
+  threshold that depends on the environment must be recorded WITH its
+  environment, or the next reader treats one probe's number as the code's
+  property.** Two honest measurements differing by 3,000 is what exposed it.
 - **Rule (g) compares witness `find` TEXT rather than mutation EFFECT.** W-2 of
   the round-8 verification measured two dangerous states that are one shape
   (`span.length >= 0` is unconditionally true, so that member equals deleting the
@@ -798,6 +844,37 @@ fact rather than a memory.
   bundles, so a green PR check is not evidence about `main` (tuition T-009,
   which cost four hours and twenty-one minutes of red `main` and four merges
   landed on top of it).
+- **EDITING A FILE BREAKS CITATIONS POINTING INTO IT FROM FILES YOU ARE NOT
+  TOUCHING. This is the CONVERSE direction and it is easy to miss entirely.**
+  Measured 2026-08-10, second occurrence the same day. `assurance-modes.yaml`
+  cites the one-directional-check bullet in this file. Inserting the M3-P4
+  round-1 section ABOVE that bullet moved it from 442 to 488 and left the yaml
+  pointing at unrelated text, **in a file the change did not open**.
+  The usual rule ("resolve your citations last") only covers citations you
+  WROTE. It does not cover citations that point AT what you edited. The
+  mechanical form for that direction: **after editing any file, grep the tree for
+  citations naming it and re-resolve them**, because nothing else will.
+  ```
+  grep -rn 'delivery/STATE.md:[0-9]' --include='*.md' --include='*.yaml' . | grep -v node_modules
+  ```
+  **BUT DO NOT REPOINT EVERYTHING THE GREP RETURNS, and this rule produced its
+  own counter-example the first time it was run.** That sweep found
+  `delivery/review/clean-room-m3-p3-r8-criteria.md` citing `delivery/STATE.md`
+  line 530 for the M3-P10 blocking obligation, which this edit moved to 728. It
+  was left ALONE, deliberately. `delivery/review/` and
+  `delivery/work-history/` are records of what was examined WHEN THEY WERE
+  WRITTEN, which is why src/gates/citations.ts:185 removes both trees from the
+  `documents` globs: re-checking them at head re-litigates settled history.
+  Repointing that line would have made the record say something the reviewer
+  never checked.
+  **So the sweep's output splits in two:** forward-claiming documents
+  (`delivery/plan/`, `delivery/verification/`, `delivery/decisions/`,
+  `delivery/requirements/`, this file, and root-level files like
+  `assurance-modes.yaml`) get repointed; historical records get left exactly as
+  written. Getting this backwards corrupts the record in the name of tidiness.
+  Neither direction is covered by the `citations` gate for a root-level file
+  like `assurance-modes.yaml`, whose every `documents` glob is under
+  `delivery/`.
 - **A CITATION IS STALE THE MOMENT YOUR OWN INSERTION MOVES ITS TARGET, and the
   author is the last person who will notice.** Measured 2026-08-10, by the
   orchestrator, against itself. `assurance-modes.yaml` cites the
