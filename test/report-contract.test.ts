@@ -1147,9 +1147,70 @@ test("the universal-quantifier pattern is linear on a long near-miss rather than
 /* CR-001: a shared $def does not share its derived check               */
 /* ------------------------------------------------------------------ */
 
+/** Every `$ref` string anywhere under a node, in document order. */
+function allRefs(node: unknown, out: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) allRefs(item, out);
+    return out;
+  }
+  if (node === null || typeof node !== "object") return out;
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "$ref" && typeof value === "string") out.push(value);
+    else allRefs(value, out);
+  }
+  return out;
+}
+
+/** The `kind` const each shipped schema pins, which is its artifact type. */
+function kindByFile(
+  schemas: ReadonlyMap<string, Record<string, unknown>>,
+): Map<string, string> {
+  const kindOf = new Map<string, string>();
+  for (const [file, document] of schemas) {
+    const kind = nodeAt(document, ["properties", "kind"])?.["const"];
+    kindOf.set(file, typeof kind === "string" ? kind : `(no kind const in ${file})`);
+  }
+  return kindOf;
+}
+
 /**
- * Every cross-document `$ref` in `schemas/`, the artifact types that reach
- * each shared definition, and the derived checks that declare they guard it.
+ * A pointer in the cross-document form a `$ref` and a `guards` entry both
+ * use. A local `#/...` pointer is qualified with the file it was read in,
+ * which is what makes a chain comparable with a direct reference.
+ */
+function canonicalPointer(file: string, reference: string): string {
+  return reference.startsWith("#/") ? `${file}${reference}` : reference;
+}
+
+/** The node a canonical pointer names, or undefined when it names nothing. */
+function definitionAt(
+  schemas: ReadonlyMap<string, Record<string, unknown>>,
+  pointer: string,
+): unknown {
+  const hash = pointer.indexOf("#");
+  if (hash === -1) return undefined;
+  let node: unknown = schemas.get(pointer.slice(0, hash));
+  for (const step of pointer
+    .slice(hash + 1)
+    .split("/")
+    .filter((part) => part.length > 0)) {
+    if (node === null || typeof node !== "object") return undefined;
+    node = (node as Record<string, unknown>)[step.replace(/~1/g, "/").replace(/~0/g, "~")];
+    if (node === undefined) return undefined;
+  }
+  return node;
+}
+
+/**
+ * Every definition in `schemas/` reachable from any shipped document, and the
+ * artifact types that reach it. TRANSITIVE, and that word is the finding
+ * (M3-P4 round-2 delta finding DV-001): the version that shipped in fix
+ * round 2 skipped any pointer starting `#/`, so it saw the three definitions
+ * named by a DIRECT cross-document `$ref` and none of the twenty-nine reached
+ * through a chain. A definition the map does not key is never examined, so a
+ * `guards` entry naming one was silently unguarded, which is CR-001's own
+ * shape one level down: the guard written to catch "sharing does not share
+ * the check" enumerated sharing one hop only.
  *
  * Derived from the shipped files rather than from a list written here, so a
  * later phase that adds a `$ref` or a `guards` entry is measured rather than
@@ -1158,41 +1219,60 @@ test("the universal-quantifier pattern is linear on a long near-miss rather than
 function sharedDefinitionUsers(
   schemas: ReadonlyMap<string, Record<string, unknown>>,
 ): Map<string, Set<string>> {
-  const kindOf = new Map<string, string>();
-  for (const [file, document] of schemas) {
-    const kind = nodeAt(document, ["properties", "kind"])?.["const"];
-    kindOf.set(file, typeof kind === "string" ? kind : `(no kind const in ${file})`);
+  const kindOf = kindByFile(schemas);
+  const users = new Map<string, Set<string>>();
+  for (const [rootFile, rootDocument] of schemas) {
+    /* The OWNING document reaches its own definitions by a local pointer, so
+       walking every file from its own root is also what makes the owner's
+       type a user: a check registered only for the BORROWER would be just as
+       much a hole as the one this test was written for. */
+    const queue = allRefs(rootDocument).map((reference) =>
+      canonicalPointer(rootFile, reference),
+    );
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const pointer = queue.pop() as string;
+      if (seen.has(pointer)) continue;
+      seen.add(pointer);
+      const at = users.get(pointer) ?? new Set<string>();
+      at.add(kindOf.get(rootFile) as string);
+      users.set(pointer, at);
+      const node = definitionAt(schemas, pointer);
+      if (node === undefined) continue;
+      const ownerFile = pointer.slice(0, pointer.indexOf("#"));
+      for (const reference of allRefs(node)) {
+        queue.push(canonicalPointer(ownerFile, reference));
+      }
+    }
   }
-  const refs = (node: unknown, out: string[]): string[] => {
-    if (Array.isArray(node)) {
-      for (const item of node) refs(item, out);
-      return out;
-    }
-    if (node === null || typeof node !== "object") return out;
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      if (key === "$ref" && typeof value === "string") out.push(value);
-      else refs(value, out);
-    }
-    return out;
-  };
+  return users;
+}
+
+/**
+ * THE DANGEROUS STATE, kept rather than described: the one-hop enumeration
+ * exactly as fix round 2 shipped it. It exists so the test below can measure
+ * what the closure adds instead of asserting that it adds something.
+ */
+function oneHopDefinitionUsers(
+  schemas: ReadonlyMap<string, Record<string, unknown>>,
+): Map<string, Set<string>> {
+  const kindOf = kindByFile(schemas);
   const users = new Map<string, Set<string>>();
   for (const [file, document] of schemas) {
-    for (const reference of refs(document, [])) {
+    for (const reference of allRefs(document)) {
       if (reference.startsWith("#/")) continue;
       const at = users.get(reference) ?? new Set<string>();
       at.add(kindOf.get(file) as string);
       users.set(reference, at);
     }
   }
-  /* The OWNING document reaches its own definitions by a local pointer, so
-     its type is a user too and a check registered only for the BORROWER
-     would be just as much a hole as the one this test was written for. */
   for (const [pointer, at] of users) {
     const ownerFile = pointer.slice(0, pointer.indexOf("#"));
     const local = pointer.slice(pointer.indexOf("#"));
     const owner = schemas.get(ownerFile);
-    assert.ok(owner !== undefined, `${pointer} names a schema that is not in schemas/`);
-    if (refs(owner, []).includes(local)) at.add(kindOf.get(ownerFile) as string);
+    if (owner !== undefined && allRefs(owner).includes(local)) {
+      at.add(kindOf.get(ownerFile) as string);
+    }
   }
   return users;
 }
@@ -1236,6 +1316,21 @@ test("every derived check that guards a shared definition runs on every artifact
   }
   assert.deepEqual(holes, []);
 
+  /* AND EVERY `guards` POINTER NAMES A DEFINITION THAT IS ACTUALLY REACHED
+     (M3-P4 round-2 delta finding DV-001, second arm). Without this the loop
+     above is vacuous for a mistyped pointer: nothing matches it, no hole is
+     reported, and the check is silently guarding nothing. That is the "green
+     and worthless" shape CLAUDE.md records under T-008's postscript. */
+  const dangling: string[] = [];
+  for (const check of registry) {
+    for (const pointer of check.guards ?? []) {
+      if (!users.has(pointer)) {
+        dangling.push(`${check.id} guards ${pointer}, which no shipped schema reaches`);
+      }
+    }
+  }
+  assert.deepEqual(dangling, []);
+
   /* THE DANGEROUS STATE, and it is the state this branch shipped in round 1
      rather than an invented one: the guarding check registered for the owning
      type alone. The assertion above is green with `alsoTypes` and red without
@@ -1254,6 +1349,131 @@ test("every derived check that guards a shared definition runs on every artifact
     }
   }
   assert.deepEqual(reddened, ["report.schema.json#/$defs/gateResult -> work-history"]);
+});
+
+test("a check guarding a definition reached through a chain of references is caught, where the one-hop enumeration fix round 2 shipped saw nothing", () => {
+  /* THE MECHANISM (M3-P4 round-2 delta finding DV-001), and it is one level
+     down from CR-001's: the guard written to catch "sharing does not share
+     the check" ENUMERATED SHARING ONE HOP ONLY. A definition reached through
+     a chain never became a key of the map, so the hole-finding loop never
+     examined it and a `guards` entry naming one was green and worthless.
+     LATENT when it was found, because only one registered check declares
+     `guards` at all and it names a one-hop definition; one registration away
+     from live, because a work history provably reaches `settledBy`. */
+  const schemas = new Map<string, Record<string, unknown>>();
+  for (const name of readdirSync(schemasDir).sort()) {
+    if (!name.endsWith(".json")) continue;
+    schemas.set(name, readSchema(name));
+  }
+  const closure = sharedDefinitionUsers(schemas);
+  const oneHop = oneHopDefinitionUsers(schemas);
+
+  /* THE THREE DEFINITIONS REACHED BY MORE THAN ONE ARTIFACT TYPE AND
+     INVISIBLE TO THE ONE-HOP SET. Named rather than counted, so a later phase
+     that adds a fourth does not silently satisfy this, and asserted BEFORE
+     any count below so that reverting the walk reddens this rather than an
+     arithmetic comparison: a witness should fail at the property it exists
+     for. */
+  for (const chained of [
+    "report.schema.json#/$defs/settledBy",
+    "report.schema.json#/$defs/settledByConstruction",
+    "report.schema.json#/$defs/settledByCounterExperiment",
+  ]) {
+    assert.equal(oneHop.has(chained), false, `${chained} was expected to be invisible one hop out`);
+    assert.deepEqual(
+      [...(closure.get(chained) ?? new Set<string>())].sort(),
+      ["report", "work-history"],
+      chained,
+    );
+  }
+
+  /* THE MEASUREMENT, derived rather than pinned: the one-hop set is the three
+     direct cross-document pointers, and the closure is far larger. Counts are
+     compared as an inequality because both grow as later phases add schemas,
+     and a pinned number would be a claim about every future phase. */
+  assert.equal(oneHop.size, 3, [...oneHop.keys()].join(", "));
+  assert.ok(
+    closure.size > oneHop.size,
+    `closure ${String(closure.size)} is not larger than one-hop ${String(oneHop.size)}`,
+  );
+
+  const probe = (id: string, guards: readonly string[]): DerivedCheck => ({
+    ...checksModule.reportParityArithmetic,
+    id,
+    type: "report",
+    alsoTypes: [],
+    guards,
+  });
+  const holesFor = (
+    users: Map<string, Set<string>>,
+    check: DerivedCheck,
+  ): string[] => {
+    const found: string[] = [];
+    for (const [pointer, types] of users) {
+      if (!(check.guards ?? []).includes(pointer)) continue;
+      for (const type of [...types].sort()) {
+        if (!checksModule.typesOf(check).includes(type)) found.push(`${pointer} -> ${type}`);
+      }
+    }
+    return found;
+  };
+
+  /* THE CONTROL, first, because without it every green arm below could be
+     green for an unrelated reason: at ONE HOP both enumerations catch it. */
+  const oneHopProbe = probe("dv1-one-hop", ["report.schema.json#/$defs/claim"]);
+  assert.deepEqual(holesFor(oneHop, oneHopProbe), [
+    "report.schema.json#/$defs/claim -> work-history",
+  ]);
+  assert.deepEqual(holesFor(closure, oneHopProbe), [
+    "report.schema.json#/$defs/claim -> work-history",
+  ]);
+
+  /* TWO MEMBERS, STRUCTURALLY DIFFERENT BY DEPTH: one extra hop and two. A
+     witness that only ever went one link deeper would not show the walk is
+     transitive rather than two-hop. Each is GREEN under the shipped one-hop
+     enumeration and RED under the closure, which is the whole finding. */
+  for (const [id, pointer] of [
+    ["dv1-chain-1", "report.schema.json#/$defs/settledBy"],
+    ["dv1-chain-2", "report.schema.json#/$defs/settledByCounterExperiment"],
+  ]) {
+    const chained = probe(id as string, [pointer as string]);
+    assert.deepEqual(holesFor(oneHop, chained), [], `${String(pointer)} under the one-hop map`);
+    assert.deepEqual(holesFor(closure, chained), [`${String(pointer)} -> work-history`]);
+  }
+
+  /* A THIRD MEMBER, STRUCTURALLY DIFFERENT IN KIND RATHER THAN IN DEPTH: a
+     `guards` pointer that resolves to NOTHING. No depth of reachability walk
+     reports it as a hole, because nothing matches it; it needs the separate
+     resolution assertion, and a typo in a future `guards` string is exactly
+     this case. Registered for real here so the shipped assertion is the thing
+     under test rather than a copy of it. */
+  const nowhere = probe("dv1-nowhere", ["report.schema.json#/$defs/thisDefinitionDoesNotExist"]);
+  assert.deepEqual(holesFor(closure, nowhere), []);
+  checksModule.registerCheck(nowhere);
+  try {
+    const dangling: string[] = [];
+    for (const check of checksModule.registeredChecks()) {
+      for (const pointer of check.guards ?? []) {
+        if (!closure.has(pointer)) {
+          dangling.push(`${check.id} guards ${pointer}, which no shipped schema reaches`);
+        }
+      }
+    }
+    assert.deepEqual(dangling, [
+      "dv1-nowhere guards report.schema.json#/$defs/thisDefinitionDoesNotExist, which no shipped schema reaches",
+    ]);
+  } finally {
+    assert.equal(checksModule.deregisterCheck("dv1-nowhere"), true);
+  }
+
+  /* RESTORED: with the probe gone the shipped registry is clean again. */
+  const afterwards: string[] = [];
+  for (const check of checksModule.registeredChecks()) {
+    for (const pointer of check.guards ?? []) {
+      if (!closure.has(pointer)) afterwards.push(`${check.id} guards ${pointer}`);
+    }
+  }
+  assert.deepEqual(afterwards, []);
 });
 
 /* ------------------------------------------------------------------ */
