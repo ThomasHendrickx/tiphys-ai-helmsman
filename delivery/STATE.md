@@ -6,31 +6,52 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-10
-- main head: `b1e9ac7` (PR #84, the M3-P4 fix-round-2 delta verification and
-  arbitration). DISCHARGED BY STEP, and EVERY head this session completed
-  rather than being cancelled once the batch stopped overlapping: all 15 steps
-  success, step 9 `M2 exit test (push)` success, step 8 correctly skipped, steps
-  10 and 12 (the two guards) success. `253740e` (PR #83) and `90ebedf` (PR #82)
-  and `d0d55e4` (PR #80) are each discharged the same way.
+- main head: `a7d5686` (PR #86, tuition T-014 and the watchdog questions in
+  CLAUDE.md). Earlier heads this session are DISCHARGED BY STEP, and each
+  completed rather than being cancelled once the batch stopped overlapping:
+  `b1e9ac7` (PR #84) all 15 steps success, step 9 `M2 exit test (push)` success,
+  step 8 correctly skipped, steps 10 and 12 (the two guards) success; `253740e`
+  (PR #83), `90ebedf` (PR #82), `d0d55e4` (PR #80) and `4e7e1fd` (PR #85) each
+  the same way. `a7d5686`'s own push run was still in progress when this line
+  was written and is NOT yet discharged; T-009 says the merge is not complete
+  until it is.
   The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
-  M3-P4's round-1 evidence.
-- **M3-P4 IS IN FIX ROUND 3 (2026-08-10), the LAST the DR-0012 stop rule allows.**
-  Fix round 2 closed every round-1 finding AT THE MECHANISM, and independent
-  delta verification then found FOUR NEW ones, so round 3 is closing those. The
-  round-2 arbitration is delivery/review/arbitration-m3-p4-round-2.md:1 and the
-  verification is delivery/review/verification-m3-p4-fix-round.md:1.
-  **DV-002 (HIGH) is the one that matters: round 2 claimed a site was
-  "unreachable by keyword or check" and the verifier BUILT the thing it said
-  could not exist**, using a technique round 2 had itself applied elsewhere. The
-  defect ruled was the ARGUMENT, not the sentence: one claim justified a whole
-  class, it was false for one site, so the rest are UNJUDGED rather than upheld.
-  Round 2 DID run the mandated claim grep and still shipped it, which is the
-  lesson: **a grep catches the WORDING, not the REASONING.**
+  M3-P4's round-1 and round-2 evidence.
+- **M3-P4 HAS HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE.**
+  Fix round 3 closed all four round-2 findings, several verified from
+  independently written reproductions, and found a real third error nobody had
+  named. It also introduced a NEW HIGH in the very fix that closed DV-003.
+  The ruling is delivery/review/arbitration-m3-p4-round-3.md:1 and the
+  verification is delivery/review/verification-m3-p4-round-3.md:1.
+  **BOTH DR-0012 limits are reached, not one**: round 3 was the second fix round
+  after the dual review (`max-fix-rounds-after-review: 2`), and over-rejection of
+  the honest record is now a HIGH twice in one component
+  (`recurrence-of-high-in-one-component: 1`).
+  **DV3-001 (HIGH): the `oneOf` puts `error` in the branch that REQUIRES
+  `wrapper-exit-code`, and a gate that errored on a missing parameter never ran a
+  child, so it has no exit code.** The orchestrator reproduced both ends: the
+  runner emits exactly that record, the schema refuses it, and the same record
+  with a FABRICATED exit code validates. That is this phase's own thesis running
+  backwards.
+  DV3-002 (MEDIUM): the new prose guard refuses honest NEGATIONS ("this does not
+  contradict the plan"), which is the natural sentence beside
+  `contradicts-plan: false`.
+  **THE MECHANISM RULED, and it is the third occurrence in one phase: a universal
+  claim over a class is used to justify a keyword, and no member of the class is
+  ever derived.** Round 2's arbitration ruled exactly this ("the defect is the
+  ARGUMENT, not the sentence") and round 3 committed the same shape one site
+  over, with the counter-example already sitting in its own work history.
+  DR-0016's response is in force: a FRESH IMPLEMENTER and a THIRD review contract
+  (the ARGUMENT AUDIT, distinct from the criteria and expressible-lie contracts
+  already run twice each), dispatched immediately, owner NOTIFIED rather than
+  waited on (DR-0023).
+  Round 2 history, kept because the lesson is still live: DV-002 (HIGH) was round
+  2 claiming a site "unreachable by keyword or check" when the verifier BUILT the
+  thing it said could not exist. Round 2 DID run the mandated claim grep and
+  still shipped it: **a grep catches the WORDING, not the REASONING.**
   DV-001 (MEDIUM, latent) is the one-hop enumeration hole, and it exists in the
   record ONLY because a verifier killed by a container restart had written its
   beacon incrementally; its 40-line partial carried the lead.
-  If round 3 does not close them, DR-0016 sends a fresh implementer and a third
-  contract, and DR-0023 means the owner is NOTIFIED rather than waited on.
   Round 1 history follows. Round 1 was dual clean-room reviewed
   at `a3ea489` and BOTH contracts returned CHANGES REQUIRED. The arbitration is
   delivery/review/arbitration-m3-p4-round-1.md:1; the reports are
