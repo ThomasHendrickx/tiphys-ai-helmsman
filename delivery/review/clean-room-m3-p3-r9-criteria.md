@@ -520,3 +520,23 @@ remains owed is T-009 rule 1: the post-merge `push` run on the new `main` tip.
 | `tree-md5-diff-after-red-witness.txt` | empty, which is the claim that the gate left no mutant behind |
 | `suite-counts.txt` | all five suite measurements with toolchain, build state and INVOCATION named |
 | `ci-run.txt` | the observed CI run, its ids, its conclusion and its per-step outcome |
+
+## Post-commit log (the beacon keeps moving)
+
+- Two commits on `claude/review-m3p3-r9`: `aec3713` (the report body) and
+  `7b6c0af` (the witness set, the red-witness gate and the evidence bundle).
+  Both pushed, push exit 0.
+- Branch name checked against the scope auditor's pattern BEFORE the first push:
+  `node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' claude/review-m3p3-r9`
+  printed `false`, so this branch does not claim to be a phase branch and the
+  auditor will not look for a declaration it is not adding.
+- The `citations` gate was run against this branch before publishing, as
+  CLAUDE.md advises: `CITATIONS_EXIT=21`, `not-applicable`, reason
+  `no changed path under delivery/plan/, delivery/verification/,
+  delivery/decisions/, delivery/tuition/, delivery/requirements/,
+  delivery/STATE.md`. `delivery/review/` is not a configured document glob, so
+  no substantive-citation floor applies to this file. Its citations are real
+  anyway and every one was resolved by reading the named line.
+- Final tree states: `CRB9-head` 0 dirty lines, `CRB9-194` 0 dirty lines, the
+  main repository never written to, `wt-m3p3-delta4` unchanged at 1 untracked
+  line.
