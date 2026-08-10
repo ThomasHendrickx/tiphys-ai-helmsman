@@ -357,8 +357,13 @@ test("a mode declaring a stage in skips that its own pipeline runs is rejected, 
      whether every omitted stage is DECLARED. It never asked whether every
      DECLARED stage is omitted, so `skips[]` was constrained in one direction
      and unconstrained in the other, and it is shipped DATA. The reviewer
-     measured three members, all at exit 0 with every registry gate green
-     (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
+     measured three members, all at exit 0 with every registry gate green:
+     delivery/review/clean-room-m3-p3-r8-criteria.md:228,
+     delivery/review/clean-room-m3-p3-r8-criteria.md:250 and
+     delivery/review/clean-room-m3-p3-r8-criteria.md:266, under CR-002's
+     heading at delivery/review/clean-room-m3-p3-r8-criteria.md:217. (Round 9
+     cited :318 here, which is a BLANK line inside CR-001, a different finding
+     about the near-miss time budget. Round 10, V-4.)
 
      TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class,
      and the difference is a real branch and not a relabelling: member 1 is the
@@ -470,6 +475,215 @@ test("a mode declaring a stage in skips that its own pipeline runs is rejected, 
         line.includes("mode-no-undeclared-downgrade"),
       ).length,
       0,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* V-1 + CRB9-02 (round 10): skips[] is measured against the REFERENCE  */
+/* ------------------------------------------------------------------ */
+
+test("a skips entry that no pipeline in the document runs is rejected, on a downgraded mode and on the reference itself", () => {
+  /* THE MECHANISM, NOT THE INSTANCE. `skips[]` is one side of a RELATION
+     between two arrays: the document defines an entry as a stage in `full`'s
+     pipeline that THIS mode's pipeline omits (assurance-modes.yaml:22). Round
+     9 compared it against the mode's OWN pipeline only, which is the predicate
+     the reviewer offered at
+     delivery/review/clean-room-m3-p3-r8-criteria.md:283 rather than the
+     mechanism the same reviewer stated at
+     delivery/review/clean-room-m3-p3-r8-criteria.md:220. So an entry could
+     still fail a second way: NOTHING runs the stage, because it is absent from
+     this mode's pipeline AND from the reference's.
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class,
+     and the difference is which SIDE OF THE RELATION moves. Member 1 edits the
+     mode's `skips[]`. Member 2 edits NO `skips[]` at all: it shrinks the
+     REFERENCE pipeline, and two other modes' previously correct entries become
+     phantoms. A guard written only against member 1 would read as a check on
+     the skips field and would be green against member 2.
+
+     THE THIRD ARM IS CRB9-02, and it is the same three lines rather than a
+     separate fix: on the reference, an entry is either inside `full`'s own
+     pipeline (direction A rejects it) or outside it (direction B rejects it),
+     so `full.skips` must be EMPTY. That is the burden `executionStatus`
+     carries, since it keys the un-downgraded sentence off `mode.id`
+     (src/modes.ts:221). Before this, a `full` whose stage had MOVED from
+     `pipeline` into `skips` validated at exit 0 and `tiphys mode show --mode
+     full` printed "the un-downgraded process" fifteen lines above a
+     `skips: deploy-verify` row. A registered test
+     (test/assurance-modes.test.ts:2119) asserts the SHIPPED document is clean;
+     it guards this repository's document and not the check, so any other
+     document was still served that contradiction. Both are kept: they cover
+     different documents. */
+  const dir = scratch();
+  try {
+    /* THE CONTROL RUNS FIRST, AND THAT ORDER IS LOAD-BEARING RATHER THAN
+       TIDINESS. This test's witness declares DATA dangerous states, which edit
+       the very document every fixture below is built FROM. Asserting the
+       shipped document is green before building anything makes a data member
+       redden HERE, on the check reporting a violation it should not, which is
+       the right reason. With the control last, the first member reddened on
+       `array items 0 and 1 are duplicates`, a schema uniqueness error in the
+       test's own fixture: red, registered, and evidence of nothing. That is
+       the failure round 9 recorded one member of and it is easy to reproduce
+       by accident. */
+    assert.equal(
+      checkLines(loadModes(), undefined).lines.filter((line) =>
+        line.includes("mode-no-undeclared-downgrade"),
+      ).length,
+      0,
+      "the shipped assurance-modes.yaml must be green on this check",
+    );
+    /* AND THE CONTROL IS NOT VACUOUS: it only means something while modes
+       really do declare skips. */
+    const shippedSkips = modesOf(loadModes()).map((mode) => (mode["skips"] as string[]).length);
+    assert.ok(
+      shippedSkips.filter((count) => count > 0).length >= 2,
+      `the control is only meaningful while modes really declare skips: ${shippedSkips.join(",")}`,
+    );
+
+    /* MEMBER 1: a NON-REFERENCE mode declares a stage the reference does not
+       run. `orchestrator-diff-review` is the thirteenth stage id and belongs
+       to `local-only` alone, so it is absent from `full`'s twelve-stage
+       pipeline and from `direct-pr`'s. Direction A cannot see it, because
+       `direct-pr` does not run it either.
+
+       BUILT WITH A DEDUPE rather than a bare prepend, for the same reason the
+       control moved: `skips` items are unique by schema, so a fixture that
+       prepends onto a document a data mutation has already edited is invalid
+       for a reason that has nothing to do with this check. */
+    const phantomEntry = loadModes();
+    const directPr = modeNamed(phantomEntry, "direct-pr");
+    directPr["skips"] = [
+      "orchestrator-diff-review",
+      ...(directPr["skips"] as string[]).filter((stage) => stage !== "orchestrator-diff-review"),
+    ];
+    const phantomPath = writeDocument(dir, phantomEntry, "skips-phantom-entry.yaml");
+    const phantomRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      ".",
+      phantomPath,
+    ]);
+    assert.equal(phantomRun.status, 1, phantomRun.stdout + phantomRun.stderr);
+    assert.match(
+      phantomRun.stdout,
+      /^INVALID #\/modes\/1\/skips mode direct-pr declares stage orchestrator-diff-review in skips, but mode full does not run it, so it is not a downgrade relative to the reference pipeline \(check: mode-no-undeclared-downgrade\)$/m,
+      phantomRun.stdout,
+    );
+    /* AND ONLY THAT ONE, so the fixture is the shipped document with exactly
+       one thing changed and the diagnostic is attributable. */
+    assert.equal(
+      phantomRun.stdout.split("\n").filter((line) => line.startsWith("INVALID")).length,
+      1,
+      phantomRun.stdout,
+    );
+
+    /* MEMBER 2, THE OTHER SIDE OF THE RELATION: no `skips[]` is touched. The
+       REFERENCE stops running `deploy-verify`, and the entries `direct-pr` and
+       `local-only` already carried for it stop describing a downgrade. Two
+       modes redden from one edit to a third. */
+    const referenceShrunk = loadModes();
+    const referenceMode = modeNamed(referenceShrunk, "full");
+    referenceMode["pipeline"] = (referenceMode["pipeline"] as string[]).filter(
+      (stage) => stage !== "deploy-verify",
+    );
+    assert.deepEqual(referenceMode["skips"], [], "member 2 must not touch any skips[]");
+    const shrunkPath = writeDocument(dir, referenceShrunk, "reference-shrunk.yaml");
+    const shrunkRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      ".",
+      shrunkPath,
+    ]);
+    assert.equal(shrunkRun.status, 1, shrunkRun.stdout + shrunkRun.stderr);
+    for (const mode of ["direct-pr", "local-only"]) {
+      assert.ok(
+        shrunkRun.stdout.includes(
+          `mode ${mode} declares stage deploy-verify in skips, but mode full does not run it`,
+        ),
+        shrunkRun.stdout,
+      );
+    }
+
+    /* MEMBER 3, CRB9-02: the reference is HONESTLY downgraded, the stage moved
+       from `pipeline` into `skips`. The reference's own row is what must
+       redden, and it does. */
+    const referenceDowngraded = loadModes();
+    const downgraded = modeNamed(referenceDowngraded, "full");
+    downgraded["pipeline"] = (downgraded["pipeline"] as string[]).filter(
+      (stage) => stage !== "deploy-verify",
+    );
+    downgraded["skips"] = ["deploy-verify"];
+    const downgradedPath = writeDocument(dir, referenceDowngraded, "reference-downgraded.yaml");
+    const downgradedRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      ".",
+      downgradedPath,
+    ]);
+    assert.equal(downgradedRun.status, 1, downgradedRun.stdout + downgradedRun.stderr);
+    assert.match(
+      downgradedRun.stdout,
+      /^INVALID #\/modes\/0\/skips mode full declares stage deploy-verify in skips, but mode full does not run it, so it is not a downgrade relative to the reference pipeline \(check: mode-no-undeclared-downgrade\)$/m,
+      downgradedRun.stdout,
+    );
+
+    /* DIRECTION B IS DEFINED BY THE REFERENCE, so unlike direction A it cannot
+       survive an absent `full`, and the check fails closed instead: the
+       missing reference is itself a violation and the document is refused.
+       Asserting it records that the two directions have DIFFERENT placements
+       for a reason. */
+    const noReference = loadModes();
+    const orphan = modeNamed(noReference, "direct-pr");
+    orphan["skips"] = [
+      "orchestrator-diff-review",
+      ...(orphan["skips"] as string[]).filter((stage) => stage !== "orchestrator-diff-review"),
+    ];
+    noReference["modes"] = modesOf(noReference).filter((mode) => mode["id"] !== "full");
+    const orphanLines = checkLines(noReference, undefined).lines;
+    assert.ok(
+      orphanLines.some((line) => line.includes("no mode declares id full")),
+      orphanLines.join("\n"),
+    );
+
+    /* THE OTHER DIRECTION, which is what makes this a Kind B witness: the SAME
+       member-1 instance with the CHECK removed is accepted. */
+    assert.equal(checksModule.deregisterCheck("mode-no-undeclared-downgrade"), true);
+    const withoutCheck = checkLines(phantomEntry, undefined);
+    assert.ok(
+      !withoutCheck.lines.some((line) => line.includes("mode-no-undeclared-downgrade")),
+      withoutCheck.lines.join("\n"),
+    );
+
+    /* RESTORED, and red again. */
+    checksModule.registerCheck(checksModule.modeNoUndeclaredDowngrade);
+    assert.ok(
+      checkLines(phantomEntry, undefined).lines.some((line) =>
+        line.includes(
+          "declares stage orchestrator-diff-review in skips, but mode full does not run it",
+        ),
+      ),
+    );
+
+    /* THE CONTROL IS RE-ASSERTED AT THE END, because the block above
+       deregisters and re-registers the check on the shared registry and a
+       botched restore would otherwise leave the suite in a state this test
+       created. */
+    assert.equal(
+      checkLines(loadModes(), undefined).lines.filter((line) =>
+        line.includes("mode-no-undeclared-downgrade"),
+      ).length,
+      0,
+      "the check must be registered and the shipped document green after the deregister arm",
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -3103,12 +3317,22 @@ const NEAR_MISS_BUDGET_MS = 1000;
    descheduling removes events, whereas this one measures the DURATION of one
    CPU-bound call.
 
-   THE HARDENING, AND WHY IT CANNOT CREATE A FALSE GREEN. Load can only make a
-   sample SLOWER, never faster, so the MINIMUM over repeated samples of the same
-   deterministic workload is a lower-bound estimator of its true cost. Taking
-   the minimum can therefore remove false REDS and cannot manufacture a false
-   green: if the minimum is under budget, some run of the real workload really
-   did complete under budget.
+   THE HARDENING, AND WHY TAKING A MINIMUM CANNOT MANUFACTURE A GREEN. The
+   argument does NOT rest on load making samples slower. The table thirteen
+   lines above measures the opposite in one cell: the loaded bullet minimum is
+   0.25 ms and the quiet bullet minimum is 0.28 ms, so a loaded run produced a
+   faster sample than any quiet one. An earlier revision of this comment said
+   "Load can only make a sample SLOWER, never faster", contradicting the
+   measurement printed immediately above it; that is the absolute CLAUDE.md's
+   claim grep exists to catch, and it is corrected here (round 10, V-3).
+
+   What actually carries the argument needs no claim about load at all, and is
+   true by construction: every sample is a real execution of the real
+   deterministic workload, so if the MINIMUM is under budget then some run of
+   that workload really did complete under budget. Taking the minimum can
+   therefore remove false REDS and cannot produce a green that no single run
+   earned. Samples varying in either direction is consistent with that; only a
+   sample that was not a real run of the real workload would break it.
 
    RESAMPLING IS GATED BY TIME, NOT BY A COUNT, so the red arm costs exactly
    what it costs today. A sample four times over budget is not a scheduling

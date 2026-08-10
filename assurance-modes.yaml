@@ -22,14 +22,36 @@
 #   skips            derived: every stage in `full`'s pipeline that this mode's
 #                    pipeline omits, AND NOTHING ELSE.
 #                    `mode-no-undeclared-downgrade` recomputes it rather than
-#                    trusting it, in BOTH directions: an omitted stage that is
-#                    not declared here is a violation, and a stage declared
-#                    here that this mode's own pipeline still runs is a
-#                    violation too. The second direction was added after a
-#                    review measured that without it one bogus entry on `full`
-#                    made `tiphys mode show` state the opposite of the truth
-#                    about this project's own delivery, at exit 0
+#                    trusting it, and the recomputation has THREE parts because
+#                    "AND NOTHING ELSE" is measured against `full`, not against
+#                    this mode:
+#                      completeness: a stage `full` runs that this mode's
+#                        pipeline omits, and that is not declared here, is a
+#                        violation.
+#                      soundness A: a stage declared here that this mode's OWN
+#                        pipeline still runs is a violation.
+#                      soundness B: a stage declared here that `full` does not
+#                        run either is a violation, because nothing omits it
+#                        relative to the reference and it is no downgrade.
+#                    Soundness A was added after a review measured that without
+#                    it one bogus entry on `full` made `tiphys mode show` state
+#                    the opposite of the truth about this project's own
+#                    delivery, at exit 0
 #                    (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
+#                    Soundness B was added a round later, after that round's
+#                    own documentation claimed the check was complete: the
+#                    stage vocabulary has thirteen ids and `full`'s pipeline
+#                    has twelve, so `direct-pr` naming `orchestrator-diff-review`
+#                    here validated at exit 0 and inflated the skipped-stage
+#                    count `tiphys mode show` prints. Shrinking `full`'s own
+#                    pipeline reaches the same violation from the other side,
+#                    editing no `skips` list at all.
+#                    ON `full` THE THREE PARTS TOGETHER MEAN ITS `skips` MUST BE
+#                    EMPTY, since an entry is either inside its own pipeline
+#                    (soundness A) or outside it (soundness B). That is not
+#                    incidental: `tiphys mode show` calls `full` the
+#                    un-downgraded process by NAME, so a `full` that quietly
+#                    became a downgrade must be refused rather than described.
 #
 # WHAT M3 NEVER RUNS, said plainly. The kernel runs `full` and only `full`; the
 # milestone exit test is a full-mode run. `direct-pr` and `local-only` are

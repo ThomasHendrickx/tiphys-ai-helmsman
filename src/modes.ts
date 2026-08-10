@@ -196,12 +196,25 @@ const UNDOWNGRADED_MODE_ID = "full";
  * ground of the claim. That distinction is the whole finding: a number may be
  * shown without being believed.
  *
- * WHAT MAKES THE `full` SENTENCE TRUE IS DATA, AND IT IS GUARDED SEPARATELY.
- * Keying off the name moves the burden: the claim is now only as good as the
- * shipped `full` genuinely being un-downgraded. `mode-no-undeclared-downgrade`
- * rejects a `skips[]` entry that the same mode's pipeline runs, and a registered
- * test asserts the shipped `full` declares NO skipped stage at all, so a `full`
- * that quietly became a downgrade cannot keep this sentence.
+ * WHAT MAKES THE `full` SENTENCE TRUE IS DATA, AND IT IS GUARDED IN TWO PLACES
+ * THAT COVER DIFFERENT DOCUMENTS. Keying off the name moves the burden: the
+ * claim is only as good as the `full` in the document being served genuinely
+ * being un-downgraded.
+ *
+ * The VALIDATOR carries it for EVERY document (round 10, CRB9-02).
+ * `mode-no-undeclared-downgrade` rejects a `skips[]` entry that the same mode's
+ * pipeline runs, and also one that the reference does not run; on the reference
+ * those two exhaust the cases, so a `full` declaring any skipped stage at all is
+ * refused and this sentence is never printed over it. Until that second part
+ * existed, a `full` whose stage had MOVED from `pipeline` into `skips` was an
+ * HONEST downgrade that validated at exit 0, and `tiphys mode show --mode full`
+ * printed this sentence about fifteen lines above a `skips: deploy-verify` row.
+ *
+ * A REGISTERED TEST carries it for THIS repository's own document, asserting the
+ * shipped `full` declares no skipped stage. It is kept rather than superseded:
+ * a test guards the document, the check guards every other document, and the
+ * failure this pair exists to prevent is a property asserted where it is stated
+ * and not enforced where it is consumed.
  *
  * WHAT THIS DELIBERATELY DOES NOT SAY. It does not say that tiphys runs
  * anything: nothing runs on tiphys before M4. The un-downgraded mode of the

@@ -401,18 +401,41 @@ function readContextDocument(
  * delivered under the mode this project has delivered every phase under
  * (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
  *
- * THE PREDICATE RUNS OVER EVERY MODE INCLUDING THE REFERENCE, and that is the
- * load-bearing part rather than a detail. The completeness loop `continue`s
+ * SOUNDNESS HAS TWO DIRECTIONS AND ROUND 9 SHIPPED ONE (round 10, V-1).
+ * `skips[]` is defined by the document itself as every stage in `full`'s
+ * pipeline that this mode's pipeline omits AND NOTHING ELSE, so "actually
+ * omitted" is measured against the REFERENCE and an entry can fail it two
+ * ways: (A) this mode's own pipeline runs the stage, and (B) NOTHING runs it,
+ * that is, it is absent from this mode's pipeline and from `full`'s as well.
+ * Round 9 implemented the predicate the reviewer wrote down (A) rather than
+ * the property the same reviewer described thirteen lines earlier, and then
+ * recorded in two shipped documents that the check ran in both directions.
+ * B was reachable on the shipped data with a one-line edit, because the stage
+ * vocabulary has thirteen ids and `full`'s pipeline has twelve: `direct-pr`
+ * gaining `orchestrator-diff-review` validated at exit 0 and `tiphys mode
+ * show` then reported a skipped-stage count one too high with a `skips:` row
+ * naming a stage that is no downgrade at all.
+ *
+ * WHICH SIDE OF THE COMPARISON IS EDITED DOES NOT MATTER, and that is why B is
+ * not merely "a typo in skips". Shrinking `full`'s PIPELINE, touching no
+ * `skips[]` anywhere, turns every other mode's previously correct entry for
+ * that stage into a phantom. The reference is one half of the relation and
+ * either half moving breaks it.
+ *
+ * THE DIRECTION-A PREDICATE RUNS OVER EVERY MODE INCLUDING THE REFERENCE, and
+ * that is load-bearing rather than a detail. The completeness loop `continue`s
  * past `full` because a mode cannot omit a stage relative to itself; the
  * soundness question is well posed for `full` too, and `full` is precisely the
  * mode the sharpest member targeted. A soundness loop that inherited the
  * completeness loop's skip would have been green against the finding that
  * caused it to be written.
  *
- * IT NEEDS NO REFERENCE MODE, so it runs BEFORE the reference is resolved and
- * its violations survive an absent `full`. A document that both deletes `full`
- * and carries a contradictory `skips[]` reports both facts rather than the
- * first one only.
+ * DIRECTION A NEEDS NO REFERENCE MODE, so it runs BEFORE the reference is
+ * resolved and its violations survive an absent `full`. A document that both
+ * deletes `full` and carries a contradictory `skips[]` reports both facts
+ * rather than the first one only. DIRECTION B cannot: it is defined by the
+ * reference pipeline, so it runs after the resolution and an absent `full` is
+ * already a violation in its own right.
  */
 export const modeNoUndeclaredDowngrade: DerivedCheck = {
   id: "mode-no-undeclared-downgrade",
@@ -444,6 +467,37 @@ export const modeNoUndeclaredDowngrade: DerivedCheck = {
       return { violations, reports: [] };
     }
     const referenceStages = stringsAt(reference.mode, "pipeline");
+    /* SOUNDNESS, DIRECTION B (round 10, V-1 and CRB9-02). "Omitted" is
+       measured RELATIVE TO THE REFERENCE, so an entry is unsound either
+       because this mode runs it (direction A, above) or because NOTHING runs
+       it. This loop is the second case and it needs `referenceStages`, which
+       is why it sits after the resolution rather than beside direction A.
+
+       IT RUNS OVER EVERY ROW INCLUDING THE REFERENCE, and on the reference the
+       two directions together say `full.skips` must be EMPTY: an entry is
+       either in `full`'s own pipeline (direction A rejects it) or outside it
+       (this loop rejects it). That is not a side effect, it is CRB9-02's fix.
+       `executionStatus` keys the un-downgraded sentence off `mode.id`, and
+       that is honest only while the reference really declares no downgrade;
+       before this loop a `full` whose stage had MOVED from `pipeline` into
+       `skips` validated at exit 0 and `tiphys mode show --mode full` printed
+       "the un-downgraded process" fifteen lines above a `skips: deploy-verify`
+       row. A registered test asserted the shipped document was clean, which
+       guards THIS repository's document and not the check, so any other
+       document carrying a downgraded reference was served that contradiction.
+       A property asserted in one place and not enforced where it is consumed
+       is the CR-002 mechanism itself, one level up. */
+    const referenceRunning = new Set(referenceStages);
+    for (const row of rows) {
+      for (const stage of stringsAt(row.mode, "skips")) {
+        if (!referenceRunning.has(stage)) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} declares stage ${stage} in skips, but mode ${REFERENCE_MODE_ID} does not run it, so it is not a downgrade relative to the reference pipeline`,
+          });
+        }
+      }
+    }
     for (const row of rows) {
       if (row.index === reference.index) {
         continue;
