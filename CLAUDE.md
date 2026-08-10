@@ -131,6 +131,28 @@ artifact behind it is treated as unknown.
    non-ASCII content is the thing under test and transliterating it would
    destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
    run both checks over `git ls-files` minus those two trees and expect zero.
+   **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
+   resolution.** The red-witness rule demands real captured output from the
+   program under test rather than hand-written strings. Node's test reporter
+   prints U+2139 and U+2716 at the head of its summary and failure lines. So a
+   work history pasting a real `node --test` run verbatim FAILS the non-ASCII
+   check, and the three ways out are not equal:
+
+   - Hand-write the output to avoid the glyphs. **Forbidden.** That is exactly
+     the fabrication the red-witness rule exists to prevent, and it is invisible
+     to every gate.
+   - Paste the glyphs raw. Fails the check, which is the check working.
+   - **TRANSLITERATE, AND DECLARE IT.** This is the resolution.
+
+   A transliterated capture must carry a note naming the exact codepoints
+   replaced, what they were replaced with, and HOW MANY of each. That makes the
+   change auditable and reversible, so a reader can tell altered-and-declared
+   from altered-and-hidden. The M3-P3 round-8 work history is the worked example:
+   it names U+2139 and U+2716, renders them `i` and `x`, gives the counts (10 and
+   6), and states that nothing else in any captured output was changed.
+
+   Silent transliteration is the failure mode this entry exists to prevent,
+   because after the fact it is indistinguishable from fabricated evidence.
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
 5. One phase = one branch = one PR, always. Parallelism is ON where a
