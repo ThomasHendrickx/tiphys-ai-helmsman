@@ -4,14 +4,18 @@
 - author: orchestrator
 - purpose: DR-0011 turns parallelism ON where a recorded pre-pass proves the
   phases disjoint, and REQUIRES that the pre-pass be written down before
-  dispatch rather than asserted. This is that document for M3-P4 onward.
+  dispatch rather than asserted. The decision is
+  delivery/decisions/DR-0011-early-parallelism.md:1 and the worked example this
+  document follows is delivery/plan/m2-conflict-pre-pass.md:1. This is that
+  document for M3-P4 onward.
 - measured at: `origin/main` a7d5686 and
   `origin/claude/m3-p4-report-and-work-history` 5470207.
 
 ## Method, and the false result it started with
 
-The overlap is computed from the phase declarations'`filesToTouch` and
-`declaredExtras`, unioned per phase and intersected pairwise.
+The overlap is computed from the phase declarations' `filesToTouch` and
+`declaredExtras`, unioned per phase and intersected pairwise. M3-P5's
+declaration is delivery/plan/phase-declarations/m3-p5.json:1.
 
 **The first run of this computation returned "disjoint" for every pair and was
 worthless.** It read the key `files-to-touch`, and the declarations spell it
