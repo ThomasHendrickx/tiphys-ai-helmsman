@@ -131,6 +131,62 @@ artifact behind it is treated as unknown.
    non-ASCII content is the thing under test and transliterating it would
    destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
    run both checks over `git ls-files` minus those two trees and expect zero.
+   **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
+   resolution.** The red-witness rule demands real captured output from the
+   program under test rather than hand-written strings. Node's test reporter
+   prints U+2139 and U+2716 at the head of its summary and failure lines. So a
+   work history pasting a real `node --test` run verbatim FAILS the non-ASCII
+   check, and the three ways out are not equal:
+
+   - Hand-write the output to avoid the glyphs. **Forbidden.** That is exactly
+     the fabrication the red-witness rule exists to prevent, and it is invisible
+     to every gate.
+   - Paste the glyphs raw. Fails the check, which is the check working.
+   - **TRANSLITERATE, AND DECLARE IT.** This is the resolution.
+
+   A transliterated capture must carry a note naming the exact codepoints
+   replaced, what they were replaced with, and HOW MANY of each. That makes the
+   change auditable and reversible, so a reader can tell altered-and-declared
+   from altered-and-hidden. The M3-P3 round-8 work history is the worked example:
+   it names U+2139 and U+2716, renders them `i` and `x`, gives the counts (10 and
+   6), and states that nothing else in any captured output was changed.
+
+   Silent transliteration is the failure mode this entry exists to prevent,
+   because after the fact it is indistinguishable from fabricated evidence.
+3b. **A CITATION IS `path.ext:LINE`, AND ONLY OUTSIDE BACKTICKS. A bare path is
+   not a citation at all.** This was undocumented here until 2026-08-10 and it
+   has been got wrong THREE times in this delivery, twice by writing every
+   citation inside backticks and once by removing the backticks but omitting the
+   line number. Each cost a red `citations` gate and a round trip. The rule lived
+   only in `src/gates/citations.ts`, which is why reading the rules file did not
+   help.
+
+   The grammar the gate actually recognises, from its own source: a path, a
+   known extension, then a COLON and a line number, optionally a range and a
+   `@sha256:` pin. So:
+
+   | written | recognised | why |
+   |---|---|---|
+   | ``  `delivery/plan/x.md`  `` | NO | backticks mean QUOTED (M2-D-22), deliberately non-resolving |
+   | `delivery/plan/x.md` in prose | NO | no line number, so it is not a citation token |
+   | delivery/plan/x.md:2626 in prose | **YES** | this is the only form that counts |
+
+   Two consequences that bite. A document matching `citationRequired` with ZERO
+   substantive citations is RED, so a new `delivery/` document usually needs at
+   least one real `path:line`. And the count is whole-document, never
+   hunk-scoped, so adding one anywhere in the file satisfies it.
+
+   Quoting is a real and useful tool, not a mistake to avoid: a path in backticks
+   is how you name a file you are NOT asserting exists at that line, such as one
+   on an unmerged branch. Use it deliberately, and know that it buys you nothing
+   toward the substantive-citation floor.
+
+   Verify before pushing rather than after a red gate:
+
+   ```
+   node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+     --only citations --evidence <scratch-dir> --base origin/main --head HEAD
+   ```
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
 5. One phase = one branch = one PR, always. Parallelism is ON where a
@@ -556,6 +612,67 @@ Each of these bit someone once. Forward them to every implementer.
     forced contention (delivery/tuition/T-003).
 11. Suite wall time grows with real-clock lease waits. Budget harness
     timeouts accordingly rather than shortening the waits.
+12. **Running the suite without building first SILENTLY SKIPS NINE TESTS, and
+    the run still exits 0.** Warning 1 says correctly that the suite needs no
+    prior build to RUN; that is true and it is not the whole story. Nine tests
+    exercise the built CLI and skip themselves when `dist/` is absent: five in
+    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts`, each skip message
+    naming the dist entry it wanted. Measured 2026-08-09 on node v26.6.0, same
+    head, both arms exit 0:
+
+    | state | reported |
+    |---|---|
+    | `dist/` built | 504 tests, 504 pass, **0 skipped** |
+    | `rm -rf dist` | 504 tests, 495 pass, **9 skipped** |
+
+    This is why two honest agents reported different totals for the same commit
+    and neither was wrong: the gate order in this file runs `npm run build`
+    before `node --test`, so CI and anyone following it sees the full suite,
+    while anyone running the suite alone silently measures nine tests fewer.
+    A skipped test is not a passing test, and "exit 0" does not distinguish
+    them. Quote the SKIPPED count alongside the pass count, always; a bare
+    "N pass, exit 0" is the incomplete sentence here, exactly as "CI is green"
+    is under T-009.
+
+    **The complete sentence for a suite result names the toolchain AND the
+    build state**, because the two axes skip different tests and they compose.
+    Measured at the same head: node v26.6.0 with `dist/` built gives 504 pass
+    and 0 skipped, and the DEFAULT toolchain (`bash -lc`, node v22.22.2) gives
+    502 pass and **2** skipped, those two being the floor-gated `doctor` tests.
+    The floor accounts for two, never nine. That matters because the obvious
+    first guess for a skip discrepancy here is warning 1, the Node floor, and on
+    this occasion that guess was WRONG; the round measured both axes instead of
+    stopping at the plausible one.
+
+    Found by the M3-P3 round-7 implementer while settling a discrepancy the
+    orchestrator had flagged rather than averaged away.
+
+    **THERE IS A THIRD AXIS AND IT IS THE INVOCATION.** Measured 2026-08-10 by
+    the M3-P3 round-9 clean-room reviewer, at one head, one toolchain and one
+    build state, differing only in the command:
+
+    | invocation | tests | pass | SKIPPED |
+    |---|---|---|---|
+    | `npm test` | 506 | 506 | 0 |
+    | bare `node --test` from the repository root | **508** | 508 | 0 |
+
+    The two extra are NAMED rather than inferred, by diffing the passing-test
+    names against the CI log: `greet rejects an empty name` and `greet returns a
+    greeting for a name`, from `sandbox/test/greet.test.js`, a TRACKED sandbox
+    fixture at the repository root. `package.json`'s `test` script is
+    `node --test "test/**/*.test.ts"`, which excludes it, and the `suite` GATE
+    runs that script rather than a pattern of its own.
+
+    So **506 is what CI and the gate mean, and 508 is what gate-list step 3
+    (`node --test`) literally asks for.** Both are true sentences about different
+    commands, which is exactly why quoting a bare number starts an
+    investigation. Head-independence was controlled: the same bare invocation at
+    a different head, same toolchain and build state, also reports 508.
+
+    Quote the INVOCATION alongside the toolchain and the build state. This
+    repository has now paid three times for an unexplained suite-count
+    difference, and the third time the reviewer refused to average a two-test gap
+    and found the cause instead.
 
 ## The orchestrator does not decide when it is finished (binding)
 

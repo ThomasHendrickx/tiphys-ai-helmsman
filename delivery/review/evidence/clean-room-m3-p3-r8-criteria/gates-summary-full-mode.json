@@ -1,0 +1,179 @@
+{
+  "runId": "b86b5be866c2f275c77360d1",
+  "manifest": "gate-registry.yaml",
+  "registry": true,
+  "mode": "full",
+  "declaredByChecklist": [
+    {
+      "id": "unit-tests-for-changed-service-methods",
+      "probe": "unit-tests-for-changed-service-methods",
+      "applicability": "conditional"
+    },
+    {
+      "id": "fixtures-for-changed-component-states",
+      "probe": "fixtures-for-changed-component-states",
+      "applicability": "conditional"
+    }
+  ],
+  "manifestSha256": "478f5ac151b6db74deaedd2959817723f499642565b68c2d83fa4e8596d882e8",
+  "startedAt": "2026-08-10T01:33:33.023Z",
+  "endedAt": "2026-08-10T01:37:40.597Z",
+  "parameters": {
+    "base": "3c60acbee541711aca2b046269aa35a03f22bb8e",
+    "phase": "m3-p3"
+  },
+  "only": [],
+  "manifestGates": 12,
+  "gates": [
+    {
+      "id": "manifest-self-check",
+      "status": "green",
+      "units": 8,
+      "unitLabel": "schema documents validated",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "validated 8 schema document(s) against the closed keyword set (/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/citation-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/coverage-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/gate-manifest.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/gate-result.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/phase-declaration.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/release-record.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/verifier-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-lab/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/manifest-self-check/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/manifest-self-check/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/manifest-self-check/stderr.txt"
+    },
+    {
+      "id": "coverage",
+      "status": "green",
+      "units": 115,
+      "unitLabel": "finding ids checked",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/coverage/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/coverage/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/coverage/stderr.txt"
+    },
+    {
+      "id": "credential-scrub",
+      "status": "green",
+      "units": 7,
+      "unitLabel": "credential sources probed",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "no pull-request-capable credential resolvable from any of the 7 probed sources",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/credential-scrub/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/credential-scrub/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/credential-scrub/stderr.txt"
+    },
+    {
+      "id": "credential-token",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "tokens probed",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/credential-token/result.json"
+    },
+    {
+      "id": "suite",
+      "status": "green",
+      "units": 505,
+      "unitLabel": "tests reported",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 505 test(s) from 30 file(s) (pass 505, fail 0, skipped 0, todo 0, did-not-run 0); discovered 30 file(s) walking test for .test.ts; 511 behavior(s) resolve; merge base 3c60acbee541",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/suite/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/suite/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/suite/stderr.txt"
+    },
+    {
+      "id": "citations",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "citations resolved",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "no changed path under the configured documents globs (41 changed path(s) total). The diff-touches precondition is a path prefix and the documents config is a glob set, so a changed path under a configured tree that is not a configured document reaches here with the precondition met",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/citations/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/citations/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/citations/stderr.txt"
+    },
+    {
+      "id": "scope",
+      "status": "error",
+      "units": 0,
+      "unitLabel": "changed paths audited",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "gate scope requires --head, which was not supplied",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/scope/result.json"
+    },
+    {
+      "id": "deploy",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "release verifications satisfied",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/deploy/result.json"
+    },
+    {
+      "id": "migrations",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "migrations compared",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/migrations/result.json"
+    },
+    {
+      "id": "clause-map",
+      "status": "green",
+      "units": 18,
+      "unitLabel": "clause-map rows checked",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "18 rows checked, 56 pending a phase not yet in force",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/clause-map/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/clause-map/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/clause-map/stderr.txt"
+    },
+    {
+      "id": "red-witness",
+      "status": "error",
+      "units": 0,
+      "unitLabel": "witnesses evaluated",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "gate red-witness requires --head, which was not supplied",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/red-witness/result.json"
+    },
+    {
+      "id": "agent-rules-drift",
+      "status": "green",
+      "units": 17,
+      "unitLabel": "rendered gate rows compared",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 14 gate(s))",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/agent-rules-drift/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/agent-rules-drift/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev/agent-rules-drift/stderr.txt"
+    }
+  ],
+  "counts": {
+    "declared": 12,
+    "applicable": 6,
+    "verdict": 6,
+    "green": 6,
+    "red": 0,
+    "not-applicable": 4,
+    "error": 2,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [
+    "citations"
+  ],
+  "aborted": false,
+  "exitCode": 21,
+  "reason": "2 gate(s) reported error: scope, red-witness"
+}
