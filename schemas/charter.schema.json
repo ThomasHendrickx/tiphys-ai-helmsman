@@ -38,13 +38,14 @@
       }
     },
     "delivery-mode": {
-      "$comment": "The enum is declared HERE and the mode DEFINITIONS are owned by M3-P3's assurance-modes.yaml. The derived check charter-mode-enum-matches-modes (M3-P3) asserts the two agree, so the duplication cannot drift.",
+      "$comment": "The enum is declared HERE and the mode DEFINITIONS are owned by M3-P3's assurance-modes.yaml. The derived check charter-mode-enum-matches-modes (M3-P3) asserts the two agree, so the duplication cannot drift. M3-P1's placeholder list (full, standard, fast, yolo) was REPLACED by M3-P3 with the three ids blueprint section 8 actually declares; `standard`, `fast` and `yolo` named no mode definition anywhere and a charter could select one and get a delivery mode with no pipeline behind it. CLOSED VOCABULARY AT v0.1.0 (DR-0020): the three values are the tiphys kernel's OWN mode ids and this enum rejects every other value, so a consuming project's charter cannot select a delivery mode of its own name at v0.1.0. Extension is an M4 question, deferred to a real pilot consumer.",
       "type": "string",
-      "enum": ["full", "standard", "fast", "yolo"]
+      "enum": ["full", "direct-pr", "local-only"]
     },
     "assurance-tier": {
+      "$comment": "The SAME vocabulary as delivery-mode and watched by the same check. M3-P1 shipped the identical placeholder enum on both fields, so a check that watched only one would leave the other free to drift, which is the hazard rather than a smaller version of it. CLOSED VOCABULARY AT v0.1.0 (DR-0020): the same closed set as delivery-mode, with the same consequence for a consuming project and the same M4 deferral.",
       "type": "string",
-      "enum": ["full", "standard", "fast", "yolo"]
+      "enum": ["full", "direct-pr", "local-only"]
     },
     "yolo-permissions": {
       "type": "object",

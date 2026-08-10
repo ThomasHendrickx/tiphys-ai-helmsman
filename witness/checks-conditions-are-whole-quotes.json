@@ -1,0 +1,24 @@
+{
+  "id": "checks-conditions-are-whole-quotes",
+  "behavior": "mode-conditions-are-whole-quotes-not-substrings",
+  "tests": [
+    "conditions shorter than the record's own words are rejected, because a condition must be a whole quoted item and not a substring"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (!resolved.units.has(condition)) {",
+      "replace": "        if (![...resolved.units].join(\" \").includes(condition)) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (unit !== \"\") {\n        units.add(unit);\n      }",
+      "replace": "      if (unit !== \"\") {\n        units.add(unit);\n        for (const word of unit.split(\" \")) {\n          units.add(word.toLowerCase().replace(/[^a-z0-9-]/g, \"\"));\n        }\n      }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,36 @@
+{
+  "id": "checks-mode-skips-reference-relative",
+  "behavior": "mode-skips-measured-against-the-reference",
+  "tests": [
+    "a skips entry that no pipeline in the document runs is rejected, on a downgraded mode and on the reference itself"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "    skips:\n      - verification-pass",
+      "replace": "    skips:\n      - orchestrator-diff-review\n      - verification-pass"
+    },
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "      - deploy-verify\n      - migration-verify\n      - final-report\n    skips: []",
+      "replace": "      - migration-verify\n      - final-report\n    skips: []"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (!referenceRunning.has(stage)) {",
+      "replace": "        if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    const referenceRunning = new Set(referenceStages);\n    for (const row of rows) {\n      for (const stage of stringsAt(row.mode, \"skips\")) {",
+      "replace": "    const referenceRunning = new Set(referenceStages);\n    for (const row of rows) {\n      if (row.index === reference.index) {\n        continue;\n      }\n      for (const stage of stringsAt(row.mode, \"skips\")) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

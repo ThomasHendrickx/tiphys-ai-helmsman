@@ -1,0 +1,36 @@
+{
+  "id": "checks-interrupters-inside-an-item-end-no-unit",
+  "behavior": "mode-conditions-interrupters-inside-an-item-end-no-unit",
+  "tests": [
+    "a fence, an ATX heading, a setext underline or a thematic break inside a list item ends no unit, so the item stays whole"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  visit(container, quoteDepth);\n  return normalizeProse(parts.join(\" \"));",
+      "replace": "  visit(container, quoteDepth);\n  return normalizeProse(parts[0] ?? \"\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      }",
+      "replace": "      } else if (!NOT_QUOTABLE.has(child.type)) {\n        visit(child, child.type === \"block_quote\" ? depth + 1 : depth);\n      } else {\n        break;\n      }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (child.type === \"paragraph\") {\n        if (carriesProse(child)) {\n          parts.push(sourceSlice(lines, child.sourcepos, depth));\n        }",
+      "replace": "      if (child.type === \"paragraph\" || NOT_QUOTABLE.has(child.type)) {\n        if (NOT_QUOTABLE.has(child.type) || carriesProse(child)) {\n          parts.push(sourceSlice(lines, child.sourcepos, depth));\n        }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        const unit = paragraphsBeneath(item, lines, quoteDepth);",
+      "replace": "        collectUnits(item, lines, units, quoteDepth);\n        const unit = paragraphsBeneath(item, lines, quoteDepth);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,251 @@
+# THE ASSURANCE MODE DEFINITIONS (kernel plan M3, M3-P3; R-024, R-096).
+#
+# Blueprint section 8 declares three modes and their merge authority, and adds
+# the sentence this whole document exists to make checkable: "The current
+# proven process is the definition of `full`. Downgrades are declared, never
+# improvised."
+#
+# WHAT IS DERIVED AND FROM WHERE, so no value here is a matter of taste:
+#
+#   full.pipeline    the process document's own sequence, enumerated (process
+#                    doc section 9 item 3, R-096), with `fix-round-verification`
+#                    present because T-003 made a delta review of every fix
+#                    round structural rather than discretionary.
+#   direct-pr        blueprint section 8 row 2, "implement + gates, no
+#                    adversarial layers".
+#   local-only       blueprint section 8 row 3, "implement, orchestrator diff
+#                    review, local fast-forward".
+#   gate-sets        derived from gate-registry.yaml: each mode selects exactly
+#                    the gates whose own `modes` list names it. That is a
+#                    mechanical derivation, and `mode-gate-sets-resolve` is what
+#                    keeps the two files from drifting apart.
+#   skips            derived: every stage in `full`'s pipeline that this mode's
+#                    pipeline omits, AND NOTHING ELSE.
+#                    `mode-no-undeclared-downgrade` recomputes it rather than
+#                    trusting it, and the recomputation has THREE parts because
+#                    "AND NOTHING ELSE" is measured against `full`, not against
+#                    this mode:
+#                      completeness: a stage `full` runs that this mode's
+#                        pipeline omits, and that is not declared here, is a
+#                        violation.
+#                      soundness A: a stage declared here that this mode's OWN
+#                        pipeline still runs is a violation.
+#                      soundness B: a stage declared here that `full` does not
+#                        run either is a violation, because nothing omits it
+#                        relative to the reference and it is no downgrade.
+#                    Soundness A was added after a review measured that without
+#                    it one bogus entry on `full` made `tiphys mode show` state
+#                    the opposite of the truth about this project's own
+#                    delivery, at exit 0
+#                    (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
+#                    Soundness B was added a round later, after that round's
+#                    own documentation claimed the check was complete: the
+#                    stage vocabulary has thirteen ids and `full`'s pipeline
+#                    has twelve, so `direct-pr` naming `orchestrator-diff-review`
+#                    here validated at exit 0 and inflated the skipped-stage
+#                    count `tiphys mode show` prints. Shrinking `full`'s own
+#                    pipeline reaches the same violation from the other side,
+#                    editing no `skips` list at all.
+#                    ON `full` THE THREE PARTS TOGETHER MEAN ITS `skips` MUST BE
+#                    EMPTY, since an entry is either inside its own pipeline
+#                    (soundness A) or outside it (soundness B). That is not
+#                    incidental: `tiphys mode show` calls `full` the
+#                    un-downgraded process by NAME, so a `full` that quietly
+#                    became a downgrade must be refused rather than described.
+#
+# WHAT M3 NEVER RUNS, said plainly. The kernel runs `full` and only `full`; the
+# milestone exit test is a full-mode run. `direct-pr` and `local-only` are
+# witnessed here by validation and by `tiphys mode show`, never by execution.
+# Building an enforcement engine for a mode this milestone never enters is the
+# M1-P3 failure the plan is trying not to repeat.
+#
+# CONSTRAINTS C-2 AND C-3. No stage in this file is completed, detected or
+# excluded by process liveness, by a signal, or by a detached long-running
+# process. A registered test scans this file and its schema for the four
+# tokens C-2 and C-3 are written in and requires ZERO hits, which is why those
+# four tokens do not appear here even as a disclaimer. It is a fixed-token
+# presence check and nothing more: a stage whose completion were
+# liveness-detected without using any of the four words would pass it, and the
+# plan's hazard map names that residue in the open rather than papering over
+# it. The second line is the hazard review contract, which reads prose.
+
+kind: assurance-modes
+version: 1
+
+modes:
+  # ------------------------------------------------------------------
+  # full: the current proven process, which is what the word means here.
+  # ------------------------------------------------------------------
+  - id: full
+    declared-by: >-
+      blueprint section 8 (the mode and its pipeline); process doc section 9
+      item 3 enumerated (R-096); T-003 for the fix-round-verification stage;
+      DR-0012 and DR-0015 for the merge authority actually in force; DR-0016
+      for the escalation response; T-007 and D-M3-32 for the review contracts.
+    # ORDER IS LOAD-BEARING. R-024: an adversarial plan review happens before
+    # anyone builds, which is a property of this sequence and not of its set,
+    # and `mode-stage-order` is the check that says so.
+    pipeline:
+      - intake
+      - verification-pass
+      - plan
+      - adversarial-plan-review
+      - implement
+      - clean-room-review
+      - fix-round
+      # T-003's structural consequence, applied rather than asserted as new
+      # policy: full mode REQUIRES a delta review or verification of every fix
+      # round instead of leaving it to orchestrator discretion. The evidence is
+      # delivery/review/verification-m1-p3-fix-round.md.
+      - fix-round-verification
+      - merge-on-green
+      - deploy-verify
+      - migration-verify
+      - final-report
+    skips: []
+    # Every gate in gate-registry.yaml whose `modes` list contains `full`,
+    # which today is all of them.
+    gate-sets:
+      - manifest-self-check
+      - coverage
+      - credential-scrub
+      - credential-token
+      - suite
+      - citations
+      - scope
+      - deploy
+      - migrations
+      - clause-map
+      - red-witness
+      - agent-rules-drift
+      - unit-tests-for-changed-service-methods
+      - fixtures-for-changed-component-states
+    # T-007, D-M3-32. Two CONTRACTS, not two reviewers. The decorrelation that
+    # mattered on M1-P5 was in the question asked: both reviews walked all
+    # fifteen acceptance criteria and agreed on every mechanical fact, and the
+    # one briefed on hazards found a high-severity live-lock the other's report
+    # does not even name. DR-0012's requirement of two model FAMILIES is a
+    # different axis; full requires both.
+    review-contracts:
+      - criteria
+      - hazard
+    # BLUEPRINT SECTION 8'S TABLE SAYS `owner` FOR THIS ROW, AND THAT IS NOT
+    # WHAT IS IN FORCE. The owner granted delegated authority in DR-0012 and
+    # then removed themselves from the merge path entirely in DR-0015,
+    # milestone boundaries included. Declaring `owner` here would record a
+    # regime this project has left, which is precisely the drift the checks in
+    # this phase exist to prevent, and it would sit incoherently beside the
+    # escalation bounds below, which are DR-0012's own. A project that wants
+    # the blueprint's default declares `owner`; the value stays representable.
+    merge-authority: delegated-under-conditions
+    granted-by: DR-0012
+    # DR-0012, "What 'clean' means, defined here so it cannot be softened
+    # later". All six, in the record's order, not summarized.
+    conditions:
+      - >-
+        Two independent clean-room reviews exist for the current head, produced
+        on different model families, each written to `delivery/review/` and
+        committed.
+      - >-
+        Neither review carries an unresolved finding at high or medium
+        severity. Low findings may be merged with, provided each is either
+        fixed or explicitly recorded as a tracked item with a reason.
+      - >-
+        Both reviewers were given the phase's acceptance criteria as their
+        contract, and both walked or executed them. A review that only read is
+        not sufficient for a code phase.
+      - >-
+        CI is green on the exact head being merged, not on an earlier one.
+      - >-
+        The scope audit passes: changed files are on the phase's files-to-touch
+        list plus the two standing pre-authorized extras.
+      - >-
+        Where the reviews disagree, the orchestrator arbitrates with evidence
+        and records the arbitration in the merge commit or in the review file.
+        A disagreement is never resolved by preferring the more convenient
+        verdict.
+    # DR-0012's two limits with DR-0016's response. DATA THE ORCHESTRATOR BRIEF
+    # CITES, NOT AN ENFORCEMENT ENGINE: nothing in M3 counts fix rounds.
+    escalation-bounds:
+      max-fix-rounds-after-review: 2
+      recurrence-of-high-in-one-component: 1
+      on-exceeded: fresh-implementer-and-third-contract
+
+  # ------------------------------------------------------------------
+  # direct-pr: implement plus gates, no adversarial layers.
+  # ------------------------------------------------------------------
+  - id: direct-pr
+    declared-by: >-
+      blueprint section 8 row 2, "implement + gates, no adversarial layers",
+      with merge authority `owner` from the same row.
+    pipeline:
+      - intake
+      - plan
+      - implement
+      - merge-on-green
+      - final-report
+    # DECLARED, NOT IMPROVISED. Seven stages of `full` are dropped and every
+    # one of them is named here; `mode-no-undeclared-downgrade` recomputes this
+    # list from `full`'s pipeline and reddens on any omission that is not on it,
+    # and on any entry here that this mode's own pipeline still runs.
+    skips:
+      - verification-pass
+      - adversarial-plan-review
+      - clean-room-review
+      - fix-round
+      - fix-round-verification
+      - deploy-verify
+      - migration-verify
+    # Every gate whose `modes` list contains `direct-pr`: all of them except
+    # `deploy` and `migrations`, which are the two full-only entries.
+    gate-sets:
+      - manifest-self-check
+      - coverage
+      - credential-scrub
+      - credential-token
+      - suite
+      - citations
+      - scope
+      - clause-map
+      - red-witness
+      - agent-rules-drift
+      - unit-tests-for-changed-service-methods
+      - fixtures-for-changed-component-states
+    merge-authority: owner
+
+  # ------------------------------------------------------------------
+  # local-only: implement, orchestrator diff review, local fast-forward.
+  # ------------------------------------------------------------------
+  - id: local-only
+    declared-by: >-
+      blueprint section 8 row 3, "implement, orchestrator diff review, local
+      fast-forward", with merge authority "owner approves, orchestrator
+      merges", which SC-008 and plan v1 D-6 read as
+      owner-approves-orchestrator-merges.
+    pipeline:
+      - implement
+      - orchestrator-diff-review
+      - merge-on-green
+    skips:
+      - intake
+      - verification-pass
+      - plan
+      - adversarial-plan-review
+      - clean-room-review
+      - fix-round
+      - fix-round-verification
+      - deploy-verify
+      - migration-verify
+      - final-report
+    # Every gate whose `modes` list contains `local-only`.
+    gate-sets:
+      - manifest-self-check
+      - credential-scrub
+      - suite
+      - agent-rules-drift
+    # SEE THE $comment ON THIS FIELD IN THE SCHEMA. This value describes a
+    # regime the Tiphys kernel itself has left (DR-0015): for this project the
+    # owner is not an approval step anywhere in execution. It is kept because
+    # blueprint section 8 assigns it to this row and another project may want
+    # it, not because anything here runs under it.
+    merge-authority: owner-approves-orchestrator-merges
