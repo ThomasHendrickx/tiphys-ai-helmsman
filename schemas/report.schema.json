@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/report.schema.json",
+  "title": "Tiphys role report",
+  "$comment": "R-049, R-057a, R-085, R-086, R-088, T-003, T-004, T-006. Kernel plan M3, M3-P4 steps 1, 1b and 1c. THE HAZARD CLASS OF THIS DOCUMENT IS THAT IT DECIDES WHAT A FALSE CLAIM IS ALLOWED TO LOOK LIKE, in a milestone whose own evidence is written in it. Four things this schema deliberately CANNOT do, stated here rather than left to be discovered. (1) NO SCHEMA CAN TELL A MECHANISM FROM A FINDING: `fix-round.mechanism` is a required non-empty string and nothing more, and the judgement is M3-P7's `fix-round-mechanism-named` probe (M3-P4 criterion 2d(a)). (2) NO KEYWORD CAN TELL FULL CAPTURED OUTPUT FROM A SUMMARY OF IT: `fix-round.derivation.output` carries minLength and a non-whitespace pattern, which reaches absent and empty and reaches nothing else; the multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), never of an arbitrary instance. (3) NO CRITERION REACHES THE AUTHORING-COST RATIO between an honest record and a dishonest one, which is a property of two costs and not of any instance (section 2.6 reason 1). (4) A NON-EMPTY FIELD CAN STILL BE MEANINGLESS: `honest-failures[].exposure-window` cannot be empty or whitespace here, and whether it says anything is M3-P7's `honest-failure-substance` probe. WHAT THIS SCHEMA DOES BUY: a green gate result cannot be recorded without the wrapper's exit code and its counts on the SAME object; an environmental excuse cannot be recorded without evidence; an incident cannot be recorded without its exposure window and structural fix; a claim cannot be filed under a kind this schema does not question; and every field whose VALUE is the point rather than its presence carries minLength 1 AND pattern \\S, because `required` alone is satisfied by the empty string (criterion 2e).",
+  "description": "One document per role output. What was asked, what was found, what each finding rests on, what was claimed and how each claim was settled, which gates ran and what the wrapper said, and every departure from the plan's letter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "role",
+    "task",
+    "findings",
+    "claims",
+    "deviations",
+    "honest-failures",
+    "environmental-claims",
+    "gate-results"
+  ],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "report"
+    },
+    "role": {
+      "description": "The role brief this report answers.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "task": {
+      "description": "What the role was asked to do, in the words it was asked in.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "verdict": {
+      "$comment": "OPTIONAL because plan step 1 says `verdict` where applicable: an investigation report has no verdict and a review report does. A verdict that IS present must say something, which is the criterion 2e rule applied here.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "no-findings-statement": {
+      "$comment": "Criterion 2e's TOP-LEVEL SCALAR member. RESIDUE STATED RATHER THAN IMPLIED: this schema does not require the field when `findings` is empty, because `maxItems` is outside the declared authoring vocabulary (schemas/README.md) and there is no other keyword that says `this array is empty`. So the guard here is narrower than the rule it serves: it makes an EMPTY statement impossible, and it does not make a MISSING one impossible. The converse a reader should not assume is closed: a report with zero findings and no statement at all validates.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "claims": {
+      "$comment": "T-006, D-M3-30. SHARED WITH schemas/work-history.schema.json BY $ref INTO THIS DOCUMENT, so there is one definition of the honesty contract rather than two that can drift.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "fix-round": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30. OPTIONAL, and the residue is stated: nothing in this document declares that a report IS a fix-round report, so the schema cannot require the object for the reports that need it. What it does is make a fix round unreportable without its mechanism, its full derivation and its non-coverage once the object is present at all.",
+      "$ref": "#/$defs/fixRound"
+    },
+    "deviations": {
+      "$comment": "R-057a: every departure from the plan's letter is declared.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/deviation" }
+    },
+    "honest-failures": {
+      "$comment": "R-088: an incident cannot be recorded without the three things that make it useful.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/honestFailure" }
+    },
+    "environmental-claims": {
+      "$comment": "R-085: an environmental excuse without evidence is unrepresentable.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/environmentalClaim" }
+    },
+    "gate-results": {
+      "$comment": "R-049, R-086. SHARED WITH schemas/work-history.schema.json BY $ref INTO THIS DOCUMENT.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/gateResult" }
+    }
+  },
+  "$defs": {
+    "nonEmptyText": {
+      "$comment": "CRITERION 2e, THE EMPTY-STRING SATISFACTION CLASS. `required` alone is satisfied by \"\", so every field whose VALUE is the point carries BOTH keywords: minLength 1 reaches the empty string and pattern \\S reaches the whitespace-only block scalar, which minLength alone does not catch. This definition is NOT used by $ref at every site, because a $ref would hide the two keywords from the removing-and-restoring witness section 2.3 rule 2 requires; the keywords are written out at each field and this definition records the rule once.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "universalQuantifier": {
+      "$comment": "T-003 lesson 3, named there as PARTIALLY LINTABLE and no more than that. The alternation is flat and each branch is a literal, so the pattern is linear in the subject length and carries no nested quantifier; a timing measurement on a long near-miss is recorded in delivery/work-history/m3-p4.md. WHAT IT DOES NOT REACH, stated because a pattern that looks like a guard invites the reader to assume it is one: a universal claim written without any of these five tokens (`in every case`, `there is no path that`, `guaranteed`) passes, and T-006 records that the three false claims M1-P5 actually produced were not universal at all. That is why `claims[]` exists beside this rule rather than instead of it.",
+      "type": "string",
+      "pattern": "\\b([Aa]lways|[Nn]ever|[Ee]very|[Aa]ll cases|[Ii]n all)\\b"
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "evidence", "analysis", "outcome", "source-pinned"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9]*-[0-9]+[a-z]?$"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "informational"]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "analysis": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source-pinned": {
+          "$comment": "T-004. A finding produced by a run that cannot pin the source it ran against is LABELLED rather than inherited as fact. The boolean is required so the question is answered rather than skipped, and `true` drags `pinned-evidence` with it.",
+          "type": "boolean"
+        },
+        "pinned-evidence": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "counter-experiment": {
+          "$comment": "T-003 lesson 3. Required by the if/then below when `analysis` carries a universal quantifier: a universal claim is settled by someone trying to falsify it, and this field is where that attempt is named.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "if": {
+        "$comment": "T-004. Kind A, both sides on the SAME object, so the coupling cannot be satisfied by a pin recorded somewhere else in the document.",
+        "type": "object",
+        "required": ["source-pinned"],
+        "properties": { "source-pinned": { "const": true } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["pinned-evidence"],
+        "properties": {
+          "pinned-evidence": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        },
+        "$comment": "T-003 lesson 3, NESTED because one object level carries one if/then and this rule is conditional on a different field. The nesting is exact: `source-pinned: true` AND a universal `analysis` requires both fields; the universal rule for an UNPINNED finding is carried by the sibling `oneOf` below, which is why that keyword is there.",
+        "if": {
+          "type": "object",
+          "required": ["analysis"],
+          "properties": { "analysis": { "$ref": "#/$defs/universalQuantifier" } }
+        },
+        "then": {
+          "type": "object",
+          "required": ["counter-experiment"],
+          "properties": {
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "THE UNIVERSAL-CLAIM RULE, expressed so that it binds whatever `source-pinned` says. Branch 1: the analysis carries no universal quantifier, so no counter-experiment is owed.",
+          "type": "object",
+          "required": ["analysis"],
+          "properties": {
+            "analysis": {
+              "type": "string",
+              "pattern": "^(?:(?!\\b([Aa]lways|[Nn]ever|[Ee]very|[Aa]ll cases|[Ii]n all)\\b)[\\s\\S])*$"
+            }
+          }
+        },
+        {
+          "$comment": "Branch 2: the analysis carries one, and a counter-experiment reference is required beside it.",
+          "type": "object",
+          "required": ["analysis", "counter-experiment"],
+          "properties": {
+            "analysis": { "$ref": "#/$defs/universalQuantifier" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "$comment": "Plan step 1: an object with `path` and EITHER `lines` OR `command` plus `exit-code`. The two shapes are a oneOf rather than an optional-everything object, so `path` alone (a citation with nothing behind it) is a rejection.",
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "lines"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "lines": { "type": "string", "pattern": "^[0-9]+(-[0-9]+)?$" },
+            "note": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "command", "exit-code"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "command": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "exit-code": { "type": "integer" },
+            "note": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ],
+      "if": {
+        "$comment": "T-003 lesson 3 applied to `evidence[].note`, which plan step 1 names beside `analysis`.",
+        "type": "object",
+        "required": ["note"],
+        "properties": { "note": { "$ref": "#/$defs/universalQuantifier" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["counter-experiment"],
+        "properties": {
+          "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "claim": {
+      "$comment": "T-006, D-M3-30, plan step 1b. SHARED BY $ref WITH schemas/work-history.schema.json. WHY A FIELD AND NOT A GREP: CLAUDE.md's claim grep scans prose for candidate sentences and works; T-006 records that its own pattern survived being documented as a norm and was reproduced by the agent who filed it on the same day. A declared section gives the check a FIELD, so the honest restatement is a first-class value rather than an omission. THE ENUM IS CLOSED ON PURPOSE: an open `kind` lets an impossibility claim be filed as a note and skip its construction requirement, which is the hazard this section exists for. THE SPLIT THAT MATTERS: a UNIVERSAL claim is settled by someone trying to FALSIFY it, and an impossibility, coverage or remedy claim is settled by someone trying to BUILD the thing, which is why the three carry an executed construction rather than a counter-experiment. `open-question` is the honest restatement and is deliberately CHEAP: 'I did not find a way to force this arm' needs nothing, and 'this arm cannot be forced here' needs a construction.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "statement"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "kind": {
+          "$comment": "CLOSED. A value outside this set is reported as `value <x> is not one of the permitted values ...`, which names the vocabulary rather than leaving the author to guess (criterion 2c(d)).",
+          "type": "string",
+          "enum": ["universal", "impossibility", "coverage", "remedy", "open-question"]
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "settled-by": { "$ref": "#/$defs/settledBy" }
+      },
+      "if": {
+        "$comment": "Every kind EXCEPT open-question owes a settlement. This if/then exists beside the oneOf below so that the diagnostic NAMES `settled-by`; the oneOf alone would report only that no alternative matched.",
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["universal", "impossibility", "coverage", "remedy"]
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["settled-by"],
+        "properties": { "settled-by": { "$ref": "#/$defs/settledBy" } }
+      },
+      "oneOf": [
+        {
+          "$comment": "A universal claim is settled by a counter-experiment (T-003).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement", "settled-by"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": { "type": "string", "const": "universal" },
+            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "settled-by": { "$ref": "#/$defs/settledByCounterExperiment" }
+          }
+        },
+        {
+          "$comment": "An impossibility, coverage or remedy claim is settled by an EXECUTED CONSTRUCTION: the attempt, with its command, its exit code and its output, rather than the reasoning that predicted the attempt would fail. M1-P5's 'needs a stat or readdir failure that is neither ENOENT nor a permission bit, and this suite runs as root' was disproved in minutes by symlinkSync(p, p) raising ELOOP, needing no privileges.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement", "settled-by"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": {
+              "type": "string",
+              "enum": ["impossibility", "coverage", "remedy"]
+            },
+            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "settled-by": { "$ref": "#/$defs/settledByConstruction" }
+          }
+        },
+        {
+          "$comment": "THE HONEST RESTATEMENT, and it is first-class rather than an omission. `additionalProperties: false` with `settled-by` absent from this branch's properties is what makes a SETTLED question filed as OPEN a rejection: it is the opposite misdeclaration and is equally a misdeclaration (criterion 2c(e)).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": { "type": "string", "const": "open-question" },
+            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ]
+    },
+    "settledBy": {
+      "$comment": "The base shape, so the claim object can name the property. Which of the two forms applies is decided by the claim's kind, in the oneOf above.",
+      "oneOf": [
+        { "$ref": "#/$defs/settledByCounterExperiment" },
+        { "$ref": "#/$defs/settledByConstruction" }
+      ]
+    },
+    "settledByCounterExperiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counter-experiment"],
+      "properties": {
+        "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "settledByConstruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed-construction"],
+      "properties": {
+        "executed-construction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "exit-code", "output"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "exit-code": { "type": "integer" },
+            "output": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      }
+    },
+    "fixRound": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30, plan step 1c. SHARED BY $ref WITH schemas/work-history.schema.json. THE MEASURED EVIDENCE, recorded here so a future reader finds the reason rather than the rule: a throughput analysis of M1 measured sixteen completed fix rounds, thirteen were re-reviewed, and TWELVE of those thirteen produced a new finding attributable to the round itself; the dominant shape, roughly a third of the milestone's elapsed time, is that the fix addressed the INSTANCE the reviewer named when the defect was the MECHANISM (M1-P3 chained four rounds that way, M1-P5 four, M1-P6 two). `not-covered` is REQUIRED rather than optional because a search whose scope is wrong returns an empty result indistinguishable from an absence of defects, and this project was bitten by that three times: `state/session.lock` probed when the lease is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and `worktrees/` while the missed path sat at the fleet root; a usage error read as a clean result. M3-P7's clean-room checklist makes `not-covered` the reviewer's FIRST probe, which is the other half of the same rule.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "derivation", "not-covered"],
+      "properties": {
+        "mechanism": {
+          "$comment": "The MECHANISM, not the finding. 'A FIFO at the beacon hangs the guard' is a finding; 'reading a path whose type has not been established' is the mechanism, and the round fixes the second. NO SCHEMA CAN TELL THE TWO APART and this field does not pretend to: the judgement is M3-P7's `fix-round-mechanism-named` probe.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "derivation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "output"],
+          "properties": {
+            "command": {
+              "$comment": "The exact command that enumerates every call site of the mechanism.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "output": {
+              "$comment": "The FULL output of that command, not a summary of it. minLength and the non-whitespace pattern reach ABSENT and EMPTY and reach nothing else; a one-line summary satisfies both keywords. The multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), which is a claim about this repository's example and not about an arbitrary instance.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        "not-covered": {
+          "$comment": "The regions the derivation EXCLUDED, and why. Criterion 2e's array-element member when this object sits inside work-history's fix-round[].",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "deviation": {
+      "$comment": "R-057a.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan-clause", "why"],
+      "properties": {
+        "plan-clause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "honestFailure": {
+      "$comment": "R-088. An incident cannot be recorded without the three things that make it useful: what caused it, how long the exposure lasted, and what structural change stops it recurring.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cause", "exposure-window", "structural-fix"],
+      "properties": {
+        "cause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "exposure-window": {
+          "$comment": "Criterion 2e's WHITESPACE-ONLY BLOCK SCALAR member: a YAML block scalar holding a newline and two spaces satisfies minLength and is caught by the pattern, which is why both keywords are here and not one.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "structural-fix": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "environmentalClaim": {
+      "$comment": "R-085: an environmental excuse without evidence is unrepresentable. `minItems: 1` is the guard; an empty evidence array is the dangerous instance criterion 2(b) witnesses.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "evidence"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "gateResult": {
+      "$comment": "R-049, R-086, R-048. SHARED BY $ref WITH schemas/work-history.schema.json. 'ALL GREEN' ONLY EVER MEANS THE WRAPPER'S EXIT CODE, expressed as a schema rule rather than as an instruction an agent can forget, and the coupling is an if/then on the SAME OBJECT so a `green` cannot be constructed while the exit code lives somewhere else in the document. THE COUNTS TRAVEL WITH IT rather than instead of it (plan section 1.7): the M2-P3 wrapper binds the child's exit code to the parsed counts in both directions, and R-048 is the silently-dropped-tests case, so `discovered` is checked against the four buckets by the derived check `report-parity-arithmetic` (Kind B: no keyword computes arithmetic over sibling fields). TWO RESIDUES, STATED. First, the CONVERSE is deliberately open: a result that is NOT green may carry `wrapper-exit-code: 0`, because a wrapper can exit 0 while the author judges the run not green, which is exactly the R-048 shape, and closing that direction would make the honest record unwritable. Second, the M2 wrapper carries a SIXTH bucket, `todo`, which this five-field vocabulary has no field for, so a run reporting todo > 0 cannot be recorded here without breaking parity; that is a real gap in the plan's field list and is recorded in delivery/work-history/m3-p4.md rather than papered over by inventing a field the plan does not name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate", "result"],
+      "properties": {
+        "gate": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "result": {
+          "type": "string",
+          "enum": ["green", "red", "amber", "not-applicable", "error"]
+        },
+        "wrapper-exit-code": { "type": "integer" },
+        "discovered": { "type": "integer" },
+        "passed": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "skipped": { "type": "integer" },
+        "did-not-run": { "type": "integer" }
+      },
+      "if": {
+        "type": "object",
+        "required": ["result"],
+        "properties": { "result": { "const": "green" } }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "wrapper-exit-code",
+          "discovered",
+          "passed",
+          "failed",
+          "skipped",
+          "did-not-run"
+        ],
+        "properties": {
+          "wrapper-exit-code": { "type": "integer", "const": 0 },
+          "discovered": { "type": "integer" },
+          "passed": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "skipped": { "type": "integer" },
+          "did-not-run": { "type": "integer" }
+        }
+      }
+    }
+  }
+}
