@@ -3081,6 +3081,46 @@ test("a paragraph the parser emptied contributes no unit, at top level and insid
    widens rather than narrows if the fixture is ever deepened. */
 const NEAR_MISS_BUDGET_MS = 1000;
 
+/* CR-001, ROUND 9: THE BOUND IS WALL-CLOCK AND THE BOX IS NOT ALWAYS QUIET.
+   The reviewer could not force the green arm red and said so honestly, but
+   noted that two OTHER wall-clock tests in this repository failed on this box
+   at load average 10.8, and declined to leave that unrecorded. Measured here at
+   load average 12.94, which is HIGHER than the load that broke those two, nine
+   samples per member per arm:
+
+     quiet   loadavg 0.24  bullet min 0.28 median 0.42 max  2.62 ms
+                           ordered min 0.11 median 0.20 max  1.15 ms
+     loaded  loadavg 12.94 bullet min 0.25 median 0.31 max 12.68 ms
+                           ordered min 0.08 median 0.21 max 32.79 ms
+     loaded  (repeat)      bullet min 0.25 median 0.40 max 17.91 ms
+                           ordered min 0.16 median 0.21 max 29.18 ms
+
+   Worst single sample under six-times CPU oversubscription is 32.79 ms, which
+   is 3.3% of the budget: a 30x margin remains AFTER the load. Load inflated the
+   worst sample by about 12x and would need another 30x on top of that to breach
+   the bound. The two tests that did flake are structurally different: they wait
+   a fixed wall-clock window and count events that must arrive inside it, so
+   descheduling removes events, whereas this one measures the DURATION of one
+   CPU-bound call.
+
+   THE HARDENING, AND WHY IT CANNOT CREATE A FALSE GREEN. Load can only make a
+   sample SLOWER, never faster, so the MINIMUM over repeated samples of the same
+   deterministic workload is a lower-bound estimator of its true cost. Taking
+   the minimum can therefore remove false REDS and cannot manufacture a false
+   green: if the minimum is under budget, some run of the real workload really
+   did complete under budget.
+
+   RESAMPLING IS GATED BY TIME, NOT BY A COUNT, so the red arm costs exactly
+   what it costs today. A sample four times over budget is not a scheduling
+   artifact, it is a pathological workload, and it is accepted as decisive
+   without resampling. The dangerous states of this test's witness measure 11.2 s
+   and 12.6 s, far above the ceiling, so they take ONE sample and fail
+   immediately exactly as before; only a marginal overrun, which is what a
+   preemption produces, buys the extra samples, and those cost about 0.3 ms
+   each. */
+const NEAR_MISS_RESAMPLE_CEILING_MS = NEAR_MISS_BUDGET_MS * 4;
+const NEAR_MISS_MAX_SAMPLES = 3;
+
 /** A two-line document whose start-column verification is handed a long span
  *  that parses as markers until its very last character. `markers` is the run
  *  on line 2; the quote count on line 1 is derived so the offset lands one
@@ -3104,16 +3144,30 @@ test("a long near-miss block prefix is rejected in bounded time, for a bullet ru
   ];
   for (const [name, marker, count] of MEMBERS) {
     const record = nearMissRecord(marker, count);
-    const started = process.hrtime.bigint();
-    const units = checksModule.quotableUnits(record);
-    const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
+    let units = new Set<string>();
+    const samples: number[] = [];
+    for (let attempt = 0; attempt < NEAR_MISS_MAX_SAMPLES; attempt += 1) {
+      const started = process.hrtime.bigint();
+      units = checksModule.quotableUnits(record);
+      samples.push(Number(process.hrtime.bigint() - started) / 1e6);
+      const last = samples[samples.length - 1] as number;
+      /* Under budget: done. Four times over: decisive, and resampling a
+         pathological workload would only spend another eleven seconds to reach
+         the same verdict. Only the band between the two is resampled. */
+      if (last < NEAR_MISS_BUDGET_MS || last >= NEAR_MISS_RESAMPLE_CEILING_MS) {
+        break;
+      }
+    }
+    const elapsed = Math.min(...samples);
 
     /* THE TIME ASSERTION IS THE WITNESS. Everything else here is a control. */
     assert.ok(
       elapsed < NEAR_MISS_BUDGET_MS,
       `${name}: rejecting a ${String(record.length)}-byte near miss took ` +
-        `${elapsed.toFixed(1)} ms, over the ${String(NEAR_MISS_BUDGET_MS)} ms budget; ` +
-        `the block-prefix test is backtracking rather than scanning`,
+        `${elapsed.toFixed(1)} ms (best of ${String(samples.length)}: ` +
+        `${samples.map((value) => value.toFixed(1)).join(", ")}), over the ` +
+        `${String(NEAR_MISS_BUDGET_MS)} ms budget; the block-prefix test is ` +
+        `backtracking rather than scanning`,
     );
 
     /* CONTROL, so a "fix" that is fast because it stopped working cannot pass:
