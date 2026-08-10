@@ -1,0 +1,18 @@
+workflow  : gates
+event     : pull_request
+head_sha  : b5c01f07ee14eda8d7549006dd4693c3a5544125
+run id    : 31367859301
+job id    : 93390070996
+status    : completed
+conclusion: success
+started   : 2026-08-10T07:55:47Z
+completed : 2026-08-10T08:10:47Z
+
+Steps, all conclusion success except where noted:
+  Set up job / checkout / setup-node / npm ci / npm run build / npm test
+  Agent-rules gate-list drift (gate-registry.yaml is the single source, R-094)
+  M2 exit test (pull request)
+  M2 exit test (push)                            -> skipped (event fork, by design)
+  M2 exit test self-test guard
+  M1 exit test (local mode)
+  M1 exit test falsifiability guard

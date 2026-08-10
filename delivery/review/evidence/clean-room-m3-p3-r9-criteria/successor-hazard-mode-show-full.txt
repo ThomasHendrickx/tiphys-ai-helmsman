@@ -1,0 +1,49 @@
+mode: full
+execution-status: this mode is full, which blueprint section 8 defines by name as the un-downgraded process, and it is the one the tiphys project follows for its own delivery.
+merge-authority: delegated-under-conditions
+granted-by: DR-0012
+pipeline:
+  intake
+  verification-pass
+  plan
+  adversarial-plan-review
+  implement
+  clean-room-review
+  fix-round
+  fix-round-verification
+  merge-on-green
+  migration-verify
+  final-report
+skips:
+  deploy-verify
+gate-sets:
+  manifest-self-check
+  coverage
+  credential-scrub
+  credential-token
+  suite
+  citations
+  scope
+  deploy
+  migrations
+  clause-map
+  red-witness
+  agent-rules-drift
+  unit-tests-for-changed-service-methods
+  fixtures-for-changed-component-states
+review-contracts:
+  criteria
+  hazard
+escalation-bounds (data an orchestrator brief cites; nothing in this release counts fix rounds, detects recurrence, or enforces these):
+  max-fix-rounds-after-review: 2
+  on-exceeded: fresh-implementer-and-third-contract
+  recurrence-of-high-in-one-component: 1
+conditions:
+  Two independent clean-room reviews exist for the current head, produced on different model families, each written to `delivery/review/` and committed.
+  Neither review carries an unresolved finding at high or medium severity. Low findings may be merged with, provided each is either fixed or explicitly recorded as a tracked item with a reason.
+  Both reviewers were given the phase's acceptance criteria as their contract, and both walked or executed them. A review that only read is not sufficient for a code phase.
+  CI is green on the exact head being merged, not on an earlier one.
+  The scope audit passes: changed files are on the phase's files-to-touch list plus the two standing pre-authorized extras.
+  Where the reviews disagree, the orchestrator arbitrates with evidence and records the arbitration in the merge commit or in the review file. A disagreement is never resolved by preferring the more convenient verdict.
+declared-by: blueprint section 8 (the mode and its pipeline); process doc section 9 item 3 enumerated (R-096); T-003 for the fix-round-verification stage; DR-0012 and DR-0015 for the merge authority actually in force; DR-0016 for the escalation response; T-007 and D-M3-32 for the review contracts.
+limits: the mode, stage and role vocabularies in the shipped schemas are this repository's own closed enums, so a document naming any other id is rejected and a consuming project cannot extend them at v0.1.0; whether to open them is an M4 question (DR-0020). This command SHOWS a declared mode: nothing in this release resolves a project into a mode, enforces one, or runs one.
