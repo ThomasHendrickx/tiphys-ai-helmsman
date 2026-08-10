@@ -6,14 +6,32 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-10
-- main head: `d0d55e4` (PR #80), then `90ebedf` (PR #82, the M3-P4 round-1
-  reviews and arbitration). Both T-009 arms DISCHARGED BY STEP and each run
-  COMPLETED rather than being cancelled: `d0d55e4` and `90ebedf` each report all
-  15 steps success, step 9 `M2 exit test (push)` success, step 8 correctly
-  skipped, steps 10 and 12 (the two guards) success.
+- main head: `b1e9ac7` (PR #84, the M3-P4 fix-round-2 delta verification and
+  arbitration). DISCHARGED BY STEP, and EVERY head this session completed
+  rather than being cancelled once the batch stopped overlapping: all 15 steps
+  success, step 9 `M2 exit test (push)` success, step 8 correctly skipped, steps
+  10 and 12 (the two guards) success. `253740e` (PR #83) and `90ebedf` (PR #82)
+  and `d0d55e4` (PR #80) are each discharged the same way.
   The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
   M3-P4's round-1 evidence.
-- **M3-P4 IS IN FIX ROUND 2 (2026-08-10).** Round 1 was dual clean-room reviewed
+- **M3-P4 IS IN FIX ROUND 3 (2026-08-10), the LAST the DR-0012 stop rule allows.**
+  Fix round 2 closed every round-1 finding AT THE MECHANISM, and independent
+  delta verification then found FOUR NEW ones, so round 3 is closing those. The
+  round-2 arbitration is delivery/review/arbitration-m3-p4-round-2.md:1 and the
+  verification is delivery/review/verification-m3-p4-fix-round.md:1.
+  **DV-002 (HIGH) is the one that matters: round 2 claimed a site was
+  "unreachable by keyword or check" and the verifier BUILT the thing it said
+  could not exist**, using a technique round 2 had itself applied elsewhere. The
+  defect ruled was the ARGUMENT, not the sentence: one claim justified a whole
+  class, it was false for one site, so the rest are UNJUDGED rather than upheld.
+  Round 2 DID run the mandated claim grep and still shipped it, which is the
+  lesson: **a grep catches the WORDING, not the REASONING.**
+  DV-001 (MEDIUM, latent) is the one-hop enumeration hole, and it exists in the
+  record ONLY because a verifier killed by a container restart had written its
+  beacon incrementally; its 40-line partial carried the lead.
+  If round 3 does not close them, DR-0016 sends a fresh implementer and a third
+  contract, and DR-0023 means the owner is NOTIFIED rather than waited on.
+  Round 1 history follows. Round 1 was dual clean-room reviewed
   at `a3ea489` and BOTH contracts returned CHANGES REQUIRED. The arbitration is
   delivery/review/arbitration-m3-p4-round-1.md:1; the reports are
   delivery/review/clean-room-m3-p4-expressible-lie.md:1 (2 high, 2 medium, 3
@@ -104,7 +122,8 @@ is wrong: verify against git and the PR list before trusting it.
   declaration amendments M3-P3 needed were not repeated. It has held: `scope`
   green at 18 paths with the declaration unamended through the whole phase.
 - milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1, M3-P2 and M3-P3 are
-  MERGED. M3-P4 is in fix round 2. M3-P5 to M3-P10 are not dispatched and remain
+  MERGED. M3-P4 is in fix round 3. M3-P5 is PRE-CHECKED and brief-ready but not
+  dispatched; M3-P6 to M3-P10 are not dispatched. All remain
   blocked strictly behind their predecessor, because M3 is a serial chain with
   no conflict pre-pass. M2 COMPLETE including its post-exit-test fix
   round; M1 complete, exit test passed on `7e1b5f1`, completion record merged
@@ -635,7 +654,9 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 > and the merge decision is delivery/review/arbitration-m3-p3-merge.md:1.
 >
 > **NOTHING IS BLOCKING THE OWNER RIGHT NOW.** The one owner action outstanding
-> anywhere in M3 is A-7, and it does not bite until M3-P10.
+> anywhere in M3 is A-7, and it does not bite until M3-P10. Its irreversible
+> half (claiming the `@tiphys` scope) is DONE as of 2026-08-10, and DR-0024
+> removed the credential from the other half entirely.
 >
 > This escalation should not have happened, and the reason is recorded as a
 > decision rather than a resolution: DR-0023 rules that the DR-0012 stop rule
@@ -686,11 +707,26 @@ and `A-3` meant three, one of them a literal string inside
    `claude/m3-plan-regrounding`, which is the state this project wanted:
    `main` is the source of truth and the M3 branch is where M3 is worked,
    rebased onto `main` rather than diverging from it.
-6. **A-7, before the M3 exit run.** Provide the npm publish credential and
-   claim the `@tiphys` scope, per DR-0008 (public npmjs, `@tiphys/kernel` and
-   `@tiphys/claude-code-plugin`). This is elevated access the orchestrator does
-   not hold, so it is owner-reserved by construction under DR-0016. It blocks
-   M3-P10 only; M3-P1 through M3-P9 run without it.
+6. **A-7, before the M3 exit run. PART 1 IS DONE; PART 2 CHANGED SHAPE.**
+   - **Part 1, claim the `@tiphys` scope on npmjs: DONE (owner, 2026-08-10.)**
+     The irreversible half is closed: the scope cannot now be taken by anyone
+     else, which was the reason to do it early rather than at M3-P10.
+   - **Part 2 is NO LONGER "provide a credential".** DR-0024 decides that
+     publishing authenticates by OIDC trusted publishing rather than a
+     long-lived token, so there is no secret to transport, store, or rotate.
+     What remains is a CONFIGURATION the owner makes in the npm UI, linking
+     `@tiphys/kernel` to this repository and the release workflow, and it
+     cannot be done until M3-P10 can name the workflow file.
+   Still owner-reserved, because it needs npm account access the orchestrator
+   does not hold. Still blocks M3-P10 only; M3-P1 through M3-P9 run without it.
+   **The reason for the change, in one line: this repository runs two gates whose
+   whole purpose is keeping credentials out of artifacts, and the better move is
+   to have no credential rather than a well-guarded one.**
+   **AND ONE OPEN QUESTION RIDES ON IT**, stated in DR-0024 rather than guessed:
+   it is not established whether npm permits configuring a trusted publisher for
+   a package that has NEVER been published. If it does not, the first publish
+   cannot use OIDC and M3-P10 needs a bootstrap. M3-P10's FIRST step settles
+   that against npm's documentation, before any workflow is written.
    **Id note:** the M3 plan called this `A-4` through revision 2, colliding
    with the branch deletion above. Revision 3 renumbered the PLAN's id to A-7.
    M2's `A-3` is deliberately untouched because it is embedded as a literal
