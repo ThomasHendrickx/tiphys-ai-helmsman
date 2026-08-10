@@ -37,3 +37,29 @@ the shell that runs each command.
 - Foreign `--file` arm exercised on four documents with a properly staged
   context; all sentences read.
 
+- Schema hunk INERTNESS CHECKED, not assumed. Structural JSON diff of
+  `schemas/assurance-modes.schema.json` between b5c01f0 and 676c050 reports
+  exactly ONE changed path, `/$defs/modeShape/properties/skips/$comment`, and
+  swapping the round-9 schema into the staged install gives byte-identical
+  output on four probes (shipped document, downgraded reference, phantom entry,
+  `mode show`). `assurance-modes.yaml`'s hunk is comment-only: the parsed data
+  is identical and the non-comment line diff is empty at exit 0.
+- DR-0020: five `CLOSED VOCABULARY AT v0.1.0 (DR-0020)` disclosures across the
+  three schemas, head and round 9 both, and round 10's schema diff contains
+  zero `CLOSED VOCABULARY` lines. `mode show` still annotates both
+  validated-only modes and the `--file` arm still says "not determinable here".
+- DR-0022 re-derived independently from `git archive 676c050 delivery/decisions`:
+  20 records, 504 units on both arms, DIFF_EXIT=0, md5
+  e5c0dfd22c3b3f9215b88200d2804352. Sixth independent derivation.
+- Suite, three axes, all exit 0: npm test + dist = 507/507/0 skipped; bare
+  `node --test` + dist = 509/509/0; npm test without dist = 507 tests, 498
+  pass, 9 SKIPPED; default toolchain node v22.22.2 + dist = 507 tests, 505
+  pass, 2 SKIPPED.
+- CI OBSERVED on the exact head: `gates` workflow, event `pull_request`, run
+  31375024358, job 93412207232, head_sha
+  676c0509b1e5396adee35ca1367ca03eb9469896, conclusion SUCCESS, completed
+  2026-08-10T09:48:53Z. The post-merge `push` arm cannot exist yet and remains
+  owed under T-009.
+- Full registry gate bundle running in a scratch CLONE under the real branch
+  name `claude/m3-p3-assurance-modes`, base 3c60acb, `--phase m3-p3`.
+
