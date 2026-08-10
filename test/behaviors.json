@@ -539,5 +539,16 @@
   "final-report-empty-section-requires-marker": "an enumerable final-report section is empty only with an explicit marker, in both directions",
   "universal-quantifier-pattern-is-bounded": "the universal-quantifier pattern is linear on a long near-miss rather than catastrophic",
   "work-history-companion-schema-declared": "the work-history type is registered with report.schema.json as its declared companion, and without it the schema does not compile",
-  "work-history-claim-kind-enum-closed-through-shared-definition": "a work history claim filed under a kind the schema does not question is rejected through the shared definition"
+  "work-history-claim-kind-enum-closed-through-shared-definition": "a work history claim filed under a kind the schema does not question is rejected through the shared definition",
+  "shared-definition-guards-cover-every-user-type": "every derived check that guards a shared definition runs on every artifact type that reaches it",
+  "green-gate-result-cannot-report-failures": "a green gate result carrying failures is rejected, and the guard is the same if/then that pins the exit code",
+  "green-gate-result-carries-the-todo-bucket": "a green gate result must carry the todo bucket, and parity counts it",
+  "open-question-cannot-assert-a-settlement": "an impossibility filed as an open question is rejected, while an honest open question still needs nothing",
+  "universal-claim-cannot-assert-impossibility": "an impossibility filed as a universal claim is rejected, and an ordinary universal claim is not",
+  "universal-quantifier-catches-all-caps": "an ALL-CAPS universal quantifier is caught, in analysis and in an evidence note",
+  "quantifier-branches-are-exact-complements": "the finding's non-universal branch is the exact complement of the shared quantifier pattern",
+  "empty-findings-requires-a-statement": "a report with no findings and no statement is rejected, and so is a statement beside real findings",
+  "parity-check-runs-on-work-history-gate-evidence": "the parity check runs on a work history's gate-evidence, through the shared definition it guards",
+  "work-history-gate-evidence-shares-green-keywords": "a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition",
+  "work-history-open-question-cannot-assert-a-settlement": "an impossibility filed as an open question is rejected in a work history too, through the shared definition"
 }

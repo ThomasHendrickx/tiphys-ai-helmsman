@@ -56,6 +56,31 @@ const validateModule = (await import(
   ) => string[];
 };
 
+interface DerivedCheck {
+  id: string;
+  type: string;
+  alsoTypes?: readonly string[];
+  guards?: readonly string[];
+  requiresContext: boolean;
+  run: (
+    instance: unknown,
+    contextDirectory: string | undefined,
+  ) => { violations: { pointer: string; message: string }[]; reports: string[] };
+}
+
+const checksModule = (await import(
+  new URL("../src/checks.ts", import.meta.url).href
+)) as {
+  runChecks: (
+    type: string,
+    instance: unknown,
+    contextDirectory: string | undefined,
+  ) => { lines: string[]; failed: boolean };
+  registerCheck: (check: DerivedCheck) => void;
+  deregisterCheck: (id: string) => boolean;
+  reportParityArithmetic: DerivedCheck;
+};
+
 const validateCommand = (await import(
   new URL("../src/commands/validate.ts", import.meta.url).href
 )) as {
@@ -247,6 +272,23 @@ test("a work history whose verification-first entry contradicts the plan and nam
   ]);
   assert.deepEqual(workHistoryLines(unanswered, defanged).length > 0, true);
 
+  /* AND ITS OWN REMOVAL ARM (M3-P4 round-1 finding CR-1520). The line above
+     asserts the instance is STILL red under the if/then-defanged schema,
+     which is a weaker and different property: it shows the two guards are
+     independent, not that this one is load-bearing. The witness table named
+     the `required` entry for this row and nothing removed it, so the column
+     overstated. Removing it is what turns the instance green. */
+  const withoutRequired = readSchema("work-history.schema.json");
+  const verificationFirstDefinition = nodeAt(withoutRequired, [
+    "$defs",
+    "verificationFirst",
+  ]);
+  verificationFirstDefinition["required"] = (
+    verificationFirstDefinition["required"] as string[]
+  ).filter((name) => name !== "contradicts-plan");
+  assert.deepEqual(workHistoryLines(unanswered, withoutRequired), []);
+  assert.ok(workHistoryLines(unanswered).length > 0);
+
   /* THE CONVERSE, ASKED AND ANSWERED: an entry with
      `contradicts-plan: false` that names an escalation anyway is ACCEPTED.
      Recording an escalation you did not owe is not a misdeclaration, and a
@@ -396,4 +438,147 @@ test("the shipped warnings template placed as a fleet warnings file reaches an a
     brief.includes("GIT_AUTHOR_"),
     "the tail of the warnings template is missing from the brief",
   );
+});
+
+/* ==================================================================== */
+/* FIX ROUND 2: the derived-check half of the sharing                    */
+/* ==================================================================== */
+
+test("the parity check runs on a work history's gate-evidence, through the shared definition it guards", () => {
+  /* CR-001, AND THE INSTANCE IS THE REVIEWER'S OWN: a work history claiming a
+     green suite that discovered 9999 tests and ran one. The KEYWORD half of
+     the sharing always worked; the DERIVED-CHECK half did not, because a
+     check is registered per artifact TYPE and reads a type-specific KEY
+     (`gate-evidence` here, `gate-results` in a report), so neither half of
+     the registration followed the `$ref`. */
+  const document = readTemplate("work-history.example.yaml");
+  const evidence = (document["gate-evidence"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  evidence["discovered"] = 9999;
+  evidence["passed"] = 1;
+  evidence["skipped"] = 0;
+
+  /* THE KEYWORDS ACCEPT IT, which is why the check is the only thing between
+     this record and a green. Without this line the arm would not show that
+     the schema half is not the guard. */
+  assert.deepEqual(workHistoryLines(document), []);
+
+  const run = checksModule.runChecks("work-history", document, undefined);
+  assert.equal(run.failed, true);
+  assert.deepEqual(run.lines, [
+    "INVALID #/gate-evidence/0 discovered 9999 does not equal passed + failed + skipped + todo + did-not-run = 1 (check: report-parity-arithmetic)",
+  ]);
+
+  /* THE POINTER NAMES THIS DOCUMENT'S OWN KEY rather than the report's, so
+     the check is reading the work history and not a coincidence. */
+  assert.ok(run.lines.every((line) => !line.includes("#/gate-results/")));
+
+  /* THE CHECK DEREGISTERED (Kind B witness), and restored. */
+  assert.equal(checksModule.deregisterCheck("report-parity-arithmetic"), true);
+  try {
+    assert.deepEqual(
+      checksModule.runChecks("work-history", document, undefined).lines,
+      [],
+    );
+  } finally {
+    checksModule.registerCheck(checksModule.reportParityArithmetic);
+  }
+  assert.equal(
+    checksModule.runChecks("work-history", document, undefined).failed,
+    true,
+  );
+
+  /* AND THE SHIPPED EXAMPLE IS CLEAN under the same check, so the arm above
+     is the perturbation and not the baseline. */
+  assert.deepEqual(
+    checksModule.runChecks("work-history", readTemplate("work-history.example.yaml"), undefined)
+      .lines,
+    [],
+  );
+});
+
+test("a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition", () => {
+  /* THE POINT OF THE CONTRAST WITH THE TEST ABOVE: these two rules are
+     KEYWORDS, so they travel through the `$ref` with no registration at all,
+     while the parity rule needed `alsoTypes`. The asymmetry is the mechanism
+     CR-001 named, and it is witnessed here rather than asserted in a
+     comment. */
+  const failing = readTemplate("work-history.example.yaml");
+  const entry = (failing["gate-evidence"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  entry["passed"] = 105;
+  entry["failed"] = 400;
+  assert.deepEqual(workHistoryLines(failing), [
+    "INVALID #/gate-evidence/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/gate-evidence/0/failed value 400 does not equal the required constant 0",
+  ]);
+
+  const missingTodo = readTemplate("work-history.example.yaml");
+  delete (
+    (missingTodo["gate-evidence"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["todo"];
+  assert.deepEqual(workHistoryLines(missingTodo), [
+    "INVALID #/gate-evidence/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/gate-evidence/0/todo required property todo is missing",
+  ]);
+
+  /* THE KEYWORDS REMOVED FROM THE REPORT SCHEMA, which is the whole content
+     of "shared": the work-history document has no copy to defang. */
+  const defangedCompanion = readSchema("report.schema.json");
+  const then = nodeAt(defangedCompanion, ["$defs", "gateResult", "then"]);
+  delete nodeAt(then, ["properties", "failed"])["const"];
+  then["required"] = (then["required"] as string[]).filter((name) => name !== "todo");
+  assert.deepEqual(
+    workHistoryLines(failing, readSchema("work-history.schema.json"), defangedCompanion),
+    [],
+  );
+  assert.deepEqual(
+    workHistoryLines(missingTodo, readSchema("work-history.schema.json"), defangedCompanion),
+    [],
+  );
+  assert.ok(workHistoryLines(failing).length > 0);
+});
+
+test("an impossibility filed as an open question is rejected in a work history too, through the shared definition", () => {
+  /* CR-002's fix is a KEYWORD, so it travels here with no registration. That
+     is the same asymmetry from the other side, and it is the reason the
+     remedy was required to be inside the declared authoring vocabulary
+     rather than a fourth derived check. */
+  const document = readTemplate("work-history.example.yaml");
+  (document["claims"] as Record<string, unknown>[]).push({
+    id: "K-8",
+    kind: "open-question",
+    statement: "This arm cannot be forced here; there is no way to reach it.",
+  });
+  assert.deepEqual(workHistoryLines(document), [
+    "INVALID #/claims/2 value matches no permitted alternative here",
+  ]);
+
+  /* THE HONEST FORM IS STILL FREE. */
+  const honest = readTemplate("work-history.example.yaml");
+  (honest["claims"] as Record<string, unknown>[]).push({
+    id: "K-9",
+    kind: "open-question",
+    statement: "I did not find a way to reach this arm from the CLI.",
+  });
+  assert.deepEqual(workHistoryLines(honest), []);
+
+  /* THE KEYWORD REMOVED FROM THE REPORT SCHEMA. */
+  const defangedCompanion = readSchema("report.schema.json");
+  const branches = nodeAt(defangedCompanion, ["$defs", "claim", "oneOf"]) as unknown as Record<
+    string,
+    unknown
+  >[];
+  delete nodeAt(branches[2] as Record<string, unknown>, ["properties", "statement"])[
+    "pattern"
+  ];
+  assert.deepEqual(
+    workHistoryLines(document, readSchema("work-history.schema.json"), defangedCompanion),
+    [],
+  );
+  assert.ok(workHistoryLines(document).length > 0);
 });

@@ -54,7 +54,7 @@
   },
   "$defs": {
     "enumerableSection": {
-      "$comment": "ALLOWED TO BE EMPTY ONLY WITH AN EXPLICIT MARKER, so silence and emptiness are distinguishable (plan step 2). The two branches are exclusive by construction: branch 1 permits `none: true` AND NOTHING ELSE, so a marker sitting on top of real entries is a rejection; branch 2 requires `none: false` with at least one entry, so an empty list hiding behind a false marker is a rejection too. Both directions, rather than the one the requirement's letter names.",
+      "$comment": "ALLOWED TO BE EMPTY ONLY WITH AN EXPLICIT MARKER, so silence and emptiness are distinguishable (plan step 2). The two branches are exclusive by construction: branch 1 permits `none: true` AND NOTHING ELSE, so a marker sitting on top of real entries is a rejection; branch 2 requires `none: false` with at least one entry, so an empty list hiding behind a false marker is a rejection too. Both directions, rather than the one the requirement's letter names. RESIDUE, ADDED IN M3-P4 FIX ROUND 2 BY THE CR-002 ENUMERATION: this is the same mechanism CR-002 named one document over. The branch is picked by A VALUE THE AUTHOR WRITES, and branch 1 owes NOTHING, so an author with three real decisions owed writes `none: true` and the schema is satisfied. What the two branches close is INTERNAL CONTRADICTION (a marker over entries, entries with no marker); what neither reaches is a marker over a truth outside the document. Nothing in this schema could reach it, because there is no second record here to compare against; the derived check `final-report-finding-parity` is what that comparison looks like where a second record exists, and `decisions-owed` has none.",
       "oneOf": [
         {
           "type": "object",

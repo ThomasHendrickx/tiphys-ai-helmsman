@@ -66,7 +66,7 @@
       }
     },
     "verification-first": {
-      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid.",
+      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid. RESIDUE, STATED HERE BECAUSE THE FIX ROUND 2 ENUMERATION FOUND IT AND NOTHING ELSE ON THIS BRANCH RECORDS IT: this is CR-002's mechanism in boolean form. The `if` keys off A VALUE THE AUTHOR CHOOSES, and the `false` branch owes NOTHING, so a finding that DOES contradict the plan and is recorded as `contradicts-plan: false` escapes the escalation reference entirely. No keyword and no derived check can reach it, because deciding whether a finding contradicts the plan is a reading of two documents in prose. The required boolean makes the question unskippable and it does not make the answer true; M3-P7's clean-room checklist is where that is checked.",
       "type": "array",
       "items": { "$ref": "#/$defs/verificationFirst" }
     },
