@@ -404,8 +404,13 @@ the clean-room reviewer re-running the whole bundle at the reviewed head.
   the low the orchestrator named as least comfortable**, because it is a false
   claim in a SHIPPED file and this project's whole thesis is that false claims in
   durable records are what hide defects. Low rather than medium only because it
-  is a descriptive comment and not anything the CLI prints. **Queued as the first
-  text correction after merge.**
+  is a descriptive comment and not anything the CLI prints. **CORRECTED in this
+  same commit**, which is what "queued as the first text correction after merge"
+  was supposed to mean. The comment now states which direction IS checked, which
+  is NOT, that no code path could see the omission, the measurement, and the
+  consequence that the document can under-report. The claim was verified false
+  by reading the check rather than by trusting the review: the loop iterates the
+  entries present in `gate-sets` and never iterates the registry.
 - **`mode-gate-sets-resolve` enforces its relation in ONE DIRECTION** while its
   documentation claims both (CR-002, carried as an open question with no id).
   Dropping `deploy` from `full`'s `gate-sets` while the registry declares
