@@ -399,7 +399,7 @@ function readContextDocument(
  * ONE bogus `skips[]` entry validated at exit 0, and `tiphys mode show --mode
  * full` then printed that no phase of the tiphys project had ever been
  * delivered under the mode this project has delivered every phase under
- * (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
+ * (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
  *
  * THE PREDICATE RUNS OVER EVERY MODE INCLUDING THE REFERENCE, and that is the
  * load-bearing part rather than a detail. The completeness loop `continue`s

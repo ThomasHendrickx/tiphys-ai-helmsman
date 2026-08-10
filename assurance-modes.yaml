@@ -29,7 +29,7 @@
 #                    review measured that without it one bogus entry on `full`
 #                    made `tiphys mode show` state the opposite of the truth
 #                    about this project's own delivery, at exit 0
-#                    (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
+#                    (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
 #
 # WHAT M3 NEVER RUNS, said plainly. The kernel runs `full` and only `full`; the
 # milestone exit test is a full-mode run. `direct-pr` and `local-only` are
