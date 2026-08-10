@@ -131,6 +131,62 @@ artifact behind it is treated as unknown.
    non-ASCII content is the thing under test and transliterating it would
    destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
    run both checks over `git ls-files` minus those two trees and expect zero.
+   **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
+   resolution.** The red-witness rule demands real captured output from the
+   program under test rather than hand-written strings. Node's test reporter
+   prints U+2139 and U+2716 at the head of its summary and failure lines. So a
+   work history pasting a real `node --test` run verbatim FAILS the non-ASCII
+   check, and the three ways out are not equal:
+
+   - Hand-write the output to avoid the glyphs. **Forbidden.** That is exactly
+     the fabrication the red-witness rule exists to prevent, and it is invisible
+     to every gate.
+   - Paste the glyphs raw. Fails the check, which is the check working.
+   - **TRANSLITERATE, AND DECLARE IT.** This is the resolution.
+
+   A transliterated capture must carry a note naming the exact codepoints
+   replaced, what they were replaced with, and HOW MANY of each. That makes the
+   change auditable and reversible, so a reader can tell altered-and-declared
+   from altered-and-hidden. The M3-P3 round-8 work history is the worked example:
+   it names U+2139 and U+2716, renders them `i` and `x`, gives the counts (10 and
+   6), and states that nothing else in any captured output was changed.
+
+   Silent transliteration is the failure mode this entry exists to prevent,
+   because after the fact it is indistinguishable from fabricated evidence.
+3b. **A CITATION IS `path.ext:LINE`, AND ONLY OUTSIDE BACKTICKS. A bare path is
+   not a citation at all.** This was undocumented here until 2026-08-10 and it
+   has been got wrong THREE times in this delivery, twice by writing every
+   citation inside backticks and once by removing the backticks but omitting the
+   line number. Each cost a red `citations` gate and a round trip. The rule lived
+   only in `src/gates/citations.ts`, which is why reading the rules file did not
+   help.
+
+   The grammar the gate actually recognises, from its own source: a path, a
+   known extension, then a COLON and a line number, optionally a range and a
+   `@sha256:` pin. So:
+
+   | written | recognised | why |
+   |---|---|---|
+   | ``  `delivery/plan/x.md`  `` | NO | backticks mean QUOTED (M2-D-22), deliberately non-resolving |
+   | `delivery/plan/x.md` in prose | NO | no line number, so it is not a citation token |
+   | delivery/plan/x.md:2626 in prose | **YES** | this is the only form that counts |
+
+   Two consequences that bite. A document matching `citationRequired` with ZERO
+   substantive citations is RED, so a new `delivery/` document usually needs at
+   least one real `path:line`. And the count is whole-document, never
+   hunk-scoped, so adding one anywhere in the file satisfies it.
+
+   Quoting is a real and useful tool, not a mistake to avoid: a path in backticks
+   is how you name a file you are NOT asserting exists at that line, such as one
+   on an unmerged branch. Use it deliberately, and know that it buys you nothing
+   toward the substantive-citation floor.
+
+   Verify before pushing rather than after a red gate:
+
+   ```
+   node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+     --only citations --evidence <scratch-dir> --base origin/main --head HEAD
+   ```
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
 5. One phase = one branch = one PR, always. Parallelism is ON where a
