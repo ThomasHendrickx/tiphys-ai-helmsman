@@ -1,0 +1,24 @@
+{
+  "id": "checks-emptied-paragraph-contributes-no-unit",
+  "behavior": "mode-conditions-emptied-paragraph-contributes-no-unit",
+  "tests": [
+    "a paragraph the parser emptied contributes no unit, at top level and inside a list item"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  return paragraph.firstChild !== null;",
+      "replace": "  return true;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (carriesProse(child)) {",
+      "replace": "        if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

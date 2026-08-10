@@ -58,6 +58,13 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      is what M3R-001 means by registering the type in the same step that ships
      the schema. */
   ["gate-registry", "gate-registry.schema.json"],
+  /* M3-P3 step 6. Both documents carry their own `kind`, so each row extends
+     `--type` and `resolveAutoType` in one act (M3R-001). The assurance-modes
+     row is also what makes this phase's four derived checks reachable: they are
+     registered for type `assurance-modes` and nothing runs them until the type
+     resolves. */
+  ["assurance-modes", "assurance-modes.schema.json"],
+  ["role-model-config", "role-model-config.schema.json"],
 ]);
 
 /**

@@ -5,8 +5,12 @@ identity:
   name: example-service
   repo: git@github.com:example/example-service.git
   kernel-version-pin: 0.1.0
-delivery-mode: standard
-assurance-tier: standard
+# The mode ids are assurance-modes.yaml's, and the charter schema's enum is
+# held equal to them by the derived check charter-mode-enum-matches-modes.
+# This template said `standard` until M3-P3, which is a value no mode
+# definition has ever carried.
+delivery-mode: full
+assurance-tier: full
 yolo-permissions:
   enabled: false
   scope: []

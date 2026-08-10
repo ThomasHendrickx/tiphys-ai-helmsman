@@ -1,0 +1,30 @@
+{
+  "id": "mode-show-resolves-the-named-mode",
+  "behavior": "mode-show-full-stage-order",
+  "tests": [
+    "mode show prints full's twelve stage ids in order and a non-empty skips list for the other two modes"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"mode\", cmdMode],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/mode.ts",
+      "find": "read.modes.find((candidate) => candidate.id === wanted)",
+      "replace": "read.modes[0]"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  section(\"pipeline\", mode.pipeline);",
+      "replace": "  section(\"pipeline\", [...mode.pipeline].sort());"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

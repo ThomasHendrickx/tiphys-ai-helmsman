@@ -10,8 +10,8 @@ identity:
   name: example-service
   repo: git@github.com:example/example-service.git
   kernel-version-pin: 0.1.0
-delivery-mode: standard
-assurance-tier: standard
+delivery-mode: full
+assurance-tier: full
 yolo-permissions:
   enabled: false
   scope: []

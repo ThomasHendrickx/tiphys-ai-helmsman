@@ -1,0 +1,24 @@
+{
+  "id": "modes-type-registered",
+  "behavior": "modes-validate",
+  "tests": [
+    "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"assurance-modes\", \"assurance-modes.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "\"role-model-config.schema.json\"",
+      "replace": "\"charter.schema.json\""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
