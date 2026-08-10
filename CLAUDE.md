@@ -647,6 +647,33 @@ Each of these bit someone once. Forward them to every implementer.
     Found by the M3-P3 round-7 implementer while settling a discrepancy the
     orchestrator had flagged rather than averaged away.
 
+    **THERE IS A THIRD AXIS AND IT IS THE INVOCATION.** Measured 2026-08-10 by
+    the M3-P3 round-9 clean-room reviewer, at one head, one toolchain and one
+    build state, differing only in the command:
+
+    | invocation | tests | pass | SKIPPED |
+    |---|---|---|---|
+    | `npm test` | 506 | 506 | 0 |
+    | bare `node --test` from the repository root | **508** | 508 | 0 |
+
+    The two extra are NAMED rather than inferred, by diffing the passing-test
+    names against the CI log: `greet rejects an empty name` and `greet returns a
+    greeting for a name`, from `sandbox/test/greet.test.js`, a TRACKED sandbox
+    fixture at the repository root. `package.json`'s `test` script is
+    `node --test "test/**/*.test.ts"`, which excludes it, and the `suite` GATE
+    runs that script rather than a pattern of its own.
+
+    So **506 is what CI and the gate mean, and 508 is what gate-list step 3
+    (`node --test`) literally asks for.** Both are true sentences about different
+    commands, which is exactly why quoting a bare number starts an
+    investigation. Head-independence was controlled: the same bare invocation at
+    a different head, same toolchain and build state, also reports 508.
+
+    Quote the INVOCATION alongside the toolchain and the build state. This
+    repository has now paid three times for an unexplained suite-count
+    difference, and the third time the reviewer refused to average a two-test gap
+    and found the cause instead.
+
 ## The orchestrator does not decide when it is finished (binding)
 
 Measured 2026-08-08 and 2026-08-09: the orchestrator stopped mid-milestone
