@@ -1,0 +1,30 @@
+{
+  "id": "checks-mode-skips-sound",
+  "behavior": "mode-skips-describe-only-omitted-stages",
+  "tests": [
+    "a mode declaring a stage in skips that its own pipeline runs is rejected, and the shipped document is green"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "    skips: []",
+      "replace": "    skips:\n      - deploy-verify"
+    },
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "    skips:\n      - intake",
+      "replace": "    skips:\n      - implement\n      - intake"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (running.has(stage)) {",
+      "replace": "        if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

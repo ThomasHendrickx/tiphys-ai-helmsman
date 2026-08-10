@@ -176,7 +176,7 @@
           }
         },
         "skips": {
-          "$comment": "Blueprint section 8: \"Downgrades are declared, never improvised.\" This is the declaration. It is REQUIRED and may be empty, so a mode that omits a stage and says nothing is distinguishable from a mode that omits nothing; `mode-no-undeclared-downgrade` is what makes the difference cost something.",
+          "$comment": "Blueprint section 8: \"Downgrades are declared, never improvised.\" This is the declaration. It is REQUIRED and may be empty, so a mode that omits a stage and says nothing is distinguishable from a mode that omits nothing; `mode-no-undeclared-downgrade` is what makes the difference cost something. THE CHECK RUNS IN BOTH DIRECTIONS AND THE SCHEMA CAN SEE NEITHER: an omitted stage missing from this list is a violation (completeness), and an entry in this list that the SAME mode's `pipeline` still runs is a violation too (soundness). Both are cross-property comparisons and neither is a keyword property. The soundness half was added after a review measured that a list constrained in one direction only is not constrained at all: one bogus entry on `full` validated at exit 0 and made `tiphys mode show` state the opposite of the truth about this project's own delivery.",
           "type": "array",
           "uniqueItems": true,
           "items": {

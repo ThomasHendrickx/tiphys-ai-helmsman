@@ -389,6 +389,30 @@ function readContextDocument(
  * `direct-pr` mode, an empty `skips[]` and no `clean-room-review` would pass a
  * check that returned early. That is the same defect one level up, so the
  * absent reference fails closed.
+ *
+ * SOUNDNESS, THE CONVERSE DIRECTION, ADDED IN ROUND 9 (CR-002). Everything
+ * above asks ONE question: is every stage this mode omits DECLARED? It never
+ * asked the converse: is every stage this mode DECLARES actually omitted? A
+ * set checked in one direction only is a set nothing constrains, and `skips[]`
+ * is shipped DATA that any edit can change. The measured consequence was not
+ * hypothetical: `full` keeping its complete twelve-stage pipeline and gaining
+ * ONE bogus `skips[]` entry validated at exit 0, and `tiphys mode show --mode
+ * full` then printed that no phase of the tiphys project had ever been
+ * delivered under the mode this project has delivered every phase under
+ * (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
+ *
+ * THE PREDICATE RUNS OVER EVERY MODE INCLUDING THE REFERENCE, and that is the
+ * load-bearing part rather than a detail. The completeness loop `continue`s
+ * past `full` because a mode cannot omit a stage relative to itself; the
+ * soundness question is well posed for `full` too, and `full` is precisely the
+ * mode the sharpest member targeted. A soundness loop that inherited the
+ * completeness loop's skip would have been green against the finding that
+ * caused it to be written.
+ *
+ * IT NEEDS NO REFERENCE MODE, so it runs BEFORE the reference is resolved and
+ * its violations survive an absent `full`. A document that both deletes `full`
+ * and carries a contradictory `skips[]` reports both facts rather than the
+ * first one only.
  */
 export const modeNoUndeclaredDowngrade: DerivedCheck = {
   id: "mode-no-undeclared-downgrade",
@@ -400,6 +424,17 @@ export const modeNoUndeclaredDowngrade: DerivedCheck = {
       return EMPTY;
     }
     const violations: Diagnostic[] = [];
+    for (const row of rows) {
+      const running = new Set(stringsAt(row.mode, "pipeline"));
+      for (const stage of stringsAt(row.mode, "skips")) {
+        if (running.has(stage)) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} declares stage ${stage} in skips while its own pipeline runs it, so skips does not describe what this mode omits`,
+          });
+        }
+      }
+    }
     const reference = rows.find((row) => row.id === REFERENCE_MODE_ID);
     if (reference === undefined) {
       violations.push({

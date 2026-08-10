@@ -157,15 +157,51 @@ export interface RenderContext {
 }
 
 /**
+ * The id blueprint section 8 gives the un-downgraded process BY NAME: "The
+ * current proven process is the definition of `full`."
+ *
+ * SIBLING LITERAL, named so neither site can drift unnoticed:
+ * `REFERENCE_MODE_ID` at src/checks.ts:275 is the same string, used as the
+ * reference pipeline every other mode's omissions are measured against. The two
+ * are pinned from opposite directions by registered tests: the checks-side
+ * literal by the assertion that deleting `full` produces `no mode declares id
+ * full` (test/assurance-modes.test.ts:314), and this one by the assertion that
+ * the mode `mode show` annotates as un-downgraded is the mode named `full`.
+ */
+const UNDOWNGRADED_MODE_ID = "full";
+
+/**
  * The execution status of one mode, DERIVED rather than looked up in a list of
  * ids (CR-004 item 2, DR-0020).
  *
  * Two facts are available and both are checkable by the reader: whether this is
- * the kernel's own document, and whether the mode declares any skipped stage.
- * Blueprint section 8's sentence is what makes the second one mean something,
- * "The current proven process is the definition of `full`. Downgrades are
- * declared, never improvised", so a mode with a non-empty `skips` list is BY
- * ITS OWN DECLARATION a downgrade of the un-downgraded process.
+ * the kernel's own document, and whether this mode IS the one blueprint section
+ * 8 names as the un-downgraded process, "The current proven process is the
+ * definition of `full`. Downgrades are declared, never improvised."
+ *
+ * WHY THE NAME AND NOT THE SKIP COUNT (CR-002, round 9). This function used
+ * `mode.skips.length === 0` as its proxy for "this is the un-downgraded mode".
+ * The proxy held only because `full` happened to be the only mode with an empty
+ * list, nothing enforced that, and `skips[]` is shipped DATA. Two measured
+ * consequences, both at exit 0 with every registry gate green: giving `full` one
+ * bogus `skips[]` entry made this function say that no phase of the tiphys
+ * project had ever been delivered under `full`, which is false about the mode
+ * this project has delivered every phase under; and giving `direct-pr` an empty
+ * `skips[]` made a mode nobody has ever entered claim to be the one the project
+ * follows, with `merge-authority: owner` printed beneath it, which is not the
+ * regime in force (DR-0015). Blueprint section 8 defines `full` BY NAME, so the
+ * name is the primary fact and the skip count is a consequence of it.
+ *
+ * THE COUNT IS STILL REPORTED, as a fact about the mode rather than as the
+ * ground of the claim. That distinction is the whole finding: a number may be
+ * shown without being believed.
+ *
+ * WHAT MAKES THE `full` SENTENCE TRUE IS DATA, AND IT IS GUARDED SEPARATELY.
+ * Keying off the name moves the burden: the claim is now only as good as the
+ * shipped `full` genuinely being un-downgraded. `mode-no-undeclared-downgrade`
+ * rejects a `skips[]` entry that the same mode's pipeline runs, and a registered
+ * test asserts the shipped `full` declares NO skipped stage at all, so a `full`
+ * that quietly became a downgrade cannot keep this sentence.
  *
  * WHAT THIS DELIBERATELY DOES NOT SAY. It does not say that tiphys runs
  * anything: nothing runs on tiphys before M4. The un-downgraded mode of the
@@ -182,17 +218,18 @@ export function executionStatus(mode: Mode, context: RenderContext): string {
       "this mode (DR-0020)."
     );
   }
-  if (mode.skips.length === 0) {
+  if (mode.id === UNDOWNGRADED_MODE_ID) {
     return (
-      "this mode declares no skipped stage, so it is the un-downgraded process, " +
-      "and it is the one the tiphys project follows for its own delivery."
+      `this mode is ${UNDOWNGRADED_MODE_ID}, which blueprint section 8 defines by name as the ` +
+      "un-downgraded process, and it is the one the tiphys project follows for its own delivery."
     );
   }
   return (
-    `DECLARED AND VALIDATED, NEVER EXERCISED. This mode declares ${String(mode.skips.length)} ` +
-    "skipped stage(s), so it is a declared downgrade of the un-downgraded process, and no " +
-    "phase of the tiphys project has ever been delivered under it. Its pipeline and its gate " +
-    "selection are checked by validation only (DR-0020)."
+    `DECLARED AND VALIDATED, NEVER EXERCISED. This mode is not ${UNDOWNGRADED_MODE_ID}, which ` +
+    "blueprint section 8 defines by name as the un-downgraded process, so no phase of the " +
+    `tiphys project has ever been delivered under it. It declares ${String(mode.skips.length)} ` +
+    "skipped stage(s). Its pipeline and its gate selection are checked by validation only " +
+    "(DR-0020)."
   );
 }
 

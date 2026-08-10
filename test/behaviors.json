@@ -479,6 +479,7 @@
   "modes-validate": "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto",
   "mode-show-full-stage-order": "mode show prints full's twelve stage ids in order and a non-empty skips list for the other two modes",
   "mode-undeclared-downgrade-rejected": "a mode omitting a stage full runs without declaring it in skips is rejected, and is accepted with the check deregistered",
+  "mode-skips-describe-only-omitted-stages": "a mode declaring a stage in skips that its own pipeline runs is rejected, and the shipped document is green",
   "mode-review-before-implement": "a mode that builds before its adversarial plan review is rejected, and is accepted with the check deregistered",
   "mode-full-requires-fix-round-verification": "a full mode with no fix-round-verification stage is rejected, and is accepted with the contains keyword removed",
   "mode-unknown-gate-set-rejected": "a mode naming a gate set the registry does not declare is rejected, and the same check without --context is SKIPPED and fails",

@@ -349,6 +349,134 @@ test("a mode omitting a stage full runs without declaring it in skips is rejecte
 });
 
 /* ------------------------------------------------------------------ */
+/* CR-002 (round 9): skips[] is checked in BOTH directions, Kind B      */
+/* ------------------------------------------------------------------ */
+
+test("a mode declaring a stage in skips that its own pipeline runs is rejected, and the shipped document is green", () => {
+  /* THE MECHANISM, NOT THE INSTANCE. `mode-no-undeclared-downgrade` asked only
+     whether every omitted stage is DECLARED. It never asked whether every
+     DECLARED stage is omitted, so `skips[]` was constrained in one direction
+     and unconstrained in the other, and it is shipped DATA. The reviewer
+     measured three members, all at exit 0 with every registry gate green
+     (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
+
+     TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class,
+     and the difference is a real branch and not a relabelling: member 1 is the
+     REFERENCE mode `full`, which the completeness loop `continue`s past
+     entirely, and member 2 is a non-reference mode, which that loop does
+     traverse. A soundness predicate written inside the completeness loop would
+     pass member 2 and be green against member 1, which is the sharper of the
+     two. */
+  const dir = scratch();
+  try {
+    /* MEMBER 1, THE SHARP ONE: `full` keeps its whole twelve-stage pipeline,
+       still runs `deploy-verify`, and gains one bogus `skips[]` entry. Before
+       this check that document validated at exit 0 and `tiphys mode show
+       --mode full` then reported that no phase had ever been delivered under
+       the mode this project has delivered every phase under. */
+    const referenceContradiction = loadModes();
+    modeNamed(referenceContradiction, "full")["skips"] = ["deploy-verify"];
+    const referencePath = writeDocument(dir, referenceContradiction, "skips-contradict-full.yaml");
+    const referenceRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      ".",
+      referencePath,
+    ]);
+    assert.equal(referenceRun.status, 1, referenceRun.stdout + referenceRun.stderr);
+    assert.match(
+      referenceRun.stdout,
+      /^INVALID #\/modes\/0\/skips mode full declares stage deploy-verify in skips while its own pipeline runs it, so skips does not describe what this mode omits \(check: mode-no-undeclared-downgrade\)$/m,
+      referenceRun.stdout,
+    );
+    /* AND ONLY THAT ONE, so the fixture is the shipped document with exactly
+       one thing changed and the diagnostic is attributable. */
+    assert.equal(
+      referenceRun.stdout.split("\n").filter((line) => line.startsWith("INVALID")).length,
+      1,
+      referenceRun.stdout,
+    );
+
+    /* MEMBER 2, A NON-REFERENCE MODE: `local-only` declares `implement` in
+       skips while `implement` is in its own pipeline. Before this check
+       `tiphys mode show --mode local-only` printed `implement` under BOTH
+       `pipeline:` and `skips:`, at exit 0. */
+    const memberContradiction = loadModes();
+    const localOnly = modeNamed(memberContradiction, "local-only");
+    localOnly["skips"] = ["implement", ...(localOnly["skips"] as string[])];
+    const memberPath = writeDocument(dir, memberContradiction, "skips-contradict-local.yaml");
+    const memberRun = runCli([
+      "validate",
+      "--type",
+      "assurance-modes",
+      "--context",
+      ".",
+      memberPath,
+    ]);
+    assert.equal(memberRun.status, 1, memberRun.stdout + memberRun.stderr);
+    assert.match(
+      memberRun.stdout,
+      /^INVALID #\/modes\/2\/skips mode local-only declares stage implement in skips while its own pipeline runs it, so skips does not describe what this mode omits \(check: mode-no-undeclared-downgrade\)$/m,
+      memberRun.stdout,
+    );
+
+    /* THE PREDICATE NEEDS NO REFERENCE MODE, so deleting `full` reports BOTH
+       facts rather than the absent reference swallowing the contradiction. A
+       soundness check placed after the reference early-return would report only
+       the first line here, and the contradictory mode would ride out on a
+       document that had also deleted the reference. */
+    const both = loadModes();
+    const strandedLocal = modeNamed(both, "local-only");
+    strandedLocal["skips"] = ["implement", ...(strandedLocal["skips"] as string[])];
+    both["modes"] = modesOf(both).filter((mode) => mode["id"] !== "full");
+    const bothLines = checkLines(both, undefined).lines;
+    assert.ok(
+      bothLines.some((line) => line.includes("no mode declares id full")),
+      bothLines.join("\n"),
+    );
+    assert.ok(
+      bothLines.some((line) =>
+        line.includes("mode local-only declares stage implement in skips while its own pipeline runs it"),
+      ),
+      bothLines.join("\n"),
+    );
+
+    /* THE OTHER DIRECTION, which is what makes this a Kind B witness: the SAME
+       member-1 instance with the CHECK removed is accepted. */
+    assert.equal(checksModule.deregisterCheck("mode-no-undeclared-downgrade"), true);
+    const withoutCheck = checkLines(referenceContradiction, undefined);
+    assert.ok(
+      !withoutCheck.lines.some((line) => line.includes("mode-no-undeclared-downgrade")),
+      withoutCheck.lines.join("\n"),
+    );
+
+    /* RESTORED, and red again. */
+    checksModule.registerCheck(checksModule.modeNoUndeclaredDowngrade);
+    assert.ok(
+      checkLines(referenceContradiction, undefined).lines.some((line) =>
+        line.includes("declares stage deploy-verify in skips while its own pipeline runs it"),
+      ),
+    );
+
+    /* THE CONTROL, AND IT IS THE ASSERTION THE DATA DANGEROUS STATES REDDEN:
+       the SHIPPED document is green on this check. Without it the predicate
+       could be rejecting everything, and with it a one-line edit to
+       assurance-modes.yaml that makes `skips[]` contradict `pipeline[]` fails
+       this test, which is the guard the old witness did not have. */
+    assert.equal(
+      checkLines(loadModes(), undefined).lines.filter((line) =>
+        line.includes("mode-no-undeclared-downgrade"),
+      ).length,
+      0,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Criterion 3(b): mode-stage-order, Kind B                             */
 /* ------------------------------------------------------------------ */
 
@@ -1952,11 +2080,18 @@ test("mode show says which mode is the un-downgraded process and which is a decl
 
      THE ANNOTATION IS DERIVED, NOT A LIST OF TWO IDS. The two inputs are
      whether the document is the kernel's own (no --file) and whether the mode
-     declares any skipped stage, and blueprint section 8 is what makes the
-     second mean something: "Downgrades are declared, never improvised". This
-     test walks every mode the shipped document declares and derives the same
-     two facts itself, so a fourth mode added later is covered without an
-     edit. */
+     IS the one blueprint section 8 names: "The current proven process is the
+     definition of `full`." This test walks every mode the shipped document
+     declares and derives the same two facts itself, so a fourth mode added
+     later is covered without an edit.
+
+     CR-002, ROUND 9: THIS TEST USED TO DERIVE ITS EXPECTATION FROM THE SAME
+     UNSOUND PROXY THE CODE DID, the skip count, so it agreed with the code by
+     construction and could not see the defect. It now keys off the NAME, which
+     is what blueprint section 8 actually defines, and the skip count becomes
+     something ASSERTED ABOUT the shipped data rather than the ground of the
+     expectation. The two arms therefore disagree when the data is wrong, which
+     is the entire point. */
   const declared = modesOf(loadModes()).map((mode) => String(mode["id"]));
   assert.ok(declared.length >= 2, `only ${String(declared.length)} mode(s) declared`);
 
@@ -1971,20 +2106,33 @@ test("mode show says which mode is the un-downgraded process and which is a decl
     statuses.set(id, status);
 
     const skips = section(run.stdout, "skips").filter((entry) => entry !== "(none)");
-    if (skips.length === 0) {
+    if (id === "full") {
       undowngraded += 1;
       assert.ok(
         !status.includes("NEVER EXERCISED"),
-        `${id} declares no skip and was marked never exercised: ${status}`,
+        `${id} is the reference mode and was marked never exercised: ${status}`,
       );
       assert.match(status, /un-downgraded process/);
+      /* WHAT MAKES THAT SENTENCE TRUE, ASSERTED RATHER THAN ASSUMED. Keying the
+         annotation off the NAME is only honest while the mode carrying that
+         name really is un-downgraded, so the burden moves here: the shipped
+         `full` declares NO skipped stage. Without this assertion a data edit
+         could make `full` a declared downgrade while the CLI kept calling it
+         the un-downgraded process, which is the CR-002 hazard re-entering
+         through the fix for it. */
+      assert.deepEqual(
+        skips,
+        [],
+        `full is annotated as the un-downgraded process while declaring skips: ${skips.join(", ")}`,
+      );
       continue;
     }
     downgrades += 1;
     assert.match(status, /DECLARED AND VALIDATED, NEVER EXERCISED/);
-    /* THE COUNT IS THE DISCRIMINATING PART. A constant sentence would satisfy
-       the match above; only a line carrying this mode's own skip count can
-       satisfy this, so the annotation has to be computed from the mode. */
+    /* THE COUNT IS STILL THE DISCRIMINATING PART for this arm. A constant
+       sentence would satisfy the match above; only a line carrying this mode's
+       own skip count can satisfy this, so the annotation is still computed from
+       the mode and not printed from a template. */
     assert.ok(
       status.includes(`declares ${String(skips.length)} skipped stage(s)`),
       `${id} skips ${String(skips.length)} stage(s) but its status says: ${status}`,

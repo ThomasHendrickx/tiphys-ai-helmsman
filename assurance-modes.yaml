@@ -20,8 +20,16 @@
 #                    mechanical derivation, and `mode-gate-sets-resolve` is what
 #                    keeps the two files from drifting apart.
 #   skips            derived: every stage in `full`'s pipeline that this mode's
-#                    pipeline omits. `mode-no-undeclared-downgrade` recomputes
-#                    it rather than trusting it.
+#                    pipeline omits, AND NOTHING ELSE.
+#                    `mode-no-undeclared-downgrade` recomputes it rather than
+#                    trusting it, in BOTH directions: an omitted stage that is
+#                    not declared here is a violation, and a stage declared
+#                    here that this mode's own pipeline still runs is a
+#                    violation too. The second direction was added after a
+#                    review measured that without it one bogus entry on `full`
+#                    made `tiphys mode show` state the opposite of the truth
+#                    about this project's own delivery, at exit 0
+#                    (delivery/review/clean-room-m3-p3-r8-criteria.md:318).
 #
 # WHAT M3 NEVER RUNS, said plainly. The kernel runs `full` and only `full`; the
 # milestone exit test is a full-mode run. `direct-pr` and `local-only` are
@@ -156,7 +164,8 @@ modes:
       - final-report
     # DECLARED, NOT IMPROVISED. Seven stages of `full` are dropped and every
     # one of them is named here; `mode-no-undeclared-downgrade` recomputes this
-    # list from `full`'s pipeline and reddens on any omission that is not on it.
+    # list from `full`'s pipeline and reddens on any omission that is not on it,
+    # and on any entry here that this mode's own pipeline still runs.
     skips:
       - verification-pass
       - adversarial-plan-review

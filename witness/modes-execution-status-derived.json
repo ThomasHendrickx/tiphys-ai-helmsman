@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "src/modes.ts",
-      "find": "  if (mode.skips.length === 0) {",
+      "find": "  if (mode.id === UNDOWNGRADED_MODE_ID) {",
       "replace": "  if (true) {"
     },
     {
@@ -17,6 +17,12 @@
       "file": "src/modes.ts",
       "find": "  if (!context.shippedDocument) {",
       "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "assurance-modes.yaml",
+      "find": "      - deploy-verify\n      - migration-verify\n      - final-report\n    skips: []",
+      "replace": "      - migration-verify\n      - final-report\n    skips:\n      - deploy-verify"
     }
   ],
   "deterministic": true,
