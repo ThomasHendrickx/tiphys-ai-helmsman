@@ -557,9 +557,12 @@ altered" from "alterations were not declared".
   one-directional shape beyond the single probe in CR-002.
 - The eleven accepted unwitnessed mutants, the `collectUnits` RangeError, and
   rule (g)'s text-versus-effect question: all out of scope, all untouched.
-- I did not read the round-10 work history before running my own probes; I ran
-  the batteries first and read the record afterwards, so the record could not
-  frame what I looked for.
+- Ordering, stated exactly rather than as a virtue claim: I read the DIFF first,
+  which includes round 10's own code comments, and I ran every mutation battery,
+  the fuzz and the DR-0022 derivation BEFORE reading
+  `delivery/work-history/m3-p3.md`'s round-10 section. So the work history did
+  not frame the probes; the code comments could have, and I am not claiming
+  otherwise.
 - No scratch artefact was left inside any repository tree. Everything lived
   under the scratchpad, and the DR-0022 lab removed itself on a trap and
   printed the confirmation.
