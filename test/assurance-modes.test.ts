@@ -2628,7 +2628,7 @@ test("a line opening more than one block marker leaves no marker in the unit, at
 
      THE FIFTH MEMBER IS ROUND 8's, and it exists because the four above did
      not guard what this test's name claimed. Verification finding V-2: the
-     deepest member was THREE, so `SKIPPABLE_PREFIX` bounded at `{0,3}`
+     deepest member was THREE, so the block-prefix predicate bounded at `{0,3}`
      reproduced CR-001 verbatim at depth four AND SURVIVED THE WHOLE 504-TEST
      SUITE, while the same mutant bounded at TWO was killed. The witness's
      discriminating power stopped exactly one member past the fixture's deepest
