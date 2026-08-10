@@ -27,7 +27,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +58,8 @@ const validateModule = (await import(
 interface DerivedCheck {
   id: string;
   type: string;
+  alsoTypes?: readonly string[];
+  guards?: readonly string[];
   requiresContext: boolean;
   run: (
     instance: unknown,
@@ -75,8 +77,11 @@ const checksModule = (await import(
   ) => { lines: string[]; failed: boolean };
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
+  registeredChecks: () => readonly DerivedCheck[];
+  typesOf: (check: DerivedCheck) => readonly string[];
   reportParityArithmetic: DerivedCheck;
   finalReportFindingParity: DerivedCheck;
+  reportNoFindingsStatement: DerivedCheck;
 };
 
 const suiteModule = (await import(
@@ -236,7 +241,7 @@ test("the count parity check reddens on both directions of a mismatch and on a n
   const droppedRun = checkLines("report", dropped);
   assert.equal(droppedRun.failed, true);
   assert.deepEqual(droppedRun.lines, [
-    "INVALID #/gate-results/0 discovered 600 does not equal passed + failed + skipped + did-not-run = 507 (check: report-parity-arithmetic)",
+    "INVALID #/gate-results/0 discovered 600 does not equal passed + failed + skipped + todo + did-not-run = 507 (check: report-parity-arithmetic)",
   ]);
 
   /* MEMBER 2, STRUCTURALLY DIFFERENT: the buckets exceed discovered. The
@@ -248,7 +253,7 @@ test("the count parity check reddens on both directions of a mismatch and on a n
     (inflated["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
   )["passed"] = 900;
   assert.deepEqual(checkLines("report", inflated).lines, [
-    "INVALID #/gate-results/0 discovered 507 does not equal passed + failed + skipped + did-not-run = 902 (check: report-parity-arithmetic)",
+    "INVALID #/gate-results/0 discovered 507 does not equal passed + failed + skipped + todo + did-not-run = 902 (check: report-parity-arithmetic)",
   ]);
 
   /* MEMBER 3, STRUCTURALLY DIFFERENT AGAIN: the sum is right and one bucket
@@ -266,15 +271,17 @@ test("the count parity check reddens on both directions of a mismatch and on a n
   ]);
 
   /* MEMBER 4: a PARTIAL count record, where parity cannot be computed at
-     all. A check that skipped these would let a green be recorded with four
-     of the five counts, which is arithmetic that adds up while a row is
-     lost one level down. */
+     all. A check that skipped these would let a green be recorded with five
+     of the six counts, which is arithmetic that adds up while a row is
+     lost one level down. The SIXTH count is `todo`, added in fix round 2:
+     the M2-P3 wrapper reports it and the plan's field list did not, so a run
+     with `todo > 0` could not be recorded at all without breaking parity. */
   const partial = readTemplate("report.example.yaml");
   delete (
     (partial["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
   )["skipped"];
   assert.deepEqual(checkLines("report", partial).lines, [
-    "INVALID #/gate-results/0 gate result records 4 of the 5 counts and omits skipped, so parity cannot be computed (check: report-parity-arithmetic)",
+    "INVALID #/gate-results/0 gate result records 5 of the 6 counts and omits skipped, so parity cannot be computed (check: report-parity-arithmetic)",
   ]);
 
   /* THE CHECK DEREGISTERED (Kind B witness, section 2.3 rule 3). Not a
@@ -420,6 +427,21 @@ test("an environmental claim with an empty evidence array is rejected, and is ac
   assert.deepEqual(reportLines(absent), [
     "INVALID #/environmental-claims/0/evidence required property evidence is missing",
   ]);
+
+  /* AND ITS OWN REMOVAL ARM. Added in fix round 2 (finding CR-1520): the
+     witness table's third column is headed "keyword removed", and this row
+     named `required` while no arm removed it. The reviewer took the arm and
+     it holds, so the table overstated rather than the guard being absent;
+     the arm is written here so the column is true by execution. The
+     GUARDING KEYWORD IS DIFFERENT from member 1's: `minItems` reaches the
+     empty array and says nothing about an absent one. */
+  const withoutRequired = readSchema("report.schema.json");
+  const environmentalClaim = nodeAt(withoutRequired, ["$defs", "environmentalClaim"]);
+  environmentalClaim["required"] = (environmentalClaim["required"] as string[]).filter(
+    (name) => name !== "evidence",
+  );
+  assert.deepEqual(reportLines(absent, withoutRequired), []);
+  assert.ok(reportLines(absent).length > 0);
 });
 
 /* ------------------------------------------------------------------ */
@@ -764,6 +786,17 @@ test("a fix round with no not-covered is rejected naming the field", () => {
   assert.deepEqual(reportLines(noMechanism), [
     "INVALID #/fix-round/mechanism required property mechanism is missing",
   ]);
+
+  /* THE SECOND MEMBER'S OWN REMOVAL ARM (CR-1520). It is a SEPARATE schema
+     copy from the `not-covered` one above, so this arm cannot be green
+     because of that removal. */
+  const withoutMechanism = readSchema("report.schema.json");
+  const mechanismless = nodeAt(withoutMechanism, ["$defs", "fixRound"]);
+  mechanismless["required"] = (mechanismless["required"] as string[]).filter(
+    (name) => name !== "mechanism",
+  );
+  assert.deepEqual(reportLines(noMechanism, withoutMechanism), []);
+  assert.ok(reportLines(noMechanism).length > 0);
 });
 
 test("a fix round whose derivation output is absent or empty is rejected", () => {
@@ -775,6 +808,23 @@ test("a fix round whose derivation output is absent or empty is rejected", () =>
   assert.deepEqual(reportLines(absent), [
     "INVALID #/fix-round/derivation/output required property output is missing",
   ]);
+
+  /* MEMBER 1's OWN REMOVAL ARM (CR-1520). The only defang this test carried
+     removed `minLength` and `pattern`, which are member 2's keywords and say
+     nothing about an ABSENT output; the witness table named `required` for
+     this row and nothing removed it. */
+  const withoutRequired = readSchema("report.schema.json");
+  const derivation = nodeAt(withoutRequired, [
+    "$defs",
+    "fixRound",
+    "properties",
+    "derivation",
+  ]);
+  derivation["required"] = (derivation["required"] as string[]).filter(
+    (name) => name !== "output",
+  );
+  assert.deepEqual(reportLines(absent, withoutRequired), []);
+  assert.ok(reportLines(absent).length > 0);
 
   /* MEMBER 2, STRUCTURALLY DIFFERENT: present and EMPTY. `required` alone is
      satisfied by "" and this is the field where that would matter most. */
@@ -837,11 +887,18 @@ test("an empty string does not satisfy a required field, at a top-level scalar a
     'INVALID #/no-findings-statement value "" is shorter than the required minimum length 1',
   ]);
 
-  /* The same field with real text is accepted, which is the other direction
-     the criterion asks for. */
+  /* The same field with real text is accepted BY THE KEYWORDS, which is the
+     other direction the criterion asks for and is all this arm asserts.
+     THE DOCUMENT ITSELF IS STILL REFUSED END TO END, by the derived check
+     `report-no-findings-statement`, because the template carries findings
+     and a no-findings statement beside real findings is the opposite
+     misdeclaration; that arm is in its own test below. The two facts are
+     not in tension: `reportLines` is the KEYWORD half of the contract, and
+     conflating them is how a document can be reported valid by one half. */
   const stated = readTemplate("report.example.yaml");
   stated["no-findings-statement"] = "Three findings are recorded above.";
   assert.deepEqual(reportLines(stated), []);
+  assert.equal(checkLines("report", stated).failed, true);
 
   const defanged = readSchema("report.schema.json");
   const statement = nodeAt(defanged, ["properties", "no-findings-statement"]);
@@ -861,6 +918,16 @@ test("an empty string does not satisfy a required field, at a top-level scalar a
     'INVALID #/deviations/0/why value "" does not match the required pattern \\S',
     'INVALID #/deviations/0/why value "" is shorter than the required minimum length 1',
   ]);
+
+  /* MEMBER 2'S OWN REMOVAL ARM (CR-1520). The witness table named
+     `minLength` and `pattern` for this row and no arm removed them; member
+     1's defang above is a different node in a different schema copy. */
+  const withoutBoth = readSchema("report.schema.json");
+  const why = nodeAt(withoutBoth, ["$defs", "deviation", "properties", "why"]);
+  delete why["minLength"];
+  delete why["pattern"];
+  assert.deepEqual(reportLines(nested, withoutBoth), []);
+  assert.ok(reportLines(nested).length > 0);
 });
 
 test("a whitespace-only block scalar is rejected where minLength alone would accept it", () => {
@@ -948,6 +1015,10 @@ test("the stored full-suite wrapper capture is a verbatim capture with its comma
   assert.equal(gate["passed"], numbers["pass"]);
   assert.equal(gate["failed"], numbers["fail"]);
   assert.equal(gate["skipped"], numbers["skipped"]);
+  /* The SIXTH bucket, added in fix round 2. It is asserted against the
+     capture like the other five so the field cannot be a number chosen to
+     make parity work: the wrapper reported it and the record repeats it. */
+  assert.equal(gate["todo"], numbers["todo"]);
   assert.equal(gate["did-not-run"], numbers["didNotRun"]);
   assert.equal(gate["wrapper-exit-code"], counts["childExit"]);
 });
@@ -1000,8 +1071,15 @@ test("the universal-quantifier pattern is linear on a long near-miss rather than
      green for the wrong reason. It is made of the alternation's own prefixes
      with the last letter wrong, so the engine must enter and abandon a branch
      at every position, and the negative-lookahead branch of the `oneOf` must
-     re-test the alternation at every character. */
-  const nearMiss = `${"alway neve ever ".repeat(8000)}x`;
+     re-test the alternation at every character.
+
+     FIX ROUND 2 WIDENED BOTH PATTERNS (case-insensitive character classes,
+     and eight impossibility tokens on the open-question branch), so this
+     subject is widened with them: T-012 binds a TIMING measurement to any
+     pattern change, and a near-miss made only of the old tokens would leave
+     the new branches unmeasured while still passing. The prefixes are mixed
+     in case for the same reason. */
+  const nearMiss = `${"alway neve ever aLwAy cannot bx impossibl no way t guarantee ".repeat(8000)}x`;
   const document = readTemplate("report.example.yaml");
   const finding = (document["findings"] as Record<string, unknown>[])[0] as Record<
     string,
@@ -1031,4 +1109,511 @@ test("the universal-quantifier pattern is linear on a long near-miss rather than
   assert.deepEqual(reportLines(document), [
     "INVALID #/findings/0 value matches no permitted alternative here",
   ]);
+
+  /* THE SECOND PATTERN FIX ROUND 2 ADDED, measured on its own subject: the
+     open-question branch's statement. It is a THIRTEEN-branch alternation
+     rather than five, so it is the one with the most branches to enter and
+     abandon, and leaving it unmeasured would be measuring the cheaper of the
+     two and reporting the result of the widening. */
+  const claimDocument = readTemplate("report.example.yaml");
+  (claimDocument["claims"] as Record<string, unknown>[])[0] = {
+    id: "T-12",
+    kind: "open-question",
+    statement: nearMiss,
+  };
+  const claimStarted = process.hrtime.bigint();
+  const claimLines = reportLines(claimDocument);
+  const claimElapsedMs = Number(process.hrtime.bigint() - claimStarted) / 1e6;
+  assert.deepEqual(claimLines, [], "the near-miss should not match the settlement pattern");
+  assert.ok(
+    claimElapsedMs < 5000,
+    `validating a ${String(nearMiss.length)}-character near-miss in a claim statement took ${claimElapsedMs.toFixed(1)}ms`,
+  );
+
+  /* AND THE REAL TOKEN STILL REDDENS IT. */
+  (
+    (claimDocument["claims"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["statement"] = `${nearMiss} cannot be forced`;
+  assert.deepEqual(reportLines(claimDocument), [
+    "INVALID #/claims/0 value matches no permitted alternative here",
+  ]);
+});
+
+/* ==================================================================== */
+/* FIX ROUND 2 (arbitration of round 1)                                  */
+/* ==================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* CR-001: a shared $def does not share its derived check               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every cross-document `$ref` in `schemas/`, the artifact types that reach
+ * each shared definition, and the derived checks that declare they guard it.
+ *
+ * Derived from the shipped files rather than from a list written here, so a
+ * later phase that adds a `$ref` or a `guards` entry is measured rather than
+ * trusted.
+ */
+function sharedDefinitionUsers(
+  schemas: ReadonlyMap<string, Record<string, unknown>>,
+): Map<string, Set<string>> {
+  const kindOf = new Map<string, string>();
+  for (const [file, document] of schemas) {
+    const kind = nodeAt(document, ["properties", "kind"])?.["const"];
+    kindOf.set(file, typeof kind === "string" ? kind : `(no kind const in ${file})`);
+  }
+  const refs = (node: unknown, out: string[]): string[] => {
+    if (Array.isArray(node)) {
+      for (const item of node) refs(item, out);
+      return out;
+    }
+    if (node === null || typeof node !== "object") return out;
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (key === "$ref" && typeof value === "string") out.push(value);
+      else refs(value, out);
+    }
+    return out;
+  };
+  const users = new Map<string, Set<string>>();
+  for (const [file, document] of schemas) {
+    for (const reference of refs(document, [])) {
+      if (reference.startsWith("#/")) continue;
+      const at = users.get(reference) ?? new Set<string>();
+      at.add(kindOf.get(file) as string);
+      users.set(reference, at);
+    }
+  }
+  /* The OWNING document reaches its own definitions by a local pointer, so
+     its type is a user too and a check registered only for the BORROWER
+     would be just as much a hole as the one this test was written for. */
+  for (const [pointer, at] of users) {
+    const ownerFile = pointer.slice(0, pointer.indexOf("#"));
+    const local = pointer.slice(pointer.indexOf("#"));
+    const owner = schemas.get(ownerFile);
+    assert.ok(owner !== undefined, `${pointer} names a schema that is not in schemas/`);
+    if (refs(owner, []).includes(local)) at.add(kindOf.get(ownerFile) as string);
+  }
+  return users;
+}
+
+test("every derived check that guards a shared definition runs on every artifact type that reaches it", () => {
+  /* THE MECHANISM, not the instance (M3-P4 round-1 finding CR-001): a derived
+     check is registered PER TYPE and reads a TYPE-SPECIFIC KEY, while the
+     `$defs` it guards are SHARED ACROSS TYPES by `$ref`. Keywords travel
+     through a reference and Kind B rules do not, so `report-parity-arithmetic`
+     never ran on a work history while the shared definition's own comment said
+     it did. A fix to that one check would leave the mechanism intact, so the
+     relation is DERIVED from the schemas here and asserted for every shared
+     definition, present and future. */
+  const schemas = new Map<string, Record<string, unknown>>();
+  for (const name of readdirSync(schemasDir).sort()) {
+    if (!name.endsWith(".json")) continue;
+    schemas.set(name, readSchema(name));
+  }
+  assert.ok(schemas.size >= 3, `only ${String(schemas.size)} schemas were enumerated`);
+
+  const users = sharedDefinitionUsers(schemas);
+  assert.ok(
+    users.has("report.schema.json#/$defs/gateResult"),
+    `the enumeration found no cross-document $ref at all: ${[...users.keys()].join(", ")}`,
+  );
+
+  const registry = checksModule.registeredChecks();
+  const holes: string[] = [];
+  for (const [pointer, types] of users) {
+    for (const check of registry) {
+      if (!(check.guards ?? []).includes(pointer)) continue;
+      const runsOn = checksModule.typesOf(check);
+      for (const type of [...types].sort()) {
+        if (!runsOn.includes(type)) {
+          holes.push(
+            `${check.id} guards ${pointer} but does not run on ${type} (it runs on ${runsOn.join(", ")})`,
+          );
+        }
+      }
+    }
+  }
+  assert.deepEqual(holes, []);
+
+  /* THE DANGEROUS STATE, and it is the state this branch shipped in round 1
+     rather than an invented one: the guarding check registered for the owning
+     type alone. The assertion above is green with `alsoTypes` and red without
+     it, which is what makes it a witness rather than a restatement. */
+  const withoutAlsoTypes: DerivedCheck = {
+    ...checksModule.reportParityArithmetic,
+    alsoTypes: [],
+  };
+  const reddened: string[] = [];
+  for (const [pointer, types] of users) {
+    if (!(withoutAlsoTypes.guards ?? []).includes(pointer)) continue;
+    for (const type of [...types].sort()) {
+      if (!checksModule.typesOf(withoutAlsoTypes).includes(type)) {
+        reddened.push(`${pointer} -> ${type}`);
+      }
+    }
+  }
+  assert.deepEqual(reddened, ["report.schema.json#/$defs/gateResult -> work-history"]);
+});
+
+/* ------------------------------------------------------------------ */
+/* CR-003: a green result cannot report a failure                       */
+/* ------------------------------------------------------------------ */
+
+test("a green gate result carrying failures is rejected, and the guard is the same if/then that pins the exit code", () => {
+  /* THE DANGEROUS INSTANCE: parity balances, the wrapper exit code is 0, and
+     the record says 400 tests failed. The coupling that shipped bound `green`
+     to the exit code and left the record free to contradict itself two lines
+     below (M3-P4 round-1 finding CR-003). */
+  const document = readTemplate("report.example.yaml");
+  const result = (document["gate-results"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  result["passed"] = 105;
+  result["failed"] = 400;
+  assert.deepEqual(reportLines(document), [
+    "INVALID #/gate-results/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/gate-results/0/failed value 400 does not equal the required constant 0",
+  ]);
+  /* AND THE ARITHMETIC IS SATISFIED, so the parity check is not what caught
+     it. Without this line the arm would be green for the wrong reason. */
+  assert.deepEqual(checkLines("report", document).lines, []);
+
+  /* THE GUARDING KEYWORD REMOVED: the `const` on `failed` inside the `then`.
+     Removing it alone leaves the exit-code coupling in place, so this arm
+     names the keyword rather than the whole conditional. */
+  const defanged = readSchema("report.schema.json");
+  delete nodeAt(defanged, ["$defs", "gateResult", "then", "properties", "failed"])["const"];
+  assert.deepEqual(reportLines(document, defanged), []);
+  assert.ok(reportLines(document).length > 0);
+
+  /* THE DECLARED-OPEN CONVERSE IS UNTOUCHED, and it is asserted rather than
+     assumed, because closing it by accident is the way this fix could have
+     gone wrong: a NOT-green result carrying `wrapper-exit-code: 0` and real
+     failures is still ACCEPTED. A wrapper can exit 0 while the author judges
+     the run not green, which is exactly the R-048 shape. */
+  const notGreen = readTemplate("report.example.yaml");
+  const amber = (notGreen["gate-results"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  amber["result"] = "amber";
+  amber["wrapper-exit-code"] = 0;
+  amber["passed"] = 105;
+  amber["failed"] = 400;
+  assert.deepEqual(reportLines(notGreen), []);
+});
+
+test("a green gate result must carry the todo bucket, and parity counts it", () => {
+  /* THE SIXTH COUNT. The M2-P3 wrapper's identity is
+     `pass + fail + skipped + todo + did-not-run == reported`
+     and the plan's field list named five, so a run reporting `todo > 0`
+     could not be recorded without breaking parity: a contract that refuses a
+     legitimate run. Taken into this round by the round-1 arbitration. */
+  const missing = readTemplate("report.example.yaml");
+  delete (
+    (missing["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["todo"];
+  assert.deepEqual(reportLines(missing), [
+    "INVALID #/gate-results/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/gate-results/0/todo required property todo is missing",
+  ]);
+
+  const defanged = readSchema("report.schema.json");
+  const then = nodeAt(defanged, ["$defs", "gateResult", "then"]);
+  then["required"] = (then["required"] as string[]).filter((name) => name !== "todo");
+  assert.deepEqual(reportLines(missing, defanged), []);
+  assert.ok(reportLines(missing).length > 0);
+
+  /* AND THE RUN THE OLD VOCABULARY COULD NOT RECORD AT ALL is now
+     recordable: one todo test, parity satisfied, accepted by keywords and by
+     the derived check. This is the direction the gap actually hurt. */
+  const withTodo = readTemplate("report.example.yaml");
+  const result = (withTodo["gate-results"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  result["passed"] = 504;
+  result["todo"] = 1;
+  assert.deepEqual(reportLines(withTodo), []);
+  assert.deepEqual(checkLines("report", withTodo).lines, []);
+
+  /* AND `todo` IS IN THE PARITY SUM rather than merely present: the same
+     record with the bucket unaccounted for is red. */
+  const unbalanced = readTemplate("report.example.yaml");
+  (
+    (unbalanced["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["todo"] = 1;
+  assert.deepEqual(checkLines("report", unbalanced).lines, [
+    "INVALID #/gate-results/0 discovered 507 does not equal passed + failed + skipped + todo + did-not-run = 508 (check: report-parity-arithmetic)",
+  ]);
+});
+
+/* ------------------------------------------------------------------ */
+/* CR-002: the enum branch that requires nothing                        */
+/* ------------------------------------------------------------------ */
+
+test("an impossibility filed as an open question is rejected, while an honest open question still needs nothing", () => {
+  /* THE MECHANISM (M3-P4 round-1 finding CR-002): AN ENUM BRANCH THAT
+     REQUIRES NOTHING MAKES EVERY SIBLING BRANCH THAT REQUIRES SOMETHING
+     OPTIONAL, BECAUSE THE AUTHOR PICKS THE BRANCH. Closing the enum shut the
+     route through an INVENTED kind; the route through the cheapest DECLARED
+     kind stayed open, and it is the one an author reaches for.
+
+     MEMBER 1: the sentence the shipped schema comment names as the one that
+     "needs a construction", filed as open-question. */
+  const asserted = readTemplate("report.example.yaml");
+  (asserted["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-1",
+    kind: "open-question",
+    statement:
+      "This arm cannot be forced here. There is no path that reaches it, and no construction exists that would.",
+  };
+  assert.deepEqual(reportLines(asserted), [
+    "INVALID #/claims/0 value matches no permitted alternative here",
+  ]);
+
+  /* MEMBER 2, STRUCTURALLY DIFFERENT: different tokens (`never`, `impossible`,
+     `always` rather than `cannot be` and `there is no path`), a different
+     sentence shape, and no `no ... that` construction at all. */
+  const emphatic = readTemplate("report.example.yaml");
+  (emphatic["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-2",
+    kind: "open-question",
+    statement:
+      "The lease is never taken twice; it is impossible for two holders to coexist, and this always holds.",
+  };
+  assert.deepEqual(reportLines(emphatic), [
+    "INVALID #/claims/0 value matches no permitted alternative here",
+  ]);
+
+  /* THE HONEST USE IS STILL CHEAP, which the plan asks for and this round was
+     told not to reverse. `I did not find a way to force this arm` carries
+     none of the thirteen tokens and needs nothing. */
+  const honest = readTemplate("report.example.yaml");
+  (honest["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-5",
+    kind: "open-question",
+    statement:
+      "I did not find a way to force the ENOENT arm here, and I did not try a symlink loop.",
+  };
+  assert.deepEqual(reportLines(honest), []);
+
+  /* AND THE SAME ASSERTION IS FILEABLE, at its own price: as an
+     `impossibility` with an executed construction. The rule redirects the
+     record rather than forbidding it. */
+  const filed = readTemplate("report.example.yaml");
+  (filed["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-6",
+    kind: "impossibility",
+    statement: "This arm cannot be forced here.",
+    "settled-by": {
+      "executed-construction": {
+        command: "node -e 'require(\"node:fs\").symlinkSync(p, p)'",
+        "exit-code": 1,
+        output: "Error: ELOOP: too many symbolic links encountered",
+      },
+    },
+  };
+  assert.deepEqual(reportLines(filed), []);
+
+  /* THE GUARDING KEYWORD REMOVED: the `pattern` on the open-question
+     branch's `statement`, and nothing else. `minLength` stays, so this arm
+     cannot be green because the field became unconstrained. */
+  const defanged = readSchema("report.schema.json");
+  const branch = nodeAt(defanged, ["$defs", "claim", "oneOf"]) as unknown as Record<
+    string,
+    unknown
+  >[];
+  const openQuestion = branch[2] as Record<string, unknown>;
+  delete nodeAt(openQuestion, ["properties", "statement"])["pattern"];
+  assert.deepEqual(reportLines(asserted, defanged), []);
+  assert.deepEqual(reportLines(emphatic, defanged), []);
+  assert.ok(reportLines(asserted).length > 0);
+});
+
+test("an impossibility filed as a universal claim is rejected, and an ordinary universal claim is not", () => {
+  /* THE SECOND MEMBER OF CR-002'S CLASS, and structurally different from the
+     first: `open-question` requires NOTHING, so it escapes everything;
+     `universal` requires a counter-experiment, which is a SENTENCE, so
+     filing an impossibility here downgrades an executed construction to
+     prose. Both are the same mechanism and neither witnesses the other. */
+  const downgraded = readTemplate("report.example.yaml");
+  (downgraded["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-3",
+    kind: "universal",
+    statement: "It is impossible to force the ENOENT arm here.",
+    "settled-by": {
+      "counter-experiment": "I thought about it and concluded there is nothing to try.",
+    },
+  };
+  const lines = reportLines(downgraded);
+  assert.ok(
+    lines.includes("INVALID #/claims/0 value matches no permitted alternative here"),
+    lines.join("\n"),
+  );
+
+  /* AN ORDINARY UNIVERSAL CLAIM IS UNAFFECTED. The universal tokens are
+     deliberately NOT in this branch's pattern: `the lease is never held by
+     two holders at once` is exactly what this branch is for. */
+  const ordinary = readTemplate("report.example.yaml");
+  (ordinary["claims"] as Record<string, unknown>[])[0] = {
+    id: "X-7",
+    kind: "universal",
+    statement: "The lease is never held by two holders at once.",
+    "settled-by": {
+      "counter-experiment":
+        "Two writers raced the lease 200 times under forced contention and no pair overlapped.",
+    },
+  };
+  assert.deepEqual(reportLines(ordinary), []);
+
+  const defanged = readSchema("report.schema.json");
+  const branches = nodeAt(defanged, ["$defs", "claim", "oneOf"]) as unknown as Record<
+    string,
+    unknown
+  >[];
+  delete nodeAt(branches[0] as Record<string, unknown>, ["properties", "statement"])[
+    "pattern"
+  ];
+  assert.deepEqual(reportLines(downgraded, defanged), []);
+  assert.ok(reportLines(downgraded).length > 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* CR-005: the universal quantifier in this repository's own register    */
+/* ------------------------------------------------------------------ */
+
+test("an ALL-CAPS universal quantifier is caught, in analysis and in an evidence note", () => {
+  /* THE HOLE (M3-P4 round-1 finding CR-005): the alternation admitted the
+     lowercase and sentence-initial forms only, so `NEVER` passed while
+     `never` was correctly rejected, and 83 occurrences of these tokens in
+     CAPITALS sit in 39 tracked files because that is this repository's house
+     register for emphasis.
+
+     MEMBER 1: `NEVER` in `findings[].analysis`. */
+  const shouted = readTemplate("report.example.yaml");
+  const finding = (shouted["findings"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  finding["analysis"] = "This arm can NEVER be reached.";
+  assert.deepEqual(reportLines(shouted), [
+    "INVALID #/findings/0 value matches no permitted alternative here",
+  ]);
+
+  /* MEMBER 2, a different token, a different case pattern and a DIFFERENT
+     OBJECT AT A DIFFERENT DEPTH: `ALL CASES` inside an evidence note, whose
+     guard is the evidence item's if/then rather than the finding's oneOf. */
+  const noted = readTemplate("report.example.yaml");
+  const evidence = (
+    (noted["findings"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["evidence"] as Record<string, unknown>[];
+  (evidence[0] as Record<string, unknown>)["note"] = "In ALL CASES this holds.";
+  assert.deepEqual(reportLines(noted), [
+    "INVALID #/findings/0/evidence/0 value does not satisfy the requirements its own shape triggers here",
+    "INVALID #/findings/0/evidence/0/counter-experiment required property counter-experiment is missing",
+  ]);
+
+  /* MEMBER 3: mixed case, which an ALL-CAPS-only widening would have missed.
+     The fix is a character class per letter, not five more literals. */
+  const mixed = readTemplate("report.example.yaml");
+  (
+    (mixed["findings"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["analysis"] = "The lease is AlWaYs held by exactly one holder.";
+  assert.deepEqual(reportLines(mixed), [
+    "INVALID #/findings/0 value matches no permitted alternative here",
+  ]);
+
+  /* THE CONTROL that makes the three credible: the lowercase form was
+     ALREADY caught, so these arms measure the case hole and not the guard's
+     absence. */
+  const lower = readTemplate("report.example.yaml");
+  (
+    (lower["findings"] as Record<string, unknown>[])[0] as Record<string, unknown>
+  )["analysis"] = "This arm can never be reached.";
+  assert.deepEqual(reportLines(lower), [
+    "INVALID #/findings/0 value matches no permitted alternative here",
+  ]);
+
+  const defanged = readSchema("report.schema.json");
+  delete nodeAt(defanged, ["$defs", "finding"])["oneOf"];
+  assert.deepEqual(reportLines(shouted, defanged), []);
+  assert.deepEqual(reportLines(mixed, defanged), []);
+  assert.ok(reportLines(shouted).length > 0);
+});
+
+test("the finding's non-universal branch is the exact complement of the shared quantifier pattern", () => {
+  /* The two patterns are written out separately because JSON Schema cannot
+     negate a `$ref`, so they can DRIFT: a gap admits a subject matching
+     neither branch and an overlap admits one matching both, and either
+     breaks the `oneOf` silently. Derived here rather than eyeballed. */
+  const schema = readSchema("report.schema.json");
+  const positive = nodeAt(schema, ["$defs", "universalQuantifier"])["pattern"] as string;
+  const branches = nodeAt(schema, ["$defs", "finding", "oneOf"]) as unknown as Record<
+    string,
+    unknown
+  >[];
+  const negative = nodeAt(branches[0] as Record<string, unknown>, [
+    "properties",
+    "analysis",
+  ])["pattern"] as string;
+  assert.equal(negative, `^(?:(?!${positive})[\\s\\S])*$`);
+
+  /* AND THE COMMENT'S OWN EXAMPLE LIST IS TRUE (finding CR-006): the shipped
+     text once named `in every case` as a token that passes, and it does not,
+     because `every` matches under a word boundary. */
+  const expression = new RegExp(positive, "u");
+  assert.equal(expression.test("This holds in every case."), true);
+  assert.equal(expression.test("There is no path that reaches it."), false);
+  assert.equal(expression.test("This is guaranteed."), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* The empty findings array, Kind B                                     */
+/* ------------------------------------------------------------------ */
+
+test("a report with no findings and no statement is rejected, and so is a statement beside real findings", () => {
+  /* KIND B BY NECESSITY: `maxItems` is absent from the sixteen keywords of
+     the declared authoring vocabulary, and no other permitted keyword says
+     "this array is empty", so the emptiness of a sibling array is not a
+     keyword property. The check exists because the round-1 arbitration
+     amended section 2.3's table to three rows for this phase.
+
+     DIRECTION 1, the one the rule is for: silence priced at nothing. */
+  const silent = readTemplate("report.example.yaml");
+  silent["findings"] = [];
+  assert.deepEqual(reportLines(silent), [], "the keywords accept it, which is the point");
+  const silentRun = checkLines("report", silent);
+  assert.equal(silentRun.failed, true);
+  assert.deepEqual(silentRun.lines, [
+    "INVALID #/no-findings-statement findings is empty and no-findings-statement is missing, so the report claims nothing was found without saying why (check: report-no-findings-statement)",
+  ]);
+
+  /* THE HONEST EMPTY REPORT IS STILL WRITABLE, and cheaply: one sentence. */
+  const stated = readTemplate("report.example.yaml");
+  stated["findings"] = [];
+  stated["no-findings-statement"] =
+    "Every criterion was walked and nothing was found; the derivation and its non-coverage are recorded above.";
+  assert.deepEqual(checkLines("report", stated).lines, []);
+
+  /* DIRECTION 2, the converse the requirement's letter does not name: a
+     no-findings statement sitting beside three real findings. */
+  const contradictory = readTemplate("report.example.yaml");
+  contradictory["no-findings-statement"] = "Nothing was found.";
+  assert.deepEqual(checkLines("report", contradictory).lines, [
+    "INVALID #/no-findings-statement no-findings-statement is present beside 3 finding(s), so the report contradicts itself (check: report-no-findings-statement)",
+  ]);
+
+  /* THE CHECK DEREGISTERED (Kind B witness), and restored. */
+  assert.equal(checksModule.deregisterCheck("report-no-findings-statement"), true);
+  try {
+    assert.deepEqual(checkLines("report", silent).lines, []);
+    assert.equal(checkLines("report", silent).failed, false);
+    assert.deepEqual(checkLines("report", contradictory).lines, []);
+  } finally {
+    checksModule.registerCheck(checksModule.reportNoFindingsStatement);
+  }
+  assert.equal(checkLines("report", silent).failed, true);
 });

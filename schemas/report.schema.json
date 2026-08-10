@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/report.schema.json",
   "title": "Tiphys role report",
-  "$comment": "R-049, R-057a, R-085, R-086, R-088, T-003, T-004, T-006. Kernel plan M3, M3-P4 steps 1, 1b and 1c. THE HAZARD CLASS OF THIS DOCUMENT IS THAT IT DECIDES WHAT A FALSE CLAIM IS ALLOWED TO LOOK LIKE, in a milestone whose own evidence is written in it. Four things this schema deliberately CANNOT do, stated here rather than left to be discovered. (1) NO SCHEMA CAN TELL A MECHANISM FROM A FINDING: `fix-round.mechanism` is a required non-empty string and nothing more, and the judgement is M3-P7's `fix-round-mechanism-named` probe (M3-P4 criterion 2d(a)). (2) NO KEYWORD CAN TELL FULL CAPTURED OUTPUT FROM A SUMMARY OF IT: `fix-round.derivation.output` carries minLength and a non-whitespace pattern, which reaches absent and empty and reaches nothing else; the multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), never of an arbitrary instance. (3) NO CRITERION REACHES THE AUTHORING-COST RATIO between an honest record and a dishonest one, which is a property of two costs and not of any instance (section 2.6 reason 1). (4) A NON-EMPTY FIELD CAN STILL BE MEANINGLESS: `honest-failures[].exposure-window` cannot be empty or whitespace here, and whether it says anything is M3-P7's `honest-failure-substance` probe. WHAT THIS SCHEMA DOES BUY: a green gate result cannot be recorded without the wrapper's exit code and its counts on the SAME object; an environmental excuse cannot be recorded without evidence; an incident cannot be recorded without its exposure window and structural fix; a claim cannot be filed under a kind this schema does not question; and every field whose VALUE is the point rather than its presence carries minLength 1 AND pattern \\S, because `required` alone is satisfied by the empty string (criterion 2e).",
+  "$comment": "R-049, R-057a, R-085, R-086, R-088, T-003, T-004, T-006. Kernel plan M3, M3-P4 steps 1, 1b and 1c. THE HAZARD CLASS OF THIS DOCUMENT IS THAT IT DECIDES WHAT A FALSE CLAIM IS ALLOWED TO LOOK LIKE, in a milestone whose own evidence is written in it. Four things this schema deliberately CANNOT do, stated here rather than left to be discovered. (1) NO SCHEMA CAN TELL A MECHANISM FROM A FINDING: `fix-round.mechanism` is a required non-empty string and nothing more, and the judgement is M3-P7's `fix-round-mechanism-named` probe (M3-P4 criterion 2d(a)). (2) NO KEYWORD CAN TELL FULL CAPTURED OUTPUT FROM A SUMMARY OF IT: `fix-round.derivation.output` carries minLength and a non-whitespace pattern, which reaches absent and empty and reaches nothing else; the multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), never of an arbitrary instance. (3) NO CRITERION REACHES THE AUTHORING-COST RATIO between an honest record and a dishonest one, which is a property of two costs and not of any instance (section 2.6 reason 1). (4) A NON-EMPTY FIELD CAN STILL BE MEANINGLESS: `honest-failures[].exposure-window` cannot be empty or whitespace here, and whether it says anything is M3-P7's `honest-failure-substance` probe. (5) A `$ref` SHARES KEYWORDS AND DOES NOT SHARE DERIVED CHECKS: three `$defs` in this document are reached by schemas/work-history.schema.json, and a Kind B rule written against one of them runs on THIS type only until it declares `alsoTypes` in src/checks.ts. That asymmetry is invisible at the definition site and it is why a comment here once claimed a check applied where it did not (M3-P4 round-1 finding CR-001); the enumeration in test/report-contract.test.ts is the mechanism that stops the claim going stale, and each shared `$def` below states whether a derived check guards it. WHAT THIS SCHEMA DOES BUY: a green gate result cannot be recorded without the wrapper's exit code and its counts on the SAME object; an environmental excuse cannot be recorded without evidence; an incident cannot be recorded without its exposure window and structural fix; a claim cannot be filed under a kind this schema does not question; and every field whose VALUE is the point rather than its presence carries minLength 1 AND pattern \\S, because `required` alone is satisfied by the empty string (criterion 2e).",
   "description": "One document per role output. What was asked, what was found, what each finding rests on, what was claimed and how each claim was settled, which gates ran and what the wrapper said, and every departure from the plan's letter.",
   "type": "object",
   "additionalProperties": false,
@@ -42,7 +42,7 @@
       "pattern": "\\S"
     },
     "no-findings-statement": {
-      "$comment": "Criterion 2e's TOP-LEVEL SCALAR member. RESIDUE STATED RATHER THAN IMPLIED: this schema does not require the field when `findings` is empty, because `maxItems` is outside the declared authoring vocabulary (schemas/README.md) and there is no other keyword that says `this array is empty`. So the guard here is narrower than the rule it serves: it makes an EMPTY statement impossible, and it does not make a MISSING one impossible. The converse a reader should not assume is closed: a report with zero findings and no statement at all validates.",
+      "$comment": "Criterion 2e's TOP-LEVEL SCALAR member. NO KEYWORD CAN REQUIRE THIS FIELD WHEN `findings` IS EMPTY: `maxItems` is outside the declared authoring vocabulary (schemas/README.md), `minItems` says the opposite, and `contains` asks about a member that exists, so the emptiness of a sibling array is not a keyword property. The KEYWORDS here therefore reach only the empty and whitespace-only statement. THE MISSING ONE IS REACHED BY A DERIVED CHECK, `report-no-findings-statement` in src/checks.ts, added by M3-P4 fix round 2 on the orchestrator's arbitration, which amended section 2.3's table to three rows for this phase (D-M3-22 is satisfied by that amendment, not by this comment). It closes BOTH directions: an empty `findings` with no statement, and a statement sitting beside real findings. IT IS REGISTERED FOR `report` ALONE AND THAT IS CORRECT, because `findings` and `no-findings-statement` are report-local properties and no other document type reaches them; the enumeration in test/report-contract.test.ts is what makes that a checked fact rather than an assertion. RESIDUE: whether the statement SAYS anything is M3-P7's `contract-avoidance` probe, not a schema property.",
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"
@@ -89,9 +89,9 @@
       "pattern": "\\S"
     },
     "universalQuantifier": {
-      "$comment": "T-003 lesson 3, named there as PARTIALLY LINTABLE and no more than that. The alternation is flat and each branch is a literal, so the pattern is linear in the subject length and carries no nested quantifier; a timing measurement on a long near-miss is recorded in delivery/work-history/m3-p4.md. WHAT IT DOES NOT REACH, stated because a pattern that looks like a guard invites the reader to assume it is one: a universal claim written without any of these five tokens (`in every case`, `there is no path that`, `guaranteed`) passes, and T-006 records that the three false claims M1-P5 actually produced were not universal at all. That is why `claims[]` exists beside this rule rather than instead of it.",
+      "$comment": "T-003 lesson 3, named there as PARTIALLY LINTABLE and no more than that. The alternation is flat and each branch is a literal, so the pattern is linear in the subject length and carries no nested quantifier; a timing measurement on a long near-miss is recorded in delivery/work-history/m3-p4.md. EVERY LETTER IS A TWO-MEMBER CHARACTER CLASS because the first shipped version admitted only the lowercase and sentence-initial forms, and this repository writes its emphatic universals in CAPITALS: `NEVER` and `ALWAYS` and `EVERY` passed while lowercase `never` was correctly rejected, measured across 83 occurrences in 39 tracked files (M3-P4 round-1 finding CR-005). JSON Schema patterns are ECMA-262 regular expressions with no flags, so there is no `i` to set and the case-insensitivity is written out. WHAT IT DOES NOT REACH, stated because a pattern that looks like a guard invites the reader to assume it is one: a universal claim written without any of these five tokens passes, and the two examples worth naming are `there is no path that` and `guaranteed`. `in every case` is NOT one of them and was wrongly listed here until fix round 2: it IS caught, by the `every` branch under a word boundary (M3-P4 round-1 finding CR-006). T-006 records that the three false claims M1-P5 actually produced were not universal at all, which is why `claims[]` exists beside this rule rather than instead of it.",
       "type": "string",
-      "pattern": "\\b([Aa]lways|[Nn]ever|[Ee]very|[Aa]ll cases|[Ii]n all)\\b"
+      "pattern": "\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll])\\b"
     },
     "finding": {
       "type": "object",
@@ -158,8 +158,9 @@
           "required": ["analysis"],
           "properties": {
             "analysis": {
+              "$comment": "THE EXACT COMPLEMENT of `$defs/universalQuantifier`'s pattern, wrapped in a negative lookahead. The two are written out separately because JSON Schema has no way to negate a `$ref`, so they can DRIFT, and a drift here opens a gap (a subject matching neither branch) or an overlap (one matching both), either of which breaks the `oneOf`. `test/report-contract.test.ts` derives this string from the shared definition's pattern and fails when the two stop being complements.",
               "type": "string",
-              "pattern": "^(?:(?!\\b([Aa]lways|[Nn]ever|[Ee]very|[Aa]ll cases|[Ii]n all)\\b)[\\s\\S])*$"
+              "pattern": "^(?:(?!\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll])\\b)[\\s\\S])*$"
             }
           }
         },
@@ -217,7 +218,7 @@
       }
     },
     "claim": {
-      "$comment": "T-006, D-M3-30, plan step 1b. SHARED BY $ref WITH schemas/work-history.schema.json. WHY A FIELD AND NOT A GREP: CLAUDE.md's claim grep scans prose for candidate sentences and works; T-006 records that its own pattern survived being documented as a norm and was reproduced by the agent who filed it on the same day. A declared section gives the check a FIELD, so the honest restatement is a first-class value rather than an omission. THE ENUM IS CLOSED ON PURPOSE: an open `kind` lets an impossibility claim be filed as a note and skip its construction requirement, which is the hazard this section exists for. THE SPLIT THAT MATTERS: a UNIVERSAL claim is settled by someone trying to FALSIFY it, and an impossibility, coverage or remedy claim is settled by someone trying to BUILD the thing, which is why the three carry an executed construction rather than a counter-experiment. `open-question` is the honest restatement and is deliberately CHEAP: 'I did not find a way to force this arm' needs nothing, and 'this arm cannot be forced here' needs a construction.",
+      "$comment": "T-006, D-M3-30, plan step 1b. SHARED BY $ref WITH schemas/work-history.schema.json. WHY A FIELD AND NOT A GREP: CLAUDE.md's claim grep scans prose for candidate sentences and works; T-006 records that its own pattern survived being documented as a norm and was reproduced by the agent who filed it on the same day. A declared section gives the check a FIELD, so the honest restatement is a first-class value rather than an omission. THE ENUM IS CLOSED ON PURPOSE: an open `kind` lets an impossibility claim be filed as a note and skip its construction requirement, which is the hazard this section exists for. THE SPLIT THAT MATTERS: a UNIVERSAL claim is settled by someone trying to FALSIFY it, and an impossibility, coverage or remedy claim is settled by someone trying to BUILD the thing, which is why the three carry an executed construction rather than a counter-experiment. `open-question` is the honest restatement and is deliberately CHEAP: 'I did not find a way to force this arm' needs nothing, and 'this arm cannot be forced here' needs a construction. THAT LAST SENTENCE WAS FALSE AS FIRST SHIPPED and is true now, which is worth saying rather than quietly correcting: until M3-P4 fix round 2 the two sentences differed only in which `kind` the author typed, so the second one filed as `open-question` also needed nothing (finding CR-002). The open-question branch's `statement` now carries a pattern that refuses an asserted settlement; see that branch's own comment for the token list and for what it still does not reach. NO DERIVED CHECK GUARDS THIS DEFINITION, and that is a statement about the mechanism rather than an omission: everything this contract asks for is expressible in keywords, and KEYWORDS TRAVEL THROUGH A `$ref` while derived checks do not, so the whole of the claim contract is shared with schemas/work-history.schema.json automatically. A Kind B rule added here later would NOT be, and would owe `alsoTypes` and `guards` in src/checks.ts.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind", "statement"],
@@ -257,14 +258,18 @@
       },
       "oneOf": [
         {
-          "$comment": "A universal claim is settled by a counter-experiment (T-003).",
+          "$comment": "A universal claim is settled by a counter-experiment (T-003). THE SECOND MEMBER OF CR-002'S CLASS IS CLOSED HERE, and it is a different member rather than the same one twice: `open-question` requires NOTHING, so it escapes everything, while `universal` requires a counter-experiment, which is a SENTENCE, so filing an impossibility here downgrades an executed construction to a sentence. `It is impossible to force the ENOENT arm here` filed as `universal` and settled by `I thought about it and concluded there is nothing to try` validated before fix round 2. The statement pattern here refuses the SEVEN IMPOSSIBILITY TOKENS ONLY, and deliberately not the universal ones: `the lease is never held twice` is exactly what this branch is for and must stay cheap. M1-P5's `needs a stat or readdir failure that is neither ENOENT nor a permission bit, and this suite runs as root` is the measured reason the two settlements are not interchangeable: it was disproved in minutes by `symlinkSync(p, p)` raising ELOOP.",
           "type": "object",
           "additionalProperties": false,
           "required": ["id", "kind", "statement", "settled-by"],
           "properties": {
             "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
             "kind": { "type": "string", "const": "universal" },
-            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?:(?!\\b([Cc][Aa][Nn][Nn][Oo][Tt] [Bb][Ee]|[Cc][Aa][Nn] [Nn][Oo][Tt] [Bb][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ll][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ii][Ll][Ii][Tt][Yy]|[Nn][Oo] [Ww][Aa][Yy] [Tt][Oo]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Ww][Aa][Yy]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Pp][Aa][Tt][Hh])\\b)[\\s\\S])*$"
+            },
             "settled-by": { "$ref": "#/$defs/settledByCounterExperiment" }
           }
         },
@@ -284,14 +289,18 @@
           }
         },
         {
-          "$comment": "THE HONEST RESTATEMENT, and it is first-class rather than an omission. `additionalProperties: false` with `settled-by` absent from this branch's properties is what makes a SETTLED question filed as OPEN a rejection: it is the opposite misdeclaration and is equally a misdeclaration (criterion 2c(e)).",
+          "$comment": "THE HONEST RESTATEMENT, and it is first-class rather than an omission. `additionalProperties: false` with `settled-by` absent from this branch's properties is what makes a SETTLED question filed as OPEN a rejection: it is the opposite misdeclaration and is equally a misdeclaration (criterion 2c(e)). THE STATEMENT PATTERN IS FIX ROUND 2's ANSWER TO CR-002, and the mechanism it closes is worth stating at the site: AN ENUM BRANCH THAT REQUIRES NOTHING MAKES EVERY SIBLING BRANCH THAT REQUIRES SOMETHING OPTIONAL, BECAUSE THE AUTHOR PICKS THE BRANCH. Closing the enum shut the route through an INVENTED kind and left the route through the cheapest DECLARED one wide open: the same impossibility filed here exited 0, while filed as `impossibility` it owed an executed construction. The remedy is inside the declared authoring vocabulary (`pattern`, schemas/README.md), which is what makes this a fix rather than a vocabulary expansion. WHAT IT REFUSES: a statement asserting a SETTLEMENT while claiming to be open, by the five universal tokens plus eight impossibility tokens (`cannot be`, `can not be`, `impossible`, `impossibility`, `no way to`, `there is no way`, `there is no path`, `guaranteed`), each written case-insensitively for the same reason as `$defs/universalQuantifier`. WHAT IT KEEPS CHEAP, which is the point the plan is right about and fix round 2 was told not to reverse: `I did not find a way to force this arm` carries none of those tokens and still needs nothing, while `this arm cannot be forced here` is now refused here and must be filed as an `impossibility` with a construction. THE TOKENS DELIBERATELY LEFT OUT: CLAUDE.md's claim grep also scans for `needs a`, `is covered`, `catches`, `would catch`, `recovers` and `anyway`, and none of them is here, because each is ordinary in an honest open question (`this needs a real runner`) and pricing them would make the honest record expensive, which is this phase's own worst hazard. RESIDUE: an assertion written in none of these thirteen tokens still passes, exactly as `$defs/universalQuantifier` still passes an unlisted universal. The pattern narrows the escape; it does not seal it.",
           "type": "object",
           "additionalProperties": false,
           "required": ["id", "kind", "statement"],
           "properties": {
             "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
             "kind": { "type": "string", "const": "open-question" },
-            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" }
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?:(?!\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll]|[Cc][Aa][Nn][Nn][Oo][Tt] [Bb][Ee]|[Cc][Aa][Nn] [Nn][Oo][Tt] [Bb][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ll][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ii][Ll][Ii][Tt][Yy]|[Nn][Oo] [Ww][Aa][Yy] [Tt][Oo]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Ww][Aa][Yy]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Pp][Aa][Tt][Hh]|[Gg][Uu][Aa][Rr][Aa][Nn][Tt][Ee][Ee][Dd])\\b)[\\s\\S])*$"
+            }
           }
         }
       ]
@@ -329,7 +338,7 @@
       }
     },
     "fixRound": {
-      "$comment": "CLAUDE.md's fix-round contract, D-M3-30, plan step 1c. SHARED BY $ref WITH schemas/work-history.schema.json. THE MEASURED EVIDENCE, recorded here so a future reader finds the reason rather than the rule: a throughput analysis of M1 measured sixteen completed fix rounds, thirteen were re-reviewed, and TWELVE of those thirteen produced a new finding attributable to the round itself; the dominant shape, roughly a third of the milestone's elapsed time, is that the fix addressed the INSTANCE the reviewer named when the defect was the MECHANISM (M1-P3 chained four rounds that way, M1-P5 four, M1-P6 two). `not-covered` is REQUIRED rather than optional because a search whose scope is wrong returns an empty result indistinguishable from an absence of defects, and this project was bitten by that three times: `state/session.lock` probed when the lease is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and `worktrees/` while the missed path sat at the fleet root; a usage error read as a clean result. M3-P7's clean-room checklist makes `not-covered` the reviewer's FIRST probe, which is the other half of the same rule.",
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30, plan step 1c. SHARED BY $ref WITH schemas/work-history.schema.json. THE MEASURED EVIDENCE, recorded here so a future reader finds the reason rather than the rule: a throughput analysis of M1 measured sixteen completed fix rounds, thirteen were re-reviewed, and TWELVE of those thirteen produced a new finding attributable to the round itself; the dominant shape, roughly a third of the milestone's elapsed time, is that the fix addressed the INSTANCE the reviewer named when the defect was the MECHANISM (M1-P3 chained four rounds that way, M1-P5 four, M1-P6 two). `not-covered` is REQUIRED rather than optional because a search whose scope is wrong returns an empty result indistinguishable from an absence of defects, and this project was bitten by that three times: `state/session.lock` probed when the lease is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and `worktrees/` while the missed path sat at the fleet root; a usage error read as a clean result. M3-P7's clean-room checklist makes `not-covered` the reviewer's FIRST probe, which is the other half of the same rule. NO DERIVED CHECK GUARDS THIS DEFINITION EITHER, for the same reason given at `$defs/claim`: its contract is entirely keywords, and keywords travel through the `$ref` into schemas/work-history.schema.json while derived checks do not.",
       "type": "object",
       "additionalProperties": false,
       "required": ["mechanism", "derivation", "not-covered"],
@@ -352,7 +361,7 @@
               "pattern": "\\S"
             },
             "output": {
-              "$comment": "The FULL output of that command, not a summary of it. minLength and the non-whitespace pattern reach ABSENT and EMPTY and reach nothing else; a one-line summary satisfies both keywords. The multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), which is a claim about this repository's example and not about an arbitrary instance.",
+              "$comment": "The FULL output of that command, not a summary of it. minLength and the non-whitespace pattern reach ABSENT and EMPTY and reach nothing else. THREE MEMBERS OF THE CLASS THEY DO NOT REACH, named because listing one invites a reader to think the other two were considered and closed (M3-P4 round-1 finding CR-004): a one-line SUMMARY (`11 call sites found, all reviewed and safe.`); a REAL BUT TRUNCATED capture ending `... (remaining 10 sites elided for brevity)`; and a real capture OF A DIFFERENT COMMAND than the one recorded beside it. All three satisfy both keywords, and the third is not reachable by any keyword at all, since relating an output to the command that produced it needs the command to be RUN. The multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), which is a claim about this repository's example and not about an arbitrary instance.",
               "type": "string",
               "minLength": 1,
               "pattern": "\\S"
@@ -408,7 +417,7 @@
       }
     },
     "gateResult": {
-      "$comment": "R-049, R-086, R-048. SHARED BY $ref WITH schemas/work-history.schema.json. 'ALL GREEN' ONLY EVER MEANS THE WRAPPER'S EXIT CODE, expressed as a schema rule rather than as an instruction an agent can forget, and the coupling is an if/then on the SAME OBJECT so a `green` cannot be constructed while the exit code lives somewhere else in the document. THE COUNTS TRAVEL WITH IT rather than instead of it (plan section 1.7): the M2-P3 wrapper binds the child's exit code to the parsed counts in both directions, and R-048 is the silently-dropped-tests case, so `discovered` is checked against the four buckets by the derived check `report-parity-arithmetic` (Kind B: no keyword computes arithmetic over sibling fields). TWO RESIDUES, STATED. First, the CONVERSE is deliberately open: a result that is NOT green may carry `wrapper-exit-code: 0`, because a wrapper can exit 0 while the author judges the run not green, which is exactly the R-048 shape, and closing that direction would make the honest record unwritable. Second, the M2 wrapper carries a SIXTH bucket, `todo`, which this five-field vocabulary has no field for, so a run reporting todo > 0 cannot be recorded here without breaking parity; that is a real gap in the plan's field list and is recorded in delivery/work-history/m3-p4.md rather than papered over by inventing a field the plan does not name.",
+      "$comment": "R-049, R-086, R-048. SHARED BY $ref WITH schemas/work-history.schema.json, which reaches this definition under the DIFFERENT KEY `gate-evidence`. 'ALL GREEN' ONLY EVER MEANS THE WRAPPER'S EXIT CODE, expressed as a schema rule rather than as an instruction an agent can forget, and the coupling is an if/then on the SAME OBJECT so a `green` cannot be constructed while the exit code lives somewhere else in the document. A GREEN ALSO CANNOT REPORT A FAILURE: `failed` is pinned to 0 by the same if/then, because the coupling that was built first bound green to the exit code and left the record free to say something else two lines below, and a green carrying 400 failures balanced the arithmetic and validated (M3-P4 round-1 finding CR-003). THE COUNTS TRAVEL WITH IT rather than instead of it (plan section 1.7): the M2-P3 wrapper binds the child's exit code to the parsed counts in both directions, and R-048 is the silently-dropped-tests case, so `discovered` is checked against the five buckets by the derived check `report-parity-arithmetic` (Kind B: no keyword computes arithmetic over sibling fields). THAT CHECK RUNS ON BOTH TYPES, and saying so is only safe because it is now true: a derived check is registered PER TYPE and reads a TYPE-SPECIFIC KEY while these `$defs` are SHARED ACROSS TYPES, so sharing a definition does NOT share its check, and until M3-P4 fix round 2 this sentence was false for every work history (finding CR-001). The check declares `guards: [report.schema.json#/$defs/gateResult]` and `alsoTypes: [work-history]`, and test/report-contract.test.ts enumerates every cross-document `$ref` in schemas/ and fails when a guarded definition is reachable from a type the check does not list, so this sentence cannot go stale silently again. THE SIXTH BUCKET, `todo`, IS NOW A FIELD: the M2-P3 wrapper's identity is `pass + fail + skipped + todo + did-not-run == reported` and the plan named five counts, so a run reporting `todo > 0` could not be recorded at all without breaking parity; the orchestrator's arbitration of M3-P4 round 1 amended the plan's field list to six rather than leaving a contract that refuses a legitimate run. ONE RESIDUE, STILL DELIBERATELY OPEN AND NOT TO BE CONFUSED WITH THE CR-003 CASE ABOVE: a result that is NOT green may carry `wrapper-exit-code: 0`, because a wrapper can exit 0 while the author judges the run not green, which is exactly the R-048 shape, and closing that direction would make the honest record unwritable. A SECOND RESIDUE: a green carrying `did-not-run > 0` or `skipped > 0` is still accepted, because a skipped test is a legitimate part of a green run in this repository (the floor-gated tests) and a cancelled one may be reported beside a green wrapper exit; only `failed` is pinned, which is the direction the finding named and the only one where the contradiction is unambiguous.",
       "type": "object",
       "additionalProperties": false,
       "required": ["gate", "result"],
@@ -423,6 +432,7 @@
         "passed": { "type": "integer" },
         "failed": { "type": "integer" },
         "skipped": { "type": "integer" },
+        "todo": { "type": "integer" },
         "did-not-run": { "type": "integer" }
       },
       "if": {
@@ -438,14 +448,16 @@
           "passed",
           "failed",
           "skipped",
+          "todo",
           "did-not-run"
         ],
         "properties": {
           "wrapper-exit-code": { "type": "integer", "const": 0 },
           "discovered": { "type": "integer" },
           "passed": { "type": "integer" },
-          "failed": { "type": "integer" },
+          "failed": { "type": "integer", "const": 0 },
           "skipped": { "type": "integer" },
+          "todo": { "type": "integer" },
           "did-not-run": { "type": "integer" }
         }
       }
