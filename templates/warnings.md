@@ -1,5 +1,8 @@
 # Environment warnings
 
+This is R-083a's template half; its accumulation half is the work-history
+schema's `environment-warnings[]`.
+
 Place this file at the fleet root as `warnings.md`. `tiphys spawn` appends it
 VERBATIM to every brief it assembles (`src/brief.ts`, R-083b), so what is
 written here is what every agent reads. No heading is added, no banner, no

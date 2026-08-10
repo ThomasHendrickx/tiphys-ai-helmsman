@@ -581,8 +581,12 @@ function constructionClaim(kind: string): Record<string, unknown> {
   };
 }
 
-for (const kind of ["impossibility", "coverage", "remedy"] as const) {
-  test(`a ${kind} claim with no executed construction is rejected, and the same claim carrying one is accepted`, () => {
+for (const [article, kind] of [
+  ["an", "impossibility"],
+  ["a", "coverage"],
+  ["a", "remedy"],
+] as const) {
+  test(`${article} ${kind} claim with no executed construction is rejected, and the same claim carrying one is accepted`, () => {
     /* ACCEPTED with a real construction. */
     assert.deepEqual(reportLines(withClaim(constructionClaim(kind))), []);
 
@@ -977,4 +981,54 @@ test("an enumerable final-report section is empty only with an explicit marker, 
   assert.deepEqual(finalReportLines(unmarked, defanged), []);
   assert.deepEqual(finalReportLines(contradictory, defanged), []);
   assert.ok(finalReportLines(unmarked).length > 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* The universal-quantifier pattern's worst case, measured (T-012)       */
+/* ------------------------------------------------------------------ */
+
+test("the universal-quantifier pattern is linear on a long near-miss rather than catastrophic", () => {
+  /* T-012, BINDING: any change to a pattern owes a worst-case TIMING
+     measurement on a long NEAR-MISS, and a fuzz over well-formed inputs is
+     structurally blind to that class. The orchestrator's own regex widening
+     measured correctness, the suite and the owner's criterion, all true, and
+     shipped a 73-second denial of service on a 269-byte document.
+
+     THE SUBJECT IS A NEAR-MISS, and it is put in `analysis`, which is the
+     field the pattern is actually applied to. Putting it in a field guarded
+     only by `\\S` would measure nothing while passing, which is a witness
+     green for the wrong reason. It is made of the alternation's own prefixes
+     with the last letter wrong, so the engine must enter and abandon a branch
+     at every position, and the negative-lookahead branch of the `oneOf` must
+     re-test the alternation at every character. */
+  const nearMiss = `${"alway neve ever ".repeat(8000)}x`;
+  const document = readTemplate("report.example.yaml");
+  const finding = (document["findings"] as Record<string, unknown>[])[0] as Record<
+    string,
+    unknown
+  >;
+  finding["analysis"] = nearMiss;
+
+  const started = process.hrtime.bigint();
+  const lines = reportLines(document);
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+
+  assert.deepEqual(lines, [], "the near-miss should not match the quantifier pattern");
+  /* The bound is deliberately loose: this asserts the ABSENCE OF A
+     CATASTROPHIC CLASS, not a performance target, and a tight bound would be
+     flaky on a loaded runner. A backtracking blowup on a subject of this
+     length does not return in minutes, so any pass at all falsifies it. The
+     measured figure at authoring time is recorded in
+     delivery/work-history/m3-p4.md. */
+  assert.ok(
+    elapsedMs < 5000,
+    `validating a ${String(nearMiss.length)}-character near-miss took ${elapsedMs.toFixed(1)}ms`,
+  );
+
+  /* AND THE PATTERN STILL WORKS ON THE REAL TOKEN, so the near-miss above is
+     a near-miss rather than a subject the pattern cannot see at all. */
+  finding["analysis"] = `${nearMiss} always`;
+  assert.deepEqual(reportLines(document), [
+    "INVALID #/findings/0 value matches no permitted alternative here",
+  ]);
 });

@@ -59,8 +59,11 @@ findings:
         note: checkFindingOutcomeParity is an exported function.
       - path: src/gates/coverage.ts
         command: node src/gates/coverage.ts --help
-        exit-code: 20
-        note: The gate CLI accepts only --result, --evidence and --config.
+        exit-code: 64
+        note: >-
+          The gate CLI answers with its usage line, which accepts only
+          --result, --evidence and --config.
+
     analysis: |
       Acceptance criterion 4 asks for the M2-P6 coverage checker run in
       finding-to-outcome parity mode against the final-report template, with
@@ -124,9 +127,13 @@ claims:
         command: node --test --test-name-pattern "parity" test/report-contract.test.ts
         exit-code: 0
         output: |
-          # tests 6
-          # pass 6
+          # tests 2
+          # suites 0
+          # pass 2
           # fail 0
+          # cancelled 0
+          # skipped 0
+          # todo 0
 
   - id: C-4
     kind: remedy
