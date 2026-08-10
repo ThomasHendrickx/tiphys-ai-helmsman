@@ -1,0 +1,58 @@
+{
+  "runId": "1f75fe92e8f41bd39f3eab13",
+  "manifest": "gate-registry.yaml",
+  "registry": true,
+  "mode": "full",
+  "declaredByChecklist": [
+    {
+      "id": "unit-tests-for-changed-service-methods",
+      "probe": "unit-tests-for-changed-service-methods",
+      "applicability": "conditional"
+    },
+    {
+      "id": "fixtures-for-changed-component-states",
+      "probe": "fixtures-for-changed-component-states",
+      "applicability": "conditional"
+    }
+  ],
+  "manifestSha256": "478f5ac151b6db74deaedd2959817723f499642565b68c2d83fa4e8596d882e8",
+  "startedAt": "2026-08-10T01:38:38.880Z",
+  "endedAt": "2026-08-10T01:38:39.595Z",
+  "parameters": {
+    "base": "3c60acbee541711aca2b046269aa35a03f22bb8e",
+    "head": "108eed0",
+    "phase": "m3-p3"
+  },
+  "only": [
+    "scope"
+  ],
+  "manifestGates": 12,
+  "gates": [
+    {
+      "id": "scope",
+      "status": "green",
+      "units": 41,
+      "unitLabel": "changed paths audited",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "41 changed path(s) audited against declaration delivery/plan/phase-declarations/m3-p3.json at merge base 3c60acbee541711aca2b046269aa35a03f22bb8e (sha256 a78fdbf9b9b75cf146c3fd06191695b1d4686abce0329c9f82aae5b0e5ccd6e3)",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev3/scope/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev3/scope/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/cr8-ev3/scope/stderr.txt"
+    }
+  ],
+  "counts": {
+    "declared": 1,
+    "applicable": 1,
+    "verdict": 1,
+    "green": 1,
+    "red": 0,
+    "not-applicable": 0,
+    "error": 0,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [],
+  "aborted": false,
+  "exitCode": 0,
+  "reason": "every applicable gate is green"
+}
