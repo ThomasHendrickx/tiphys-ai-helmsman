@@ -73,5 +73,20 @@
     "phase": "M3-P2",
     "artifact": "gate-registry.yaml",
     "clause": "R-094"
+  },
+  "R-024": {
+    "phase": "M3-P3",
+    "artifact": "assurance-modes.yaml",
+    "clause": "R-024"
+  },
+  "R-096": {
+    "phase": "M3-P3",
+    "artifact": "assurance-modes.yaml",
+    "clause": "R-096"
+  },
+  "R-075": {
+    "phase": "M3-P3",
+    "artifact": "role-model-config.yaml",
+    "clause": "R-075"
   }
 }

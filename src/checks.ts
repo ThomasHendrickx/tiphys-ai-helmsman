@@ -25,6 +25,10 @@
  * PLAN DEFECT to escalate, not a script to add quietly.
  */
 
+import { readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
 
 /** What one derived check produced. */
@@ -263,14 +267,1336 @@ export const planHazardClassesAddressedByResolves: DerivedCheck = {
   },
 };
 
+/* ================================================================== */
+/* M3-P3: the assurance-mode checks                                    */
+/* ================================================================== */
+
+/** The mode whose pipeline every other mode's downgrades are measured against. */
+const REFERENCE_MODE_ID = "full";
+
+/** The document name these checks report against when naming the instance. */
+const MODES_DOCUMENT = "assurance-modes.yaml";
+
+/**
+ * Do two string lists hold the same values in the same order?
+ *
+ * ELEMENT-WISE, WITH NO SEPARATOR (M3-P3 fix round 1, finding A-001/B-001).
+ * This comparison was written as `a.join(sep) !== b.join(sep)`, and the
+ * separator in the source was two LITERAL NUL BYTES. Two things were wrong and
+ * only one of them was the bytes.
+ *
+ *   The bytes: `src/checks.ts` is the file every later M3 phase extends, and a
+ *   NUL past git's sniff window is worse than an unreviewable diff, because
+ *   `git diff --stat` reports no `Bin` and the hunk renders as `join("")`,
+ *   which LOOKS CORRECT. CLAUDE.md's prescribed control-character grep could
+ *   not see it either, for the reason T-010 records.
+ *
+ *   The mechanism: a separator join answers "are these lists equal" with a
+ *   PROXY, and the proxy is only faithful for separators the values cannot
+ *   contain. That is the same shape as the two findings this fix round is
+ *   mostly about, one layer down. Replacing NUL with a space would have been
+ *   the instance fix and would have made `["a b"]` compare equal to
+ *   `["a", "b"]`.
+ *
+ * SO THE SEMANTICS DID CHANGE, and it is stated rather than slipped in: this
+ * is now exact list equality for every input, where `join(NUL)` was exact list
+ * equality for every input that contains no NUL. No caller can produce one
+ * today (both lists come from YAML/JSON decoding of documents whose values are
+ * enum-constrained), so no behaviour observable from any test moved. The
+ * registered test `charter-mode-enum-drift-detected` covers both arms and a
+ * new arm covers the separator class directly.
+ */
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
+}
+
+/** Every string in an array field, in order, with non-strings dropped. */
+function stringsAt(record: Record<string, unknown> | undefined, key: string): string[] {
+  return asArray(record?.[key]).filter(
+    (value): value is string => typeof value === "string",
+  );
+}
+
+/** `{index, record, id}` for every element of `modes[]` that is an object. */
+function eachMode(
+  instance: unknown,
+): { index: number; mode: Record<string, unknown>; id: string }[] {
+  const document = asRecord(instance);
+  const modes = asArray(document?.["modes"]);
+  const rows: { index: number; mode: Record<string, unknown>; id: string }[] = [];
+  for (let index = 0; index < modes.length; index += 1) {
+    const mode = asRecord(modes[index]);
+    if (mode === undefined) {
+      continue;
+    }
+    rows.push({ index, mode, id: String(mode["id"] ?? "") });
+  }
+  return rows;
+}
+
+/**
+ * Read and decode a document from the CONTEXT directory, or say why not.
+ *
+ * FAIL CLOSED. A cross-document rule whose other document is missing must not
+ * become a pass: that is the vacuous shape this whole module exists to
+ * prevent, one level down from `SKIPPED <id> no context`. The path is not one
+ * this program created, so it is classified before it is opened
+ * (`readOperatorPath`, D-M3-27) rather than opened and hoped about.
+ */
+function readContextDocument(
+  contextDirectory: string,
+  relativePath: string,
+): { ok: true; value: unknown; path: string } | { ok: false; reason: string } {
+  const path = join(contextDirectory, relativePath);
+  const read = readOperatorPath(path);
+  if (!read.ok) {
+    return { ok: false, reason: read.reason };
+  }
+  const decoded = decodeDocument(read.body, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  return { ok: true, value: decoded.value, path };
+}
+
+/* ------------------------------------------------------------------ */
+/* mode-no-undeclared-downgrade (blueprint section 8, M3-P3 criterion 3a) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Downgrades are declared, never improvised" (blueprint section 8), made
+ * falsifiable: every stage the reference mode `full` runs and this mode does
+ * not must appear in this mode's `skips[]`.
+ *
+ * NO SCHEMA KEYWORD REACHES THIS. It is a set difference between the
+ * `pipeline` of ONE array element and the `pipeline` of a SIBLING element,
+ * selected by id, compared against a third field of the first (M3R-002). The
+ * schema's whole share is that `skips` exists and holds stage ids.
+ *
+ * TWO STRUCTURALLY DIFFERENT WAYS TO EVADE IT, and both are violations here
+ * rather than one being left implied:
+ *
+ *   1. a mode omits a stage and declares NOTHING (`skips: []`);
+ *   2. a mode omits two stages and declares ONE of them, so the document reads
+ *      as a mode that has accounted for itself while one downgrade is silent.
+ *
+ * AND A THIRD, WHICH IS WHY THE MISSING REFERENCE IS A VIOLATION AND NOT A
+ * QUIET RETURN: deleting the `full` mode from the document disables the
+ * comparison for every remaining mode at once, so a document with one
+ * `direct-pr` mode, an empty `skips[]` and no `clean-room-review` would pass a
+ * check that returned early. That is the same defect one level up, so the
+ * absent reference fails closed.
+ *
+ * SOUNDNESS, THE CONVERSE DIRECTION, ADDED IN ROUND 9 (CR-002). Everything
+ * above asks ONE question: is every stage this mode omits DECLARED? It never
+ * asked the converse: is every stage this mode DECLARES actually omitted? A
+ * set checked in one direction only is a set nothing constrains, and `skips[]`
+ * is shipped DATA that any edit can change. The measured consequence was not
+ * hypothetical: `full` keeping its complete twelve-stage pipeline and gaining
+ * ONE bogus `skips[]` entry validated at exit 0, and `tiphys mode show --mode
+ * full` then printed that no phase of the tiphys project had ever been
+ * delivered under the mode this project has delivered every phase under
+ * (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
+ *
+ * SOUNDNESS HAS TWO DIRECTIONS AND ROUND 9 SHIPPED ONE (round 10, V-1).
+ * `skips[]` is defined by the document itself as every stage in `full`'s
+ * pipeline that this mode's pipeline omits AND NOTHING ELSE, so "actually
+ * omitted" is measured against the REFERENCE and an entry can fail it two
+ * ways: (A) this mode's own pipeline runs the stage, and (B) NOTHING runs it,
+ * that is, it is absent from this mode's pipeline and from `full`'s as well.
+ * Round 9 implemented the predicate the reviewer wrote down (A) rather than
+ * the property the same reviewer described thirteen lines earlier, and then
+ * recorded in two shipped documents that the check ran in both directions.
+ * B was reachable on the shipped data with a one-line edit, because the stage
+ * vocabulary has thirteen ids and `full`'s pipeline has twelve: `direct-pr`
+ * gaining `orchestrator-diff-review` validated at exit 0 and `tiphys mode
+ * show` then reported a skipped-stage count one too high with a `skips:` row
+ * naming a stage that is no downgrade at all.
+ *
+ * WHICH SIDE OF THE COMPARISON IS EDITED DOES NOT MATTER, and that is why B is
+ * not merely "a typo in skips". Shrinking `full`'s PIPELINE, touching no
+ * `skips[]` anywhere, turns every other mode's previously correct entry for
+ * that stage into a phantom. The reference is one half of the relation and
+ * either half moving breaks it.
+ *
+ * THE DIRECTION-A PREDICATE RUNS OVER EVERY MODE INCLUDING THE REFERENCE, and
+ * that is load-bearing rather than a detail. The completeness loop `continue`s
+ * past `full` because a mode cannot omit a stage relative to itself; the
+ * soundness question is well posed for `full` too, and `full` is precisely the
+ * mode the sharpest member targeted. A soundness loop that inherited the
+ * completeness loop's skip would have been green against the finding that
+ * caused it to be written.
+ *
+ * DIRECTION A NEEDS NO REFERENCE MODE, so it runs BEFORE the reference is
+ * resolved and its violations survive an absent `full`. A document that both
+ * deletes `full` and carries a contradictory `skips[]` reports both facts
+ * rather than the first one only. DIRECTION B cannot: it is defined by the
+ * reference pipeline, so it runs after the resolution and an absent `full` is
+ * already a violation in its own right.
+ */
+export const modeNoUndeclaredDowngrade: DerivedCheck = {
+  id: "mode-no-undeclared-downgrade",
+  type: "assurance-modes",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const rows = eachMode(instance);
+    if (rows.length === 0) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    for (const row of rows) {
+      const running = new Set(stringsAt(row.mode, "pipeline"));
+      for (const stage of stringsAt(row.mode, "skips")) {
+        if (running.has(stage)) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} declares stage ${stage} in skips while its own pipeline runs it, so skips does not describe what this mode omits`,
+          });
+        }
+      }
+    }
+    const reference = rows.find((row) => row.id === REFERENCE_MODE_ID);
+    if (reference === undefined) {
+      violations.push({
+        pointer: "#/modes",
+        message: `no mode declares id ${REFERENCE_MODE_ID}, so no mode's omitted stages can be measured against the reference pipeline`,
+      });
+      return { violations, reports: [] };
+    }
+    const referenceStages = stringsAt(reference.mode, "pipeline");
+    /* SOUNDNESS, DIRECTION B (round 10, V-1 and CRB9-02). "Omitted" is
+       measured RELATIVE TO THE REFERENCE, so an entry is unsound either
+       because this mode runs it (direction A, above) or because NOTHING runs
+       it. This loop is the second case and it needs `referenceStages`, which
+       is why it sits after the resolution rather than beside direction A.
+
+       IT RUNS OVER EVERY ROW INCLUDING THE REFERENCE, and on the reference the
+       two directions together say `full.skips` must be EMPTY: an entry is
+       either in `full`'s own pipeline (direction A rejects it) or outside it
+       (this loop rejects it). That is not a side effect, it is CRB9-02's fix.
+       `executionStatus` keys the un-downgraded sentence off `mode.id`, and
+       that is honest only while the reference really declares no downgrade;
+       before this loop a `full` whose stage had MOVED from `pipeline` into
+       `skips` validated at exit 0 and `tiphys mode show --mode full` printed
+       "the un-downgraded process" fifteen lines above a `skips: deploy-verify`
+       row. A registered test asserted the shipped document was clean, which
+       guards THIS repository's document and not the check, so any other
+       document carrying a downgraded reference was served that contradiction.
+       A property asserted in one place and not enforced where it is consumed
+       is the CR-002 mechanism itself, one level up. */
+    const referenceRunning = new Set(referenceStages);
+    for (const row of rows) {
+      for (const stage of stringsAt(row.mode, "skips")) {
+        if (!referenceRunning.has(stage)) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} declares stage ${stage} in skips, but mode ${REFERENCE_MODE_ID} does not run it, so it is not a downgrade relative to the reference pipeline`,
+          });
+        }
+      }
+    }
+    for (const row of rows) {
+      if (row.index === reference.index) {
+        continue;
+      }
+      const own = new Set(stringsAt(row.mode, "pipeline"));
+      const declared = new Set(stringsAt(row.mode, "skips"));
+      const undeclared = referenceStages.filter(
+        (stage) => !own.has(stage) && !declared.has(stage),
+      );
+      for (const stage of undeclared) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/skips`,
+          message: `mode ${row.id} omits stage ${stage}, which mode ${REFERENCE_MODE_ID} runs, and does not declare it in skips`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* mode-stage-order (R-024, M3-P3 criterion 3b)                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * R-024: an adversarial plan review happens before anyone builds.
+ *
+ * THE RELATIVE POSITION OF TWO VALUES IN A VARIABLE-LENGTH ARRAY IS NOT A
+ * KEYWORD PROPERTY (M3R-002). `contains` can say both are present and nothing
+ * in the vocabulary can say which comes first.
+ *
+ * The rule has TWO ARMS because there are two ways to build before a review,
+ * and the plan states both: reorder them, or delete the review. So a mode
+ * whose pipeline contains `implement` and NOT `adversarial-plan-review` must
+ * list the review in `skips[]`, which is the same declared-downgrade
+ * discipline applied to the one stage R-024 is about.
+ */
+export const modeStageOrder: DerivedCheck = {
+  id: "mode-stage-order",
+  type: "assurance-modes",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const violations: Diagnostic[] = [];
+    for (const row of eachMode(instance)) {
+      const pipeline = stringsAt(row.mode, "pipeline");
+      const review = pipeline.indexOf("adversarial-plan-review");
+      const implement = pipeline.indexOf("implement");
+      if (implement === -1) {
+        continue;
+      }
+      if (review === -1) {
+        if (!stringsAt(row.mode, "skips").includes("adversarial-plan-review")) {
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/skips`,
+            message: `mode ${row.id} runs implement without adversarial-plan-review and does not declare that stage in skips (R-024)`,
+          });
+        }
+        continue;
+      }
+      if (review > implement) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/pipeline`,
+          message: `mode ${row.id} places implement at position ${String(implement)} and adversarial-plan-review at position ${String(review)}, so building starts before the review (R-024)`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* mode-gate-sets-resolve (M3-P3 criterion 3d)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every `gate-sets[]` entry RESOLVES against `gate-registry.yaml`.
+ *
+ * WHAT "RESOLVES" MEANS HERE, stated because a checker whose promise is vague
+ * is a checker nobody can falsify: the entry names a gate the registry
+ * declares, AND that gate's own `modes` list names this mode. Both halves are
+ * needed, because a reference that resolves to a gate which never runs in this
+ * mode is a mode whose assurance is a name with no gates behind it, which is
+ * the hazard exactly as the plan words it.
+ *
+ * `requiresContext` is TRUE, so invoking the validator without `--context`
+ * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
+ * is the point of the mechanism (M3-P1 criterion 4c): a cross-document rule
+ * must never be able to pass BY NOT RUNNING.
+ */
+export const modeGateSetsResolve: DerivedCheck = {
+  id: "mode-gate-sets-resolve",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Kept fail-closed
+         rather than trusting a caller that reaches the check directly. */
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const registryDocument = readContextDocument(contextDirectory, "gate-registry.yaml");
+    if (!registryDocument.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/modes",
+            message: `the gate registry could not be read, so no gate set reference could be resolved: ${registryDocument.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const declared = new Map<string, Set<string>>();
+    for (const gate of asArray(asRecord(registryDocument.value)?.["gates"])) {
+      const record = asRecord(gate);
+      const id = record?.["id"];
+      if (typeof id === "string") {
+        declared.set(id, new Set(stringsAt(record, "modes")));
+      }
+    }
+    const violations: Diagnostic[] = [];
+    for (const row of eachMode(instance)) {
+      const references = stringsAt(row.mode, "gate-sets");
+      for (let position = 0; position < references.length; position += 1) {
+        const reference = references[position] as string;
+        const pointer = `#/modes/${String(row.index)}/gate-sets/${String(position)}`;
+        const modesOfGate = declared.get(reference);
+        if (modesOfGate === undefined) {
+          violations.push({
+            pointer,
+            message: `gate set ${reference} is not declared in ${registryDocument.path}`,
+          });
+          continue;
+        }
+        if (!modesOfGate.has(row.id)) {
+          violations.push({
+            pointer,
+            message: `gate set ${reference} is declared in ${registryDocument.path} and its modes list does not name ${row.id}, so it never runs in this mode`,
+          });
+        }
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* charter-mode-enum-matches-modes (M3-P3 step 4, criterion 4)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The charter schema's mode enums equal the ids declared here.
+ *
+ * `schemas/charter.schema.json` declares the mode vocabulary a project charter
+ * may use, and this document declares what those modes ARE. Two lists, one
+ * fact. Without this check they are a duplication that drifts silently the
+ * first time a mode is added, which is the same drift hole M3-P2 closed for
+ * the gate list.
+ *
+ * BOTH FIELDS, not one. The charter carries `delivery-mode` AND
+ * `assurance-tier`, M3-P1 shipped the identical placeholder enum on both, and
+ * step 4 names both ("Add `mode` and `assurance-tier` validation to the
+ * charter schema's enum"). A check that watched only one would leave the other
+ * free to drift, which is the hazard rather than a smaller version of it.
+ */
+export const charterModeEnumMatchesModes: DerivedCheck = {
+  id: "charter-mode-enum-matches-modes",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const charter = readContextDocument(
+      contextDirectory,
+      join("schemas", "charter.schema.json"),
+    );
+    if (!charter.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/modes",
+            message: `the charter schema could not be read, so its mode enum could not be compared with ${MODES_DOCUMENT}: ${charter.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const declaredIds = eachMode(instance)
+      .map((row) => row.id)
+      .sort();
+    const properties = asRecord(asRecord(charter.value)?.["properties"]);
+    const violations: Diagnostic[] = [];
+    for (const field of ["delivery-mode", "assurance-tier"]) {
+      const definition = asRecord(properties?.[field]);
+      if (definition === undefined) {
+        violations.push({
+          pointer: "#/modes",
+          message: `${charter.path} declares no ${field} property, so the mode ids in ${MODES_DOCUMENT} have nothing to agree with`,
+        });
+        continue;
+      }
+      const enumerated = stringsAt(definition, "enum").slice().sort();
+      if (!sameStringList(enumerated, declaredIds)) {
+        violations.push({
+          pointer: "#/modes",
+          message: `${MODES_DOCUMENT} declares mode ids [${declaredIds.join(", ")}] and the ${field} enum in ${charter.path} is [${enumerated.join(", ")}]; the two must be equal`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* IDENTITY UNIQUENESS (M3-P3 fix round 1, findings B-002 and B-004)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM, named before the instances: A UNIQUENESS CONSTRAINT ASSERTED
+ * BY A PREDICATE THAT DOES NOT TEST IDENTITY.
+ *
+ * `uniqueItems` is DEEP-OBJECT equality. On an array of records keyed by an id
+ * field it says "no two entries are identical", which is not the property
+ * anything relies on: two entries may share an `id` and differ anywhere else
+ * and the array is `uniqueItems`-clean. Every consumer that looks an entry up
+ * BY ID then silently takes one of them, and which one depends on document
+ * order.
+ *
+ * Measured on `assurance-modes.yaml` with a crippled duplicate placed FIRST:
+ * `tiphys mode show --mode full` printed eleven stages with
+ * `clean-room-review` absent and `skips` empty, exit 0. That is the invisible
+ * downgrade this whole phase exists to prevent, on the path a brief uses.
+ *
+ * IT IS A RECURRENCE. M3-P1's B-003 was the same predicate on
+ * `acceptance[].id`, fixed at the instance (that check counts occurrences).
+ * The class was not swept, so it came back one phase later in a different
+ * document. The sweep is published in delivery/work-history/m3-p3.md.
+ *
+ * `charter-mode-enum-matches-modes` DOES currently reject a duplicate id, and
+ * that is not a defence: it compares the declared id LIST against the charter
+ * enum, so it is multiplicity-sensitive BY ACCIDENT. The accident disappears
+ * the moment that comparison is rewritten to compare sets, and
+ * `role-model-config.yaml` never had it at all.
+ */
+function makeIdUniquenessCheck(
+  id: string,
+  type: string,
+  arrayField: string,
+  idField: string,
+  noun: string,
+): DerivedCheck {
+  return {
+    id,
+    type,
+    requiresContext: false,
+    run(instance: unknown): CheckOutcome {
+      const document = asRecord(instance);
+      const entries = asArray(document?.[arrayField]);
+      const seen = new Map<string, number[]>();
+      for (let index = 0; index < entries.length; index += 1) {
+        const value = asRecord(entries[index])?.[idField];
+        if (typeof value !== "string") {
+          continue;
+        }
+        const at = seen.get(value);
+        if (at === undefined) {
+          seen.set(value, [index]);
+        } else {
+          at.push(index);
+        }
+      }
+      const violations: Diagnostic[] = [];
+      for (const [value, indexes] of [...seen.entries()].sort()) {
+        if (indexes.length < 2) {
+          continue;
+        }
+        /* Reported at the SECOND occurrence and later, so the pointer names an
+           entry a reader can delete, and the message names every index so the
+           first one is findable too. */
+        for (const index of indexes.slice(1)) {
+          violations.push({
+            pointer: `#/${arrayField}/${String(index)}/${idField}`,
+            message: `${noun} ${value} is declared ${String(indexes.length)} times, at ${arrayField} ${indexes.map(String).join(", ")}; an id selects one entry and these select ${String(indexes.length)}`,
+          });
+        }
+      }
+      return { violations, reports: [] };
+    },
+  };
+}
+
+/** `modes[].id` selects exactly one mode. */
+export const modeIdsAreUnique: DerivedCheck = makeIdUniquenessCheck(
+  "mode-ids-are-unique",
+  "assurance-modes",
+  "modes",
+  "id",
+  "mode id",
+);
+
+/**
+ * `roles[].role` selects exactly one binding. B-004: the SAME defect, in the
+ * document nothing consumes yet, which is why it was latent rather than
+ * demonstrable. It is fixed in the same act because the mechanism is one thing.
+ */
+export const roleIdsAreUnique: DerivedCheck = makeIdUniquenessCheck(
+  "role-ids-are-unique",
+  "role-model-config",
+  "roles",
+  "role",
+  "role id",
+);
+
+/* ------------------------------------------------------------------ */
+/* mode-conditions-quote-granted-by (fix round 1, finding B-003)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM: A CONSTRAINT VERIFIED BY CARDINALITY INSTEAD OF CONTENT.
+ *
+ * `merge-authority: delegated-under-conditions` requires `conditions[]` and a
+ * `granted-by` decision-record reference. Until this round, the only thing
+ * anyone compared was HOW MANY conditions there were: the schema required a
+ * non-empty array of non-empty strings, `granted-by` had to match a pattern,
+ * and one registered test asserted `length === 6`. So all six sentences could
+ * be replaced with fabrications, keeping the count, and the schema, every
+ * derived check and the test all stayed green. The document that says who may
+ * merge could be rewritten to say something else.
+ *
+ * THIS CHECK BINDS THE CONDITIONS TO THEIR SOURCE. `granted-by` already names
+ * the record, so the record is resolved and every condition must OCCUR in it,
+ * compared on whitespace-normalized text because YAML folded scalars re-wrap
+ * lines and markdown wraps them differently again. A condition that is not in
+ * the record it cites is a violation naming the index and quoting the opening
+ * of the offending text.
+ *
+ * WHAT THIS DOES NOT DO, stated here and not only in the work history: it is
+ * the NO-FABRICATION direction only. It cannot see an OMISSION, because
+ * "which paragraphs of a prose decision record are its conditions" is not
+ * derivable without assuming that record's internal structure, and a kernel
+ * check that hard-coded one project's heading text would be a check that
+ * reddens on formatting. The omission direction is covered one layer up, by a
+ * registered test that parses THIS repository's DR-0012 and requires every
+ * condition it declares to be present; that test may know the record's shape
+ * because it ships with the record.
+ *
+ * FAIL CLOSED at every step: no decisions directory, no matching record, or
+ * more than one matching record are all violations, never a quiet pass.
+ */
+const DECISION_DIRECTORIES = [join("delivery", "decisions"), "decisions"];
+
+function normalizeProse(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A CommonMark source position: `[[startLine, startColumn], [endLine, endColumn]]`,
+ * every component ONE-BASED and INCLUSIVE, and the columns are CHARACTER offsets
+ * into the raw line rather than display columns.
+ *
+ * That last sentence is load-bearing and was measured, not assumed, because the
+ * library's own documentation says "column" and a display column would make every
+ * tab-indented slice below wrong by three characters. Measured against
+ * `commonmark` 0.31.2 on 2026-08-09, four shapes whose answers differ between the
+ * two readings:
+ *
+ *   "- item\n\n\tcontinuation with tab\n"  paragraph [[3,2],[3,22]]  -> slice(1)
+ *   "  - a\n\n\t  b\n"                      paragraph [[3,4],[3,4]]   -> slice(3)
+ *   "-\tTab after the marker and more.\n"  paragraph [[1,3],[1,32]]  -> slice(2)
+ *   ">\tquoted after tab\n"                paragraph [[1,3],[1,18]]  -> slice(2)
+ *
+ * Every one lands exactly on the first content character, which only a character
+ * offset does. The captures are in `delivery/work-history/m3-p3.md`.
+ */
+type SourcePosition = [[number, number], [number, number]];
+
+/**
+ * The part of `commonmark`'s AST this module reads, declared locally so that
+ * `@types/commonmark` is not a dependency. Six members, all of them structure:
+ * this module never reads `literal`, and that is the whole of DR-0022's A2
+ * versus A distinction (see `quotableUnits`).
+ */
+interface CommonMarkNode {
+  readonly type: string;
+  readonly sourcepos: SourcePosition;
+  readonly firstChild: CommonMarkNode | null;
+  readonly next: CommonMarkNode | null;
+}
+
+interface CommonMarkModule {
+  Parser: new () => { parse(input: string): CommonMarkNode };
+}
+
+/**
+ * `commonmark` IS LOADED LAZILY, FOR THE REASON `src/validate.ts` STATES AT
+ * LENGTH FOR `ajv` AND `yaml`, and it is not a style choice here either.
+ *
+ * `copyInstallation` in `test/scope-gate.test.ts` copies `src/` to a scratch
+ * location outside the repository and runs it there, where no `node_modules`
+ * sits above the copy. A top-level `import ... from "commonmark"` in this
+ * module makes that test fail with `ERR_MODULE_NOT_FOUND` at module load,
+ * before the condition it exists to exercise can happen. `createRequire` defers
+ * the resolution to the first record actually parsed.
+ */
+const requireDependency = createRequire(import.meta.url);
+
+function commonMarkModule(): CommonMarkModule {
+  return requireDependency("commonmark") as CommonMarkModule;
+}
+
+/**
+ * The block types whose own text belongs to NO quotable unit: DECLARED INTENT,
+ * NOT THE MECHANISM THAT PERFORMS THE EXCLUSION. Read the next paragraph before
+ * relying on this set for anything.
+ *
+ * Headings (ATX and setext are one node type here, which is the point), code
+ * blocks (fenced and indented, likewise), HTML blocks and thematic breaks.
+ * A link reference definition produces no node at all, so it needs no entry:
+ * the parser removes it before this walk ever sees the document.
+ *
+ * WHAT THIS SET ACTUALLY DOES TODAY, corrected after a clean-room review found
+ * the docstring claiming more than the code performs (CR-003, round 7). Under
+ * `commonmark` 0.31.2 EMPTYING THIS SET CHANGES NO ANSWER, and the reason is
+ * structural rather than "no test covers it": all four types are LEAF blocks in
+ * that parser's AST. `code_block`, `html_block` and `thematic_break` have no
+ * children at all, and a `heading`'s children are INLINE nodes, never
+ * `paragraph`. Both walkers below emit a unit only for a `paragraph` child, so
+ * descending into any of these four reaches nothing that can produce a unit.
+ * Measured, `commonmark` 0.31.2, node v26.6.0:
+ *
+ *   heading         children: ["text","code","text","strong"]
+ *   code_block      children: []
+ *   html_block      children: []
+ *   thematic_break  children: []
+ *
+ * The true sentence is therefore: these types cannot contribute a unit under
+ * `commonmark` 0.31.2 whether or not they appear here; THE SET EXISTS SO THAT A
+ * PARSER CHANGE CANNOT MAKE THEM CONTRIBUTE ONE. Keeping it is what makes the
+ * exclusion intentional rather than incidental to one parser version, and a
+ * release that gave `html_block` block children, or a Markdown extension in a
+ * consuming project, is exactly the event it is here for.
+ *
+ * The registered tests named "code block content ... is not a quotable unit"
+ * and "heading text ... is not a quotable unit" therefore guard the shared
+ * `paragraph`-versus-`else` branches, not this set; their witness specs mutate
+ * those branches for that reason.
+ */
+const NOT_QUOTABLE = new Set(["code_block", "heading", "html_block", "thematic_break"]);
+
+/**
+ * Whether a paragraph node still carries prose, asked STRUCTURALLY.
+ *
+ * A paragraph with NO inline children is a paragraph the parser emptied, and it
+ * is not a curiosity: `commonmark` 0.31.2 leaves exactly one behind, WITH ITS
+ * ORIGINAL `sourcepos` STILL SPANNING THE TEXT IT REMOVED. The shape is a link
+ * reference definition immediately followed by a setext underline of `-`:
+ *
+ *   "[zeta]: https://example.invalid/delta\n---\n"
+ *   renders <p></p><hr />, and the AST is
+ *     paragraph [[1,1],[1,37]] firstChild=null
+ *     thematic_break [[2,1],[2,3]]
+ *
+ * The setext-heading start rule strips leading reference definitions from the
+ * paragraph and then DECLINES to make a heading because nothing is left, so the
+ * document's own reference sweep never sees them (they are already gone) and
+ * never advances the start line the way it does in every other case. Slicing
+ * that paragraph's source yields the reference definition as a quotable unit,
+ * which is the fail-open direction.
+ *
+ * FOUND BY THE DIFFERENTIAL FUZZ, NOT BY READING: 13 divergences in 4,973
+ * adjudicated documents at seed 20260809, every one this shape. Both oracles
+ * agreed the correct answer is no unit at all. Recorded in
+ * `delivery/work-history/m3-p3.md` with the captures.
+ *
+ * This is a structure question and is answered with a structure test. Reading
+ * the inline text to decide would settle the same case and would be the first
+ * step back towards option A, which is the thing DR-0022 rules out.
+ */
+function carriesProse(paragraph: CommonMarkNode): boolean {
+  return paragraph.firstChild !== null;
+}
+
+/**
+ * The RAW SOURCE spanned by a node, as written, markup and all.
+ *
+ * `quoteDepth` is how many block quotes enclose the node. `sourcepos` gives the
+ * FIRST line a column past the `>` markers and says nothing about the node's
+ * CONTINUATION lines, which still carry theirs, so each continuation has up to
+ * that many markers stripped. Without it a two-line quoted paragraph comes back
+ * carrying a `>` in the middle of the unit. Measured on `commonmark` 0.31.2:
+ *
+ *   "> 1. an item in a quote\n>    continued here\n"
+ *   paragraph [[1,6],[2,19]], sliced naively: "an item in a quote >    continued here"
+ *
+ * A LAZY continuation line carries no marker at all, so the strip is written to
+ * be a no-op when the marker is absent rather than to assume it is present.
+ */
+const SPACE = 0x20;
+const TAB = 0x09;
+const GREATER_THAN = 0x3e;
+const HYPHEN = 0x2d;
+const ASTERISK = 0x2a;
+const PLUS = 0x2b;
+const PERIOD = 0x2e;
+const RIGHT_PAREN = 0x29;
+const DIGIT_ZERO = 0x30;
+const DIGIT_NINE = 0x39;
+
+/** A space or a tab, the only two characters CommonMark counts as indentation
+ *  inside a container prefix. `charCodeAt` past the end is NaN, which compares
+ *  false against both, so no caller needs a separate bounds test. */
+function isIndent(code: number): boolean {
+  return code === SPACE || code === TAB;
+}
+
+/**
+ * ONE BLOCK-QUOTE MARKER at `from`, with the indentation in front of it, as a
+ * LENGTH: how many characters it occupies, or 0 when there is no marker there.
+ * Declared once because THREE places consume exactly this (the prefix scan
+ * below and BOTH recovery strips) and a second copy of a grammar is how the
+ * three models described under `isSkippablePrefix` came to disagree in the
+ * first place. It is deliberately NARROWER than the prefix scan: see
+ * `startOffset`.
+ *
+ * NOTE THE ZERO CASE. Indentation with no `>` after it is NOT a quote marker
+ * and returns 0, not the indentation's length, which is what the regex this
+ * replaced did (it matched as a whole or not at all).
+ *
+ * ROUND 8 MADE THIS A SCAN RATHER THAN A SHARED REGEX OBJECT, and that is
+ * verification finding V-6 rather than a style preference. Round 7 shared one
+ * regex OBJECT between an `.exec` and a `.replace`. That was correct, but only
+ * because the literal carried no `g` flag: `lastIndex` lives on the OBJECT, so
+ * adding `g` would have made the `.exec` in `startOffset` stateful across
+ * calls and silently stopped the second iteration of its loop. A function has
+ * no `lastIndex`, so that hazard cannot be written here at all. Removing a
+ * class beats guarding an instance of it, and here it also costs nothing,
+ * because the V-1 fix below needs to consume this same grammar and would
+ * otherwise have introduced a FOURTH copy of it.
+ */
+function quoteMarkerLength(text: string, from: number): number {
+  let at = from;
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  if (text.charCodeAt(at) !== GREATER_THAN) {
+    return 0;
+  }
+  at += 1;
+  if (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  return at - from;
+}
+
+/**
+ * ONE LIST MARKER at `from`, bullet or ordered, with the indentation in front
+ * of it and the indentation after it, as a LENGTH, or 0 when there is none.
+ *
+ * The ordered form is MAX MUNCH capped at nine digits, which is CommonMark's
+ * own limit and is exactly what `[0-9]{1,9}[.)]` accepted. A run of ten or
+ * more digits therefore matches NOTHING rather than matching its first nine:
+ * every shorter prefix of the run is followed by another digit, so no shorter
+ * reading can find the `.` or `)` either. That equivalence is not asserted
+ * here, it is measured by exhaustive enumeration (see the work history).
+ */
+function listMarkerLength(text: string, from: number): number {
+  let at = from;
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  const opener = text.charCodeAt(at);
+  if (opener === HYPHEN || opener === ASTERISK || opener === PLUS) {
+    at += 1;
+  } else {
+    let digits = 0;
+    while (digits < 9) {
+      const code = text.charCodeAt(at + digits);
+      if (code < DIGIT_ZERO || code > DIGIT_NINE) {
+        break;
+      }
+      digits += 1;
+    }
+    if (digits === 0) {
+      return 0;
+    }
+    const delimiter = text.charCodeAt(at + digits);
+    if (delimiter !== PERIOD && delimiter !== RIGHT_PAREN) {
+      return 0;
+    }
+    at += digits + 1;
+  }
+  while (isIndent(text.charCodeAt(at))) {
+    at += 1;
+  }
+  return at - from;
+}
+
+/**
+ * Is `span` ENTIRELY skippable before a node's content: ANY NUMBER of
+ * block-opening markers (quote, bullet or ordered), in ANY ORDER, plus
+ * indentation, and NOTHING ELSE. A test of the WHOLE span and not a prefix
+ * match, which is what the two anchors of the regex this replaced provided.
+ *
+ * THE WIDENING TO THE FULL CONTAINER GRAMMAR IS ROUND 7's CR-001 FIX, and the
+ * mechanism it closes is not "the regex was incomplete". The module carried
+ * THREE models of one grammar and they disagreed: this predicate allowed quote
+ * markers plus AT MOST ONE list marker (its own previous comment said so in
+ * those words), while the two recovery strips allow a quote marker only.
+ * CommonMark lets a container prefix open ANY NUMBER of blocks on one line, in
+ * any order (`- - x`, `- 1. x`, `1. - x`, `- > x`, `- - - x`), so a CORRECT
+ * column whose prefix this predicate could not spell was sent down the recovery
+ * path, which strips no list marker at all and returned offset 0: the raw
+ * markers became part of the unit. Fail-open (a fabricated condition equal to
+ * `- - x` is accepted) and fail-closed (the real unit `x` is rejected) at the
+ * same time.
+ *
+ * TESTING THE WHOLE SPAN IS WHAT MAKES WIDENING SAFE, and this is the argument
+ * the fix rests on rather than a table of examples. Acceptance means EVERY
+ * character of the span is marker-or-indentation, so the span can contain no
+ * content, and skipping it is right whichever line the column came from. What
+ * markers may repeat does not touch that. The four column-is-lying spans this
+ * guard exists to reject ("ep", "re", "alp", "sil") are still rejected, because
+ * a prose fragment contains characters no branch here can consume.
+ *
+ * REPETITION IS UNBOUNDED ON PURPOSE. A model allowing two markers would move
+ * the boundary to three and leave the same defect standing there, which is the
+ * shape this project keeps paying for. A model allowing THREE is not
+ * hypothetical: round 7 shipped a witness whose deepest fixture member was
+ * three, so a `{0,3}` bound restored CR-001 verbatim at depth four with the
+ * whole suite green (verification finding V-2). The fixture now carries a
+ * five-marker member for that reason.
+ *
+ * ROUND 8 MADE THIS A SCAN RATHER THAN AN ANCHORED REGEX, and that is
+ * verification finding V-1, a HIGH. The pattern round 7 shipped was
+ *
+ *   /^(?:[ \t]*(?:>[ \t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \t]*))*[ \t]*$/
+ *
+ * and it BACKTRACKS EXPONENTIALLY. The leading `[ \t]*` of an iteration and the
+ * trailing `[ \t]*` inside two of its three branches can consume the same run
+ * of whitespace, so every gap between two markers is an ambiguity the engine
+ * must try both ways, and the choices MULTIPLY. Acceptance is still fast, but
+ * on a subject that ultimately FAILS the engine must exhaust the whole product
+ * before it can say so, and FAILING is precisely the arm `startOffset` exists
+ * to take. Measured at `986f58a`, node v26.6.0: a 119-byte two-line document
+ * cost 45 ms through `quotableUnits` and each further marker DOUBLED it, so a
+ * 269-byte record cost 73 seconds and the same document through the shipped
+ * CLI cost 88. A gate that never returns is worse than a red gate.
+ *
+ * A SCAN CANNOT BACKTRACK, which is why this is a scan and not a cleverer
+ * pattern. Each iteration consumes at least one character and never revisits
+ * one, so the cost is linear in the span and the same for acceptance and
+ * rejection. That removes the CLASS (no ambiguity can be reintroduced by a
+ * later widening of the grammar) rather than the one instance of it that a
+ * disambiguated pattern would remove. The language is UNCHANGED, which is
+ * measured by exhaustive differential enumeration against the round-7 pattern
+ * rather than argued: see `delivery/work-history/m3-p3.md`, fix round 8.
+ */
+function isSkippablePrefix(span: string): boolean {
+  let at = 0;
+  for (;;) {
+    const quote = quoteMarkerLength(span, at);
+    if (quote > 0) {
+      at += quote;
+      continue;
+    }
+    const list = listMarkerLength(span, at);
+    if (list > 0) {
+      at += list;
+      continue;
+    }
+    while (isIndent(span.charCodeAt(at))) {
+      at += 1;
+    }
+    return at === span.length;
+  }
+}
+
+/**
+ * Where a node's content starts on its FIRST line, WITH THE START COLUMN
+ * VERIFIED RATHER THAN TRUSTED.
+ *
+ * `sourcepos[0][0]` is advanced past leading link reference definitions but
+ * `sourcepos[0][1]` IS NOT, so after that advance the column describes a line
+ * the node no longer starts on, and the two lines need not share a prefix. The
+ * measured shape is a reference definition inside a block quote followed by a
+ * LAZY continuation:
+ *
+ *   "> [eta]: https://example.invalid/theta\nepsilon eta.\n"
+ *   paragraph [[2,3],[2,12]]; line 2 is "epsilon eta.", 12 characters long.
+ *
+ * Column 3 came from `"> "` on line 1. Line 2 has no marker, so slicing from
+ * index 2 yields "silon eta." and the unit is CORRUPT, not merely wrong: it is
+ * a truncated string that no condition can ever equal, and the same defect one
+ * character further along would silently make a fragment quotable.
+ *
+ * FOUND BY THE DIFFERENTIAL FUZZ, and only after the empty-paragraph defect
+ * above was fixed, which is why one fuzz run is not a clearance. The list form
+ * ("- [a]: ...\nreal text here\n", paragraph [[2,3],[2,14]]) is a second,
+ * structurally different member: a list marker rather than a quote marker.
+ *
+ * The test is the invariant, not the symptom: whatever the column skips on the
+ * start line must BE a block prefix. When it is not, the column is describing
+ * some other line and this line's own quote markers are stripped instead,
+ * exactly as a continuation line's are.
+ *
+ * WHY THE FALLBACK IS DELIBERATELY NARROWER THAN THE VERIFIER, corrected in
+ * round 7 (CR-001). Before that round the guard had TWO causes it could not
+ * tell apart: (1) the column is lying, which is the hazard above, and (2) the
+ * column is CORRECT and merely describes a prefix richer than the verifier
+ * could spell. It took this fallback on both, and on a line opening with a LIST
+ * marker `quoteDepth` is 0, so the fallback returned 0 and the slice was the
+ * ENTIRE RAW LINE. Widening the verifier (`isSkippablePrefix`) to the full
+ * container grammar removes cause (2) from the conflation, which is what made
+ * the fallback dangerous; it is now reached only for cause (1).
+ *
+ * The fallback still consumes QUOTE MARKERS ONLY, bounded by `quoteDepth`, and
+ * that is a choice rather than an oversight. `quoteDepth` is KNOWN STRUCTURE
+ * (the walk counted the enclosing block quotes), so the strip cannot eat prose;
+ * an unbounded grammar-shaped strip here would have no such bound. A cause-(1)
+ * line is a paragraph CONTINUATION line, and a continuation line cannot carry a
+ * list marker without ending the paragraph it continues, so there should be
+ * nothing else on it to strip.
+ *
+ * MEASURED rather than asserted, round 7, `commonmark` 0.31.2, node v26.6.0: an
+ * instrumented copy over a 6,000-document differential fuzz (seed 20260809)
+ * entered this fallback 1,463 times, and in ZERO of them did the line carry a
+ * leading block marker. I did not find a way to force this arm with a
+ * marker-carrying line; that is a statement about my search and not a proof
+ * that none exists, and the derivation is in
+ * `delivery/work-history/m3-p3.md`. Because no probe I could build reddens a
+ * wider strip here, widening it would be code no witness could guard, which is
+ * exactly what CR-002 was raised about.
+ */
+function startOffset(text: string, startColumn: number, quoteDepth: number): number {
+  const offset = startColumn - 1;
+  if (offset <= text.length && isSkippablePrefix(text.slice(0, offset))) {
+    return offset;
+  }
+  let consumed = 0;
+  for (let level = 0; level < quoteDepth; level += 1) {
+    const marker = quoteMarkerLength(text, consumed);
+    if (marker === 0) {
+      break;
+    }
+    consumed += marker;
+  }
+  return consumed;
+}
+
+function sourceSlice(
+  lines: readonly string[],
+  position: SourcePosition,
+  quoteDepth: number,
+): string {
+  const [[startLine, startColumn], [endLine, endColumn]] = position;
+  const pieces: string[] = [];
+  for (let line = startLine; line <= endLine; line += 1) {
+    const text = lines[line - 1] ?? "";
+    const from = line === startLine ? startOffset(text, startColumn, quoteDepth) : 0;
+    const to = line === endLine ? endColumn : text.length;
+    let piece = text.slice(from, to);
+    if (line !== startLine) {
+      for (let level = 0; level < quoteDepth; level += 1) {
+        piece = piece.slice(quoteMarkerLength(piece, 0));
+      }
+    }
+    pieces.push(piece);
+  }
+  return pieces.join(" ");
+}
+
+/**
+ * Every paragraph beneath `container`, in document order, joined into one
+ * string. This is what makes a LIST ITEM'S UNIT THE WHOLE ITEM: its
+ * continuation paragraphs and its nested sub-items are descendants, so they
+ * join the item rather than standing alone, and its headings, fences, indented
+ * code and rules contribute nothing while ending nothing. That last part is
+ * what makes an interrupter inside an item not split the item; the walk simply
+ * never emits for a non-`paragraph` child. `NOT_QUOTABLE` states the intent and
+ * would stop a future parser handing those types block children, but under
+ * `commonmark` 0.31.2 it is not what performs the exclusion (CR-003, round 7).
+ *
+ * Nested lists are deliberately NOT in `NOT_QUOTABLE`: the walk descends into
+ * them, which is what glues a sub-item into the item that encloses it.
+ */
+function paragraphsBeneath(
+  container: CommonMarkNode,
+  lines: readonly string[],
+  quoteDepth: number,
+): string {
+  const parts: string[] = [];
+  const visit = (node: CommonMarkNode, depth: number): void => {
+    for (let child = node.firstChild; child !== null; child = child.next) {
+      if (child.type === "paragraph") {
+        if (carriesProse(child)) {
+          parts.push(sourceSlice(lines, child.sourcepos, depth));
+        }
+      } else if (!NOT_QUOTABLE.has(child.type)) {
+        visit(child, child.type === "block_quote" ? depth + 1 : depth);
+      }
+    }
+  };
+  visit(container, quoteDepth);
+  return normalizeProse(parts.join(" "));
+}
+
+/**
+ * Walk one container's CHILDREN and add the units they carry.
+ *
+ * A paragraph is a unit. A list contributes one unit per OUTERMOST item. A
+ * block quote's contents are treated exactly like the document's, which is a
+ * DECLARED POLICY CHOICE and not a derivation: "nothing inside a block quote is
+ * quotable" is equally defensible, and both are defensible where the behaviour
+ * this replaces was neither, because it admitted the marker-carrying string
+ * `> A quoted sentence` while rejecting the same sentence without its marker.
+ * Flipping the policy is this one branch.
+ */
+function collectUnits(
+  node: CommonMarkNode,
+  lines: readonly string[],
+  units: Set<string>,
+  quoteDepth: number,
+): void {
+  for (let child = node.firstChild; child !== null; child = child.next) {
+    if (child.type === "paragraph") {
+      const unit = carriesProse(child)
+        ? normalizeProse(sourceSlice(lines, child.sourcepos, quoteDepth))
+        : "";
+      if (unit !== "") {
+        units.add(unit);
+      }
+    } else if (child.type === "list") {
+      for (let item = child.firstChild; item !== null; item = item.next) {
+        const unit = paragraphsBeneath(item, lines, quoteDepth);
+        if (unit !== "") {
+          units.add(unit);
+        }
+      }
+    } else if (child.type === "block_quote") {
+      collectUnits(child, lines, units, quoteDepth + 1);
+    } else if (!NOT_QUOTABLE.has(child.type)) {
+      collectUnits(child, lines, units, quoteDepth);
+    }
+  }
+}
+
+/**
+ * The QUOTABLE UNITS of a prose record: every top-level PARAGRAPH and every
+ * OUTERMOST LIST ITEM, each with its marker stripped and its whitespace
+ * normalized.
+ *
+ * WHY THIS EXISTS, and it is the whole of fix round 2. The first version of
+ * this check asked whether each condition OCCURRED ANYWHERE in the record, as
+ * one normalized blob. That is a CONTAINMENT predicate standing in for an
+ * EQUALITY predicate, and containment is trivially satisfiable by short
+ * strings: `conditions: ["a", "the", "review", "merge", "is", "of"]` replaced
+ * every one of DR-0012's six merge-authority conditions with junk and the
+ * check exited 0. Every one of those words occurs in the record.
+ *
+ * The signal was already in this phase's own evidence and was read past: an
+ * earlier probe fabricated `"one"` through `"six"` and got findings for
+ * indices 3, 4 and 5 ONLY, because "one", "two" and "three" occur inside the
+ * record's prose. Three of six caught looked like the check working.
+ *
+ * Comparing against UNITS rather than against the blob makes the predicate an
+ * equality: a condition matches only if it is a WHOLE quoted item of the
+ * record. Both halves matter. Whole, so a fragment cannot match; item rather
+ * than whole document, so a record may carry other prose around the conditions
+ * without anyone having to say which section holds them, which is the
+ * structure assumption that would have made this check project-specific.
+ *
+ * THE COST, stated because it is a real constraint on a consuming project: a
+ * condition must be quoted as a complete list item or paragraph of the record.
+ * A condition that paraphrases, or that quotes half of a longer item, is now
+ * a violation. That is what "quoted from the decision record rather than
+ * summarized" already claimed to mean, and it is now enforced rather than
+ * asserted.
+ *
+ * A LIST ITEM'S UNIT IS THE WHOLE ITEM. An item's continuation paragraphs and
+ * its nested sub-items are CONTENT OF THE ITEM in CommonMark, so emitting them
+ * as units of their own would leave the item's FIRST PARAGRAPH standing as a
+ * whole unit while the item itself carried more, which is a fragment passing as
+ * a whole quote: the defect this check exists to prevent, arriving through the
+ * extractor. It is live in this repository:
+ * `delivery/decisions/DR-0004-elevated-permissions.md` has the shape (an item,
+ * a blank, then its commands indented under it) and
+ * `delivery/decisions/DR-0013-schema-validator-implementation.md` has the
+ * nested-list form. THE COST, stated because it is real: a nested sub-item is
+ * not separately quotable, so a record whose conditions are sub-bullets must
+ * quote the enclosing item whole.
+ *
+ * ------------------------------------------------------------------
+ * THE BLOCK STRUCTURE IS READ FROM A COMMONMARK PARSER (DR-0022, owner
+ * decision, option A2). THE TEXT IS SLICED FROM THE ORIGINAL SOURCE.
+ * ------------------------------------------------------------------
+ *
+ * What stood here until 2026-08-09 was a HAND-ROLLED CommonMark block parser:
+ * a line loop carrying fence state, indented-code state, a list content column
+ * and a deferred-blank flag, with six sites that could end a unit. It took FIVE
+ * fix rounds and produced FIVE defects, the fifth a regression of a shape the
+ * fourth had correct. The owner's decision records the measurement that ended
+ * it: against two independent conformant parsers over 15,000 generated
+ * documents, the hand-rolled loop agreed on about 35 per cent of them.
+ *
+ * The reason the rounds could not converge is worth keeping, because it is a
+ * property of the problem and not of the agents. Whether a line is prose
+ * depends on which block encloses it, and which block encloses it depends on
+ * lines above and sometimes below (a setext underline retroactively makes the
+ * block above it a heading). A loop that decides one line at a time is
+ * reconstructing a parser, and every reconstruction has to be kept in agreement
+ * with the reference BY HAND, with no mechanism that detects divergence. That
+ * is the "guard narrower than the property" family, and this repository has now
+ * recorded it five times in this one function.
+ *
+ * TWO OF THE ELEVEN FINDINGS ACROSS THOSE ROUNDS WERE NOT DEFECTS AT ALL. V-3
+ * ("adjacent paragraphs merge") and the fifth member of V-5 (a nested sub-item
+ * followed by a dedented line) were both cases where a hand-reading of markdown
+ * disagreed with CommonMark and the HAND-READING WAS WRONG: lazy continuation
+ * makes both fusions correct. A round can only find defects it already believes
+ * in, which is the other half of the cost.
+ *
+ * WHY `sourcepos` SLICING AND NOT THE PARSER'S INLINE TEXT, which is the whole
+ * of A2 versus A and is the single most expensive detail here. Walking the AST
+ * and reading each paragraph's inline text is the obvious implementation and it
+ * SILENTLY CHANGES THE SHIPPED CONTRACT, because inline text drops markup:
+ * `` `delivery/review/` `` becomes `delivery/review/`. DR-0012's first
+ * merge-authority condition contains exactly that, so `assurance-modes.yaml`
+ * stops resolving, and 11 of this repository's 19 decision records produce
+ * different unit sets. Slicing the ORIGINAL SOURCE by the parser's own
+ * `sourcepos` offsets keeps the bytes as written, which is what every existing
+ * record and every existing condition relies on.
+ *
+ * SO: this function reads the parser for STRUCTURE ONLY. It never reads
+ * `literal` and never concatenates inline nodes, and a change that starts doing
+ * either is option A, which is a defect. `CommonMarkNode` above declares six
+ * members and none of them is inline text, so the type is the guard.
+ *
+ * WHAT THE FOUR PREVIOUSLY UNMODELLED BLOCK FORMS DO NOW, since the old
+ * docstring listed them as latent hazards:
+ *   - block quote: its contents are treated like the document's, so the quoted
+ *     paragraph is a unit and the `>` marker is NOT part of it. This is a
+ *     DECLARED POLICY CHOICE (see `collectUnits`), not a derivation.
+ *   - HTML block: contributes no unit. Corrected in round 7 (CR-003): it is
+ *     listed in `NOT_QUOTABLE`, but under `commonmark` 0.31.2 that listing is
+ *     not what excludes it. An `html_block` is an AST LEAF, and a unit is only
+ *     ever emitted for a `paragraph` child, so it could contribute nothing even
+ *     if the set were empty. Read `NOT_QUOTABLE`'s own docstring for what the
+ *     set is really for.
+ *   - link reference definition: excluded, and by construction rather than by a
+ *     rule, because the parser removes it before this walk sees the document.
+ *   - pipe table: never was a hazard. CommonMark core has no tables, so a table
+ *     IS a paragraph and treating its lines as prose is correct.
+ *
+ * WHERE THIS IS STILL NOT AN ORACLE: it is right in the sense of "agrees with
+ * `commonmark` 0.31.2". Two conformant CommonMark implementations disagree on
+ * roughly half a per cent of generated documents (an indented line immediately
+ * after a link reference definition is the measured instance), and any
+ * structure-reading option inherits that.
+ */
+export function quotableUnits(text: string): Set<string> {
+  /* SPLIT ON THE SAME LINE ENDINGS THE PARSER DOES. `sourcepos` line numbers
+     index the parser's own line array, so splitting on "\n" alone would put
+     every slice on the wrong line in a document using lone CR. */
+  const lines = text.split(/\r\n|\n|\r/);
+  const { Parser } = commonMarkModule();
+  const units = new Set<string>();
+  collectUnits(new Parser().parse(text), lines, units, 0);
+  return units;
+}
+
+export const modeConditionsQuoteGrantedBy: DerivedCheck = {
+  id: "mode-conditions-quote-granted-by",
+  type: "assurance-modes",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/modes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const violations: Diagnostic[] = [];
+    const cache = new Map<
+      string,
+      { ok: true; units: Set<string> } | { ok: false; reason: string }
+    >();
+
+    const resolveRecord = (
+      record: string,
+    ): { ok: true; units: Set<string> } | { ok: false; reason: string } => {
+      const cached = cache.get(record);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const matches: string[] = [];
+      const searched: string[] = [];
+      for (const directory of DECISION_DIRECTORIES) {
+        const path = join(contextDirectory, directory);
+        searched.push(directory);
+        let entries: string[];
+        try {
+          entries = readdirSync(path);
+        } catch {
+          continue;
+        }
+        for (const name of entries.sort()) {
+          if (name === `${record}.md` || name.startsWith(`${record}-`)) {
+            matches.push(join(path, name));
+          }
+        }
+      }
+      let outcome: { ok: true; units: Set<string> } | { ok: false; reason: string };
+      if (matches.length === 0) {
+        outcome = {
+          ok: false,
+          reason: `no decision record ${record} was found under ${searched.join(" or ")} of the context, so the grant it names cannot be checked`,
+        };
+      } else if (matches.length > 1) {
+        outcome = {
+          ok: false,
+          reason: `${String(matches.length)} files match decision record ${record} (${matches.join(", ")}), so the grant it names resolves ambiguously`,
+        };
+      } else {
+        const read = readOperatorPath(matches[0] as string);
+        outcome = read.ok
+          ? { ok: true, units: quotableUnits(read.body) }
+          : { ok: false, reason: read.reason };
+      }
+      cache.set(record, outcome);
+      return outcome;
+    };
+
+    for (const row of eachMode(instance)) {
+      const conditions = stringsAt(row.mode, "conditions");
+      if (conditions.length === 0) {
+        continue;
+      }
+      const grantedBy = row.mode["granted-by"];
+      if (typeof grantedBy !== "string") {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/conditions`,
+          message: `mode ${row.id} declares ${String(conditions.length)} condition(s) and names no granted-by record, so nothing can be compared against them`,
+        });
+        continue;
+      }
+      const resolved = resolveRecord(grantedBy);
+      if (!resolved.ok) {
+        violations.push({
+          pointer: `#/modes/${String(row.index)}/granted-by`,
+          message: resolved.reason,
+        });
+        continue;
+      }
+      for (let position = 0; position < conditions.length; position += 1) {
+        /* EQUALITY AGAINST A WHOLE UNIT, never containment in the blob. An
+           EMPTY condition is a violation here rather than a skip: the schema
+           already forbids it, and a check that quietly accepted one would be
+           accepting the shortest fabrication of all. */
+        const condition = normalizeProse(conditions[position] as string);
+        if (!resolved.units.has(condition)) {
+          const opening = condition.length > 60 ? `${condition.slice(0, 60)}...` : condition;
+          violations.push({
+            pointer: `#/modes/${String(row.index)}/conditions/${String(position)}`,
+            message: `mode ${row.id} cites ${grantedBy} for a condition that is not a whole quoted item of that record: "${opening}"`,
+          });
+        }
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
 /* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
 const registry: DerivedCheck[] = [
+  charterModeEnumMatchesModes,
+  modeConditionsQuoteGrantedBy,
+  modeGateSetsResolve,
+  modeIdsAreUnique,
+  modeNoUndeclaredDowngrade,
+  modeStageOrder,
   planDispatchable,
   planHazardClassesAddressedByResolves,
   planVerificationFirstPresent,
+  roleIdsAreUnique,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

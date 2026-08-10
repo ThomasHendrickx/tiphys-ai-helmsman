@@ -1,0 +1,24 @@
+{
+  "id": "checks-heading-forms-not-quotable",
+  "behavior": "mode-conditions-heading-forms-not-quotable",
+  "tests": [
+    "heading text in the cited record is not a quotable unit, for an indented ATX heading and for a setext heading"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (child.type === \"paragraph\") {\n      const unit = carriesProse(child)",
+      "replace": "    if (child.type === \"paragraph\" || child.type === \"heading\") {\n      const unit = child.type === \"heading\" || carriesProse(child)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    } else if (!NOT_QUOTABLE.has(child.type)) {\n      collectUnits(child, lines, units, quoteDepth);\n    }",
+      "replace": "    } else if (child.type === \"heading\") {\n      const leaked = normalizeProse(sourceSlice(lines, child.sourcepos, quoteDepth));\n      if (leaked !== \"\") {\n        units.add(leaked);\n      }\n    } else if (!NOT_QUOTABLE.has(child.type)) {\n      collectUnits(child, lines, units, quoteDepth);\n    }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
