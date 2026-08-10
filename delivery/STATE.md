@@ -23,9 +23,24 @@ is wrong: verify against git and the PR list before trusting it.
   (31298592287). T-009's rule is that a merge is not complete until the
   post-merge push run on the NEW tip is observed, and "the run was green" is
   not that observation; the arm is.
+- **M3-P3 IS STOPPED AND WAITING ON THE OWNER (2026-08-10). Do not dispatch a
+  round 9.** Head `108eed0` (PR #54). Rounds 7 and 8 are the two fix rounds
+  DR-0012 allows after the A2 dual review, and the second clean-room review of
+  the current head returned one MEDIUM (CR-002) whose fix requires SOURCE
+  changes. That is a round 9, which crosses the limit, so the phase goes to the
+  owner with the evidence rather than grinding on. The full reasoning, the
+  recommendation, and two alternatives the orchestrator would not argue with are
+  in delivery/review/arbitration-m3-p3-stop.md:1. Everything else about the phase
+  is DONE and independently verified: every acceptance criterion executed and
+  passing, V-1 to V-6 closed, round 8 the first round of this phase to introduce
+  no defect in `src/`, the owner's DR-0022 criterion holding at 20/20 in two
+  separate re-derivations from `git archive`, scope green at 41 paths, CI green
+  on the exact head (run 31345592259).
 - milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 and M3-P2 are MERGED.
-  M3-P3 is at `218fc12` on its branch (PR #54), round 6, executing the owner's
-  DR-0022 answer (option A2). It is under DUAL clean-room review of that head:
+  M3-P4 through M3-P10 are blocked behind M3-P3 merging, which is the cost of
+  the stop above. The historical record of rounds 6 to 8 follows.
+  M3-P3 was at `218fc12` for round 6, executing the owner's
+  DR-0022 answer (option A2). It was under DUAL clean-room review of that head:
   the supply-chain and regression contract returned APPROVE with zero findings
   and is recorded in `delivery/review/clean-room-m3-p3-a2-supply-chain.md`
   (PR #64); the correctness contract is still running. M3-P4 to M3-P10 are not
@@ -157,8 +172,10 @@ modelled and bound five phases to.
 | M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
 | M3-P1 schemas and validator | MERGED #39 |
 | M3-P2 canonical gate registry | MERGED #48 |
-| M3-P3 assurance modes | PR #54 open, round 7 in flight on `218fc12` after CHANGES REQUIRED |
-| A2 review evidence and arbitration | PR #64 open |
+| M3-P3 assurance modes | PR #54 open at `108eed0`, **STOPPED, waiting on the owner over CR-002** |
+| Round-8 verification | MERGED #68 |
+| Round-8 criteria review | PR #69 open |
+| M3 round-8 paperwork | PR #67 open |
 | M3-P4 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
@@ -316,6 +333,27 @@ Supervision is beacon/transcript freshness, not completion notifications.
 Items discovered during M1 that belong to a later milestone and have no owner
 yet. Recorded here so they are not rediscovered the expensive way.
 
+- **Uncaught `RangeError` in `collectUnits` above roughly 8,000 nested quote
+  markers.** Found by the round-8 delta verifier, measured IDENTICAL at both
+  `986f58a` and `108eed0`, so it is pre-existing and was correctly refused as a
+  round-8 finding. **Named for M3-P4**, which touches `src/checks.ts`. Evidence
+  in delivery/review/verification-m3-p3-round-8.md:1.
+- **Rule (g) compares witness `find` TEXT rather than mutation EFFECT.** W-2 of
+  the round-8 verification measured two dangerous states that are one shape
+  (`span.length >= 0` is unconditionally true, so that member equals deleting the
+  guard) producing identical suite-wide red sets, and rule (g) passed only
+  because the `find` strings differ. Pre-existing in shape. Belongs with M2-P2's
+  `src/witness/run.ts`, not with M3-P3.
+- **"Unbounded on purpose" is unwitnessable by a finite fixture.** W-3: the
+  M3-P3 fixture moved the boundary from three markers to five rather than
+  removing it, so `{0,5}` and `{0,6}` bounds still survive. Recorded as an honest
+  limit rather than pretended away; if a mechanism for it exists it is a property
+  test, not a fixture.
+- **The eleven accepted unwitnessed mutants** (M03, M06, M07, M09, M10, M11,
+  M12, M13, M16, M18, M19), decided as recorded non-coverage in
+  delivery/review/arbitration-m3-p3-round-8.md:1. Tracked BY NAME, never as a
+  count, because a count is what turns a bounded decision into an invisible one.
+
 - **Non-atomic task metadata write.** `src/task.ts` writes `meta.json` with a
   plain write, which is the mechanism that produces the torn record the M1-P5
   guard now has to defend against. Out of scope when found and no reviewer
@@ -450,6 +488,15 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 | DR-0016 escalation threshold | decided: recommendation-backed questions are the agent's to take; only genuine high-impact ties reach the owner. A stalled phase gets a fresh implementer and a third contract, not a wait |
 
 ## Owner action items
+
+> **OPEN AND BLOCKING, 2026-08-10: M3-P3's CR-002.** This is a CHOICE, not an
+> `A-n` act, so it has no id here and lives in
+> delivery/review/arbitration-m3-p3-stop.md:1. It is listed at the top of this
+> section because it is the only thing the pipeline is waiting on and because
+> the whole of M3-P4 to M3-P10 sits behind it. The orchestrator's recommendation
+> is to authorise one final round to close CR-002 and then merge; two
+> alternatives it would not argue with are recorded there. **No round 9 may be
+> dispatched until the owner answers.**
 
 **This section is the sole allocator of `A-n` ids** (CLAUDE.md identifier
 schemes). An `A-n` is an ACT the owner must perform because it needs access an
