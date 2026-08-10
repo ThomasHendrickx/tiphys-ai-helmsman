@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "function isSkippablePrefix(span: string): boolean {\n  let at = 0;\n  for (;;) {\n    const quote = quoteMarkerLength(span, at);\n    if (quote > 0) {\n      at += quote;\n      continue;\n    }\n    const list = listMarkerLength(span, at);\n    if (list > 0) {\n      at += list;\n      continue;\n    }\n    while (isIndent(span.charCodeAt(at))) {\n      at += 1;\n    }\n    return at === span.length;\n  }\n}\n",
-      "replace": "function isSkippablePrefix(span: string): boolean {\n  let at = 0;\n  for (let taken = 0; taken < 3; taken += 1) {\n    const quote = quoteMarkerLength(span, at);\n    if (quote > 0) {\n      at += quote;\n      continue;\n    }\n    const list = listMarkerLength(span, at);\n    if (list > 0) {\n      at += list;\n      continue;\n    }\n    break;\n  }\n  while (isIndent(span.charCodeAt(at))) {\n    at += 1;\n  }\n  return at === span.length;\n}\n"
+      "find": "if (offset <= text.length && isSkippablePrefix(text.slice(0, offset))) {",
+      "replace": "if (offset <= text.length && /^(?:[ \\t]*(?:>[ \\t]?|(?:[0-9]{1,9}[.)]|[-*+])[ \\t]*)){0,3}[ \\t]*$/.test(text.slice(0, offset))) {"
     }
   ],
   "deterministic": true,
