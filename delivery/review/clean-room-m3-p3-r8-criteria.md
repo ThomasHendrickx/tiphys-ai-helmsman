@@ -466,3 +466,16 @@ was needed and none was performed**, because every capture quoted here came from
 the CLI, the gate runner or the TAP reporter's `# pass` summary lines, none of
 which emit U+2139 or U+2716; I did not capture the default spec reporter's
 output. Nothing was hand-written to avoid a glyph.
+
+## Post-commit log (the beacon keeps moving)
+
+- Committed at `ab8c434`, pushed to `origin/claude/review-m3p3-r8-criteria`,
+  push exit 0. Branch name checked against the scope auditor's pattern before
+  pushing: `node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(...))'` printed
+  `false`, so it does not claim to be a phase branch.
+- Final state of every tree I touched: `cr8-lab` `git status --porcelain` 0
+  lines; the implementer's worktree `wt-m3p3-r8` 0 lines before and after the
+  scope gate run; the main repository at `/home/user/tiphys-ai-helmsman` never
+  written to.
+- Handover, in one line for the orchestrator: the criteria are DISCHARGED and the
+  merge blocker is CR-002 plus the two arms of CI that nobody local can witness.
