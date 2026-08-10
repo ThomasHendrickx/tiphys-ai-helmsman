@@ -38,7 +38,15 @@ node --test exit 0: tests 508, pass 508, fail 0, SKIPPED 0
 ```
 
 Toolchain and build state, stated in full per the standing warning 12: node
-v26.6.0 with dist/ built. 508 tests, 508 pass, 0 skipped.
+v26.6.0 with dist/ built. 508 tests, 508 pass, 0 skipped. See O-1 below: `npm test`
+reports 506 at this same head and both numbers are right.
+
+**How to read the citations here.** Line numbers in `src/`, `test/`,
+`assurance-modes.yaml` and `delivery/work-history/m3-p3.md` are at the head under
+verification, `b5c01f0`, which is not yet merged. Line numbers in
+`delivery/review/`, `delivery/plan/`, `src/gates/` and `src/witness/` are at
+`origin/main`, where this report sits, and those files are untouched by the
+branch.
 
 ## Claim 1: the soundness predicate's PLACEMENT is load-bearing. CONFIRMED.
 
@@ -258,7 +266,7 @@ below.
    and `schemas/assurance-modes.schema.json` now says "THE CHECK RUNS IN BOTH
    DIRECTIONS". A `$comment` claiming more than its schema does is the exact
    failure V-1 of round 8 was an instance of, and the phase's own test file says
-   so at test/assurance-modes.test.ts:3112. Before round 9 these documents
+   so at test/assurance-modes.test.ts:2171. Before round 9 these documents
    claimed less and were true; after it they claim more than the check delivers.
 3. `mode show`'s count is one of the two facts DR-0020's disclosure obligation
    rests on, and it is now derivable from data no check constrains.
@@ -374,11 +382,23 @@ correctness one.
 test/assurance-modes.test.ts, in the new soundness test's opening comment, cites
 `delivery/review/clean-room-m3-p3-r8-criteria.md:318` for "the reviewer measured
 three members, all at exit 0 with every registry gate green". Line 318 of that
-file is inside CR-001's timing evidence:
+file is BLANK, and it sits inside CR-001, which is a different finding about the
+near-miss time budget:
 
 ```
-$ git show origin/main:delivery/review/clean-room-m3-p3-r8-criteria.md | sed -n '318p'
-round7 986f58a: bullet 151 bytes 11203.2 ms ; ordered 207 bytes 12464.2 ms
+$ awk 'NR>=314 && NR<=319 {printf "%d| %s\n", NR, $0}' \
+    delivery/review/clean-room-m3-p3-r8-criteria.md
+314| ```
+315| head 108eed0 : bullet 151 bytes  2.6 ms ; ordered 207 bytes  0.4 ms   (same unit sets)
+316| round7 986f58a: bullet 151 bytes 11203.2 ms ; ordered 207 bytes 12464.2 ms
+317| ```
+318|
+319| So the witness is genuine and the margin is real. The LOW is only this: on the
+
+$ awk '/^### /{h=$0; hn=NR} NR==318{print "line 318 falls under: "hn" "h}' \
+    delivery/review/clean-room-m3-p3-r8-criteria.md
+line 318 falls under: 307 ### CR-001 (LOW): the near-miss time budget is a wall-clock
+assertion, and the box it will run on is not always quiet
 ```
 
 CR-002's three members are at delivery/review/clean-room-m3-p3-r8-criteria.md:228
@@ -500,8 +520,10 @@ than by grep.
 
 Its derivation D1 is `grep -rn 'skips' src/ bin/` with full output and every hit
 classified, including one it examined and cleared with a structural argument
-(`mode-stage-order` at src/checks.ts:463 consults `skips[]` only on the arm where
-the stage genuinely is absent). That is a good derivation of CALL SITES.
+(`mode-stage-order` consults `skips[]` only on the arm where the stage genuinely
+is absent; that site is src/checks.ts:498 at this head, and the work history's
+`:463` is its PRE-FIX line number, which the work history states). That is a good
+derivation of CALL SITES.
 
 **It is not a derivation of the INVARIANT, and V-1 is what that gap cost.**
 Enumerating every place `skips` is read answers "where could the mechanism
