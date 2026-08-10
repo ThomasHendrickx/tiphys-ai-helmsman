@@ -66,7 +66,7 @@
       }
     },
     "verification-first": {
-      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid. RESIDUE, STATED HERE BECAUSE THE FIX ROUND 2 ENUMERATION FOUND IT AND NOTHING ELSE ON THIS BRANCH RECORDS IT: this is CR-002's mechanism in boolean form. The `if` keys off A VALUE THE AUTHOR CHOOSES, and the `false` branch owes NOTHING, so a finding that DOES contradict the plan and is recorded as `contradicts-plan: false` escapes the escalation reference entirely. No keyword and no derived check can reach it, because deciding whether a finding contradicts the plan is a reading of two documents in prose. The required boolean makes the question unskippable and it does not make the answer true; M3-P7's clean-room checklist is where that is checked.",
+      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid. RESIDUE, STATED HERE BECAUSE THE FIX ROUND 2 ENUMERATION FOUND IT AND NOTHING ELSE ON THIS BRANCH RECORDS IT: this is CR-002's mechanism in boolean form. The `if` keys off A VALUE THE AUTHOR CHOOSES, and the `false` branch owed NOTHING, so a finding that DOES contradict the plan and is recorded as `contradicts-plan: false` escaped the escalation reference entirely. FIX ROUND 2 WROTE HERE THAT NO KEYWORD AND NO DERIVED CHECK COULD REACH IT, on the ground that deciding whether a finding contradicts the plan is a reading of two documents in prose. THAT SENTENCE WAS FALSE AND IS CORRECTED RATHER THAN QUIETLY DELETED, because it is the exact shape this whole schema exists to refuse: the round-2 delta verifier refuted it by CONSTRUCTION (finding DV-002), and the reason it was wrong is that the second document is not outside this one at all, since `finding` is prose carried in the same object. The `false` branch of `$defs/verificationFirst`'s `oneOf` now narrows that prose; see its own comment for the token list and for what it still does not reach. The required boolean makes the question unskippable and the pattern prices the most obvious lies, and NEITHER makes the answer true; M3-P7's clean-room checklist is where that is checked.",
       "type": "array",
       "items": { "$ref": "#/$defs/verificationFirst" }
     },
@@ -143,7 +143,26 @@
         "properties": {
           "stopped-and-reported": { "type": "string", "minLength": 1, "pattern": "\\S" }
         }
-      }
+      },
+      "oneOf": [
+        {
+          "$comment": "THE `contradicts-plan: true` BRANCH, which adds nothing: the escalation obligation is the `if`/`then` above and is deliberately left there rather than moved, so every witness registered against it keeps naming the keyword that does the work. This branch exists to make the two branches disjoint. Its own `required` is what makes an ABSENT `contradicts-plan` fall to the branch below instead of matching both, which is why the two branches are not symmetric.",
+          "type": "object",
+          "required": ["contradicts-plan"],
+          "properties": { "contradicts-plan": { "const": true } }
+        },
+        {
+          "$comment": "M3-P4 FIX ROUND 3, FINDING DV-002. Round 2 wrote that this site was `Unreachable by keyword or check` and the round-2 delta verifier REFUTED THAT BY BUILDING THE THING, using this phase's own remedy one definition over. The correction matters more than the fix: the argument round 2 gave for the whole class was that each open site `compares a document to something that is not in any document`, and that is FALSE HERE. `finding` is prose recorded verbatim (R-035) and it is IN THIS DOCUMENT, so the branch is content-discriminated in exactly the sense this phase's own converse table defines, and the negative-lookahead `pattern` that narrowed `#/$defs/claim`'s `open-question` statement narrows it too. WHAT IT REFUSES: a finding whose own prose names a divergence FROM THE PLAN while the boolean beside it says there is none, by eight tokens (`contradict* the plan`, `contrary to the plan`, `conflict* with the plan`, `diverg* from the plan`, `deviat* from the plan`, `at odds with the plan`, `inconsistent with the plan`, `the plan is wrong`), each written case-insensitively for the same reason as report.schema.json's `$defs/universalQuantifier`. EVERY TOKEN NAMES THE PLAN, and that is the whole design: a bare `contradicts` would refuse `the two schema comments contradict each other`, and `the plan requires` would refuse `the plan requires a deviations section and the M2 schemas already model one`, both of which are honest findings that do not contradict anything. Pricing those out is this phase's own worst hazard and the reason the token list is narrow rather than long. RESIDUE, STATED RATHER THAN LEFT TO BE FOUND: neutral prose over a real contradiction still passes, exactly as `$defs/universalQuantifier` still passes an unlisted universal; `the plans` in the plural escapes the word boundary; and a token split across a line break escapes the literal space, which is a residue this pattern SHARES with the two shipped patterns in report.schema.json rather than one it introduces. The pattern narrows the escape; it does not seal it, and I did not find a way to make the marker TRUE by schema alone here. What checks the answer against the world is M3-P7's clean-room checklist.",
+          "type": "object",
+          "properties": {
+            "contradicts-plan": { "const": false },
+            "finding": {
+              "type": "string",
+              "pattern": "^(?:(?!\\b([Cc][Oo][Nn][Tt][Rr][Aa][Dd][Ii][Cc][Tt][A-Za-z]* [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Cc][Oo][Nn][Tt][Rr][Aa][Rr][Yy] [Tt][Oo] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Cc][Oo][Nn][Ff][Ll][Ii][Cc][Tt][A-Za-z]* [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Dd][Ii][Vv][Ee][Rr][Gg][A-Za-z]* [Ff][Rr][Oo][Mm] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Dd][Ee][Vv][Ii][Aa][Tt][A-Za-z]* [Ff][Rr][Oo][Mm] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Aa][Tt] [Oo][Dd][Dd][Ss] [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Ii][Nn][Cc][Oo][Nn][Ss][Ii][Ss][Tt][Ee][Nn][Tt] [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Tt][Hh][Ee] [Pp][Ll][Aa][Nn] [Ii][Ss] [Ww][Rr][Oo][Nn][Gg])\\b)[\\s\\S])*$"
+            }
+          }
+        }
+      ]
     }
   }
 }
