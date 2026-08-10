@@ -63,20 +63,11 @@ export interface DerivedCheck {
    * invisible at the definition site, which is why `schemas/report.schema.json`
    * could carry a comment saying a check applied where it did not.
    *
-   * `guards` below is the other half: it names the shared definitions this
-   * check enforces, and `test/report-contract.test.ts` FAILS when a guarded
-   * definition is reachable from a type this check does not list. A comment
-   * cannot go stale silently once a test derives the same relation from the
-   * schemas.
-   *
-   * REACHABLE IS THE OPERATIVE WORD AND IT WAS OVERSTATED HERE UNTIL M3-P4
-   * FIX ROUND 3 (round-2 delta finding DV-001). The enumeration that shipped
-   * in fix round 2 skipped every pointer starting `#/`, so it tested DIRECT
-   * cross-document reference and not reachability: a definition reached
-   * through a chain was never a key of its map and a `guards` entry naming one
-   * was never examined at all. The walk is transitive now, and it also fails
-   * when a `guards` pointer resolves to nothing, which no reachability walk
-   * can report as a hole because nothing matches it.
+   * `guards` below names the shared definitions this check enforces, and
+   * `test/report-contract.test.ts` walks the TRANSITIVE closure of `$ref` in
+   * `schemas/`, failing when a guarded definition is reachable from a type
+   * this check does not list, or when a `guards` pointer resolves to nothing.
+   * REACHABLE was false of the ONE-HOP walk shipped before M3-P4 round 3.
    */
   alsoTypes?: readonly string[];
   /**
