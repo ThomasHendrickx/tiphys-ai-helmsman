@@ -759,6 +759,7 @@ test("CR-1410-1: a suite of only empty test files invoked by ABSOLUTE paths is r
 });
 
 test("suite direct entry runs through an aliased path and writes its result", () => {
+  // The witness runner's child-output contract is anchored by node-test-tap-real.txt.
   const { dir, base } = makeFixture({
     files: { "test/a.test.ts": "import { test } from 'node:test'; test('alias suite witness', () => {});\n" },
     registry: { alias: "alias suite witness" },

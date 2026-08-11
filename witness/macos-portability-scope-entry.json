@@ -1,0 +1,23 @@
+{
+  "id": "macos-portability-scope-entry",
+  "behavior": "macos-scope-direct-entry-logical-alias",
+  "tests": [
+    "scope direct entry runs through the logical macOS alias and writes its error result"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1]);",
+      "replace": "  fileURLToPath(import.meta.url) === process.argv[1];"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node --test --test-reporter tap",
+    "captures": ["witness/captures/node-test-tap-real.txt"],
+    "provenance": "The changed gate is a spawning module, so rule (f) binds this witness. The red-witness harness executes the named direct-entry test with Node's pinned TAP reporter and parses that stream. The named test source references the repository's real pass-and-fail TAP capture; the mutation must still produce a live red result."
+  }
+}

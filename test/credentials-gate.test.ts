@@ -33,6 +33,9 @@ const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 const credentialsGateEntry = fileURLToPath(
   new URL("../src/gates/credentials.ts", import.meta.url),
 );
+const appleGitPrefixHelperCapture = fileURLToPath(
+  new URL("../witness/captures/macos-apple-git-prefix-helper.txt", import.meta.url),
+);
 
 interface ChildEnvModule {
   DEFAULT_CHILD_ENV_ALLOWLIST: readonly string[];
@@ -494,13 +497,12 @@ test("credential-scrub is green with units equal to sources probed while staged 
           PATH: bin,
           HOME: fakeHome,
           GIT_CONFIG_GLOBAL: "/dev/null",
-          GIT_CONFIG_SYSTEM: "/dev/null",
           GIT_CONFIG_NOSYSTEM: "0",
         },
       },
     );
     assert.equal(prefixHelper.status, 0, prefixHelper.stderr);
-    assert.match(prefixHelper.stdout, /^osxkeychain$/m);
+    assert.equal(prefixHelper.stdout, readFileSync(appleGitPrefixHelperCapture, "utf8"));
   }
 
   // The DANGEROUS STATE IS STAGED IN THE GATE'S OWN PARENT ENVIRONMENT

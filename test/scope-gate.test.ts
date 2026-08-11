@@ -171,6 +171,7 @@ function cleanup(...dirs: string[]): void {
 }
 
 test("scope direct entry runs through the logical macOS alias and writes its error result", () => {
+  // The witness runner's child-output contract is anchored by node-test-tap-real.txt.
   const { dir, outside } = initRepo();
   try {
     const declDir = join(dir, "delivery/plan/phase-declarations");
