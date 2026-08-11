@@ -157,7 +157,10 @@ branch or its open pull request.
    pushes it, opens the PR, and runs independent review. Findings return through
    another explicitly recorded controlled invocation or are resolved by the
    current process only if they concern pilot scaffolding rather than feature
-   code.
+   code. DR-0026 is the owner-authorized exception for PR 89's first three
+   feature-code review findings: the current process resolves them without a
+   second Tiphys subprocess, then uses independent Codex clean-room reviews if
+   the Claude-family reviewer remains unavailable.
 8. Merge authority remains outside Tiphys. Teardown runs only after the commit
    is safely reachable and the task branch satisfies the kernel's own teardown
    rules, or salvage is explicitly chosen.

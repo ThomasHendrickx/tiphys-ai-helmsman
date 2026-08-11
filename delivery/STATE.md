@@ -6,7 +6,13 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-11
-- main head before the controlled-pilot authorization PR: `c8b742f` (PR #87,
+- current main is `37577e6` (PR #88, the controlled-pilot authorization).
+  The pilot implementation is in PR #89. Its first review found three feature
+  issues. The owner authorized the current-process fix round in DR-0026 with no
+  second Tiphys subprocess and approved independent Codex clean-room reviews
+  while the Claude-family reviewer is token-blocked. This does not change the
+  M4 boundary or accept the temporary adapter.
+  Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
   M3-P4 round-3 verification and the stop arbitration). Its push run
   31414562777 completed success. The owner has authorized DR-0025, one
   controlled pre-M4 local pilot for macOS portability. The authorization and
