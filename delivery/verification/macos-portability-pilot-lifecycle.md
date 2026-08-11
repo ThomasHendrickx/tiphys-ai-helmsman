@@ -13,6 +13,20 @@
   were not committed before merge; this is not M4 cutover or acceptance of
   the temporary harness adapter
 
+## Grounding
+
+The owner's original authorization and role split are recorded at
+delivery/decisions/DR-0025-controlled-pre-m4-local-pilot.md:25 and
+delivery/decisions/DR-0025-controlled-pre-m4-local-pilot.md:33. The separate
+post-teardown record and partial-verdict rule come from
+delivery/plan/macos-portability-pilot.md:138 and
+delivery/plan/macos-portability-pilot.md:174. DR-0026's exact current-head and
+committed-review conditions are at
+delivery/decisions/DR-0026-current-process-pilot-fix-round.md:44. The failed
+implementation-agent commit and current-process recovery are preserved at
+delivery/work-history/macos-portability-pilot.md:117 and
+delivery/work-history/macos-portability-pilot.md:142.
+
 ## Delivered result
 
 PR 89 was squash-merged at `2026-08-11T17:01:34Z`. Before merge, its exact
