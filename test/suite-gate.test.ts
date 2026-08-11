@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   writeFileSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -755,4 +756,22 @@ test("CR-1410-1: a suite of only empty test files invoked by ABSOLUTE paths is r
   assert.notEqual(run.record.status, "green");
   assert.ok(run.counts !== undefined);
   assert.deepEqual(run.counts.reported, []);
+});
+
+test("suite direct entry runs through an aliased path and writes its result", () => {
+  const { dir, base } = makeFixture({
+    files: { "test/a.test.ts": "import { test } from 'node:test'; test('alias suite witness', () => {});\n" },
+    registry: { alias: "alias suite witness" },
+  });
+  const evidenceDir = mkdtempSync(join(tmpdir(), "tiphys-suite-alias-"));
+  const alias = join(evidenceDir, "suite-alias.ts");
+  symlinkSync(gatePath, alias);
+  const resultPath = join(evidenceDir, "result.json");
+  const result = spawnSync(process.execPath, [alias, "--result", resultPath, "--evidence", evidenceDir, "--base", base], {
+    cwd: dir,
+    encoding: "utf8",
+    env: scrubbedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(readFileSync(resultPath, "utf8")).status, "green");
 });

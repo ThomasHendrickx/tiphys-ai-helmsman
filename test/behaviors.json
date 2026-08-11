@@ -511,5 +511,11 @@
   "mode-conditions-multi-marker-lines-strip-every-marker": "a line opening more than one block marker leaves no marker in the unit, at two, three and five markers and with a quote after a list marker",
   "mode-conditions-start-column-verified-not-trusted": "the parser start column is verified rather than trusted, so a paragraph advanced past a link reference definition is not truncated, in the quote form and in the list form",
   "mode-conditions-emptied-paragraph-contributes-no-unit": "a paragraph the parser emptied contributes no unit, at top level and inside a list item",
-  "mode-conditions-near-miss-prefix-bounded-time": "a long near-miss block prefix is rejected in bounded time, for a bullet run and for an ordered run"
+  "mode-conditions-near-miss-prefix-bounded-time": "a long near-miss block prefix is rejected in bounded time, for a bullet run and for an ordered run",
+  "macos-fixed-git-config-nosystem": "a parent GIT_CONFIG_NOSYSTEM value cannot override the fixed child value",
+  "macos-credentials-direct-entry-alias": "credentials direct entry runs through an aliased path and writes its result",
+  "macos-suite-direct-entry-alias": "suite direct entry runs through an aliased path and writes its result",
+  "authored-bytes-reject-forbidden": "authored-byte checker rejects NUL SOH and non-ASCII tracked bytes",
+  "authored-bytes-accept-ascii": "authored-byte checker accepts ordinary tracked ASCII",
+  "authored-bytes-exemptions-narrow": "authored-byte checker exempts only the owner input and vendored fixture paths"
 }

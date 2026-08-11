@@ -5,12 +5,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -279,12 +280,19 @@ test("spawn scrubs the payload child environment and redirects the credential-st
   // Every pointer redirected to a harness-owned path INSIDE the task
   // directory, never the parent's value.
   const taskDir = join(scratch.fleet, "tasks", "scrub-one");
-  const scrub = envModule.scrubRoot(taskDir);
-  assert.equal(dump.HOME, join(scrub, "home"));
-  assert.equal(dump.XDG_CONFIG_HOME, join(scrub, "xdg-config"));
-  assert.equal(dump.GH_CONFIG_DIR, join(scrub, "gh-config"));
-  assert.equal(dump.GIT_CONFIG_GLOBAL, join(scrub, "gitconfig-global"));
-  assert.equal(dump.GIT_CONFIG_SYSTEM, join(scrub, "gitconfig-system"));
+  const pointers = {
+    HOME: "home",
+    XDG_CONFIG_HOME: "xdg-config",
+    GH_CONFIG_DIR: "gh-config",
+    GIT_CONFIG_GLOBAL: "gitconfig-global",
+    GIT_CONFIG_SYSTEM: "gitconfig-system",
+  } as const;
+  for (const [name, leaf] of Object.entries(pointers)) {
+    const target = dump[name] as string;
+    assert.equal(basename(target), leaf);
+    assert.equal(realpathSync(dirname(dirname(target))), realpathSync(taskDir));
+  }
+  assert.equal(dump.GIT_CONFIG_NOSYSTEM, "1");
   assert.notEqual(dump.HOME, env.HOME);
   // PATH crossed (the payload could not have run otherwise, but the
   // record should say so explicitly).
@@ -526,6 +534,32 @@ test("credential-scrub is green with units equal to sources probed while staged 
   for (const probe of probes) {
     assert.equal(probe.outcome, "clean", `${probe.source}: ${probe.detail}`);
   }
+});
+
+test("a parent GIT_CONFIG_NOSYSTEM value cannot override the fixed child value", (t) => {
+  const tmp = makeTempDir(t);
+  const built = envModule.buildChildEnv({
+    parentEnv: { PATH: process.env["PATH"], GIT_CONFIG_NOSYSTEM: "0" },
+    scrubDir: join(tmp, "scrub"),
+    extraAllowlist: ["GIT_CONFIG_NOSYSTEM"],
+  });
+  assert.equal(built.ok, true, built.ok ? "" : built.reason);
+  if (built.ok) assert.equal(built.env["GIT_CONFIG_NOSYSTEM"], "1");
+});
+
+test("credentials direct entry runs through an aliased path and writes its result", (t) => {
+  const tmp = makeTempDir(t);
+  const alias = join(tmp, "credentials-alias.ts");
+  symlinkSync(credentialsGateEntry, alias);
+  const evidence = join(tmp, "evidence");
+  mkdirSync(evidence);
+  const resultPath = join(tmp, "result.json");
+  const result = spawnSync(process.execPath, [alias, "credential-scrub", "--result", resultPath, "--evidence", evidence], {
+    encoding: "utf8",
+    env: { PATH: ghFreeBinDir(t) },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(readFileSync(resultPath, "utf8")).status, "green");
 });
 
 test("credential-scrub probes report resolvable sources when the redirection is absent", (t) => {

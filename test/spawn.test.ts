@@ -246,7 +246,8 @@ test("spawn runs the payload in the task worktree and writes meta and brief", (t
   assert.ok(existsSync(marker), "spawn returned before the payload had exited");
 
   const worktree = worktreeOf(scratch, "t-run");
-  assert.equal(readFileSync(cwdFile, "utf8").trim(), realpathSync(worktree));
+  const payloadPhysicalCwd = readFileSync(cwdFile, "utf8").trim();
+  assert.equal(realpathSync(payloadPhysicalCwd), realpathSync(worktree));
 
   const meta = metaOf(scratch, "t-run");
   assert.deepEqual(Object.keys(meta).sort(), [
@@ -264,7 +265,8 @@ test("spawn runs the payload in the task worktree and writes meta and brief", (t
   assert.equal(meta.project, scratch.clone);
   assert.equal(meta.shape, "ship");
   assert.equal(meta.branch, "task/t-run");
-  assert.equal(meta.worktree, worktree);
+  assert.equal(realpathSync(meta.worktree), realpathSync(worktree));
+  assert.equal(meta.worktree.startsWith("/"), true, "meta worktree remains an absolute diagnostic path");
   assert.equal(meta.status, "open");
   assert.equal(meta.baseSha, upstreamHead, "meta baseSha is not the fetched base");
   assert.equal(meta.baseSha, poolRecordOf(scratch, "t-run").baseSha);
