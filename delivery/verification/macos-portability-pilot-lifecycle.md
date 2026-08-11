@@ -6,10 +6,12 @@
 - implementation PR: [#89](https://github.com/ThomasHendrickx/tiphys-ai-helmsman/pull/89)
 - reviewed PR head: `0997de2bdc756c895ba2eeb55f8ce9ead4c5e7ca`
 - merged commit: `1e020983d7f5de1bb212113f240a0982fd3ac83e`
-- verdict: partial controlled pilot; delivery, watcher, landedness, and
-  teardown succeeded, but the implementation agent could not perform the
-  plan-required local commit and the current process had to recover it; this
-  is not M4 cutover or acceptance of the temporary harness adapter
+- closeout verdict: partial controlled pilot once this record is durable on
+  `main`; delivery, watcher, landedness, and teardown succeeded, but the
+  implementation agent could not perform the plan-required local commit and
+  the current process had to recover it, and final-head delta-review outcomes
+  were not committed before merge; this is not M4 cutover or acceptance of
+  the temporary harness adapter
 
 ## Delivered result
 
@@ -24,10 +26,14 @@ clean-room reviews under distinct criteria and adversarial briefs. Both
 reported no findings. Their committed reports are
 `delivery/review/clean-room-macos-portability-pilot-final-criteria.md` and
 `delivery/review/clean-room-macos-portability-pilot-final-adversarial.md`.
-Two further independent read-only checks of the evidence-only delta through
-the final PR head also reported no findings. The Claude-family reviewer was
-unavailable, so this used the fallback the owner expressly authorized in
-DR-0026; only model-family diversity was waived.
+Two further independent read-only sessions checked the evidence-only delta
+from `a760356` through final PR head `0997de2` and reported no findings, but
+their outcomes were not committed before merge. They therefore do not satisfy
+DR-0026's durable current-head review-evidence requirement. The Claude-family
+reviewer was unavailable, so the reviews used the Codex fallback the owner
+expressly authorized in DR-0026; model-family diversity was waived, and the
+missing durable delta record remains a process deviation rather than being
+rounded up to compliance.
 
 Final local verification before delivery was green: build; 74 focused tests
 with no skip; all 517 tests with no skip; all five red-witness units with each
@@ -105,19 +111,31 @@ redirected HOME; unrestricted host verification subsequently passed. Other
 recorded deviations were one dependency-free test attempt, one transient npm
 DNS failure, an isolated accidental `tiphys init --help` fleet moved
 recoverably to `/tmp`, and broader host-read permission in the Codex workspace
-than credential scrubbing alone implies. None lost work or bypassed a review,
-CI, landedness, or teardown guard, but the Git common-directory write boundary
-and broad read boundary are adapter-hardening inputs for M4.
+than credential scrubbing alone implies. None of those operational deviations
+lost work or bypassed CI, landedness, or teardown guards, but the Git
+common-directory write boundary and broad read boundary are adapter-hardening
+inputs for M4.
+
+The two final evidence-delta review sessions reported no findings but were not
+written into durable review records before PR 89 merged. The substantive and
+evidence head had two committed independent reviews, and the final delta only
+changed those reports and corrected their base label, but DR-0026 required
+current-head outcomes to be committed before merge. The merge therefore did
+not fully meet that process condition. This cannot be repaired retroactively
+and is part of the partial verdict.
 
 ## Boundary conclusion
 
-The pilot partially succeeded. The unfinished kernel managed the authorized
-fleet, worktree, task, subprocess, watcher-state, and safe squash-aware
-teardown surfaces for one real macOS portability delivery, while the retained
-current process supplied every authority explicitly excluded from Tiphys. The
-implementation agent did not complete the plan-required local commit because
-its sandbox could not write the shared Git worktree index; current-process
-recovery made the code safe and deliverable but does not turn that missed
-lifecycle step into success. This is evidence for the exercised lifecycle
-surfaces only. It neither decides DR-0010, lifts the M3-P4 stop, accepts the
-temporary adapter, nor claims M4 self-hosting or cutover.
+When this record is durable on `main`, the final pilot verdict is partial. The
+unfinished kernel managed the authorized fleet, worktree, task, subprocess,
+watcher-state, and safe squash-aware teardown surfaces for one real macOS
+portability delivery, while the retained current process supplied every
+authority explicitly excluded from Tiphys. The implementation agent did not
+complete the plan-required local commit because its sandbox could not write
+the shared Git worktree index; current-process recovery made the code safe and
+deliverable but does not turn that missed lifecycle step into success. The
+final-head delta reviews also lacked the durable pre-merge evidence required by
+DR-0026. Until this closeout lands, the plan defines the pilot itself as
+incomplete. This is evidence for the exercised lifecycle surfaces only. It
+neither decides DR-0010, lifts the M3-P4 stop, accepts the temporary adapter,
+nor claims M4 self-hosting or cutover.
