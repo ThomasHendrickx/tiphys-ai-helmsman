@@ -6,12 +6,23 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-11
-- current main is `37577e6` (PR #88, the controlled-pilot authorization).
-  The pilot implementation is in PR #89. Its first review found three feature
-  issues. The owner authorized the current-process fix round in DR-0026 with no
-  second Tiphys subprocess and approved independent Codex clean-room reviews
-  while the Claude-family reviewer is token-blocked. This does not change the
-  M4 boundary or accept the temporary adapter.
+- PR #89, the controlled macOS portability pilot, merged to main as
+  `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
+  commit each passed Linux `gates` and macOS smoke. The owner-authorized
+  current-process fix round in DR-0026 used no second Tiphys subprocess and
+  received two independent clean-room reviews with no findings. The current
+  process then invoked and observed Tiphys's watcher mechanism, after which
+  Tiphys completed guarded, squash-aware teardown with exit 0: the task is
+  closed, its durable records survive, the task worktree/pool record/local
+  branch are removed, and the lease is released. The required closeout is
+  delivery/verification/macos-portability-pilot-lifecycle.md:1. The lifecycle
+  actions are complete, but the plan defines the pilot as incomplete until
+  that closeout is durable on `main`. Once it is, the final verdict is a
+  partial controlled pilot: delivery and teardown succeeded, but the
+  implementation agent could not make the plan-required local commit and the
+  current process had to recover it, and the final-head delta-review outcomes
+  were not committed before merge as DR-0026 required. This is not M4 cutover
+  or acceptance of the temporary adapter.
   Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
   M3-P4 round-3 verification and the stop arbitration). Its push run
   31414562777 completed success. The owner has authorized DR-0025, one
