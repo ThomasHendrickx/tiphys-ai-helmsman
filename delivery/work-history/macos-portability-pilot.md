@@ -213,11 +213,22 @@ The test now leaves the system-config path unmodified, reads the committed
 capture `macos-apple-git-prefix-helper.txt`, and requires the selected Apple Git
 to reproduce `osxkeychain` before the scrubbed-child assertion. Five separate
 mutation specifications cover path identity, the three direct entries, and the
-fixed `GIT_CONFIG_NOSYSTEM` assignment. The exact command was `node
-src/gates/red-witness.ts --result <result> --evidence <evidence> --base
-37577e6b83b60b9b6b381d748ef328dc51f30cd8 --head HEAD --phase
+fixed `GIT_CONFIG_NOSYSTEM` assignment. Against audited source head
+`d6f02be0f7567a14b51538041ca351e86019f83b`, the exact command was `node
+src/gates/red-witness.ts --result
+/tmp/macos-red-witness-final-d6f02be0/result.json --evidence
+/tmp/macos-red-witness-final-d6f02be0/evidence --base
+37577e6b83b60b9b6b381d748ef328dc51f30cd8 --head
+d6f02be0f7567a14b51538041ca351e86019f83b --phase
 macos-portability-pilot`. The single gate exited 0 with status green and five
-units; every declared dangerous-state mutation made its named test red.
+units; every declared dangerous-state mutation made its named test red. The
+result sha256 was
+`af8fd315f81f239983b55a0effa528f2cd90fe55ed68436375dcf7f0b212c7cc`
+and `witness-records.json` sha256 was
+`9f9b7e9ee37e3246d0d0269a4bb37c9d17f0c26198422eb7b914af1dbc00a9bb`.
+An immediately preceding attempt used a mistyped full SHA beginning
+`d6f02be9`, exited 21 before evaluating a witness, and was replaced by the
+resolved `git rev-parse HEAD` value above.
 
 The authored-byte tests create a genuine three-stage unmerged index and prove
 the checker fails closed with exit 2 and the unsupported-index diagnostic.
