@@ -55,8 +55,9 @@ make any M4 claim.
    make that third fix reviewable is part of the same finding.
 
 The standing Linux red-witness gate also requires mutation coverage for every
-changed source file. The original pilot scope omitted its witness artifact, so
-the current process may add only
-`witness/macos-portability-identity-and-scrub.json`. This is verification
-scaffolding for the already authorized source changes, not a fourth feature
-finding or an expansion of Tiphys authority.
+changed source file. The original pilot scope omitted its witness artifacts,
+so the current process may add only
+`witness/macos-portability-identity-and-scrub.json` and the real Apple Git
+output capture `witness/captures/macos-apple-git-prefix-helper.txt`. This is
+verification scaffolding for the already authorized source changes, not a
+fourth feature finding or an expansion of Tiphys authority.
