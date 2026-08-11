@@ -8,10 +8,12 @@
   claims, byte hygiene, and the M4 non-claim
 - outcome: no findings
 
-The adversarial review independently inspected the complete diff through the
-reviewed head, including the five mechanism-specific witness specifications,
-one real Apple Git capture, and decision-id allocation evidence. It found no
-contract or authority defect.
+The adversarial review independently inspected the complete authorization diff
+through the reviewed head, including authority for five future
+mechanism-specific witness specifications and one future real Apple Git
+capture, plus decision-id allocation evidence. It found no contract or
+authority defect. The witness files and capture themselves belong to the later
+implementation review, not this authorization review.
 
 Residual risk: PR 89, the first-review findings, Claude-family availability,
 CI, branch transfer, and later implementation gates were external or future
