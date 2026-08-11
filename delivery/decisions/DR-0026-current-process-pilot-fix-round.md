@@ -13,6 +13,14 @@
   findings on PR 89 without another Tiphys subprocess
 - date: 2026-08-11
 
+## Id allocation
+
+`DR-0026` was checked across the full git history before allocation and had no
+prior decision. After allocation, `git log --all --diff-filter=A --
+delivery/decisions/DR-0026-current-process-pilot-fix-round.md` identifies only
+this decision's introducing commit, and the current decision tree contains no
+duplicate `id: DR-0026` entry.
+
 ## Owner authorization, recorded verbatim
 
 > Authorize the current delivery process to resolve the three review findings
