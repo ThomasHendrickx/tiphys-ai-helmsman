@@ -6,8 +6,9 @@
 - task id: `macos-portability-pilot`
 - Tiphys task branch: `task/macos-portability-pilot`
 - delivery branch after external audit: `codex/macos-portability-pilot`
-- assurance: current-process implementation audit plus independent clean-room
-  review; no automatic merge
+- assurance: current-process implementation audit plus two independent
+  clean-room reviews of the current committed head under distinct briefs; no
+  automatic merge
 
 ## Intent
 
@@ -154,13 +155,15 @@ branch or its open pull request.
 6. The current process audits scope and the report before making any work
    recoverable outside the task branch.
 7. The current process creates the delivery branch at the audited commit,
-   pushes it, opens the PR, and runs independent review. Findings return through
+   pushes it, opens the PR, and runs two independent reviews of the current
+   committed head under distinct briefs. Their outcomes are written under
+   `delivery/review/` and committed before merge. Findings return through
    another explicitly recorded controlled invocation or are resolved by the
    current process only if they concern pilot scaffolding rather than feature
    code. DR-0026 is the owner-authorized exception for PR 89's first three
    feature-code review findings: the current process resolves them without a
-   second Tiphys subprocess, then uses independent Codex clean-room reviews if
-   the Claude-family reviewer remains unavailable.
+   second Tiphys subprocess, then uses two independent Codex clean-room reviews
+   if the Claude-family reviewer remains unavailable.
 8. Merge authority remains outside Tiphys. Teardown runs only after the commit
    is safely reachable and the task branch satisfies the kernel's own teardown
    rules, or salvage is explicitly chosen.
