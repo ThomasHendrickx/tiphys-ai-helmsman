@@ -1,0 +1,26 @@
+{
+  "id": "macos-portability-path-identity",
+  "behavior": "macos-scope-direct-entry-logical-alias",
+  "tests": [
+    "scope direct entry runs through the logical macOS alias and writes its error result",
+    "credentials direct entry runs through an aliased path and writes its result",
+    "suite direct entry runs through an aliased path and writes its result"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/path-identity.ts",
+      "find": "    return realpathSync(left) === realpathSync(right);",
+      "replace": "    return left === right;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/path-identity.ts",
+      "find": "import { realpathSync } from \"node:fs\";",
+      "replace": "const realpathSync = (path: string): string => path;"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}
