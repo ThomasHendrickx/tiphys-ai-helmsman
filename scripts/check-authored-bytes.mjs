@@ -34,6 +34,13 @@ export function checkAuthoredBytes(root = process.cwd()) {
     }
     return { path: entry.slice(separator + 1), oid: match[2] };
   });
+  const worktree = spawnSync("git", ["diff", "--quiet", "--no-ext-diff", "--"], { cwd: root });
+  if (worktree.error !== undefined || (worktree.status !== 0 && worktree.status !== 1)) {
+    throw new Error(`git diff failed with exit ${String(worktree.status)}: ${String(worktree.stderr)}`);
+  }
+  if (worktree.status === 1) {
+    throw new Error("tracked working tree differs from the index; stage or revert it before checking authored bytes");
+  }
   if (entries.length === 0) return [];
   const blobs = spawnSync("git", ["cat-file", "--batch"], {
     cwd: root,

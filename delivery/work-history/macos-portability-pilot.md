@@ -213,19 +213,35 @@ The test now leaves the system-config path unmodified, reads the committed
 capture `macos-apple-git-prefix-helper.txt`, and requires the selected Apple Git
 to reproduce `osxkeychain` before the scrubbed-child assertion. Five separate
 mutation specifications cover path identity, the three direct entries, and the
-fixed `GIT_CONFIG_NOSYSTEM` assignment. The red-witness gate evaluated all five
-green at head and red against every declared dangerous state.
+fixed `GIT_CONFIG_NOSYSTEM` assignment. The exact command was `node
+src/gates/red-witness.ts --result <result> --evidence <evidence> --base
+37577e6b83b60b9b6b381d748ef328dc51f30cd8 --head HEAD --phase
+macos-portability-pilot`. The single gate exited 0 with status green and five
+units; every declared dangerous-state mutation made its named test red.
 
-The authored-byte test now also creates a genuine three-stage unmerged index
-and proves the checker fails closed with exit 2 and the unsupported-index
-diagnostic. This discharges the clean-room review's missing fail-closed witness
-without broadening the checker behavior.
+The authored-byte tests create a genuine three-stage unmerged index and prove
+the checker fails closed with exit 2 and the unsupported-index diagnostic.
+They also prove a tracked working-tree edit differing from the index is refused
+with exit 2, so an unstaged forbidden byte cannot receive a green result. The
+checker inspects indexed tracked blobs and refuses divergence rather than
+claiming to have inspected different working-tree bytes.
 
-At final local fix state, the focused portability command exited 0 with 73
-tests, 73 pass, 0 fail, and 0 skipped. `npm run build` exited 0. Full
-`npm test` exited 0 with 516 tests, 516 pass, 0 fail, and 0 skipped. The five
-red witnesses exited green, the repository-wide authored-byte check exited 0,
+At final local fix state, the focused portability command exited 0 with 74
+tests, 74 pass, 0 fail, and 0 skipped. `npm run build` exited 0. Full
+`npm test` exited 0 with 517 tests, 517 pass, 0 fail, and 0 skipped. The
+red-witness gate exited 0 with five green units, the repository-wide
+authored-byte check exited 0,
 `git diff --check` was clean, and exact `npm pack --dry-run --json` exited 0
 with 125 files. PR 89's fresh clean-room reviews, exact-head Linux and macOS
 CI, merge, watcher close observation, and teardown remain current-process
 steps.
+
+The authorization review provenance is recoverable after PR 90's squash merge
+through GitHub's retained pull-request ref. `git fetch origin
+refs/pull/90/head` resolved `3949507cb7ab4fe609575a855f49ae9d5ebbff1e`;
+`git cat-file -e 8a1b287e9b93aa93bb38614832eb99b10038f279^{commit}` and
+`git merge-base --is-ancestor 8a1b287e9b93aa93bb38614832eb99b10038f279
+FETCH_HEAD` both exited 0. The diff from that reviewed substantive head to the
+retained PR head contains only the two committed current-head review reports
+and their evidence-wording correction, not an authority or implementation
+change.

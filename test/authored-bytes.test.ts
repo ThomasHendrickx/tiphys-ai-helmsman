@@ -105,3 +105,12 @@ test("authored-byte checker fails closed on an unmerged index", () => {
   assert.equal(result.status, 2, result.stderr);
   assert.match(result.stderr, /unsupported index entry/);
 });
+
+test("authored-byte checker refuses tracked worktree bytes that differ from the index", () => {
+  const root = repository({ "tracked.txt": "plain ASCII\n" });
+  writeFileSync(join(root, "tracked.txt"), Buffer.from([0x00]));
+
+  const result = run(root);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /tracked working tree differs from the index/);
+});
