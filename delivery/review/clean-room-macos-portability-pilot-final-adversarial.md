@@ -1,7 +1,7 @@
 # Clean-room final adversarial review: macOS portability pilot
 
 - reviewed head: `a7603568ebfdc389299962ecab0e16e380a64f8d`
-- merge base: `37577e6b83b60b9b6b381d748ef328dc51f30cd8`
+- original pilot base: `37577e6b83b60b9b6b381d748ef328dc51f30cd8`
 - governing main: `0e1cec7e88040e1ea85cc3ebc9a07f2b73de76e1`
 - reviewer: independent Codex `gpt-5.6-terra` read-only session
 - brief: try to falsify portability, credential isolation, byte checking,
