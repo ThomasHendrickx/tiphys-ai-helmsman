@@ -60,6 +60,8 @@ Files the implementer may touch:
 - `CLAUDE.md`, only to replace the non-portable manual byte-check command with
   the delivered script and preserve the existing exemptions;
 - `test/behaviors.json`;
+- `witness/macos-portability-identity-and-scrub.json` (create, standing
+  red-witness coverage for the five changed source files only);
 - `delivery/work-history/macos-portability-pilot.md`.
 
 Anything else is an escalation. The implementer does not change the M3-P4
