@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -57,4 +57,18 @@ test("authored-byte checker exempts only the owner input and vendored fixture pa
   assert.equal(result.status, 1);
   assert.match(result.stderr, /delivery\/intake\/other\.md/);
   assert.match(result.stderr, /json-schema-test-suite-near/);
+});
+
+test("authored-byte checker reads tracked symlink text without following its target", () => {
+  const root = repository({});
+  const outside = join(dirname(root), "tiphys-authored-bytes-outside");
+  writeFileSync(outside, Buffer.from([0x00]));
+  symlinkSync(outside, join(root, "outside-link"));
+  symlinkSync("missing-\u00e9", join(root, "broken-link"));
+  assert.equal(spawnSync("git", ["add", "-A"], { cwd: root }).status, 0);
+
+  const result = run(root);
+  assert.equal(result.status, 1, result.stderr);
+  assert.doesNotMatch(result.stderr, /outside-link/);
+  assert.match(result.stderr, /broken-link:8: non-ASCII byte 0xc3/);
 });

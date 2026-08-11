@@ -483,6 +483,26 @@ test("credential-scrub is green with units equal to sources probed while staged 
   mkdirSync(evidence);
   const resultPath = join(tmp, "result.json");
 
+  if (process.platform === "darwin") {
+    const prefixHelper = spawnSync(
+      join(bin, "git"),
+      ["config", "--get-all", "credential.helper"],
+      {
+        cwd: tmp,
+        encoding: "utf8",
+        env: {
+          PATH: bin,
+          HOME: fakeHome,
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_CONFIG_SYSTEM: "/dev/null",
+          GIT_CONFIG_NOSYSTEM: "0",
+        },
+      },
+    );
+    assert.equal(prefixHelper.status, 0, prefixHelper.stderr);
+    assert.match(prefixHelper.stdout, /^osxkeychain$/m);
+  }
+
   // The DANGEROUS STATE IS STAGED IN THE GATE'S OWN PARENT ENVIRONMENT
   // (M2R-004 edit 3): a token-shaped hosts.yml reachable through HOME, a
   // credential helper reachable through GIT_CONFIG_GLOBAL, and a token

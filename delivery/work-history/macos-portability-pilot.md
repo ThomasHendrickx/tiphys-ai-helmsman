@@ -162,3 +162,32 @@ workspace sandbox also allowed broader host reads than the temporary adapter's
 GitHub credential scrubbing alone implies. No GitHub credential or parent Git
 configuration was exposed to the implementation environment, but the broad
 read boundary remains a pilot finding for adapter hardening.
+
+## Owner-authorized current-process fix round
+
+After PR 89 received three independent review findings, the owner explicitly
+authorized the current delivery process to resolve those feature findings
+without launching another Tiphys subprocess. The authorization states that
+this remains fix-round and recovery work inside the existing pilot, does not
+expand Tiphys authority, does not constitute M4 cutover, and does not accept
+the unfinished adapter. It also authorizes independent Codex clean-room
+reviews if the Claude-family reviewer remains unavailable.
+
+The current process added the explicit scope direct-entry witness required by
+criterion 3. On macOS it proves that the invoked `/var/...` spelling differs
+from the canonical `/private/var/...` spelling, then verifies exit 21 and the
+written error record. On other platforms the same behavior is exercised
+through a controlled symlink alias. The credential witness now first proves on
+macOS that the selected Apple Git resolves the prefix-system `osxkeychain`
+helper while `GIT_CONFIG_NOSYSTEM=0`; the scrubbed child must still resolve no
+helper with the fixed value. The authored-byte checker now reads indexed Git
+blobs in one `git cat-file --batch` operation, so tracked symlink text is
+checked without following a target inside or outside the repository. A test
+uses both an external target containing NUL and a broken non-ASCII link.
+
+After these edits, `npm run build` exited 0 and the focused portability command
+exited 0 with 72 tests, 72 pass, 0 fail, and 0 skipped. Full host verification,
+then exited 0 with 515 tests, 515 pass, 0 fail, and 0 skipped. The staged
+repository-wide byte check and `git diff --cached --check` also exited 0.
+Package verification, clean-room review, CI, merge, watcher close observation,
+and teardown remain current-process steps after this record is committed.
