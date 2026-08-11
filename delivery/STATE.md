@@ -5,16 +5,23 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-10
-- main head: `a7d5686` (PR #86, tuition T-014 and the watchdog questions in
-  CLAUDE.md). Earlier heads this session are DISCHARGED BY STEP, and each
+- as of: 2026-08-11
+- main head before the controlled-pilot authorization PR: `c8b742f` (PR #87,
+  M3-P4 round-3 verification and the stop arbitration). Its push run
+  31414562777 completed success. The owner has authorized DR-0025, one
+  controlled pre-M4 local pilot for macOS portability. The authorization and
+  exact boundary are in
+  delivery/decisions/DR-0025-controlled-pre-m4-local-pilot.md:1 and the pilot
+  plan is delivery/plan/macos-portability-pilot.md:1. M3-P4 remains stopped;
+  the pilot neither modifies PR #81 nor lifts that stop.
+  The earlier head `a7d5686` (PR #86, tuition T-014 and the watchdog questions in
+  CLAUDE.md). Its push run 31411940057 completed success. Earlier heads this
+  session are DISCHARGED BY STEP, and each
   completed rather than being cancelled once the batch stopped overlapping:
   `b1e9ac7` (PR #84) all 15 steps success, step 9 `M2 exit test (push)` success,
   step 8 correctly skipped, steps 10 and 12 (the two guards) success; `253740e`
   (PR #83), `90ebedf` (PR #82), `d0d55e4` (PR #80) and `4e7e1fd` (PR #85) each
-  the same way. `a7d5686`'s own push run was still in progress when this line
-  was written and is NOT yet discharged; T-009 says the merge is not complete
-  until it is.
+  the same way.
   The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
   M3-P4's round-1 and round-2 evidence.
 - **M3-P4 HAS HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE.**
