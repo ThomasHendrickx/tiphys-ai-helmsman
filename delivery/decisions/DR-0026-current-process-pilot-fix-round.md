@@ -28,14 +28,20 @@ DR-0025 still authorizes exactly one Tiphys-managed synchronous subprocess.
 That subprocess already ended and no second one is authorized. This decision
 changes only who may implement the three review fixes: the current delivery
 process may edit the already declared feature and test scope on the existing
-task branch, commit it, and update PR 89.
+Tiphys task branch and commit it there. The current process then advances the
+separate `codex/macos-portability-pilot` delivery branch and PR 89 to that same
+audited commit. The task branch remains intact as pilot evidence until Tiphys
+teardown.
 
 Planning, review, credentials, PR, merge, recovery, and teardown arbitration
 remain outside Tiphys. The fix must pass the original pilot acceptance
-criteria, independent clean-room review, Linux required CI, and the macOS smoke
-workflow before merge. If the Claude-family reviewer remains unavailable,
-independent fresh Codex reviews are the owner-approved fallback. This decision
-does not accept the temporary adapter or make any M4 claim.
+criteria, two independent reviews of the current committed head under distinct
+review briefs, Linux required CI, and the macOS smoke workflow before merge.
+Both review outcomes must be committed or posted durably before merge. If the
+Claude-family reviewer remains unavailable, two fresh Codex reviews are the
+owner-approved fallback; only model-family diversity is waived, not the review
+count, independence, current-head requirement, or durable evidence. This
+decision does not accept the temporary adapter or make any M4 claim.
 
 ## Findings in scope
 
