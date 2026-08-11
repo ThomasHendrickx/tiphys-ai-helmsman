@@ -10,11 +10,11 @@ is wrong: verify against git and the PR list before trusting it.
   `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
   commit each passed Linux `gates` and macOS smoke. The owner-authorized
   current-process fix round in DR-0026 used no second Tiphys subprocess and
-  received two independent clean-room reviews with no findings. Tiphys then
-  observed the closed executor through the watcher and completed guarded,
-  squash-aware teardown with exit 0: the task is closed, its durable records
-  survive, the task worktree/pool record/local branch are removed, and the
-  lease is released. The required closeout is
+  received two independent clean-room reviews with no findings. The current
+  process then invoked and observed Tiphys's watcher mechanism, after which
+  Tiphys completed guarded, squash-aware teardown with exit 0: the task is
+  closed, its durable records survive, the task worktree/pool record/local
+  branch are removed, and the lease is released. The required closeout is
   delivery/verification/macos-portability-pilot-lifecycle.md:1. Its verdict is
   a partial controlled pilot: delivery and teardown succeeded, but the
   implementation agent could not make the plan-required local commit and the
