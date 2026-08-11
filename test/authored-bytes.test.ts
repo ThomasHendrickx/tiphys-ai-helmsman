@@ -23,6 +23,16 @@ function run(root: string) {
   return spawnSync(process.execPath, [checker], { cwd: root, encoding: "utf8" });
 }
 
+function writeBlob(root: string, contents: string): string {
+  const result = spawnSync("git", ["hash-object", "-w", "--stdin"], {
+    cwd: root,
+    input: contents,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
 test("authored-byte checker rejects NUL SOH and non-ASCII tracked bytes", () => {
   const root = repository({
     "nul.txt": Buffer.from([0x61, 0x00, 0x62]),
@@ -71,4 +81,27 @@ test("authored-byte checker reads tracked symlink text without following its tar
   assert.equal(result.status, 1, result.stderr);
   assert.doesNotMatch(result.stderr, /outside-link/);
   assert.match(result.stderr, /broken-link:8: non-ASCII byte 0xc3/);
+});
+
+test("authored-byte checker fails closed on an unmerged index", () => {
+  const root = repository({});
+  const base = writeBlob(root, "base\n");
+  const ours = writeBlob(root, "ours\n");
+  const theirs = writeBlob(root, "theirs\n");
+  const index = [
+    `100644 ${base} 1\tconflicted.txt`,
+    `100644 ${ours} 2\tconflicted.txt`,
+    `100644 ${theirs} 3\tconflicted.txt`,
+    "",
+  ].join("\n");
+  const update = spawnSync("git", ["update-index", "--index-info"], {
+    cwd: root,
+    input: index,
+    encoding: "utf8",
+  });
+  assert.equal(update.status, 0, update.stderr);
+
+  const result = run(root);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /unsupported index entry/);
 });

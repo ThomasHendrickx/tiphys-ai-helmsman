@@ -519,5 +519,6 @@
   "authored-bytes-accept-ascii": "authored-byte checker accepts ordinary tracked ASCII",
   "authored-bytes-exemptions-narrow": "authored-byte checker exempts only the owner input and vendored fixture paths",
   "macos-scope-direct-entry-logical-alias": "scope direct entry runs through the logical macOS alias and writes its error result",
-  "authored-bytes-symlink-blob": "authored-byte checker reads tracked symlink text without following its target"
+  "authored-bytes-symlink-blob": "authored-byte checker reads tracked symlink text without following its target",
+  "authored-bytes-unmerged-index": "authored-byte checker fails closed on an unmerged index"
 }
