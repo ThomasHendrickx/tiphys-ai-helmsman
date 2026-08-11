@@ -6,6 +6,10 @@
 - task branch: `task/macos-portability-pilot`
 - fleet: `/Users/thomashendrickx/Projects/private-ai-harnesses/tiphys-pilot-fleet`
 - implementation commit: `50bec41feabac000c5c798df34e530762247e610`
+- review-fix commits: `637bb37143c39ba9afe6e4c329c5d8b3b96bbed4`,
+  `b3dd7c20cacdff090297bc6e01340df0a24ad6ba`, and
+  `f3621d03154ad396c7f082f2ea22f155fee53229`
+- fix authority on main: `0e1cec7e88040e1ea85cc3ebc9a07f2b73de76e1`
 
 ## Lifecycle evidence by authority
 
@@ -191,3 +195,37 @@ then exited 0 with 515 tests, 515 pass, 0 fail, and 0 skipped. The staged
 repository-wide byte check and `git diff --cached --check` also exited 0.
 Package verification, clean-room review, CI, merge, watcher close observation,
 and teardown remain current-process steps after this record is committed.
+
+## Current-process CI recovery and final local verification
+
+PR 90 merged the owner's exact fix-round authorization, DR-0026, the amended
+pilot scope, and its two current-head clean-room review reports at `0e1cec7`.
+No second Tiphys subprocess ran. The authorization adds only the standing-CI
+witness specifications and real Apple Git capture needed to verify the already
+authorized source changes; it does not accept the adapter or claim M4 cutover.
+
+The first CI run of fix commit `637bb37` exposed two additional verification
+defects. On macOS the prefix-helper precondition set
+`GIT_CONFIG_SYSTEM=/dev/null`, hiding the Apple prefix-system file it was meant
+to prove. On Linux the red-witness gate correctly rejected the five changed
+source files because the original pilot scope had omitted witness artifacts.
+The test now leaves the system-config path unmodified, reads the committed
+capture `macos-apple-git-prefix-helper.txt`, and requires the selected Apple Git
+to reproduce `osxkeychain` before the scrubbed-child assertion. Five separate
+mutation specifications cover path identity, the three direct entries, and the
+fixed `GIT_CONFIG_NOSYSTEM` assignment. The red-witness gate evaluated all five
+green at head and red against every declared dangerous state.
+
+The authored-byte test now also creates a genuine three-stage unmerged index
+and proves the checker fails closed with exit 2 and the unsupported-index
+diagnostic. This discharges the clean-room review's missing fail-closed witness
+without broadening the checker behavior.
+
+At final local fix state, the focused portability command exited 0 with 73
+tests, 73 pass, 0 fail, and 0 skipped. `npm run build` exited 0. Full
+`npm test` exited 0 with 516 tests, 516 pass, 0 fail, and 0 skipped. The five
+red witnesses exited green, the repository-wide authored-byte check exited 0,
+`git diff --check` was clean, and exact `npm pack --dry-run --json` exited 0
+with 125 files. PR 89's fresh clean-room reviews, exact-head Linux and macOS
+CI, merge, watcher close observation, and teardown remain current-process
+steps.
