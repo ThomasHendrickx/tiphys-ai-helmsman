@@ -52,9 +52,10 @@ and launched exactly one synchronous `subprocess` adapter at
 ended at `2026-08-11T15:23:11.162Z` with exit code 0. No second Tiphys
 subprocess ran during the DR-0026 fix round.
 
-The watcher first exposed the turn-end event at
+The current process invoked and hosted Tiphys's watcher during implementation;
+that watcher first exposed the turn-end event at
 `2026-08-11T15:23:11.174Z`. After merge, the current process ran the merged
-Tiphys watcher once. It exited 0 with `heartbeat 1` and rewrote
+Tiphys watcher once again. It exited 0 with `heartbeat 1` and rewrote
 `state/watcher.beacon` at `2026-08-11T17:03:16.894Z`, with backoff streak 1
 and interval 120000 ms. This proved the watcher path again without launching
 an executor.
@@ -91,10 +92,10 @@ Tiphys commands and mechanisms managed fleet initialization and diagnosis,
 lease mechanics, pool/worktree/task allocation, brief assembly, the single
 subprocess launch, executor and turn-end records, watcher state, and guarded
 teardown. The current process invoked the watcher and consumed its observation
-after merge. The temporary adapter exposed only the local Codex-client
-authentication handoff, fed the persisted brief to one local Codex process,
-captured its final message, and returned its exit status. Its sha256 and the
-exact brief sha256 are pinned in the work history.
+during implementation and again after merge. The temporary adapter exposed
+only the local Codex-client authentication handoff, fed the persisted brief to
+one local Codex process, captured its final message, and returned its exit
+status. Its sha256 and the exact brief sha256 are pinned in the work history.
 
 The current delivery process retained planning and scope, adapter preparation,
 review and arbitration, Git recovery, all GitHub credentials, branch and PR
