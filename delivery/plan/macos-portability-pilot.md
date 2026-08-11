@@ -60,7 +60,7 @@ Files the implementer may touch:
 - `CLAUDE.md`, only to replace the non-portable manual byte-check command with
   the delivered script and preserve the existing exemptions;
 - `test/behaviors.json`;
-- `witness/macos-portability-identity-and-scrub.json` and
+- `witness/macos-portability-{path-identity,scope-entry,credentials-entry,suite-entry,git-nosystem}.json` and
   `witness/captures/macos-apple-git-prefix-helper.txt` (create, standing
   red-witness coverage and its Apple Git prefix-helper capture for the five
   changed source files only);
