@@ -16,8 +16,10 @@ is wrong: verify against git and the PR list before trusting it.
   survive, the task worktree/pool record/local branch are removed, and the
   lease is released. The required closeout is
   delivery/verification/macos-portability-pilot-lifecycle.md:1. Its verdict is
-  a successful controlled pilot with recorded recovery and adapter-hardening
-  gaps, not M4 cutover or acceptance of the temporary adapter.
+  a partial controlled pilot: delivery and teardown succeeded, but the
+  implementation agent could not make the plan-required local commit and the
+  current process had to recover it. This is not M4 cutover or acceptance of
+  the temporary adapter.
   Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
   M3-P4 round-3 verification and the stop arbitration). Its push run
   31414562777 completed success. The owner has authorized DR-0025, one

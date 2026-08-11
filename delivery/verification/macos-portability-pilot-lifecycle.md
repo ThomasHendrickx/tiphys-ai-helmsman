@@ -6,9 +6,10 @@
 - implementation PR: [#89](https://github.com/ThomasHendrickx/tiphys-ai-helmsman/pull/89)
 - reviewed PR head: `0997de2bdc756c895ba2eeb55f8ce9ead4c5e7ca`
 - merged commit: `1e020983d7f5de1bb212113f240a0982fd3ac83e`
-- verdict: successful controlled pilot, with the deviations and authority
-  boundaries below; this is not M4 cutover or acceptance of the temporary
-  harness adapter
+- verdict: partial controlled pilot; delivery, watcher, landedness, and
+  teardown succeeded, but the implementation agent could not perform the
+  plan-required local commit and the current process had to recover it; this
+  is not M4 cutover or acceptance of the temporary harness adapter
 
 ## Delivered result
 
@@ -80,13 +81,14 @@ after successful teardown and lease release.
 
 ## Authority crossings and deviations
 
-Tiphys alone managed fleet initialization and diagnosis, lease mechanics,
-pool/worktree/task allocation, brief assembly, the single subprocess launch,
-executor and turn-end records, watcher observation, and guarded teardown. The
-temporary adapter exposed only the local Codex-client authentication handoff,
-fed the persisted brief to one local Codex process, captured its final message,
-and returned its exit status. Its sha256 and the exact brief sha256 are pinned
-in the work history.
+Tiphys commands and mechanisms managed fleet initialization and diagnosis,
+lease mechanics, pool/worktree/task allocation, brief assembly, the single
+subprocess launch, executor and turn-end records, watcher state, and guarded
+teardown. The current process invoked the watcher and consumed its observation
+after merge. The temporary adapter exposed only the local Codex-client
+authentication handoff, fed the persisted brief to one local Codex process,
+captured its final message, and returned its exit status. Its sha256 and the
+exact brief sha256 are pinned in the work history.
 
 The current delivery process retained planning and scope, adapter preparation,
 review and arbitration, Git recovery, all GitHub credentials, branch and PR
@@ -109,10 +111,13 @@ and broad read boundary are adapter-hardening inputs for M4.
 
 ## Boundary conclusion
 
-The pilot succeeded at its stated purpose: the unfinished kernel managed the
-authorized local lifecycle of one real macOS portability delivery, including
-watcher observation and safe squash-aware teardown, while the retained current
-process supplied every authority explicitly excluded from Tiphys. This is
-evidence for the exercised lifecycle surfaces only. It neither decides
-DR-0010, lifts the M3-P4 stop, accepts the temporary adapter, nor claims M4
-self-hosting or cutover.
+The pilot partially succeeded. The unfinished kernel managed the authorized
+fleet, worktree, task, subprocess, watcher-state, and safe squash-aware
+teardown surfaces for one real macOS portability delivery, while the retained
+current process supplied every authority explicitly excluded from Tiphys. The
+implementation agent did not complete the plan-required local commit because
+its sandbox could not write the shared Git worktree index; current-process
+recovery made the code safe and deliverable but does not turn that missed
+lifecycle step into success. This is evidence for the exercised lifecycle
+surfaces only. It neither decides DR-0010, lifts the M3-P4 stop, accepts the
+temporary adapter, nor claims M4 self-hosting or cutover.
