@@ -277,8 +277,50 @@ The corrected monitor recomputes `BASELINE=$(stat -c %Y "$WT")` on every
 iteration, so it is derived from the worktree the agent created rather than
 from anything the orchestrator believed about the clock.
 
+### "CANNOT DISTINGUISH" WAS ITSELF WRONG, and the answer was one tool call away
+
+Every mtime watchdog written in this session carries a branch that prints, in
+these words, "quiet Ns: long run OR death, CANNOT distinguish". That sentence
+was added deliberately, under this entry's own rule that a watchdog which
+cannot tell those apart must SAY so rather than print a number implying it can.
+
+It is honest about the mtime signal and it is **false about the orchestrator's
+actual knowledge**, because for an in-process subagent the harness reports
+liveness directly. Measured 2026-08-12: a delta verifier had written nothing
+for 917 seconds and had never created its report, which by mtime alone is
+indistinguishable from a death and was three quarters of the way to a salvage
+decision. `ListAgents` said `running`. It was mid-build, alive, and salvaging it
+would have destroyed twenty minutes of work exactly as T-014's worst instance
+did.
+
+**So the rule gains a third question, and it is cheap:**
+
+> Before acting on a stale beacon, ask the HARNESS whether the agent is alive.
+> `ListAgents` distinguishes running from completed for in-process subagents,
+> and mtime cannot. A stale beacon on a RUNNING agent is a beacon-discipline
+> problem, which is a nudge. A stale beacon on a COMPLETED or absent agent is a
+> death, which is a salvage. **These have opposite correct responses and the
+> file system cannot tell them apart.**
+
+This does not contradict constraint C-2, and the distinction matters enough to
+state. C-2 forbids pid, process liveness, signals and `/proc` for identity or
+exclusion IN THE KERNEL BEING BUILT, where liveness must be lease freshness.
+`ListAgents` is the orchestration harness reporting on its own children, not
+the kernel inferring identity from a process table. Using it here is not a C-2
+violation and reading it as one is how this gap survived three postscripts.
+
+The mtime beacon keeps its job, which C-2 does bear on: it is what survives a
+dead agent and leaves partial work behind. Liveness and salvage-value are
+different questions and each has its own instrument.
+
 ### What this postscript does NOT cover
 
+- **The mtime watchdogs in this session were NOT rewritten to consult the
+  harness.** They still print "CANNOT distinguish". The rule above is applied by
+  the orchestrator at the moment of acting, which is a habit and therefore
+  exactly the kind of thing this file records as insufficient. A watchdog that
+  emitted the liveness answer itself would be the mechanical version and does
+  not exist.
 - **It does not audit the other watchdogs armed in this session for the same
   defect.** Two others were armed with `$(date +%s)` evaluated inside the
   monitor, which is correct by construction, and one was armed with a literal
