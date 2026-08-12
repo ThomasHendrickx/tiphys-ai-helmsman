@@ -56,6 +56,8 @@ const rolesModule = (await import(new URL("../src/roles.ts", import.meta.url).hr
     registry: unknown,
     mode: string,
   ) => { text: string; units: number };
+  BRIEF_GATE_BLOCK_MODE: string;
+  briefGateBlockBeginMarker: (mode: string) => string;
 };
 
 interface Run {
@@ -284,6 +286,190 @@ test("adding a gate to the registry without re-rendering makes check-brief-drift
     const other = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
     assert.notEqual(other.status, 0, "the brief's block was edited by hand and the check stayed green");
     assert.match(other.stdout, /suite-renamed/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 3, fix round 1: the check's SUBJECT cannot be narrowed      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM THESE THREE TESTS GUARD, named rather than left as three
+ * instances: A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE READ FROM THE
+ * ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT ARTIFACT, and a
+ * unit count that does not measure what was compared cannot make the vacuity
+ * guard fire. Two clean-room contracts reached the same defect from opposite
+ * directions on 16bab6f, one by forcing the narrowing and one by deriving the
+ * unit arithmetic, and neither was asked to look for it.
+ *
+ * Before the fix the brief's declared mode was pinned only INCIDENTALLY: the
+ * two tests above plant a gate declared `modes: [full]`, so a narrowed brief
+ * filters the planted gate out and they fail for the wrong reason. Changing the
+ * planted gate's modes would have removed the guard without touching anything
+ * that looks like a mode assertion.
+ */
+
+test("the shipped brief's gate-list block declares the mode the kernel pins, and that mode selects every gate any mode in the registry selects", () => {
+  const registry = yamlModule.parse(
+    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
+  ) as { gates: { id: string; modes: string[] }[] };
+
+  const located = rolesModule.locateGateBlock(readFileSync(briefPath, "utf8"), briefPath);
+  assert.ok(located.ok, located.ok ? "" : located.reason);
+  assert.equal(
+    located.mode,
+    rolesModule.BRIEF_GATE_BLOCK_MODE,
+    "the shipped brief's begin marker declares a mode the kernel does not pin",
+  );
+
+  /* WHY THAT MODE IS THE RIGHT ONE, DERIVED FROM THE REGISTRY rather than
+     asserted as a literal a second time. The hazard is NARROWING, so the pinned
+     mode must be one no other mode can be wider than. Derived per mode and per
+     gate, never by count, because the registry is append-only and a pinned
+     count is a claim about every future phase. */
+  const selects = (mode: string): Set<string> =>
+    new Set(registry.gates.filter((gate) => (gate.modes ?? []).includes(mode)).map((g) => g.id));
+  const pinned = selects(rolesModule.BRIEF_GATE_BLOCK_MODE);
+  assert.ok(pinned.size > 0, "the pinned mode selects no gate at all");
+  const declaredModes = new Set(registry.gates.flatMap((gate) => gate.modes ?? []));
+  assert.ok(declaredModes.size > 1, "the registry declares one mode, so narrowing is untestable");
+  for (const mode of declaredModes) {
+    for (const id of selects(mode)) {
+      assert.ok(
+        pinned.has(id),
+        `mode ${mode} selects ${id} and the pinned mode ${rolesModule.BRIEF_GATE_BLOCK_MODE} ` +
+          "does not, so the brief's gate table is not the widest the registry declares",
+      );
+    }
+  }
+});
+
+test("narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green", () => {
+  const dir = stageKernel("tiphys-impl-mode-");
+  try {
+    const path = briefAt(dir);
+    const original = readFileSync(path, "utf8");
+    const located = rolesModule.locateGateBlock(original, path);
+    assert.ok(located.ok, located.ok ? "" : located.reason);
+    const pinnedMarker = rolesModule.briefGateBlockBeginMarker(located.mode);
+    assert.ok(original.includes(pinnedMarker), "the begin marker was not reproduced by the renderer");
+    assert.equal(run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir).status, 0);
+
+    /* TWO STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, because one witness is
+       not a class. They differ in what the narrowed mode is: the first is a
+       mode the registry really declares, which renders a SMALLER but non-empty
+       and self-consistent table (the shape that was green before this round);
+       the second is a mode no gate declares, which renders an EMPTY table and
+       is the shape a vacuity guard is supposed to catch. */
+    for (const narrowed of ["local-only", "no-such-mode"]) {
+      const narrowedText = original.replace(
+        pinnedMarker,
+        rolesModule.briefGateBlockBeginMarker(narrowed),
+      );
+      assert.notEqual(narrowedText, original, `the marker could not be narrowed to ${narrowed}`);
+      writeFileSync(path, narrowedText);
+      const written = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--write"], dir);
+      assert.notEqual(
+        written.status,
+        0,
+        `--write re-rendered the block for narrowed mode ${narrowed} instead of refusing`,
+      );
+      assert.match(written.stdout, new RegExp(narrowed));
+      /* AND THE REFUSAL LEFT THE FILE ALONE. `--write` is the command that
+         turns a narrowed marker into a self-consistent smaller table, so a
+         refusal that had already written would close nothing. */
+      assert.equal(
+        readFileSync(path, "utf8"),
+        narrowedText,
+        `--write rewrote the gate table for narrowed mode ${narrowed}`,
+      );
+      const checked = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
+      assert.notEqual(
+        checked.status,
+        0,
+        `--check reported no drift for narrowed mode ${narrowed}`,
+      );
+      assert.match(checked.stdout, new RegExp(narrowed));
+      assert.match(checked.stdout, new RegExp(rolesModule.BRIEF_GATE_BLOCK_MODE));
+    }
+
+    writeFileSync(path, original);
+    assert.equal(run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the rendering counts the gate rows it produced, so a registry declaring no gate for the brief's mode makes the drift check a vacuous error and never a green over an empty table", () => {
+  /* ARM ONE, DIRECT: the number the gate reports must measure the thing its
+     unitLabel names ("generated brief gate rows compared"). Derived by counting
+     the rows in the rendered text, never pinned to a literal. */
+  const registryText = readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8");
+  const registry = yamlModule.parse(registryText);
+  const rendered = rolesModule.renderBriefGateBlock(
+    registry,
+    rolesModule.BRIEF_GATE_BLOCK_MODE,
+  );
+  const rows = rendered.text.split("\n").filter((line) => /^\| `/.test(line));
+  assert.ok(rows.length > 0, "the rendering produced no gate rows at all");
+  assert.equal(
+    rendered.units,
+    rows.length,
+    "the unit count does not equal the number of gate rows rendered, so it cannot make M2-C-2 fire",
+  );
+
+  /* ARM TWO, END TO END THROUGH THE GATE: strip the pinned mode from every
+     `modes` list in the registry, DERIVED by rewriting each list rather than
+     by naming the lists, so the brief's mode selects nothing. `--write` then
+     produces a table with a header, a separator and no rows, and `--check`
+     finds the brief in perfect agreement with the registry. Before this round
+     that was `green (3 generated brief gate rows compared)`: the three
+     preflight steps are mode-independent, so units had a floor of three and
+     M2-C-2, which rewrites green-with-zero-units and nothing else, could not
+     fire over an empty subject. */
+  const dir = stageKernel("tiphys-impl-vacuous-");
+  try {
+    const registryPath = join(dir, "gate-registry.yaml");
+    const stripped = registryText.replace(
+      /modes: \[([^\]]*)\]/g,
+      (_match: string, inner: string) => {
+        const kept = inner
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry !== rolesModule.BRIEF_GATE_BLOCK_MODE);
+        return `modes: [${kept.join(", ")}]`;
+      },
+    );
+    assert.notEqual(stripped, registryText, "no modes list mentioned the pinned mode");
+    writeFileSync(registryPath, stripped);
+
+    const written = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--write"], dir);
+    assert.equal(written.status, 0, `${written.stdout}${written.stderr}`);
+    const table = rolesModule.locateGateBlock(readFileSync(briefAt(dir), "utf8"), briefAt(dir));
+    assert.ok(table.ok, table.ok ? "" : table.reason);
+    assert.equal(
+      table.block.split("\n").filter((line) => /^\| `/.test(line)).length,
+      0,
+      "stripping the pinned mode from every gate left rows in the rendered table",
+    );
+
+    const resultPath = join(dir, "brief-drift.json");
+    const checked = run(
+      join(dir, "scripts", "check-brief-drift.mjs"),
+      ["--check", "--result", resultPath],
+      dir,
+    );
+    assert.notEqual(checked.status, 0, "the check reported success over an empty gate table");
+    const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
+      status: string;
+      units: number;
+      vacuous?: boolean;
+    };
+    assert.equal(record.units, 0, "an empty gate table was counted as a non-zero number of rows");
+    assert.equal(record.status, "error", "an empty gate table did not become an error");
+    assert.equal(record.vacuous, true, "M2-C-2 did not mark the empty run vacuous");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

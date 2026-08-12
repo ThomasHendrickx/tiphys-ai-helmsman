@@ -28,6 +28,16 @@
  * `makeGateResult`, so M2-C-2 applies: a run that compared ZERO rows becomes
  * `error` with `vacuous: true` instead of exiting 0.
  *
+ * THAT SENTENCE WAS TRUE OF THE PLUMBING AND FALSE OF THE BEHAVIOUR UNTIL
+ * M3-P6's FIRST FIX ROUND, and it is recorded here rather than quietly
+ * corrected. `units` was `preflight.length + selected.length` and `preflight`
+ * is mode-independent, so the count had a floor of three and M2-C-2, which
+ * rewrites green-with-zero-units and nothing else, could never fire. A clean
+ * room contract pointed the marker at a mode no gate declares and got
+ * `green (3 generated brief gate rows compared)` over a table holding a header,
+ * a separator and nothing else. `units` now counts the GATE ROWS compared, so
+ * the number measures what `unitLabel` names and the vacuity guard is reachable.
+ *
  * WHERE IT RUNS, stated exactly, because "declared" and "runs" are not the same
  * thing and this repository has paid for confusing them. On a PULL REQUEST the
  * manifest entry puts it in the bundle `scripts/m2-exit-test.sh` runs, so the
@@ -82,7 +92,12 @@ const rolesModule = await import(
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
 const { refuseOpenForWrite, readRegularFileIfPresent } = taskModule;
 const { decodeDocument } = validateModule;
-const { locateGateBlock, renderBriefGateBlock, BRIEF_GATE_BLOCK_END_MARKER } = rolesModule;
+const {
+  locateGateBlock,
+  renderBriefGateBlock,
+  BRIEF_GATE_BLOCK_END_MARKER,
+  BRIEF_GATE_BLOCK_MODE,
+} = rolesModule;
 
 const GATE_ID = "brief-drift";
 const UNIT_LABEL = "generated brief gate rows compared";
@@ -215,6 +230,22 @@ function main(argv) {
   const located = locateGateBlock(briefRead.body, options.brief);
   if (!located.ok) {
     return failed(located.reason);
+  }
+  /* AND WHICH MODE IS PINNED OUTSIDE THE BRIEF (M3-P6 fix round 1, CV-1).
+     Reading the mode from the brief stops a CALLER narrowing the subject; it
+     does not stop an EDITOR of the brief doing the same thing by changing the
+     marker and re-rendering, which produces a green check over a brief
+     advertising a fraction of the gate table. So the mode the shipped brief
+     must declare is a constant in src/roles.ts, and a disagreement is a REFUSAL
+     in every mode of this script, `--write` included: `--write` is precisely
+     the command an editor would use to legitimise a narrowed marker. */
+  if (located.mode !== BRIEF_GATE_BLOCK_MODE) {
+    return failed(
+      `${options.brief}'s generated gate-list block declares mode ` +
+        `${located.mode} and the shipped brief must declare ` +
+        `${BRIEF_GATE_BLOCK_MODE}: a narrowed mode renders a smaller gate ` +
+        "table that this check would then find in agreement with itself",
+    );
   }
 
   const registryRead = readRegularFileIfPresent(options.registry);
