@@ -5781,10 +5781,10 @@ $ cat $SP/FR4-ev-citations/citations/result.json
              delivery/tuition/, delivery/requirements/, delivery/STATE.md"
 ```
 
-`delivery/work-history/` is not in that precondition's path list, so a
-work-history-only paperwork change never reaches the gate. **A not-applicable is
-not a pass**, so I resolved every citation in this section myself instead, by
-reading each cited line out of this worktree:
+`delivery/work-history/` is not in the path list the precondition quotes above,
+which is why a change touching only that directory did not reach the gate on this
+run. **A not-applicable is not a pass**, so I resolved every citation in this
+section myself instead, by reading each cited line out of this worktree:
 
 ```
 80 distinct citation tokens, 1 unresolvable
@@ -5806,13 +5806,15 @@ that the paste and the tree agree.
 $ F=delivery/work-history/exit-test-assertion-direction.md
 $ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' $F \
     | awk -F: '$1>=4976'
-23 hits
+27 hits, of which 14 are inside pasted captures and 13 are sentences I wrote
 ```
 
-Every hit, and what settles it:
+The count moved as this section was edited, and the number above is the one that
+holds for the text as committed. Every hit, and what settles it:
 
-- **Fourteen hits (lines 5196 to 5386 and 5643) are inside the pasted derivation
-  output or the pasted matrix.** They are captured output from the tools and from
+- **Fourteen hits are inside the pasted derivation output or the pasted matrix**
+  (every line matching `CONDITION:`, `MESSAGE:`, `universals:` or `harness
+  sha256`). They are captured output from the tools and from
   the shipped messages those tools quote, not sentences I wrote. Altering them
   would be the fabrication the red-witness rule exists to prevent.
 - **Four hits are rows of the FR4.4 walk that QUOTE a shipped message** and label
@@ -5827,6 +5829,9 @@ Every hit, and what settles it:
   that path for the same reason and I inherited the avoidance.
 - **The FR4.5 item 3 sentence listing the universal word list** contains "never"
   and "always" as ITEMS OF THE LIST, quoted from my own script.
+- **The citations paragraph's "never reaches the gate" was restated** to name
+  the run it was measured on, with the precondition's own path list quoted
+  immediately above it.
 - **"What it cannot see is a write that never names the binding"** and its
   siblings in FR4.5 are statements of what an instrument does NOT cover. They are
   limitations, which is the direction that cannot flatter the change, and each is
@@ -5944,13 +5949,39 @@ background suite run was in flight in the same worktree. That run's result is
 discarded and is not quoted anywhere in this document. A suite result is scoped to
 the bytes it ran against, and those bytes changed underneath it.
 
-**Complete sentence.** Head FINAL_HEAD, node v26.6.0 from the scratch prefix,
+**Complete sentence.** Head b969cd0, node v26.6.0 from the scratch prefix,
 `dist/` BUILT (`npm run build` exit 0, `git status --porcelain` empty
 afterwards), invocation `npm test`:
 
 ```
-FINAL_CAPTURE
+i tests 598
+i suites 0
+i pass 598
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 300566.216401
+npm test EXIT=0
 ```
 
-Same transliteration as FR4.8: U+2139 rendered as `i`, TRANSLIT2 occurrences,
+Same transliteration as FR4.8: U+2139 rendered as `i`, eight occurrences,
 nothing else altered.
+
+598 tests, 598 pass, 0 fail, **0 skipped**, exit 0, and zero U+2716 failure
+markers anywhere in the capture. Load average 3.18 at the start and 12.06 at the
+end, which is not mine: another session was running test/watcher.test.ts in a
+loop on this box throughout, and I record it because DV3-F6 makes load a variable
+a reader will want.
+
+**One test/watcher.test.ts instance to report, and I cannot attribute it.** An
+earlier capture at this head showed `a resident watcher keeps running and backs
+off with growing beacon gaps` failing at test/watcher.test.ts:293 with "expected
+at least 4 beacon writes, saw 3", under load average between 6.00 and 6.99. That
+capture is UNUSABLE as evidence, because two suite runs were writing to the same
+file at once and I cannot say which one produced the failure line, and the summary
+above it reported 0 fail. I am reporting the instance because DV3-F6 asks for
+instances and load averages, and I am refusing to attribute it, because the
+capture cannot support an attribution. The clean re-run above, at the same head,
+shows no failure. That is the same failing test the verification named, at the
+same line.
