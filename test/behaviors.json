@@ -587,5 +587,6 @@
   "finding-requires-concrete-edit": "a finding set with a high-severity finding carrying no concrete-edit is rejected and accepted once the guarding required keyword is removed",
   "finding-empty-set-requires-statement": "a finding set with an empty findings array and no no-findings-statement is rejected and accepted once the guarding oneOf is removed",
   "finding-records-model-family": "a finding set with no produced-by is rejected and accepted once the guarding required keyword is removed",
-  "finding-required-strings-are-not-empty": "a finding set whose required strings are present and empty is rejected, because required alone is satisfied by the empty string"
+  "finding-required-strings-are-not-empty": "a finding set whose required strings are present and empty is rejected, because required alone is satisfied by the empty string",
+  "investigator-report-requires-repro": "tiphys validate --type report rejects an investigator report whose verdict carries no repro reference, and accepts the same report with one"
 }
