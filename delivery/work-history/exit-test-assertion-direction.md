@@ -3879,8 +3879,10 @@ reports what EACH LEG contributed. That is not decoration and it is not a
 check. It covers the failure mode no check inside this program can catch, a leg
 that has SHRUNK rather than emptied, because the program holds no independent
 record of what the manifest ought to contain. Stating that bound here is the
-point; a reader who wants that caught needs a source of truth this program does
-not have.
+point. Whether a program with only these three inputs (the manifest, the bundle
+summary and the expectations table) CAN distinguish a truncated manifest from a
+smaller one is an open question I did not settle; I did not find a way, and the
+per-leg contribution line is what I did instead.
 
 ### FR3.4a The same lab, same fixtures, against the FIXED program
 
@@ -4543,7 +4545,10 @@ is the mechanism of this whole round one level up, in code I had just written.
 
 It is closed rather than declared. The pin now classifies every occurrence of
 the identifier by the operation that FOLLOWS it, skipping whitespace AND
-comments, so the form of the write cannot hide it: test/m2-exit-test.test.ts:1866.
+comments. The four write shapes measured in FR3.10, two of which the line-based
+version passed, all redden against it: test/m2-exit-test.test.ts:1866. I did not
+enumerate every syntactic form a write can take, so that is four measured
+shapes, not a proof over all of them.
 
 Part A is the same mechanism looked for in `src/` and `bin/`. Twelve sites
 degrade a value to `[]` on a type test. None of them is this defect: they are
