@@ -6,9 +6,15 @@
   shares the generate-and-compare defect class found in its sibling, and
   "prints an actively FALSE sentence under defang". That report came from the
   M3-P6 implementer, was out of that phase's scope, and had never been checked.
-- verdict: **CONFIRMED, by construction, with a control arm. Severity LOW.**
-  The exit code is correct; only the diagnostic message is false.
-- measured at: `origin/main` c75152b, node v26.6.0.
+- verdict: **TWO symptoms in one function, both CONFIRMED by construction with
+  control arms. Severity MEDIUM overall**, raised from LOW after the second was
+  found. The duplicate-row symptom is LOW: the exit code is correct and only the
+  diagnostic is false. The collapse symptom, added lower down, is the MEDIUM: a
+  green sentence every clause of which is false, at exit 0. The filename says
+  "duplicate-row" because that is what was found first; it is kept so existing
+  citations keep resolving, and it now understates the contents.
+- measured at: `origin/main` c75152b for the duplicate-row symptom, and the
+  M3-P6 branch at `4619bf8` for the collapse symptom. Both node v26.6.0.
 
 ## Why this was checked now rather than carried further
 
@@ -121,6 +127,24 @@ Not covered, stated rather than left to be assumed:
   line sequences to have equal sets and unequal text; a line appearing three
   times against two, or two different lines swapping counts, are others. Only
   the single duplicate was constructed.
+- **WHETHER THE SUITE CATCHES THE COLLAPSE WAS NOT MEASURED BY ME.** The
+  implementer states "suite green" under that mutation, and that claim is
+  PLAUSIBLE and UNVERIFIED here: the `npm test` arm of the probe was killed by
+  a seven-minute command timeout before it produced a number, and it was not
+  re-run. So this document establishes the FALSE GREEN and does not establish
+  that the mutation is unwitnessed. Those are two claims and only one of them
+  has evidence attached.
+- **The copied-script trap bit this probe a SECOND time and is recorded again
+  because the first record did not stop it.** The collapse was first applied to
+  a copy of the script placed in a scratch directory; it crashed with a module
+  resolution failure on BOTH arms at exit 1, which is a measurement of nothing.
+  The control arm exposed it, exactly as it had an hour earlier for the sibling
+  script. Two identical failures of the same kind in one session says the
+  lesson is not "remember this" but "mutate in place, always".
+- **Exit codes must not be read through a pipe.** An earlier attempt captured
+  `$?` after piping the program into `tail`, which reports TAIL's status, and
+  printed `MUTANT_EXIT=0` for a run that had actually exited 1. Every exit code
+  in the table above was captured either without a pipe or via `PIPESTATUS[0]`.
 - **Nothing here is a fix, and no fix is proposed.** The remedy is a change to
   a script on `main`, which is a change like any other and owes its own branch,
   witness and review. It is NOT folded into M3-P6, whose scope does not include
@@ -157,6 +181,45 @@ blocker for M3-P6.
 The near-duplicate functions are the reason both carry it. **A defect copied
 with the code it lives in is one mechanism with two instances, not two
 findings**, and the fix for either is the fix for both.
+
+## A WORSE SYMPTOM IN THE SAME FILE, reproduced independently
+
+The M3-P6 round-2 implementer reported, out of its scope, that this script
+"reports 15 gate(s) over a 13-row CLAUDE.md block, suite green" (its entry
+R2-6). That was reproduced here rather than repeated, and it is a different and
+more serious defect than the duplicate-row message above.
+
+Measured on the M3-P6 branch at `4619bf8`, node v26.6.0, mutation applied IN
+PLACE in the worktree (a copied script fails for the wrong reason; see the
+not-covered section), original bytes saved and restored afterwards:
+
+| arm | block | exit | says |
+|---|---|---|---|
+| pristine | full 15 rows | **0** | matches row for row (15 gate(s)) |
+| pristine | 13 rows, two deleted | **1** | names BOTH missing rows correctly |
+| `describeDrift` collapsed to `[]` | full 15 rows | 0 | matches row for row (15 gate(s)) |
+| `describeDrift` collapsed to `[]` | **13 rows** | **0** | **"matches gate-registry.yaml row for row (3 preflight step(s), 15 gate(s))"** |
+
+The last row is the finding. **Under the collapse mutation the script emits a
+GREEN sentence asserting the block matches row for row, and reports 15 gates,
+over a block containing 13.** Every clause of that sentence is false, and it
+exits 0.
+
+The pristine-versus-13-row pair is the control that makes this mean something:
+the unmutated script exits 1 on the same input and names both missing rows. So
+the mutation is what turns a correct red into a false green, and this is a
+proper red-witness pair rather than an assertion.
+
+**Why the count is 15 and not 13**: the number is taken from the REGISTRY, not
+from the observed block. So it describes what should be there. In the red
+message that is harmless because the message also names the drift; in the green
+message it becomes a positive false claim about a file the reader has not
+opened.
+
+**This is the same defect class the M3-P6 round removed from the sibling**: an
+arm whose collapse no test observes. The duplicate-row message above is a
+cosmetic instance of the same function's weakness; this is the load-bearing
+one, and it raises the file's severity from LOW to MEDIUM.
 
 ## Disposition
 
