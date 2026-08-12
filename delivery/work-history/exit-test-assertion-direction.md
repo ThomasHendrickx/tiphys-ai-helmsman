@@ -2904,12 +2904,25 @@ What I can establish, and what I cannot:
   ALL EXIT=0
   ```
 
-**What I am NOT claiming:** that this is a flake, that it is in a file this branch
-does not touch, or that it cannot recur in CI. I have not identified it. The
-honest sentence is that one bare-invocation run in three failed, in an assertion
-that is not one of mine, and fifteen targeted re-runs did not reproduce it. If CI
-reddens on something in the list above, this is the note that says it was seen
-here first and was not attributed.
+**IDENTIFIED IN FR2.13.** The paragraph that stood here said I could not identify
+it and listed what I was not claiming. The gate run in FR2.13 named the test, and
+the candidate list above was WRONG: the assertion is
+`assert.equal(init.status, 3, init.stderr)` at test/watcher.test.ts:424, which my
+grep excluded on the reasoning that it passes a message so `generatedMessage`
+would be false. That reasoning is wrong when the message is the EMPTY STRING, and
+`init.stderr` is empty on this failure. Measured rather than argued:
+
+```
+$ node -e 'const a=require("node:assert");try{a.equal(0,3,"");}catch(e){console.log("generatedMessage="+e.generatedMessage);}'
+generatedMessage=true
+$ node -e 'const a=require("node:assert");try{a.equal(0,3,"x");}catch(e){console.log("with text generatedMessage="+e.generatedMessage);}'
+with text generatedMessage=false
+```
+
+So an empty message reproduces the exact signature I had (generatedMessage true,
+actual 0, expected 3, strictEqual), and the exclusion that kept the real
+assertion off my list was itself the defect. Left in place rather than deleted,
+because the wrong candidate list is the more useful record.
 
 ## FR2.11 An event: six wrong citations, and a near-miss on corrupting captured evidence
 
@@ -2974,4 +2987,86 @@ the answers:
 - **Nothing was pushed while a run was in flight.** Everything above was
   committed LOCALLY as it was produced; the first push of this round is the one
   reported at the end, and no gate run existed to cancel before it.
+
+## FR2.13 The registry gates, run locally, with one RED and one ERROR
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --evidence <dir> --base origin/main --head HEAD
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 12 applicable 6 verdict 6 green 5 red 1 not-applicable 5 error 1 vacuous 0
+gates: 1 gate(s) reported error: scope
+GATES EXIT=21
+```
+
+Per gate, from the run's own `summary.json`:
+
+```
+green            8     manifest-self-check | validated 8 schema document(s) against the closed keyword set
+green            115   coverage           | 115 inventory id(s) checked; per-kind: milestone 104, phase 11
+green            7     credential-scrub   | no pull-request-capable credential resolvable from any of the 7 probed sources
+not-applicable   0     credential-token   | precondition implementer-token-present-owner-action-a-3 evaluated and unmet
+red              596   suite              | 1 finding(s): failing test: "the heartbeat schedule is on disk and shared by single passes" (test/watcher.test.ts)
+not-applicable   0     citations          | precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, ...
+error            0     scope              | gate scope requires --phase, which was not supplied
+not-applicable   0     deploy             | precondition deploy-release-verification-declared ... STRUCTURAL in any pre-merge bundle
+not-applicable   0     migrations         | precondition migrations-release-verification-declared ... STRUCTURAL in any pre-merge bundle
+green            34    clause-map         | 34 rows checked, 40 pending a phase not yet in force
+not-applicable   0     red-witness        | precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/
+green            17    agent-rules-drift  | CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 14 gate(s))
+```
+
+### The ERROR is my invocation, not the branch
+
+`scope requires --phase, which was not supplied`. I ran the gate runner without
+`--phase`, and my worktree is DETACHED so nothing could be derived from a branch
+name either. This is the same shape CLAUDE.md:472 is about, an arm-dependent
+behaviour, and it is a property of how I invoked the runner. In the bundle run at
+FR2.8, which supplies the phase argument the harness expects, `scope` resolved to
+not-applicable with an evaluated precondition and the assertion accepted it under
+DR-0018. Not a finding, and not evidence about CI either way.
+
+### The RED identifies FR2.10's failure
+
+`suite` red on ONE test: "the heartbeat schedule is on disk and shared by single
+passes". That is the failure FR2.10 recorded and could not name.
+
+```
+$ sed -n '419,425p' test/watcher.test.ts
+test("the heartbeat schedule is on disk and shared by single passes", async (t) => {
+  // Criterion 5. Real-clock wait, bounded at 0.5s: the schedule is what
+  // is under test, so the interval has to actually elapse.
+  const fleet = initFleet(t);
+  const init = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(init.status, 3, init.stderr);
+```
+
+Facts, each measured:
+
+```
+$ git diff --name-only origin/main...HEAD -- test/watcher.test.ts
+(empty: UNTOUCHED by this branch)
+$ git log --oneline -1 -- test/watcher.test.ts
+8cadeac Fix real-clock test flakes: liveness exact-age bands and watcher duplicate-not-drop (#26)
+$ node --test --test-name-pattern 'the heartbeat schedule is on disk and shared by single passes' test/watcher.test.ts   x5
+run1 EXIT=0  run2 EXIT=0  run3 EXIT=0  run4 EXIT=0  run5 EXIT=0
+```
+
+The test's own comment says it takes a real-clock wait bounded at 0.5s, the file
+is untouched by this branch, its last change was itself a real-clock flake fix,
+and it passes five times out of five in isolation. Both observed failures happened
+under LOAD: the first immediately after a full `npm test` had just finished, the
+second inside a gate run that runs the suite as a subprocess. Round 1 reported the
+same class in the same file under the same conditions
+(delivery/work-history/exit-test-assertion-direction.md:2723 region), with a
+different test named.
+
+**The conclusion I am willing to defend:** a pre-existing real-clock test in an
+UNTOUCHED file, failing under load, now identified by name and by assertion rather
+than left as a signature. **What I am NOT claiming:** that it is rare, that it
+cannot recur in CI, that the two observations share one cause, or that nothing
+about this round's added wall time influenced scheduling. This round adds two
+tests and one of them spawns the assertion program four more times, so it does add
+load, and I have not measured whether that matters.
 
