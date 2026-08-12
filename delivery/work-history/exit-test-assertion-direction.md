@@ -5010,3 +5010,749 @@ The third was introduced by the round that named the first two. That is the
 signature of a mechanism that is not being fixed: each round widens the subset by
 the members the last reviewer constructed, and the next reviewer constructs
 another. Work in progress below.
+
+### FR4.2 What changed, and why the instrument was replaced rather than widened
+
+The delta verification offered two ways to close DV3-F1: restate the claim to the
+class the condition recognises, or widen the condition. I took neither, because
+both leave the mechanism in place. Widening a member-name list by the three
+spellings a verifier constructed is what produces a fourth, and
+`expectedIds["pu" + "sh"](id)` is a write that exists in no source text at all,
+so no list of names can ever be complete. Restating the claim would have been
+honest and would have left a real, unguarded class.
+
+What I did instead is change what is being tested. The class is "an operation
+that changes the set of gate ids this program asserts on". That is a property of
+a RUN, not of the source text, and it can be tested by running the program.
+Three changes to scripts/m2-exit-test.sh:1, and the two run-time ones are the
+substance:
+
+1. **The three legs are named once.** scripts/m2-exit-test.sh:542 to
+   scripts/m2-exit-test.sh:544 bind `manifestLeg`, `rowsLeg` and `tableLeg`, and
+   the union, the self-check and the success line all read those bindings. This
+   is also the fix for DV3-F3: there is now one expression per leg and the number
+   reported for it is computed from that expression by `contribution` at
+   scripts/m2-exit-test.sh:546, so the report cannot disagree with the thing
+   reported.
+2. **The derived set is FROZEN at the point of derivation**,
+   scripts/m2-exit-test.sh:559. The accumulator lives in a closure and has no
+   binding outside it, so any later write must name `expectedIds`, and
+   `Object.freeze` makes every such write throw in a module, whatever it is
+   spelled like and through whatever alias it arrives. This is a property of the
+   OBJECT, so index assignment, aliasing, `Function.prototype.apply`,
+   `Reflect.apply` and a computed member name are all covered by one line rather
+   than by five entries in a list.
+3. **The set is re-derived a second way and the two must agree**,
+   scripts/m2-exit-test.sh:582 and scripts/m2-exit-test.sh:596. The freeze cannot
+   reach INSIDE the closure, where the accumulator is still extensible. That
+   region is covered by recomputing the expected set from the same three legs
+   with a Set rather than the loop and requiring set equality. An id no leg
+   contributed, an id the table declared absent, a duplicate, and a DROPPED id
+   all break it.
+
+The check at scripts/m2-exit-test.sh:596 is terminal (it reports and exits)
+rather than accumulating a finding. That is not stylistic. When I first wrote it
+as a `fail` the program carried on and emitted a second finding saying
+"gates.manifest.json declares this gate" about a gate the manifest does not
+declare. A false diagnostic is the failure mode this round is about, so the
+program stops instead. Nothing has recorded a finding at that point in the
+program, so nothing is lost by exiting there, which I checked rather than assumed:
+the only earlier exits are the argument check and the two read failures, and no
+`fail` call precedes it.
+
+In the suite, test/m2-exit-test.test.ts:1868 replaces the member-name pin. It
+still reads source, and I am explicit that it is a source scan, but its default
+is INVERTED: an occurrence is recorded unless the scan can PROVE it is a read.
+An unanticipated spelling is therefore recorded rather than skipped. The pinned
+list at test/m2-exit-test.test.ts:2036 is not a list of writes; it is every
+occurrence not proven to be a read, and it deliberately includes one that IS a
+read (an identifier passed as an argument is indistinguishable, locally, from one
+passed to something that mutates it). Over-strict is the safe direction. The
+previous instrument was over-permissive and that is exactly what it cost.
+
+test/m2-exit-test.test.ts:2048 is the new instrument that does not read source at
+all. It takes the assertion program as shipped, injects a write, runs it against
+byte-identical fixtures, and asks the program what it asserted on.
+
+Two smaller things, both raised by the verification and both in
+scripts/m2-exit-test.sh:
+
+- DV3-F2: `main_absent_json` at scripts/m2-exit-test.sh:235 read the manifest's
+  gates list with `(manifest.gates ?? []).map((gate) => gate.id)` while the
+  assertion program reads the same structure with `Array.isArray` and `gate?.id`.
+  Two readers of one structure disagreeing about what it tolerates is why a
+  manifest whose gates key is an object, or an array carrying a null entry, threw
+  there, exited 0 through a swallowed status, and killed the assertion program at
+  "expectations does not parse" before the manifest-leg check could run. The two
+  reads are now the same read.
+- The swallowed status itself: `main_expect_json` at
+  scripts/m2-exit-test.sh:269 took `$(main_absent_json)` inside a parameter
+  expansion, which discards the exit status. It is taken explicitly now, so a
+  future failure there is loud rather than a malformed document with status 0.
+
+### FR4.3 The derivation, in full
+
+The mechanism is "a check whose CONDITION recognises a syntactic or typed SUBSET
+of the class its MESSAGE quantifies over". The enumeration of its call sites is
+therefore: every check in the two program files this round changes, paired with
+the message it prints and the condition that guards it, with the messages that
+quantify over a class flagged.
+
+The script is at `$SP/FR4-derive.mjs` in the scratchpad. It joins adjacent string
+literals before matching, because without that a message is broken at every `+`
+and a needle spanning a concatenation matches nothing.
+
+It carries its own negative control: four sites known to exist by construction
+must each match exactly once, and it exits 2 otherwise. **That control fired on
+its first two runs**, which is the only reason I know the enumeration is not
+silently short: my first needles spanned concatenation boundaries and matched
+zero rows, and a scan that matched nothing would otherwise have printed a shorter
+list that looked clean.
+
+```
+$ node --version
+v26.6.0
+$ node $SP/FR4-derive.mjs scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+EXIT=2
+CONTROL FAILED: scripts/m2-exit-test.sh :: "manifest leg of the derived expected set is EMPTY" matched 0 rows, expected 1
+CONTROL FAILED: scripts/m2-exit-test.sh :: "NOT the union of the declared legs" matched 0 rows, expected 1
+CONTROL FAILED: test/m2-exit-test.test.ts :: "cannot prove is a read" matched 0 rows, expected 1
+aborting: the enumeration lost or duplicated a known anchor, so its output is not evidence
+```
+
+and after the literal-joining fix, the run whose output is walked below:
+
+```
+$ node $SP/FR4-derive.mjs scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+EXIT=0
+control OK: all 4 known anchors matched exactly once
+enumerated 154 check sites across 2 file(s)
+of those, 62 carry a message that quantifies over a class
+```
+
+**The complete output follows, unedited.** The fix-round contract asks for the
+derivation's full output and not a summary of it, so all 252 lines are here rather
+than in a scratchpad file that does not survive this session. The walk in FR4.4
+then takes every one of the 62 rows in turn.
+
+```
+control OK: all 4 known anchors matched exactly once
+enumerated 154 check sites across 2 file(s)
+of those, 62 carry a message that quantifies over a class
+
+scripts/m2-exit-test.sh:454  [console.error]  universals: all
+    CONDITION:  (!summaryPath || !evidenceDir || !expectPath || !manifestPath)
+    MESSAGE:   ("m2-assert: --summary --evidence --expect --manifest are all required")
+
+scripts/m2-exit-test.sh:640  [fail]  universals: no,cannot
+    CONDITION:  (manifestIds.length === 0)
+    MESSAGE:   (null, `the manifest ${manifestPath} parses but ${observed}, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle")
+
+scripts/m2-exit-test.sh:650  [fail]  universals: no
+    CONDITION:  (expectedIds.length === 0)
+    MESSAGE:   (null, "the derived expected set is EMPTY, so this run would certify a bundle having asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule binds this program as much as the gates it inspects")
+
+scripts/m2-exit-test.sh:668  [fail]  universals: no
+    CONDITION:  (row === undefined)
+    MESSAGE:   (spec.id, explicit ? `no record in the bundle for a gate the table lists (expected ${spec.expect})` : "gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run." + why)
+
+scripts/m2-exit-test.sh:708  [fail]  universals: only
+    CONDITION:  (!evaluatedUnmet)
+    MESSAGE:   (spec.id, "is a diff-scoped gate reporting not-applicable WITHOUT an evaluated, unmet precondition (precondition{id, met:false, reason}); DR-0018 accepts a diff-scoped N/A only when its trigger was evaluated and legitimately unmet, distinguishable from a skipped or errored gate")
+
+scripts/m2-exit-test.sh:716  [fail]  universals: no
+    CONDITION:  (row.status === "green" && !(Number(row.units) > 0))
+    MESSAGE:   (spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`)
+
+scripts/m2-exit-test.sh:752  [fail]  universals: none
+    CONDITION:  (!preconditionUnmet && !declaredNone)
+    MESSAGE:   (row.id, "not-applicable but names NEITHER an evaluated precondition (id, met:false, reason, evidence) NOR a declared-none (declaration path + merge-base blob sha256); the three M2-P7 states must stay distinguishable, not collapsed")
+
+scripts/m2-exit-test.sh:782  [fail]  universals: no
+    CONDITION:  (redRows.length > 0)
+    MESSAGE:   (null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. No expectation in section 1.4 permits a red gate, on either bundle.")
+
+scripts/m2-exit-test.sh:954  [console.error]  universals: all
+    CONDITION:  (!repo || !tiphys || !manifest || !out || !scratch)
+    MESSAGE:   ("m2-green: --repo --tiphys --manifest --out --scratch are all required")
+
+scripts/m2-exit-test.sh:1465  [die]  universals: no
+    CONDITION: (no enclosing if)
+    MESSAGE:    die "--no-build was passed but ${TIPHYS} does not exist; build first"
+
+test/m2-exit-test.test.ts:258  [assert]  universals: no
+    CONDITION: ( result.stderr, /--no-build was passed but .* does not exist/, `expected the build check (proof the derivation was skipped) but got: ${result.stderr}`, )
+    MESSAGE:   ( result.stderr, /--no-build was passed but .* does not exist/, `expected the build check (proof the derivation was skipped) but got: ${result.stderr}`, )
+
+test/m2-exit-test.test.ts:304  [assert]  universals: no
+    CONDITION: (existsSync(selfTestRecord), "the self-test wrote no evidence records")
+    MESSAGE:   (existsSync(selfTestRecord), "the self-test wrote no evidence records")
+
+test/m2-exit-test.test.ts:390  [assert]  universals: no,cannot
+    CONDITION: ( invalid.status, 0, "a diff-scoped gate not-applicable with NO evaluated precondition must be rejected (a silently skipped gate cannot pass as legitimately N/A)", )
+    MESSAGE:   ( invalid.status, 0, "a diff-scoped gate not-applicable with NO evaluated precondition must be rejected (a silently skipped gate cannot pass as legitimately N/A)", )
+
+test/m2-exit-test.test.ts:415  [assert]  universals: never
+    CONDITION: ( errored.status, 0, "a diff-scoped gate reported error must still fail the harness (a broken gate is never accepted as diff-scoped)", )
+    MESSAGE:   ( errored.status, 0, "a diff-scoped gate reported error must still fail the harness (a broken gate is never accepted as diff-scoped)", )
+
+test/m2-exit-test.test.ts:458  [assert]  universals: only
+    CONDITION: ( ALLOWED_NAMES.has(name), `${file}:${String(i + 1)} reads the named environment variable ${name}: ${line.trim()}. A production gate must not read a named environment variable that changes its reported status (M2-P9 criterion 3); the only permitted named read is the TIPHYS_IMPLEMENTER_TOKEN PRESENCE probe, which is applicability, not a status override.", )
+    MESSAGE:   ( ALLOWED_NAMES.has(name), `${file}:${String(i + 1)} reads the named environment variable ${name}: ${line.trim()}. A production gate must not read a named environment variable that changes its reported status (M2-P9 criterion 3); the only permitted named read is the TIPHYS_IMPLEMENTER_TOKEN PRESENCE probe, which is applicability, not a status override.", )
+
+test/m2-exit-test.test.ts:504  [assert]  universals: cannot,nothing
+    CONDITION: ( entry, `${what}: gates.yml has a line at the key indent that this test cannot read as a single "key: value" entry: ${JSON.stringify(line)}. This test pins the shapes it accepts and refuses to guess at the rest, because a reader that guesses returns nothing for a shape it does not know and reports that as an absence of keys (CR-722).", )
+    MESSAGE:   ( entry, `${what}: gates.yml has a line at the key indent that this test cannot read as a single "key: value" entry: ${JSON.stringify(line)}. This test pins the shapes it accepts and refuses to guess at the rest, because a reader that guesses returns nothing for a shape it does not know and reports that as an absence of keys (CR-722).", )
+
+test/m2-exit-test.test.ts:524  [assert]  universals: no
+    CONDITION: (start, -1, `no job named ${name} in gates.yml`)
+    MESSAGE:   (start, -1, `no job named ${name} in gates.yml`)
+
+test/m2-exit-test.test.ts:549  [assert]  universals: no
+    CONDITION: ( named.length, 1, `expected exactly 1 workflow step named for "${nameFragment}", found ${named.length}. Renaming this step, or adding a second step whose name also matches, is a deliberate change: this test identifies the step by its name and has no other handle on it.", )
+    MESSAGE:   ( named.length, 1, `expected exactly 1 workflow step named for "${nameFragment}", found ${named.length}. Renaming this step, or adding a second step whose name also matches, is a deliberate change: this test identifies the step by its name and has no other handle on it.", )
+
+test/m2-exit-test.test.ts:582  [assert]  universals: no
+    CONDITION: (runAt, -1, `step ${nameFragment} has no "run: |" or "run: >" block`)
+    MESSAGE:   (runAt, -1, `step ${nameFragment} has no "run: |" or "run: >" block`)
+
+test/m2-exit-test.test.ts:588  [assert]  universals: nothing
+    CONDITION: ( start > job.start && end <= job.end, `the "${nameFragment}" step is not inside the job this test was asked about (step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). A guard in a job that is not the required check gates nothing.", )
+    MESSAGE:   ( start > job.start && end <= job.end, `the "${nameFragment}" step is not inside the job this test was asked about (step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). A guard in a job that is not the required check gates nothing.", )
+
+test/m2-exit-test.test.ts:610  [assert]  universals: every
+    CONDITION: ( !keys.has(key), `${what} declares ${key}: ${JSON.stringify(keys.get(key))}. ${WHY_REFUSED[key] ?? ""} Exactly ${String(refused.length)} keys are refused here and every other key (permissions, env, timeout-minutes, defaults, id, with, ...) is allowed. If you need this one, that is a decision about whether the milestone certification is still gated.", )
+    MESSAGE:   ( !keys.has(key), `${what} declares ${key}: ${JSON.stringify(keys.get(key))}. ${WHY_REFUSED[key] ?? ""} Exactly ${String(refused.length)} keys are refused here and every other key (permissions, env, timeout-minutes, defaults, id, with, ...) is allowed. If you need this one, that is a decision about whether the milestone certification is still gated.", )
+
+test/m2-exit-test.test.ts:662  [assert]  universals: no,only
+    CONDITION: ( working.stdout, new RegExp(GUARD_WITNESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `the guard no longer prints "${GUARD_WITNESS}" on its success path, which is the only per-run evidence that the step actually executed in CI", )
+    MESSAGE:   ( working.stdout, new RegExp(GUARD_WITNESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `the guard no longer prints "${GUARD_WITNESS}" on its success path, which is the only per-run evidence that the step actually executed in CI", )
+
+test/m2-exit-test.test.ts:672  [assert]  universals: any
+    CONDITION: ( workingOther.status, 0, "the guard rejected a self-test that exited 2; it must accept any nonzero self-test exit", )
+    MESSAGE:   ( workingOther.status, 0, "the guard rejected a self-test that exited 2; it must accept any nonzero self-test exit", )
+
+test/m2-exit-test.test.ts:719  [assert]  universals: no
+    CONDITION: (onAt, -1, "gates.yml declares no on: trigger")
+    MESSAGE:   (onAt, -1, "gates.yml declares no on: trigger")
+
+test/m2-exit-test.test.ts:732  [assert]  universals: no
+    CONDITION: ( triggers.has("pull_request"), "gates.yml no longer runs on pull_request, so no pull request is gated by it", )
+    MESSAGE:   ( triggers.has("pull_request"), "gates.yml no longer runs on pull_request, so no pull request is gated by it", )
+
+test/m2-exit-test.test.ts:736  [assert]  universals: only
+    CONDITION: ( triggers.get("pull_request"), "", "the pull_request: trigger carries an inline value; this test only accepts the unfiltered form", )
+    MESSAGE:   ( triggers.get("pull_request"), "", "the pull_request: trigger carries an inline value; this test only accepts the unfiltered form", )
+
+test/m2-exit-test.test.ts:773  [assert]  universals: no
+    CONDITION: (stepAt, -1, "gates.yml has no `- uses: actions/checkout` step")
+    MESSAGE:   (stepAt, -1, "gates.yml has no `- uses: actions/checkout` step")
+
+test/m2-exit-test.test.ts:789  [assert]  universals: no
+    CONDITION: (withAt, -1, "the actions/checkout step declares no `with:` block")
+    MESSAGE:   (withAt, -1, "the actions/checkout step declares no `with:` block")
+
+test/m2-exit-test.test.ts:804  [assert]  universals: no,every,never
+    CONDITION: ( keys.has("ref"), "the actions/checkout step declares no `ref:`; on a pull_request event it then defaults to a detached HEAD, and the scope gate reports not-applicable on every CI run (never auditing a real diff). Set `ref: ${{ github.head_ref }}`.", )
+    MESSAGE:   ( keys.has("ref"), "the actions/checkout step declares no `ref:`; on a pull_request event it then defaults to a detached HEAD, and the scope gate reports not-applicable on every CI run (never auditing a real diff). Set `ref: ${{ github.head_ref }}`.", )
+
+test/m2-exit-test.test.ts:810  [assert]  universals: only
+    CONDITION: ( keys.get("ref"), "${{ github.head_ref }}", "the actions/checkout `ref:` is not `${{ github.head_ref }}`; only the head-branch-by-name form puts the runner on claude/mN-pM-... so the scope gate audits. A SHA there re-detaches HEAD and reintroduces the vacuous scope pass.", )
+    MESSAGE:   ( keys.get("ref"), "${{ github.head_ref }}", "the actions/checkout `ref:` is not `${{ github.head_ref }}`; only the head-branch-by-name form puts the runner on claude/mN-pM-... so the scope gate audits. A SHA there re-detaches HEAD and reintroduces the vacuous scope pass.", )
+
+test/m2-exit-test.test.ts:819  [assert]  universals: no
+    CONDITION: ( keys.get("fetch-depth"), "0", "the actions/checkout step must keep `fetch-depth: 0`; a shallow checkout has no merge base for the diff-scoped gates to compute against.", )
+    MESSAGE:   ( keys.get("fetch-depth"), "0", "the actions/checkout step must keep `fetch-depth: 0`; a shallow checkout has no merge base for the diff-scoped gates to compute against.", )
+
+test/m2-exit-test.test.ts:947  [assert]  universals: no
+    CONDITION: ( harnessText, /\{"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer resolves scope per run via the __SCOPE_EXPECT__ placeholder; scope's expected status must be chosen by resolve_scope_expect, not hardcoded.", )
+    MESSAGE:   ( harnessText, /\{"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer resolves scope per run via the __SCOPE_EXPECT__ placeholder; scope's expected status must be chosen by resolve_scope_expect, not hardcoded.", )
+
+test/m2-exit-test.test.ts:953  [assert]  universals: every
+    CONDITION: ( harnessText, /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green again; that fails every NON-phase PR (scope is legitimately N/A there) and reopens the block M2R-026 introduced.", )
+    MESSAGE:   ( harnessText, /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green again; that fails every NON-phase PR (scope is legitimately N/A there) and reopens the block M2R-026 introduced.", )
+
+test/m2-exit-test.test.ts:997  [assert]  universals: every
+    CONDITION: ( nonPhase, "green|not-applicable", "a non-phase run (non-phase --phase and non-phase branch) must resolve scope to green|not-applicable, or every non-phase PR fails CI on scope", )
+    MESSAGE:   ( nonPhase, "green|not-applicable", "a non-phase run (non-phase --phase and non-phase branch) must resolve scope to green|not-applicable, or every non-phase PR fails CI on scope", )
+
+test/m2-exit-test.test.ts:1179  [assert]  universals: nothing
+    CONDITION: ( derived.absent.includes(NEW_GATE), `a manifest gate the main bundle does not run must be asserted ABSENT from it, but the derived absent list is ${JSON.stringify(derived.absent)}. A gate in neither the gates list nor the absent list is asserted by nothing on this arm.", )
+    MESSAGE:   ( derived.absent.includes(NEW_GATE), `a manifest gate the main bundle does not run must be asserted ABSENT from it, but the derived absent list is ${JSON.stringify(derived.absent)}. A gate in neither the gates list nor the absent list is asserted by nothing on this arm.", )
+
+test/m2-exit-test.test.ts:1200  [assert]  universals: every,none,nothing
+    CONDITION: ( [...listed, ...derived.absent].sort(), [...manifestIds].sort(), "the main bundle's expected gates and its derived absent list must PARTITION the manifest: every declared gate is either asserted to have a record or asserted to have none, and nothing is asserted twice. A gate in neither is the defect this derivation closes.", )
+    MESSAGE:   ( [...listed, ...derived.absent].sort(), [...manifestIds].sort(), "the main bundle's expected gates and its derived absent list must PARTITION the manifest: every declared gate is either asserted to have a record or asserted to have none, and nothing is asserted twice. A gate in neither is the defect this derivation closes.", )
+
+test/m2-exit-test.test.ts:1323  [assert]  universals: no
+    CONDITION: ( ok.status, 0, `a healthy ${arm} bundle must be ACCEPTED, including a manifest gate with no table row that is green: ${ok.stdout}\n${ok.stderr}`, )
+    MESSAGE:   ( ok.status, 0, `a healthy ${arm} bundle must be ACCEPTED, including a manifest gate with no table row that is green: ${ok.stdout}\n${ok.stderr}`, )
+
+test/m2-exit-test.test.ts:1377  [assert]  universals: no
+    CONDITION: ( m3.status, 0, `[${arm}] a RED gate must be rejected even when the expectations table names it, marks it required:false and lists red among its permitted alternates; no expectation in section 1.4 permits a red gate: ${m3.stdout}\n${m3.stderr}`, )
+    MESSAGE:   ( m3.status, 0, `[${arm}] a RED gate must be rejected even when the expectations table names it, marks it required:false and lists red among its permitted alternates; no expectation in section 1.4 permits a red gate: ${m3.stdout}\n${m3.stderr}`, )
+
+test/m2-exit-test.test.ts:1507  [assert]  universals: no,cannot
+    CONDITION: ( findings.length > 0, `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot be established: ${output}`, )
+    MESSAGE:   ( findings.length > 0, `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot be established: ${output}`, )
+
+test/m2-exit-test.test.ts:1540  [assert]  universals: only,nothing
+    CONDITION: ( result.status, 0, `[${arm}] a ${status} record for a gate the DERIVED absent list covers must be REJECTED: the two bundles stay distinguishable only if what one does not run is asserted to have produced nothing: ${output}`, )
+    MESSAGE:   ( result.status, 0, `[${arm}] a ${status} record for a gate the DERIVED absent list covers must be REJECTED: the two bundles stay distinguishable only if what one does not run is asserted to have produced nothing: ${output}`, )
+
+test/m2-exit-test.test.ts:1547  [assert]  universals: only
+    CONDITION: ( output, /expected to be ABSENT from this bundle/, `[${arm}] ${name} was not rejected by the declared-absent check, which is the only check it exercises: ${output}`, )
+    MESSAGE:   ( output, /expected to be ABSENT from this bundle/, `[${arm}] ${name} was not rejected by the declared-absent check, which is the only check it exercises: ${output}`, )
+
+test/m2-exit-test.test.ts:1589  [assert]  universals: every,nothing
+    CONDITION: ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+    MESSAGE:   ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:1665  [assert]  universals: nothing
+    CONDITION: ( result.status, 0, `${member.name} empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: ${output}`, )
+    MESSAGE:   ( result.status, 0, `${member.name} empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: ${output}`, )
+
+test/m2-exit-test.test.ts:1672  [assert]  universals: only
+    CONDITION: ( output, /manifest leg of the derived expected set is EMPTY/, `${member.name} was not rejected by the manifest-leg check, which is the only check it exercises: ${output}`, )
+    MESSAGE:   ( output, /manifest leg of the derived expected set is EMPTY/, `${member.name} was not rejected by the manifest-leg check, which is the only check it exercises: ${output}`, )
+
+test/m2-exit-test.test.ts:1678  [assert]  universals: cannot
+    CONDITION: ( output, member.names, `${member.name} was rejected without the message naming the shape observed, so a reader cannot tell which degenerate input arrived: ${output}`, )
+    MESSAGE:   ( output, member.names, `${member.name} was rejected without the message naming the shape observed, so a reader cannot tell which degenerate input arrived: ${output}`, )
+
+test/m2-exit-test.test.ts:1707  [assert]  universals: nothing
+    CONDITION: ( zero.status, 0, "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`, )
+    MESSAGE:   ( zero.status, 0, "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`, )
+
+test/m2-exit-test.test.ts:1713  [assert]  universals: only
+    CONDITION: ( zeroOut, /derived expected set is EMPTY, so this run would certify/, `member 4 was not rejected by the empty-expected-set check, which is the only check it exercises: ${zeroOut}`, )
+    MESSAGE:   ( zeroOut, /derived expected set is EMPTY, so this run would certify/, `member 4 was not rejected by the empty-expected-set check, which is the only check it exercises: ${zeroOut}`, )
+
+test/m2-exit-test.test.ts:1719  [assert]  universals: no
+    CONDITION: ( zeroOut, /manifest leg of the derived expected set is EMPTY/, "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, the two checks are not separately witnessed here and the aggregate check has no witness of its own left", )
+    MESSAGE:   ( zeroOut, /manifest leg of the derived expected set is EMPTY/, "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, the two checks are not separately witnessed here and the aggregate check has no witness of its own left", )
+
+test/m2-exit-test.test.ts:1759  [assert]  universals: none,all
+    CONDITION: ( anchorCount, 1, `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times in the harness, not once; this guard would be reading the wrong statement or none at all, so it is a hard failure rather than a fallback", )
+    MESSAGE:   ( anchorCount, 1, `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times in the harness, not once; this guard would be reading the wrong statement or none at all, so it is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:1834  [assert]  universals: cannot,every,nothing
+    CONDITION: ( raw, "the union's array literal is not balanced, so its legs cannot be enumerated and every assertion below would be about nothing", )
+    MESSAGE:   ( raw, "the union's array literal is not balanced, so its legs cannot be enumerated and every assertion below would be about nothing", )
+
+test/m2-exit-test.test.ts:1852  [assert]  universals: no,all
+    CONDITION: ( legs, probed, "the derived expected set draws from a set of legs that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of `manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a probe for it needs the attribution key of the branch that rejects its members, which is NOT automatically the default-spec reason: that is exactly how `explicitById` stayed unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`, )
+    MESSAGE:   ( legs, probed, "the derived expected set draws from a set of legs that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of `manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a probe for it needs the attribution key of the branch that rejects its members, which is NOT automatically the default-spec reason: that is exactly how `explicitById` stayed unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`, )
+
+test/m2-exit-test.test.ts:2036  [assert]  universals: cannot,anything,no
+    CONDITION: ( occurrences, ["=", ")"], `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked at: if it writes the set, the derivation's legs no longer justify what is asserted and the probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`, )
+    MESSAGE:   ( occurrences, ["=", ")"], `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked at: if it writes the set, the derivation's legs no longer justify what is asserted and the probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`, )
+
+test/m2-exit-test.test.ts:2073  [assert]  universals: every,nothing
+    CONDITION: ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+    MESSAGE:   ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:2122  [assert]  universals: every
+    CONDITION: ( control.status, 0, `the shipped program must ACCEPT the unmutated fixtures, or every member below is a rejection of the fixtures rather than of the injected write: ${controlOut}`, )
+    MESSAGE:   ( control.status, 0, `the shipped program must ACCEPT the unmutated fixtures, or every member below is a rejection of the fixtures rather than of the injected write: ${controlOut}`, )
+
+test/m2-exit-test.test.ts:2138  [assert]  universals: nothing
+    CONDITION: ( controlOut.includes(GATE_A) && controlOut.includes(GATE_B), `the control must report BOTH manifest gates as asserted, or a member that REMOVES one has nothing to remove and measures nothing: ${controlOut}`, )
+    MESSAGE:   ( controlOut.includes(GATE_A) && controlOut.includes(GATE_B), `the control must report BOTH manifest gates as asserted, or a member that REMOVES one has nothing to remove and measures nothing: ${controlOut}`, )
+
+test/m2-exit-test.test.ts:2193  [assert]  universals: nothing
+    CONDITION: ( anchorCount, 1, `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} times in the assertion program, not once, so member ${member.name} would run an unmutated program and pass while measuring nothing", )
+    MESSAGE:   ( anchorCount, 1, `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} times in the assertion program, not once, so member ${member.name} would run an unmutated program and pass while measuring nothing", )
+
+test/m2-exit-test.test.ts:2201  [assert]  universals: nothing
+    CONDITION: ( mutated, pristine, `member ${member.name} did not change the program, so it measures nothing`, )
+    MESSAGE:   ( mutated, pristine, `member ${member.name} did not change the program, so it measures nothing`, )
+
+test/m2-exit-test.test.ts:2232  [assert]  universals: no
+    CONDITION: ( !output.includes(`[${INJECTED}]`), `${member.name} produced a finding attributed to ${INJECTED}, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: ${output}`, )
+    MESSAGE:   ( !output.includes(`[${INJECTED}]`), `${member.name} produced a finding attributed to ${INJECTED}, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: ${output}`, )
+
+test/m2-exit-test.test.ts:2240  [assert]  universals: cannot,only
+    CONDITION: ( output, /derived expected set is NOT the union of the declared legs/, `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the leg-union check is the only mechanism that can catch it and it must be the one that names the failure: ${output}`, )
+    MESSAGE:   ( output, /derived expected set is NOT the union of the declared legs/, `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the leg-union check is the only mechanism that can catch it and it must be the one that names the failure: ${output}`, )
+
+test/m2-exit-test.test.ts:2308  [assert]  universals: no
+    CONDITION: ( !alternates.includes("red") && !alternates.includes("error"), `${table.label}: the row for ${row.id} admits ${row.expect}; no expectation in section 1.4 permits a red or errored gate on either bundle", )
+    MESSAGE:   ( !alternates.includes("red") && !alternates.includes("error"), `${table.label}: the row for ${row.id} admits ${row.expect}; no expectation in section 1.4 permits a red or errored gate on either bundle", )
+
+test/m2-exit-test.test.ts:2317  [assert]  universals: no,always,can never,cannot
+    CONDITION: ( hasPrecondition.get(row.id), true, `${table.label}: the row for ${row.id} admits not-applicable, but gates.manifest.json declares that gate with no precondition, so it is always applicable and can never legitimately report not-applicable. A row admitting a status the gate cannot legitimately produce accepts a skipped or mis-declared gate as a pass.", )
+    MESSAGE:   ( hasPrecondition.get(row.id), true, `${table.label}: the row for ${row.id} admits not-applicable, but gates.manifest.json declares that gate with no precondition, so it is always applicable and can never legitimately report not-applicable. A row admitting a status the gate cannot legitimately produce accepts a skipped or mis-declared gate as a pass.", )
+
+test/m2-exit-test.test.ts:2327  [assert]  universals: no,any,nothing
+    CONDITION: ( checked > 0, "no expectations row admits not-applicable on any arm, so this test examined nothing and would pass however the tables were written", )
+    MESSAGE:   ( checked > 0, "no expectations row admits not-applicable on any arm, so this test examined nothing and would pass however the tables were written", )
+```
+
+### FR4.4 The walk: every quantifying row, and whether its condition is the property
+
+Three verdicts are used and they mean different things:
+
+- **PROPERTY**: the condition tests the thing the message names. Nothing escapes
+  by being spelled differently.
+- **SUBSET**: the condition recognises a proper subset of the class the message
+  quantifies over. This is the mechanism, and any row here is a finding.
+- **NOT A CLASS**: the universal word is prose about the single instance being
+  reported (for example "no record in the bundle for this gate"), not a
+  quantification over a class of inputs. There is nothing for a condition to be a
+  subset of.
+
+| site | universals | verdict |
+|---|---|---|
+| scripts/m2-exit-test.sh:454 | all | PROPERTY: "all required" over exactly the four parsed arguments, and the condition is the disjunction of those same four. |
+| scripts/m2-exit-test.sh:640 | no, cannot | PROPERTY: `manifestIds.length === 0` is the leg's contribution, not a shape that produces it. Eleven inputs were thrown at this by the delta verification and none escaped. |
+| scripts/m2-exit-test.sh:650 | no | PROPERTY: `expectedIds.length === 0` is exactly "asserted on zero gates". |
+| scripts/m2-exit-test.sh:668 | no | NOT A CLASS: reports one gate's missing record. |
+| scripts/m2-exit-test.sh:708 | only | PROPERTY: the condition is the conjunction the message states (id present, met false, reason present). |
+| scripts/m2-exit-test.sh:716 | no | PROPERTY: `Number(row.units) > 0` is the units claim. |
+| scripts/m2-exit-test.sh:752 | none | PROPERTY: the condition is the disjunction of the two named states, and the message names both. |
+| scripts/m2-exit-test.sh:782 | no | PROPERTY: quantifies over rows and the condition scans all rows. |
+| scripts/m2-exit-test.sh:954 | all | PROPERTY: same shape as :454. |
+| scripts/m2-exit-test.sh:1465 | no | NOT A CLASS: one path, one existence test. |
+| test/m2-exit-test.test.ts:258 | no | NOT A CLASS: matches one expected message. |
+| test/m2-exit-test.test.ts:304 | no | NOT A CLASS: one path exists or does not. |
+| test/m2-exit-test.test.ts:390 | no, cannot | NOT A CLASS: one fixture, one verdict. |
+| test/m2-exit-test.test.ts:415 | never | SUBSET, DECLARED AND UNCHANGED: "a broken gate is never accepted as diff-scoped" is checked with one errored fixture. It is one member of a class, and this round did not touch it. Recorded in FR4.5 as a region the derivation covered and the round did not walk further. |
+| test/m2-exit-test.test.ts:458 | only | PROPERTY over the enumerated lines: every line of the scanned files is classified and the allowlist is the exception set the message names. |
+| test/m2-exit-test.test.ts:504 | cannot, nothing | PROPERTY: this is the fail-closed shape already. A line the reader cannot parse is a hard failure rather than an absence. |
+| test/m2-exit-test.test.ts:524 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:549 | no | PROPERTY: a count over the enumerated steps, and the message is about that count. |
+| test/m2-exit-test.test.ts:582 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:588 | nothing | PROPERTY: the containment test is the claim. |
+| test/m2-exit-test.test.ts:610 | every | PROPERTY: the refused set is enumerated and every other key is explicitly allowed, which is what the message says. |
+| test/m2-exit-test.test.ts:662 | no, only | NOT A CLASS: one witness string. |
+| test/m2-exit-test.test.ts:672 | any | SUBSET, DECLARED AND UNCHANGED: "any nonzero self-test exit" is witnessed by one value (2). One witness is not a class (CLAUDE.md:350). Not this round's delta; recorded in FR4.5. |
+| test/m2-exit-test.test.ts:719 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:732 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:736 | only | PROPERTY: the accepted form is stated and the condition is equality with it. |
+| test/m2-exit-test.test.ts:773 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:789 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:804 | no, every, never | NOT A CLASS: the universals are in the CONSEQUENCE clause ("reports not-applicable on every CI run"), not in the condition's scope. The condition is the presence of one key. |
+| test/m2-exit-test.test.ts:810 | only | PROPERTY: equality with the one accepted value. |
+| test/m2-exit-test.test.ts:819 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:947 | no | NOT A CLASS: one regex, one placeholder. |
+| test/m2-exit-test.test.ts:953 | every | NOT A CLASS: "every non-phase PR" is the consequence, the condition is one literal's absence. |
+| test/m2-exit-test.test.ts:997 | every | NOT A CLASS: same shape, consequence clause. |
+| test/m2-exit-test.test.ts:1179 | nothing | NOT A CLASS: one gate, one membership test. |
+| test/m2-exit-test.test.ts:1200 | every, none, nothing | PROPERTY: a set equality that IS the partition claim, derived at run time from the manifest rather than pinned. |
+| test/m2-exit-test.test.ts:1323 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:1377 | no | PROPERTY over the row: no alternate list is consulted, the status itself is rejected. |
+| test/m2-exit-test.test.ts:1507 | no, cannot | PROPERTY: findings are counted, and the message is about there being none. |
+| test/m2-exit-test.test.ts:1540 | only, nothing | NOT A CLASS: one probe, one verdict. |
+| test/m2-exit-test.test.ts:1547 | only | PROPERTY: attribution by the rejecting check's own message. |
+| test/m2-exit-test.test.ts:1589 | every, nothing | PROPERTY: the extraction either produced the program or it did not. |
+| test/m2-exit-test.test.ts:1665 | nothing | NOT A CLASS: per-member verdict. |
+| test/m2-exit-test.test.ts:1672 | only | PROPERTY: attribution. |
+| test/m2-exit-test.test.ts:1678 | cannot | PROPERTY: the message must name the shape, and the shape's own regex is the condition. |
+| test/m2-exit-test.test.ts:1707 | nothing | NOT A CLASS. |
+| test/m2-exit-test.test.ts:1713 | only | PROPERTY: attribution. |
+| test/m2-exit-test.test.ts:1719 | no | PROPERTY: a negative attribution check, the condition is the absence of that message. |
+| test/m2-exit-test.test.ts:1759 | none, all | PROPERTY: the anchor count is the claim. |
+| test/m2-exit-test.test.ts:1834 | cannot, every, nothing | PROPERTY: balanced or not, and unbalanced is a hard failure. |
+| test/m2-exit-test.test.ts:1852 | no, all | PROPERTY over the literal's top-level elements: the splitter enumerates elements by depth rather than by a spread spelling, which is what closed DV-4. Its limit is stated in FR4.5. |
+| test/m2-exit-test.test.ts:2036 | cannot, anything, no | PROPERTY, BY INVERSION, and this is the row the round exists for. The message says "every occurrence this suite cannot prove is a read", and the condition is exactly "not matched by PROVEN_READS". The recognised set and the claimed set are the same set by construction. What it cannot see is a write that never names the binding, which is stated in the assertion's own comment and in FR4.5, and which is why the run-time instruments exist. |
+| test/m2-exit-test.test.ts:2073 | every, nothing | PROPERTY: extraction succeeded or it did not. |
+| test/m2-exit-test.test.ts:2122 | every | NOT A CLASS: the positive control's own verdict. |
+| test/m2-exit-test.test.ts:2138 | nothing | PROPERTY: both control ids must be present, which is what makes a removing member able to remove something. |
+| test/m2-exit-test.test.ts:2193 | nothing | PROPERTY: the anchor count is the claim. |
+| test/m2-exit-test.test.ts:2201 | nothing | PROPERTY: the injection changed the text or it did not. |
+| test/m2-exit-test.test.ts:2232 | no | PROPERTY: attribution of a finding to the injected id is exactly "the id entered the set". |
+| test/m2-exit-test.test.ts:2240 | cannot, only | PROPERTY: the closure family must be caught by the named mechanism, and the condition is that mechanism's own message. |
+| test/m2-exit-test.test.ts:2308 | no | PROPERTY: the alternates list is scanned. |
+| test/m2-exit-test.test.ts:2317 | no, always, can never, cannot | PROPERTY: the precondition's presence is derived from the manifest at run time, and it is the claim. |
+| test/m2-exit-test.test.ts:2327 | no, any, nothing | PROPERTY: the anti-vacuity guard on the loop above it. |
+
+Two rows are SUBSET and both are pre-existing, outside this round's delta, and
+recorded in FR4.5 rather than fixed here. Nothing in the code this round CHANGED
+is SUBSET.
+
+### FR4.5 What the derivation did NOT cover
+
+This is the section a reviewer reads first (CLAUDE.md:326), so it is written to be
+used against me.
+
+1. **Only two files were enumerated**: scripts/m2-exit-test.sh and
+   test/m2-exit-test.test.ts. The branch also changes test/behaviors.json, which
+   carries no checks, and the work history, which carries none either. It does
+   NOT enumerate the rest of the repository. A check with this mechanism in
+   src/gates/, in another test file, or in another script is outside this
+   derivation entirely. I did not look, and this round makes no claim about them.
+2. **The enumeration recognises five call shapes**: `assert.<method>(`,
+   `assert(`, `fail(`, `console.error(` and a line-initial `die "`. A check
+   written some other way (a bare `if` that sets an exit code with no message, a
+   `throw`, a shell `[ ] ||` chain) is not in the 154. I chose those five by
+   reading the two files, not by proving them exhaustive, and the honest
+   statement is that the enumeration covers the shapes I found rather than every
+   shape that could exist.
+3. **The universal detector is a word list**: every, all, any, anything, none,
+   no, never, cannot, can never, always, each, whatever, nothing, only. A message
+   that quantifies over a class WITHOUT one of those words is not flagged. "A
+   declared gate that produced no record is a gate that did not run" happens to
+   contain "no"; a differently worded universal would not be caught. This is the
+   same subset shape one level up, in my own tooling, and I state it rather than
+   letting the count read as complete.
+4. **Two SUBSET rows were found and NOT fixed**, both outside this round's delta:
+   test/m2-exit-test.test.ts:415 ("a broken gate is never accepted as diff-scoped",
+   one errored fixture) and test/m2-exit-test.test.ts:672 ("it must accept any
+   nonzero self-test exit", witnessed with the single value 2). Each is a
+   universal witnessed by one member, which CLAUDE.md:350 says is not a class. I
+   did not widen them because they are outside the scope I was given, and I am
+   recording them so that "the derivation found nothing else" is not read as
+   "there is nothing else".
+5. **The element pin at test/m2-exit-test.test.ts:1852 cannot see a leg that
+   arrives outside the union's array literal**, and the run-time instruments
+   cannot see a leg that arrives INSIDE it, because a new leg enters both the
+   derivation and the re-derivation and they agree. The two are complementary and
+   neither alone is sufficient. That is stated at scripts/m2-exit-test.sh:582 in
+   the code as well as here.
+6. **A write inside the derivation closure that adds an id A LEG ALREADY
+   CONTRIBUTED is not caught by anything.** `out.push(out[0])` would break the
+   equality by length, so a duplicate is caught, but a write that re-adds an id
+   the table declared ABSENT is caught only because absent ids are filtered out of
+   the re-derivation, and a write that changes the ORDER of the set is not caught
+   at all. Order carries no meaning in this program today (the set is iterated,
+   not indexed), which is why I did not guard it, and if a future change makes
+   order meaningful this is where that assumption is written down.
+7. **The occurrence pin masks comments and does not mask strings.** A mention of
+   the binding inside a plain string literal is recorded as an occurrence, which
+   is noise in the safe direction. The masker is a hand-written scanner and does
+   NOT know about regular-expression literals: a regex containing `//` or `/*`
+   would put it into a comment state wrongly. I checked that no such literal
+   exists in the harness today by running the scan and comparing its result to
+   the eight occurrences `grep -n expectedIds` reports, and they agree, but that
+   is a measurement of today's file rather than a proof about future ones.
+8. **The behavioural test covers writes at TWO injection sites**, one after the
+   derivation and one inside the closure. A write at a third position, for
+   example between the `const legContributed` line and the check that consumes
+   it, is not injected by any member. The freeze covers that position, because
+   the freeze is already in force there, but the test does not measure it.
+9. **Everything measured here is the assertion program run directly.** The full
+   harness path (a real `--full` or `--local` run) is not exercised by this
+   round's new tests, for the same reason the existing derivation probes are not:
+   it needs a real runner. What that costs is stated in FR4.10.
+
+### FR4.6 The red witness: two structurally different defangs, and every member measured
+
+CLAUDE.md:350 requires a witness for a CLASS to redden under at least two
+structurally different members, and requires the test to be red against the
+DANGEROUS state rather than merely against the absent feature.
+
+Two defangs, each removing ONE mechanism, in a dedicated worktree at
+`$SP/FR4-lab`. The driver restores the pristine bytes afterwards and prints the
+sha256 before and after, and it aborts nonzero if an anchor is not unique or if a
+defang changes nothing. Its control fired once during development, on an anchor
+(`  process.exit(1);` plus a brace) that occurs five times in the harness, which
+is why the anchor it now uses is the check's own opening line.
+
+```
+$ node --version
+v26.6.0
+$ node $SP/FR4-defang.mjs $SP/FR4-lab
+pristine sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+defang control OK: all 3 anchors occur exactly once
+PRISTINE-control             guard=GREEN exit=0
+    first finding: (none)
+    members named in findings: (none)
+D1-freeze-removed            guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: after-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes): FAIL w
+    members named in findings: after-push
+D2-leg-union-check-removed   guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: inside-closure-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes
+    members named in findings: inside-closure-push
+D3-both-removed              guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: after-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes): FAIL w
+    members named in findings: after-push
+restored sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+```
+
+Both mechanisms are load-bearing: removing either one alone reddens the guard, so
+neither is decoration on top of the other.
+
+**The guard stops at its first failed assertion, so the capture above names ONE
+escaping member per defang and no more.** That is a limitation of the reporting,
+not of the witness, and averaging over it would leave the class unmeasured. So
+every member was also measured against the PROGRAM directly, which is the method
+the delta verification used, with two columns because one is ambiguous:
+
+- EXIT: the program's exit code.
+- ENTERED: did the injected id become part of the set the program asserted on,
+  read from a finding attributed to it or from the certified list. An adding
+  member exits 1 either way, once because the write was refused and once because
+  the id it added has no bundle record, so the exit code alone does not
+  distinguish fixed from unfixed. ENTERED does.
+
+```
+$ node $SP/FR4-progmatrix.mjs $SP/FR4-lab $SP/FR4-ev-progmatrix
+harness sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+
+variant                    member                       EXIT  ENTERED  ASSERTED-ON
+head (both mechanisms)     none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+head (both mechanisms)     after-push                   1     no       (did not certify)
+head (both mechanisms)     after-index-assignment       1     no       (did not certify)
+head (both mechanisms)     after-alias-then-push        1     no       (did not certify)
+head (both mechanisms)     after-push-apply             1     no       (did not certify)
+head (both mechanisms)     after-computed-member        1     no       (did not certify)
+head (both mechanisms)     after-pop                    1     no       (did not certify)
+head (both mechanisms)     after-length-truncation      1     no       (did not certify)
+head (both mechanisms)     after-reflect-splice         1     no       (did not certify)
+head (both mechanisms)     inside-closure-push          1     no       (did not certify)
+head (both mechanisms)     inside-closure-pop           1     no       (did not certify)
+
+freeze removed             none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+freeze removed             after-push                   1     YES      (did not certify)
+freeze removed             after-index-assignment       1     YES      (did not certify)
+freeze removed             after-alias-then-push        1     YES      (did not certify)
+freeze removed             after-push-apply             1     YES      (did not certify)
+freeze removed             after-computed-member        1     YES      (did not certify)
+freeze removed             after-pop                    0     no       fixture-control-gate-a
+freeze removed             after-length-truncation      1     no       (did not certify)
+freeze removed             after-reflect-splice         0     no       fixture-control-gate-b
+freeze removed             inside-closure-push          1     no       (did not certify)
+freeze removed             inside-closure-pop           1     no       (did not certify)
+
+leg-check removed          none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+leg-check removed          after-push                   1     no       (did not certify)
+leg-check removed          after-index-assignment       1     no       (did not certify)
+leg-check removed          after-alias-then-push        1     no       (did not certify)
+leg-check removed          after-push-apply             1     no       (did not certify)
+leg-check removed          after-computed-member        1     no       (did not certify)
+leg-check removed          after-pop                    1     no       (did not certify)
+leg-check removed          after-length-truncation      1     no       (did not certify)
+leg-check removed          after-reflect-splice         1     no       (did not certify)
+leg-check removed          inside-closure-push          1     no       (did not certify)
+leg-check removed          inside-closure-pop           0     no       fixture-control-gate-a
+
+both removed (= pre-fix)   none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+both removed (= pre-fix)   after-push                   1     YES      (did not certify)
+both removed (= pre-fix)   after-index-assignment       1     YES      (did not certify)
+both removed (= pre-fix)   after-alias-then-push        1     YES      (did not certify)
+both removed (= pre-fix)   after-push-apply             1     YES      (did not certify)
+both removed (= pre-fix)   after-computed-member        1     YES      (did not certify)
+both removed (= pre-fix)   after-pop                    0     no       fixture-control-gate-a
+both removed (= pre-fix)   after-length-truncation      1     no       (did not certify)
+both removed (= pre-fix)   after-reflect-splice         0     no       fixture-control-gate-b
+both removed (= pre-fix)   inside-closure-push          1     no       (did not certify)
+both removed (= pre-fix)   inside-closure-pop           0     fixture-control-gate-a
+
+harness sha256 after (unchanged, never written) 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+```
+
+What this measures, read carefully rather than as a wall of noise:
+
+- **The control row is 0 in every variant** and asserts on both gates, so the lab
+  is wired and a refusal is a refusal of the injected write.
+- **At head, all ten members are refused and none of them enters the set.** That
+  includes the three the delta verification used to defeat the source scan and
+  two that no list of names could hold.
+- **On the pre-fix program (`both removed`), three members SILENTLY CERTIFY.**
+  after-pop, after-reflect-splice and inside-closure-pop all exit 0 having
+  asserted on ONE gate instead of two. That is the dangerous state stated exactly:
+  the exit test certifies a bundle having asserted on fewer gates than its own
+  legs justify, and the exit code says nothing. Five more members enter the set
+  and exit 1.
+- **Each defang leaves a different member escaping**, which is why both
+  mechanisms are shipped: `freeze removed` lets the two after-derivation removals
+  through silently, `leg-check removed` lets inside-closure-pop through silently.
+- **after-length-truncation was already covered pre-fix**, by the empty-set check
+  at scripts/m2-exit-test.sh:650: emptying the set entirely is loud. I report this
+  because a null result is evidence, and because it means that member is not part
+  of what this round closed.
+
+### FR4.7 Disposition of the delta verification's findings
+
+| finding | disposition |
+|---|---|
+| DV3-F1 MEDIUM | CLOSED, and by replacing the instrument rather than widening it. The three named shapes plus two more are refused at run time (FR4.6). The comment and the message that carried the false universal are gone; test/m2-exit-test.test.ts:2036 now states the class its condition actually recognises, and the run-time claim is witnessed by execution. |
+| DV3-F2 LOW | CLOSED at scripts/m2-exit-test.sh:235 and scripts/m2-exit-test.sh:269. The two readers of the manifest's gates list now tolerate the same shapes, and the swallowed exit status is taken explicitly. |
+| DV3-F3 LOW | CLOSED at scripts/m2-exit-test.sh:546 and scripts/m2-exit-test.sh:876. All three legs are reported by one function over one binding each, so the reported contribution is computed from the contributing expression. |
+| DV3-F4 observation | LEFT ALONE, and I agree with the verifier. A comment placed between two legs reddens the element pin. It fails safe, and making the comparison comment-blind would mean stripping comments from the compared text, which is a second scanner in the guard for no gain in the property guarded. |
+| DV3-F5 observation | LEFT ALONE. Truncating the manifest also collapses the main arm's derived absent list, and the verifier's point is that this is equally visible on the same success line. It still is. |
+| DV3-F6 LOW, outside the delta | NOT TOUCHED. test/watcher.test.ts is byte-identical between origin/main and this branch and I made no edit to it. See FR4.8 for what my runs saw. |
+
+### FR4.8 Suite results, with all three axes named
+
+CLAUDE.md:463 makes the complete sentence for a suite result name the toolchain,
+the build state and the invocation, and quote the skipped count alongside pass.
+
+**Arm 1.** Head `THE_HEAD`, node v26.6.0 from the scratch prefix, `dist/` BUILT
+(`npm ci` exit 0, `npm run build` exit 0, `git status --porcelain` empty
+afterwards), invocation `npm test`:
+
+```
+i tests 598
+i suites 0
+i pass 598
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 249701.21055
+npm test EXIT=0
+```
+
+598 tests, 598 pass, 0 fail, **0 skipped**, exit 0. Load average at the start of
+that run was 1.67 and 5.66 at the end. **596 was the count before this round and
+598 is the count after**, and the difference is exactly the two tests this round
+registers in test/behaviors.json:1, which is the accounting rather than a
+coincidence.
+
+**Arm 2.** Same head, same toolchain, same build state, invocation bare
+`node --test` from the repository root:
+
+```
+BARE_RESULT
+```
+
+**Transliteration declared.** Node's test reporter prints U+2139 INFORMATION
+SOURCE at the head of each summary line. Both captures above are real output from
+the runs described, with that codepoint rendered as the ASCII letter `i`.
+Occurrences replaced: TRANSLIT_COUNT. Nothing else in any captured output in this
+section was changed. There were no U+2716 failure glyphs to replace, because no
+test failed in either arm.
+
+**What I did NOT run**: the DEFAULT toolchain arm (`bash -lc`, node v22.22.2).
+The two floor-gated doctor tests skip there, which is a known and unchanged
+property of this repository (CLAUDE.md:463), and this round touches nothing in
+that path. I say so rather than letting a two-arm report read as three.
+
+**test/watcher.test.ts**: I saw NO instance of the DV3-F6 flake in either arm.
+That is not evidence against it. The verification measured roughly one failure in
+five isolated runs on an idle box, and two clean runs is a sample consistent with
+that rate. Load averages for my runs are quoted above.
+
+### FR4.9 Gates, bytes and citations
+
+BYTE_CHECK
+
+CITATION_CHECK
+
+### FR4.10 The claim grep, and what a green here cannot claim
+
+CLAIM_GREP
+
+**The grep's known hole, checked by eye.** It carries `cannot be` and no other
+`cannot X` form. I read every `cannot fire`, `cannot reach`, `cannot happen`,
+`cannot see` and `cannot certify` in this section. Every one of them is either
+(a) inside a quotation of a shipped message, (b) a statement about what an
+instrument does NOT cover, which is the FR4.5 direction and is a limitation
+rather than a guarantee, or (c) carried by a measurement in FR4.6.
+
+**What a green on this branch cannot claim, stated plainly:**
+
+- It cannot claim that no write to the derived expected set can ever escape. It
+  claims that ten members, at two injection sites, are refused, and that the
+  mechanism refusing eight of them is a property of the frozen object rather than
+  a list of spellings. A write inside the derivation closure that produces a set
+  the legs also produce is not caught by anything here (FR4.5 item 6).
+- It cannot claim the derivation covers the repository. Two files (FR4.5 item 1).
+- It cannot claim the enumeration found every check. Five call shapes and a word
+  list of universals (FR4.5 items 2 and 3).
+- It cannot claim CI has run. At the time of writing no `gates` run exists for
+  this head, and the pull-request arm of the workflow has not produced a run for
+  ANY head of this branch, for the reason round 3 diagnosed. Whether that is
+  resolved is not an implementer's call and I did not act on it.
