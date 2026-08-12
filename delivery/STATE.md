@@ -5,6 +5,61 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-12, LATEST BULLET BLOCK. Everything below this block is OLDER;
+  where they disagree, this block is later.
+- **M3-P6 FIX ROUND 2 REFUSED THE FIX IT WAS INSTRUCTED TO MAKE, AND WAS RIGHT
+  TO.** The orchestrator's brief said "add a named test reaching
+  `scripts/check-brief-drift.mjs` line 421", which is what the red `red-witness`
+  gate appeared to ask for. The line was unreachable BY CONSTRUCTION: a
+  row-and-field check added earlier in the same round sat in front of
+  `describeDrift` and caught every input `describeDrift` caught, so collapsing
+  `describeDrift` to the empty list changed nothing any test could observe. The
+  remedy was to DELETE the shadowing check, not to test it, and the round did
+  that at `6c1b010` with the reasoning recorded in place above the surviving
+  call. **The mechanism, which generalises: TWO CHECKS THAT CATCH THE SAME INPUT
+  MAKE EACH OTHER UNWITNESSABLE.** Neither is individually necessary, so mutating
+  either leaves the other covering, and reordering only moves which one is
+  shadowed. Recorded as delivery/tuition/T-018-two-checks-catching-the-same-input-make-each-other-unwitnessable.md:1,
+  marked PROVISIONAL because it is written from the gate output, the shipped
+  comment and the witness spec, and the implementer's work history is the
+  primary account and is not yet handed back.
+  **The orchestrator's own error is recorded there too**: the brief named the
+  INSTANCE when the gate was reporting a MECHANISM, which is the exact thing the
+  fix-round contract at CLAUDE.md:297 exists to prevent. An implementer that had
+  obeyed it would have produced a plausible, green, useless change.
+- **M3-P8 IS NOT BLOCKED ON M3-P7, and the register said otherwise until now.**
+  Plan revision 3 corrected M3-P8's `blocked-by` to "M3-P6 merged"
+  (delivery/plan/kernel-plan-m3.md:1130) because M3-P8's `grounding` names no
+  M3-P7 artifact; the old value was an ordering habit. So P7 and P8 may be
+  WORKED concurrently once M3-P6 lands, while P8 still MERGES after P7 because
+  merge order is dependency order. The dispatch-time check DR-0011 requires is
+  written BEFORE dispatch at delivery/plan/m3-p7-p8-concurrency-pre-pass.md:1.
+  It finds a FIFTH shared file the plan's revision-3 recount does not name
+  (`src/commands/validate.ts`), records `src/validate.ts` as UNDETERMINED for
+  both phases rather than guessing a likely site, and states plainly that the
+  plan's condition CANNOT be fully discharged in advance because the edits do
+  not exist yet. The undischargeable half becomes a tripwire both briefs carry:
+  if you need to RESTRUCTURE a shared list, map or table rather than append to
+  it, stop and tell the orchestrator.
+  **It also restates that a pre-pass is a VETO, NOT A PERMIT**, which is the
+  error made earlier in this milestone when M3-P7 was ruled dispatchable beside
+  M3-P6 on file-overlap evidence while its own grounding named two M3-P6
+  deliverables.
+- **PR #109 (the harness fix) is `mergeable_state: behind`** with base
+  `e730116` against a `main` of `c75152b`, and branch protection requires an
+  up-to-date head, so the branch must be updated before merge and the head will
+  move off `fdb3120`. Pre-computed so it is not re-derived under merge pressure:
+  the delta `e730116..c75152b` is NINE files, eight under `delivery/` and one
+  `CLAUDE.md`, with no `src/`, no `scripts/` and no `test/`. The update therefore
+  cannot alter the harness or its tests, and the H-A/H-B reviews of `fdb3120`
+  remain valid for the harness content. CI must still re-run on the new head and
+  be read BY STEP.
+- **`tiphys brief compose --role implementer` requires `roles/implementer.md`,
+  which is an M3-P6 deliverable and absent from `main`** (measured: the command
+  exits nonzero naming the missing path). So the kernel's own brief composer
+  becomes exercisable only after M3-P6 merges. Use it then as a CHECK on that
+  deliverable, and NOT as the authority for a dispatch: nothing runs on Tiphys
+  before M4, which is a settled owner decision.
 - as of: 2026-08-12, AFTER A THREE-AGENT DEATH. The bullets below this one are
   OLDER; where they disagree, this one is later.
 - **THREE AGENTS DIED SIMULTANEOUSLY around 12:35, together with the in-memory
