@@ -27,8 +27,27 @@ is wrong: verify against git and the PR list before trusting it.
   rather than relaying it. DR-0012 condition 2 therefore forbids the merge.
   Fix round 1 is in flight, briefed to repair the MECHANISM (whether the other
   two briefs carry the same hole) rather than the named instance. The paperwork
-  is PR #98 and the ruling is `delivery/review/arbitration-m3-p5.md` on that
-  branch.
+  merged as `6ac2abc` (PR #98), so the ruling is on `main` at
+  delivery/review/arbitration-m3-p5.md:1 and no longer only on a branch.
+  **The post-merge push run on `6ac2abc` is PARTIALLY observed as this is
+  written, and the incomplete state is recorded rather than rounded up.**
+  `macOS smoke` completed success. `gates` run 31563009476 is green through
+  step 10, INCLUDING step 9 `M2 exit test (push)`, which is the push-only arm
+  T-009 exists for, and step 8 correctly skipped. Steps 11 and 12, the M1 exit
+  test and its falsifiability guard, were still running. The phase closure this
+  head belongs to is not claimed until those two are seen; a run green through
+  ten of twelve steps is not a green run.
+- **M3-P7 IS PRE-READ TOO, AND ITS ONE DANGEROUS CANDIDATE IS REFUTED.**
+  delivery/plan/m3-p7-dispatch-read.md:1. M3-P7's criterion 3c needs a gate id
+  RENAMED and a gate entry DELETED as its two witnesses, against
+  `gate-registry.yaml`, which is a merged M3-P2 deliverable absent from M3-P7's
+  declaration. That is the M3-P5 criterion-6 shape. It does not bite: the checks
+  engine resolves that document relative to the `--context` directory
+  (src/checks.ts:640 reading through src/checks.ts:388), so the witness stages a
+  scratch context and the merged file is never touched. The dispatch must still
+  SAY so, because the obvious move is to edit the real file and put it back, and
+  `git checkout --` to put it back is destructive in a tree holding uncommitted
+  work.
 - **M3-P6 IS PRE-READ BUT STILL BLOCKED.** delivery/plan/m3-p6-dispatch-read.md:1
   discharges the criterion-level read in both directions. Read direction: no new
   blocker, every cross-phase read is an M3-P5 deliverable already named in the
@@ -417,8 +436,8 @@ modelled and bound five phases to.
 | M3 cross-phase dependency screen | MERGED #94 at `7d55392` |
 | M3-P4 closeout evidence and the M3-P5 declaration amendment | MERGED #95 at `52fe657` |
 | M3-P5 authoring role briefs | **DOES NOT MERGE**, fix round 1 in flight; PR #96 open at `48829d9` |
-| M3-P5 dual review and arbitration | PR #98 open |
-| M3-P6 pre-dispatch criterion read, and this STATE pass | PR #99 open |
+| M3-P5 dual review and arbitration | MERGED #98 at `6ac2abc` |
+| M3-P6 and M3-P7 pre-dispatch criterion reads, and this STATE pass | PR #99 open |
 | M3-P6 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
