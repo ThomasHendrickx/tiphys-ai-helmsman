@@ -6016,3 +6016,16 @@ and the two shas above are what tells them whether it can differ.
 - Not pushed. Committing and pushing are separate decisions and the push is the
   orchestrator's, so that an in-flight gates run is not cancelled.
 - No `gates` run exists for this head and none was created by me.
+
+## FR5.0 Fix round five: a set-based comparison is blind to multiplicity
+
+Fresh implementer. I did not write rounds one to four. I am closing DV4-1
+(MEDIUM) and dispositioning DV4-2, DV4-3 and DV4-4 (LOW).
+
+Beacon opened at the start of the round, appended to as the work proceeded, per
+CLAUDE.md:375.
+
+Worktree: a detached checkout of 392f97f on a local branch `fr5-round5`.
+Toolchain: node v26.6.0 from the scratch prefix, verified in every shell that
+ran a command.
+
