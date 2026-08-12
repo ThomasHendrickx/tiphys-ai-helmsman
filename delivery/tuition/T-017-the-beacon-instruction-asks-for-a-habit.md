@@ -18,7 +18,7 @@ it works, so that a death leaves a partial result rather than nothing. Every
 brief this session carried that instruction, in those words, with the reason
 attached.
 
-All three agents dispatched today obeyed the first half and not the second:
+All four agents dispatched today obeyed the first half and not the second:
 
 | agent | created | then sat at | for | after a nudge |
 |---|---|---|---|---|
@@ -64,9 +64,9 @@ was left as a reminder while the rules around it were being mechanised.
 The nudge works every time and it is still the wrong answer, for the reason
 delivery/tuition/T-016-an-acknowledged-alarm-says-nothing-new-when-the-state-changes.md:98
 gives: it costs ORCHESTRATOR ATTENTION, and attention is what a busy
-session does not have. Three nudges today were three interruptions that happened
+session does not have. Four nudges today were four interruptions that happened
 to land because the watchdogs were being watched closely. On a session where
-they were not, the same three agents would have batched.
+they were not, the same four agents would have batched.
 
 ## Structural consequence
 
@@ -88,7 +88,7 @@ they were not, the same three agents would have batched.
 
 ## What this entry does NOT claim
 
-- **It does not claim the instruction was ignored.** All three agents created
+- **It does not claim the instruction was ignored.** All four agents created
   the artifact early, which is the half with a trigger. The half without one is
   the half that did not happen, and that is the finding.
 - **It did not claim three was enough to predict the fourth, and the fourth
