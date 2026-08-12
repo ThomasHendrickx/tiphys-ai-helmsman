@@ -6064,10 +6064,15 @@ I am naming the mechanism rather than the four inputs deliberately, because the
 four previous rounds each closed the instance they were handed and re-introduced
 the same shape one level down: a regex that matched one spread spelling, a
 `!Array.isArray` type test, a member-name allowlist, and then this. The
-instrument this round installs is one that cannot have this shape at all rather
-than one that handles the reported members: an equality over a sequence is
+instrument this round installs is chosen so that this shape has nowhere to hide
+in it, rather than to handle the reported members: an equality over a sequence is
 decided POSITIONALLY, element by element, so multiplicity, order and substitution
-are all part of the comparison instead of being discarded by it.
+are all part of the comparison instead of being discarded by it. That is a claim
+about a comparator, and FR5.5's ATTR-A run is what settles it in this program: the
+comparator reverted to the length-plus-membership form lets all eight derivation
+members through, and the positional one refuses all eight. I did not find a way
+to construct a member that preserves the positional sequence and still drops a
+gate, which is a different sentence from saying none exists.
 
 The mechanism has a second confirmed instance in a different program:
 `describeDrift` in `scripts/render-agent-rules-gates.mjs` builds a `Set` of each
@@ -6214,7 +6219,9 @@ test/m2-exit-test.test.ts:35
 **Every row walked, with a verdict.** The predicate that separates a defect from
 a correct use is: does this site decide an EQUALITY between two collections in
 which multiplicity carries meaning? A membership test, an emptiness test, a loop
-bound and a string search are not equalities and cannot have this defect.
+bound and a string search do not decide an equality between two collections at
+all, so there is no multiplicity for them to discard. Where that reasoning is
+doing real work rather than restating a definition, the row says so.
 
 scripts/m2-exit-test.sh, grouped because the groups are exact and a per-line
 table of thirty-two rows saying the same thing four times would obscure rather
@@ -6310,7 +6317,20 @@ because it is where a reviewer looks.
 
    The single `Object.keys` is a loop over a recomputed-counts object and is not
    a comparison of two collections. There is no `JSON.stringify` equality in
-   either file, and that shape is multiplicity-SENSITIVE anyway. The only `.size`
+   either file, and that shape is multiplicity-SENSITIVE anyway, which is a claim
+   and so is measured rather than asserted:
+
+   ```
+   $ node -e 'const a=["A","A"],b=["A","B"];
+     console.log("stringify-equality on a substitution:", JSON.stringify(a)===JSON.stringify(b));
+     console.log("set-equality on the same pair:",
+       a.length===new Set(b).size && !a.some(x=>!new Set(b).has(x)));'
+   stringify-equality on a substitution: false
+   set-equality on the same pair: true
+   ```
+
+   The two lines are the whole defect in four values: the same pair of arrays is
+   UNEQUAL to a stringify comparison and EQUAL to a set-and-length one. The only `.size`
    in a non-comment position other than `contribution()` is `absentIds.size` at
    scripts/m2-exit-test.sh:949, which is item 3 below. What I am NOT claiming is
    that these three shapes exhaust the ways of writing the mechanism; they are
@@ -6360,8 +6380,12 @@ attributed form `[<gate-id>]`, which is how a finding about a gate is printed. A
 bare id is not attribution; it appears in the success line and in stack traces.
 
 **Ten members against the pre-fix program at 392f97f.** All ten reach the success
-line, all ten never assert on the missing gate. The control rejects it, so the
-fixture is discriminating.
+line, and in all ten runs the output carries no finding attributed to the missing
+gate. That second half is a MEASUREMENT, printed as the `entered-B` column in the
+capture below and derived from a search for the attributed form `[<gate-id>]` in
+each run's combined output, not an inference from the exit code. The control
+rejects the same fixture and its `entered-B` reads true, so the column is known
+to be capable of reading true and the fixture is discriminating.
 
 ```
 FIXTURE=gap  CONTROL exit=1  entered-B=true
@@ -6469,9 +6493,12 @@ simply consumed wrong.
 **DV4-2 (LOW), FIXED, and a second member found.** The verifier reported one
 prototype-level iterator override and declined to call it a class. It is one: I
 built a second, structurally different member (substituting rather than
-truncating) and both defeat the pre-fix program. The freeze cannot help against
-either, because the override is on the shared prototype and not on the frozen
-instance.
+truncating) and both defeat the pre-fix program. The freeze does not help against
+either, and that is measured rather than reasoned: the pre-fix program at 392f97f
+already carries the freeze, and the two rows `iter-truncate-last` and
+`iter-substitute-last` in FR5.5's first capture both reach the success line on it.
+The reason it does not help is that the override is on the shared prototype and
+not on the frozen instance.
 
 The fix is not an indexed loop. An indexed loop would make the shipped `for ...
 of` immune and produce no witness, and it would close the spelling rather than
@@ -6595,3 +6622,63 @@ and I ran the full suite twice.
 
 ### FR5.8 The claim grep
 
+Run over this round's section, at the head this file is committed at:
+
+```
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' \
+    delivery/work-history/exit-test-assertion-direction.md
+```
+
+One hit falls inside FR5, and it carries the command that settles it in the
+paragraph immediately below it: "that shape is multiplicity-SENSITIVE anyway",
+answered by the two-line `node -e` capture in FR5.4 item 2. Three hits that were
+present in an earlier draft of this section were restated rather than left:
+
+| was | is now |
+|---|---|
+| "an instrument that cannot have this shape at all" | "chosen so that this shape has nowhere to hide in it", with the ATTR-A run beside it, and "I did not find a way to construct a member that ..." |
+| "cannot have this defect" | "do not decide an equality between two collections at all" |
+| "the freeze cannot help against either" | "does not help, and that is measured", with the two capture rows named |
+
+**THE ALTERNATION HAS A HOLE AND I CHECKED IT BY EYE.** It carries `cannot be`
+and no other `cannot X` form, so `cannot fire`, `cannot reach` and `cannot
+happen` pass untouched. The eye-check command and its full output:
+
+```
+$ grep -nEi 'cannot [a-z]+' <this section>
+543:Two things bound it, and neither is a claim that it cannot bite:
+```
+
+That one is a disclaimer of a claim rather than a claim, which is the direction
+the rule wants. I also swept four universals the alternation does not carry
+(`every one/case/shape/spelling`, `exhaust`, `guarantee`, `nothing can`, `all
+possible`) and the single hit is "I am NOT claiming that these three shapes
+exhaust the ways of writing the mechanism", which is again a disclaimer.
+
+### FR5.9 Handover
+
+- **Scope touched**: scripts/m2-exit-test.sh:1, test/m2-exit-test.test.ts:1,
+  test/behaviors.json:604 and this work history. Nothing else. Verified with
+  `git diff --stat` against 392f97f, reproduced in the report.
+- **test/behaviors.json gains ONE row and changes none**, which is the
+  append-only form CLAUDE.md:201 requires. Nothing in this round asserts a count
+  over it, and the new test asserts by name.
+- **scripts/render-agent-rules-gates.mjs is NOT touched**, although
+  delivery/verification/render-agent-rules-gates-duplicate-row.md:44 confirms it
+  carries the same mechanism at its lines 196 and 197 (`const wantSet = new
+  Set(want); const haveSet = new Set(have);`). It is outside the scope I was
+  given and is separately tracked. It is named here, in the test's comment at
+  test/m2-exit-test.test.ts:2276, and in FR5.1, so that a reader of any of the
+  three finds it.
+- **Sites the derivation found that are outside this round's scope**, enumerated
+  rather than edited: the nine argument-position command substitutions listed in
+  FR5.6 (the DV3-F2 mechanism, not this one), and `process.argv.indexOf` at
+  scripts/m2-exit-test.sh:445, scripts/m2-exit-test.sh:1012 and
+  scripts/m2-exit-test.sh:1374, where a repeated flag silently takes the first.
+- **Not pushed.** Committing and pushing are separate decisions; the push is the
+  orchestrator's, so an in-flight `gates` run is not cancelled.
+- **No `gates` run exists for this head and none was created by me.** Every
+  measurement in this section is local, on node v26.6.0, and CI on Node 26
+  remains the authority (CLAUDE.md:585). "Green" here is scoped to the runs that
+  produced it (CLAUDE.md:418), and those runs are named with their invocation,
+  toolchain and build state in FR5.7.
