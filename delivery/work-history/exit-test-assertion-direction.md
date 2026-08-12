@@ -770,3 +770,67 @@ TWO OPEN ITEMS, being investigated now, NOT yet explained:
    must be read, not assumed.
 
 Neither is called settled until its result record has been read.
+
+### Both open items closed
+
+1. `suite` RED was MY defect, not a pre-existing one. The behaviors registry
+   requires each entry's description to be the test's name VERBATIM ("resolves by
+   name", CLAUDE.md:280), and I had written prose summaries instead:
+
+   ```
+   suite/result.json: red | 2 finding(s): behavior
+   m2-exit-main-absent-list-derived-from-manifest does not resolve: no reported
+   test is named "the main bundle expectation derives its absent list from the
+   manifest, so a newly declared gate it does not run is asserted absent"; ...
+   ```
+
+   Fixed by setting all three descriptions to the exact test names. Re-run:
+
+   ```
+   $ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode local-only \
+       --evidence <scratch> --base origin/main
+   gates: declared 4 applicable 4 verdict 4 green 4 red 0 not-applicable 0 error 0 vacuous 0
+   gates: every applicable gate is green
+   exit=0
+   ```
+
+2. `scope` ERROR was MY invocation, not a defect: `gate scope requires --phase,
+   which was not supplied`. CI supplies one, derived from the head ref by the
+   workflow's sed, which for a non-phase branch passes the branch through
+   unchanged. Reproducing that:
+
+   ```
+   $ PHASE=$(printf '%s' "$BR" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')
+   claude/exit-test-harness-assertion-direction
+   $ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+       --evidence <scratch> --base origin/main --head HEAD --phase "$PHASE"
+   gates: declared 12 applicable 6 verdict 6 green 6 red 0 not-applicable 6 error 0 vacuous 0
+   gates: required gate(s) not applicable: citations, scope, red-witness
+   exit=20
+     manifest-self-check green    credential-token  not-applicable
+     coverage            green    citations         not-applicable
+     credential-scrub    green    scope             not-applicable
+     suite               green    deploy            not-applicable
+     clause-map          green    migrations        not-applicable
+     agent-rules-drift   green    red-witness       not-applicable
+   ```
+
+   Zero red, zero error. The three not-applicable required gates are the
+   diff-scoped ones and each is legitimately unmet on this branch: `scope`
+   because the branch is deliberately non-phase, `citations` because
+   `delivery/work-history/` is not in its trigger list, `red-witness` because the
+   diff touches no `src/` or `bin/` path. Runner exit 20 is "required gate(s) not
+   applicable"; the harness's assertion program is what decides that, and under
+   DR-0018 it accepts each of the three with an evaluated, unmet precondition.
+
+## [in progress] Running the REAL harness PR bundle end to end
+
+Command now running (this is the integration check: the shipped harness, the
+real repository, both changes live, no lab):
+
+```
+scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD \
+  --phase claude/exit-test-harness-assertion-direction <evidence>
+```
+
+Full capture to follow when it returns.
