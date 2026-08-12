@@ -3080,3 +3080,43 @@ about this round's added wall time influenced scheduling. This round adds two
 tests and one of them spawns the assertion program four more times, so it does add
 load, and I have not measured whether that matters.
 
+## FR2.14 The push, and the CI run it is waiting on
+
+ONE push for this round, of eleven local commits, made only after every command
+whose output this section cites had already run. The orchestrator corrected my
+brief mid-round on exactly this point: "commit and push as you go" and "let the
+run complete before reporting" are in conflict, because a push cancels the
+in-flight run on the previous head. Committing locally is what satisfies
+durability; pushing is a separate act with a separate cost.
+
+```
+$ git push origin HEAD:refs/heads/claude/exit-test-harness-assertion-direction
+   fdb3120..8db93b2  HEAD -> claude/exit-test-harness-assertion-direction
+$ git rev-parse HEAD
+8db93b2dcadd2da6b86c1c274c15fe57ce460412
+```
+
+Started from fdb3120692f4178e213c40a6439a742effe24466, ended at
+`8db93b2dcadd2da6b86c1c274c15fe57ce460412`. No run was cancelled by this push:
+the previous run on `fdb3120` (31602409424) had already completed with conclusion
+success before this round began.
+
+The run to watch is `31613587959`, event `pull_request`, head `8db93b2d`. Its
+conclusion is recorded below, read BY STEP rather than as a single word, because
+CLAUDE.md:472 is the rule this whole branch is about: a gate result is evidence
+only for the configuration it ran under, and this branch's changes touch a file
+whose behaviour forks on the CI event.
+
+**The bound on whatever that run says, restated because it is the thing most
+likely to be over-read.** The `gates` workflow does not execute
+`scripts/m2-exit-test.sh`; the harness is exercised by `test/m2-exit-test.test.ts`
+under the `suite` gate. So a green run is evidence that the TESTS pass, and the
+lab work in FR2.4 to FR2.7 is the evidence that the guards discriminate. Round 1
+recorded the same bound and it has not changed.
+
+One prediction, written before the result so it can be wrong: the `suite` gate is
+the step most likely to redden, and if it does, the first thing to check is
+whether the failing test is `the heartbeat schedule is on disk and shared by
+single passes` or another `test/watcher.test.ts` real-clock test, which FR2.13
+identifies as failing under load in a file this branch does not touch.
+
