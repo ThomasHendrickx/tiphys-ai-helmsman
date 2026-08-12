@@ -38,6 +38,24 @@ is wrong: verify against git and the PR list before trusting it.
   M1 exit test and its falsifiability guard success. This bullet was first
   written while steps 11 and 12 were still running and said so; it is now
   updated from the finished run rather than from the earlier partial one.
+- **M3-P5 FIX ROUND 1 HANDED BACK AT `85f9fd6` AND IS UNDER DELTA VERIFICATION.**
+  It fixed the MECHANISM rather than the instance: `outputContractDiagnostics` in
+  `src/roles.ts`, wired into `validate --type role-brief`, so a brief declaring
+  an output whose registered schema is absent from its mandated reading is now
+  INVALID, which covers M3-P6's two briefs the day they land. Its derivation
+  imported the validator's own type table rather than restating it, and reached
+  the same result the orchestrator had derived independently and sealed in the
+  verification contract beforehand: the investigator was the ONLY member of the
+  class. It rejected two easier repairs with reasons (deriving mandated reading
+  by injection at compose time, and putting the fix in the shared dispatch
+  block), and on the MEDIUM it says in the SHIPPED clause, not only in its work
+  history, that the clause is an instruction with a trigger and a stated price
+  and is NOT a lock, assigning the closing mechanism to M3-P9. Nothing in it is
+  being taken on trust; the delta verification is dispatched and its contract
+  requires re-running the derivation, attacking the mechanism for what it does
+  not catch, and reproducing the defangs.
+- **A new tuition entry, T-015**, from four self-inflicted citation repoints in
+  one branch: delivery/tuition/T-015-a-citation-into-a-newest-at-top-file-rots-on-every-append.md:1.
 - **M3-P8 HAD THE M3-P5 GAP FOR REAL, AND IT IS ALREADY FIXED.**
   delivery/plan/m3-p8-declaration-gap.md:1. Criterion 4c requires a verbatim
   capture checked in as `test/fixtures/mechanisms-interim.md`, and criterion 4b
