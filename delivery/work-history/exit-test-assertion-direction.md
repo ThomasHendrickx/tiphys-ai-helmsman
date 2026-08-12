@@ -6032,7 +6032,7 @@ Fresh implementer. I did not write rounds one to four. I am closing DV4-1
 (MEDIUM) and dispositioning DV4-2, DV4-3 and DV4-4 (LOW).
 
 Beacon opened at the start of the round, appended to as the work proceeded, per
-CLAUDE.md:375.
+CLAUDE.md:407.
 
 Worktree: a detached checkout of 392f97f on a local branch `fr5-round5`.
 Toolchain: node v26.6.0 from the scratch prefix, verified in every shell that
@@ -6601,12 +6601,12 @@ Round four measured 598 for `npm test` and 600 for bare `node --test` at 392f97f
 This round adds exactly one test, so 599 and 601 are the expected values and are
 what was measured. The two-test gap between the invocations is the tracked
 `sandbox/test/greet.test.js` fixture that `package.json`'s `test` script pattern
-excludes, per CLAUDE.md:677.
+excludes, per CLAUDE.md:760.
 
 The `# skipped` lines in the run output are vendored JSON-Schema-suite subtests
 declining fixtures outside the declared vocabulary. They are counted by neither
 the `skipped` summary line nor the `tests` line, and they are present identically
-on both arms and at the base head. They are not a skip in the sense CLAUDE.md:642
+on both arms and at the base head. They are not a skip in the sense CLAUDE.md:725
 means.
 
 **test/watcher.test.ts flake: NOT OBSERVED in this round.** Both full suite runs
@@ -6668,7 +6668,7 @@ exhaust the ways of writing the mechanism", which is again a disclaimer.
   carries the same mechanism at its lines 196 and 197 (`const wantSet = new
   Set(want); const haveSet = new Set(have);`). It is outside the scope I was
   given and is separately tracked. It is named here, in the test's comment at
-  test/m2-exit-test.test.ts:2276, and in FR5.1, so that a reader of any of the
+  test/m2-exit-test.test.ts:2272, and in FR5.1, so that a reader of any of the
   three finds it.
 - **Sites the derivation found that are outside this round's scope**, enumerated
   rather than edited: the nine argument-position command substitutions listed in
@@ -6677,8 +6677,28 @@ exhaust the ways of writing the mechanism", which is again a disclaimer.
   scripts/m2-exit-test.sh:1374, where a repeated flag silently takes the first.
 - **Not pushed.** Committing and pushing are separate decisions; the push is the
   orchestrator's, so an in-flight `gates` run is not cancelled.
+- **Every `path:line` in this section was resolved against THIS worktree**, by
+  extracting the citation tokens outside code fences and printing the line each
+  one lands on. Six were wrong on the first pass and are corrected: five
+  `CLAUDE.md` citations and one into the test file. The `CLAUDE.md` five are worth
+  a warning to the next agent: the copy at the repository root is on a different
+  branch from this one and its line numbers differ by dozens, so a citation
+  carried over from a briefing or from another worktree lands in the wrong
+  section while still looking plausible. Resolve against the tree you are
+  committing to.
+- **The `citations` gate does NOT cover this file**, so none of the above was
+  machine-checked. Measured at this head:
+  `node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only
+  citations --evidence <dir> --base origin/main --head HEAD` exits 0 with
+  `declared 1 applicable 0 not-applicable 1`, and the record's own reason is
+  "no changed path under delivery/plan/, delivery/verification/,
+  delivery/decisions/, delivery/tuition/, delivery/requirements/,
+  delivery/STATE.md". `delivery/work-history/` is not on that list, which is the
+  gap delivery/verification/citations-gate-does-not-see-reviews-or-work-histories.md:1
+  already records. A green citations gate on this branch would say nothing about
+  this file, and it did not run at all.
 - **No `gates` run exists for this head and none was created by me.** Every
   measurement in this section is local, on node v26.6.0, and CI on Node 26
-  remains the authority (CLAUDE.md:585). "Green" here is scoped to the runs that
-  produced it (CLAUDE.md:418), and those runs are named with their invocation,
+  remains the authority (CLAUDE.md:644). "Green" here is scoped to the runs that
+  produced it (CLAUDE.md:489), and those runs are named with their invocation,
   toolchain and build state in FR5.7.
