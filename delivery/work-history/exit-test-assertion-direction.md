@@ -697,3 +697,76 @@ count anywhere asserting over the registry (CLAUDE.md:201):
 Baseline before any change, at `3ff2023` with the fix branch's beacon commit
 only: node v26.6.0 (the fetched floor toolchain), `dist/` BUILT, invocation
 `npm test`: exit 0, 590 tests, 590 pass, 0 fail, **0 skipped**.
+
+## [in progress] Gate runs after merging origin/main at bb8f656
+
+Merged `origin/main` (bb8f656) into the branch because `git diff --name-only
+origin/main..HEAD` was showing five files I never touched: the branch was cut at
+3ff2023 and main had advanced by one commit (#106). After the merge the changed
+set is exactly my five files:
+
+```
+$ git diff --name-only origin/main...HEAD
+delivery/work-history/exit-test-assertion-direction.md
+scripts/m2-exit-test.sh
+test/behaviors.json
+test/gate-registry.test.ts
+test/m2-exit-test.test.ts
+```
+
+Preflight after the merge, all captured:
+
+```
+$ npm run build                                   exit=0, git status clean
+$ node scripts/render-agent-rules-gates.mjs --check exit=0
+   agent-rules-drift: green (17 rendered gate rows compared)
+$ git add -A && node scripts/check-authored-bytes.mjs exit=0
+$ node -e '/^claude\/m[0-9]+-p[0-9]+-/.test(branch)'  false  (correct: non-phase branch)
+```
+
+Gate runs, raw:
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --only citations --evidence <scratch> --base origin/main --head HEAD
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+exit=21
+  citations/result.json: not-applicable, "precondition citations-diff-touches-documents
+  evaluated and unmet: no changed path under delivery/plan/, delivery/verification/,
+  delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md"
+```
+
+citations is legitimately not-applicable here: `delivery/work-history/` is not in
+its trigger list. Exit 21 is the runner's "no applicable gate" code, not a red.
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode local-only \
+    --evidence <scratch>
+gates: declared 4 applicable 3 verdict 3 green 3 red 0 not-applicable 0 error 1 vacuous 0
+gates: 1 gate(s) reported error: suite
+exit=21
+  suite/result.json: error, "gate suite requires --base, which was not supplied"
+
+$ ... same, with --base origin/main
+gates: declared 4 applicable 4 verdict 4 green 3 red 1 not-applicable 0 error 0 vacuous 0
+gates: 1 gate(s) reported red: suite
+exit=1
+
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --evidence <scratch> --base origin/main --head HEAD
+gates: declared 12 applicable 6 verdict 6 green 5 red 1 not-applicable 5 error 1 vacuous 0
+gates: 1 gate(s) reported error: scope
+exit=21
+```
+
+TWO OPEN ITEMS, being investigated now, NOT yet explained:
+
+1. `suite` RED under `--base origin/main`. The suite gate compares the behaviors
+   registry against the merge base, and this branch APPENDS two entries to
+   `test/behaviors.json`, so a red here may be the registry comparison rather
+   than a failing test. `npm test` itself is exit 0 with 593 pass and 0 skipped.
+2. `scope` ERROR rather than not-applicable. Expected not-applicable on a
+   non-phase branch (branch-matches unmet). An error is a different thing and
+   must be read, not assumed.
+
+Neither is called settled until its result record has been read.
