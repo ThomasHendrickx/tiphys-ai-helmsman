@@ -9,8 +9,9 @@ This is NOT an M3 phase. It is an orchestrator-side hotfix to shared harness
 code, which under T-009's corollary IS a fix round and owes the full fix-round
 contract at CLAUDE.md:297.
 
-STATUS: IN PROGRESS. Written incrementally as a beacon (T-008 rule 1,
-CLAUDE.md:375). Raw captures land here before they are polished.
+STATUS: COMPLETE. Written incrementally as a beacon (T-008 rule 1,
+CLAUDE.md:375), so the captures below landed as they were taken rather than
+being reconstructed at the end.
 
 ## 1. The mechanism (fix-round contract item 1)
 
@@ -727,18 +728,33 @@ count anywhere asserting over the registry (CLAUDE.md:201):
 - `m2-exit-main-absent-list-derived-from-manifest`
 - `m2-exit-red-gate-rejected-on-both-bundles`
 
-## 8. Suite
+## 8. The complete suite sentence
 
-Baseline before any change, at `3ff2023` with the fix branch's beacon commit
-only: node v26.6.0 (the fetched floor toolchain), `dist/` BUILT, invocation
-`npm test`: exit 0, 590 tests, 590 pass, 0 fail, **0 skipped**.
+A bare "N pass, exit 0" is an incomplete sentence in this repository
+(CLAUDE.md:642). All three axes measured at this head, on a clean tree after
+`npm run build`:
 
-## [in progress] Gate runs after merging origin/main at bb8f656
+| toolchain | build state | invocation | tests | pass | fail | SKIPPED | exit |
+|---|---|---|---|---|---|---|---|
+| node v26.6.0 (fetched floor) | `dist/` built | `npm test` | 593 | 593 | 0 | **0** | 0 |
+| node v26.6.0 (fetched floor) | `dist/` built | bare `node --test` | 595 | 595 | 0 | **0** | 0 |
+| node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 593 | 591 | 0 | **2** | 0 |
 
-Merged `origin/main` (bb8f656) into the branch because `git diff --name-only
-origin/main..HEAD` was showing five files I never touched: the branch was cut at
-3ff2023 and main had advanced by one commit (#106). After the merge the changed
-set is exactly my five files:
+The three numbers are consistent with the deltas CLAUDE.md:677 records and not
+averaged: the bare invocation adds the two `sandbox/test/greet.test.js` fixtures
+that `package.json`'s test pattern excludes, and the default toolchain skips the
+two floor-gated `doctor` tests. Both deltas are 2, and they are different pairs.
+
+Baseline for comparison, measured on this branch before any change (node
+v26.6.0, `dist/` built, `npm test`): 590 tests, 590 pass, 0 skipped. The
+difference is exactly the three tests this change adds.
+
+`npm ci` exit 0; `npm run build` exit 0 with `git status --porcelain` empty
+afterwards; `node scripts/check-authored-bytes.mjs` exit 0 (run with the tree
+staged, since it exits 2 without checking on a dirty tree and that reads like a
+pass); `node scripts/render-agent-rules-gates.mjs --check` exit 0.
+
+## 9. Files changed, and the scope position
 
 ```
 $ git diff --name-only origin/main...HEAD
@@ -749,263 +765,55 @@ test/gate-registry.test.ts
 test/m2-exit-test.test.ts
 ```
 
-Preflight after the merge, all captured:
+The branch is deliberately NOT a phase branch, so the scope gate derives no
+phase id and reports not-applicable with an evaluated, unmet precondition
+(captured in section on gate runs). Three of the five files are the two standing
+pre-authorized extras plus the harness itself;
+`test/gate-registry.test.ts` is the fourth reader described above, edited because
+this change removed the literal text it was scraping. Named here rather than left
+for a reviewer to notice.
+
+## 10. The claim grep
+
+Run in BOTH forms before submitting, per the dispatch brief: the line-based form
+from CLAUDE.md:338, and a wrap-insensitive form that flattens whitespace first,
+because a claim split across a line break is invisible to the first.
 
 ```
-$ npm run build                                   exit=0, git status clean
-$ node scripts/render-agent-rules-gates.mjs --check exit=0
-   agent-rules-drift: green (17 rendered gate rows compared)
-$ git add -A && node scripts/check-authored-bytes.mjs exit=0
-$ node -e '/^claude\/m[0-9]+-p[0-9]+-/.test(branch)'  false  (correct: non-phase branch)
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/exit-test-assertion-direction.md
+$ tr '\n' ' ' < <same file> | tr -s ' ' | grep -oEi '.{70}(cannot be|impossible|...).{70}'
 ```
 
-Gate runs, raw:
+The second form found nothing the first missed on this document, but it is
+recorded as run because a null result from an unrun check is not a null result.
 
-```
-$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
-    --only citations --evidence <scratch> --base origin/main --head HEAD
-gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
-exit=21
-  citations/result.json: not-applicable, "precondition citations-diff-touches-documents
-  evaluated and unmet: no changed path under delivery/plan/, delivery/verification/,
-  delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md"
-```
+Disposition of every hit: four are verbatim quotations of other files (the
+workflow comment, the gate-registry test's divergence map) and are marked as
+quotes; five carry an adjacent captured command in the same section; and the
+remaining ones were CHANGED:
 
-citations is legitimately not-applicable here: `delivery/work-history/` is not in
-its trigger list. Exit 21 is the runner's "no applicable gate" code, not a red.
+- **"m1-exit-test.sh never invokes the gate runner" was FALSE** and is corrected
+  in section 3 with the measurement that falsified it. It invokes the CLI at
+  fifteen-odd call sites; what it never invokes is the `gates` subcommand.
+- **"so it always holds"** about the coverage precondition is restated as a claim
+  about the current head rather than about the future.
+- **"a row the table does not name is never asserted on"** now names both what
+  settles it structurally and what settles it empirically, instead of standing
+  as a bare universal.
 
-```
-$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode local-only \
-    --evidence <scratch>
-gates: declared 4 applicable 3 verdict 3 green 3 red 0 not-applicable 0 error 1 vacuous 0
-gates: 1 gate(s) reported error: suite
-exit=21
-  suite/result.json: error, "gate suite requires --base, which was not supplied"
+## 11. Open, and explicitly NOT closed by me
 
-$ ... same, with --base origin/main
-gates: declared 4 applicable 4 verdict 4 green 3 red 1 not-applicable 0 error 0 vacuous 0
-gates: 1 gate(s) reported red: suite
-exit=1
-
-$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
-    --evidence <scratch> --base origin/main --head HEAD
-gates: declared 12 applicable 6 verdict 6 green 5 red 1 not-applicable 5 error 1 vacuous 0
-gates: 1 gate(s) reported error: scope
-exit=21
-```
-
-TWO OPEN ITEMS, being investigated now, NOT yet explained:
-
-1. `suite` RED under `--base origin/main`. The suite gate compares the behaviors
-   registry against the merge base, and this branch APPENDS two entries to
-   `test/behaviors.json`, so a red here may be the registry comparison rather
-   than a failing test. `npm test` itself is exit 0 with 593 pass and 0 skipped.
-2. `scope` ERROR rather than not-applicable. Expected not-applicable on a
-   non-phase branch (branch-matches unmet). An error is a different thing and
-   must be read, not assumed.
-
-Neither is called settled until its result record has been read.
-
-### Both open items closed
-
-1. `suite` RED was MY defect, not a pre-existing one. The behaviors registry
-   requires each entry's description to be the test's name VERBATIM ("resolves by
-   name", CLAUDE.md:280), and I had written prose summaries instead:
-
-   ```
-   suite/result.json: red | 2 finding(s): behavior
-   m2-exit-main-absent-list-derived-from-manifest does not resolve: no reported
-   test is named "the main bundle expectation derives its absent list from the
-   manifest, so a newly declared gate it does not run is asserted absent"; ...
-   ```
-
-   Fixed by setting all three descriptions to the exact test names. Re-run:
-
-   ```
-   $ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode local-only \
-       --evidence <scratch> --base origin/main
-   gates: declared 4 applicable 4 verdict 4 green 4 red 0 not-applicable 0 error 0 vacuous 0
-   gates: every applicable gate is green
-   exit=0
-   ```
-
-2. `scope` ERROR was MY invocation, not a defect: `gate scope requires --phase,
-   which was not supplied`. CI supplies one, derived from the head ref by the
-   workflow's sed, which for a non-phase branch passes the branch through
-   unchanged. Reproducing that:
-
-   ```
-   $ PHASE=$(printf '%s' "$BR" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')
-   claude/exit-test-harness-assertion-direction
-   $ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
-       --evidence <scratch> --base origin/main --head HEAD --phase "$PHASE"
-   gates: declared 12 applicable 6 verdict 6 green 6 red 0 not-applicable 6 error 0 vacuous 0
-   gates: required gate(s) not applicable: citations, scope, red-witness
-   exit=20
-     manifest-self-check green    credential-token  not-applicable
-     coverage            green    citations         not-applicable
-     credential-scrub    green    scope             not-applicable
-     suite               green    deploy            not-applicable
-     clause-map          green    migrations        not-applicable
-     agent-rules-drift   green    red-witness       not-applicable
-   ```
-
-   Zero red, zero error. The three not-applicable required gates are the
-   diff-scoped ones and each is legitimately unmet on this branch: `scope`
-   because the branch is deliberately non-phase, `citations` because
-   `delivery/work-history/` is not in its trigger list, `red-witness` because the
-   diff touches no `src/` or `bin/` path. Runner exit 20 is "required gate(s) not
-   applicable"; the harness's assertion program is what decides that, and under
-   DR-0018 it accepts each of the three with an evaluated, unmet precondition.
-
-## The REAL harness, both bundles, end to end
-
-The integration check: the shipped harness, the real repository, both changes
-live, no lab. BOTH arms, because T-009.
-
-```
-$ scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD \
-    --phase claude/exit-test-harness-assertion-direction <evidence>
-HARNESS PR BUNDLE exit=0
-m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
-m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history)
-m2-green: scope GREEN with 2 unit(s) against scratch repo: declaration governs claude/m2-p4-scope-auditor, diff touches only src/a.ts and src/b.ts
-m2-green: citations GREEN with 1 unit(s) against scratch repo: changed delivery/plan/fixture.md cites src/target.ts:1 which resolves
-m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
-m2-exit-test: OK. evidence in <evidence>
-
-$ scripts/m2-exit-test.sh --no-build --bundle main <evidence>
-HARNESS MAIN BUNDLE exit=0
-m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
-m2-exit-test: OK. evidence in <evidence>
-```
-
-### THE ORCHESTRATOR'S TEST OF WHETHER I CHANGED MORE THAN THE MECHANISM
-
-The brief's follow-up said: on `main` today all eleven manifest gates are in the
-PR table, so the derive-from-manifest design must change NOTHING on `main`, and
-if the implementation makes `main` behave differently that is a signal of scope
-creep. Two lines above settle it:
-
-- PR arm: `11 gate(s) asserted (11 from an explicit table row, 0 under the
-  default required-green); 0 asserted absent`. NOTHING defaulted.
-- Main arm: `6 gate(s) asserted (6 from an explicit table row, 0 under the
-  default required-green); 5 asserted absent`. NOTHING defaulted, and the five
-  derived absent ids are the same five the hand-written list held, as a SET
-  (`["credential-token","citations","scope","clause-map","red-witness"]` against
-  the old `["red-witness","citations","scope","credential-token","clause-map"]`,
-  which differ only in order).
-
-And the runner invocation the harness records is byte-identical to the pre-fix
-one, which is the direct evidence that the main bundle was not widened:
-
-```
-"command": "node dist/bin/tiphys.js gates run --manifest gates.manifest.json --evidence main-bundle --base main --only manifest-self-check --only suite --only coverage --only credential-scrub --only deploy --only migrations"
-```
-
-Same six ids, same order, generated from `MAIN_ONLY_GATES` instead of written
-out. Behaviour on `main` today is unchanged, measured on both arms.
-
-### PREVENTIVE, NOT CORRECTIVE, on the main arm, and why I did not just document it
-
-The brief's follow-up also recorded that the main arm's two hand-written copies
-currently AGREE (`MAIN table NOT in --only: []`), so there is no live divergence
-to repair and the work there is preventive. That matches my own measurement
-above: `--only` (6) and `absent` (5) partition the eleven-gate manifest exactly.
-It was offered as defensible to leave the duplication and document it instead.
-
-I did not, and the reason is that the hazard is not speculative, it is SCHEDULED.
-`brief-drift` is a twelfth manifest gate sitting in review at PR #105, and the
-moment it merges it lands in NEITHER copy. A comment saying "keep these two in
-sync" is the class of guard this repository has recorded failing twice (T-005,
-T-006: a rule that depends on remembering does not survive a busy session), and
-the counterfactual here is a COMMAND rather than a judgment, which
-CLAUDE.md:306 says is exactly when to make it mechanical. Deriving the
-complement costs one shell function and removes the possibility rather than
-documenting it.
-
-What I did NOT do is derive the `--only` list itself, for the measured reason in
-section 2: `clause-map` is `required` with no precondition and is still
-deliberately excluded, so no rule reproduces the six-id set, and deriving it
-would widen what a push to `main` runs.
-
-### THE EXTRACTION PHANTOM, avoided by construction
-
-The brief's follow-up warned that a lazy regex over the `--only` list picks up
-the words "is" and "to" out of prose in the surrounding comments, and that a diff
-against those phantoms would look like a finding. My extractions cannot pick
-them up: the tables are read by `JSON.parse` of the block, and the gate set is
-read from `MAIN_ONLY_GATES="..."` anchored at line start with a quoted value.
-
-This is more than luck, because a reader in the repository WAS doing it the
-scrapeable way. test/gate-registry.test.ts:406 derived the push arm by matching
-`/--only ([a-z0-9-]+)/g` over a slice of the harness text. My change removed the
-literal flags it was scraping and the test went red, which is how I found it (see
-below). Its replacement reads the single `MAIN_ONLY_GATES` declaration, which is
-both phantom-proof and strictly closer to that test's own stated intent of
-"DERIVED, NOT ASSIGNED".
-
-### THE ADJACENT DEFECT: are the per-gate `expect` strings CORRECT?
-
-The brief's follow-up explicitly did not check whether a row PRESENT carries the
-RIGHT expectation, said it is inside the mechanism's blast radius, and left the
-scope call to me. I put it IN scope and checked it, rather than excluding it.
-
-Every row of every arm, cross-checked against the manifest entry it names
-(both resolutions of the per-run scope placeholder):
-
-```
-=== pr(phase)                                        === main
-  manifest-self-check  expect=green            req=true    manifest-self-check  expect=green          req=true
-  red-witness          expect=green|not-applicable req=true suite              expect=green          req=true
-  suite                expect=green            req=true    coverage            expect=green          req=true  <== (see below)
-  scope                expect=green            req=true    credential-scrub    expect=green          req=true
-  citations            expect=green|not-applicable req=true deploy             expect=not-applicable req=false
-  coverage             expect=green            req=true  <== (see below)
-  clause-map           expect=green            req=true    migrations          expect=not-applicable req=false
-  credential-scrub     expect=green            req=true
-  deploy               expect=not-applicable   req=false
-  migrations           expect=not-applicable   req=false
-  credential-token     expect=green|not-applicable req=false
-=== pr(non-phase): identical except scope expect=green|not-applicable
-```
-
-RESULT: no defect. Every `required` flag agrees with the manifest's
-`applicability`, no row admits `red` or `error`, and every row admitting
-`not-applicable` names a gate that HAS a precondition and so can legitimately
-report it.
-
-The one row the cross-check flagged, `coverage`, is correct and deliberately
-STRICTER than its precondition permits. Its precondition is a file-exists on
-delivery/requirements/migration-table.md:1, which `git ls-files --error-unmatch`
-confirms is tracked at this head, so the precondition is met on any checkout
-that carries that file; a not-applicable `coverage` would mean the inventory had
-gone missing, and failing on that is right. I have not established that the file
-can never be moved or renamed, only that `expect: green` is the correct row while
-it is tracked. Asserting the converse
-direction would redden a correct row, so the new guard asserts one direction
-only and says so.
-
-That check is now permanent, as
-`m2-exit-expect-row-admits-only-reachable-statuses`, red-witnessed under two
-structurally different members: widening a no-precondition gate's row
-(`clause-map`) to admit not-applicable, and widening a row (`suite`) to admit
-red. Both redden; the test is green as written.
-
-### A SITE MY OWN DERIVATION MISSED, found by execution rather than by grep
-
-Recorded because a missed site is exactly what section 4 is for, and this one was
-NOT in my `git grep -ln 'summary\.json'` enumeration.
-
-test/gate-registry.test.ts:406 reads the main bundle's gate set out of the
-harness, to derive which registry entries should declare `events: [push]`. It
-does not read a bundle summary, so no search for `summary.json` could ever have
-found it; it surfaced only when the full suite went red after my change. That is
-the fourth reader of this gate set, and it is the same lesson as CLAUDE.md:206:
-a site no grep could see was found only by execution.
-
-Its fix is one line of intent-preserving change, red-witnessed: renaming
-`MAIN_ONLY_GATES` in the harness makes it fail loudly with "scripts/
-m2-exit-test.sh no longer declares MAIN_ONLY_GATES", rather than silently
-deriving an empty set. Verified: 13 tests, 13 pass with the declaration present;
-the named test red without it.
+- test/coverage-gate.test.ts:190 pins `assert.equal(coverageRow?.units, 115)`, a
+  COUNT over the coverage inventory. If that inventory is append-only this is the
+  by-count-not-by-name shape CLAUDE.md:201 forbids. Different mechanism, not
+  touched, reported for the orchestrator.
+- The other half of R-094 (CLAUDE.md:233): a gate declared only in
+  `gate-registry.yaml` still does not run in CI, because the harness passes
+  `--manifest` on both arms. My derived set is over the MANIFEST, which is what
+  runs. Closing that is a separate edit, and test/gate-registry.test.ts:1056
+  asserts `--registry` is absent from the harness, so it is not something to do
+  incidentally here.
+- Whether the main bundle SHOULD run `brief-drift` (and `agent-rules-drift`) is a
+  policy question about the push arm's cost, not an assertion-direction question.
+  I did not widen `MAIN_ONLY_GATES`. What changed is that whatever it does not
+  run is now asserted absent.
