@@ -1209,7 +1209,7 @@ test("the main bundle's absent list is DERIVED from the manifest, so a newly dec
   }
 });
 
-test("a RED gate is rejected on BOTH bundles under three structurally different shapes, including one the expectations table names and permits", (t) => {
+test("a RED gate is rejected on BOTH bundles under three structurally different shapes, and the derived expected set is separately witnessed on BOTH bundles by probes it alone rejects", (t) => {
   // The class is "a red gate passes the bundle", and one witness is not a class
   // (CLAUDE.md). Three structurally different members, each on BOTH arms:
   //   1. declared in gates.manifest.json, no table row  -> the MANIFEST leg
@@ -1218,6 +1218,12 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
   // Member 3 is the one that isolates the global zero-red check: neither leg of
   // the derived union helps, because the gate has an explicit spec permitting its
   // status. Members 1 and 2 exercise the two different legs of the union.
+  //
+  // Those three members are all OVER-DETERMINED: each carries a red row, so each
+  // is rejected by zero-red on its own and NONE of them witnesses the derived
+  // expected set. Three further probes below carry no red row and no other
+  // defect, so the derivation is their unique rejecter, and they are built the
+  // SAME WAY on both arms so neither arm can end up asserting nothing.
   if (!existsSync(distEntry)) {
     t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
     return;
@@ -1233,7 +1239,20 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
     assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
 
     const UNLISTED = "fixture-gate-with-no-table-row";
+    const NOWHERE = "fixture-gate-declared-nowhere";
     const { harness: copy, manifest } = harnessCopy(root, [UNLISTED]);
+
+    // The default-spec reason is DERIVED from the shipped harness rather than
+    // copied into this file. The uniqueness assertion below is only as good as
+    // this string, so a reword of the message must redden here loudly instead of
+    // silently turning that assertion into a tautology.
+    const whyMatch = /const DEFAULT_SPEC_WHY =\s*\n\s*"([^"]+)"/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      whyMatch,
+      "could not derive DEFAULT_SPEC_WHY from the harness; the uniqueness check below would be " +
+        "vacuous without it, so this is a hard failure rather than a fallback",
+    );
+    const defaultSpecReason = (whyMatch[1] as string).trim();
 
     const runAssert = (dir: string, expectDoc: unknown, name: string): RunResult => {
       const expectPath = join(root, `expect-${name}.json`);
@@ -1307,7 +1326,7 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
       // Structurally different: it is caught by the ROWS leg of the union, not
       // the manifest leg, so a runner reporting an undeclared gate is covered too.
       const m2Dir = join(root, `${arm}-member-2`);
-      writeBundle(m2Dir, [...healthy, { id: "fixture-gate-declared-nowhere", status: "red" }]);
+      writeBundle(m2Dir, [...healthy, { id: NOWHERE, status: "red" }]);
       const m2 = runAssert(m2Dir, table, `${arm}-member-2`);
       assert.notEqual(
         m2.status,
@@ -1344,70 +1363,135 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
           "the thing being witnessed here",
       );
 
-      // MEMBERS 4 and 5 ISOLATE THE DERIVATION FROM THE ZERO-RED BACKSTOP, and
-      // they exist because a mutation test found the gap. Collapsing the derived
-      // expected set back to the hand-written table alone left members 1 to 3
-      // GREEN: every one of them carries a RED row, so the global zero-red check
-      // satisfied them on its own and the derivation was guarded by nothing.
+      // DERIVATION-ONLY PROBES, built IDENTICALLY on both arms.
       //
-      // These two carry NO red row. They are only ever rejected by the
-      // derivation, so each is red against exactly the mechanism it names, and
-      // the assertions below refuse a rejection that came from zero-red instead.
-      const withoutUnlisted = healthy.filter((r) => r.id !== UNLISTED);
-      const derivationOnly: { name: string; rows: { id: string; status: string }[]; why: string }[] =
-        runsUnlisted
-          ? [
-              {
-                name: "member-4",
-                rows: [...withoutUnlisted, { id: UNLISTED, status: "not-applicable" }],
-                why:
-                  "a manifest gate with no table row reporting not-applicable must be REJECTED: " +
-                  "it is asserted under the default required-green, and accepting it is how a " +
-                  "silently skipped gate reads as legitimately N/A",
-              },
-              {
-                name: "member-5",
-                rows: withoutUnlisted,
-                why:
-                  "a manifest gate with no table row and NO RECORD AT ALL must be REJECTED: a " +
-                  "declared gate that produced no record is a gate that did not run",
-              },
-            ]
-          : [
-              {
-                name: "member-4",
-                rows: [...withoutUnlisted, { id: UNLISTED, status: "not-applicable" }],
-                why:
-                  "a gate the derived absent list covers must not carry a record on this bundle; " +
-                  "a not-applicable record for it means it ran when this bundle does not run it",
-              },
-              {
-                name: "member-5",
-                rows: [...withoutUnlisted, { id: UNLISTED, status: "green" }],
-                why:
-                  "a GREEN record for a gate the derived absent list covers must still be " +
-                  "REJECTED: the two bundles stay distinguishable only if what one does not run " +
-                  "is asserted to have produced nothing",
-              },
-            ];
+      // Members 1 to 3 are all OVER-DETERMINED: each carries a red row, so the
+      // global zero-red check rejects it on its own and none of them can see the
+      // derived expected set disappear. These probes carry no red row and no
+      // other defect, so the derivation is their UNIQUE rejecter.
+      //
+      // The previous version of this block branched on the arm, and on the MAIN
+      // arm produced two probes whose real rejecter was section 8's
+      // declared-absent check, which is pre-existing code: both survived
+      // collapsing the derivation back to the hand-written table, so the
+      // main-arm half of this test witnessed nothing at all. The MECHANISM was
+      // not "they carried red rows" (they did not); it was that uniqueness was
+      // established by excluding the one competitor someone had thought of,
+      // `doesNotMatch(/reported RED/)`, and the competitor set differs BY ARM.
+      // Uniqueness is established mechanically below instead: EVERY finding the
+      // program printed must be a default-spec finding, which excludes every
+      // competitor, including competitors added after this test was written.
+      //
+      // The union at scripts/m2-exit-test.sh:515 spreads two sources a probe can
+      // enter the expected set by, the MANIFEST leg and the ROWS leg. One probe
+      // per leg is what makes this a class rather than one witness (CLAUDE.md).
+      // Defanging the legs SEPARATELY shows they are two code paths and not one
+      // wearing two hats: probe 1 dies with the rows leg and survives removal of
+      // the manifest leg, and probe 2 does the exact opposite.
+      const dropped = table.gates[table.gates.length - 1]?.id as string;
+      const tableWithoutDropped = {
+        ...table,
+        gates: table.gates.filter((gate) => gate.id !== dropped),
+      };
+      const withoutDropped = healthy.filter((r) => r.id !== dropped);
+      const derivationOnly: {
+        name: string;
+        table: typeof table;
+        rows: { id: string; status: string }[];
+        names: string;
+        why: string;
+      }[] = [
+        {
+          name: "probe-1-rows-leg",
+          table,
+          rows: [...healthy, { id: NOWHERE, status: "not-applicable" }],
+          names: NOWHERE,
+          why:
+            "a bundle row for a gate declared in NEITHER the manifest nor the table, reporting " +
+            "not-applicable with a valid evaluated precondition, must be REJECTED under the " +
+            "strict default: its id reaches the expected set through the ROWS leg of the union, " +
+            "and nothing else in the bundle is wrong",
+        },
+        {
+          name: "probe-2-manifest-leg",
+          table: tableWithoutDropped,
+          rows: withoutDropped,
+          names: dropped,
+          why:
+            "a gate this bundle RUNS whose table row is gone and which produced NO record must " +
+            "be REJECTED: its id reaches the expected set through the MANIFEST leg alone, since " +
+            "with no record it is in no row and with no table row it is in no explicit spec",
+        },
+        {
+          name: "probe-3-manifest-gate-not-applicable",
+          table: tableWithoutDropped,
+          rows: [...withoutDropped, { id: dropped, status: "not-applicable" }],
+          names: dropped,
+          why:
+            "a manifest gate with no table row reporting not-applicable must be REJECTED: it is " +
+            "asserted under the default required-green, and accepting it is how a silently " +
+            "skipped gate reads as legitimately N/A. This is the shape brief-drift arrives in",
+        },
+      ];
       for (const probe of derivationOnly) {
         const dir = join(root, `${arm}-${probe.name}`);
         writeBundle(dir, probe.rows);
-        const result = runAssert(dir, table, `${arm}-${probe.name}`);
+        const result = runAssert(dir, probe.table, `${arm}-${probe.name}`);
         const output = result.stdout + result.stderr;
         assert.notEqual(result.status, 0, `[${arm}] ${probe.why}: ${output}`);
-        assert.doesNotMatch(
-          output,
-          /reported RED/,
-          `[${arm}] ${probe.name} was rejected by the global zero-red check, so it does not ` +
-            "isolate the derived expected set. This probe carries no red row and must fail " +
-            "BECAUSE of the derivation.",
+        // MECHANICAL UNIQUENESS. Every itemised finding must carry the harness's
+        // own default-spec reason. A finding from any other check means the
+        // probe is over-determined, and an over-determined probe stays red when
+        // the derivation is removed, which is exactly how the main arm of this
+        // test came to assert nothing.
+        const findings = output.split("\n").filter((line) => line.startsWith("  - "));
+        assert.ok(
+          findings.length > 0,
+          `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot ` +
+            `be established: ${output}`,
+        );
+        const foreign = findings.filter((line) => !line.includes(defaultSpecReason));
+        assert.deepEqual(
+          foreign,
+          [],
+          `[${arm}] ${probe.name} was rejected by ${String(foreign.length)} check(s) OTHER than ` +
+            "the derived expected set, so the derivation is not its unique rejecter and " +
+            "collapsing the derivation back to the hand-written table would leave this probe red " +
+            `anyway: ${foreign.join(" | ")}`,
         );
         assert.match(
           output,
-          new RegExp(UNLISTED),
+          new RegExp(probe.names),
           `[${arm}] ${probe.name} did not name the gate it rejected`,
         );
+      }
+
+      // The declared-absent check (section 8) is what the previous main-arm
+      // members 4 and 5 actually exercised. That is real coverage of a real
+      // rule, so it is kept here rather than deleted, correctly labelled: these
+      // are NOT witnesses for the derived expected set, and the assertion names
+      // the check they do witness so they cannot be miscredited again.
+      if (!runsUnlisted) {
+        for (const status of ["not-applicable", "green"] as const) {
+          const name = `absent-gate-${status}`;
+          const dir = join(root, `${arm}-${name}`);
+          writeBundle(dir, [...healthy.filter((r) => r.id !== UNLISTED), { id: UNLISTED, status }]);
+          const result = runAssert(dir, table, `${arm}-${name}`);
+          const output = result.stdout + result.stderr;
+          assert.notEqual(
+            result.status,
+            0,
+            `[${arm}] a ${status} record for a gate the DERIVED absent list covers must be ` +
+              "REJECTED: the two bundles stay distinguishable only if what one does not run is " +
+              `asserted to have produced nothing: ${output}`,
+          );
+          assert.match(
+            output,
+            /expected to be ABSENT from this bundle/,
+            `[${arm}] ${name} was not rejected by the declared-absent check, which is the only ` +
+              `check it exercises: ${output}`,
+          );
+        }
       }
     }
   } finally {

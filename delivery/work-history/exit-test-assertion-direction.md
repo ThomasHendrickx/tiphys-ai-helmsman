@@ -1515,3 +1515,149 @@ assertion needs no advance knowledge of the competitor set, so it does not have
 the arm-blindness that produced this defect. `doesNotMatch(/reported RED/)`
 excludes one competitor a human thought of; "every finding is a derivation
 finding" excludes all of them, including ones added later.
+
+## FR1.5 The replica CROSS-CHECKED against the real test
+
+FR1.2 and FR1.3 are driven by a replica of the member construction, so the
+replica itself has to be checked or it is exactly the "a replica silently stops
+matching" hazard this branch's own design argument names. It is checked by
+defanging the SHIPPED harness and running the REAL test, twice, each defang
+predicting a DIFFERENT first failure.
+
+The harness was snapshotted with `cp` and restored with `cp`; no `git checkout --`
+was used anywhere in this round (CLAUDE.md:627). Pristine sha256
+`9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138`, verified
+before and after every defang.
+
+Cross-check 1, harness defanged with `v-tableonly`. Replica predicts pr members 1
+to 3 still rejected and pr member-4 the first survivor:
+
+```
+$ node --test --test-name-pattern 'RED gate is rejected on BOTH bundles' test/m2-exit-test.test.ts
+TEST EXIT=1
+  AssertionError [ERR_ASSERTION]: [pr] a manifest gate with no table row reporting
+  not-applicable must be REJECTED: ... m2-assert (PR bundle): OK. 12 gate record(s) match
+  section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default
+  required-green); ...
+```
+
+Cross-check 2, harness defanged with `v-nosec8`. Replica predicts the PR arm
+entirely unaffected and main member-4 the first survivor:
+
+```
+TEST EXIT=1
+  AssertionError [ERR_ASSERTION]: [main] a gate the derived absent list covers must not carry
+  a record on this bundle; ... m2-assert (main bundle): OK. 7 gate record(s) match section
+  1.4; 6 gate(s) asserted ...; 6 asserted absent: credential-token, citations, scope,
+  clause-map, red-witness, fixture-gate-with-no-table-row; ...
+```
+
+Both predictions hold, on both arms, so the replica is validated rather than
+trusted.
+
+## FR1.6 The change, and its red witnesses
+
+The change is confined to test/m2-exit-test.test.ts and the one behaviors row
+that names its title. **No production code changed**: the harness sha256 is
+identical before and after this round. The defect was in the WITNESS, not in the
+thing witnessed, which is why the fix is a test change and why it must itself be
+witnessed.
+
+Three things changed in that test:
+
+1. The arm-conditional `derivationOnly` block is replaced by THREE probes built
+   IDENTICALLY on both arms, so an arm can no longer end up with a probe set that
+   asserts nothing. Probe 1 enters the expected set by the ROWS leg, probe 2 by
+   the MANIFEST leg, probe 3 is the `brief-drift` shape (a manifest gate with no
+   table row reporting not-applicable) which either leg reaches.
+2. `assert.doesNotMatch(output, /reported RED/)` is replaced by a MECHANICAL
+   uniqueness assertion: every itemised finding the program printed must carry
+   the harness's own default-spec reason. That excludes every competing rejecter
+   rather than the one a human anticipated.
+3. The default-spec reason is DERIVED from the shipped harness by regex over its
+   source rather than copied into the test, and failing to derive it is a hard
+   failure. A reword of that message therefore reddens loudly instead of quietly
+   making the uniqueness assertion vacuous.
+
+The main-arm coverage the old members 4 and 5 genuinely provided (section 8's
+declared-absent check) is KEPT, as a separately labelled pair of probes that
+assert on the declared-absent message. It is not deleted, it is stopped from
+being miscredited as a derivation witness.
+
+### Red witness 1: the main arm, before and after, against the DANGEROUS state
+
+The dangerous state is `v-tableonly`, the derivation collapsed back to the
+hand-written table. Both test files were restricted to the main arm alone by one
+anchored replacement (`["pr", "main"]` becomes `["main"]`), so the pr arm cannot
+mask the result. OLD is the test at `21509d1` (sha256
+`3fddb074ff06d0cb11e7278e32f8af5d40e70500a8620f0e0dd1efef32d3da29`), NEW is this
+round's (sha256 `b08a0838195a6dc4cff673b6465e773c1abdef9cb59041092c096c3b16225dd4`).
+
+```
+| case                               | harness    | EXIT | 
+|---|---|---|
+| OLD-mainonly-pristine              | pristine   | 0 |
+| OLD-mainonly-vtableonly            | tableonly  | 0 |
+| NEW-mainonly-pristine              | pristine   | 0 |
+| NEW-mainonly-vtableonly            | tableonly  | 1 |
+| NEW-mainonly-vnorows               | norows     | 1 |
+| NEW-mainonly-vnomanifest           | nomanifest | 1 |
+```
+
+Row 2 is CR-V01 stated as an exit code: the old test's main arm is GREEN with the
+derivation removed. Row 4 is the fix. Rows 5 and 6 are the class: the main arm
+now reddens under EACH leg separately, not only under the whole union.
+
+The three failures, quoted from the runs:
+
+```
+NEW-mainonly-vtableonly
+  AssertionError [ERR_ASSERTION]: [main] a bundle row for a gate declared in NEITHER the
+  manifest nor the table, reporting not-applicable with a valid evaluated precondition, must
+  be REJECTED under the strict default: its id reaches the expected set through the ROWS leg
+  of the union, and nothing else in the bundle is wrong: m2-ass...
+
+NEW-mainonly-vnorows
+  AssertionError [ERR_ASSERTION]: [main] a bundle row for a gate declared in NEITHER the
+  manifest nor the table, ... through the ROWS leg of the union, ...
+
+NEW-mainonly-vnomanifest
+  AssertionError [ERR_ASSERTION]: [main] a gate this bundle RUNS whose table row is gone and
+  which produced NO record must be REJECTED: its id reaches the expected set through the
+  MANIFEST leg alone, since with no record it is in no row and with no table row it is in no
+  explicit spec: m2-assert (main bundle): OK. 5 gate record(s)...
+```
+
+### Red witness 2: the new uniqueness assertion is itself load-bearing
+
+A guard whose condition does not test the property that matters is green and
+worthless (CLAUDE.md:116), so the new uniqueness assertion needs its own witness,
+and one witness is not a class. Two structurally different over-determinations,
+each an anchored one-line edit to the TEST against the PRISTINE harness, so only
+the uniqueness assertion can speak:
+
+- U1, competitor = the global ZERO-RED check: an extra red row added to probe 1.
+- U2, competitor = SECTION 8's declared-absent check: probe 1 rebuilt around the
+  absent gate, which reconstructs the ORIGINAL CR-V01 defect shape (this is
+  literally the old main-arm member 4) inside the new probe.
+
+```
+### U1 EXIT=1
+AssertionError [ERR_ASSERTION]: [main] probe-1-rows-leg was rejected by 1 check(s) OTHER than
+the derived expected set, so the derivation is not its unique rejecter and collapsing the
+derivation back to the hand-written table would leave this probe red anyway:   - 1 gate(s)
+reported RED: fixture-extra-red. No expectation in section 1.4 permits a red gate, on either
+bundle.
+
+### U2 EXIT=1
+AssertionError [ERR_ASSERTION]: [main] probe-1-rows-leg was rejected by 2 check(s) OTHER than
+the derived expected set, ...:   - [fixture-gate-with-no-table-row] expected to be ABSENT from
+this bundle (not run) but has a summary record |   - [fixture-gate-with-no-table-row] expected
+```
+
+U2 is the important one: the guard added this round catches, by exit code and by
+name, the exact defect that reached a pull request. The old guard did not, and
+`doesNotMatch(/reported RED/)` is green against U2 because U2 carries no red row.
+
+Test file restored from the pristine copy after every variant, sha256 re-verified
+each time.
