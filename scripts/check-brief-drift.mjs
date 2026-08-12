@@ -397,27 +397,38 @@ function main(argv) {
     return 0;
   }
 
-  /* THE SHIPPED BYTES, ASSERTED DIRECTLY RATHER THAN BY TRANSITIVITY. A green
-     row-for-row compare below does imply the block equals the validated
-     rendering, so this is redundant TODAY. It is here because that implication
-     is a property of `describeDrift`, and a check whose coverage depends on a
-     second function staying correct is the shape this phase has now paid for
-     twice. Costs one pass over the block; buys a direct statement about the file
-     that ships. */
-  const blockFindings = gateBlockFindings(located.block, decoded.value, located.mode);
-  if (blockFindings.length > 0) {
-    return emit(options, {
-      status: "red",
-      units: rendered.units,
-      startedAt,
-      endedAt: new Date().toISOString(),
-      detail:
-        `${options.brief}'s ${located.mode} gate block does not match ` +
-        `${options.registry}: ${blockFindings.join("; ")}. Re-render with ` +
-        "node scripts/check-brief-drift.mjs --write",
-    });
-  }
+  /* WHY THERE IS NO SECOND ROW-AND-FIELD CHECK OVER THE LOCATED BLOCK HERE, and
+     why the obvious "belt and braces" addition is WRONG (M3-P6 fix round 2).
+     One was added in this round and then REMOVED, and the removal is recorded
+     rather than left as an absence, because it is a rule and not a preference.
 
+     The rendering above has already been checked against the registry. So if the
+     block disagrees with the registry, the block necessarily differs from the
+     rendering, and `describeDrift` below reddens. A row-and-field check here is
+     therefore not merely redundant TODAY, it is UNCONDITIONALLY implied by the
+     two checks that surround it: there is no input on which it can fire alone.
+
+     Adding it anyway cost a red `red-witness` gate, and the mechanism is worth
+     more than the line it removed. Placed BEFORE `describeDrift`, it caught the
+     registry/brief row drift that the named test
+     "adding a gate to the registry without re-rendering ..." exercises. That
+     test then reddened because of the new check, so mutating `describeDrift` to
+     `[]` changed nothing the test could observe: the test stayed green and the
+     witness `implementer-brief-gate-list-drift` reported "no named test reaches
+     this arm" at this line. A guard that had covered a real arm for the whole
+     phase was made VACUOUS by adding a stronger-looking check in front of it.
+
+     THE GENERAL RULE, which is this phase's own mechanism one level up: TWO
+     CHECKS THAT CATCH THE SAME INPUT MAKE EACH OTHER UNWITNESSABLE. Neither is
+     individually necessary, so mutating either leaves the other covering, and
+     redundancy that cannot be observed is indistinguishable from dead code.
+     Reordering does not help; it only moves which one is shadowed.
+
+     The shipped bytes ARE still asserted independently, and deliberately NOT
+     here: the registered test at test/implementer-brief.test.ts:376 reads the
+     shipped brief, parses the registry itself and calls nothing in this file, so
+     it survives this script being deleted. That is the second layer, and it is a
+     layer precisely because it is not a second copy in the same place. */
   const differences = describeDrift(rendered.text, located.block);
   if (differences.length > 0) {
     return emit(options, {
