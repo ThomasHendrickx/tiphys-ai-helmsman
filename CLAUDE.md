@@ -402,7 +402,7 @@ A stated stall rule is not sufficient. It addresses attention, and attention is
 what a busy session does not have. This project has recorded twice that a rule
 depending on memory does not survive; the answer both times was a mechanism.
 
-**Two rules, both mechanical, binding on every dispatch:**
+**THREE rules, all mechanical, binding on every dispatch:**
 
 1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
    artifact within the first minutes and appends as it works. The file's mtime
@@ -412,6 +412,18 @@ depending on memory does not survive; the answer both times was a mechanism.
    watches the newest mtime under the agent's working directory and reports
    stale after a threshold. It must test FRESHNESS, never existence and never
    completion.
+3. **THE WATCHDOG ITSELF EXPIRES, AND RE-ARMING IT IS PART OF THE RULE.**
+   Measured 2026-08-12: a monitor requested with `persistent: true` and a
+   3600000ms timeout was created with a **1800000ms** timeout regardless, and
+   died at thirty minutes while its agent was still running. The tool reports
+   the timeout it actually used in its own start message, and it is not always
+   the one asked for; read that number rather than the one you passed.
+   A watchdog that has expired cannot go red, which is the same failure as one
+   watching the wrong place, and it is silent in the same way. Treat the
+   "[Monitor timed out]" notice as a REQUIRED ACTION, not an FYI, and re-arm in
+   the turn it arrives. This is the third variant of "cannot go red" this
+   project has hit, after including the orchestrator's own worktrees in the
+   watch set and after excluding the agent's.
 
 The second rule has its own recorded failure: the first watchdog written after
 this incident tested whether the report file EXISTED, so it fired two minutes

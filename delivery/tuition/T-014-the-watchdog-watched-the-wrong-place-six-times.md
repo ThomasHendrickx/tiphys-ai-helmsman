@@ -137,3 +137,63 @@ by something else, and the exclusion list is still hand-written, so it is one
 mis-typed path from the same blindness. It also does not discharge the audit the
 section above says is worth doing on the kernel's own shipped watcher, which
 remains not done.
+
+## Second postscript, same day: five defect CLASSES in one session, and what that argues
+
+The first postscript recorded one more instance. By the end of the same session
+there were FIVE DISTINCT CLASSES, all in guards hand-written by the orchestrator
+for a single dispatch:
+
+| # | class | what it did |
+|---|---|---|
+| 1 | selection by FIND ORDER | `find ... \| head -1` locked onto a worktree seven hours stale |
+| 2 | exclusion BY GUESS | excluded the live worktree, assuming it was the previous agent's |
+| 3 | baseline MOVED ON RESTART | two restarts for unrelated patches made a real 10:05 write read as "nothing written since dispatch" |
+| 4 | silent RE-TARGETING | a finished agent's watchdog latched onto a DIFFERENT LIVE AGENT's worktree, because that tree now held a newer copy of the same filename, and reported the new agent's health under the old agent's label |
+| 5 | watching a SUBSET of the trees | an agent comparing heads used FOUR worktrees; the guard watched only the one its report sat in, so a long session in the lab tree would have read as silence |
+
+None produced a wrong action. Three were caught by labels added for exactly that
+purpose, and the label that did the most work was printing
+`INHERITED(not yet appended)` instead of a bare number.
+
+**Class 4 is genuinely new and this entry did not previously cover it.** The body
+above says a finished agent leaves a directory that goes stale forever. It does
+not say the guard can start reporting a DIFFERENT agent instead. A watchdog for a
+finished agent is not merely useless; it is a source of false confidence about
+whoever writes that filename next. **Stop a watchdog when its agent completes**,
+rather than letting it run out its timeout.
+
+**Class 5's cause is worth stating because it is not carelessness.** The guard
+was written from the same brief that made four worktrees the right design for
+that agent, and the design implication was not carried back into the guard. The
+answer to T-008's first question changes per agent, and it changes because of
+choices the ORCHESTRATOR made in the brief minutes earlier.
+
+### The argument this makes, which is different from "watch the right place"
+
+The body of this entry is about getting a guard right. Five classes in one
+session says something else: **a hand-written guard per dispatch is a
+hand-written bug per dispatch.** The defect rate is not falling with practice
+within the session; each new agent shape introduced a new way to be wrong.
+
+The section above asks whether a generic watchdog could be written once and
+reused, and answers honestly that each agent's write set really does differ, so
+it is unknown. These five are five data points toward "it has to be", and they
+name the shape it would need: recency-based resolution, exclusions by identity
+only, a baseline that survives restarts, a lifecycle bound to the agent's, and a
+write set derived from the dispatch rather than assumed.
+
+**That is a description of the kernel's own watcher and liveness guard**, which
+this project ships and which the body of this entry already flags as never
+audited for these shapes. It is still not audited. That remains the open item,
+and it is now supported by five failures instead of six instances of one.
+
+### What this postscript does NOT claim
+
+- **It does not claim the five are independent.** One orchestrator, one session,
+  guards derived from each other by copying, which is how class 1 nearly
+  propagated into a sixth guard before being rewritten from scratch.
+- **It does not claim any cost was paid.** No agent was killed or re-dispatched
+  on a false signal. The cost was attention and one near miss.
+- **It does not establish that a generic guard is achievable**, only that five
+  bespoke ones failed in five different ways in one day.
