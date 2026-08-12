@@ -2186,3 +2186,36 @@ itself (FR1.6, red witness 2). Those were taken against the pre-CR-H-2 file. The
 uniqueness assertion's own code is byte-identical between the two files (CR-H-2
 touched only the expectations-row test, a different `test()` block), so the risk
 is bounded, but I did not re-run them and I am not claiming I did.
+
+# FIX ROUND 2 (round 2 of the harness assertion-direction change)
+
+Started from `fdb3120692f4178e213c40a6439a742effe24466`, confirmed as the tip of
+`origin/claude/exit-test-harness-assertion-direction` before any work:
+
+```
+$ git rev-parse origin/claude/exit-test-harness-assertion-direction
+fdb3120692f4178e213c40a6439a742effe24466
+$ git rev-parse HEAD
+fdb3120692f4178e213c40a6439a742effe24466
+```
+
+Own worktree, detached at that sha, created fresh rather than inherited from the
+previous round's agent (the earlier worktree held the branch ref and was clean,
+`git status --porcelain` empty, so nothing was salvaged from it and nothing was
+taken from it). Toolchain node v26.6.0 from the scratch prefix, `node --version`
+checked in the shell that ran each command. `npm ci` exit 0.
+
+This section is appended after each command whose output it cites, before the
+next command runs. Its mtime is the beacon for this round.
+
+## FR2.0 What this round has to close
+
+Two clean-room reviews of `fdb3120` both APPROVE. Four findings between them:
+
+| id | severity | source | what |
+|---|---|---|---|
+| CR-V-1 | MEDIUM | vacuity audit | the union at scripts/m2-exit-test.sh:515 spreads THREE sources; the third (`explicitById.keys()`) can be deleted with the entire suite green |
+| CR-V-2 | LOW | vacuity audit | the assertion program exempts ITSELF from M2-C-2: it can exit 0 having asserted zero gates |
+| CR-FR-1 | LOW | criteria contract | the round's derivation missed a sixth live call site (test/m2-exit-test.test.ts:272) and its stated exclusions do not describe how it was missed |
+| CR-FR-2 | LOW | criteria contract | the leg-count open item's stated reason misapplies CLAUDE.md:201; a BY-NAME guard exists and the reviewer red-witnessed a prototype |
+
