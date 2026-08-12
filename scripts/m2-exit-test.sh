@@ -8,6 +8,17 @@
 # proves its own assertion code fails WITHOUT shipping any switch that makes
 # a production gate lie (M2R-011).
 #
+# THE ASSERTION DIRECTION (read this before editing an expectations table).
+# The set of gates the assertion code asserts on is DERIVED, never taken from
+# the expectations table alone: it is the manifest's gate ids, union the ids the
+# bundle actually reported, union the ids the table names, minus the ids the
+# table declares absent for that bundle. A gate with NO table row is asserted
+# REQUIRED-GREEN. A table row is therefore a RELAXATION, and the only reason to
+# write one is that a gate is legitimately allowed some status other than a
+# plain green. Before this, the code iterated the table and keyed into the rows,
+# so a row the table did not name was asserted by nothing at all and a red gate
+# absent from the table passed in silence.
+#
 # Modes:
 #
 #   scripts/m2-exit-test.sh [flags] <evidence-dir>
@@ -18,12 +29,12 @@
 #                     --phase <phase>, every table gate present, seven
 #                     required gates green, deploy/migrations not-applicable
 #                     for a STRUCTURAL reason.
-#         main bundle (the weaker run): --only
-#                     manifest-self-check,suite,coverage,credential-scrub,
-#                     deploy,migrations. The three diff-scoped gates and
-#                     credential-token are NOT run and have NO record, which
-#                     the assertions state EXPLICITLY rather than reading
-#                     their absence as success (criterion 4).
+#         main bundle (the weaker run): the gates named by MAIN_ONLY_GATES,
+#                     one --only flag each. Every OTHER manifest gate is NOT
+#                     run and has NO record, and the assertions state that
+#                     EXPLICITLY rather than reading its absence as success
+#                     (criterion 4); the list of them is derived from the
+#                     manifest so it cannot fall behind it.
 #
 #   scripts/m2-exit-test.sh --self-test <evidence-dir>
 #       Runs the SAME assertion code (scripts is the one program written
@@ -669,10 +680,15 @@ for (const key of Object.keys(recomputed)) {
   }
 }
 
-// -- 8. Absent gates: no record and no result.json on disk. The main bundle's
-//       three diff-scoped gates are NOT run here; their absence is EXPECTED
-//       and would be a failure in the PR bundle (criterion 4). This is what
-//       keeps the two bundles distinguishable rather than conflatable.
+// -- 8. Absent gates: no record and no result.json on disk. The main bundle
+//       runs a SUBSET, so the gates outside that subset are EXPECTED to have no
+//       record, and the same absence would be a failure in the PR bundle
+//       (criterion 4). This is what keeps the two bundles distinguishable
+//       rather than conflatable. The main bundle's absent list is DERIVED by
+//       the harness as (manifest ids) minus (the ids it runs), so it cannot
+//       fall behind the manifest: a newly declared gate the main bundle does
+//       not run is asserted absent from it at once, rather than being named by
+//       neither list and so asserted by nothing.
 for (const id of expect.absent ?? []) {
   if (rowById.has(id)) {
     fail(id, "expected to be ABSENT from this bundle (not run) but has a summary record");
@@ -707,8 +723,16 @@ if (failures.length > 0) {
   }
   process.exit(1);
 }
+// The derivation is REPORTED, not merely performed: a reader of the evidence
+// can see how many gates were asserted on, how many carried an explicit table
+// row, and which were asserted under the strict default. A run in which the
+// derived set is smaller than the manifest is visible here rather than silent.
 console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
-  `counts re-derived and equal to summary.json; zero error; zero vacuous.`);
+  `${expectedIds.length} gate(s) asserted (${expectedIds.length - derivedIds.length} from an ` +
+  `explicit table row, ${derivedIds.length} under the default required-green` +
+  `${derivedIds.length > 0 ? `: ${derivedIds.join(", ")}` : ""}); ` +
+  `${absentIds.size} asserted absent${absentIds.size > 0 ? `: ${[...absentIds].join(", ")}` : ""}; ` +
+  `counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.`);
 process.exit(0);
 ASSERT_EOF
 
@@ -1080,20 +1104,27 @@ run_main_bundle() {
   # NOT passed, which (with --only) is what excludes the three diff-scoped
   # gates. On a push to main the default base=main resolves to HEAD, an empty
   # diff, and the suite still runs against the whole tree.
+  #
+  # The --only arguments are built from MAIN_ONLY_GATES, the ONE declaration of
+  # what this bundle runs, so they cannot drift from the absent list derived
+  # from the same variable. The gate set itself is unchanged.
+  local only_args=() gate_id
+  for gate_id in ${MAIN_ONLY_GATES}; do
+    only_args+=(--only "${gate_id}")
+  done
   ( cd "${repo_root}" && node "${TIPHYS}" gates run \
       --manifest "${MANIFEST}" --evidence "${dir}" --base "${base}" \
-      --only manifest-self-check --only suite --only coverage \
-      --only credential-scrub --only deploy --only migrations ) \
+      "${only_args[@]}" ) \
       >"${evidence}/${out_rel}" 2>&1 || rc=$?
   json_object \
     kind executed label "gates run (main bundle)" \
-    command "node dist/bin/tiphys.js gates run --manifest gates.manifest.json --evidence main-bundle --base ${base} --only manifest-self-check --only suite --only coverage --only credential-scrub --only deploy --only migrations" \
+    command "node dist/bin/tiphys.js gates run --manifest gates.manifest.json --evidence main-bundle --base ${base} ${only_args[*]}" \
     cwd "${repo_root}" 'exitCode#' "${rc}" outputFile "${out_rel}" \
     at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     >"${evidence}/records/${seq}.json"
   cat "${evidence}/${out_rel}"
   local expect="${evidence}/main-expect.json"
-  write_expect "${expect}" "${MAIN_EXPECT_JSON}"
+  write_expect "${expect}" "$(main_expect_json)"
   run_assert "main bundle" "${dir}/summary.json" "${dir}" "${expect}" "${MANIFEST}"
   if [ "${ASSERT_EXIT}" -ne 0 ]; then
     die "the main bundle does not match section 1.4's main-bundle column (assertion exit ${ASSERT_EXIT})"
