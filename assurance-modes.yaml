@@ -45,7 +45,7 @@
 #                    This is the third occurrence in one phase of a check that
 #                      constrains a relation in one direction while its own
 #                      documentation claims both. Three is a mechanism, not
-#                      three anecdotes; it is tracked in delivery/STATE.md:708.
+#                      three anecdotes; it is tracked in delivery/STATE.md:775.
 #   skips            derived: every stage in `full`'s pipeline that this mode's
 #                    pipeline omits, AND NOTHING ELSE.
 #                    `mode-no-undeclared-downgrade` recomputes it rather than
