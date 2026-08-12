@@ -3,6 +3,38 @@
 Independent delta verifier. I did not write the code under check and my job was to
 try to falsify it.
 
+> **EDITED AFTER HANDBACK BY THE ORCHESTRATOR, declared here rather than done
+> silently.** Fifteen citations into `test/m2-exit-test.test.ts` and
+> `scripts/m2-exit-test.sh` were converted from resolving form to QUOTED form
+> (wrapped in backticks). **No claim, number, verdict or word of analysis was
+> changed**; the edit is purely the backticks. The reason is a collision between
+> two rules that this document is the first to hit:
+>
+> - Tuition T-019 says cut an evidence branch from `main`, never from the branch
+>   under review, so that landing the evidence does not land its subject. This
+>   branch obeys that.
+> - The `citations` gate requires a `path:line` token to resolve IN THE TREE
+>   BEING LINTED. On `main`, `test/m2-exit-test.test.ts` has 1886 lines, so
+>   `test/m2-exit-test.test.ts:1911` is out of range and the gate went RED
+>   (run 31628258664, step 8).
+>
+> An evidence document about an unmerged branch therefore CANNOT cite that
+> branch's line numbers in resolving form while sitting on `main`. CLAUDE.md:3b
+> already prescribes the remedy and says so in as many words: a path in
+> backticks is how you name a file you are NOT asserting exists at that line,
+> "such as one on an unmerged branch". That is exactly this case.
+>
+> **The four citations that were the most dangerous were not the failing one.**
+> `:1911` was out of range and went red loudly. `:1731`, `:1870`, `:1878` and
+> all seven `scripts/m2-exit-test.sh` citations are IN range on `main` and so
+> resolved silently, against round 2's version of those files, pointing at lines
+> that are not the lines this document is discussing. A red gate is the good
+> outcome there.
+>
+> Citations into `test/watcher.test.ts` were left resolving, because that file is
+> byte-identical between `main` and the branch, so they mean on `main` exactly
+> what they mean on the branch.
+
 **Target: branch `claude/exit-test-harness-assertion-direction`, PR #109, head
 `0475d8b`.** Previous head `9b7752d`. I was dispatched against `402c534` and
 re-targeted mid-task; `scripts/m2-exit-test.sh` is byte-identical at both
@@ -164,7 +196,7 @@ M6-ids-all-null-typed              parses but its "gates" key is an array of 12 
 ```
 
 This is the strongest evidence in this report FOR the round: the condition it
-chose (`manifestIds.length === 0`, scripts/m2-exit-test.sh:550) is the property
+chose (`manifestIds.length === 0`, `scripts/m2-exit-test.sh:550`) is the property
 rather than a shape, and it caught four members nobody had constructed. A
 condition written against shapes would have needed four more branches.
 
@@ -174,7 +206,7 @@ it is DV3-F2, section 5.
 ### 1.5 Every branch of the new message is reachable, by execution
 
 The new check builds an `observed` string from four branches
-(scripts/m2-exit-test.sh:551). A branch that cannot fire is the shape target 3
+(`scripts/m2-exit-test.sh:551`). A branch that cannot fire is the shape target 3
 asks about, so I forced each rather than reading it:
 
 ```
@@ -201,9 +233,9 @@ universal open rather than calling it settled.
 DV-3's shape is a condition narrower than the message above it. I walked the new
 lines for both halves.
 
-- `manifestIds.length === 0`, scripts/m2-exit-test.sh:550. The condition IS the
+- `manifestIds.length === 0`, `scripts/m2-exit-test.sh:550`. The condition IS the
   property the message names. Eleven falsification attempts, none escaped.
-- The `observed` ternary, scripts/m2-exit-test.sh:551. It is used for diagnosis
+- The `observed` ternary, `scripts/m2-exit-test.sh:551`. It is used for diagnosis
   and is not part of any condition. Measured rather than read: the binding occurs
   at exactly two sites, its declaration and its interpolation into the message.
 
@@ -221,18 +253,18 @@ lines for both halves.
 - `expectedIds.length === 0` is unchanged in this round except for the comment
   above it. Its independent reachability is witnessed by the shipped test's
   member 4, which I ran green.
-- The success line, scripts/m2-exit-test.sh:788, carries the one mismatch I found.
+- The success line, `scripts/m2-exit-test.sh:788`, carries the one mismatch I found.
 
 ### DV3-F3 (LOW): the rows leg is reported by a different measure than the other two
 
-The comment at scripts/m2-exit-test.sh:782 says "EACH LEG'S CONTRIBUTION IS
+The comment at `scripts/m2-exit-test.sh:782` says "EACH LEG'S CONTRIBUTION IS
 REPORTED TOO", and the line prints `derived from ${manifestIds.length} manifest
 id(s), ${rows.length} bundle row(s) and ${explicitById.size} table row(s)`.
 
 `manifestIds.length` is the leg's contribution after filtering to non-empty string
 ids. `explicitById.size` is a Map size, so deduplicated by id. `rows.length` is
 the RAW row count: the rows leg contributes `rows.map((row) => row?.id)`, which is
-filtered and deduplicated inside the loop at scripts/m2-exit-test.sh:516. For a
+filtered and deduplicated inside the loop at `scripts/m2-exit-test.sh:516`. For a
 bundle carrying duplicate or idless rows the printed number exceeds the leg's
 contribution, under a comment saying it is the contribution.
 
@@ -272,7 +304,7 @@ declaration claims, and it is real. Behaviour matches declaration exactly.
 
 The declaration describes the harm as degrading the leg. On the main arm it
 degrades a second thing it does not name: the absent list is DERIVED from the
-manifest by `main_absent_json` (scripts/m2-exit-test.sh:225), so a truncated
+manifest by `main_absent_json` (`scripts/m2-exit-test.sh:225`), so a truncated
 manifest also empties it, and the five gates the main bundle does not run stop
 being asserted absent. The captures above show `0 asserted absent` where the
 control shows `5 asserted absent: credential-token, citations, scope, clause-map,
@@ -291,7 +323,7 @@ program's verdict, so they are functional and unguarded, as the item says.
 
 ### 4.1 The method
 
-The fourth-leg guard is test/m2-exit-test.test.ts:1731 onward. I mutated
+The fourth-leg guard is `test/m2-exit-test.test.ts:1731` onward. I mutated
 `scripts/m2-exit-test.sh` in a dedicated worktree with anchored SINGLE
 replacements, ran the guard, and restored from saved pristine bytes. Two different
 questions are measured per variant:
@@ -352,7 +384,7 @@ for this guard, and DV3-F1 is a finding about the shipping bytes, not about a
 superseded head.
 
 The comment `de2d806` corrected reads, in full, "So every operation that WRITES
-the binding is pinned too." (test/m2-exit-test.test.ts:1870). The correction
+the binding is pinned too." (`test/m2-exit-test.test.ts:1870`). The correction
 changed "statement ... by its own text" to "operation" and **preserved the
 universal**, which is the half DV3-F1 is about.
 
@@ -385,16 +417,16 @@ itself:
   an ARGUMENT rather than as a receiver.
 
 The condition is a member-name lookup against a fixed list at
-test/m2-exit-test.test.ts:1878 (`push`, `splice`, `unshift`, `pop`, `shift`,
+`test/m2-exit-test.test.ts:1878` (`push`, `splice`, `unshift`, `pop`, `shift`,
 `sort`, `reverse`, `fill`, `copyWithin`) plus `++`, `--` and `=`, applied to the
 token following each occurrence of the identifier. W3's occurrence is followed by
 `[`, W4's mutating call never names the identifier, W5's occurrence is followed by
 `,`.
 
 **Why this is a finding and not a declared limit.** The comment at
-test/m2-exit-test.test.ts:1870 states the universal: "So every operation that
+`test/m2-exit-test.test.ts:1870` states the universal: "So every operation that
 WRITES the binding is pinned too." The failure message at
-test/m2-exit-test.test.ts:1911 states another: "the derived expected set is
+`test/m2-exit-test.test.ts:1911` states another: "the derived expected set is
 written by an operation this suite does not know about." FR3.5 states a third.
 The round declares TWO neighbouring gaps, a second union in another program and a
 leg that grows, and neither covers a direct write to `expectedIds` in this
@@ -483,7 +515,7 @@ and for M4, an array of nulls, the same route with a different throw:
 TypeError: Cannot read properties of null (reading 'id')
 ```
 
-`main_absent_json` (scripts/m2-exit-test.sh:225) crashes, command substitution
+`main_absent_json` (`scripts/m2-exit-test.sh:225`) crashes, command substitution
 swallows its exit status, the placeholder substitutes to nothing, and
 `--print-expect main` exits 0 emitting a document that is not JSON. The assertion
 program then exits 2 at "expectations does not parse", and the NEW manifest-leg
@@ -500,7 +532,7 @@ cleanly kills the other reader first.
 Two things bound this:
 
 - **It is not silent.** `run_main_bundle` ends with
-  `if [ "${ASSERT_EXIT}" -ne 0 ]; then die ...` at scripts/m2-exit-test.sh:1189,
+  `if [ "${ASSERT_EXIT}" -ne 0 ]; then die ...` at `scripts/m2-exit-test.sh:1189`,
   so the harness aborts. What is lost is the diagnosis: the operator is told the
   main bundle does not match section 1.4 with exit 2, when the cause is a crashed
   derivation two functions away.
