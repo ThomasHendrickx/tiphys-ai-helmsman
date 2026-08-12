@@ -1299,3 +1299,32 @@ remaining ones were CHANGED:
   policy question about the push arm's cost, not an assertion-direction question.
   I did not widen `MAIN_ONLY_GATES`. What changed is that whatever it does not
   run is now asserted absent.
+
+---
+
+# FIX ROUND 1: the main-arm witness was vacuous (CR-V01)
+
+Status: IN PROGRESS. This section is the beacon. It is appended after each
+command whose output it cites, before the next command runs.
+
+Implementer: fix-round 1 on branch `claude/exit-test-harness-assertion-direction`,
+starting from `21509d1`. Toolchain for every run below is the fetched floor
+toolchain, node v26.6.0, and `node --version` is checked in the shell that runs
+each command.
+
+## FR1.0 Inputs
+
+Two clean-room reviews were dispatched on `21509d1` and both died mid-walk. Their
+PARTIAL reports were salvaged, uncommitted-by-them and carrying NO VERDICT, onto
+branch `claude/reviews-harness-salvage`:
+
+- `delivery/review/clean-room-harness-assertion-direction-vacuity.md` (contract H-B)
+- `delivery/review/clean-room-harness-assertion-direction-fixround.md` (contract H-A)
+
+They are not review outcomes and are not treated as such here. One finding in the
+first is fully evidenced and is the subject of this round: CR-V01, the main-arm
+half of the round's own headline witness test is vacuous. Three LOW findings in
+the second (CR-H-1, CR-H-2, CR-H-3) are dispositioned in section FR1.7.
+
+The test at issue is test/m2-exit-test.test.ts:1212, "a RED gate is rejected on
+BOTH bundles under three structurally different shapes".
