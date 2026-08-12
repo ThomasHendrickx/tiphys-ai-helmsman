@@ -592,5 +592,7 @@
   "role-brief-output-contract-declared": "every authoring brief puts the schema of every output type it declares on its mandated-reading list",
   "role-brief-output-contract-refused": "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes",
   "role-brief-set-derived-not-listed": "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does",
-  "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it"
+  "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it",
+  "m2-exit-main-absent-list-derived-from-manifest": "the main bundle expectation derives its absent list from the manifest, so a newly declared gate it does not run is asserted absent",
+  "m2-exit-red-gate-rejected-on-both-bundles": "a red gate is rejected on both bundles under three structurally different shapes, including one the expectations table names and permits"
 }

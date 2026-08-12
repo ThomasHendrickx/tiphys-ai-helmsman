@@ -109,6 +109,36 @@ function run(
 }
 
 /**
+ * A manifest declaring exactly the gates a crafted single-gate bundle carries.
+ *
+ * These tests used to hand the assertion program the repository's REAL
+ * gates.manifest.json alongside a bundle carrying ONE row, which was only ever
+ * coherent because the manifest argument was inert: it was read solely to
+ * recompute summary.manifestSha256, and these crafted summaries set no such
+ * field. The manifest is now load-bearing, because the set of gates the program
+ * asserts on is DERIVED from it, so a manifest declaring eleven gates beside a
+ * one-row bundle is correctly ten missing records. Each test therefore declares
+ * the manifest that describes the bundle it actually built.
+ */
+function manifestFor(root: string, gateIds: string[]): string {
+  const path = join(root, `manifest-${gateIds.join("-")}.json`);
+  writeFileSync(
+    path,
+    JSON.stringify({
+      version: 1,
+      gates: gateIds.map((id) => ({
+        id,
+        command: ["node", "-e", "process.exit(0)"],
+        unitLabel: "units",
+        applicability: "required",
+      })),
+      destructiveCommands: [],
+    }),
+  );
+  return path;
+}
+
+/**
  * Write a single-gate bundle carrying `scope` in a chosen status, for driving
  * the harness's own m2-assert.mjs directly. `withPrecondition` controls whether
  * a not-applicable record carries the evaluated, unmet precondition DR-0018
@@ -299,7 +329,7 @@ test("the assertion code accepts a diff-scoped gate that is not-applicable with 
     const assertProg = join(harnessEvidence, "m2-assert.mjs");
     assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
 
-    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+    const manifest = manifestFor(root, ["red-witness"]);
 
     // A bundle carrying a single diff-scoped gate reported not-applicable.
     const buildBundle = (dir: string, precondition: unknown): void => {
@@ -873,7 +903,7 @@ test("the PR bundle requires scope green: the harness assertion code rejects a s
     run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
     const assertProg = join(harnessEvidence, "m2-assert.mjs");
     assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
-    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+    const manifest = manifestFor(root, ["scope"]);
 
     // The not-applicable bundle carries the evaluated, unmet precondition DR-0018
     // needs, so the ONLY reason "green" rejects it is the required-green rule for
@@ -987,7 +1017,7 @@ test("the PR bundle accepts a scope not-applicable on a non-phase run and resolv
     run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
     const assertProg = join(harnessEvidence, "m2-assert.mjs");
     assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
-    const manifest = fileURLToPath(new URL("../gates.manifest.json", import.meta.url));
+    const manifest = manifestFor(root, ["scope"]);
 
     // THE UNBLOCK: scope not-applicable WITH an evaluated precondition -> ACCEPTED.
     const naWithPre = join(root, "scope-na-pre");
@@ -1020,6 +1050,300 @@ test("the PR bundle accepts a scope not-applicable on a non-phase run and resolv
       0,
       "a scope red (a real out-of-scope violation) must fail even on a non-phase run",
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* THE ASSERTION DIRECTION.                                              */
+/*                                                                       */
+/* The assertion program used to iterate the hand-written expectations   */
+/* table and key into the bundle's rows, so a row the table did not name  */
+/* was asserted by NOTHING, whatever its status: a red gate absent from   */
+/* the table passed the exit test in silence. The set of gates it asserts */
+/* on is now DERIVED (manifest ids, union the ids the bundle reported,    */
+/* union the ids the table names, minus the ids declared absent), a gate  */
+/* with no row defaults to REQUIRED-GREEN, and a global zero-red check    */
+/* joins the existing zero-error and zero-vacuous ones.                   */
+/*                                                                       */
+/* Both arms are witnessed, because behaviour forks on the CI event and   */
+/* T-009 records that the unwitnessed arm is the one that broke.          */
+/* -------------------------------------------------------------------- */
+
+/** The harness's own resolved expectations document for one arm. */
+function printExpect(
+  harnessPath: string,
+  root: string,
+  env: Record<string, string>,
+  arm: "pr" | "main",
+  scopeExpect?: string,
+): { label: string; gates: { id: string; expect: string }[]; absent: string[] } {
+  const args = [harnessPath, "--print-expect", arm];
+  if (scopeExpect !== undefined) {
+    args.push(scopeExpect);
+  }
+  const result = run("bash", args, { cwd: root, env });
+  assert.equal(result.status, 0, `--print-expect ${arm} exited ${String(result.status)}: ${result.stderr}`);
+  return JSON.parse(result.stdout) as {
+    label: string;
+    gates: { id: string; expect: string }[];
+    absent: string[];
+  };
+}
+
+/**
+ * A bundle built from {id, status} rows, with per-gate result.json records of
+ * the shape a real run produces and self-consistent summary counts, so the
+ * recount check (CR-602) is never the reason a probe reddens and the assertion
+ * DIRECTION is the only variable.
+ */
+function writeBundle(dir: string, rows: { id: string; status: string }[]): void {
+  mkdirSync(dir, { recursive: true });
+  const summaryRows = rows.map(({ id, status }) => ({
+    id,
+    status,
+    applicable: status === "green" || status === "red" || status === "error",
+    vacuous: false,
+    units: status === "green" ? 3 : status === "red" ? 2 : 0,
+  }));
+  for (const row of summaryRows) {
+    mkdirSync(join(dir, row.id), { recursive: true });
+    const record: Record<string, unknown> = { gate: row.id, status: row.status, units: row.units };
+    if (row.status === "not-applicable") {
+      record["detail"] =
+        `precondition ${row.id}-pre evaluated and unmet: STRUCTURAL, a post-merge check ` +
+        "in a pre-merge bundle (kernel plan M2 section 1.4, O-3)";
+      record["precondition"] = {
+        id: `${row.id}-pre`,
+        met: false,
+        reason: "structural: evaluated and unmet",
+      };
+    } else {
+      record["detail"] = `${row.id} examined ${String(row.units)} unit(s)`;
+    }
+    writeFileSync(join(dir, row.id, "result.json"), JSON.stringify(record, null, 2));
+  }
+  const counts = {
+    declared: summaryRows.length,
+    applicable: summaryRows.filter((r) => r.applicable).length,
+    verdict: summaryRows.filter((r) => r.status === "green" || r.status === "red").length,
+    green: summaryRows.filter((r) => r.status === "green").length,
+    red: summaryRows.filter((r) => r.status === "red").length,
+    "not-applicable": summaryRows.filter((r) => r.status === "not-applicable").length,
+    error: summaryRows.filter((r) => r.status === "error").length,
+    vacuous: 0,
+  };
+  writeFileSync(join(dir, "summary.json"), JSON.stringify({ gates: summaryRows, counts }, null, 2));
+}
+
+/**
+ * A scratch copy of the harness beside a manifest of this test's choosing. The
+ * harness resolves its repo root from its OWN location (script_dir/..), never
+ * the cwd, so this is the only way to drive it against a manifest under the
+ * test's control. --print-expect runs before argument parsing and before any
+ * gate work, so the copy needs no dist and never re-enters this suite.
+ */
+function harnessCopy(root: string, extraGateIds: string[]): { harness: string; manifest: string } {
+  mkdirSync(join(root, "scripts"), { recursive: true });
+  const copy = join(root, "scripts", "m2-exit-test.sh");
+  writeFileSync(copy, readFileSync(harness, "utf8"), { mode: 0o755 });
+  const realManifest = JSON.parse(
+    readFileSync(fileURLToPath(new URL("../gates.manifest.json", import.meta.url)), "utf8"),
+  ) as { gates: { id: string }[] };
+  for (const id of extraGateIds) {
+    realManifest.gates.push({
+      id,
+      ...{ command: ["node", "-e", "process.exit(0)"], unitLabel: "units", applicability: "required" },
+    } as { id: string });
+  }
+  const manifest = join(root, "gates.manifest.json");
+  writeFileSync(manifest, JSON.stringify(realManifest, null, 2));
+  return { harness: copy, manifest };
+}
+
+test("the main bundle's absent list is DERIVED from the manifest, so a newly declared gate it does not run is asserted absent rather than named by neither list", () => {
+  // The main arm carried the six-id gate set TWICE: once as the runner's --only
+  // arguments and once, by hand, as the complement in the expectations table's
+  // absent list. A gate could be missing from BOTH, and then it was never run on
+  // that arm and its absence was asserted by nothing either. The absent list is
+  // now derived from the manifest, so the two cannot drift.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    // THE DANGEROUS STATE: a gate declared in the manifest that the main bundle
+    // does not run. Before the fix its id appeared in neither list.
+    const NEW_GATE = "fixture-gate-the-main-bundle-does-not-run";
+    const { harness: copy } = harnessCopy(root, [NEW_GATE]);
+    const derived = printExpect(copy, root, env, "main");
+    assert.ok(
+      derived.absent.includes(NEW_GATE),
+      `a manifest gate the main bundle does not run must be asserted ABSENT from it, but the ` +
+        `derived absent list is ${JSON.stringify(derived.absent)}. A gate in neither the gates ` +
+        "list nor the absent list is asserted by nothing on this arm.",
+    );
+
+    // NOT MERELY ALWAYS-TRUE: a gate the main bundle DOES run is not absent, and
+    // the two lists PARTITION the manifest with nothing left over and no overlap.
+    // Asserted as a set relation derived at run time, never as a pinned list or a
+    // count: gates.manifest.json is append-only and CLAUDE.md forbids both.
+    const manifestIds = (
+      JSON.parse(readFileSync(join(root, "gates.manifest.json"), "utf8")) as { gates: { id: string }[] }
+    ).gates.map((gate) => gate.id);
+    const listed = derived.gates.map((gate) => gate.id);
+    for (const id of listed) {
+      assert.ok(
+        !derived.absent.includes(id),
+        `${id} is both expected in the main bundle and declared absent from it`,
+      );
+    }
+    assert.deepEqual(
+      [...listed, ...derived.absent].sort(),
+      [...manifestIds].sort(),
+      "the main bundle's expected gates and its derived absent list must PARTITION the manifest: " +
+        "every declared gate is either asserted to have a record or asserted to have none, and " +
+        "nothing is asserted twice. A gate in neither is the defect this derivation closes.",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a RED gate is rejected on BOTH bundles under three structurally different shapes, including one the expectations table names and permits", (t) => {
+  // The class is "a red gate passes the bundle", and one witness is not a class
+  // (CLAUDE.md). Three structurally different members, each on BOTH arms:
+  //   1. declared in gates.manifest.json, no table row  -> the MANIFEST leg
+  //   2. in neither manifest nor table, present only as a bundle row -> the ROWS leg
+  //   3. NAMED in the table, required:false, alternates that admit red -> zero-red ALONE
+  // Member 3 is the one that isolates the global zero-red check: neither leg of
+  // the derived union helps, because the gate has an explicit spec permitting its
+  // status. Members 1 and 2 exercise the two different legs of the union.
+  if (!existsSync(distEntry)) {
+    t.skip(`dist entry ${distEntry} is absent; build with npm run build before this test`);
+    return;
+  }
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    // The exact assertion program the harness ships (written before any mode
+    // branch, so a --self-test run leaves it on disk whatever the outcome).
+    const harnessEvidence = join(root, "harness-evidence");
+    run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
+    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+
+    const UNLISTED = "fixture-gate-with-no-table-row";
+    const { harness: copy, manifest } = harnessCopy(root, [UNLISTED]);
+
+    const runAssert = (dir: string, expectDoc: unknown, name: string): RunResult => {
+      const expectPath = join(root, `expect-${name}.json`);
+      writeFileSync(expectPath, JSON.stringify(expectDoc));
+      return run(
+        process.execPath,
+        [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifest],
+        { cwd: root, env },
+      );
+    };
+
+    for (const arm of ["pr", "main"] as const) {
+      const table = printExpect(copy, root, env, arm, arm === "pr" ? "green" : undefined);
+      // The healthy rows for this arm: every gate the table expects, in the
+      // status it expects (taking the first alternate), plus the unlisted gate
+      // green. Derived from the table so it cannot fall behind it.
+      const healthy = table.gates.map((gate) => ({
+        id: gate.id,
+        status: String(gate.expect).split("|")[0] as string,
+      }));
+      // The unlisted gate belongs in the bundle only on the arm that RUNS it.
+      // The PR bundle runs the whole manifest, so it appears there and is
+      // asserted under the derived default. The main bundle runs a subset, so
+      // the derivation puts the unlisted gate in that arm's ABSENT list, and a
+      // bundle carrying a record for it is a different (also rejected) shape.
+      const runsUnlisted = !table.absent.includes(UNLISTED);
+      assert.equal(
+        runsUnlisted,
+        arm === "pr",
+        `[${arm}] expected the unlisted manifest gate to be run on the pr arm and derived into ` +
+          `the main arm's absent list; absent is ${JSON.stringify(table.absent)}`,
+      );
+      if (runsUnlisted) {
+        healthy.push({ id: UNLISTED, status: "green" });
+      }
+
+      // CONTROL: the healthy bundle is ACCEPTED, so nothing below is an
+      // always-red assertion. The unlisted gate passes on its default green.
+      const okDir = join(root, `${arm}-healthy`);
+      writeBundle(okDir, healthy);
+      const ok = runAssert(okDir, table, `${arm}-healthy`);
+      assert.equal(
+        ok.status,
+        0,
+        `a healthy ${arm} bundle must be ACCEPTED, including a manifest gate with no table row ` +
+          `that is green: ${ok.stdout}\n${ok.stderr}`,
+      );
+
+      // MEMBER 1: the unlisted gate is RED. It is declared in the manifest and
+      // named by no table row, which is the shape brief-drift arrives in.
+      const m1Dir = join(root, `${arm}-member-1`);
+      writeBundle(m1Dir, [
+        ...healthy.filter((r) => r.id !== UNLISTED),
+        { id: UNLISTED, status: "red" },
+      ]);
+      const m1 = runAssert(m1Dir, table, `${arm}-member-1`);
+      assert.notEqual(
+        m1.status,
+        0,
+        `[${arm}] a RED gate that the manifest declares and the table does not name must be ` +
+          `REJECTED; before the fix it passed in silence: ${m1.stdout}\n${m1.stderr}`,
+      );
+      assert.match(
+        m1.stdout + m1.stderr,
+        new RegExp(UNLISTED),
+        `[${arm}] the rejection did not name the offending gate`,
+      );
+
+      // MEMBER 2: a RED row for a gate in NEITHER the manifest NOR the table.
+      // Structurally different: it is caught by the ROWS leg of the union, not
+      // the manifest leg, so a runner reporting an undeclared gate is covered too.
+      const m2Dir = join(root, `${arm}-member-2`);
+      writeBundle(m2Dir, [...healthy, { id: "fixture-gate-declared-nowhere", status: "red" }]);
+      const m2 = runAssert(m2Dir, table, `${arm}-member-2`);
+      assert.notEqual(
+        m2.status,
+        0,
+        `[${arm}] a RED row for a gate declared in neither the manifest nor the table must be ` +
+          `REJECTED: ${m2.stdout}\n${m2.stderr}`,
+      );
+
+      // MEMBER 3: a gate the table NAMES, with required:false and alternates that
+      // ADMIT red. Neither leg of the union helps: the spec is explicit and it
+      // permits the status. Only the global zero-red check rejects this, which is
+      // what makes that check load-bearing rather than redundant.
+      const named = table.gates[0]?.id as string;
+      const lax = {
+        ...table,
+        gates: table.gates.map((gate) =>
+          gate.id === named ? { ...gate, expect: `${gate.expect}|red`, required: false } : gate,
+        ),
+      };
+      const m3Dir = join(root, `${arm}-member-3`);
+      writeBundle(m3Dir, healthy.map((r) => (r.id === named ? { ...r, status: "red" } : r)));
+      const m3 = runAssert(m3Dir, lax, `${arm}-member-3`);
+      assert.notEqual(
+        m3.status,
+        0,
+        `[${arm}] a RED gate must be rejected even when the expectations table names it, marks it ` +
+          `required:false and lists red among its permitted alternates; no expectation in section ` +
+          `1.4 permits a red gate: ${m3.stdout}\n${m3.stderr}`,
+      );
+      assert.match(
+        m3.stdout + m3.stderr,
+        /reported RED/,
+        `[${arm}] the rejection did not come from the global zero-red check, so that check is not ` +
+          "the thing being witnessed here",
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
