@@ -118,6 +118,150 @@ if [ "${1:-}" = "--resolve-scope-expect" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# The expectations tables (section 1.4), and the main bundle's gate set.
+# ---------------------------------------------------------------------------
+#
+# These are pure constants, declared BEFORE argument parsing so the
+# --print-expect hook below can emit a fully resolved expectations document
+# without an evidence directory and without running a single gate.
+#
+# WHAT A TABLE ROW MEANS NOW. It is a RELAXATION, never the thing that makes a
+# gate asserted. m2-assert.mjs DERIVES the set of gates it asserts on (see its
+# header); a gate with no row here is asserted REQUIRED-GREEN by default. So a
+# row is written only where a gate is legitimately allowed to be something
+# other than a plain green: an alternate status, a structural not-applicable,
+# or required:false.
+
+# PR-bundle expectations, section 1.4 as amended by DR-0018. The three
+# diff-scoped gates (red-witness, scope, citations) are marked "diffScoped":
+# on the exit-test head each is EITHER green (its trigger is touched) OR
+# not-applicable with a valid recorded reason (an evaluated, unmet
+# precondition). red-witness is not-applicable on the M2-P9 head because the
+# diff touches no src/ or bin/; citations is green because the head touches a
+# citation-required document. A required diff-scoped gate reporting
+# not-applicable-with-reason is NOT a failure for those two (DR-0018 point 2);
+# a red, error, or vacuous diff-scoped gate, or a not-applicable one with no
+# evaluated precondition, STILL fails the harness.
+#
+# scope's expected status is RESOLVED PER RUN into the "__SCOPE_EXPECT__"
+# placeholder below, because this harness is now the CI for EVERY pull request
+# (M2R-026, the single caller of `gates run`), not only for phase-branch PRs.
+# scope's precondition is branch-matches, so scope audits a diff only on a
+# claude/mN-pM-... phase branch; on any NON-phase PR (a bug fix, paperwork, a
+# harness fix) that precondition is evaluated and legitimately unmet, so scope
+# reports not-applicable-with-precondition, exactly like red-witness or
+# citations on a head that does not touch their trigger.
+#
+#   PHASE-branch run -> "green". A PR bundle produced on a phase branch is BY
+#     CONSTRUCTION expected to audit its diff, so a scope not-applicable there is
+#     the detached-HEAD vacuous pass the M2-P9 HIGH was about (or a missing
+#     declaration, or a branch-name regression) and STILL FAILS the harness.
+#     This is the round-2 behaviour, preserved exactly.
+#   NON-phase run -> "green|not-applicable". scope is treated like the other
+#     diff-scoped gates under DR-0018: green if it audited, or not-applicable
+#     WITH a valid recorded precondition (evaluated, unmet). A scope red, error,
+#     vacuous, or not-applicable-WITHOUT-an-evaluated-precondition still fails
+#     (the diffScoped handling in m2-assert.mjs, unchanged).
+#
+# A run is a phase-branch run when its --phase is a valid phase id
+# (^m[0-9]+-p[0-9]+$) OR its checked-out head branch is a phase branch
+# (^claude/m[0-9]+-p[0-9]+-); resolved in Main below into ${scope_expect} and
+# substituted for the placeholder in run_pr_bundle. red-witness and citations
+# stay "green|not-applicable" on every run because each CAN be legitimately N/A
+# on a head that does not touch its trigger.
+#
+# The PR bundle runs the WHOLE manifest (no --only), so nothing is absent from
+# it and its absent list is the empty one, written literally.
+PR_EXPECT_JSON='{
+  "label": "PR bundle",
+  "gates": [
+    {"id": "manifest-self-check", "expect": "green", "required": true},
+    {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
+    {"id": "suite", "expect": "green", "required": true},
+    {"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
+    {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
+    {"id": "coverage", "expect": "green", "required": true},
+    {"id": "clause-map", "expect": "green", "required": true},
+    {"id": "credential-scrub", "expect": "green", "required": true},
+    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
+    {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true},
+    {"id": "credential-token", "expect": "green|not-applicable", "required": false}
+  ],
+  "absent": []
+}'
+
+# The gate ids the MAIN bundle runs, declared ONCE. run_main_bundle builds the
+# runner's repeated --only flags from this list AND main_absent_json derives the
+# expectation's absent list from it, so the set exists in exactly one place.
+# Before this, the six ids were written out twice (once as --only arguments and
+# once, by hand, as the complement in the expectations table's absent list), and
+# a manifest gate could be missing from BOTH: never run on the main arm, and its
+# absence never asserted.
+#
+# This list is a POLICY choice about what a push to main is worth paying for,
+# not something derivable from the manifest: clause-map is `required` with no
+# precondition and is still deliberately excluded here, so no rule over
+# applicability or preconditions reproduces it. It is therefore left
+# hand-written on purpose. What is now derived is the COMPLEMENT.
+MAIN_ONLY_GATES="manifest-self-check suite coverage credential-scrub deploy migrations"
+
+# main_absent_json
+#   Echoes a JSON array of every gate id gates.manifest.json declares that the
+#   main bundle does NOT run. DERIVED from the manifest and MAIN_ONLY_GATES, so
+#   a gate added to the manifest without being added to the main bundle is
+#   asserted ABSENT from that bundle at once, instead of being named by neither
+#   list and so asserted by nothing.
+main_absent_json() {
+  node -e '
+    const fs = require("node:fs");
+    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
+    const absent = (manifest.gates ?? [])
+      .map((gate) => gate.id)
+      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+    process.stdout.write(JSON.stringify(absent));
+  ' "${MANIFEST}" "${MAIN_ONLY_GATES}"
+}
+
+# main_expect_json
+#   The main-bundle expectations with its absent list substituted in.
+MAIN_EXPECT_JSON='{
+  "label": "main bundle",
+  "gates": [
+    {"id": "manifest-self-check", "expect": "green", "required": true},
+    {"id": "suite", "expect": "green", "required": true},
+    {"id": "coverage", "expect": "green", "required": true},
+    {"id": "credential-scrub", "expect": "green", "required": true},
+    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
+    {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true}
+  ],
+  "absent": __MAIN_ABSENT__
+}'
+
+main_expect_json() {
+  printf '%s\n' "${MAIN_EXPECT_JSON//__MAIN_ABSENT__/$(main_absent_json)}"
+}
+
+# A second internal, behaviour-testing entry point, the same shape and for the
+# same reason as --resolve-scope-expect above: emit the FULLY RESOLVED
+# expectations document for either arm, so a test can drive the shipped
+# assertion program against the real table of each arm (including the main
+# arm's DERIVED absent list) rather than against a hand-copied replica of it.
+# A replica is the thing that silently stops matching. Runs BEFORE any gate
+# work, so it never re-enters the suite.
+if [ "${1:-}" = "--print-expect" ]; then
+  case "${2:-}" in
+    pr)   printf '%s\n' "${PR_EXPECT_JSON//__SCOPE_EXPECT__/${3:-green}}" ;;
+    main) main_expect_json ;;
+    *)
+      echo "m2-exit-test: --print-expect takes pr or main" >&2
+      exit "${EX_USAGE}"
+      ;;
+  esac
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 
@@ -315,6 +459,56 @@ const summary = summaryRead.value;
 const rows = Array.isArray(summary.gates) ? summary.gates : [];
 const rowById = new Map(rows.map((r) => [r.id, r]));
 
+// THE ASSERTION DIRECTION, and it is the whole point of this block.
+//
+// This program used to iterate the hand-written expectations table and key into
+// the bundle's rows. That constrains the relation in ONE direction only: every
+// gate the TABLE names must have an acceptable row. A row the table did not
+// name was never asserted on, whatever its status, so a RED gate absent from
+// the table passed the exit test in silence. The workflow's own comment beside
+// the agent-rules-drift step records the consequence in the present tense: "the
+// assertion program ... only examines gates named in its expectations table".
+//
+// The set of gates asserted on is now DERIVED, as the union of
+//   - every gate id gates.manifest.json declares (what CI is CONFIGURED to run),
+//   - every gate id the bundle actually reported (what it DID run),
+//   - every gate id the table names explicitly,
+// minus the ids the table declares ABSENT for this bundle (the main bundle runs
+// a subset; its absent list is derived from the manifest by the harness, so it
+// cannot fall behind the manifest either).
+//
+// A member the table names uses its explicit spec. A member the table does NOT
+// name gets the STRICT default, required and green, never a permissive one. So
+// a newly declared gate is asserted from the moment it enters the manifest,
+// with no edit to this table, and if that default is wrong for it the failure
+// is loud and says exactly which row to add.
+const manifestRead = readJson(manifestPath, "manifest");
+if (!manifestRead.ok) {
+  console.error(`m2-assert (${label}): FAIL: ${manifestRead.reason}`);
+  process.exit(1);
+}
+const manifestIds = Array.isArray(manifestRead.value?.gates)
+  ? manifestRead.value.gates
+      .map((gate) => gate?.id)
+      .filter((id) => typeof id === "string" && id !== "")
+  : [];
+
+const explicitById = new Map((expect.gates ?? []).map((spec) => [spec.id, spec]));
+const absentIds = new Set(expect.absent ?? []);
+const DEFAULT_SPEC_WHY =
+  " This gate has NO row in the expectations table, so it was asserted under the" +
+  " default for a declared-but-unlisted gate, which is deliberately the STRICT one" +
+  " (required, green). If this gate is legitimately allowed another status, that is a" +
+  " row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.";
+const expectedIds = [];
+for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+  if (typeof id !== "string" || id === "" || absentIds.has(id) || expectedIds.includes(id)) {
+    continue;
+  }
+  expectedIds.push(id);
+}
+const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+
 // The allowed statuses for an expected gate, supporting alternatives written
 // as "green|not-applicable" (credential-token per owner action A-3).
 function allowed(spec) {
@@ -322,10 +516,17 @@ function allowed(spec) {
 }
 
 // -- 1, 2, 3. One record per expected gate, the expected status, required green.
-for (const spec of expect.gates ?? []) {
+for (const id of expectedIds) {
+  const explicit = explicitById.get(id);
+  const spec = explicit ?? { id, expect: "green", required: true };
+  const why = explicit ? "" : DEFAULT_SPEC_WHY;
   const row = rowById.get(spec.id);
   if (row === undefined) {
-    fail(spec.id, `no record in the bundle for a gate the table lists (expected ${spec.expect})`);
+    fail(spec.id, explicit
+      ? `no record in the bundle for a gate the table lists (expected ${spec.expect})`
+      : "gates.manifest.json declares this gate and the bundle carries NO record for it, " +
+        "and the table does not list it as absent from this bundle; a declared gate that " +
+        "produced no record is a gate that did not run." + why);
     continue;
   }
   const dup = rows.filter((r) => r.id === spec.id).length;
@@ -335,13 +536,13 @@ for (const spec of expect.gates ?? []) {
   const allow = allowed(spec);
   if (!allow.includes(row.status)) {
     fail(spec.id, `expected status ${allow.join(" or ")}, observed ${row.status}` +
-      (row.detail ? ` (${row.detail})` : ""));
+      (row.detail ? ` (${row.detail})` : "") + why);
   }
   // A NON-diff-scoped required gate must be green: it has no diff trigger it
   // could legitimately miss (manifest-self-check, suite, coverage,
   // credential-scrub). A diff-scoped required gate is handled by DR-0018 below.
   if (spec.required === true && spec.diffScoped !== true && row.status !== "green") {
-    fail(spec.id, `is a REQUIRED gate but its status is ${row.status}, not green`);
+    fail(spec.id, `is a REQUIRED gate but its status is ${row.status}, not green` + why);
   }
   // DR-0018: a diff-scoped gate on the exit head is either green (its trigger
   // is touched) or not-applicable WITH a valid, recorded, evaluated precondition
@@ -425,7 +626,19 @@ for (const row of rows) {
   }
 }
 
-// -- 5, 6. Zero error, zero vacuous, each naming the offending gates.
+// -- 5, 6, 6b. Zero error, zero vacuous, ZERO RED, each naming the offending
+//       gates. These three are ROW-driven: they iterate what the bundle
+//       actually reported, so they hold for a row no table, manifest or
+//       derivation ever considered. Zero-red is the backstop for the whole
+//       assertion-direction class: whatever else is or is not asserted about a
+//       gate, a red one fails the bundle. There is no status expectation
+//       anywhere in section 1.4 that permits red, so a red is always a failure
+//       and this check can never be the reason an honest run reddens.
+const redRows = rows.filter((r) => r.status === "red");
+if (redRows.length > 0) {
+  fail(null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. ` +
+    "No expectation in section 1.4 permits a red gate, on either bundle.");
+}
 const errorRows = rows.filter((r) => r.status === "error");
 if (errorRows.length > 0) {
   fail(null, `${errorRows.length} gate(s) reported error: ${errorRows.map((r) => r.id).join(", ")}`);
@@ -784,78 +997,6 @@ write_expect() {
   local path="$1" json="$2"
   printf '%s' "${json}" >"${path}"
 }
-
-# ---------------------------------------------------------------------------
-# The expectations tables (section 1.4), written once here.
-# ---------------------------------------------------------------------------
-
-# PR-bundle expectations, section 1.4 as amended by DR-0018. The three
-# diff-scoped gates (red-witness, scope, citations) are marked "diffScoped":
-# on the exit-test head each is EITHER green (its trigger is touched) OR
-# not-applicable with a valid recorded reason (an evaluated, unmet
-# precondition). red-witness is not-applicable on the M2-P9 head because the
-# diff touches no src/ or bin/; citations is green because the head touches a
-# citation-required document. A required diff-scoped gate reporting
-# not-applicable-with-reason is NOT a failure for those two (DR-0018 point 2);
-# a red, error, or vacuous diff-scoped gate, or a not-applicable one with no
-# evaluated precondition, STILL fails the harness.
-#
-# scope's expected status is RESOLVED PER RUN into the "__SCOPE_EXPECT__"
-# placeholder below, because this harness is now the CI for EVERY pull request
-# (M2R-026, the single caller of `gates run`), not only for phase-branch PRs.
-# scope's precondition is branch-matches, so scope audits a diff only on a
-# claude/mN-pM-... phase branch; on any NON-phase PR (a bug fix, paperwork, a
-# harness fix) that precondition is evaluated and legitimately unmet, so scope
-# reports not-applicable-with-precondition, exactly like red-witness or
-# citations on a head that does not touch their trigger.
-#
-#   PHASE-branch run -> "green". A PR bundle produced on a phase branch is BY
-#     CONSTRUCTION expected to audit its diff, so a scope not-applicable there is
-#     the detached-HEAD vacuous pass the M2-P9 HIGH was about (or a missing
-#     declaration, or a branch-name regression) and STILL FAILS the harness.
-#     This is the round-2 behaviour, preserved exactly.
-#   NON-phase run -> "green|not-applicable". scope is treated like the other
-#     diff-scoped gates under DR-0018: green if it audited, or not-applicable
-#     WITH a valid recorded precondition (evaluated, unmet). A scope red, error,
-#     vacuous, or not-applicable-WITHOUT-an-evaluated-precondition still fails
-#     (the diffScoped handling in m2-assert.mjs, unchanged).
-#
-# A run is a phase-branch run when its --phase is a valid phase id
-# (^m[0-9]+-p[0-9]+$) OR its checked-out head branch is a phase branch
-# (^claude/m[0-9]+-p[0-9]+-); resolved in Main below into ${scope_expect} and
-# substituted for the placeholder in run_pr_bundle. red-witness and citations
-# stay "green|not-applicable" on every run because each CAN be legitimately N/A
-# on a head that does not touch its trigger.
-PR_EXPECT_JSON='{
-  "label": "PR bundle",
-  "gates": [
-    {"id": "manifest-self-check", "expect": "green", "required": true},
-    {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
-    {"id": "suite", "expect": "green", "required": true},
-    {"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
-    {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
-    {"id": "coverage", "expect": "green", "required": true},
-    {"id": "clause-map", "expect": "green", "required": true},
-    {"id": "credential-scrub", "expect": "green", "required": true},
-    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
-    {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true},
-    {"id": "credential-token", "expect": "green|not-applicable", "required": false}
-  ],
-  "absent": []
-}'
-
-MAIN_EXPECT_JSON='{
-  "label": "main bundle",
-  "gates": [
-    {"id": "manifest-self-check", "expect": "green", "required": true},
-    {"id": "suite", "expect": "green", "required": true},
-    {"id": "coverage", "expect": "green", "required": true},
-    {"id": "credential-scrub", "expect": "green", "required": true},
-    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
-    {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true}
-  ],
-  "absent": ["red-witness", "citations", "scope", "credential-token", "clause-map"]
-}'
 
 # ---------------------------------------------------------------------------
 # Build (step 1)
