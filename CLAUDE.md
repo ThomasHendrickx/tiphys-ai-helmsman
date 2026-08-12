@@ -345,6 +345,38 @@ invites the next reader to try. Tuition T-006 records seven instances of this
 across M1, one of them the orchestrator's own, and notes that the pattern
 survived being documented as a norm. A grep is mechanical; a reminder is not.
 
+**THE COMMAND ABOVE IS LINE-BASED AND THIS PROSE IS HARD-WRAPPED, so a hit
+phrase that straddles a wrap is INVISIBLE TO IT.** Found 2026-08-12 by the
+orchestrator, against its own document: the sentence "there is no way / to
+satisfy" wrapped between `way` and `to`, and the grep reported clean on the one
+over-claim in the file. The single-word alternatives (`never`, `always`,
+`impossible`) are effectively immune; the multi-word ones (`cannot be`,
+`no way to`, `needs a`, `is covered`, `would catch`) are the exposed set.
+
+Measured across three work histories and the document that found it, counting
+OCCURRENCES rather than matching lines, so the two numbers are comparable:
+
+| file | line-visible | total | missed by wrap |
+|---|---|---|---|
+| `delivery/work-history/m3-p3.md` | 223 | 223 | **0** |
+| `delivery/work-history/m3-p1.md` | 62 | 62 | **0** |
+| `delivery/work-history/m3-p4.md` | 182 | 184 | **2** |
+| the M3-P9 dispatch read | 2 | 3 | **1** |
+
+So the gap is REAL and SMALL, and it is stated that way rather than inflated:
+two misses in a 184-hit work history is not the shape of a broken guard, and one
+miss in a three-hit document is how it was noticed at all. Run the wrap-
+insensitive form as well when the document is prose you wrapped yourself:
+
+```
+tr '\n' ' ' < delivery/work-history/<phase>.md \
+  | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
+```
+
+It loses line numbers, which is why it supplements the binding command rather
+than replacing it: run the line-based one to locate hits, and this one to learn
+whether the first missed any.
+
 ### One witness is not a class
 
 A witness for a CLASS must redden under at least TWO structurally different
