@@ -1,0 +1,24 @@
+{
+  "id": "tuition-ids-unique-across-directories",
+  "behavior": "tuition-ids-unique-across-directories",
+  "tests": [
+    "no tuition id is claimed by both the shipped feed and the delivering project's log"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "tuition/T-021.yaml",
+      "find": "id: T-021",
+      "replace": "id: T-005"
+    },
+    {
+      "kind": "mutation",
+      "file": "tuition/T-022.yaml",
+      "find": "id: T-022",
+      "replace": "id: T-999"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "tuition-list-filters-kernel-relevant",
+  "behavior": "tuition-list-filters-kernel-relevant",
+  "tests": [
+    "tuition list --kernel-relevant prints exactly the kernel-relevant entries, one line each"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/tuition.ts",
+      "find": "    if (options.kernelRelevant && !entry[\"kernel-relevant\"]) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/tuition.ts",
+      "find": "      options.kernelRelevant = true;",
+      "replace": "      options.kernelRelevant = false;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "implementer-brief-reads-generated-index",
+  "behavior": "implementer-brief-reads-generated-index",
+  "tests": [
+    "the composed implementer brief names the mechanism index in its mandated reading and the path resolves to the generated file"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "roles/implementer.md",
+      "find": "  - tuition/mechanism-index.yaml\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "tuition/mechanism-index.yaml",
+      "find": "kind: mechanism-index\nversion: 1",
+      "replace": "kind: mechanism-index\nversion: 1\n# hand edited"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

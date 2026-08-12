@@ -1,0 +1,24 @@
+{
+  "id": "mechanism-index-covers-interim-rows",
+  "behavior": "mechanism-index-covers-every-interim-row",
+  "tests": [
+    "every mechanism of the interim index resolves in the generated index, and removing one from its entry makes the check fail naming it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "    for (const declaration of entry.mechanisms ?? []) {",
+      "replace": "    for (const declaration of []) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "    .replace(/[^a-z0-9]+/g, \"-\")",
+      "replace": "    .replace(/[^a-z0-9]+/g, \"\")"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

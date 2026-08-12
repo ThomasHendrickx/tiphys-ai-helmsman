@@ -372,6 +372,21 @@ test("the composed implementer brief names the mechanism index in its mandated r
   assert.match(composed.stdout, /tuition\/mechanism-index\.yaml/);
   assert.ok(existsSync(indexPath));
 
+  /* THE MANDATED-READING LIST ITSELF, not merely the composed text. The brief's
+     BODY discusses the index by path, so a composed brief matches the pattern
+     above even with the frontmatter entry deleted: the assertion above alone is
+     shadowed by the prose and cannot witness the obligation. The frontmatter is
+     what the composer RESOLVES, so it is what criterion 6 is about. */
+  const frontmatter = readFileSync(join(repoRoot, "roles", "implementer.md"), "utf8");
+  const closing = frontmatter.split("\n").indexOf("---", 1);
+  const declared = yamlModule.parse(
+    frontmatter.split("\n").slice(1, closing).join("\n"),
+  ) as { "mandated-reading": string[] };
+  assert.ok(
+    declared["mandated-reading"].includes("tuition/mechanism-index.yaml"),
+    `the implementer brief's mandated reading is ${declared["mandated-reading"].join(", ")}`,
+  );
+
   /* IT IS THE GENERATED FILE, not a leftover: the shipped index matches a
      fresh projection of the shipped feed, which is the property `--check`
      decides. */

@@ -125,10 +125,20 @@ export function listEntryFiles(directory: string): EntryFileListing {
 }
 
 export type EntryLoad =
-  | { ok: true; entry: TuitionEntry }
+  | { ok: true; entry: TuitionEntry; body: string }
   | { ok: false; reason: string; diagnostics: string[] };
 
-/** Read, decode and schema-validate one tuition entry. */
+/**
+ * Read, decode and schema-validate one tuition entry.
+ *
+ * THE RAW BYTES COME BACK WITH THE ENTRY, and that is not a convenience. An
+ * earlier version had `tuition add` call this and then read the same path a
+ * second time for the bytes to write. Two reads meant two independent
+ * refusals of a non-regular path, and a refusal that another refusal shadows
+ * cannot be witnessed: mutating either left the other rejecting the same
+ * input, which is exactly the shape T-018 records. One read, one
+ * classification, one guard.
+ */
 export function loadEntry(path: string): EntryLoad {
   const read = readOperatorPath(path);
   if (!read.ok) {
@@ -148,7 +158,7 @@ export function loadEntry(path: string): EntryLoad {
       diagnostics,
     };
   }
-  return { ok: true, entry: decoded.value as TuitionEntry };
+  return { ok: true, entry: decoded.value as TuitionEntry, body: read.body };
 }
 
 export type Projection =

@@ -1,0 +1,31 @@
+{
+  "id": "doctor-retention-check",
+  "behavior": "doctor-retention-check",
+  "tests": [
+    "doctor reports CHECK retention PASS for declared paths that exist and are not ignored, and FAIL naming the path once it is git-ignored",
+    "doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      if (kept.length === 0) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      if (present.length === 0) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\"],",
+      "replace": "  full: [\"gh-missing\", \"remote-missing\"],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

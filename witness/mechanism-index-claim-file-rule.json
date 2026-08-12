@@ -1,0 +1,24 @@
+{
+  "id": "mechanism-index-claim-file-rule",
+  "behavior": "mechanism-index-contains-claim-file-rule",
+  "tests": [
+    "the generated index carries the claim-file rule with resolving evidence, and it comes from the feed rather than from a hand-written file"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "tuition/mechanism-index.yaml",
+      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file.",
+      "replace": "      A claim that cannot be taken should be retried quietly."
+    },
+    {
+      "kind": "mutation",
+      "file": "tuition/T-005.yaml",
+      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file. A",
+      "replace": "      A claim that cannot be taken should be retried quietly. A"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

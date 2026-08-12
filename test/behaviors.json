@@ -625,5 +625,21 @@
   "m2-exit-union-sources-named-by-this-suite": "every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed",
   "m2-exit-expected-set-uses-not-proven-reads-are-pinned": "every occurrence of the derived expected set's binding that this suite cannot prove is a read is pinned, so an unrecognised operation reddens instead of passing",
   "m2-exit-expected-set-writes-refused-at-run-time": "a write that adds an id to the derived expected set is refused at RUN TIME, in spellings no list of names contains",
-  "m2-exit-expected-set-multiplicity-preserving-change-refused": "a change to the derived expected set that preserves its value-set is refused, in the derivation and in the loop that consumes it"
+  "m2-exit-expected-set-multiplicity-preserving-change-refused": "a change to the derived expected set that preserves its value-set is refused, in the derivation and in the loop that consumes it",
+  "tuition-entry-validates": "every entry in the shipped tuition feed validates and the feed count is the promoted set plus the two tickets",
+  "tuition-kernel-relevant-requires-consequence": "an entry claiming kernel relevance with an empty or absent structural consequence is rejected naming the field",
+  "tuition-mechanism-rule-requires-evidence": "a mechanism with a rule and no evidence is rejected naming the evidence array",
+  "tuition-applied-target-must-exist": "an applied structural consequence whose target does not exist is rejected naming the path and the check",
+  "mechanism-evidence-resolves": "a mechanism whose evidence names a file that does not exist is rejected naming the reference and the check",
+  "mechanism-machine-readable-form-resolves": "a machine-readable form whose key has been renamed in the named document is rejected naming the key",
+  "mechanism-index-projection-drift": "tuition index --check names the mechanism and the entry when the committed index is not the projection of the feed",
+  "mechanism-index-covers-every-interim-row": "every mechanism of the captured interim index resolves in the generated index",
+  "mechanism-index-contains-claim-file-rule": "the generated index carries T-005's claim-file rule and it comes from the feed",
+  "interim-index-removed-and-redirected": "the interim markdown index is absent and the shipped document families name the generated index instead",
+  "implementer-brief-reads-generated-index": "the composed implementer brief names the generated mechanism index and the path resolves",
+  "tuition-list-filters-kernel-relevant": "tuition list --kernel-relevant prints exactly the kernel-relevant entries, one line each",
+  "tuition-add-rejects-invalid": "tuition add on an invalid entry exits nonzero and leaves the feed directory byte-identical",
+  "tuition-add-refuses-non-regular-entry-path": "tuition add refuses an entry path that is not a regular file and writes nothing",
+  "tuition-ids-unique-across-directories": "no tuition id is claimed by both the shipped feed and the delivering project's log",
+  "doctor-retention-check": "doctor reports CHECK retention PASS for tracked declared paths, FAIL for an absent or ignored one, and full promotes an undeclared retention"
 }

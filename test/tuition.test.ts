@@ -444,19 +444,43 @@ test("a machine-readable form naming a renamed key is rejected naming the key, a
 /* ------------------------------------------------------------------ */
 
 test("tuition list --kernel-relevant prints exactly the kernel-relevant entries, one line each", () => {
-  const all = runCli(["tuition", "list", "--dir", feedDir]);
+  /* THE FEED IS STAGED WITH A NON-KERNEL-RELEVANT ENTRY, and that is the whole
+     difference between a witness and a decoration. Every entry in the SHIPPED
+     feed is kernel-relevant, because promotion is what puts an entry there, so
+     a filter run against it prints the same lines whether it filters or not:
+     green, registered and worthless, which is T-003's rule about testing
+     against the dangerous state rather than against the absent feature. */
+  const staged = scratch();
+  const localOnly = readEntry("T-016.yaml");
+  localOnly["id"] = "T-900";
+  localOnly["kernel-relevant"] = false;
+  delete localOnly["structural-consequence"];
+  cpSync(feedDir, join(staged, "tuition"), { recursive: true });
+  writeFileSync(
+    join(staged, "tuition", "T-900.yaml"),
+    yamlModule.stringify(localOnly),
+  );
+  const stagedFeed = join(staged, "tuition");
+
+  const all = runCli(["tuition", "list", "--dir", stagedFeed]);
   assert.equal(all.status, 0, all.stderr);
+  assert.match(all.stdout, /^T-900 /m);
   const filtered = runCli([
     "tuition",
     "list",
     "--kernel-relevant",
     "--dir",
-    feedDir,
+    stagedFeed,
   ]);
   assert.equal(filtered.status, 0, filtered.stderr);
 
   const expected = entryFiles().filter(
     (name) => readEntry(name)["kernel-relevant"] === true,
+  );
+  assert.doesNotMatch(
+    filtered.stdout,
+    /^T-900 /m,
+    "the filter printed the entry whose kernel-relevant is false",
   );
   const printed = filtered.stdout.trim().split("\n").filter((line) => line !== "");
   assert.equal(printed.length, expected.length, filtered.stdout);
@@ -478,9 +502,10 @@ test("tuition list --kernel-relevant prints exactly the kernel-relevant entries,
   }
   assert.match(printed[0] as string, /^T-[0-9]{3} [0-9]{4}-[0-9]{2}-[0-9]{2} targets=[0-9]+$/);
   assert.ok(
-    all.stdout.trim().split("\n").length >= printed.length,
-    "the filtered list is longer than the unfiltered one",
+    all.stdout.trim().split("\n").length > printed.length,
+    "the unfiltered list is not longer than the filtered one, so the filter removed nothing",
   );
+  rmSync(staged, { recursive: true, force: true });
 });
 
 test("tuition add on an invalid entry exits nonzero and leaves the feed directory byte-identical", () => {
@@ -502,6 +527,12 @@ test("tuition add on an invalid entry exits nonzero and leaves the feed director
 
     const refused = runCli(["tuition", "add", "--file", candidate, "--into", feed]);
     assert.notEqual(refused.status, 0);
+    /* THE REASON IS ASSERTED, not only the exit code. A command that CRASHES
+       on an invalid entry also exits nonzero and also writes nothing, so an
+       exit-code-only assertion cannot tell a refusal from a stack trace, and
+       the property under test is that `add` VALIDATES FIRST. */
+    assert.match(refused.stderr, /is not a valid tuition entry/);
+    assert.match(refused.stdout, /^INVALID #\/structural-consequence /m);
     assert.deepEqual(readdirSync(feed).sort(), before);
 
     /* THE OTHER DIRECTION: the same entry with a consequence is accepted and
@@ -540,7 +571,18 @@ test("tuition add refuses an entry path that is not a regular file and writes no
     }
     const refused = runCli(["tuition", "add", "--file", fifo, "--into", feed]);
     assert.notEqual(refused.status, 0);
-    assert.match(refused.stderr, /entry\.yaml/);
+    /* THE REFUSAL NAMES THE OBSERVED ENTRY TYPE, and asserting that rather than
+       only the exit code is what makes this witnessable. Measured: with the
+       type guard removed, the command STILL exits 1 and STILL names the path,
+       because the decode of an undefined body fails right behind it
+       ("could not be decoded: Cannot read properties of undefined"). Two
+       guards catching one input make each other unwitnessable (T-018), and the
+       property that actually matters here is that the path was CLASSIFIED
+       rather than opened, so the message is the thing to assert. */
+    assert.match(
+      refused.stderr,
+      /entry\.yaml is a (named pipe|directory), not a regular file, so it was not opened/,
+    );
     assert.deepEqual(readdirSync(feed).sort(), before);
   } finally {
     rmSync(dir, { recursive: true, force: true });

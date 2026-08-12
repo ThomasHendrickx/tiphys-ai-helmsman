@@ -1,0 +1,24 @@
+{
+  "id": "tuition-applied-target-exists",
+  "behavior": "tuition-applied-target-must-exist",
+  "tests": [
+    "an applied structural consequence whose target does not exist is rejected naming the path and the check, and is accepted with the check deregistered"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (classifyEntry(join(contextDirectory, target)).kind === \"absent\") {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (consequence === undefined || consequence[\"status\"] !== \"applied\") {",
+      "replace": "      if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

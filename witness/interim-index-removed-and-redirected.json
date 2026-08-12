@@ -1,0 +1,24 @@
+{
+  "id": "interim-index-removed-and-redirected",
+  "behavior": "interim-index-removed-and-redirected",
+  "tests": [
+    "the interim index is absent, the tuition README names the generated index, and no shipped document family mentions the deleted file"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "tuition/README.md",
+      "find": "**`tuition/mechanism-index.yaml` is the index. Read it before you use a\nmechanism.**",
+      "replace": "**The mechanism index is the thing to read before you use a mechanism.**"
+    },
+    {
+      "kind": "mutation",
+      "file": "tuition/README.md",
+      "find": "The tuition feed: one document per failure mode a delivery paid for, and the\nmechanism index projected out of them.",
+      "replace": "The tuition feed, which supersedes MECHANISMS.md at the repository root."
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

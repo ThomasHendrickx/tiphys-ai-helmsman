@@ -1,0 +1,24 @@
+{
+  "id": "tuition-add-rejects-invalid",
+  "behavior": "tuition-add-rejects-invalid",
+  "tests": [
+    "tuition add on an invalid entry exits nonzero and leaves the feed directory byte-identical"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/tuition.ts",
+      "find": "  const loaded = loadEntry(options.file);\n  if (!loaded.ok) {",
+      "replace": "  const loaded = loadEntry(options.file);\n  if (false && !loaded.ok) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/tuition.ts",
+      "find": "    writeFileSync(target, loaded.body, { flag: \"wx\" });",
+      "replace": "    writeFileSync(target, loaded.body);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

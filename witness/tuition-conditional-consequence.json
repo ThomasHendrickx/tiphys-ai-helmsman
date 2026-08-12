@@ -1,0 +1,24 @@
+{
+  "id": "tuition-conditional-consequence",
+  "behavior": "tuition-kernel-relevant-requires-consequence",
+  "tests": [
+    "an entry claiming kernel relevance with an empty or an absent structural consequence is rejected naming the field, and removing each guarding keyword accepts it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/tuition.schema.json",
+      "find": "      \"structural-consequence\": {\n        \"type\": \"array\",\n        \"minItems\": 1\n      }",
+      "replace": "      \"structural-consequence\": {\n        \"type\": \"array\"\n      }"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/tuition.schema.json",
+      "find": "      \"kernel-relevant\": { \"const\": true }",
+      "replace": "      \"kernel-relevant\": { \"const\": false }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "mechanism-evidence-resolves",
+  "behavior": "mechanism-evidence-resolves",
+  "tests": [
+    "a mechanism whose evidence names a file that does not exist is rejected naming the reference and the check, and is accepted with the check deregistered"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "          if (classifyEntry(join(contextDirectory, path)).kind === \"absent\") {",
+      "replace": "          if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (token.includes(\"/\") && /\\.[A-Za-z0-9]{1,6}$/.test(token) && !token.startsWith(\"/\")) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

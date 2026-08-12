@@ -126,11 +126,6 @@ function cmdAdd(options: Options): number {
     }
     return 1;
   }
-  const read = readOperatorPath(options.file);
-  if (!read.ok) {
-    process.stderr.write(`tiphys tuition: ${read.reason}\n`);
-    return 1;
-  }
   const directory = options.into ?? join(process.cwd(), "tuition");
   const target = join(directory, `${loaded.entry.id}.yaml`);
   const refusal = refuseOpenForWrite(target);
@@ -142,7 +137,7 @@ function cmdAdd(options: Options): number {
     mkdirSync(directory, { recursive: true });
     /* EXCLUSIVE CREATE: an id already in the feed is a loud refusal, never an
        overwrite. Ids are never reused, so the collision is the fault. */
-    writeFileSync(target, read.body, { flag: "wx" });
+    writeFileSync(target, loaded.body, { flag: "wx" });
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     process.stderr.write(
