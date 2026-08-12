@@ -1883,6 +1883,23 @@ Read this first (CLAUDE.md:326).
    writing exactly one literal name (scripts/m2-exit-test.sh:416) and by every
    invoking block above reaching it through the same `--self-test` hook. I did not
    search for re-implementations.
+
+   **CORRECTION, fix round 2 (finding CR-FR-1).** The bound stated above is
+   WRONG, and wrong in a way that matters: it describes two ways a call site
+   could hide, and the site this enumeration actually missed is NEITHER of them.
+   test/m2-exit-test.test.ts:272 drives the real assertion program end to end
+   through the harness's own `--self-test` mode. It hides because it never names
+   the program: it invokes `bash <harness> --self-test` and reads the harness's
+   summary lines, so no `m2-assert` token appears in it and a literal-token grep
+   cannot see it. The correct statement of the residual exclusion is therefore
+   narrower and different: **a literal-token enumeration finds only the sites
+   that NAME the program, and misses every site that reaches it through a MODE of
+   the harness.** The self-test is the one such mode today. It was checked rather
+   than only reported, twice: by review H-A, which established that both fixtures
+   carry explicit table rows so neither the derived default nor zero-red can fire
+   on them, and by fix round 2, which re-ran the self-test against the MODIFIED
+   harness and measured the same 4 and 2 findings as before (FR2.8), so the two
+   new self-vacuity checks do not over-determine it either.
 2. **`delivery/**` is excluded from the enumeration** (the `grep -v '^delivery/'`
    is in the published command). Those are documents, not call sites. The cost is
    that a prose claim in another delivery document repeating the vacuous-witness
@@ -2734,4 +2751,55 @@ has not happened yet. H-B scoped the finding as "at HEAD it is redundant, becaus
 the pr table's 11 ids and the manifest's 11 ids are the same set", and that is
 true of the SET; it is not true of the PATH, and the path is what a probe
 witnesses. The unwitnessed leg was the one doing all the work.
+
+## FR2.9 What THIS round's derivation did NOT cover (fix-round contract item 3)
+
+The reviewer's FIRST check (CLAUDE.md:326). Round 1's list is corrected in place
+above at item 1; this is the list for round 2's own enumeration.
+
+1. **The derivation reads ONE union, located by ONE regex.** It matches
+   `const expectedIds = [];` followed by the `for (const id of [...])` header, so
+   it enumerates the sources of the derived expected set and NOTHING ELSE. A
+   second, differently-written union elsewhere in the assertion program would not
+   appear. Bounded, not proved: `grep -c 'const expectedIds' scripts/m2-exit-test.sh`
+   returns 1, and the shipped guard hard-fails when the regex finds nothing, so a
+   REWRITE of this union reddens rather than silently enumerating zero sources.
+   A SECOND union added beside it would not.
+2. **The attribution-key enumeration is scoped to `test/m2-exit-test.test.ts`.**
+   Section C of the derivation reads that file only. A test in another file that
+   runs the assertion program and attributes its rejections would not appear.
+   This is the one exclusion I would attack first if I were reviewing, because
+   the whole finding is about a key applied in one place, so I bounded it by
+   execution rather than by argument: see item 3.
+3. **What bounds item 2 is round 1's own call-site enumeration plus its
+   correction.** Five blocks spawn the program directly, all in
+   test/m2-exit-test.test.ts, and the sixth (test/m2-exit-test.test.ts:272)
+   reaches it through `--self-test` and is in the same file. I did not repeat that
+   enumeration; I inherited it and the CR-FR-1 correction to it. So item 2's
+   exclusion is bounded by a search whose own limits are stated above, not by an
+   independent one.
+4. **`delivery/**` is excluded entirely.** No prose was searched for claims about
+   the union's legs. Round 1 recorded that its equivalent exclusion is where
+   CR-H-1 was found (by reading, not grep), and the same risk stands here: a
+   document asserting "two legs" is not caught by anything I ran. I did correct
+   the two I knew of, at delivery/work-history/exit-test-assertion-direction.md:2050
+   and in FR1.10 item 1, both because a review named them, not because a search
+   found them.
+5. **`git grep` over `src/` was not run for this mechanism.** The mechanism
+   ("an attribution key covers only the branches that emit it") is general and
+   almost certainly has instances in the kernel's own gates. I did not look. The
+   scope I declared is the assertion program and its tests, and widening it would
+   have put this round outside the branch's subject. This is an exclusion by
+   CHOICE, and the choice is stated so a later reader can reverse it.
+6. **The two new harness checks are witnessed against hand-built degenerate
+   inputs, not against a real degraded manifest.** No `gates.manifest.json` on
+   `main` has ever had a non-array `gates` key. The witnesses construct that
+   state; they do not demonstrate it arising. H-B's finding is explicit that the
+   state is unreachable through the shipped harness today, and that remains true
+   with the checks in place; what changed is that reaching it now fails loudly.
+7. **I did not run any gate from `gate-registry.yaml` except through the two
+   bundle runs in FR2.8.** Those runs execute the gate runner over the real
+   manifest, which is stronger than a single `--only` invocation, but they are
+   not the same thing as the `gates` workflow, and they are LOCAL. The CI
+   conclusion is reported separately and is not assumed.
 
