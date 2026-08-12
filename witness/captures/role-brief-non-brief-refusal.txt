@@ -1,0 +1,11 @@
+# REAL captured output of the shipped validator refusing a file in roles/ that is
+# not a role brief. Taken 2026-08-12 in the branch worktree at ebc9b00, node
+# v22.22.2, one command per block, stdout and stderr interleaved as the terminal
+# saw them, exit code appended by the capturing shell. Nothing is hand-written.
+#
+# $ for f in roles/README.md roles/_shared-dispatch-contract.md; do node bin/tiphys.ts validate --type role-brief "$f"; echo "EXIT=$?"; done
+
+tiphys validate: roles/README.md does not open with a --- frontmatter fence, so it has no role-brief frontmatter to validate
+EXIT=1
+tiphys validate: roles/_shared-dispatch-contract.md does not open with a --- frontmatter fence, so it has no role-brief frontmatter to validate
+EXIT=1

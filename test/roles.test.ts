@@ -148,17 +148,37 @@ test("the brief set every assertion in this file runs over is derived from roles
     );
   }
 
+  /* THE REFUSAL IS COMPARED AGAINST REAL CAPTURED OUTPUT, not against a
+     pattern chosen to match the implementation. `witness/captures/role-brief-non-brief-refusal.txt`
+     holds the validator's own bytes for both excluded files; the live run must
+     reproduce the recorded line for the file it is about (CLAUDE.md warning 10,
+     and red-witness rule (f), which requires the capture because this file
+     spawns the program it asserts about). */
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", "role-brief-non-brief-refusal.txt"),
+    "utf8",
+  )
+    .split("\n")
+    .filter((line) => line.startsWith("tiphys validate:"));
+  assert.ok(captured.length > 0, "the recorded refusal capture holds no refusal line");
+
   const excluded = readdirSync(rolesDir)
     .filter((name) => name.endsWith(".md"))
     .filter((name) => !AUTHORING_ROLES.includes(name.slice(0, -".md".length)));
   for (const name of excluded) {
-    const refused = runCli(["validate", "--type", "role-brief", join(rolesDir, name)]);
+    const refused = runCli(["validate", "--type", "role-brief", `roles/${name}`]);
     assert.notEqual(
       refused.status,
       0,
       `roles/${name} is excluded from the derived brief set and the validator accepts it as a brief`,
     );
-    assert.match(refused.stdout + refused.stderr, /frontmatter fence/);
+    const recorded = captured.find((line) => line.includes(`roles/${name} `));
+    assert.ok(recorded !== undefined, `no recorded refusal for roles/${name}`);
+    assert.equal(
+      (refused.stdout + refused.stderr).trim(),
+      recorded,
+      `roles/${name}: the live refusal differs from the recorded one`,
+    );
   }
 });
 
