@@ -233,5 +233,70 @@
     "phase": "M3-P6",
     "artifact": "roles/implementer.md",
     "clause": "R-087"
+  },
+  "R-026b": {
+    "phase": "M3-P7",
+    "artifact": "checklists/plan-review.yaml",
+    "clause": "R-026b"
+  },
+  "R-027": {
+    "phase": "M3-P7",
+    "artifact": "checklists/plan-review.yaml",
+    "clause": "R-027"
+  },
+  "R-028a": {
+    "phase": "M3-P7",
+    "artifact": "checklists/plan-review.yaml",
+    "clause": "R-028a"
+  },
+  "R-050b": {
+    "phase": "M3-P7",
+    "artifact": "checklists/env-failure-diagnosis.yaml",
+    "clause": "R-050b"
+  },
+  "R-053": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-053"
+  },
+  "R-054": {
+    "phase": "M3-P7",
+    "artifact": "src/checklists.ts",
+    "clause": "R-054"
+  },
+  "R-055": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-055"
+  },
+  "R-056a": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-056a"
+  },
+  "R-057b": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-057b"
+  },
+  "R-059": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-059"
+  },
+  "R-060": {
+    "phase": "M3-P7",
+    "artifact": "schemas/verdict.schema.json",
+    "clause": "R-060"
+  },
+  "R-066": {
+    "phase": "M3-P7",
+    "artifact": "checklists/flake-playbook.yaml",
+    "clause": "R-066"
+  },
+  "R-093": {
+    "phase": "M3-P7",
+    "artifact": "checklists/clean-room.yaml",
+    "clause": "R-093"
   }
 }

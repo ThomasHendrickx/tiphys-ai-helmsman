@@ -39,11 +39,12 @@ indistinguishable.
   changed: nothing. No value in the kept subtree was edited, reformatted or
     re-serialised beyond JSON.stringify's two-space indent.
 
-WHY `modes-type-registered` AND NOT ANOTHER. Its two dangerous states are
-mutations of `src/commands/validate.ts` and `src/modes.ts` that delete a type
-row and a reader branch, which is the plainest instance in the run of what the
-harness is for: the member is a deletion, the diff shows exactly the deleted
-line, and the two red runs name the one test that noticed.
+WHY `modes-type-registered` AND NOT ANOTHER. Both of its dangerous states are
+mutations of `src/commands/validate.ts`, one deleting the `assurance-modes` type
+row and one repointing `role-model-config` at the wrong schema, which is the
+plainest instance in the run of what the harness is for: member 0 is a
+deletion, its diff shows exactly the deleted line, and its two red runs name the
+one test that noticed.
 
 WHAT THE FIXTURE IS ANCHORED TO, so that a hand-written substitute would not
 survive. `test/checklists.test.ts` asserts that the fixture's member equals
