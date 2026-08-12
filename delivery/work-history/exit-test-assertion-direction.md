@@ -5854,3 +5854,103 @@ rather than a guarantee, or (c) carried by a measurement in FR4.6.
   this head, and the pull-request arm of the workflow has not produced a run for
   ANY head of this branch, for the reason round 3 diagnosed. Whether that is
   resolved is not an implementer's call and I did not act on it.
+
+### FR4.11 The swallowed status one frame out, and the DV3-F2 measurement
+
+Writing FR4.7 I noticed I had fixed the INSTANCE of DV3-F2 and not its mechanism,
+which is the exact error this round exists to stop. The mechanism there is: **a
+command substitution used as an ARGUMENT discards the exit status of what it ran,
+even under `set -e`.** Making `main_expect_json` exit explicitly closed nothing at
+its only real call site, because that call site was
+`write_expect "${expect}" "$(main_expect_json)"`, and the explicit exit would have
+arrived as an empty document with the harness none the wiser.
+
+So the derivation, over the whole harness rather than the one line I had in hand:
+
+```
+$ grep -n '\$(' scripts/m2-exit-test.sh \
+    | grep -vE '\$\((date|printf|cd |git |basename|dirname|node -e|wc |sed |grep |cat |mktemp|pwd|jq)'
+85:repo_root=$(CDPATH= cd -- "${script_dir}/.." && pwd)
+271:  if ! absent="$(main_absent_json)"; then
+338:evidence=$(CDPATH= cd -- "${evidence}" && pwd)
+375:  record_seq=$((record_seq + 1))
+414:  record_seq=$((record_seq + 1))
+890:  record_seq=$((record_seq + 1))
+1143:  record_seq=$((record_seq + 1))
+1199:  record_seq=$((record_seq + 1))
+1238:  record_seq=$((record_seq + 1))
+1280:  if ! main_expect="$(main_expect_json)"; then
+1401:  record_seq=$((record_seq + 1))
+1466:  scope_expect=$(resolve_scope_expect "${phase}" "${head_branch}")
+```
+
+Walked in full. The `$((...))` rows are arithmetic expansion, not command
+substitution, and the filter left them because the pattern `$(` is a prefix of
+both; they are not call sites and I say so rather than quietly dropping them.
+That leaves five real substitutions:
+
+| site | position | status taken? |
+|---|---|---|
+| scripts/m2-exit-test.sh:85 | plain assignment | YES, by `set -e`: a `var=$(cmd)` assignment takes the substitution's status as its own. |
+| scripts/m2-exit-test.sh:338 | plain assignment | YES, same. |
+| scripts/m2-exit-test.sh:1466 | plain assignment | YES, same. |
+| scripts/m2-exit-test.sh:271 | `if !` guard | YES, explicitly. This round added it. |
+| scripts/m2-exit-test.sh:1280 | was an ARGUMENT | This was the escaping one. This round changed it to an `if !` guard. |
+
+**What this derivation did NOT cover**: only `scripts/m2-exit-test.sh`. The same
+shape may exist in the other scripts under scripts/ and in the workflow, and I
+did not look, because they are outside the scope I was given. The filter is also
+a blocklist of common commands rather than a parser, so a substitution invoking
+one of the filtered names in argument position would not appear above; I read the
+unfiltered output as well and found no such case, but that is a reading of one
+file today.
+
+**The DV3-F2 closure, measured against production rather than a synthetic.**
+`main` carries the pre-fix program, so the control column is the live behaviour.
+Three manifest shapes, `--print-expect main` on each, asking two questions: what
+did it exit, and is what it printed JSON.
+
+```
+$ node --version
+v26.6.0
+=== head
+object: --print-expect main EXIT=0  VALID-JSON
+nulls: --print-expect main EXIT=0  VALID-JSON
+empty: --print-expect main EXIT=0  VALID-JSON
+=== the same three against origin/main's harness (pre-fix)
+object: --print-expect main EXIT=0  NOT-JSON: Unexpected token 'e', "[eval]:6
+nulls: --print-expect main EXIT=0  NOT-JSON: Unexpected token 'e', "[eval]:6
+empty: --print-expect main EXIT=0  VALID-JSON
+```
+
+`empty` is the control and it is valid on both, so the lab is not simply
+rejecting everything, and the two shapes the verification named are exactly the
+two that changed. On `main` right now, both of them exit 0 while emitting a
+document that is not JSON, which is what made the assertion program die at
+"expectations does not parse" before it could reach the manifest-leg check.
+
+### FR4.12 The suite re-run at the final head
+
+FR4.8's two arms ran at code head 04e83a7. Two things happened after it: the work
+history was committed, and FR4.11's fix to scripts/m2-exit-test.sh:1280 landed.
+The second is a real code change, so quoting only the earlier run would be
+quoting a green scoped to a configuration that no longer exists, which is exactly
+what T-009 forbids. **The FR4.8 arms are therefore superseded by this one**, and I
+am leaving them in place rather than deleting them because a later reader should
+be able to see that the count moved and why.
+
+I also record, because it cost a measurement: I edited the harness WHILE a
+background suite run was in flight in the same worktree. That run's result is
+discarded and is not quoted anywhere in this document. A suite result is scoped to
+the bytes it ran against, and those bytes changed underneath it.
+
+**Complete sentence.** Head FINAL_HEAD, node v26.6.0 from the scratch prefix,
+`dist/` BUILT (`npm run build` exit 0, `git status --porcelain` empty
+afterwards), invocation `npm test`:
+
+```
+FINAL_CAPTURE
+```
+
+Same transliteration as FR4.8: U+2139 rendered as `i`, TRANSLIT2 occurrences,
+nothing else altered.

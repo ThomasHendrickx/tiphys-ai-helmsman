@@ -1271,7 +1271,16 @@ run_main_bundle() {
     >"${evidence}/records/${seq}.json"
   cat "${evidence}/${out_rel}"
   local expect="${evidence}/main-expect.json"
-  write_expect "${expect}" "$(main_expect_json)"
+  # The status is TAKEN here, not discarded. A command substitution used as an
+  # argument throws its exit status away even under set -e, so the explicit exit
+  # main_expect_json now takes would still have arrived at write_expect as an
+  # empty document with the harness none the wiser. This is the same swallowed
+  # status one call frame out.
+  local main_expect
+  if ! main_expect="$(main_expect_json)"; then
+    die "could not build the main bundle's expectations document from ${MANIFEST}"
+  fi
+  write_expect "${expect}" "${main_expect}"
   run_assert "main bundle" "${dir}/summary.json" "${dir}" "${expect}" "${MANIFEST}"
   if [ "${ASSERT_EXIT}" -ne 0 ]; then
     die "the main bundle does not match section 1.4's main-bundle column (assertion exit ${ASSERT_EXIT})"
