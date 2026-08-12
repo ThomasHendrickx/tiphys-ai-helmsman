@@ -4901,3 +4901,74 @@ The remaining CI obligations, neither of which a pull-request run discharges:
 2. The post-merge `push` run on the new `main` head (CLAUDE.md:468), which is
    the first execution of the `push` arm and belongs to whoever merges. This
    round does not merge and does not open a pull request.
+
+## FR3.18 WHY no run was created: the pull request is CONFLICTED, and round 2 is already on `main`
+
+FR3.17 reported the fact and declined to guess the cause. The cause is now
+measured, and it changes what should happen next, so it is here rather than in a
+hand-back message that could be lost.
+
+**Pull request #109 reports `mergeable_state: "dirty"`.** GitHub cannot compute
+the merge ref for a conflicted pull request, and no `pull_request` workflow run
+is created for one. That is a complete explanation of the silence, and it is not
+caused by anything this round pushed: `main` moved to `3d0fa5a` at 17:40:25Z,
+twelve minutes BEFORE the first round-3 push at 17:52:46Z.
+
+**What moved.** `main`'s commit `3d0fa5a` is titled "Land the harness fix-round-2
+delta verification: two MEDIUM findings (#117)", and it carries this branch's
+round-2 CONTENT. Measured by hashing the blobs rather than by reading the title:
+
+| file | on `main` (9781212) | at `9b7752d` (round 2) | |
+|---|---|---|---|
+| scripts/m2-exit-test.sh | 4b607dd9696485e5 | 4b607dd9696485e5 | SAME |
+| test/behaviors.json | b76c628f031a7947 | b76c628f031a7947 | SAME |
+| test/m2-exit-test.test.ts | 5bb732f77ce3e0a3 | 5bb732f77ce3e0a3 | SAME |
+| delivery/work-history/exit-test-assertion-direction.md | cdeb8ae161b6ceee | cdeb8ae161b6ceee | SAME |
+
+All four are byte-identical, and `git merge-base --is-ancestor 9b7752d
+origin/main` answers NO. So round 2's content reached `main` through a DIFFERENT
+commit, and git sees the same file introduced twice with no shared ancestry:
+
+```
+$ git merge-tree --write-tree origin/main HEAD   (EXIT=1)
+CONFLICT (add/add): Merge conflict in delivery/work-history/exit-test-assertion-direction.md
+CONFLICT (content): Merge conflict in scripts/m2-exit-test.sh
+CONFLICT (content): Merge conflict in test/behaviors.json
+```
+
+**The resolution is mechanical, and it is measured rather than proposed.**
+Because `main`'s four files are byte-identical to `9b7752d`'s, this round's
+delta against `9b7752d` applies to current `main` with no conflict at all:
+
+```
+$ git diff 9b7752d..de2d806 -- scripts/m2-exit-test.sh test/behaviors.json \
+    test/m2-exit-test.test.ts delivery/work-history/exit-test-assertion-direction.md \
+    > round3.patch          (2028 lines)
+$ git worktree add --detach <probe> origin/main
+$ git apply --check round3.patch
+git apply --check EXIT=0
+$ git apply round3.patch     -> applied cleanly, 4 files modified
+```
+
+and the result is byte-identical to this branch for every one of the four:
+
+```
+scripts/m2-exit-test.sh                     probe=5791db626d2ff268 mine=5791db626d2ff268 SAME
+test/behaviors.json                         probe=71205e1b55027221 mine=71205e1b55027221 SAME
+test/m2-exit-test.test.ts                   probe=4baa388bda4016c8 mine=4baa388bda4016c8 SAME
+delivery/work-history/...-direction.md      probe=affb3c41ad79a061 mine=affb3c41ad79a061 SAME
+```
+
+The probe worktree was removed afterwards and this worktree is unchanged
+(`git status --porcelain` empty).
+
+**I did not act on it.** Replaying this round onto `main`, or resolving #109 in
+place, changes what the pull request contains and which branch carries the work,
+and an implementer neither opens pull requests nor merges. It is recorded here
+so that whoever does it has the measurement rather than the guess, and so that
+the missing CI is not read as a defect in the change.
+
+Until that is resolved, **no `pull_request` run can be created for any head of
+this branch**, which is why three pushes (`402c534`, `e5b7bfe`, `de2d806`)
+produced no run while the same workflow ran for two other branches in the same
+minutes.
