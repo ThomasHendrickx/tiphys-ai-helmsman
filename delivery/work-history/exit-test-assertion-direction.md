@@ -4243,3 +4243,151 @@ Control exits 0; with the leg added, the id
 `fixture-leg-the-old-guard-could-not-see` enters the derived expected set, is
 asserted under the strict default, and the verdict flips to EXIT=1. That is a
 real leg, and the old guard exited 0 on the harness carrying it.
+
+## FR3.6 The self-vacuity test rewritten, and its red witness against the SHIPPED code
+
+The test that guards the manifest-leg check now carries three members that all
+empty the leg and one that does not, and its title pins no count. The three:
+`gates: {}` (the shape a type test catches), `gates: []`, and
+`gates: [{name}, {id: ""}, {id: 7}]` (a NON-empty array of three entries that no
+test of type or of length distinguishes from a healthy manifest). Each asserts
+that the message NAMES the shape observed, so the diagnostic that the old type
+test provided is not lost when the condition stops being a type test.
+
+The fourth member keeps the aggregate empty-set check witnessed ALONE, and it
+had to be rebuilt to stay that way. Its old form was a manifest with `gates: []`,
+which the new condition now rejects first, so the two checks would no longer
+have been separately witnessed. Its new form gives every leg something to
+contribute and empties the expected set through the ABSENT list instead:
+test/m2-exit-test.test.ts:1697. That is the only remaining route to "every leg
+looks healthy and nothing at all is asserted".
+
+The title changed, so `test/behaviors.json` changed with it (the registry's
+description must equal the reported test name exactly, src/gates/suite.ts:1042).
+"two structurally different degenerate shapes" became "structurally different
+degenerate shapes": a count in a title is a claim about every future member.
+
+### FR3.6a Three defangs, and the third is the one that matters
+
+FULL OUTPUT:
+
+```
+CONTROL-pristine                     EXIT=0
+DEFANG-manifest-leg-check            EXIT=1
+        AssertionError [ERR_ASSERTION]: manifest-gates-not-an-array empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: m2-assert (manifest-gates-not-an-array): OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s), 1 bundle row(s) and 1 table row(s); 1 gate(s) asserted (1 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+DEFANG-aggregate-empty-check         EXIT=1
+        AssertionError [ERR_ASSERTION]: a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: m2-assert (zero): OK. 0 gate record(s) match section 1.4; derived from 1 manifest id(s), 0 bundle row(s) and 0 table row(s); 0 gate(s) asserted (0 from an explicit table row, 0 under the default required-green); 1 asserted absent: fixture-control-gate; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+REVERT-to-the-old-type-test          EXIT=1
+        AssertionError [ERR_ASSERTION]: manifest-gates-empty-array empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: m2-assert (manifest-gates-empty-array): OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s), 1 bundle row(s) and 1 table row(s); 1 gate(s) asserted (1 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+
+restored harness sha: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+| defang | result |
+|---|---|
+| CONTROL, pristine | EXIT=0 |
+| the manifest-leg check removed | EXIT=1, member `manifest-gates-not-an-array` fails |
+| the aggregate empty-set check removed | EXIT=1, member 4 fails, so the aggregate check has a witness of its own |
+| **the condition REVERTED to the old `!Array.isArray(manifestGates)`** | **EXIT=1, member `manifest-gates-empty-array` fails** |
+
+The third row is the red-witness rule in its stronger form (CLAUDE.md:289): the
+test is red against the DANGEROUS STATE, which is the code as it actually shipped
+at 9b7752d, not merely against the feature being absent. The captured failure
+shows the pre-fix program printing
+`OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s) ...` and
+exiting 0, which is the certification DV-3 reported.
+
+## FR3.7 DV-1 settled by my own measurement, not by inheriting the verifier's
+
+The guard's assertion message credited `probe-3-manifest-gate-not-applicable`
+with witnessing `manifestIds`. I did not take the delta verification's word for
+that being wrong. The probe loop was instrumented IN PLACE to report per probe
+instead of aborting at the first failure (a whole-test exit code can only show
+which probe failed FIRST), and the four probes were run against five harness
+variants on BOTH arms.
+
+The instrumenter aborts with exit 2 on an anchor that does not occur, and that
+negative control is run and recorded before any result is believed.
+
+FULL OUTPUT:
+
+```
+mutated test/m2-exit-test.test.ts: 1 occurrence replaced
+--- negative control for the instrumenter (anchor that does not exist)
+ANCHOR NOT UNIQUE (0 occurrences), aborting: no such anchor anywhere in this file
+instrumenter EXIT=2 (2 = aborted, correct)
+
+=== harness: PRISTINE (all three legs)
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the rows leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=0
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=0
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the manifest leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=0
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=0
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the explicit leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=0
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=0
+
+=== harness: MINUS BOTH manifest and rows legs
+FR3PROBE arm=pr probe=probe-1-rows-leg status=0
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=0
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=0
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=0
+FR3PROBE arm=main probe=probe-2-manifest-leg status=0
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=0
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+restored sha256: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh 5059b021db51ed4de67a2f3a948db287592aa91d083cea19a549a3b3c5c45fe6  test/m2-exit-test.test.ts 
+```
+
+| probe | pristine | minus rows | minus manifest | minus explicit | minus BOTH manifest and rows |
+|---|---|---|---|---|---|
+| probe-1-rows-leg | 1 | **0** | 1 | 1 | 0 |
+| probe-2-manifest-leg | 1 | 1 | **0** | 1 | 0 |
+| probe-3-manifest-gate-not-applicable | 1 | 1 | 1 | 1 | **0** |
+| probe-4-explicit-table-leg | 1 | 1 | 1 | **0** | 1 |
+
+Identical on both arms. **probe-3 is red in every single-leg column and green
+only when both the manifest and rows legs are gone**, so it witnesses the
+DISJUNCTION of those two legs and neither of them alone, and `manifestIds` has
+exactly ONE witness, probe-2. DV-1 is upheld by independent measurement.
+
+The guard's message now says exactly that, and says the consequence a
+maintainer needs: removing probe-2 would leave the manifest leg with no witness
+at all. test/m2-exit-test.test.ts:1800.
+
+**DV-2 is left alone deliberately.** It is an observation that round 2's FR2.4
+prose ("each leg reddens a DIFFERENT named assertion") is looser than its
+evidence, and the property that matters holds. The matrix above is the accurate
+statement of what is true, and it is recorded here rather than by rewriting a
+previous round's prose to look better than it was.

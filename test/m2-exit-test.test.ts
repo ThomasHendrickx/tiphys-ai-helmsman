@@ -1558,19 +1558,25 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
   }
 });
 
-test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in two structurally different degenerate shapes", () => {
+test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in structurally different degenerate shapes", () => {
   // The program rejects any gate that reports green having examined zero units
   // as vacuous (M2-C-2). It exempted ITSELF: it could print "0 gate(s) asserted"
   // and exit 0, which is the same shape as the defect the whole branch is about,
-  // one level up. Both routes into that state degrade SILENTLY rather than
-  // erroring, which is why neither showed up as a failure: a manifest that
-  // parses but whose `gates` key is not an array makes the manifest leg empty,
-  // and an expectations document with no gates makes the explicit leg empty.
+  // one level up. Every route into that state degrades SILENTLY rather than
+  // erroring, which is why none of them showed up as a failure.
   //
-  // Two members, and they are structurally different rather than two spellings
-  // of one thing: member 1 has a NON-empty expected set and trips only the
-  // manifest-shape check, member 2 has a well-formed empty manifest and trips
-  // only the empty-expected-set check. Each check is therefore witnessed alone.
+  // THE FIRST VERSION OF THIS TEST HAD TWO MEMBERS AND THE CHECK IT GUARDED
+  // TESTED A TYPE. `!Array.isArray(gates)` is one syntactic route into an empty
+  // manifest leg out of several, while the message it prints quantifies over
+  // ALL of them ("a manifest that declares no gates cannot certify a bundle").
+  // A delta verification measured a well-formed `gates: []` CERTIFYING a bundle
+  // in which a manifest-declared gate produced no record, on both arms. The
+  // check now tests the leg's CONTRIBUTION, so the members below are three
+  // shapes of one condition rather than three conditions, and a fourth shape
+  // nobody has thought of is covered by the same line.
+  //
+  // The title deliberately pins no count: a shape added later must not have to
+  // edit a number, which is the same reason CLAUDE.md:201 gives for registries.
   const root = scratch();
   const env = cleanEnv(root);
   try {
@@ -1623,64 +1629,99 @@ test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bu
       `a well-formed manifest and a green bundle must be ACCEPTED: ${ok.stdout}\n${ok.stderr}`,
     );
 
-    // MEMBER 1: the manifest parses and its `gates` key is an OBJECT, not an
-    // array. The expected set is NOT empty (the table names the gate), so the
-    // empty-set check cannot fire and the manifest-shape check is alone.
-    const m1Dir = join(root, "manifest-not-an-array");
-    writeBundle(m1Dir, [{ id: GATE, status: "green" }]);
-    const m1 = runAssert(
-      m1Dir,
-      { label: "m1", gates: [{ id: GATE, expect: "green", required: true }], absent: [] },
-      { version: 1, gates: {} },
-      "manifest-not-an-array",
-    );
-    assert.notEqual(
-      m1.status,
-      0,
-      "a manifest whose `gates` key is not an array silently empties the manifest leg of the " +
-        `derived expected set, and must be REJECTED rather than read as a manifest declaring ` +
-        `nothing: ${m1.stdout}\n${m1.stderr}`,
-    );
-    assert.match(
-      m1.stdout + m1.stderr,
-      /"gates" key is not an array/,
-      "member 1 was not rejected by the manifest-shape check, which is the only check it exercises",
-    );
-    assert.doesNotMatch(
-      m1.stdout + m1.stderr,
-      /derived expected set is EMPTY/,
-      "member 1 is meant to isolate the manifest-shape check; if the empty-set check also fired, " +
-        "the two are not separately witnessed here",
-    );
+    // MEMBERS 1 to 3: three STRUCTURALLY DIFFERENT manifests that all empty the
+    // manifest leg. Each keeps the expected set NON-empty (the table names the
+    // gate), so the empty-set check cannot fire and the manifest-leg check is
+    // alone in every one of them. Member 1 is the shape a type test catches;
+    // members 2 and 3 are the shapes it does not, and member 3 is not even
+    // distinguishable from a healthy manifest by any test of type or length.
+    const emptyLegMembers: { name: string; manifest: unknown; names: RegExp }[] = [
+      {
+        name: "manifest-gates-not-an-array",
+        manifest: { version: 1, gates: {} },
+        names: /"gates" key is not an array/,
+      },
+      {
+        name: "manifest-gates-empty-array",
+        manifest: { version: 1, gates: [] },
+        names: /"gates" key is an empty array/,
+      },
+      {
+        name: "manifest-entries-without-usable-ids",
+        manifest: { version: 1, gates: [{ name: GATE }, { id: "" }, { id: 7 }] },
+        names: /array of 3 entries and NONE carries a non-empty string id/,
+      },
+    ];
+    for (const member of emptyLegMembers) {
+      const dir = join(root, member.name);
+      writeBundle(dir, [{ id: GATE, status: "green" }]);
+      const result = runAssert(
+        dir,
+        { label: member.name, gates: [{ id: GATE, expect: "green", required: true }], absent: [] },
+        member.manifest,
+        member.name,
+      );
+      const output = result.stdout + result.stderr;
+      assert.notEqual(
+        result.status,
+        0,
+        `${member.name} empties the manifest leg of the derived expected set, so a gate that is ` +
+          "DECLARED but did not run becomes invisible, and it must be REJECTED rather than read " +
+          `as a manifest declaring nothing: ${output}`,
+      );
+      assert.match(
+        output,
+        /manifest leg of the derived expected set is EMPTY/,
+        `${member.name} was not rejected by the manifest-leg check, which is the only check it ` +
+          `exercises: ${output}`,
+      );
+      assert.match(
+        output,
+        member.names,
+        `${member.name} was rejected without the message naming the shape observed, so a reader ` +
+          `cannot tell which degenerate input arrived: ${output}`,
+      );
+      assert.doesNotMatch(
+        output,
+        /derived expected set is EMPTY, so this run would certify/,
+        `${member.name} is meant to isolate the manifest-leg check; if the empty-set check also ` +
+          "fired, the two are not separately witnessed here",
+      );
+    }
 
-    // MEMBER 2: a well-formed manifest declaring no gates, an expectations
-    // document naming none, and an empty bundle. The manifest-shape check
-    // cannot fire; the expected set is empty and nothing at all is asserted.
-    const m2Dir = join(root, "zero-gates-asserted");
-    writeBundle(m2Dir, []);
-    const m2 = runAssert(
-      m2Dir,
-      { label: "m2", gates: [], absent: [] },
-      { version: 1, gates: [] },
+    // MEMBER 4: the aggregate check, witnessed ALONE. Every leg CONTRIBUTES
+    // here (the manifest declares a gate, so the manifest-leg check is silent)
+    // and the expected set is still empty, because the table declares the only
+    // contributed id absent from this bundle. That is the state in which
+    // nothing at all is asserted while every leg looks healthy, and it is the
+    // only remaining route to it.
+    const zeroDir = join(root, "zero-gates-asserted");
+    writeBundle(zeroDir, []);
+    const zero = runAssert(
+      zeroDir,
+      { label: "zero", gates: [], absent: [GATE] },
+      { version: 1, gates: [{ id: GATE }] },
       "zero-gates-asserted",
     );
+    const zeroOut = zero.stdout + zero.stderr;
     assert.notEqual(
-      m2.status,
+      zero.status,
       0,
       "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle " +
-        `having examined nothing, which is exactly what M2-C-2 forbids: ${m2.stdout}\n${m2.stderr}`,
+        `having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`,
     );
     assert.match(
-      m2.stdout + m2.stderr,
-      /derived expected set is EMPTY/,
-      "member 2 was not rejected by the empty-expected-set check, which is the only check it " +
-        "exercises",
+      zeroOut,
+      /derived expected set is EMPTY, so this run would certify/,
+      `member 4 was not rejected by the empty-expected-set check, which is the only check it ` +
+        `exercises: ${zeroOut}`,
     );
     assert.doesNotMatch(
-      m2.stdout + m2.stderr,
-      /"gates" key is not an array/,
-      "member 2's manifest IS a well-formed array, so the manifest-shape check must not fire; " +
-        "if it does, the two checks are not separately witnessed here",
+      zeroOut,
+      /manifest leg of the derived expected set is EMPTY/,
+      "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, " +
+        "the two checks are not separately witnessed here and the aggregate check has no witness " +
+        "of its own left",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

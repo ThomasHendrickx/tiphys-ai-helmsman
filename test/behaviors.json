@@ -597,6 +597,6 @@
   "m2-exit-red-gate-rejected-on-both-bundles": "a RED gate is rejected on BOTH bundles under three structurally different shapes, and the derived expected set is separately witnessed on BOTH bundles by probes it alone rejects",
   "m2-exit-expect-row-admits-only-reachable-statuses": "no expectations row admits a lax status the gate it names can never legitimately produce",
   "m2-exit-zero-red-reads-rows-not-counts": "the zero-red check reads the bundle's ROWS, not the summary's own red count, so a summary under-reporting its reds cannot pass",
-  "m2-exit-assert-program-not-exempt-from-m2-c-2": "the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in two structurally different degenerate shapes",
+  "m2-exit-assert-program-not-exempt-from-m2-c-2": "the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in structurally different degenerate shapes",
   "m2-exit-union-sources-named-by-this-suite": "every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed"
 }
