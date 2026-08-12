@@ -613,5 +613,7 @@
   "briefs-include-shared-dispatch-block-not-a-copy": "both briefs INCLUDE the one shared dispatch block and do not carry a copy of it",
   "brief-gate-block-mode-pinned-outside-the-brief": "the shipped brief's gate-list block declares the mode the kernel pins, and that mode selects every gate any mode in the registry selects",
   "brief-gate-block-mode-narrowing-refused": "narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green",
-  "brief-gate-block-units-are-the-rows-compared": "the rendering counts the gate rows it produced, so a registry declaring no gate for the brief's mode makes the drift check a vacuous error and never a green over an empty table"
+  "brief-gate-block-units-are-the-rows-compared": "the rendering counts the gate rows it produced, so a registry declaring no gate for the brief's mode makes the drift check a vacuous error and never a green over an empty table",
+  "brief-gate-rows-match-registry-without-the-renderer": "the shipped brief's gate rows are exactly the gates the pinned mode selects, each carrying its registry fields, derived without the renderer",
+  "brief-gate-block-renderer-narrowing-refused": "a narrowing inside the renderer is caught by the drift check in --check and refused in --write, under both a dropped row set and a dropped column"
 }

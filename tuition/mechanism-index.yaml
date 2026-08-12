@@ -188,6 +188,41 @@ mechanisms:
     evidence:
       - delivery/tuition/T-006, the orchestrator's own instance
 
+  - key: checking-a-generated-artifact-against-its-own-generator
+    name: Checking a generated artifact against its own generator
+    rule: >-
+      A check that renders an artifact and then compares the artifact to that
+      rendering can only see drift BETWEEN the two, so any narrowing INSIDE the
+      loop is a fixed point of it and is silent. Three seats can choose what gets
+      compared and all three have now been occupied by a real finding: the MODE,
+      when it is read out of the artifact being audited; the UNIT COUNT, when the
+      generator computes it; and the SELECTION, inside the generator itself. Two
+      rules follow. A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE READ FROM THE
+      ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT ARTIFACT, so
+      pin the subject OUTSIDE the artifact and refuse a disagreement in every
+      mode, `--write` included, because `--write` is the command that launders a
+      narrowing into the shipped bytes. And A UNIT COUNT THAT DOES NOT MEASURE
+      WHAT WAS COMPARED CANNOT MAKE THE VACUITY GUARD FIRE, so count the rows
+      actually compared and never add a mode-independent term, which gives the
+      count a floor it can never fall below and puts M2-C-2 out of reach.
+      Closing the third seat needs a SECOND, INDEPENDENT statement of what the
+      artifact must contain, derived from the AUTHORITY and never routed through
+      the generator; nothing that calls the generator can close it. Make that
+      statement SET EQUALITY AND FIELD PRESENCE, not containment: dropping rows
+      and dropping a column from rows that all survive are structurally different
+      members, and each is invisible to the assertion that catches the other.
+      State it in two places that fail independently, and derive per item at run
+      time rather than pinning a count, because these registries are append-only.
+    siblings:
+      - scripts/check-brief-drift.mjs
+      - scripts/render-agent-rules-gates.mjs
+      - src/roles.ts
+      - test/implementer-brief.test.ts
+    evidence:
+      - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
+      - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
+      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+
   - key: a-guard-s-own-failure-path
     name: A guard's own failure path
     rule: >-
