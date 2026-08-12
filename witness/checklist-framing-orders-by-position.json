@@ -1,0 +1,25 @@
+{
+  "id": "checklist-framing-orders-by-position",
+  "behavior": "checklist-fix-round-probe-is-first",
+  "tests": [
+    "the fix-round framing resolves fix-round-not-covered first, and moving that probe later in the file changes the resolved head",
+    "the two exercised framings both resolve and their first probes differ"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "      if (probe.appliesTo === scope && !taken.has(probe)) {",
+      "replace": "      if (probe.appliesTo === scope && !taken.has(probe) && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "  return { ok: true, value: { probes: orderUnderFraming(probes, framing), framing } };",
+      "replace": "  return { ok: true, value: { probes: [...probes], framing } };"
+    }
+  ]
+}

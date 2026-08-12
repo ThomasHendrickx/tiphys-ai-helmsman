@@ -1,0 +1,24 @@
+{
+  "id": "checklist-resolve-command-registered",
+  "behavior": "checklist-extra-probe-merge",
+  "tests": [
+    "checklist resolve merges an extra probe file and prints the merged list"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"checklist\", cmdChecklist],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/checklist.ts",
+      "find": "  if (subcommand !== \"resolve\") {",
+      "replace": "  if (subcommand !== \"resolve\" || true) {"
+    }
+  ]
+}

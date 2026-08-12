@@ -1,0 +1,24 @@
+{
+  "id": "verdict-deviations-completeness-guard",
+  "behavior": "verdict-deviations-completeness",
+  "tests": [
+    "a verdict omitting a deviation declared in the work history is rejected naming the check, and passes with the check deregistered"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (!judgedSet.has(clause)) {",
+      "replace": "      if (!judgedSet.has(clause) && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  verdictDeviationsJudged,\n",
+      "replace": ""
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "verdict-hazard-completeness-guard",
+  "behavior": "verdict-hazard-classes-completeness",
+  "tests": [
+    "a hazard verdict omitting a declared hazard class is rejected naming the class and the check, and passes with the check deregistered"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (!addressedSet.has(id)) {",
+      "replace": "      if (!addressedSet.has(id) && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  verdictHazardClassesAddressed,\n",
+      "replace": ""
+    }
+  ]
+}
