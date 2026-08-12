@@ -35,6 +35,16 @@ const rolesModule = (await import(new URL("../src/roles.ts", import.meta.url).hr
   clauseAnchors: (body: string) => string[];
 };
 
+/**
+ * The validator's OWN type-to-schema map, imported rather than restated. A
+ * hand-written copy here would be a second source that drifts from the one
+ * `tiphys validate --type` compiles against, and then this file would be
+ * asserting agreement with itself.
+ */
+const validateModule = (await import(
+  new URL("../src/commands/validate.ts", import.meta.url).href
+)) as { TYPE_TABLE: ReadonlyMap<string, string> };
+
 /** The three briefs this phase ships. */
 const AUTHORING_ROLES = ["investigator", "plan-writer", "adversarial-plan-reviewer"];
 
@@ -138,6 +148,77 @@ test("every shipped authoring brief declares the model tier its role-model-confi
 });
 
 /* ------------------------------------------------------------------ */
+/* Fix round 1: the output contract                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * DERIVED AT RUN TIME FROM `TYPE_TABLE` AND FROM EACH BRIEF, never from a
+ * list written here. A brief added later, or an output type registered later,
+ * is covered by this assertion without it being edited, which is what the
+ * append-only-registry discipline requires of a test over a growing set: it
+ * asserts BY NAME and never by count, and it names nothing this file chose.
+ */
+test("every authoring brief puts the schema of every output type it declares on its mandated-reading list", () => {
+  for (const role of AUTHORING_ROLES) {
+    const frontmatter = frontmatterOf(briefText(role));
+    const outputs = frontmatter["outputs"] as string[];
+    const reading = frontmatter["mandated-reading"] as string[];
+    assert.ok(Array.isArray(outputs) && outputs.length > 0, `${role} declares no outputs`);
+    for (const output of outputs) {
+      const file = validateModule.TYPE_TABLE.get(output);
+      assert.ok(
+        file !== undefined,
+        `${role} declares output type ${output} and no schema is registered for it`,
+      );
+      assert.ok(
+        reading.includes(`schemas/${file}`),
+        `${role} declares output ${output}, whose contract is schemas/${file}, and does not read it`,
+      );
+    }
+  }
+});
+
+test("validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes", () => {
+  const dir = stageRoles();
+  try {
+    const path = join(dir, "roles", "investigator.md");
+    const original = readFileSync(path, "utf8");
+    assert.equal(runCli(["validate", "--type", "role-brief", path]).status, 0);
+
+    /* MEMBER ONE: the only declared output's schema is removed, so the list
+       carries no schema at all. This is the shape found in clean-room review:
+       `outputs: [report]` with `schemas/report.schema.json` absent. */
+    writeFileSync(path, original.replace("  - schemas/report.schema.json\n", ""));
+    const bare = runCli(["validate", "--type", "role-brief", path]);
+    assert.notEqual(bare.status, 0, "a brief reading no contract for its own output validated");
+    assert.match(bare.stdout, /#\/outputs\/0/);
+    assert.match(bare.stdout, /schemas\/report\.schema\.json/);
+
+    /* MEMBER TWO, STRUCTURALLY DIFFERENT AND IT IS THE ONE THAT MATTERS. Two
+       declared outputs, the FIRST satisfied and the second not. The reading
+       list still names a schema, and the brief still reads the contract of
+       something it produces, so a check that asked "does this list mention any
+       schema" or that stopped at the first output is GREEN here while being
+       red on member one. Only a check that walks every output reddens on
+       both. */
+    writeFileSync(
+      path,
+      original.replace("outputs:\n  - report\n", "outputs:\n  - report\n  - finding\n"),
+    );
+    const partial = runCli(["validate", "--type", "role-brief", path]);
+    assert.notEqual(partial.status, 0, "a brief satisfying only its first output validated");
+    assert.match(partial.stdout, /#\/outputs\/1/);
+    assert.match(partial.stdout, /schemas\/finding\.schema\.json/);
+
+    /* RESTORED, and green in both directions. */
+    writeFileSync(path, original);
+    assert.equal(runCli(["validate", "--type", "role-brief", path]).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Criterion 6b, first half: the clause round trip                      */
 /* ------------------------------------------------------------------ */
 
@@ -228,6 +309,13 @@ const INCREMENTAL_OUTPUT_RULE = [
   "append to it as you go",
   "modification time is your beacon",
   "PARTIAL RESULT",
+  /* FIX ROUND 1, clean-room finding 2. The four above are all things to DO;
+     none of them tells the agent WHEN, and none states what a stale beacon
+     costs. The two below are the halves that answer those, and they are
+     pinned here for the same reason the four are: an unpinned sentence is one
+     a later edit softens back into a sentiment without any gate noticing. */
+  "before you run a command you expect to take more than a minute",
+  "entitled to interrupt you, to dispatch a replacement",
 ];
 
 /** The mtime-as-beacon half, from the supervisor's end (T-008 rule 2). */

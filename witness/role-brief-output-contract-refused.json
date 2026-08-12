@@ -1,0 +1,24 @@
+{
+  "id": "role-brief-output-contract-refused",
+  "behavior": "role-brief-output-contract-refused",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (!declared.has(wanted)) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  return roundTrip.lines.length > 0 || outputContract.length > 0 || checks.failed\n    ? 1\n    : 0;",
+      "replace": "  return roundTrip.lines.length > 0 || checks.failed ? 1 : 0;"
+    }
+  ]
+}

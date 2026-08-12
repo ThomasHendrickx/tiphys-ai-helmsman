@@ -588,5 +588,7 @@
   "finding-empty-set-requires-statement": "a finding set with an empty findings array and no no-findings-statement is rejected and accepted once the guarding oneOf is removed",
   "finding-records-model-family": "a finding set with no produced-by is rejected and accepted once the guarding required keyword is removed",
   "finding-required-strings-are-not-empty": "a finding set whose required strings are present and empty is rejected, because required alone is satisfied by the empty string",
-  "investigator-report-requires-repro": "an investigator report with a verdict is rejected without a repro and with a hollow one, and accepted with a real one"
+  "investigator-report-requires-repro": "an investigator report with a verdict is rejected without a repro and with a hollow one, and accepted with a real one",
+  "role-brief-output-contract-declared": "every authoring brief puts the schema of every output type it declares on its mandated-reading list",
+  "role-brief-output-contract-refused": "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes"
 }

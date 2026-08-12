@@ -27,7 +27,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
-import { splitFrontmatter } from "../roles.ts";
+import { outputContractDiagnostics, splitFrontmatter } from "../roles.ts";
 import { roleBriefBodyDiagnostics } from "./brief.ts";
 import {
   classifyContextDirectory,
@@ -279,11 +279,34 @@ function validateRoleBrief(
   for (const line of roundTrip.lines) {
     process.stdout.write(`${line}\n`);
   }
+  /* THE OUTPUT CONTRACT (M3-P5 fix round 1). Every declared output type whose
+     schema is registered must have that schema on mandated-reading. Wired
+     HERE, and the reason is that TYPE_TABLE is the map and it lives in this
+     module: passing the lookup in as a function keeps src/roles.ts free of an
+     import back into this command, so the two do not become a cycle. The
+     lookup is the SAME table `--type` resolves against, so the check cannot
+     drift from what the validator would actually compile. */
+  const outputContract = formatDiagnostics(
+    outputContractDiagnostics(
+      Array.isArray(frontmatter["outputs"])
+        ? (frontmatter["outputs"] as unknown[]).map((entry) => String(entry))
+        : [],
+      Array.isArray(frontmatter["mandated-reading"])
+        ? (frontmatter["mandated-reading"] as unknown[]).map((entry) => String(entry))
+        : [],
+      (type: string) => TYPE_TABLE.get(type),
+    ),
+  );
+  for (const line of outputContract) {
+    process.stdout.write(`${line}\n`);
+  }
   const checks = runChecks("role-brief", decoded.value, context);
   for (const line of checks.lines) {
     process.stdout.write(`${line}\n`);
   }
-  return roundTrip.lines.length > 0 || checks.failed ? 1 : 0;
+  return roundTrip.lines.length > 0 || outputContract.length > 0 || checks.failed
+    ? 1
+    : 0;
 }
 
 export function cmdValidate(argv: string[]): number {

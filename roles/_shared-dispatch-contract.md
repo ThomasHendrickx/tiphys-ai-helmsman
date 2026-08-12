@@ -26,6 +26,16 @@ Write what you just tried, the command you ran, what it printed, what you
 concluded, and what you are about to do next. Do not save the write-up for the
 end and do not polish it as you go.
 
+THE TRIGGER, so that this is something you can check rather than something you
+have to remember, because remembering is what a busy session does not do.
+Append at whichever of these comes first: before you run a command you expect
+to take more than a minute, write down what you are about to run and why; after
+any command whose output you will cite, paste that output then rather than
+later; at every conclusion you reach, including the ones you go on to discard.
+The self-check is one line and you can run it against yourself at any moment:
+if you cannot say which tool call your last append followed, you are already
+behind, so stop and write.
+
 Two things this buys that a final write-up cannot. A death mid-round leaves a
 PARTIAL RESULT rather than nothing, which is the difference between salvage and
 total loss. And the captured output you paste as you go IS your evidence:
@@ -37,6 +47,23 @@ Measured cost of the absence: two review agents died within minutes of dispatch
 and it was nine hours and eleven minutes before anyone noticed, because nothing
 had been written down as it happened. That is the largest single waste this
 project has recorded, and the entire loss was wall clock.
+
+WHAT A STALE BEACON COSTS, which the watchdog sentence above implies and does
+not state. Staleness is measured against a threshold the supervisor sets and
+not one you agree to, and a stale beacon is read as a DEAD AGENT, because from
+the outside those two are the same observation. The supervisor is then entitled
+to interrupt you, to dispatch a replacement, and to salvage your artifact as it
+stands and continue from that. What you had not written down is not handed
+over; it is lost, and the work is redone without it. The consequence lands on
+the round rather than on you, which is why it is worth more to you to write
+than to finish the thought first.
+
+AND THE HONEST LIMIT OF THIS CLAUSE. Nothing here forces the append. This is a
+rule you follow, and what the kernel adds is to make the absence VISIBLE and
+the consequence real, not to make the omission impossible. The teeth are the
+watchdog, which is the supervisor's half in the clause below, so a dispatch
+made without one leaves this clause with none. If you are the one dispatching,
+arm it in the same turn.
 
 ## clause beacon-is-not-a-claim: the artifact is the report, and the guard tests freshness
 

@@ -222,6 +222,75 @@ export function clauseRoundTripDiagnostics(
 }
 
 /**
+ * THE OUTPUT CONTRACT CHECK (M3-P5 fix round 1, clean-room finding 1).
+ *
+ * Every artifact type a brief declares in `outputs[]` has a schema document
+ * that governs it, and the brief must put that document on its
+ * `mandated-reading` list. A brief that does not is a brief whose agent is
+ * never told where the shape of its own deliverable is written.
+ *
+ * THE MECHANISM, NOT THE INSTANCE. The instance found in review was
+ * `roles/investigator.md` declaring `outputs: [report]` while its reading list
+ * carried `schemas/finding.schema.json`, the contract of a DIFFERENT role's
+ * artifact. Repairing that one list leaves the method that produced it, and
+ * three correct lists that can drift are worth less than one check that cannot
+ * be forgotten. M3-P6 ships two more briefs; this runs on them the day they
+ * land, with nobody having to remember it.
+ *
+ * WHY A CHECK AND NOT A DERIVATION, which was the alternative considered.
+ * `resolveMandatedReading` could have INJECTED `schemas/<type>.schema.json`
+ * into the list from `outputs[]`, making the omission impossible rather than
+ * merely refused. Rejected, for three reasons that are properties of the
+ * artifact rather than preferences. (1) It would split the truth in two: the
+ * brief file on disk would say one thing and the composed brief another, so a
+ * reader of `roles/investigator.md` could no longer see what its agent reads,
+ * and `tiphys validate --type role-brief` (which reads the file) and
+ * `tiphys brief compose` (which would read the file plus an injection) would
+ * hold two different opinions about one property. (2) The list is ORDERED and
+ * the order is authored; an injected entry has no authored position, and
+ * criterion 3 asserts the composed output's ordering. (3) Injection makes the
+ * defect invisible instead of absent: the wrong entry that pointed the
+ * investigator at the wrong document would still be sitting on the list,
+ * silently, with the right one bolted on beside it. The check makes the author
+ * fix the file, which is the artifact a consumer of the kernel reads.
+ *
+ * WHAT IT DOES NOT REACH, stated at the definition site. An `outputs` entry
+ * naming a type NO schema is registered for is SKIPPED rather than refused:
+ * there is no document to mandate, and schemas/role-brief.schema.json declares
+ * that residue deliberately (an enum there would serialise M3-P6, M3-P7 and
+ * M3-P8 against one file). It reaches the FRONTMATTER only: a brief whose body
+ * prose describes the wrong output shape passes this, and that is the judgment
+ * case the plan's hazard table hands to M3-P7's `clause-text-matches-row`
+ * probe. And it is one sub-case of the hazard row at
+ * delivery/plan/kernel-plan-m3.md:3021 ("nothing can compute which document a
+ * role NEEDS"); the output contract is the part of that which IS computable,
+ * and the rest of the row stands.
+ */
+export function outputContractDiagnostics(
+  outputs: readonly string[],
+  reading: readonly string[],
+  schemaFileForType: (type: string) => string | undefined,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const declared = new Set(reading);
+  for (let index = 0; index < outputs.length; index += 1) {
+    const output = outputs[index] as string;
+    const file = schemaFileForType(output);
+    if (file === undefined) {
+      continue;
+    }
+    const wanted = `schemas/${file}`;
+    if (!declared.has(wanted)) {
+      diagnostics.push({
+        pointer: `#/outputs/${String(index)}`,
+        message: `output type ${output} is governed by ${wanted}, which is not on mandated-reading, so this brief never tells its agent where the contract for its own output is written`,
+      });
+    }
+  }
+  return diagnostics;
+}
+
+/**
  * Locate the installed kernel root by walking UP from this module and testing
  * for a `roles/` directory holding at least one brief.
  *

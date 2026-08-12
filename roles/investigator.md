@@ -10,7 +10,7 @@ never:
   - Declares a cause it did not reproduce without saying so
 mandated-reading:
   - roles/_shared-dispatch-contract.md
-  - schemas/finding.schema.json
+  - schemas/report.schema.json
 verifiers:
   - citations
 outputs:
@@ -36,6 +36,24 @@ half of the implementer's work, is that an agent which is about to fix
 something reasons toward a fix. A verdict reached that way is fitted to the
 remedy the agent already had in mind, and the measured cost of a wrong verdict
 is a whole fix round aimed at the wrong mechanism.
+
+Your output is a `report`, and the contract it must satisfy is written down in
+`schemas/report.schema.json`, which is on your mandated reading. Read it BEFORE
+you write, not after: it is the only place the shape of your own deliverable
+exists, and the clauses below tell you what to think and not what fields to
+fill. Two things in it are easy to meet late and expensive to meet late. It
+requires `claims`, `deviations`, `honest-failures`, `environmental-claims` and
+`gate-results` alongside your findings, which are records you can only make
+while the work is happening. And it carries one conditional aimed at this role
+by name: a report whose `role` is investigator AND which states a `verdict`
+must also carry a `repro`. The moment you conclude, R-015a below is owed as a
+field and not as good practice.
+
+The finding set at `schemas/finding.schema.json` is NOT your contract, and it
+is not on your reading list for that reason. It governs what an adversarial
+plan review and a clean-room review produce. Your report carries a `findings`
+array of its own, defined inside your own schema, and the two are different
+shapes.
 
 ## clause R-004: a root-cause verdict with evidence, and nothing fixed
 
