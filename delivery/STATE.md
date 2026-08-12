@@ -5,6 +5,125 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-12 late afternoon, NEWEST BLOCK. Everything below is OLDER.
+- **WHERE M3 STANDS: 5 of 10 merged, and M3-P6 is blocked on ONE THING.** The
+  exit-test harness fix must merge first (DR-0012 condition 2), and its own
+  delta verification is in flight. Nothing else stands in M3-P6's way: its
+  round-2 delta verification is **VERIFIED** with two LOW findings, its scope
+  audit is clean at 24 of 24 files, and it is green by step on `077f339`.
+- **`main` MOVED TWICE and BOTH push arms were verified BY STEP.** `6fd5b22`
+  (PR #112, the T-018 batch and three gate-coverage findings) push arm green,
+  step 8 skipped and step 9 `M2 exit test (push)` success, which is the arm
+  T-009 exists for. Then `d6dc868` (PR #113, the contention and claim-grep
+  findings), whose push run was still in flight at the time of writing; its
+  macOS smoke arm was green. **If you are reading this after a restart, the
+  `d6dc868` push run is the first thing to check.**
+- **THE HARNESS FIX ROUND IS COMPLETE AND ITS REVIEWS' PREMISE IS VOID, which
+  is why a delta verification runs instead of a merge.** Round 2 closed all four
+  findings (CR-V-1 MEDIUM, CR-V-2 LOW, CR-FR-1 LOW, CR-FR-2 LOW) and is green by
+  step on `8db93b2` and `16a3ec6`, byte-identical code, `tests 596 pass 596
+  skipped 0`. But **both clean-room reviews verified the harness sha256 as
+  `9f53425f` and reasoned from "no production code changed"; it is `4b607dd9`
+  now**, 22 lines of new production code from the CR-V-2 fix. The round flagged
+  that itself rather than letting it pass.
+  Two further reasons the verification is not ceremony: **`red-witness` never
+  ran on that pull request** (precondition `diff-touches src/ bin/`, and the
+  diff is `scripts/`, `test/`, `.github/`, `delivery/`), so no gate evaluated
+  whether the new witnesses can fail; and this program asserts every other gate,
+  which is the one place under-review compounds.
+- **The round's mechanism, worth carrying forward**: the witness family's
+  admission test was keyed on a message only SOME branches emit, so a union
+  member whose only rejecter never emits it is not merely unwitnessed but
+  UNWITNESSABLE, because the same key is the over-determination filter and
+  rejects any probe written for that member. Derivation: 24 rejection branches,
+  3 reference the reason variable, **0 of 24** can carry the key for an explicit
+  member.
+- **M3-P7 AND M3-P8 ARE READY TO DISPATCH THE MOMENT M3-P6 MERGES**, and the
+  orchestrator's half of both briefs is already written at
+  delivery/plan/m3-p7-p8-dispatch-addenda.md:1, with the concurrency check at
+  delivery/plan/m3-p7-p8-concurrency-pre-pass.md:1. Both carry a RE-DERIVE note:
+  the M3-P7 registry probe was measured at `bb8f656` and M3-P6 CHANGES the
+  clause map, so it is stale on the merged head.
+- **A merge-order fact, measured with THREE-DOT diffs after a two-dot diff gave
+  a false answer**: the harness branch and M3-P6 genuinely overlap on TWO files,
+  `.github/workflows/gates.yml` and `test/behaviors.json`. A two-dot diff
+  reported twenty-three, because it shows everything `main` gained that the
+  branch never saw. That trap is now standing warning 13.
+- as of: 2026-08-12, earlier block. Everything below this block is OLDER;
+  where they disagree, this block is later.
+- **A BINDING PROCEDURE CHANGED: the dispatch skill's push rule now carries its
+  mechanism, at .claude/skills/phase-delivery/SKILL.md:98.** Orchestrator briefs
+  said "COMMIT AND PUSH as you go" beside "let the gates workflow COMPLETE
+  before reporting". A push cancels the in-flight run, so the two conflict and
+  the M3-P6 round, obeying both faithfully, pushed six heads and cancelled five
+  runs, leaving the critical-path branch with no completed gate evidence for two
+  hours. **The skill ALREADY said "not six" and the brief overrode it**, which is
+  the real defect: a per-dispatch brief silently beats a standing rule because it
+  is more recent and addressed to the agent personally. Committing and pushing
+  are separate decisions; durability is satisfied by the LOCAL commit. Recorded
+  as the postscript at delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:114.
+  **Still outstanding: this has NOT landed in `roles/implementer.md`**, which is
+  an M3-P6 deliverable and not yet on main.
+- **T-018 WAS CORRECTED AT THE IMPLEMENTER'S REQUEST.** Its first version said
+  the round REFUSED the instructed fix. It did not; it tried it first and it
+  stayed red. The decisive fact is at src/witness/run.ts:886, where red requires
+  EVERY named test to fail, so adding a named test makes a witness member
+  strictly HARDER to redden. The instruction was counterproductive rather than
+  merely misaimed. The implementer asked for the flattering version to be
+  corrected, which is the behaviour a work history is supposed to have.
+- **M3-P6 FIX ROUND 2 REFUSED THE FIX IT WAS INSTRUCTED TO MAKE, AND WAS RIGHT
+  TO.** The orchestrator's brief said "add a named test reaching
+  `scripts/check-brief-drift.mjs` line 421", which is what the red `red-witness`
+  gate appeared to ask for. The line was unreachable BY CONSTRUCTION: a
+  row-and-field check added earlier in the same round sat in front of
+  `describeDrift` and caught every input `describeDrift` caught, so collapsing
+  `describeDrift` to the empty list changed nothing any test could observe. The
+  remedy was to DELETE the shadowing check, not to test it, and the round did
+  that at `6c1b010` with the reasoning recorded in place above the surviving
+  call. **The mechanism, which generalises: TWO CHECKS THAT CATCH THE SAME INPUT
+  MAKE EACH OTHER UNWITNESSABLE.** Neither is individually necessary, so mutating
+  either leaves the other covering, and reordering only moves which one is
+  shadowed. Recorded as delivery/tuition/T-018-two-checks-catching-the-same-input-make-each-other-unwitnessable.md:1,
+  marked PROVISIONAL because it is written from the gate output, the shipped
+  comment and the witness spec, and the implementer's work history is the
+  primary account and is not yet handed back.
+  **The orchestrator's own error is recorded there too**: the brief named the
+  INSTANCE when the gate was reporting a MECHANISM, which is the exact thing the
+  fix-round contract at CLAUDE.md:297 exists to prevent. An implementer that had
+  obeyed it would have produced a plausible, green, useless change.
+- **M3-P8 IS NOT BLOCKED ON M3-P7, and the register said otherwise until now.**
+  Plan revision 3 corrected M3-P8's `blocked-by` to "M3-P6 merged"
+  (delivery/plan/kernel-plan-m3.md:1130) because M3-P8's `grounding` names no
+  M3-P7 artifact; the old value was an ordering habit. So P7 and P8 may be
+  WORKED concurrently once M3-P6 lands, while P8 still MERGES after P7 because
+  merge order is dependency order. The dispatch-time check DR-0011 requires is
+  written BEFORE dispatch at delivery/plan/m3-p7-p8-concurrency-pre-pass.md:1.
+  It finds a FIFTH shared file the plan's revision-3 recount does not name
+  (`src/commands/validate.ts`), records `src/validate.ts` as UNDETERMINED for
+  both phases rather than guessing a likely site, and states plainly that the
+  plan's condition CANNOT be fully discharged in advance because the edits do
+  not exist yet. The undischargeable half becomes a tripwire both briefs carry:
+  if you need to RESTRUCTURE a shared list, map or table rather than append to
+  it, stop and tell the orchestrator.
+  **It also restates that a pre-pass is a VETO, NOT A PERMIT**, which is the
+  error made earlier in this milestone when M3-P7 was ruled dispatchable beside
+  M3-P6 on file-overlap evidence while its own grounding named two M3-P6
+  deliverables.
+- **PR #109 (the harness fix) is `mergeable_state: behind`** with base
+  `e730116` against a `main` of `c75152b`, and branch protection requires an
+  up-to-date head, so the branch must be updated before merge and the head will
+  move off `fdb3120`. Pre-computed so it is not re-derived under merge pressure:
+  the delta `e730116..c75152b` is NINE files, eight under `delivery/` and one
+  `CLAUDE.md`, with no `src/`, no `scripts/` and no `test/`. The update therefore
+  cannot alter the harness or its tests, and the H-A/H-B reviews of `fdb3120`
+  remain valid for the harness content. CI must still re-run on the new head and
+  be read BY STEP.
+- **`tiphys brief compose --role implementer` requires `roles/implementer.md`,
+  which is an M3-P6 deliverable and absent from `main`** (measured: the command
+  exits nonzero naming the missing path). So the kernel's own brief composer
+  becomes exercisable only after M3-P6 merges. Use it then as a CHECK on that
+  deliverable, and NOT as the authority for a dispatch: nothing runs on Tiphys
+  before M4, which is a settled owner decision.
 - as of: 2026-08-12, AFTER A THREE-AGENT DEATH. The bullets below this one are
   OLDER; where they disagree, this one is later.
 - **THREE AGENTS DIED SIMULTANEOUSLY around 12:35, together with the in-memory

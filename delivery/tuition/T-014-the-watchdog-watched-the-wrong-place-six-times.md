@@ -237,3 +237,222 @@ which wording names a moment, not a prediction that naming a moment is enough.
 The only mechanical version is a guard whose lifetime is bound to its agent's,
 which is a property the kernel's watcher could have and a hand-written bash loop
 cannot.
+
+## POSTSCRIPT 4, 2026-08-12: the baseline was GUESSED, and guessing is permissive
+
+A seventh instance, and it is a new class: not the wrong PLACE, the wrong TIME.
+
+CLAUDE.md's dispatch contract asks three questions in writing before arming a
+watchdog, and the second is "What is the baseline before its first write?" It
+says the answer must be dispatch time rather than an inherited mtime. **It does
+not say the answer must be MEASURED, and on this occasion it was invented.**
+
+Arming a watchdog for a delta verifier, the orchestrator wrote a literal epoch
+constant, `BASELINE=1786547700`, intending "dispatch time". The real time was
+`1786546543`. The constant was **1157 seconds in the FUTURE**, so every `age`
+computation came out NEGATIVE and the monitor printed `-1184s since dispatch`.
+
+The direction is what makes this worth an entry. A baseline in the future makes
+every elapsed time smaller than the truth, so **every threshold fires LATER
+than intended, and a threshold that fires later is a watchdog that cannot go
+red when it should.** Had the agent died in its first twenty minutes, the
+monitor would have reported it healthy throughout. This is the T-008 postscript
+shape exactly, a guard whose condition does not test the property that matters,
+arrived at by arithmetic rather than by watching the wrong path.
+
+It was caught only because the printed number was NEGATIVE and therefore
+absurd. A guess that had been 1157 seconds in the PAST would have been
+permissive in the same way and would have looked entirely plausible. So the
+detection here was luck, not method.
+
+**The rule this adds, and it is mechanical:**
+
+> A watchdog's baseline is MEASURED, never written as a literal. Take it from
+> something the system itself recorded: `stat -c %Y` on the agent's worktree,
+> or `date +%s` evaluated INSIDE the monitor. If you find yourself typing an
+> epoch number, you are guessing, and a guessed baseline is wrong in the
+> permissive direction half the time and undetectable when it is.
+
+The corrected monitor recomputes `BASELINE=$(stat -c %Y "$WT")` on every
+iteration, so it is derived from the worktree the agent created rather than
+from anything the orchestrator believed about the clock.
+
+### "CANNOT DISTINGUISH" WAS ITSELF WRONG, and the answer was one tool call away
+
+Every mtime watchdog written in this session carries a branch that prints, in
+these words, "quiet Ns: long run OR death, CANNOT distinguish". That sentence
+was added deliberately, under this entry's own rule that a watchdog which
+cannot tell those apart must SAY so rather than print a number implying it can.
+
+It is honest about the mtime signal and it is **false about the orchestrator's
+actual knowledge**, because for an in-process subagent the harness reports
+liveness directly. Measured 2026-08-12: a delta verifier had written nothing
+for 917 seconds and had never created its report, which by mtime alone is
+indistinguishable from a death and was three quarters of the way to a salvage
+decision. `ListAgents` said `running`. It was mid-build, alive, and salvaging it
+would have destroyed twenty minutes of work exactly as T-014's worst instance
+did.
+
+**So the rule gains a third question, and it is cheap:**
+
+> Before acting on a stale beacon, ask the HARNESS whether the agent is alive.
+> `ListAgents` distinguishes running from completed for in-process subagents,
+> and mtime cannot. A stale beacon on a RUNNING agent is a beacon-discipline
+> problem, which is a nudge. A stale beacon on a COMPLETED or absent agent is a
+> death, which is a salvage. **These have opposite correct responses and the
+> file system cannot tell them apart.**
+
+This does not contradict constraint C-2, and the distinction matters enough to
+state. C-2 forbids pid, process liveness, signals and `/proc` for identity or
+exclusion IN THE KERNEL BEING BUILT, where liveness must be lease freshness.
+`ListAgents` is the orchestration harness reporting on its own children, not
+the kernel inferring identity from a process table. Using it here is not a C-2
+violation and reading it as one is how this gap survived three postscripts.
+
+The mtime beacon keeps its job, which C-2 does bear on: it is what survives a
+dead agent and leaves partial work behind. Liveness and salvage-value are
+different questions and each has its own instrument.
+
+### POSTSCRIPT 5: stop PREDICTING where an agent writes, and MEASURE it
+
+Instances eight and nine, both live, both mine, both the class this file is
+named for, and this time the fix is a command rather than a resolution.
+
+CLAUDE.md's dispatch contract says to answer, in writing, "Where does THIS
+agent write? Not the last one. **Read its brief.**" That instruction asks the
+orchestrator to PREDICT the write set from the brief. Measured 2026-08-12, both
+predictions were wrong on the same afternoon:
+
+| agent | watched | actually writing to | misread as |
+|---|---|---|---|
+| delta verifier | `scratchpad/dv2` | `scratchpad/dvr2-lab`, `dvr2-ctl`, `dvr2-probe*.mjs`, `/tmp/tiphys-*` | "no report, possibly dead", 23 minutes |
+| harness fix round | `scratchpad/hfix3` | `scratchpad/hfix3-lab` | "quiet 1267s, CANNOT distinguish" |
+
+Neither lab directory is named in any brief, because **neither existed when the
+brief was written**. Both agents invented them, and inventing them was CORRECT:
+the delta verifier built a separate lab precisely so it could apply mutations
+without touching the tree under review, which is the mutate-in-place discipline
+done properly. The better the agent behaves, the more surely the predicted
+watch set is wrong.
+
+So the prediction is structurally unreliable, and no amount of care fixes it.
+The measurement takes one command:
+
+```
+find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
+```
+
+Every directory an agent has created for itself appears at the top, by
+recency, whether or not anyone anticipated it. Run it BEFORE arming, and again
+whenever a beacon looks stale, because an agent that has just started a new
+kind of work has just created a new place to write.
+
+**The rule, replacing the predictive one for this question:**
+
+> Do not derive the watch set from the brief. Derive it from the filesystem, by
+> recency, at arming time and again at every stale reading. Watch the UNION of
+> everything that appears, plus `/tmp` scratch used by gate runs. A watchdog
+> pointed at one path of an agent's several is not a weak watchdog, it is a
+> FALSE one: it reports quiet while the agent is at full speed.
+
+Both watchdogs were re-armed on the union. The delta verifier's union went to
+`0s` immediately, having read `1362s` a minute earlier against the same live
+agent.
+
+**AND THE FIX WAS STILL HALF A FIX, which is instance ten.** The re-armed
+watchdog measured ACTIVITY across the union and went on taking the REPORT'S
+PATH from the brief. It therefore reported "REPORT STILL ABSENT" for
+thirty-five minutes while a 254-line report sat, growing, at
+`scratchpad/dvr2-report/delivery/review/verification-m3-p6-fix-round-2.md`.
+The agent had made a THIRD directory, a separate worktree for the report
+branch, because the brief told it the report must go on a branch that does not
+match the phase pattern. It was following instructions exactly. Two nudges were
+sent accusing it of ignoring the beacon rule, and both were wrong.
+
+So the rule generalises past activity, and this is the form to keep:
+
+> **Measure the ARTIFACT too, not just the activity.** Locate the report by
+> NAME across the whole scratchpad, never by the path the brief specified:
+> ```
+> find "$SCRATCHPAD" -name '<artifact-name>*' -not -path '*/node_modules/*' -printf '%T@ %p\n' | sort -rn | head -1
+> ```
+> A watchdog that hardcodes the path it asked for will report an absence the
+> moment the agent does something reasonable that the brief did not foresee.
+
+The pattern across all ten instances is now one sentence: **every time this
+watchdog has been wrong, it was because a path was assumed instead of
+measured.** Wrong place, wrong time, wrong subset, wrong artifact. The fix has
+been the same `find` each time and it took ten instances to state it as one
+rule.
+
+### THE THIRD READING OF A STALE BEACON: starved, by the orchestrator itself
+
+"Dead or in a long run" is not the full disjunction either. There is a third
+state and the orchestrator CAUSED it.
+
+Measured 2026-08-12, minutes after the entry above: two agents had gone quiet
+for seventeen and twenty minutes and the orchestrator was weighing whether one
+was dead. `uptime` reported **load average 13.00 on 4 cores**, better than
+three times oversubscribed. The orchestrator was itself running a full `npm
+test` in a scratch worktree, in the background, to settle an optional question
+about an unowned finding, while two critical-path agents ran suites and gate
+bundles of their own.
+
+The agents were not stuck. **They were starved, by their own orchestrator, and
+the beacon reports starvation exactly as it reports death.** Worse, the
+starvation was invisible from the artefact this entry has spent four
+postscripts learning to watch: mtime says quiet, and quiet is quiet whatever
+the cause.
+
+Two things follow, and the second is the uncomfortable one.
+
+> **Before reading a stale beacon as trouble, check the LOAD.** `uptime` against
+> `nproc` costs nothing. A load average several times the core count means every
+> quiet beacon on the box is explained without any of them being dead.
+
+> **The orchestrator's own optional work is not free, and it competes with the
+> critical path it is supposed to be protecting.** The measurement being run
+> here was a nice-to-have on an unowned finding against `main`. It was slowing
+> a milestone's blocking fix round. It was killed, and killing it was correct.
+
+The general shape: an orchestrator that fills its waiting time with local
+computation is not idling productively, it is taxing the work it is waiting
+for. Waiting is sometimes the highest-value action available, and this project's
+standing rule against false stops does NOT mean every idle moment must be
+filled with a heavy command. Do paperwork, which is cheap; do not run suites.
+
+### What this postscript does NOT cover
+
+- **The load was not attributed per process, and the first attempt to bound it
+  was WRONG in a way worth keeping.** This section originally said that killing
+  the probe "dropped it to 11.85, which suggests the orchestrator was a minority
+  of it". That reading was taken FIVE SECONDS after the kill. **A load average
+  is a decaying average over one, five and fifteen minutes, so sampling it
+  immediately after a change measures the state BEFORE the change.** Sampled
+  again a few minutes later the one-minute figure was **6.56** against a
+  fifteen-minute figure of 10.43, so the orchestrator's optional suite was
+  roughly HALF the load, not a minority.
+  The correction matters twice over: it makes the effect larger than first
+  recorded, and it is the same error family as everything else in this file, an
+  instrument read before it could possibly have responded. The right procedure
+  is to wait at least the averaging window, or to read the three figures against
+  each other, where a one-minute figure far below the fifteen-minute one is
+  itself the evidence that load is falling.
+- **No threshold is proposed.** "Several times the core count" is a judgement,
+  and this file's whole thesis is that judgements do not survive. A mechanical
+  version would have the watchdog emit the load alongside the mtime, and no
+  watchdog here does that.
+- **The mtime watchdogs in this session were NOT rewritten to consult the
+  harness.** They still print "CANNOT distinguish". The rule above is applied by
+  the orchestrator at the moment of acting, which is a habit and therefore
+  exactly the kind of thing this file records as insufficient. A watchdog that
+  emitted the liveness answer itself would be the mechanical version and does
+  not exist.
+- **It does not audit the other watchdogs armed in this session for the same
+  defect.** Two others were armed with `$(date +%s)` evaluated inside the
+  monitor, which is correct by construction, and one was armed with a literal
+  taken from a `date` command that had actually been RUN, which is correct but
+  fragile for the same reason. None was re-checked against the clock.
+- **It does not establish why the constant was wrong.** No arithmetic was
+  reconstructed. The number was simply not measured, and where it came from is
+  not worth recovering.
