@@ -152,3 +152,103 @@ is sound and the structural argument behind it is correct as written.
   but I did not measure it.
 - Non-UTF8 or control-character content in the brief.
 - The `print` mode, where neither R nor B ever ran.
+
+## 3. Is `describeDrift` genuinely witnessed, and does the witness arithmetic hold? (tasks 2, 3, 4)
+
+Verified by MUTATION, not by reading. Probe 2 (`scratchpad/dvr2-probe2.mjs`)
+runs the WHOLE of test/implementer-brief.test.ts under each mutation with the
+TAP reporter and reads the per-test `ok`/`not ok` for four tests:
+
+- T1 `adding a gate to the registry without re-rendering ...` (witness test 1)
+- T2 `drift in the block's non-row lines is caught and named ...` (witness test 2, NEW this round)
+- T3 `the shipped brief's gate rows are exactly the gates the pinned mode selects ...` (NEW)
+- T4 `a narrowing inside the renderer is caught by the drift check ...` (NEW)
+
+```
+mutation                                             exit   T1        T2        T3        T4
+M0 CONTROL: no mutation                              0      pass      pass      pass      pass
+M1 witness member 0: src/roles.ts selected -> []     1      FAIL      FAIL      pass      FAIL
+M2 witness member 1: describeDrift(...) -> []        1      FAIL      FAIL      pass      pass
+M3 (mine) check A defanged: renderingFindings -> []  1      pass      pass      pass      FAIL
+M4 (mine) BOTH A and B defanged                      1      FAIL      FAIL      pass      FAIL
+
+WITNESS ARITHMETIC (src/witness/run.ts:886): red = exitCode !== 0 && failed.length === tests.length
+witness tests = [T1, T2]
+  M1 witness member 0: src/roles.ts selected -> []: exit 1, failed 2 of 2 -> red = true
+  M2 witness member 1: describeDrift(...) -> []: exit 1, failed 2 of 2 -> red = true
+PROBE2_EXIT=0
+```
+
+**The control arm M0 is all-pass at exit 0**, so the four cells are measuring the
+mutation and not a broken lab.
+
+### 3a. Task 3, the arithmetic that bit the round
+
+I re-derived it rather than taking it. src/witness/run.ts:886 reads
+
+```
+      red: exitCode !== 0 && failed.length === tests.length,
+```
+
+and `failed` is built at src/witness/run.ts:867 by collecting only the named
+tests with a failing TAP point; a MISSING name lands in `missing`, not in
+`failed`, so a name that does not resolve makes the member NOT red. The
+per-member verdict is then `rate.red === rate.total` for a deterministic spec
+(src/witness/run.ts:1477), and this spec is `deterministic: true, repeats: 2`.
+
+The witness now names TWO tests, so the round made its own witness HARDER to
+satisfy, and that is the trap the orchestrator flagged. **Measured: it clears the
+bar.** Under BOTH dangerous states, BOTH named tests fail and the exit code is
+nonzero, so `failed.length === tests.length` holds in each case. Adding T2 to
+the `tests` array did not relax the witness into a green that means nothing.
+
+### 3b. Task 2, is `describeDrift` reached
+
+Yes. M2 collapses `describeDrift`'s call site to `[]` and T1 and T2 both go from
+pass to FAIL. Before this round the same mutation left T1 green, which is the
+defect the round is closing; after it, the arm is reached by name.
+
+### 3c. Task 4, one witness is not a class
+
+Two independent readings, both green:
+
+1. **The witness's two dangerous states are structurally different** and both go
+   red: one narrows the RENDERER inside `src/roles.ts` (a different file and a
+   different mechanism), one defangs the COMPARATOR in the script.
+2. **T2 itself carries two members inside it**, a PREFLIGHT STEP and the TABLE
+   HEADER, and probe 1 shows independently that neither is visible to the
+   row-and-field check: for both of those inputs the LAB arm's restored check
+   did NOT fire and `describeDrift` did. So they are members of the class T2
+   claims ("drift the row-and-field check cannot see") rather than two labels on
+   one path.
+
+T4 likewise carries two members, a dropped ROW SET and a dropped COLUMN, and
+probe 1 confirms both reach check A, which is the arm T4 asserts.
+
+### 3d. THE SURVIVING PAIR IS NOT A NEW SHADOWING PAIR (the question the round's R2-19 raises)
+
+The removal replaced one shadowed pair with a surviving pair A and B, and the
+round argues each is reachable alone. **Measured, in both directions:**
+
+- **A reachable alone**: M3 defangs A only. T4 goes FAIL while T1 and T2 stay
+  pass. So an input exists that only A catches, and a named test observes it.
+- **B reachable alone**: M2 defangs B only. T1 and T2 go FAIL while T4 stays
+  pass. So an input exists that only B catches, and named tests observe it.
+
+The structural reason is stronger than the measurement and worth stating: A runs
+in EVERY mode including `--write` (scripts/check-brief-drift.mjs:367), and B
+runs in `--check` only, after the `--write` branch returns at
+scripts/check-brief-drift.mjs:397. There is a whole INVOCATION in which B does
+not exist, so B cannot shadow A there. The pair is not the shape that was
+removed.
+
+### 3e. What section 3 did NOT cover
+
+- I did not run every witness in `witness/`, only the one the delta touches.
+- I ran each mutation ONCE, not twice; the witness runner's own `repeats: 2` is
+  the repetition discipline and section 5 reports its result.
+- T3 does not fail under any of my four mutations, BY CONSTRUCTION: it reads the
+  shipped brief and parses the registry itself and calls no `src` function, so
+  no code mutation can reach it. Its dangerous state is a shipped brief whose
+  rows disagree with the registry, which is a CONTENT state, not a code state. I
+  did not construct that state, and section 6 records what I think that means.
