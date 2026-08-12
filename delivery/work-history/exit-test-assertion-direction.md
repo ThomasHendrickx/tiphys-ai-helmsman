@@ -2464,3 +2464,81 @@ was run:
    probe entries onto the sources and prints `NONE` for `explicitById`. That is
    CR-V-1, produced mechanically instead of by reading.
 
+## FR2.3 What changed
+
+Four files. Two of them are PRODUCTION and that is a departure from round 1,
+stated here rather than left for a reviewer to notice.
+
+| file | change | finding |
+|---|---|---|
+| `scripts/m2-exit-test.sh` | two self-vacuity checks in the assertion program | CR-V-2 |
+| `test/m2-exit-test.test.ts` | a second attribution key; `probe-4-explicit-table-leg`; a per-probe `reason`; a union-source guard; a test for the two new harness checks | CR-V-1, CR-FR-2 |
+| `test/behaviors.json` | two appended rows | (registry) |
+| `delivery/work-history/exit-test-assertion-direction.md` | this section | CR-FR-1 |
+
+**"No production code changed" is NO LONGER TRUE of this branch, and two
+consequences follow that both reviewers relied on.** Review H-A's section 7 and
+review H-B's "two claims I was told to attack" each rest on the sha256 of
+`scripts/m2-exit-test.sh` being identical at `21509d1` and at HEAD, and H-A uses
+that identity to carry forward round 1's sections 9 and 9a without re-running the
+bundles. That premise is now void. The harness sha256 moves from
+`9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138` to the value
+recorded in FR2.7, and the end-to-end runs are re-done in FR2.7 rather than
+inherited.
+
+## FR2.4 Red witness 1: each leg of the union, on BOTH arms
+
+The defanger is an anchored SINGLE replacement that aborts unless the anchor
+occurs exactly once. Negative control first, so a silently-missing anchor cannot
+read as a clean result:
+
+```
+$ node mkdefang.mjs <pristine harness> <out> 'this anchor does not occur anywhere' 'x'
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur anywhere
+EXIT=2
+```
+
+Pristine snapshots taken before any mutation, and restored by `cp` after every
+run (no `git checkout --` anywhere in this round, CLAUDE.md:627):
+
+```
+4b607dd9696485e5ef5e68838b99d596e532f516db2aa2012630873a14b9d452  snap/harness.sh
+5bb732f77ce3e0a3a9665e59eec3f70be55e26eec9d093297e07d8c53ae2cb19  snap/test.ts
+```
+
+The test loops both arms and aborts at its first failed assertion, so a
+whole-test exit code cannot say which arm failed. Each arm is therefore pinned by
+a second anchored replacement of the loop header, and every row below is a
+separate run of `node --test --test-name-pattern 'a RED gate is rejected on BOTH
+bundles' test/m2-exit-test.test.ts`. Full output:
+
+```
+=== PROBE TEST, PR ARM ONLY ===
+pr:harness                         EXIT=0
+pr:h-norows                        EXIT=1  [pr] a bundle row for a gate declared in NEITHER the manifest nor the table, reporting not-applicable with a valid evaluated precondition, must be REJECTED
+pr:h-nomanifest                    EXIT=1  [pr] a gate this bundle RUNS whose table row is gone and which produced NO record must be REJECTED: its id reaches the expected set through the MANIFEST le
+pr:h-noexplicit                    EXIT=1  [pr] an expectations-table row naming a gate that is in NEITHER gates.manifest.json NOR the bundle must be REJECTED: its id reaches the expected set throug
+pr:h-fourthleg                     EXIT=0
+=== PROBE TEST, MAIN ARM ONLY ===
+main:harness                       EXIT=0
+main:h-norows                      EXIT=1  [main] a bundle row for a gate declared in NEITHER the manifest nor the table, reporting not-applicable with a valid evaluated precondition, must be REJECTED
+main:h-nomanifest                  EXIT=1  [main] a gate this bundle RUNS whose table row is gone and which produced NO record must be REJECTED: its id reaches the expected set through the MANIFEST le
+main:h-noexplicit                  EXIT=1  [main] an expectations-table row naming a gate that is in NEITHER gates.manifest.json NOR the bundle must be REJECTED: its id reaches the expected set throug
+main:h-fourthleg                   EXIT=0
+```
+
+Four things this table establishes, in the order they matter:
+
+1. **CR-V-1 is closed on BOTH arms.** `h-noexplicit` is the exact defang H-B
+   measured as leaving the entire 594-test suite green. It now reddens, on the pr
+   arm and on the main arm, with the probe-4 assertion naming the shape.
+2. **The green control is green.** `harness` (pristine) is EXIT=0 on both arms,
+   so none of the three assertions is an always-red one.
+3. **The class has THREE structurally different members, not one** (CLAUDE.md:380
+   asks for at least two). Each leg reddens a DIFFERENT named assertion, so the
+   three probes are three code paths and not one wearing three hats.
+4. **`h-fourthleg` is EXIT=0, and that is the point of the next witness.** A
+   fourth source spread into the union is invisible to every probe, because a
+   probe can only witness a leg that exists when it is written. That is what the
+   union-source guard is for, and FR2.5 reddens it.
+

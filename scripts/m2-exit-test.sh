@@ -520,6 +520,28 @@ for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById
 }
 const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
 
+// -- 0. THIS PROGRAM IS NOT EXEMPT FROM ITS OWN RULE. It rejects any gate that
+//       reports green having examined zero units as vacuous (M2-C-2), and until
+//       these two checks existed it could itself exit 0 having asserted on zero
+//       gates, printing "0 gate(s) asserted" as a pass. Both inputs that produce
+//       that state degrade SILENTLY rather than erroring: a manifest that parses
+//       but whose `gates` key is not an array makes the manifest leg empty
+//       (the Array.isArray fallback above), and an expectations document with no
+//       gates makes the explicit leg empty. Neither is reachable through the
+//       shipped harness, whose two expectation tables are non-empty shell
+//       literals; both are reachable by anything else that runs this program,
+//       and "not reachable today" is not a property a later edit preserves.
+if (!Array.isArray(manifestRead.value?.gates)) {
+  fail(null, `the manifest ${manifestPath} parses but its "gates" key is not an array, so the ` +
+    "manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest " +
+    "that declares no gates cannot certify a bundle");
+}
+if (expectedIds.length === 0) {
+  fail(null, "the derived expected set is EMPTY, so this run would certify a bundle having " +
+    "asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule " +
+    "binds this program as much as the gates it inspects");
+}
+
 // The allowed statuses for an expected gate, supporting alternatives written
 // as "green|not-applicable" (credential-token per owner action A-3).
 function allowed(spec) {

@@ -1254,6 +1254,31 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
     );
     const defaultSpecReason = (whyMatch[1] as string).trim();
 
+    // THE SECOND KEY, and the reason there has to be one. `defaultSpecReason` is
+    // appended under `const why = explicit ? "" : DEFAULT_SPEC_WHY`, so for a
+    // member carrying an explicit table row it is the EMPTY STRING on every
+    // branch of the program. A probe for the EXPLICIT leg of the union can
+    // therefore never satisfy a uniqueness test keyed on it: the same key is the
+    // over-determination filter below, which would reject such a probe as
+    // "rejected by a check OTHER than the derived expected set". The explicit
+    // leg needs the key of the branch that actually rejects it, derived from the
+    // harness for the same reason the first key is: a reword must redden here
+    // loudly rather than silently turning the filter into a tautology.
+    const explicitMatch = /fail\(spec\.id, explicit\s*\n\s*\? `([^$`]+)/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      explicitMatch,
+      "could not derive the explicit-spec rejection message from the harness; the uniqueness " +
+        "check for the explicit leg would be vacuous without it, so this is a hard failure " +
+        "rather than a fallback",
+    );
+    const explicitSpecReason = (explicitMatch[1] as string).trim();
+    assert.notEqual(
+      explicitSpecReason,
+      defaultSpecReason,
+      "the two attribution keys must DISCRIMINATE between the branches they name; if they were " +
+        "equal, one probe family would silently admit the other's rejecter",
+    );
+
     const runAssert = (dir: string, expectDoc: unknown, name: string): RunResult => {
       const expectPath = join(root, `expect-${name}.json`);
       writeFileSync(expectPath, JSON.stringify(expectDoc));
@@ -1382,13 +1407,21 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
       // program printed must be a default-spec finding, which excludes every
       // competitor, including competitors added after this test was written.
       //
-      // The union at scripts/m2-exit-test.sh:515 spreads two sources a probe can
-      // enter the expected set by, the MANIFEST leg and the ROWS leg. One probe
-      // per leg is what makes this a class rather than one witness (CLAUDE.md).
-      // Defanging the legs SEPARATELY shows they are two code paths and not one
-      // wearing two hats: probe 1 dies with the rows leg and survives removal of
-      // the manifest leg, and probe 2 does the exact opposite.
+      // The union spreads THREE sources a probe can enter the expected set by:
+      // the MANIFEST leg, the ROWS leg and the EXPLICIT-TABLE leg. One probe per
+      // leg is what makes this a class rather than one witness (CLAUDE.md).
+      // Defanging the legs SEPARATELY shows they are three code paths and not
+      // one wearing three hats: each probe dies with its own leg and survives
+      // removal of the other two.
+      //
+      // The explicit leg was UNWITNESSED until this round, and not by oversight.
+      // Its members always carry an explicit spec, so the harness binds their
+      // reason to "" and no rejection of one can carry `defaultSpecReason`; the
+      // uniqueness filter below would have thrown out any probe written for it.
+      // A witness family can only cover the branches its attribution key names,
+      // so the explicit leg carries its own key, `explicitSpecReason`.
       const dropped = table.gates[table.gates.length - 1]?.id as string;
+      const TABLE_ONLY = "fixture-gate-only-the-table-names";
       const tableWithoutDropped = {
         ...table,
         gates: table.gates.filter((gate) => gate.id !== dropped),
@@ -1399,10 +1432,15 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
         table: typeof table;
         rows: { id: string; status: string }[];
         names: string;
+        // The attribution key EVERY itemised finding this probe provokes must
+        // carry. It is the message of the branch that rejects this probe's leg,
+        // derived from the harness, never hand-written.
+        reason: string;
         why: string;
       }[] = [
         {
           name: "probe-1-rows-leg",
+          reason: defaultSpecReason,
           table,
           rows: [...healthy, { id: NOWHERE, status: "not-applicable" }],
           names: NOWHERE,
@@ -1414,6 +1452,7 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
         },
         {
           name: "probe-2-manifest-leg",
+          reason: defaultSpecReason,
           table: tableWithoutDropped,
           rows: withoutDropped,
           names: dropped,
@@ -1424,6 +1463,7 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
         },
         {
           name: "probe-3-manifest-gate-not-applicable",
+          reason: defaultSpecReason,
           table: tableWithoutDropped,
           rows: [...withoutDropped, { id: dropped, status: "not-applicable" }],
           names: dropped,
@@ -1431,6 +1471,25 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
             "a manifest gate with no table row reporting not-applicable must be REJECTED: it is " +
             "asserted under the default required-green, and accepting it is how a silently " +
             "skipped gate reads as legitimately N/A. This is the shape brief-drift arrives in",
+        },
+        {
+          name: "probe-4-explicit-table-leg",
+          reason: explicitSpecReason,
+          table: {
+            ...table,
+            // No `required` key: the shape of a printExpect row is {id, expect},
+            // and the rejection this probe provokes is the missing-record branch,
+            // which fires before any required/status check can.
+            gates: [...table.gates, { id: TABLE_ONLY, expect: "green" }],
+          },
+          rows: healthy,
+          names: TABLE_ONLY,
+          why:
+            "an expectations-table row naming a gate that is in NEITHER gates.manifest.json NOR " +
+            "the bundle must be REJECTED: its id reaches the expected set through the EXPLICIT " +
+            "leg of the union alone, and deleting that leg silently restores the original " +
+            "assertion-direction defect in its mirror direction, a gate the table names that " +
+            "produced no record and that nothing complains about",
         },
       ];
       for (const probe of derivationOnly) {
@@ -1450,7 +1509,7 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
           `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot ` +
             `be established: ${output}`,
         );
-        const foreign = findings.filter((line) => !line.includes(defaultSpecReason));
+        const foreign = findings.filter((line) => !line.includes(probe.reason));
         assert.deepEqual(
           foreign,
           [],
@@ -1497,6 +1556,175 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in two structurally different degenerate shapes", () => {
+  // The program rejects any gate that reports green having examined zero units
+  // as vacuous (M2-C-2). It exempted ITSELF: it could print "0 gate(s) asserted"
+  // and exit 0, which is the same shape as the defect the whole branch is about,
+  // one level up. Both routes into that state degrade SILENTLY rather than
+  // erroring, which is why neither showed up as a failure: a manifest that
+  // parses but whose `gates` key is not an array makes the manifest leg empty,
+  // and an expectations document with no gates makes the explicit leg empty.
+  //
+  // Two members, and they are structurally different rather than two spellings
+  // of one thing: member 1 has a NON-empty expected set and trips only the
+  // manifest-shape check, member 2 has a well-formed empty manifest and trips
+  // only the empty-expected-set check. Each check is therefore witnessed alone.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    // The program AS SHIPPED, read out of the heredoc the harness writes to
+    // disk. Taking it this way rather than through --self-test is deliberate:
+    // it needs no dist/, so this test runs under every invocation and on BOTH
+    // CI events. A guard witnessed on only one arm is the shape T-009 records.
+    const progMatch =
+      /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      progMatch,
+      "could not extract the assertion program from the harness heredoc; every assertion below " +
+        "would be about nothing, so this is a hard failure rather than a fallback",
+    );
+    const assertProg = join(root, "m2-assert.mjs");
+    writeFileSync(assertProg, progMatch[1] as string);
+
+    const GATE = "fixture-control-gate";
+    const runAssert = (
+      dir: string,
+      expectDoc: unknown,
+      manifestDoc: unknown,
+      name: string,
+    ): RunResult => {
+      const expectPath = join(root, `expect-${name}.json`);
+      const manifestPath = join(root, `manifest-${name}.json`);
+      writeFileSync(expectPath, JSON.stringify(expectDoc));
+      writeFileSync(manifestPath, JSON.stringify(manifestDoc));
+      return run(
+        process.execPath,
+        [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifestPath],
+        { cwd: root, env },
+      );
+    };
+
+    // CONTROL: a well-formed manifest with one gate and a bundle that reports it
+    // green is ACCEPTED, so neither assertion below is an always-red one.
+    const okDir = join(root, "control");
+    writeBundle(okDir, [{ id: GATE, status: "green" }]);
+    const ok = runAssert(
+      okDir,
+      { label: "control", gates: [], absent: [] },
+      { version: 1, gates: [{ id: GATE }] },
+      "control",
+    );
+    assert.equal(
+      ok.status,
+      0,
+      `a well-formed manifest and a green bundle must be ACCEPTED: ${ok.stdout}\n${ok.stderr}`,
+    );
+
+    // MEMBER 1: the manifest parses and its `gates` key is an OBJECT, not an
+    // array. The expected set is NOT empty (the table names the gate), so the
+    // empty-set check cannot fire and the manifest-shape check is alone.
+    const m1Dir = join(root, "manifest-not-an-array");
+    writeBundle(m1Dir, [{ id: GATE, status: "green" }]);
+    const m1 = runAssert(
+      m1Dir,
+      { label: "m1", gates: [{ id: GATE, expect: "green", required: true }], absent: [] },
+      { version: 1, gates: {} },
+      "manifest-not-an-array",
+    );
+    assert.notEqual(
+      m1.status,
+      0,
+      "a manifest whose `gates` key is not an array silently empties the manifest leg of the " +
+        `derived expected set, and must be REJECTED rather than read as a manifest declaring ` +
+        `nothing: ${m1.stdout}\n${m1.stderr}`,
+    );
+    assert.match(
+      m1.stdout + m1.stderr,
+      /"gates" key is not an array/,
+      "member 1 was not rejected by the manifest-shape check, which is the only check it exercises",
+    );
+    assert.doesNotMatch(
+      m1.stdout + m1.stderr,
+      /derived expected set is EMPTY/,
+      "member 1 is meant to isolate the manifest-shape check; if the empty-set check also fired, " +
+        "the two are not separately witnessed here",
+    );
+
+    // MEMBER 2: a well-formed manifest declaring no gates, an expectations
+    // document naming none, and an empty bundle. The manifest-shape check
+    // cannot fire; the expected set is empty and nothing at all is asserted.
+    const m2Dir = join(root, "zero-gates-asserted");
+    writeBundle(m2Dir, []);
+    const m2 = runAssert(
+      m2Dir,
+      { label: "m2", gates: [], absent: [] },
+      { version: 1, gates: [] },
+      "zero-gates-asserted",
+    );
+    assert.notEqual(
+      m2.status,
+      0,
+      "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle " +
+        `having examined nothing, which is exactly what M2-C-2 forbids: ${m2.stdout}\n${m2.stderr}`,
+    );
+    assert.match(
+      m2.stdout + m2.stderr,
+      /derived expected set is EMPTY/,
+      "member 2 was not rejected by the empty-expected-set check, which is the only check it " +
+        "exercises",
+    );
+    assert.doesNotMatch(
+      m2.stdout + m2.stderr,
+      /"gates" key is not an array/,
+      "member 2's manifest IS a well-formed array, so the manifest-shape check must not fire; " +
+        "if it does, the two checks are not separately witnessed here",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed", () => {
+  // WHY A SOURCE-LEVEL GUARD EXISTS AT ALL. The probes above witness the legs
+  // that exist. Nothing witnessed the arrival of a NEW one, and the previous
+  // round wrote that gap down as an open item on the grounds that a guard here
+  // would pin a count, which CLAUDE.md:201 forbids. That premise is wrong twice
+  // over: CLAUDE.md:201 forbids pinning a count over an APPEND-ONLY REGISTRY,
+  // where growth is routine and legitimate, and this union is not one; and the
+  // form CLAUDE.md:201 actually prescribes, asserting BY NAME, applies here
+  // directly. No count is pinned below. The assertion is a set equality over
+  // identifier names, and it reddens on an addition and on a removal alike.
+  //
+  // It is deliberately NOT gated on dist/: it reads one source file, so it runs
+  // under every invocation and on both CI events, which is where an unwitnessed
+  // arm has bitten this repository before (CLAUDE.md:418).
+  const source = readFileSync(harness, "utf8");
+  const union = /const expectedIds = \[\];\n\s*for \(const id of \[([\s\S]*?)\]\)/.exec(source);
+  assert.ok(
+    union,
+    "could not locate the derived expected set's union statement in the harness; this guard " +
+      "would be vacuous without it, so it is a hard failure rather than a fallback",
+  );
+  const sources = [...(union[1] as string).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)]
+    .map((m) => m[1] as string)
+    .sort();
+  // One entry per source, naming the probe that witnesses it. A source added
+  // here without a probe added above is the defect this guard exists to catch.
+  const probed = ["explicitById", "manifestIds", "rows"];
+  assert.deepEqual(
+    sources,
+    probed,
+    "the derived expected set draws from a set of sources that this suite does not probe " +
+      "one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and " +
+      "probe-3-manifest-gate-not-applicable witness `manifestIds`, probe-4-explicit-table-leg " +
+      "witnesses `explicitById`. A source ADDED to the union needs its own probe, and a probe " +
+      "for it needs the attribution key of the branch that rejects its members, which is NOT " +
+      "automatically the default-spec reason: that is exactly how `explicitById` stayed " +
+      `unwitnessed. Derived from the harness: ${JSON.stringify(sources)}`,
+  );
 });
 
 test("no expectations row admits a lax status the gate it names can never legitimately produce", () => {
