@@ -351,11 +351,21 @@ filled with a heavy command. Do paperwork, which is cheap; do not run suites.
 
 ### What this postscript does NOT cover
 
-- **The load was not attributed per process.** How much of the 13.00 was the
-  orchestrator's own suite and how much was the two agents was not measured;
-  killing the probe dropped it to 11.85, which suggests the orchestrator was a
-  minority of it. So this records a real effect of unknown size, not a
-  quantified one, and the agents were heavy in their own right.
+- **The load was not attributed per process, and the first attempt to bound it
+  was WRONG in a way worth keeping.** This section originally said that killing
+  the probe "dropped it to 11.85, which suggests the orchestrator was a minority
+  of it". That reading was taken FIVE SECONDS after the kill. **A load average
+  is a decaying average over one, five and fifteen minutes, so sampling it
+  immediately after a change measures the state BEFORE the change.** Sampled
+  again a few minutes later the one-minute figure was **6.56** against a
+  fifteen-minute figure of 10.43, so the orchestrator's optional suite was
+  roughly HALF the load, not a minority.
+  The correction matters twice over: it makes the effect larger than first
+  recorded, and it is the same error family as everything else in this file, an
+  instrument read before it could possibly have responded. The right procedure
+  is to wait at least the averaging window, or to read the three figures against
+  each other, where a one-minute figure far below the fifteen-minute one is
+  itself the evidence that load is falling.
 - **No threshold is proposed.** "Several times the core count" is a judgement,
   and this file's whole thesis is that judgements do not survive. A mechanical
   version would have the watchdog emit the load alongside the mtime, and no
