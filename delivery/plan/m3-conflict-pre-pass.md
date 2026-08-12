@@ -118,3 +118,130 @@ disappointed, and that is the measurement rather than a preference.
 - No pair was tested by actually attempting a merge. This is a declaration-and-
   diff analysis; a clean intersection is evidence, not proof, and the first real
   conflict outranks this document.
+
+## ADDENDUM, 2026-08-12: M3-P7 may run concurrently with M3-P6
+
+- measured at: `origin/main` 307ed2f and `origin/claude/m3-p6-delivery-role-briefs`
+  16bab6f, which is the head M3-P6's dual clean-room review is running against.
+- **This pair is not in the table above at all.** The table lists the pairs the
+  original pass ruled serialising plus two it ruled union-shaped; P6 x P7 appears
+  in neither list. An absence there is an omission, not a ruling, and DR-0011
+  requires the ruling to be WRITTEN DOWN BEFORE DISPATCH rather than inferred
+  from a gap. This addendum is that writing.
+
+### The intersection, computed both ways
+
+The declaration bound, which is the one that matters because a phase cannot
+legally leave it:
+
+```
+$ node -e '<pairwise intersection of filesToTouch + declaredExtras, prefix-aware>'
+P6 x P7 -> ["package.json","src/commands/validate.ts","witness/",
+            "delivery/requirements/clause-map.json"]
+```
+
+Three of those four are the non-serialising registries this document already
+ruled on. The fourth, `src/commands/validate.ts`, is the `TYPE_TABLE` append
+this document also already ruled union-shaped: M3-P6 adds one row,
+`["mechanism-index", "mechanism-index.schema.json"]`, in a hunk whose header is
+`@@ -87,0 +88,7 @@ export const TYPE_TABLE`, and M3-P7 adds `checklist` and
+`verdict` to the same map. Keeping both rows is the whole resolution.
+
+**`test/behaviors.json` does not appear because M3-P7 does not declare it**, and
+it does not need to: it is a standing pre-authorized extra under binding
+convention 5, append-only, and asserted by name never by count.
+
+M3-P6's ACTUAL diff was measured too, not just its declaration, since unlike the
+P4 x P5 case its branch exists and its implementation is complete:
+
+```
+$ git diff --name-only origin/main...origin/claude/m3-p6-delivery-role-briefs
+.github/workflows/gates.yml       roles/clean-room-reviewer.md
+CLAUDE.md                         roles/implementer.md
+MECHANISMS.md                     schemas/mechanism-index.schema.json
+delivery/requirements/clause-map.json  scripts/check-brief-drift.mjs
+delivery/work-history/m3-p6.md    src/commands/brief.ts
+gate-registry.yaml                src/commands/validate.ts
+gates.manifest.json               src/roles.ts
+package.json                      test/behaviors.json
+tuition/mechanism-index.yaml      test/clean-room-brief.test.ts
+witness/ (5 files)                test/implementer-brief.test.ts
+```
+
+The three files M3-P7 does its real work in, `src/cli.ts`, `src/validate.ts` and
+`src/checks.ts`, are touched by M3-P6 **not at all**, which is the strongest part
+of this result and is why it is stated separately from the intersection.
+M3-P6's `package.json` change is two entries added to the `files` array
+(`gates.manifest.json` and `tuition`) and touches no script and no dependency.
+
+### RULING: conflict-disjoint, and STILL NOT DISPATCHABLE
+
+**M3-P6 and M3-P7 are conflict-disjoint.** Their intersection under M3-P6's
+declaration, which bounds anything a fix round can still do to it, is four
+non-serialising registries and a `TYPE_TABLE` append. Nothing in the two file
+sets would collide.
+
+**AND M3-P7 STILL MAY NOT START UNTIL M3-P6 MERGES**, because a conflict
+pre-pass does not answer that question. This addendum was drafted with the
+opposite conclusion and is corrected here rather than quietly rewritten, because
+the confusion is the point of the entry.
+
+Two different questions get conflated by a document called a conflict pre-pass:
+
+| question | answered by | for this pair |
+|---|---|---|
+| would these two collide in the tree? | this pre-pass | NO, they are disjoint |
+| may this phase START yet? | the plan's `grounding` and `blocked-by` | NO, P7 is blocked |
+
+M3-P7's own fields settle the second one, and they name a M3-P6 ARTIFACT rather
+than merely asserting an order:
+
+```
+- grounding: M3-P6 merged (both review-side briefs exist and reference a verdict
+  type). ...
+- blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
+```
+
+The two review-side briefs are `roles/implementer.md` and
+`roles/clean-room-reviewer.md`, which are M3-P6's deliverables, and M3-P7's
+verdict schema is written against the type they reference. That is a real
+consumption. It is exactly the test revision 3 of the M3 plan applied to M3-P8,
+where the stated grounding named NO artifact of the phase it claimed to depend
+on and was corrected to point at M3-P6 instead. Run against M3-P7 the same test
+gives the opposite answer: the artifact is named, so the dependency stands.
+
+**Consequence: M3-P7 is dispatched when M3-P6 merges, not before.** The
+disjointness above is not wasted, it is what will be needed if a later phase pair
+is BOTH disjoint and unblocked, and it removes the file-conflict objection from
+this pair permanently. It is simply not sufficient on its own.
+
+**MERGE ORDER, unchanged and never at issue: M3-P6 merges FIRST.** DR-0011 makes
+work order concurrent where both tests pass, never merge order.
+
+**The lesson, recorded because it is the orchestrator's own.** M2's pre-pass
+found seven mutually disjoint phases and unlocked real parallelism, and that
+success makes it easy to read a disjointness result as a green light. The plan
+warns against exactly this at delivery/plan/kernel-plan-m3.md:1110, where it says
+the dispatch-time check "still cancels a parallel start on any overlap it finds":
+the dispatch check can only make a start MORE constrained, never less. A
+pre-pass is a veto, not a permit.
+
+### What this addendum does NOT cover
+
+- **It does not rule on P7 x P8 or P7 x P9**, which stay unproven and therefore
+  serial. Their declaration intersections carry `src/checks.ts`, and P7 x P8 also
+  carries `src/cli.ts`, `src/validate.ts` and `test/fixtures/`. That is more than
+  a registry union and it needs the diff-level measurement done here for P6,
+  which cannot happen before M3-P7's branch exists.
+- **It does not revisit the P6 x P8 and P6 x P9 x P10 serialisations** ruled
+  above, both of which stand. P6 x P9's intersection has GROWN since that ruling,
+  because `CLAUDE.md` was added to M3-P9's declaration, and it grows again with
+  `roles/implementer.md` in this same change. That moves it further from
+  concurrent, never toward it.
+- **It assumes M3-P6's fix rounds stay inside its declaration.** They must, or
+  its own scope gate reddens, which is the property that makes a declaration
+  usable as a bound rather than as a hope. If M3-P6 is amended to reach
+  `src/cli.ts`, `src/validate.ts` or `src/checks.ts`, this ruling is stale and
+  must be recomputed before M3-P7 merges.
+- **No pair here was tested by attempting a merge**, exactly as the original
+  pass says of itself.
