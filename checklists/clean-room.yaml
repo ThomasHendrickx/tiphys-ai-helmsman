@@ -1,0 +1,325 @@
+# THE CLEAN-ROOM REVIEW CHECKLIST (kernel plan M3, M3-P7 steps 3 and 3c).
+#
+# Read WITHOUT the implementer's account of the work. The probes below are the
+# questions; the framings at the bottom decide which one is asked FIRST, which
+# is T-001's second lesson and the reason `--framing` exists at all.
+#
+# THE ROW ORDER IS PART OF THE ARTIFACT. `checklist resolve --framing` groups
+# by a probe's `applies-to` scope and keeps FILE ORDER inside a scope, so the
+# first probe of the `fix-round` scope is the first one written here. That is
+# how CLAUDE.md's "the reviewer's FIRST check is item 3" becomes falsifiable
+# rather than a comment (criterion 4d).
+#
+# DR-0027 narrows what a finding is worth: a review that cannot name the
+# shipped behaviour at risk has found nothing worth a round.
+kind: checklist
+id: clean-room
+applies-to: >-
+  one phase's pull request, read against the plan and the diff alone, by a
+  reviewer who did not write the code and has not read the implementer's
+  narrative of it.
+
+probes:
+  # R-057b, and the FIX-ROUND PROBES COME FIRST IN THE FILE (D-M3-30).
+  # CLAUDE.md's fix-round contract says in terms that "the reviewer's FIRST
+  # check is item 3", item 3 being what the derivation did NOT cover. Position,
+  # not a comment: the `fix-round` framing takes the first probe of this scope.
+  - id: fix-round-not-covered
+    probe: >-
+      What regions did the round's derivation NOT cover, and why? Read
+      `fix-round.not-covered` in the work history and name the excluded
+      regions. A search whose scope is wrong returns an empty result that is
+      indistinguishable from an absence of defects, and this project has been
+      bitten by that three times: state/session.lock probed when the lease is
+      state/orchestrator.lock; an inventory scoped to tasks/, state/ and
+      worktrees/ while the missed path sat at the fleet root; a usage error
+      read as a clean result. If the field is absent or says nothing was
+      excluded, that is the finding.
+    applies-to: fix-round
+    evidence-required: true
+
+  - id: fix-round-mechanism-named
+    probe: >-
+      Is the round's stated `mechanism` a MECHANISM or the finding restated?
+      "A FIFO at the beacon hangs the guard" is a finding. "Reading a path
+      whose type has not been established" is the mechanism. A round that
+      fixed the instance the reviewer named, when the defect was the
+      mechanism, is the shape that consumed roughly a third of M1's elapsed
+      time. Quote the field and say which of the two it is.
+    applies-to: fix-round
+    evidence-required: true
+
+  - id: fix-round-derivation-published
+    probe: >-
+      Is the derivation's FULL output present, or a summary of it? The
+      contract asks for the exact command that enumerates every call site of
+      the mechanism and its complete output, because a summary is where a call
+      site the author did not think mattered stops being visible.
+    applies-to: fix-round
+    evidence-required: true
+
+  - id: deviation-judged-by-reviewer
+    probe: >-
+      For each deviation declared in the work history's `deviations[]`, judge
+      it yourself against the plan's intent and record the judgement. R-057b's
+      words are "judged, never assumed by the implementer": the implementer's
+      reason for a deviation is an input to your judgement, not a substitute
+      for it. Name every declared deviation, including the ones you agree with.
+    applies-to: deviations
+    evidence-required: true
+
+  # R-053. Each acceptance criterion quoted, with file:line evidence and a
+  # met-or-not-met verdict. The completeness of this walk is not left to the
+  # reviewer's memory: the verdict schema's `criteria[]` carries one entry per
+  # criterion and `verdict-criteria-complete` compares it against the plan.
+  - id: criteria-walked-with-evidence
+    probe: >-
+      Quote each acceptance criterion of the phase VERBATIM from the plan,
+      cite the file and line that discharges it, and record met or not-met.
+      A criterion discharged by a CI-deferred reason is not-met with that
+      reason recorded; a criterion you could not evaluate is not-met, never
+      omitted.
+    applies-to: criteria-walk
+    evidence-required: true
+
+  - id: criteria-none-silently-dropped
+    probe: >-
+      Does the phase's plan section carry an acceptance criterion that your
+      walk has no entry for? Count the criteria in the plan and the entries in
+      your walk, and name any difference. A review that quietly skipped a
+      criterion is the shape `verdict-criteria-complete` exists against, and
+      this probe is what catches it before the check does.
+    applies-to: criteria-walk
+    evidence-required: true
+
+  # R-055 correctness probes. FIVE SEPARATE ENTRIES, not one "check the edge
+  # cases" row (criterion 3b). A single generic row is answerable without
+  # opening anything, which is exactly the hazard class this phase names.
+  - id: correctness-negative-values
+    probe: >-
+      What does each changed function do with a NEGATIVE number where the
+      caller passes a count, a size, an index or a duration? Name the input
+      you tried and the observed behaviour, not the behaviour you expect.
+    applies-to: changed-code
+    evidence-required: true
+
+  - id: correctness-zero
+    probe: >-
+      What does each changed path do at ZERO: zero rows, zero bytes, zero
+      matches, a zero-length list, a zero timeout? The process document's own
+      illustration is a report whose amount rows are all zero and which is
+      therefore indistinguishable from a report that measured nothing.
+    applies-to: changed-code
+    evidence-required: true
+
+  - id: correctness-empty
+    probe: >-
+      What does each changed path do with EMPTY input: an empty string, an
+      empty array, an empty file, an absent optional field? Say which of those
+      the diff actually reaches and which it does not.
+    applies-to: changed-code
+    evidence-required: true
+
+  - id: correctness-unicode
+    probe: >-
+      What does each changed path do with non-ASCII text: multi-byte
+      characters, combining marks, a right-to-left run, a character whose
+      UTF-16 length differs from its codepoint count? Name the string you
+      tried.
+    applies-to: changed-code
+    evidence-required: true
+
+  - id: correctness-state-that-cannot-exit
+    probe: >-
+      Is there a state this change can enter and NOT LEAVE: a wait with no
+      timeout, a retry with no ceiling, a lease that cannot be broken, a queue
+      entry nothing dequeues, a status no transition moves off? Name the state
+      and the transition that is missing, or name the exit and cite it.
+    applies-to: changed-code
+    evidence-required: true
+
+  # R-055 continued, D-M3-26 and T-003's structural consequence 4. This probe
+  # exists so the `destructive-authority` clause the implementer brief carries
+  # is JUDGED rather than merely written. Its third question is answerable from
+  # the diff and the manifest, which is why evidence is required.
+  - id: destructive-authority-declared
+    probe: >-
+      For every command in the diff that can destroy work, answer all three:
+      (1) does the command's OWN contract state that it holds destructive
+      authority, in its own documentation rather than in a caller's; (2) are
+      its force semantics INHERITED from a caller rather than declared here,
+      which is how a command becomes destructive without any document saying
+      so; and (3) does the command appear in `gates.manifest.json`'s
+      `destructiveCommands` list? Open the manifest and quote the list. No
+      script can judge (1) or (2); (3) is M2's computable list and this probe
+      is you reading it rather than re-deriving it.
+    applies-to: destructive-command
+    evidence-required: true
+
+  # R-056a test-honesty probes. The accepted proof for the revert question is
+  # the M2-P2 red-witness harness's own evidence file, not the implementer's
+  # assertion that a test would have failed.
+  - id: test-red-without-the-fix
+    probe: >-
+      Would each new test FAIL if the fix were reverted? The accepted proof is
+      the red-witness harness's captured evidence file for that behaviour
+      (`witness-records.json`, whose per-member `runs[].exitCode` and
+      `failedNamedTests` record what actually ran), not a sentence in the work
+      history saying it was checked. Cite the record. Where the behaviour is
+      guarded against a DANGEROUS STATE rather than an absent feature, say
+      which state the member encodes.
+    applies-to: test-honesty
+    evidence-required: true
+
+  - id: test-asserts-behavior-not-implementation
+    probe: >-
+      Does each new assertion test BEHAVIOUR or an implementation detail?
+      An assertion on a private helper's name, on call order, on a log string
+      the program does not promise, or on the exact spelling of an internal
+      flag passes while the behaviour rots. Name the assertion and the
+      observable it stands for.
+    applies-to: test-honesty
+    evidence-required: true
+
+  - id: fence-catches-its-named-failure
+    probe: >-
+      Does each guard, gate or fence in the diff catch the failure mode it is
+      NAMED for? Construct the failure the name promises and run the guard
+      against it. A guard whose condition does not test the property that
+      matters is green and worthless; this repository has shipped one that
+      tested a report file's EXISTENCE while its name said freshness, and one
+      whose grep could not see the single byte it existed to catch.
+    applies-to: test-honesty
+    evidence-required: true
+
+  # T-006's two unexecuted-claim probes, under R-056a. T-006's finding is that
+  # its own reviewers caught all three instances BY INSTINCT, three times out
+  # of three, and instinct does not survive a reviewer change. That is exactly
+  # the case for an instruction rather than a norm.
+  - id: claim-impossibility-constructed
+    probe: >-
+      For every IMPOSSIBILITY claim, in the record's `claims[]` section and in
+      any prose the section does not declare ("cannot be", "impossible",
+      "there is no way to"), is the executed construction present? The
+      distinction that makes this different from the universal-claim probe:
+      a universal claim needs someone to try to FALSIFY it, an impossibility
+      claim needs someone to try to BUILD the thing. T-006's own reviewer
+      settled one in minutes with symlinkSync(p, p) raising ELOOP, where the
+      record had claimed the state could not be constructed without
+      privileges. Try to build it, and record the attempt either way.
+    applies-to: test-honesty
+    evidence-required: true
+
+  - id: claim-coverage-constructed
+    probe: >-
+      For every COVERAGE claim ("is covered", "catches", "would catch",
+      "recovers", "handles that anyway"), is the executed construction
+      present? A coverage claim is settled by CONSTRUCTING the case said to be
+      covered and running it, never by reading the guard and agreeing with it.
+      T-006 records that the universal-quantifier rule already in the plan
+      would have caught NONE of the three false claims M1-P5 produced, because
+      impossibility, coverage and remedy claims are existential and causal
+      rather than universal.
+    applies-to: test-honesty
+    evidence-required: true
+
+  # CLAUDE.md's one-witness-is-not-a-class rule, under R-056a.
+  - id: class-witness-has-two-members
+    probe: >-
+      For any test the record presents as guarding a CLASS rather than one
+      instance, have at least TWO structurally different members of that class
+      been demonstrated red? M1-P6 produced two consecutive medium findings
+      from this alone: one defang reddened a guard test and three others left
+      it green, and the round after repeated the mistake one abstraction up.
+      Name the two members and say how they differ structurally, not just in
+      their values.
+    applies-to: test-honesty
+    evidence-required: true
+
+  # R-059, the blast-radius probes, described by the process document as the
+  # single best question in it. NAMES A SEARCH ACTION (criterion 3b): the probe
+  # tells you the command to run, so it cannot be answered from memory.
+  - id: blast-radius-consumers
+    probe: >-
+      Who else reads what this change writes? Run the search rather than
+      recalling it: grep the repository for every exported name the diff
+      changed, for every file path it writes, and for every field name it adds
+      or renames, and paste the hit list. Then say, per hit, whether that
+      consumer still holds. An empty hit list is a result only if you show the
+      command that produced it.
+    applies-to: blast-radius
+    evidence-required: true
+
+  - id: blast-radius-behavior-under-old-callers
+    probe: >-
+      For each consumer the search found, does it still behave the same? Name
+      the call sites you opened, and the one you did NOT open and why. A
+      blast-radius answer whose scope is unstated is indistinguishable from an
+      absence of consumers.
+    applies-to: blast-radius
+    evidence-required: true
+
+  # R-093, the shared-consumer probe. Same shape: a search ACTION, not a bare
+  # question.
+  - id: shared-consumer-render-and-decide
+    probe: >-
+      Does any field the diff touches both RENDER and DECIDE? A field that
+      renders and decides is two fields. Search for each such field name
+      across the repository and split the hits into the sites that display it
+      and the sites that branch on it; if both sets are non-empty, that is the
+      finding, and the concrete fix names the two fields it should become.
+      Paste the search and the split.
+    applies-to: blast-radius
+    evidence-required: true
+
+  # The two gate-registry entries whose `verified-by` is `clean-room-checklist`
+  # (M3-P2, R-043 and R-044, D-11). Their probe ids are declared there and
+  # supplied here; `verifies-gate` is the back-reference that makes the
+  # checklist-to-registry direction computable (criterion 3c).
+  - id: unit-tests-for-changed-service-methods
+    probe: >-
+      Does every service method changed in this diff have a unit test that
+      exercises the changed behaviour? List the changed methods from the diff,
+      and for each name the test or say there is none. "Service method" is not
+      machine-enumerable, which is why this is a probe and not a script
+      (D-11); enumerating it is your half of the gate.
+    applies-to: gate-probe
+    evidence-required: true
+    verifies-gate: unit-tests-for-changed-service-methods
+
+  - id: fixtures-for-changed-component-states
+    probe: >-
+      Does every component state changed in this diff have a story or a
+      fixture? List the states the diff adds or alters, and for each name the
+      fixture or say there is none. Same reason as the probe above: a
+      component state is not machine-enumerable (D-11).
+    applies-to: gate-probe
+    evidence-required: true
+    verifies-gate: fixtures-for-changed-component-states
+
+framings:
+  # T-001's two ACTUALLY EXERCISED entry points from the M1-P4 dual review,
+  # cited rather than invented. The two reviewers found different defects
+  # because they were given different starting questions.
+  - id: criteria-contract
+    entry-point: >-
+      Treat the plan's acceptance criteria as a contract the diff either meets
+      or does not. Start at criterion 1 and walk to the last one before you
+      form any opinion about the code.
+    orders-probes: [criteria-walk, changed-code, test-honesty, deviations, gate-probe]
+
+  - id: destructive-paths
+    entry-point: >-
+      Start from where this can destroy something, or claim a guarantee it
+      does not have. Find the destructive paths first and the criteria after.
+    orders-probes: [destructive-command, blast-radius, changed-code, test-honesty]
+
+  # D-M3-30. The framing a review OF A FIX ROUND is given. Its first resolved
+  # probe is the first `fix-round` probe in the file, which is
+  # `fix-round-not-covered`, which is CLAUDE.md's "the reviewer's FIRST check
+  # is item 3" expressed as position rather than as a comment.
+  - id: fix-round
+    entry-point: >-
+      This review is of a FIX ROUND. Before you examine any row, ask what the
+      derivation did not cover.
+    orders-probes: [fix-round, criteria-walk, test-honesty, changed-code]

@@ -1,0 +1,128 @@
+{
+  "base": "ce819fdf59b0d97250dc40b5da70494bf1b42cc7",
+  "head": "ec77c7d48698595f4f5dce45ef5132b1efe3d13b",
+  "reEvaluationMs": 150432,
+  "evaluations": [
+    {
+      "witness": "modes-type-registered",
+      "specPath": "witness/modes-type-registered.json",
+      "behavior": "modes-validate",
+      "status": "green",
+      "reasons": [],
+      "textAsserting": true,
+      "assertedPatterns": [],
+      "testFiles": [
+        "test/assurance-modes.test.ts"
+      ],
+      "members": [
+        {
+          "index": 0,
+          "member": {
+            "kind": "mutation",
+            "file": "src/commands/validate.ts",
+            "find": "  [\"assurance-modes\", \"assurance-modes.schema.json\"],\n",
+            "replace": ""
+          },
+          "description": "mutation of src/commands/validate.ts",
+          "runs": [
+            {
+              "exitCode": 1,
+              "red": true,
+              "failedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "passedNamedTests": [],
+              "missingNamedTests": []
+            },
+            {
+              "exitCode": 1,
+              "red": true,
+              "failedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "passedNamedTests": [],
+              "missingNamedTests": []
+            },
+            {
+              "exitCode": 0,
+              "red": false,
+              "failedNamedTests": [],
+              "passedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "missingNamedTests": []
+            }
+          ],
+          "preservesAssertedText": true,
+          "baselineSha": "ce819fdf59b0d97250dc40b5da70494bf1b42cc7",
+          "appliedDiff": "diff --git a/src/commands/validate.ts b/src/commands/validate.ts\nindex 4431a7d..7f452a9 100644\n--- a/src/commands/validate.ts\n+++ b/src/commands/validate.ts\n@@ -65,7 +65,6 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([\n      row is also what makes this phase's four derived checks reachable: they are\n      registered for type `assurance-modes` and nothing runs them until the type\n      resolves. */\n-  [\"assurance-modes\", \"assurance-modes.schema.json\"],\n   [\"role-model-config\", \"role-model-config.schema.json\"],\n   /* M3-P4 step 5. Each document carries its own `kind`, so each row extends\n      `--type` and `resolveAutoType` in one act (M3R-001). `work-history` also\n",
+          "mutatedLines": {
+            "file": "src/commands/validate.ts",
+            "lines": [
+              68,
+              69
+            ]
+          },
+          "rate": {
+            "red": 2,
+            "total": 2
+          },
+          "headGreen": true
+        },
+        {
+          "index": 1,
+          "member": {
+            "kind": "mutation",
+            "file": "src/commands/validate.ts",
+            "find": "\"role-model-config.schema.json\"",
+            "replace": "\"charter.schema.json\""
+          },
+          "description": "mutation of src/commands/validate.ts",
+          "runs": [
+            {
+              "exitCode": 1,
+              "red": true,
+              "failedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "passedNamedTests": [],
+              "missingNamedTests": []
+            },
+            {
+              "exitCode": 1,
+              "red": true,
+              "failedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "passedNamedTests": [],
+              "missingNamedTests": []
+            },
+            {
+              "exitCode": 0,
+              "red": false,
+              "failedNamedTests": [],
+              "passedNamedTests": [
+                "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto"
+              ],
+              "missingNamedTests": []
+            }
+          ],
+          "preservesAssertedText": true,
+          "baselineSha": "ce819fdf59b0d97250dc40b5da70494bf1b42cc7",
+          "appliedDiff": "diff --git a/src/commands/validate.ts b/src/commands/validate.ts\nindex 4431a7d..a9e015c 100644\n--- a/src/commands/validate.ts\n+++ b/src/commands/validate.ts\n@@ -66,7 +66,7 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([\n      registered for type `assurance-modes` and nothing runs them until the type\n      resolves. */\n   [\"assurance-modes\", \"assurance-modes.schema.json\"],\n-  [\"role-model-config\", \"role-model-config.schema.json\"],\n+  [\"role-model-config\", \"charter.schema.json\"],\n   /* M3-P4 step 5. Each document carries its own `kind`, so each row extends\n      `--type` and `resolveAutoType` in one act (M3R-001). `work-history` also\n      has a COMPANION row below, because its shared honesty definitions live in\n",
+          "mutatedLines": {
+            "file": "src/commands/validate.ts",
+            "lines": [
+              69
+            ]
+          },
+          "rate": {
+            "red": 2,
+            "total": 2
+          },
+          "headGreen": true
+        }
+      ]
+    }
+  ]
+}

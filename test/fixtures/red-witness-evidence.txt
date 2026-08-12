@@ -1,0 +1,56 @@
+RED-WITNESS HARNESS EVIDENCE, CAPTURED (kernel plan M3, M3-P7 criterion 5).
+
+This is the provenance record for `test/fixtures/red-witness-evidence.json`.
+Criterion 5 requires that the fixture two clean-room probes accept as proof be a
+REAL captured harness evidence file, with its recorded command and exit code
+present, rather than an authored string chosen to match the implementation.
+Section 2.3 rule 3 is the general form; the specific reason it matters here is
+that `test-red-without-the-fix` tells a reviewer to accept this file INSTEAD OF
+the implementer's sentence, so a hand-written example of it would be the exact
+fabrication the probe exists to refuse.
+
+command: node src/gates/red-witness.ts --result <scratch>/result.json --evidence <scratch> --base ce819fd --head ec77c7d
+exit: 0
+run at: 2026-08-12T22:34:44.196Z to 2026-08-12T22:38:21.813Z
+toolchain: node v26.6.0, dist/ built, run from the repository root
+stdout, verbatim, one line:
+red-witness: green (19 witness(es) evaluated (5 own, 14 stored re-evaluated in 150432ms); every witness red against every declared dangerous state and green at head)
+
+The gate wrote `witness-records.json` (8519903 bytes) beside the result record.
+
+WHAT WAS EXTRACTED, AND WHAT WAS REMOVED. The whole record is 8.5 MB, of which
+almost all is the four content pins per member: each pin lists every file under
+the pinned roots with its sha256, 139 files per pin. Committing it would put a
+megabyte-scale generated blob in the tree for no reviewable gain, so ONE of the
+nineteen evaluations was extracted. The extraction is declared here rather than
+left to be discovered, for the same reason a transliterated capture must name
+its codepoints: after the fact, altered-and-declared and altered-and-hidden are
+indistinguishable.
+
+  kept, byte-for-byte as the harness wrote them:
+    base, head, reEvaluationMs
+    evaluations[0], the `modes-type-registered` evaluation entire, including
+    both members, all six runs with their exit codes and named tests, the
+    verbatim appliedDiff, mutatedLines, rate, baselineSha and headGreen
+  removed:
+    the other 18 evaluations (unmodified in the original, not needed here)
+    spawningChangedFiles (3 entries) and uncoveredSources (0 entries)
+    redPins and greenPins, 2 of each, on the kept evaluation's two members
+  changed: nothing. No value in the kept subtree was edited, reformatted or
+    re-serialised beyond JSON.stringify's two-space indent.
+
+WHY `modes-type-registered` AND NOT ANOTHER. Its two dangerous states are
+mutations of `src/commands/validate.ts` and `src/modes.ts` that delete a type
+row and a reader branch, which is the plainest instance in the run of what the
+harness is for: the member is a deletion, the diff shows exactly the deleted
+line, and the two red runs name the one test that noticed.
+
+WHAT THE FIXTURE IS ANCHORED TO, so that a hand-written substitute would not
+survive. `test/checklists.test.ts` asserts that the fixture's member equals
+`dangerousStates[0]` of the real spec at `witness/modes-type-registered.json`,
+that the deleted line in the verbatim `appliedDiff` is exactly the member's
+`find` text, and that `red` agrees with `exitCode` on every run. THE COUPLING IS
+DELIBERATE AND IT CUTS BOTH WAYS: a phase that edits that witness spec makes
+this evidence stale, and the test goes red asking for a re-capture. That is the
+intended behaviour and not a fragility to route around, because stale evidence
+presented as current is worse than absent evidence.
