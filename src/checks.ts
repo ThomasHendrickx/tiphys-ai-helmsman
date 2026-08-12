@@ -49,12 +49,47 @@ export interface DerivedCheck {
   /** The artifact type this check is registered for. */
   type: string;
   /**
+   * THE OTHER artifact types this check must ALSO run on. Added by M3-P4 fix
+   * round 2 for CR-001, whose MECHANISM is worth stating at the field rather
+   * than at the one check that tripped over it:
+   *
+   *   A DERIVED CHECK IS REGISTERED PER TYPE AND READS A TYPE-SPECIFIC KEY,
+   *   WHILE THE `$defs` IT GUARDS ARE SHARED ACROSS TYPES BY `$ref`.
+   *   SHARING A DEFINITION THEREFORE DOES NOT SHARE ITS CHECK.
+   *
+   * Keywords travel through a `$ref` and derived checks do not, so a schema
+   * author who moves a rule into a shared definition gets the keyword half of
+   * the sharing for free and the Kind B half not at all. That asymmetry is
+   * invisible at the definition site, which is why `schemas/report.schema.json`
+   * could carry a comment saying a check applied where it did not.
+   *
+   * `guards` below names the shared definitions this check enforces, and
+   * `test/report-contract.test.ts` walks the TRANSITIVE closure of `$ref` in
+   * `schemas/`, failing when a guarded definition is reachable from a type
+   * this check does not list, or when a `guards` pointer resolves to nothing.
+   * REACHABLE was false of the ONE-HOP walk shipped before M3-P4 round 3.
+   */
+  alsoTypes?: readonly string[];
+  /**
+   * The shared `$def`s this check enforces, written as the pointer a
+   * cross-document `$ref` uses (`report.schema.json#/$defs/gateResult`).
+   * Absent means the check enforces nothing shared, which is the ordinary
+   * case: `plan-dispatchable` reads properties that exist in one document
+   * type only.
+   */
+  guards?: readonly string[];
+  /**
    * True when the check resolves references into documents OTHER than the
    * instance, so `--context <dir>` is required and its absence is a SKIP
    * with a nonzero exit rather than a silent pass.
    */
   requiresContext: boolean;
   run(instance: unknown, contextDirectory: string | undefined): CheckOutcome;
+}
+
+/** Every artifact type one check runs on, `type` first and then `alsoTypes`. */
+export function typesOf(check: DerivedCheck): readonly string[] {
+  return [check.type, ...(check.alsoTypes ?? [])];
 }
 
 const EMPTY: CheckOutcome = { violations: [], reports: [] };
@@ -1583,11 +1618,322 @@ export const modeConditionsQuoteGrantedBy: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* report-parity-arithmetic (M3-P4, R-048, R-049, R-086)                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The FIVE buckets whose sum must equal `discovered`.
+ *
+ * `todo` is the sixth count and was added by M3-P4 fix round 2, on the
+ * orchestrator's arbitration of round 1 rather than on an implementer's
+ * initiative. The M2-P3 wrapper's own identity is
+ * `pass + fail + skipped + todo + did-not-run == reported`
+ * (src/gates/suite.ts:350), and the plan's field list named five counts, so a
+ * run reporting `todo > 0` could not be recorded at all without breaking
+ * parity. A contract that REFUSES A LEGITIMATE RUN is worse than a missing
+ * field, which is why the arbitration amended the plan rather than leaving
+ * the gap disclosed.
+ */
+const PARITY_BUCKETS = ["passed", "failed", "skipped", "todo", "did-not-run"] as const;
+
+/** Every count field a gate result may carry, `discovered` first. */
+const COUNT_FIELDS = ["discovered", ...PARITY_BUCKETS] as const;
+
+/**
+ * WHERE THE SHARED `gateResult` DEFINITION IS REACHED FROM, one row per
+ * artifact type, naming the KEY that type stores its gate results under.
+ *
+ * This table is the concrete form of CR-001's mechanism. The definition is
+ * one object reached by `$ref` from two documents; the PROPERTY NAME differs
+ * between them (`gate-results` in a report, `gate-evidence` in a work
+ * history), so a check that hard-codes one key is blind on the other type
+ * even after it is registered for it. Both halves are needed and only one of
+ * them is visible from the `$ref`.
+ */
+export const GATE_RESULT_SITES: readonly { readonly type: string; readonly key: string }[] =
+  [
+    { type: "report", key: "gate-results" },
+    { type: "work-history", key: "gate-evidence" },
+  ];
+
+/**
+ * `discovered == passed + failed + skipped + did-not-run`, over one gate
+ * result's sibling fields.
+ *
+ * NO SCHEMA KEYWORD COMPUTES ARITHMETIC over sibling fields, which is what
+ * makes this Kind B rather than a keyword (M3R-002 corrected revision 0's
+ * classification of exactly this check). The property it guards is R-048's:
+ * a suite that reports fewer tests than it discovered is the
+ * silently-dropped-tests case, and it adds up to a green everywhere else.
+ *
+ * THREE THINGS THIS CHECKS, and the second and third are the CONVERSES the
+ * criterion's letter does not name. The plan's criterion 2b(a) names only
+ * `discovered` EXCEEDING the sum. A check that tested only that direction
+ * would pass a record whose sum exceeds `discovered`, which is a different
+ * lie with the same shape, so the test here is EQUALITY. And a count field
+ * that is NEGATIVE is arithmetic nonsense that equality alone can satisfy
+ * (`discovered: 0` with `passed: 1` and `failed: -1` adds up); negativity is
+ * not reachable by any keyword in the declared authoring vocabulary, which
+ * has no `minimum`, so it is checked here beside the sum rather than left to
+ * a keyword that does not exist.
+ *
+ * WHAT IT DOES NOT REACH, stated rather than implied: a gate result carrying
+ * NO count field at all is not examined, because the schema requires the six
+ * counts only of a `green`, and a `red` result that records none of them is a
+ * legitimate record rather than a false one. So this check cannot see a
+ * dropped test in a run nobody counted; it sees one in a run that claims a
+ * count. Nor does it reach a BALANCED loss: an author who drops the same row
+ * from `discovered` and from a bucket satisfies the identity, because nothing
+ * here anchors `discovered` to what the wrapper actually discovered.
+ *
+ * WHERE IT RUNS, and this is CR-001's whole content. It runs on EVERY type
+ * that reaches the shared `gateResult` definition, enumerated by
+ * `GATE_RESULT_SITES` rather than by one hard-coded key. Until M3-P4 fix
+ * round 2 it was registered for `report` alone and read `gate-results` alone,
+ * so a work history recording 9999 discovered and 1 passed exited 0 while the
+ * identical counts in a report exited 1, and the shared definition's own
+ * comment said the check applied.
+ */
+export const reportParityArithmetic: DerivedCheck = {
+  id: "report-parity-arithmetic",
+  type: "report",
+  alsoTypes: ["work-history"],
+  guards: ["report.schema.json#/$defs/gateResult"],
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    /* EVERY site key, not the one belonging to the type this run was
+       dispatched for. A document carries exactly one of these keys
+       (`additionalProperties: false` at the top level of both schemas), so
+       the loop visits one array in practice and cannot be defeated by a
+       caller that passes the wrong type name. */
+    for (const site of GATE_RESULT_SITES) {
+      const results = asArray(record[site.key]);
+      results.forEach((entry, index) => {
+        const result = asRecord(entry);
+        if (result === undefined) {
+          return;
+        }
+        const present = COUNT_FIELDS.filter((field) => result[field] !== undefined);
+        if (present.length === 0) {
+          return;
+        }
+        const pointer = `#/${site.key}/${String(index)}`;
+        const missing = COUNT_FIELDS.filter((field) => result[field] === undefined);
+        if (missing.length > 0) {
+          violations.push({
+            pointer,
+            message: `gate result records ${String(present.length)} of the ${String(COUNT_FIELDS.length)} counts and omits ${missing.join(", ")}, so parity cannot be computed`,
+          });
+          return;
+        }
+        const values = new Map<string, number>();
+        for (const field of COUNT_FIELDS) {
+          const value = result[field];
+          if (typeof value !== "number" || !Number.isInteger(value)) {
+            /* The schema already rejects a non-integer here; this is the
+               belt that stops the arithmetic below producing NaN if this
+               check is ever run on an instance that skipped validation. */
+            return;
+          }
+          values.set(field, value);
+        }
+        const negative = COUNT_FIELDS.filter((field) => (values.get(field) as number) < 0);
+        if (negative.length > 0) {
+          violations.push({
+            pointer,
+            message: `count(s) ${negative.join(", ")} are negative, which no run can produce`,
+          });
+          return;
+        }
+        const sum = PARITY_BUCKETS.reduce(
+          (total, field) => total + (values.get(field) as number),
+          0,
+        );
+        const discovered = values.get("discovered") as number;
+        if (discovered !== sum) {
+          violations.push({
+            pointer,
+            message: `discovered ${String(discovered)} does not equal ${PARITY_BUCKETS.join(" + ")} = ${String(sum)}`,
+          });
+        }
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* final-report-finding-parity (M3-P4, R-089a)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every id in `inputs[]` appears in `input-findings[]`, exactly once, and no
+ * `input-findings[]` row names an id `inputs[]` does not carry.
+ *
+ * A CROSS-ARRAY COMPLETENESS PROPERTY, which no keyword reaches: `contains`
+ * asks about a fixed shape, not about a value computed from a sibling array.
+ * Revision 0 of the plan listed this once as a schema witness, which was
+ * wrong (M3R-002).
+ *
+ * THREE DIRECTIONS, and only the first is in the criterion's letter. The
+ * criterion names the ORPHAN: an id in `inputs[]` with no row. The PHANTOM
+ * (a row whose id is not an input) and the DUPLICATE (two rows for one id)
+ * are the converses, and they are here because M2-P6 paid for both by
+ * measurement rather than by argument: CR-988 records that its parity mode
+ * scanned inventory ids only, so a row for a renumbered id was silently
+ * accepted, and CR-985 records that a duplicated id defeated the orphan and
+ * phantom checks TOGETHER while inflating every count. A guard narrower than
+ * its own description is what this project keeps re-buying, so the check is
+ * as wide as the relation.
+ *
+ * WHAT IT DOES NOT REACH: a finding dropped from BOTH arrays. The two
+ * documents then agree with each other, and no comparison between them can
+ * see it. That is the same residue `src/gates/coverage.ts` answers with a
+ * config-stated `expectedUnits` anchor, and this schema has no such anchor
+ * because nothing in the plan states one.
+ */
+export const finalReportFindingParity: DerivedCheck = {
+  id: "final-report-finding-parity",
+  type: "final-report",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const inputs = asArray(record["inputs"]).filter(
+      (value): value is string => typeof value === "string",
+    );
+    const rows = asArray(record["input-findings"]);
+    const rowIds: string[] = [];
+    for (const row of rows) {
+      const entry = asRecord(row);
+      const id = entry?.["id"];
+      rowIds.push(typeof id === "string" ? id : "");
+    }
+    const counts = new Map<string, number>();
+    for (const id of rowIds) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    inputs.forEach((id, index) => {
+      const seen = counts.get(id) ?? 0;
+      if (seen === 0) {
+        violations.push({
+          pointer: `#/inputs/${String(index)}`,
+          message: `finding ${id} has no row in input-findings, so the table has a hole`,
+        });
+        return;
+      }
+      if (seen > 1) {
+        violations.push({
+          pointer: `#/inputs/${String(index)}`,
+          message: `finding ${id} has ${String(seen)} rows in input-findings and must have exactly one`,
+        });
+      }
+    });
+    const inputSet = new Set(inputs);
+    rowIds.forEach((id, index) => {
+      if (!inputSet.has(id)) {
+        violations.push({
+          pointer: `#/input-findings/${String(index)}`,
+          message: `input-findings names ${id === "" ? "an id-less row" : id}, which is not in inputs, so the coverage is phantom`,
+        });
+      }
+    });
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* report-no-findings-statement (M3-P4 fix round 2, hazard 1)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A report with an EMPTY `findings` array carries a `no-findings-statement`,
+ * and a report that files findings does NOT carry one.
+ *
+ * KIND B BY NECESSITY, AND THE NECESSITY IS MEASURED RATHER THAN ASSERTED.
+ * The natural keyword shape is `if findings has maxItems 0 then require
+ * no-findings-statement`, and `maxItems` is ABSENT from the sixteen keywords
+ * of `AUTHORING_VOCABULARY` (src/validate.ts:111). No other permitted keyword
+ * says "this array is empty": `minItems` says the opposite, `contains` asks
+ * about a member that exists, and `const: []` is not reachable because `const`
+ * is used on scalars here and an array `const` would pin the CONTENTS. So the
+ * emptiness of a sibling array is not a keyword property, which is the same
+ * boundary `report-parity-arithmetic` sits on one field over.
+ *
+ * WHY IT IS HERE AT ALL. `no-findings-statement` exists to price silence: a
+ * report claiming nothing was found must say WHY nothing was found. Optional,
+ * it is absent in exactly the situation it exists for, and the shipped schema
+ * disclosed that as a residue rather than closing it. The orchestrator's
+ * arbitration of M3-P4 round 1 amended section 2.3's table to three rows for
+ * this phase and directed the check to be written; D-M3-22 is satisfied by
+ * that amendment, not by this comment.
+ *
+ * BOTH DIRECTIONS, because the phase's own converse discipline demands it.
+ * The requirement's letter names only the empty-with-no-statement case. A
+ * report that files three findings and ALSO carries "no findings were found"
+ * is the opposite misdeclaration and is equally a false record, so it is a
+ * violation too.
+ *
+ * WHAT IT DOES NOT REACH: whether the statement SAYS anything. The schema
+ * makes an empty or whitespace-only one impossible; a statement reading "n/a"
+ * satisfies both this check and those keywords, and that is M3-P7's
+ * `contract-avoidance` probe rather than anything a schema or a check can see.
+ * It also does not reach a report with NO `findings` key at all, because
+ * `findings` is `required` and the schema rejects that before any check runs.
+ */
+export const reportNoFindingsStatement: DerivedCheck = {
+  id: "report-no-findings-statement",
+  type: "report",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const record = asRecord(instance);
+    if (record === undefined || !Array.isArray(record["findings"])) {
+      return EMPTY;
+    }
+    const empty = (record["findings"] as unknown[]).length === 0;
+    const stated = record["no-findings-statement"] !== undefined;
+    if (empty && !stated) {
+      return {
+        violations: [
+          {
+            pointer: "#/no-findings-statement",
+            message:
+              "findings is empty and no-findings-statement is missing, so the report claims nothing was found without saying why",
+          },
+        ],
+        reports: [],
+      };
+    }
+    if (!empty && stated) {
+      return {
+        violations: [
+          {
+            pointer: "#/no-findings-statement",
+            message: `no-findings-statement is present beside ${String((record["findings"] as unknown[]).length)} finding(s), so the report contradicts itself`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    return EMPTY;
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
 const registry: DerivedCheck[] = [
   charterModeEnumMatchesModes,
+  finalReportFindingParity,
   modeConditionsQuoteGrantedBy,
   modeGateSetsResolve,
   modeIdsAreUnique,
@@ -1596,6 +1942,8 @@ const registry: DerivedCheck[] = [
   planDispatchable,
   planHazardClassesAddressedByResolves,
   planVerificationFirstPresent,
+  reportNoFindingsStatement,
+  reportParityArithmetic,
   roleIdsAreUnique,
 ];
 
@@ -1617,8 +1965,13 @@ export function deregisterCheck(id: string): boolean {
 /** Every check registered for an artifact type, in stable id order. */
 export function checksFor(type: string): DerivedCheck[] {
   return registry
-    .filter((check) => check.type === type)
+    .filter((check) => typesOf(check).includes(type))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** Every registered check, in registration order. Read by the enumeration. */
+export function registeredChecks(): readonly DerivedCheck[] {
+  return [...registry];
 }
 
 /** The outcome of running every check registered for a type. */

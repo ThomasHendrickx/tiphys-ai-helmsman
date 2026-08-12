@@ -1,0 +1,518 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/report.schema.json",
+  "title": "Tiphys role report",
+  "$comment": "R-049, R-057a, R-085, R-086, R-088, T-003, T-004, T-006. Kernel plan M3, M3-P4 steps 1, 1b and 1c. THE HAZARD CLASS OF THIS DOCUMENT IS THAT IT DECIDES WHAT A FALSE CLAIM IS ALLOWED TO LOOK LIKE, in a milestone whose own evidence is written in it. Four things this schema deliberately CANNOT do, stated here rather than left to be discovered. (1) NO SCHEMA CAN TELL A MECHANISM FROM A FINDING: `fix-round.mechanism` is a required non-empty string and nothing more, and the judgement is M3-P7's `fix-round-mechanism-named` probe (M3-P4 criterion 2d(a)). (2) NO KEYWORD CAN TELL FULL CAPTURED OUTPUT FROM A SUMMARY OF IT: `fix-round.derivation.output` carries minLength and a non-whitespace pattern, which reaches absent and empty and reaches nothing else; the multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), never of an arbitrary instance. (3) NO CRITERION REACHES THE AUTHORING-COST RATIO between an honest record and a dishonest one, which is a property of two costs and not of any instance (section 2.6 reason 1). (4) A NON-EMPTY FIELD CAN STILL BE MEANINGLESS: `honest-failures[].exposure-window` cannot be empty or whitespace here, and whether it says anything is M3-P7's `honest-failure-substance` probe. (5) A `$ref` SHARES KEYWORDS AND DOES NOT SHARE DERIVED CHECKS: three `$defs` in this document are reached by schemas/work-history.schema.json, and a Kind B rule written against one of them runs on THIS type only until it declares `alsoTypes` in src/checks.ts. That asymmetry is invisible at the definition site and it is why a comment here once claimed a check applied where it did not (M3-P4 round-1 finding CR-001); the enumeration in test/report-contract.test.ts is the mechanism that stops the claim going stale, and each shared `$def` below states whether a derived check guards it. WHAT THIS SCHEMA DOES BUY: a green gate result cannot be recorded without the wrapper's exit code and its counts on the SAME object; an environmental excuse cannot be recorded without evidence; an incident cannot be recorded without its exposure window and structural fix; a claim cannot be filed under a kind this schema does not question; and every field whose VALUE is the point rather than its presence carries minLength 1 AND pattern \\S, because `required` alone is satisfied by the empty string (criterion 2e).",
+  "description": "One document per role output. What was asked, what was found, what each finding rests on, what was claimed and how each claim was settled, which gates ran and what the wrapper said, and every departure from the plan's letter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "role",
+    "task",
+    "findings",
+    "claims",
+    "deviations",
+    "honest-failures",
+    "environmental-claims",
+    "gate-results"
+  ],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "report"
+    },
+    "role": {
+      "description": "The role brief this report answers.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "task": {
+      "description": "What the role was asked to do, in the words it was asked in.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "verdict": {
+      "$comment": "OPTIONAL because plan step 1 says `verdict` where applicable: an investigation report has no verdict and a review report does. A verdict that IS present must say something, which is the criterion 2e rule applied here.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "no-findings-statement": {
+      "$comment": "Criterion 2e's TOP-LEVEL SCALAR member. NO KEYWORD CAN REQUIRE THIS FIELD WHEN `findings` IS EMPTY: `maxItems` is outside the declared authoring vocabulary (schemas/README.md), `minItems` says the opposite, and `contains` asks about a member that exists, so the emptiness of a sibling array is not a keyword property. The KEYWORDS here therefore reach only the empty and whitespace-only statement. THE MISSING ONE IS REACHED BY A DERIVED CHECK, `report-no-findings-statement` in src/checks.ts, added by M3-P4 fix round 2 on the orchestrator's arbitration, which amended section 2.3's table to three rows for this phase (D-M3-22 is satisfied by that amendment, not by this comment). It closes BOTH directions: an empty `findings` with no statement, and a statement sitting beside real findings. IT IS REGISTERED FOR `report` ALONE AND THAT IS CORRECT, because `findings` and `no-findings-statement` are report-local properties and no other document type reaches them. FIX ROUND 2 CLAIMED HERE THAT THE ENUMERATION IN test/report-contract.test.ts MADE THAT `a checked fact rather than an assertion`, AND IT DID NOT (finding DV-004): that enumeration walks `$defs` reached by `$ref` and skips any check declaring no `guards`, and this check declares none, so it is skipped on every pointer and these two are top-level properties that could never appear there anyway. The round's own work history said the registration was asserted by hand, so the shipped artifact and the work history disagreed and the shipped one is the one a later author reads. The registration is still correct; what was wrong was the account of HOW IT IS KNOWN, and it is known by reading this schema's `properties` block, where `findings` and `no-findings-statement` appear and no other shipped schema names either. RESIDUE: whether the statement SAYS anything is M3-P7's `contract-avoidance` probe, not a schema property.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "claims": {
+      "$comment": "T-006, D-M3-30. SHARED WITH schemas/work-history.schema.json BY $ref INTO THIS DOCUMENT, so there is one definition of the honesty contract rather than two that can drift.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "fix-round": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30. OPTIONAL, and the residue is stated: nothing in this document declares that a report IS a fix-round report, so the schema cannot require the object for the reports that need it. What it does is make a fix round unreportable without its mechanism, its full derivation and its non-coverage once the object is present at all.",
+      "$ref": "#/$defs/fixRound"
+    },
+    "deviations": {
+      "$comment": "R-057a: every departure from the plan's letter is declared.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/deviation" }
+    },
+    "honest-failures": {
+      "$comment": "R-088: an incident cannot be recorded without the three things that make it useful.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/honestFailure" }
+    },
+    "environmental-claims": {
+      "$comment": "R-085: an environmental excuse without evidence is unrepresentable.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/environmentalClaim" }
+    },
+    "gate-results": {
+      "$comment": "R-049, R-086. SHARED WITH schemas/work-history.schema.json BY $ref INTO THIS DOCUMENT.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/gateResult" }
+    }
+  },
+  "$defs": {
+    "nonEmptyText": {
+      "$comment": "CRITERION 2e, THE EMPTY-STRING SATISFACTION CLASS. `required` alone is satisfied by \"\", so every field whose VALUE is the point carries BOTH keywords: minLength 1 reaches the empty string and pattern \\S reaches the whitespace-only block scalar, which minLength alone does not catch. This definition is NOT used by $ref at every site, because a $ref would hide the two keywords from the removing-and-restoring witness section 2.3 rule 2 requires; the keywords are written out at each field and this definition records the rule once.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "universalQuantifier": {
+      "$comment": "T-003 lesson 3, named there as PARTIALLY LINTABLE and no more than that. The alternation is flat and each branch is a literal, so the pattern is linear in the subject length and carries no nested quantifier; a timing measurement on a long near-miss is recorded in delivery/work-history/m3-p4.md. EVERY LETTER IS A TWO-MEMBER CHARACTER CLASS because the first shipped version admitted only the lowercase and sentence-initial forms, and this repository writes its emphatic universals in CAPITALS: `NEVER` and `ALWAYS` and `EVERY` passed while lowercase `never` was correctly rejected, measured across 83 occurrences in 39 tracked files (M3-P4 round-1 finding CR-005). JSON Schema patterns are ECMA-262 regular expressions with no flags, so there is no `i` to set and the case-insensitivity is written out. WHAT IT DOES NOT REACH, stated because a pattern that looks like a guard invites the reader to assume it is one: a universal claim written without any of these five tokens passes, and the two examples worth naming are `there is no path that` and `guaranteed`. `in every case` is NOT one of them and was wrongly listed here until fix round 2: it IS caught, by the `every` branch under a word boundary (M3-P4 round-1 finding CR-006). T-006 records that the three false claims M1-P5 actually produced were not universal at all, which is why `claims[]` exists beside this rule rather than instead of it.",
+      "type": "string",
+      "pattern": "\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll])\\b"
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "evidence", "analysis", "outcome", "source-pinned"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9]*-[0-9]+[a-z]?$"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "informational"]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "analysis": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source-pinned": {
+          "$comment": "T-004. A finding produced by a run that cannot pin the source it ran against is LABELLED rather than inherited as fact. The boolean is required so the question is answered rather than skipped, and `true` drags `pinned-evidence` with it.",
+          "type": "boolean"
+        },
+        "pinned-evidence": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "counter-experiment": {
+          "$comment": "T-003 lesson 3. Required by the if/then below when `analysis` carries a universal quantifier: a universal claim is settled by someone trying to falsify it, and this field is where that attempt is named.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "if": {
+        "$comment": "T-004. Kind A, both sides on the SAME object, so the coupling cannot be satisfied by a pin recorded somewhere else in the document.",
+        "type": "object",
+        "required": ["source-pinned"],
+        "properties": { "source-pinned": { "const": true } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["pinned-evidence"],
+        "properties": {
+          "pinned-evidence": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "THE UNIVERSAL-CLAIM RULE (T-003 lesson 3). DECLARED DEVIATION from plan criterion 2(e)'s letter, which calls for an `if`/`then` over a `pattern` on the same object: this object already spends its ONE `if`/`then` slot on T-004's source-pinned coupling, `allOf` is outside the declared authoring vocabulary (schemas/README.md), and two independent conditional rules cannot share one slot. It is still Kind A (schema keywords over one document) and its guarding keyword is `oneOf`, which is what the witness removes and restores. Branch 1: the analysis carries no universal quantifier, so no counter-experiment is owed.",
+          "type": "object",
+          "required": ["analysis"],
+          "properties": {
+            "analysis": {
+              "$comment": "THE EXACT COMPLEMENT of `$defs/universalQuantifier`'s pattern, wrapped in a negative lookahead. The two are written out separately because JSON Schema has no way to negate a `$ref`, so they can DRIFT, and a drift here opens a gap (a subject matching neither branch) or an overlap (one matching both), either of which breaks the `oneOf`. `test/report-contract.test.ts` derives this string from the shared definition's pattern and fails when the two stop being complements.",
+              "type": "string",
+              "pattern": "^(?:(?!\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll])\\b)[\\s\\S])*$"
+            }
+          }
+        },
+        {
+          "$comment": "Branch 2: the analysis carries one, and a counter-experiment reference is required beside it.",
+          "type": "object",
+          "required": ["analysis", "counter-experiment"],
+          "properties": {
+            "analysis": { "$ref": "#/$defs/universalQuantifier" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "$comment": "Plan step 1: an object with `path` and EITHER `lines` OR `command` plus `exit-code`. The two shapes are a oneOf rather than an optional-everything object, so `path` alone (a citation with nothing behind it) is a rejection.",
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "lines"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "lines": { "type": "string", "pattern": "^[0-9]+(-[0-9]+)?$" },
+            "note": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "command", "exit-code"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "command": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "exit-code": { "type": "integer" },
+            "note": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ],
+      "if": {
+        "$comment": "T-003 lesson 3 applied to `evidence[].note`, which plan step 1 names beside `analysis`.",
+        "type": "object",
+        "required": ["note"],
+        "properties": { "note": { "$ref": "#/$defs/universalQuantifier" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["counter-experiment"],
+        "properties": {
+          "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "claim": {
+      "$comment": "T-006, D-M3-30, plan step 1b. SHARED BY $ref WITH schemas/work-history.schema.json. WHY A FIELD AND NOT A GREP: CLAUDE.md's claim grep scans prose for candidate sentences and works; T-006 records that its own pattern survived being documented as a norm and was reproduced by the agent who filed it on the same day. A declared section gives the check a FIELD, so the honest restatement is a first-class value rather than an omission. THE ENUM IS CLOSED ON PURPOSE: an open `kind` lets an impossibility claim be filed as a note and skip its construction requirement, which is the hazard this section exists for. THE SPLIT THAT MATTERS: a UNIVERSAL claim is settled by someone trying to FALSIFY it, and an impossibility, coverage or remedy claim is settled by someone trying to BUILD the thing, which is why the three carry an executed construction rather than a counter-experiment. `open-question` is the honest restatement and is deliberately CHEAP: 'I did not find a way to force this arm' needs nothing, and 'this arm cannot be forced here' needs a construction. THAT LAST SENTENCE WAS FALSE AS FIRST SHIPPED and is true now, which is worth saying rather than quietly correcting: until M3-P4 fix round 2 the two sentences differed only in which `kind` the author typed, so the second one filed as `open-question` also needed nothing (finding CR-002). The open-question branch's `statement` now carries a pattern that refuses an asserted settlement; see that branch's own comment for the token list and for what it still does not reach. NO DERIVED CHECK GUARDS THIS DEFINITION, and that is a statement about the mechanism rather than an omission: everything this contract asks for is expressible in keywords, and KEYWORDS TRAVEL THROUGH A `$ref` while derived checks do not, so the whole of the claim contract is shared with schemas/work-history.schema.json automatically. A Kind B rule added here later would NOT be, and would owe `alsoTypes` and `guards` in src/checks.ts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "statement"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "kind": {
+          "$comment": "CLOSED. A value outside this set is reported as `value <x> is not one of the permitted values ...`, which names the vocabulary rather than leaving the author to guess (criterion 2c(d)).",
+          "type": "string",
+          "enum": ["universal", "impossibility", "coverage", "remedy", "open-question"]
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "still-open-because": {
+          "$comment": "M3-P4 FIX ROUND 4. Declared here as well as in the branch that requires it, because this object sets `additionalProperties: false` and a field absent from THIS block is refused before any branch is reached. Only the fourth `oneOf` branch below permits it, so writing it on a claim of any other kind is a rejection.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "settled-by": { "$ref": "#/$defs/settledBy" }
+      },
+      "if": {
+        "$comment": "Every kind EXCEPT open-question owes a settlement. This if/then exists beside the oneOf below so that the diagnostic NAMES `settled-by`; the oneOf alone would report only that no alternative matched.",
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["universal", "impossibility", "coverage", "remedy"]
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["settled-by"],
+        "properties": { "settled-by": { "$ref": "#/$defs/settledBy" } }
+      },
+      "oneOf": [
+        {
+          "$comment": "A universal claim is settled by a counter-experiment (T-003). THE SECOND MEMBER OF CR-002'S CLASS IS CLOSED HERE, and it is a different member rather than the same one twice: `open-question` requires NOTHING, so it escapes everything, while `universal` requires a counter-experiment, which is a SENTENCE, so filing an impossibility here downgrades an executed construction to a sentence. `It is impossible to force the ENOENT arm here` filed as `universal` and settled by `I thought about it and concluded there is nothing to try` validated before fix round 2. The statement pattern here refuses the SEVEN IMPOSSIBILITY TOKENS ONLY, and deliberately not the universal ones: `the lease is never held twice` is exactly what this branch is for and must stay cheap. M1-P5's `needs a stat or readdir failure that is neither ENOENT nor a permission bit, and this suite runs as root` is the measured reason the two settlements are not interchangeable: it was disproved in minutes by `symlinkSync(p, p)` raising ELOOP.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement", "settled-by"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": { "type": "string", "const": "universal" },
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?:(?!\\b([Cc][Aa][Nn][Nn][Oo][Tt] [Bb][Ee]|[Cc][Aa][Nn] [Nn][Oo][Tt] [Bb][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ll][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ii][Ll][Ii][Tt][Yy]|[Nn][Oo] [Ww][Aa][Yy] [Tt][Oo]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Ww][Aa][Yy]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Pp][Aa][Tt][Hh])\\b)[\\s\\S])*$"
+            },
+            "settled-by": { "$ref": "#/$defs/settledByCounterExperiment" }
+          }
+        },
+        {
+          "$comment": "An impossibility, coverage or remedy claim is settled by an EXECUTED CONSTRUCTION: the attempt, with its command, its exit code and its output, rather than the reasoning that predicted the attempt would fail. M1-P5's 'needs a stat or readdir failure that is neither ENOENT nor a permission bit, and this suite runs as root' was disproved in minutes by symlinkSync(p, p) raising ELOOP, needing no privileges.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement", "settled-by"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": {
+              "type": "string",
+              "enum": ["impossibility", "coverage", "remedy"]
+            },
+            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "settled-by": { "$ref": "#/$defs/settledByConstruction" }
+          }
+        },
+        {
+          "$comment": "THE HONEST RESTATEMENT, and it is first-class rather than an omission. `additionalProperties: false` with `settled-by` absent from this branch's properties is what makes a SETTLED question filed as OPEN a rejection: it is the opposite misdeclaration and is equally a misdeclaration (criterion 2c(e)). THE STATEMENT PATTERN IS FIX ROUND 2's ANSWER TO CR-002, and the mechanism it closes is worth stating at the site: AN ENUM BRANCH THAT REQUIRES NOTHING MAKES EVERY SIBLING BRANCH THAT REQUIRES SOMETHING OPTIONAL, BECAUSE THE AUTHOR PICKS THE BRANCH. Closing the enum shut the route through an INVENTED kind and left the route through the cheapest DECLARED one wide open: the same impossibility filed here exited 0, while filed as `impossibility` it owed an executed construction. The remedy is inside the declared authoring vocabulary (`pattern`, schemas/README.md), which is what makes this a fix rather than a vocabulary expansion. WHAT IT REFUSES: a statement asserting a SETTLEMENT while claiming to be open, by the five universal tokens plus eight impossibility tokens (`cannot be`, `can not be`, `impossible`, `impossibility`, `no way to`, `there is no way`, `there is no path`, `guaranteed`), each written case-insensitively for the same reason as `$defs/universalQuantifier`. WHAT IT KEEPS CHEAP, and the sentence that used to stand here was a universal that round 4 broke: fix round 2 wrote that the pattern keeps the honest open question cheap, offering `I did not find a way to force this arm` as its evidence, and one instance is not a class. That instance does still cost nothing, and four others that a truthful author writes were refused outright until round 4 added the fourth branch below; they are named in that branch's comment and derived with exit codes in delivery/work-history/m3-p4.md. So the honest statement free of these thirteen tokens costs nothing HERE, and the honest statement carrying one costs a `still-open-because` THERE. `this arm cannot be forced here` is refused at both, and must be filed as an `impossibility` with a construction. THE TOKENS DELIBERATELY LEFT OUT: CLAUDE.md's claim grep also scans for `needs a`, `is covered`, `catches`, `would catch`, `recovers` and `anyway`, and none of them is here, because each is ordinary in an honest open question (`this needs a real runner`) and pricing them would make the honest record expensive, which is this phase's own worst hazard. RESIDUE: an assertion written in none of these thirteen tokens still passes, exactly as `$defs/universalQuantifier` still passes an unlisted universal. The pattern narrows the escape; it does not seal it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": { "type": "string", "const": "open-question" },
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?:(?!\\b([Aa][Ll][Ww][Aa][Yy][Ss]|[Nn][Ee][Vv][Ee][Rr]|[Ee][Vv][Ee][Rr][Yy]|[Aa][Ll][Ll] [Cc][Aa][Ss][Ee][Ss]|[Ii][Nn] [Aa][Ll][Ll]|[Cc][Aa][Nn][Nn][Oo][Tt] [Bb][Ee]|[Cc][Aa][Nn] [Nn][Oo][Tt] [Bb][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ll][Ee]|[Ii][Mm][Pp][Oo][Ss][Ss][Ii][Bb][Ii][Ll][Ii][Tt][Yy]|[Nn][Oo] [Ww][Aa][Yy] [Tt][Oo]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Ww][Aa][Yy]|[Tt][Hh][Ee][Rr][Ee] [Ii][Ss] [Nn][Oo] [Pp][Aa][Tt][Hh]|[Gg][Uu][Aa][Rr][Aa][Nn][Tt][Ee][Ee][Dd])\\b)[\\s\\S])*$"
+            }
+          }
+        },
+        {
+          "$comment": "M3-P4 FIX ROUND 4. THE OPEN QUESTION WHOSE PROSE CARRIES A GUARDED TOKEN, WITH THE AUTHOR SAYING WHY IT IS STILL OPEN. NO REVIEWER FOUND THIS SITE: it was derived by round 4's enumeration, which took the sibling branch's claim that the pattern `KEEPS CHEAP` the honest open question and tried to break it instead of believing it. It broke on the first try and on four members, each of which the round validated against the shipped template and recorded with its exit code in delivery/work-history/m3-p4.md. The one that matters most is `I did not check every call site, so this is still open`, because CLAUDE.md's fix-round contract asks in so many words for a statement of what a derivation did NOT cover, and that sentence carries `every`. The others: an open question DENYING an impossibility (`I could not show that this is impossible`), one QUOTING somebody else's assertion, and one naming the universal it did not test (`whether the lease is never held twice is open`). Each was refused by the sibling branch, and `impossibility` was no escape because that kind owes an executed construction the author does not have, so the honest record was unwritable rather than merely expensive. WHY A DECLARED FIELD RATHER THAN A CLEVERER PATTERN: the tokens are refused wherever they appear, and English negates, quotes and hedges them in open-endedly many ways, so any list of permitted negations would be the same underived universal one level up. That is the mechanism the round-3 arbitration ruled on and it is not repeated here. `still-open-because` moves the discrimination to the one party that knows the answer. WHAT IT DOES NOT REACH, all three measured with exit codes in delivery/work-history/m3-p4.md rather than argued. ONE: an author who wants to smuggle a settlement in can write a sentence here too, and the round wrote `This arm cannot be forced here` with a declaration and measured exit 0. It is no longer free and no longer invisible; whether the sentence is true is M3-P7's clean-room checklist, not a keyword. TWO: a REDUNDANT declaration validates here, unlike the two sibling repairs in this round. A statement free of all thirteen tokens carrying a `still-open-because` matches this branch alone (the branch above sets `additionalProperties: false` and does not name the field), so `oneOf`'s exactly-one rule does not bite, where at `#/$defs/gateResult` and at `schemas/work-history.schema.json`'s `$defs/verificationFirst` the equivalent redundancy IS a rejection. Closing it means giving this branch's `statement` the POSITIVE complement of the sibling's pattern, which is a third hand-maintained copy of the same alternation and the drift hazard `#/$defs/finding/oneOf/0/properties/analysis` already documents; a redundant declaration hides nothing, so the asymmetry is declared rather than paid for. THREE: the residue the sibling branch names is untouched, since a statement carrying none of the thirteen tokens still passes there.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "statement", "still-open-because"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "kind": { "type": "string", "const": "open-question" },
+            "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "still-open-because": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ]
+    },
+    "settledBy": {
+      "$comment": "The base shape, so the claim object can name the property. Which of the two forms applies is decided by the claim's kind, in the oneOf above.",
+      "oneOf": [
+        { "$ref": "#/$defs/settledByCounterExperiment" },
+        { "$ref": "#/$defs/settledByConstruction" }
+      ]
+    },
+    "settledByCounterExperiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counter-experiment"],
+      "properties": {
+        "counter-experiment": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "settledByConstruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed-construction"],
+      "properties": {
+        "executed-construction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "exit-code", "output"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "exit-code": { "type": "integer" },
+            "output": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      }
+    },
+    "fixRound": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30, plan step 1c. SHARED BY $ref WITH schemas/work-history.schema.json. THE MEASURED EVIDENCE, recorded here so a future reader finds the reason rather than the rule: a throughput analysis of M1 measured sixteen completed fix rounds, thirteen were re-reviewed, and TWELVE of those thirteen produced a new finding attributable to the round itself; the dominant shape, roughly a third of the milestone's elapsed time, is that the fix addressed the INSTANCE the reviewer named when the defect was the MECHANISM (M1-P3 chained four rounds that way, M1-P5 four, M1-P6 two). `not-covered` is REQUIRED rather than optional because a search whose scope is wrong returns an empty result indistinguishable from an absence of defects, and this project was bitten by that three times: `state/session.lock` probed when the lease is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and `worktrees/` while the missed path sat at the fleet root; a usage error read as a clean result. M3-P7's clean-room checklist makes `not-covered` the reviewer's FIRST probe, which is the other half of the same rule. NO DERIVED CHECK GUARDS THIS DEFINITION EITHER, for the same reason given at `$defs/claim`: its contract is entirely keywords, and keywords travel through the `$ref` into schemas/work-history.schema.json while derived checks do not.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "derivation", "not-covered"],
+      "properties": {
+        "mechanism": {
+          "$comment": "The MECHANISM, not the finding. 'A FIFO at the beacon hangs the guard' is a finding; 'reading a path whose type has not been established' is the mechanism, and the round fixes the second. NO SCHEMA CAN TELL THE TWO APART and this field does not pretend to: the judgement is M3-P7's `fix-round-mechanism-named` probe.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "derivation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "output"],
+          "properties": {
+            "command": {
+              "$comment": "The exact command that enumerates every call site of the mechanism.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "output": {
+              "$comment": "The FULL output of that command, not a summary of it. minLength and the non-whitespace pattern reach ABSENT and EMPTY and reach nothing else. THREE MEMBERS OF THE CLASS THEY DO NOT REACH, named because listing one invites a reader to think the other two were considered and closed (M3-P4 round-1 finding CR-004): a one-line SUMMARY (`11 call sites found, all reviewed and safe.`); a REAL BUT TRUNCATED capture ending `... (remaining 10 sites elided for brevity)`; and a real capture OF A DIFFERENT COMMAND than the one recorded beside it. All three satisfy both keywords, and the third is not reachable by any keyword at all, since relating an output to the command that produced it needs the command to be RUN. The multi-line property is asserted of the SHIPPED TEMPLATE by a registered test (criterion 2d(d)), which is a claim about this repository's example and not about an arbitrary instance.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        "not-covered": {
+          "$comment": "The regions the derivation EXCLUDED, and why. Criterion 2e's array-element member when this object sits inside work-history's fix-round[].",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "deviation": {
+      "$comment": "R-057a.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan-clause", "why"],
+      "properties": {
+        "plan-clause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "honestFailure": {
+      "$comment": "R-088. An incident cannot be recorded without the three things that make it useful: what caused it, how long the exposure lasted, and what structural change stops it recurring.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cause", "exposure-window", "structural-fix"],
+      "properties": {
+        "cause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "exposure-window": {
+          "$comment": "Criterion 2e's WHITESPACE-ONLY BLOCK SCALAR member: a YAML block scalar holding a newline and two spaces satisfies minLength and is caught by the pattern, which is why both keywords are here and not one.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "structural-fix": { "type": "string", "minLength": 1, "pattern": "\\S" }
+      }
+    },
+    "environmentalClaim": {
+      "$comment": "R-085: an environmental excuse without evidence is unrepresentable. `minItems: 1` is the guard; an empty evidence array is the dangerous instance criterion 2(b) witnesses.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "evidence"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "gateResult": {
+      "$comment": "R-049, R-086, R-048. SHARED BY $ref WITH schemas/work-history.schema.json, which reaches this definition under the DIFFERENT KEY `gate-evidence`. 'ALL GREEN' ONLY EVER MEANS THE WRAPPER'S EXIT CODE, expressed as a schema rule rather than as an instruction an agent can forget, and the coupling is an if/then on the SAME OBJECT so a `green` cannot be constructed while the exit code lives somewhere else in the document. A GREEN ALSO CANNOT REPORT A FAILURE: `failed` is pinned to 0 by the same if/then, because the coupling that was built first bound green to the exit code and left the record free to say something else two lines below, and a green carrying 400 failures balanced the arithmetic and validated (M3-P4 round-1 finding CR-003). THE COUNTS TRAVEL WITH IT rather than instead of it (plan section 1.7): the M2-P3 wrapper binds the child's exit code to the parsed counts in both directions, and R-048 is the silently-dropped-tests case, so `discovered` is checked against the five buckets by the derived check `report-parity-arithmetic` (Kind B: no keyword computes arithmetic over sibling fields). THAT CHECK RUNS ON BOTH TYPES, and saying so is only safe because it is now true: a derived check is registered PER TYPE and reads a TYPE-SPECIFIC KEY while these `$defs` are SHARED ACROSS TYPES, so sharing a definition does NOT share its check, and until M3-P4 fix round 2 this sentence was false for every work history (finding CR-001). The check declares `guards: [report.schema.json#/$defs/gateResult]` and `alsoTypes: [work-history]`, and test/report-contract.test.ts enumerates every cross-document `$ref` in schemas/ and fails when a guarded definition is reachable from a type the check does not list, so this sentence cannot go stale silently again. THE SIXTH BUCKET, `todo`, IS NOW A FIELD: the M2-P3 wrapper's identity is `pass + fail + skipped + todo + did-not-run == reported` and the plan named five counts, so a run reporting `todo > 0` could not be recorded at all without breaking parity; the orchestrator's arbitration of M3-P4 round 1 amended the plan's field list to six rather than leaving a contract that refuses a legitimate run. ONE RESIDUE, STILL DELIBERATELY OPEN AND NOT TO BE CONFUSED WITH THE CR-003 CASE ABOVE: a result that is NOT green may carry `wrapper-exit-code: 0`, because a wrapper can exit 0 while the author judges the run not green, which is exactly the R-048 shape, and closing that direction would make the honest record unwritable. A SECOND RESIDUE: a green carrying `did-not-run > 0` or `skipped > 0` is still accepted, because a skipped test is a legitimate part of a green run in this repository (the floor-gated tests) and a cancelled one may be reported beside a green wrapper exit; only `failed` is pinned, which is the direction the finding named and the only one where the contradiction is unambiguous. A THIRD RESIDUE, FOUND BY THE FIX ROUND 2 DERIVATION RATHER THAN BY A REVIEWER, and it is CR-002's mechanism wearing this definition's clothes: the `if` keys off a VALUE THE AUTHOR CHOOSES, so the whole obligation (the exit code, the pinned `failed`, the six counts) was escaped by writing `result: red` or `amber` or `error`, each of which owed NOTHING. FIX ROUND 2 WROTE THAT THIS `cannot be closed here` AND THAT SENTENCE WAS HALF FALSE, which is corrected rather than quietly deleted because the round's reason for it was a class argument that did not hold across the class (finding DV-003, and DV-002 at the sibling site in schemas/work-history.schema.json). THE COUNTS HALF STANDS: a red run frequently has no counts to give and demanding them would make the honest failure unwritable, so nothing here requires them. THE EXIT CODE HALF DID NOT STAND, and the `oneOf` below now prices it: a non-green result carries the exit code or says why there is none. ROUND 3 PRICED IT THE WRONG WAY AND ROUND 4 CORRECTED THAT rather than deleting the history of it: round 3 required the exit code of `red`, `amber` and `error` alike, on the argument that a gate which RAN has one by construction, and that argument was a universal over a class nobody had enumerated (finding DV3-001). Round 4 enumerated the class from the RUNNER, which is what produces these records, and found four members with no exit code to give; they are listed at `no-wrapper-exit-code` above and derived in full in delivery/work-history/m3-p4.md. FOUR IS WHAT ROUND 4 EXAMINED AND NOT THE SIZE OF THE CLASS, corrected in fix round 5 on clean-room finding CR-C-1: eight of the seventeen `errorResult` call sites in src/gates/run.ts went undiscussed in a grep the round itself pasted, four of them have since been forced through the real runner, and four more are named and unforced. The bound is stated in full at `no-wrapper-exit-code` below, and it does not weaken the branch, because the author declares the member rather than the schema guessing it. WHAT REMAINS OPEN AT THIS SITE AFTER THAT, stated so the next reader does not have to rediscover it: the obligation is one short field either way, so it does not equalise the branches, and an author who does not want to write the six counts can still record `red`. What closes THAT is a reviewer comparing the record to the run, which is M3-P7's territory rather than this schema's.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate", "result"],
+      "properties": {
+        "gate": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "result": {
+          "type": "string",
+          "enum": ["green", "red", "amber", "not-applicable", "error"]
+        },
+        "wrapper-exit-code": { "type": "integer" },
+        "no-wrapper-exit-code": {
+          "$comment": "M3-P4 FIX ROUND 4, FINDING DV3-001. THE AUTHOR DECLARES WHICH MEMBER THE RECORD IS, because the schema cannot see it. A non-green result either gives the wrapper's exit code or says here why there is none; it may not do both and it may not do neither. Round 3 guessed the member from the status word and the guess was wrong for three DERIVED members, each captured in delivery/work-history/m3-p4.md rather than argued: a gate the runner refuses before any child is spawned (src/gates/run.ts:844, the missing-parameter branch, seven such call sites sit above the spawn at src/gates/run.ts:943); a spawn that fails outright so no process ever exists (src/gates/run.ts:992); and a child terminated by a signal, where `child.status` is null and there is no exit code to report (src/gates/run.ts:999). `amber` is a fourth: it is in this enum and it is not one of the runner's four statuses (src/gates/result.ts:46), so no producer defines an exit code for it at all. WHAT THAT ENUMERATION DID NOT COVER, ADDED IN FIX ROUND 5 ON CLEAN-ROOM FINDING CR-C-1, because the count above was published as though it were the class and it is not: `errorResult` has SEVENTEEN call sites in src/gates/run.ts, SEVEN above the spawn at src/gates/run.ts:943 and TEN below it, and round 4's prose examined TWO of the ten (src/gates/run.ts:992 and src/gates/run.ts:999). The other eight below-spawn sites were present in round 4's own pasted grep, and a search of that round's prose for each of the ten line numbers outside the paste finds mentions for exactly two of them, so the eight are unexamined rather than examined and dismissed. A clean-room reviewer then forced four of them through the real runner (a gate that runs and writes no record, src/gates/run.ts:1015; a record naming a different gate, src/gates/run.ts:1051; a record failing its own schema, src/gates/run.ts:1043; an exit code disagreeing with the recorded status, src/gates/run.ts:1060), each a real `status: error` record with no exit-code field, and four more (src/gates/run.ts:989, src/gates/run.ts:1009, src/gates/run.ts:1023, src/gates/run.ts:1035) are named and NOT forced. Fix round 5 reproduced the src/gates/run.ts:1015 member itself through `tiphys gates run` rather than restating the review. SO THE NUMBER IS A FLOOR AND NOT A TOTAL, AND THE BRANCH BELOW DOES NOT DEPEND ON IT: the repair is that the AUTHOR DECLARES which member the record is, which covers members nobody has enumerated, including the three named-and-unforced ones and any a later change to the runner adds. That is why the correction here is to the claim and not to the schema. TWO RESIDUES, MEASURED IN ROUND 4 RATHER THAN REASONED ABOUT, both with their exit codes in delivery/work-history/m3-p4.md. FIRST: a `green` or a `not-applicable` carrying this field validates, because the third `oneOf` branch constrains only `result` there; the field is meaningless on those two and nothing refuses it. SECOND: this field is prose, so a FALSE reason validates exactly as a fabricated integer did, and the round wrote the false one and measured exit 0 rather than asserting the point. What this buys is that the omission is no longer silent and the substitute is a sentence a reviewer reads.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "discovered": { "type": "integer" },
+        "passed": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "skipped": { "type": "integer" },
+        "todo": { "type": "integer" },
+        "did-not-run": { "type": "integer" }
+      },
+      "if": {
+        "type": "object",
+        "required": ["result"],
+        "properties": { "result": { "const": "green" } }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "wrapper-exit-code",
+          "discovered",
+          "passed",
+          "failed",
+          "skipped",
+          "todo",
+          "did-not-run"
+        ],
+        "properties": {
+          "wrapper-exit-code": { "type": "integer", "const": 0 },
+          "discovered": { "type": "integer" },
+          "passed": { "type": "integer" },
+          "failed": { "type": "integer", "const": 0 },
+          "skipped": { "type": "integer" },
+          "todo": { "type": "integer" },
+          "did-not-run": { "type": "integer" }
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "BRANCH 1 OF THREE, THE EXIT CODE IS GIVEN. Round 3 (finding DV-003) closed the exit-code half of the third residue with a TWO-branch split keyed on the status word, justified by `a gate that RAN and did not pass has a wrapper exit code by construction, so requiring its PRESENCE refuses no honest record`. That sentence quantified over a class no round enumerated, and round 4 enumerated it from the PRODUCER instead of from the schema: the derivation and its full output are in delivery/work-history/m3-p4.md, and it names four members for which no exit code exists (finding DV3-001). ROUND 5 CORRECTION (clean-room finding CR-C-1): those four are the members round 4 EXAMINED, not the class. The class is larger and its enumeration is open, which is stated with its call sites at the sibling `$comment` on `no-wrapper-exit-code`. The split below survives that correction because it stopped guessing: what replaced round 3's status-word guess is a DECLARATION by the author, and a declaration does not need the class to have been counted. So the split is no longer a guess about the class; the author declares which member the record is, by carrying either `wrapper-exit-code` or `no-wrapper-exit-code`. THIS BRANCH STILL CONSTRAINS PRESENCE AND NEVER VALUE, so the declared-open residue above (a non-green result carrying `wrapper-exit-code: 0`, the R-048 shape) is still accepted and a test asserts that rather than assuming it. CARRYING BOTH FIELDS IS A REJECTION, by the exactly-one rule of `oneOf`, and that is the same discipline `schemas/final-report.schema.json`'s `$defs/enumerableSection` applies to `none: true` over real entries: an exception marker declared where the exception does not apply is a misdeclaration. This `oneOf` sits BESIDE the `if`/`then` above rather than replacing it: branches 1 and 2 are disjoint from branch 3 on `result`, so the green obligations are untouched and each witness registered against them still names the keyword that does the work.",
+          "type": "object",
+          "required": ["result", "wrapper-exit-code"],
+          "properties": {
+            "result": { "type": "string", "enum": ["red", "amber", "error"] },
+            "wrapper-exit-code": { "type": "integer" }
+          }
+        },
+        {
+          "$comment": "BRANCH 2 OF THREE, THERE IS NO EXIT CODE AND THE RECORD SAYS WHY. This is the branch that four derived members need, and each of them is a real record this repository can produce rather than a hypothetical. IT IS NOT ONLY THOSE FOUR, and saying so is the whole point of fix round 5's correction of clean-room finding CR-C-1: the four are the members round 4 examined, at least four more have since been forced through the real runner and four more are named and unforced, and the full bound with its call sites is at the `$comment` on this `oneOf` above. THE BRANCH IS INDIFFERENT TO THE COUNT, which is why the correction is to the prose and not to the keyword: the author declares that there is no exit code and says why, so a member nobody has enumerated is writable on the day it first occurs. A claim of exhaustiveness here would have to be re-derived every time src/gates/run.ts changes, and a stale one reassures instead of guarding. WHAT IT COSTS THE HONEST AUTHOR: one short string, where round 3's shape cost them the record entirely. WHAT IT COSTS THE DISHONEST ONE: the silent omission that round 2 left free is still refused, so DV-003 does not reopen; what replaces the fabricated exit code is a sentence a reviewer reads. WHAT IT DOES NOT REACH, and this is a bound rather than a claim about every author: nothing here can tell a true reason from a false one, so `no-wrapper-exit-code: the dog ate it` validates, exactly as a fabricated integer validated before. That comparison is M3-P7's clean-room checklist, which is where this schema has put every question of the form `is the recorded thing the thing that happened`.",
+          "type": "object",
+          "required": ["result", "no-wrapper-exit-code"],
+          "properties": {
+            "result": { "type": "string", "enum": ["red", "amber", "error"] },
+            "no-wrapper-exit-code": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        },
+        {
+          "$comment": "BRANCH 3 OF THREE, GREEN AND NOT-APPLICABLE. Green's obligations are the `if`/`then` above, which is why this branch adds nothing to it; putting them here as well would have made the green diagnostics report two failures for one defect. `not-applicable` owes nothing on purpose. ONE MEMBER DERIVED IN ROUND 4 AND DELIBERATELY NOT CLOSED HERE: a gate whose registry row declares `verified-by: clean-room-checklist` is never executed by the runner, which says so on its own stdout, so a reviewer judging one GREEN has no wrapper exit code either and the `if`/`then` above refuses that record. R-049 binds green to the wrapper's exit code and is the plan's letter, so weakening it is not an implementer's call; the open question of where a checklist gate's verdict belongs is handed back in delivery/work-history/m3-p4.md rather than answered by a schema change nobody asked for.",
+          "type": "object",
+          "required": ["result"],
+          "properties": {
+            "result": { "type": "string", "enum": ["green", "not-applicable"] }
+          }
+        }
+      ]
+    }
+  }
+}

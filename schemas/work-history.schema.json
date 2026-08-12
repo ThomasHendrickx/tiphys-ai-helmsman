@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/work-history.schema.json",
+  "title": "Tiphys work history",
+  "$comment": "R-035, R-052a, R-083a. Kernel plan M3, M3-P4 step 3. THE WORK HISTORY IS THE ARTIFACT A LATER REVIEWER TRUSTS and the one CLAUDE.md says must never be softened, which is why `claims[]`, `fix-round[]` and `gate-evidence[]` are the REPORT SCHEMA'S OWN DEFINITIONS reached by $ref into report.schema.json rather than restated here. A shared definition is not a convenience: two independently-drifting copies of the honesty contract is the drift hole M3-P2 closes for gates and M3-P3 closes for mode ids, and a registered test asserts that both documents resolve to the SAME definition object rather than to two equal ones. THE SHARING IS OF KEYWORDS ONLY, AND THAT WAS ONCE A HOLE: a derived check is registered per artifact TYPE and reads a type-specific KEY, so a Kind B rule written against a shared `$def` does not follow the `$ref` here (M3-P4 round-1 finding CR-001). Every shared `$def` in report.schema.json now states whether a derived check guards it, the one that is guarded declares this type in `alsoTypes`, and test/report-contract.test.ts derives the relation from the schemas so a stale claim reddens rather than reassures. HOW THE $ref RESOLVES: the reference is RELATIVE, so it resolves against this document's $id to https://tiphys.dev/schemas/report.schema.json and matches that document's own $id. Nothing is fetched. `src/commands/validate.ts` declares report.schema.json as this type's COMPANION and registers it with the same compiler before this document is compiled, which is a named, in-directory, shipped-schema registration and not the remote loading DR-0013 clause 4 withholds. R-083a's ACCUMULATION HALF is `environment-warnings[]`; its template half is templates/warnings.md.",
+  "description": "One document per phase branch. The prompt verbatim, what was touched, what was decided and why, what was verified before any code was written, every deviation, the gate evidence, the claims made and how each was settled, and the environment warnings the phase accumulated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "phase",
+    "prompt",
+    "files-touched",
+    "per-step-commits",
+    "key-decisions",
+    "verification-first",
+    "deviations",
+    "gate-evidence",
+    "claims",
+    "environment-warnings"
+  ],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "work-history"
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "prompt": {
+      "$comment": "R-052a: VERBATIM. A block scalar, and the schema cannot tell verbatim from paraphrased; what it can do is refuse an empty or whitespace-only one.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "files-touched": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+    },
+    "per-step-commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha", "subject"],
+        "properties": {
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+          "subject": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "key-decisions": {
+      "$comment": "R-052a: the WHY that is invisible in the diff. `why` is required, so a decision cannot be recorded as a bare fact.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision", "why"],
+        "properties": {
+          "decision": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "verification-first": {
+      "$comment": "R-035, D-M3-03. Findings written BEFORE any code, recorded verbatim. `contradicts-plan` is a REQUIRED boolean, so the question is answered rather than skipped, and a `true` drags a `stopped-and-reported` reference with it: the whole point of R-035 is that a finding contradicting the plan is escalated rather than implemented around, and a record that says it contradicted the plan while naming no escalation is the shape that rule exists to forbid. RESIDUE, STATED HERE BECAUSE THE FIX ROUND 2 ENUMERATION FOUND IT AND NOTHING ELSE ON THIS BRANCH RECORDS IT: this is CR-002's mechanism in boolean form. The `if` keys off A VALUE THE AUTHOR CHOOSES, and the `false` branch owed NOTHING, so a finding that DOES contradict the plan and is recorded as `contradicts-plan: false` escaped the escalation reference entirely. FIX ROUND 2 WROTE HERE THAT NO KEYWORD AND NO DERIVED CHECK COULD REACH IT, on the ground that deciding whether a finding contradicts the plan is a reading of two documents in prose. THAT SENTENCE WAS FALSE AND IS CORRECTED RATHER THAN QUIETLY DELETED, because it is the exact shape this whole schema exists to refuse: the round-2 delta verifier refuted it by CONSTRUCTION (finding DV-002), and the reason it was wrong is that the second document is not outside this one at all, since `finding` is prose carried in the same object. The `false` branch of `$defs/verificationFirst`'s `oneOf` now narrows that prose; see its own comment for the token list and for what it still does not reach. The required boolean makes the question unskippable and the pattern prices the most obvious lies, and NEITHER makes the answer true; M3-P7's clean-room checklist is where that is checked.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/verificationFirst" }
+    },
+    "deviations": {
+      "$comment": "R-057a, the same shape the report carries.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plan-clause", "why"],
+        "properties": {
+          "plan-clause": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "why": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "gate-evidence": {
+      "$comment": "R-049, R-086. THE REPORT SCHEMA'S gate-results DEFINITION, by $ref, not a copy of it. THE KEY IS DIFFERENT HERE (`gate-evidence`, not `gate-results`) AND THAT DIFFERENCE IS LOAD-BEARING: the derived check `report-parity-arithmetic` guards this definition, and a check registered for one type reading one hard-coded key was blind on this document even though the keywords were shared, so a work history claiming 9999 tests discovered and 1 passed validated while the identical counts in a report did not (M3-P4 round-1 finding CR-001). src/checks.ts now enumerates the key per type in `GATE_RESULT_SITES` and the check declares `alsoTypes: [work-history]`.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/gateResult" }
+    },
+    "claims": {
+      "$comment": "T-006, D-M3-30. THE REPORT SCHEMA'S claims DEFINITION, by $ref, not a copy of it.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/claim" }
+    },
+    "fix-round": {
+      "$comment": "CLAUDE.md's fix-round contract, D-M3-30. THE REPORT SCHEMA'S fix-round DEFINITION, by $ref, not a copy of it. An ARRAY here and a single object in the report, because a phase branch carries many rounds and one report answers one of them; the ELEMENT is the same definition in both. Optional, because a phase with no fix round has none to record.",
+      "type": "array",
+      "items": { "$ref": "report.schema.json#/$defs/fixRound" }
+    },
+    "environment-warnings": {
+      "$comment": "R-083a's ACCUMULATION HALF. Its template half is templates/warnings.md, which src/brief.ts appends verbatim to every brief. A warning recorded here without evidence is still a warning, so `evidence` is optional and `warning` is not; making evidence mandatory would price an honest note out of the record, which is this phase's own worst hazard one size down.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["warning"],
+        "properties": {
+          "warning": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "evidence": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verificationFirst": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding", "contradicts-plan"],
+      "properties": {
+        "finding": {
+          "$comment": "Recorded VERBATIM (R-035).",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "contradicts-plan": { "type": "boolean" },
+        "stopped-and-reported": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "plan-language-note": {
+          "$comment": "M3-P4 FIX ROUND 4, FINDING DV3-002. Declared here as well as in the branch that requires it, because this object sets `additionalProperties: false` and a field absent from THIS block is refused before any branch is reached. A DECLARED RESIDUE, MEASURED RATHER THAN ASSUMED: the third `oneOf` branch below is the only one that REQUIRES this field, and the first branch (`contradicts-plan: true`) sets no `additionalProperties`, so a `true` record carrying this note validates and nothing refuses it. Making that a rejection means giving branch 1 an `additionalProperties: false` and restating every property of this object inside it, which is a change to the branch each `contradicts-plan: true` witness names; it was not worth that, and it is written down here instead of being left for a reader to find.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "if": {
+        "$comment": "Kind A, both sides on the SAME object, so the escalation cannot be satisfied by a reference recorded elsewhere in the document.",
+        "type": "object",
+        "required": ["contradicts-plan"],
+        "properties": { "contradicts-plan": { "const": true } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["stopped-and-reported"],
+        "properties": {
+          "stopped-and-reported": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "THE `contradicts-plan: true` BRANCH, which adds nothing: the escalation obligation is the `if`/`then` above and is deliberately left there rather than moved, so every witness registered against it keeps naming the keyword that does the work. This branch exists to make the two branches disjoint. Its own `required` is what makes an ABSENT `contradicts-plan` fall to the branch below instead of matching both, which is why the two branches are not symmetric.",
+          "type": "object",
+          "required": ["contradicts-plan"],
+          "properties": { "contradicts-plan": { "const": true } }
+        },
+        {
+          "$comment": "M3-P4 FIX ROUND 3, FINDING DV-002. Round 2 wrote that this site was `Unreachable by keyword or check` and the round-2 delta verifier REFUTED THAT BY BUILDING THE THING, using this phase's own remedy one definition over. The correction matters more than the fix: the argument round 2 gave for the whole class was that each open site `compares a document to something that is not in any document`, and that is FALSE HERE. `finding` is prose recorded verbatim (R-035) and it is IN THIS DOCUMENT, so the branch is content-discriminated in exactly the sense this phase's own converse table defines, and the negative-lookahead `pattern` that narrowed `#/$defs/claim`'s `open-question` statement narrows it too. WHAT IT REFUSES: a finding whose own prose names a divergence FROM THE PLAN while the boolean beside it says there is none, by eight tokens (`contradict* the plan`, `contrary to the plan`, `conflict* with the plan`, `diverg* from the plan`, `deviat* from the plan`, `at odds with the plan`, `inconsistent with the plan`, `the plan is wrong`), each written case-insensitively for the same reason as report.schema.json's `$defs/universalQuantifier`. EVERY TOKEN NAMES THE PLAN, and that is the whole design: a bare `contradicts` would refuse `the two schema comments contradict each other`, and `the plan requires` would refuse `the plan requires a deviations section and the M2 schemas already model one`, both of which are honest findings that do not contradict anything. Pricing those out is this phase's own worst hazard and the reason the token list is narrow rather than long. THE SENTENCE THAT USED TO STAND HERE, `EVERY TOKEN NAMES THE PLAN, AND THAT IS THE WHOLE DESIGN`, WAS THE ROUND-3 DEFECT AND IS CORRECTED RATHER THAN DELETED: naming the plan is what an ASSERTION of divergence and a DENIAL of one have in common, so the tokens caught both, and the denial is the plainest sentence a `contradicts-plan: false` record carries. Round 4 derived four of them against the shipped template and recorded their exit codes in delivery/work-history/m3-p4.md (finding DV3-002); `This does not contradict the plan; I checked section 2.3 first` is the first. R-035 records the finding VERBATIM, so rewording it was never available and the record was unwritable rather than merely awkward. THE BRANCH BELOW IS THE REPAIR: prose carrying a token is still writable, with the author declaring in `plan-language-note` why the sentence is not the assertion the token looks like. A LIST OF PERMITTED NEGATIONS WAS CONSIDERED AND REFUSED, because English negates, quotes and hedges these eight tokens in open-endedly many ways and any such list would be the same underived universal one level up, which is the mechanism the round-3 arbitration ruled on. RESIDUE, STATED RATHER THAN LEFT TO BE FOUND: neutral prose over a real contradiction still passes, exactly as `$defs/universalQuantifier` still passes an unlisted universal; `the plans` in the plural escapes the word boundary; a token split across a line break escapes the literal space, which is a residue this pattern SHARES with the two shipped patterns in report.schema.json rather than one it introduces; and nothing here can tell a true `plan-language-note` from a false one. The pattern narrows the escape; it does not seal it, and I did not find a way to make the marker TRUE by schema alone here. What checks the answer against the world is M3-P7's clean-room checklist.",
+          "type": "object",
+          "properties": {
+            "contradicts-plan": { "const": false },
+            "finding": {
+              "type": "string",
+              "pattern": "^(?:(?!\\b([Cc][Oo][Nn][Tt][Rr][Aa][Dd][Ii][Cc][Tt][A-Za-z]* [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Cc][Oo][Nn][Tt][Rr][Aa][Rr][Yy] [Tt][Oo] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Cc][Oo][Nn][Ff][Ll][Ii][Cc][Tt][A-Za-z]* [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Dd][Ii][Vv][Ee][Rr][Gg][A-Za-z]* [Ff][Rr][Oo][Mm] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Dd][Ee][Vv][Ii][Aa][Tt][A-Za-z]* [Ff][Rr][Oo][Mm] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Aa][Tt] [Oo][Dd][Dd][Ss] [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Ii][Nn][Cc][Oo][Nn][Ss][Ii][Ss][Tt][Ee][Nn][Tt] [Ww][Ii][Tt][Hh] [Tt][Hh][Ee] [Pp][Ll][Aa][Nn]|[Tt][Hh][Ee] [Pp][Ll][Aa][Nn] [Ii][Ss] [Ww][Rr][Oo][Nn][Gg])\\b)[\\s\\S])*$"
+            }
+          }
+        },
+        {
+          "$comment": "M3-P4 FIX ROUND 4, FINDING DV3-002. THE `contradicts-plan: false` RECORD WHOSE VERBATIM PROSE CARRIES ONE OF THE EIGHT TOKENS, WITH THE AUTHOR SAYING WHY IT IS NOT THE ASSERTION THE TOKEN LOOKS LIKE. The sibling branch above is unchanged and stays the cheap path: prose free of the tokens owes nothing. WHAT THIS BRANCH COSTS: one short string, where the sibling alone cost the author the record. CARRYING `plan-language-note` WITH TOKEN-FREE PROSE IS A REJECTION, by the exactly-one rule of `oneOf`, which is the same discipline `schemas/final-report.schema.json`'s `$defs/enumerableSection` applies to `none: true` over real entries: an exception marker declared where the exception does not apply is a misdeclaration. WHAT IT DOES NOT REACH, measured rather than argued: the note is prose, so the round wrote the assertion `This contradicts the plan section 2.3` beside the note `I say it does not` and measured exit 0, which is in delivery/work-history/m3-p4.md with the rest. This raises the price of the lie from zero to a sentence a reviewer reads; it does not detect the lie, and M3-P7's clean-room checklist is where it is detected.",
+          "type": "object",
+          "required": ["contradicts-plan", "plan-language-note"],
+          "properties": {
+            "contradicts-plan": { "const": false },
+            "plan-language-note": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/final-report.schema.json",
+  "title": "Tiphys final report",
+  "$comment": "R-089a. Kernel plan M3, M3-P4 step 2. THE FINAL REPORT IS A PROJECTION, NOT A SUMMARY, and that property is load-bearing beyond this phase. Every field here is DERIVED from records that already exist (findings, verdicts, decisions, work histories), which is the same relation M3-P8's mechanism index has to the tuition feed. That relation is what makes a dense read layer possible on top of a verbose archive: the projections are consumed at every dispatch and must stay dense, while the raw entries are read only in dispute. M3 BUILDS NO COMPACTOR AND THIS SCHEMA PROPOSES NONE; what it does is make the distinction structural, so a later compaction is a question about which layer a file is in rather than a judgement about which files look like filler. SILENCE AND EMPTINESS ARE DISTINGUISHABLE: each of the four enumerable sections is a two-branch oneOf, so `none: true` carries NO entries key at all and `none: false` carries at least one entry. That closes BOTH directions of the relation rather than one: an empty list without a marker is a rejection, and a `none: true` marker sitting on top of real entries is also a rejection. THE PARITY BETWEEN `inputs[]` AND `input-findings[]` IS NOT HERE: cross-array completeness is not a keyword property (M3R-002), so it is the derived check `final-report-finding-parity` in src/checks.ts, and it is checked a second time by the M2-P6 coverage checker's finding-to-outcome parity mode because the artifact should be self-checking AND the independent checker is the one the pipeline runs.",
+  "description": "One document per delivery. Every input finding mapped to an outcome, plus the decisions owed, the owner verifications outstanding, the infrastructure left behind, and anything done out of band.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "subject",
+    "inputs",
+    "input-findings",
+    "decisions-owed",
+    "owner-verification",
+    "infrastructure-left",
+    "out-of-band"
+  ],
+  "properties": {
+    "kind": {
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
+      "type": "string",
+      "const": "final-report"
+    },
+    "subject": {
+      "description": "What this report is the final report OF.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "inputs": {
+      "$comment": "The finding ids this delivery took in. Kept SEPARATE from `input-findings[]` on purpose: a table that is its own inventory cannot be incomplete, which is the circularity scripts/check-clause-map.mjs's header names one level up. The derived check compares the two.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+      "uniqueItems": true
+    },
+    "input-findings": {
+      "$comment": "R-089a's table. Every id in `inputs[]` lands in exactly one row here with a non-empty outcome.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "outcome"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "outcome": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "decisions-owed": { "$ref": "#/$defs/enumerableSection" },
+    "owner-verification": { "$ref": "#/$defs/enumerableSection" },
+    "infrastructure-left": { "$ref": "#/$defs/enumerableSection" },
+    "out-of-band": { "$ref": "#/$defs/enumerableSection" }
+  },
+  "$defs": {
+    "enumerableSection": {
+      "$comment": "ALLOWED TO BE EMPTY ONLY WITH AN EXPLICIT MARKER, so silence and emptiness are distinguishable (plan step 2). The two branches are exclusive by construction: branch 1 permits `none: true` AND NOTHING ELSE, so a marker sitting on top of real entries is a rejection; branch 2 requires `none: false` with at least one entry, so an empty list hiding behind a false marker is a rejection too. Both directions, rather than the one the requirement's letter names. RESIDUE, ADDED IN M3-P4 FIX ROUND 2 BY THE CR-002 ENUMERATION: this is the same mechanism CR-002 named one document over. The branch is picked by A VALUE THE AUTHOR WRITES, and branch 1 owes NOTHING, so an author with three real decisions owed writes `none: true` and the schema is satisfied. What the two branches close is INTERNAL CONTRADICTION (a marker over entries, entries with no marker); what neither reaches is a marker over a truth outside the document. Nothing in this schema could reach it, because there is no second record here to compare against; the derived check `final-report-finding-parity` is what that comparison looks like where a second record exists, and `decisions-owed` has none.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["none"],
+          "properties": { "none": { "type": "boolean", "const": true } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["none", "entries"],
+          "properties": {
+            "none": { "type": "boolean", "const": false },
+            "entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["statement"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+                  "statement": { "type": "string", "minLength": 1, "pattern": "\\S" },
+                  "owner": { "type": "string", "minLength": 1, "pattern": "\\S" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

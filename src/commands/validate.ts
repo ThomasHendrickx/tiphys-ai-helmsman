@@ -65,7 +65,41 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      resolves. */
   ["assurance-modes", "assurance-modes.schema.json"],
   ["role-model-config", "role-model-config.schema.json"],
+  /* M3-P4 step 5. Each document carries its own `kind`, so each row extends
+     `--type` and `resolveAutoType` in one act (M3R-001). `work-history` also
+     has a COMPANION row below, because its shared honesty definitions live in
+     report.schema.json rather than being restated. */
+  ["report", "report.schema.json"],
+  ["final-report", "final-report.schema.json"],
+  ["work-history", "work-history.schema.json"],
 ]);
+
+/**
+ * COMPANION SCHEMAS, declared beside the type table (M3-P4 step 3).
+ *
+ * A type listed here is compiled with the named sibling documents registered
+ * alongside it, so a `$ref` that leaves the document resolves. THE SET IS
+ * DECLARED, NOT DISCOVERED: `src/validate.ts` never reads a reference and
+ * fetches what it names, so a `$ref` to a document absent from this table
+ * still fails compilation with `unresolvedRef`. That is the property DR-0013
+ * clause 4 protects, kept while letting two artifact types share ONE
+ * definition of the honesty contract instead of two that can drift.
+ *
+ * The reference in `work-history.schema.json` is RELATIVE
+ * (`report.schema.json#/$defs/claim`), so it resolves against that document's
+ * `$id` to `https://tiphys.dev/schemas/report.schema.json`, which is exactly
+ * the companion's own `$id`.
+ */
+export const COMPANION_TABLE: ReadonlyMap<string, readonly string[]> = new Map([
+  ["work-history", ["report"]],
+]);
+
+/** The companion schema documents a type is compiled with, in declared order. */
+export function companionsFor(type: string): SchemaDocument[] {
+  return (COMPANION_TABLE.get(type) ?? []).map((companion) =>
+    loadTypeSchema(companion),
+  );
+}
 
 /**
  * Locate the shipped `schemas/` directory by walking UP from this module.
@@ -236,7 +270,11 @@ export function cmdValidate(argv: string[]): number {
   }
 
   const schema = loadTypeSchema(resolvedType);
-  const diagnostics = validateInstance(schema, decoded.value);
+  const diagnostics = validateInstance(
+    schema,
+    decoded.value,
+    companionsFor(resolvedType),
+  );
   if (diagnostics.length > 0) {
     for (const line of formatDiagnostics(diagnostics)) {
       process.stdout.write(`${line}\n`);

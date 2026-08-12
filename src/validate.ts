@@ -547,7 +547,39 @@ export type Compilation =
    */
   | { ok: false; diagnostics: Diagnostic[]; reason: string };
 
-const compiled = new WeakMap<object, Compilation>();
+/**
+ * COMPANION SCHEMAS (M3-P4). A shipped schema may `$ref` a definition in a
+ * SIBLING shipped schema, so that a contract shared by two artifact types has
+ * ONE definition rather than two that can drift. `schemas/work-history.schema.json`
+ * is the first instance: its `claims[]`, `fix-round[]` and `gate-evidence[]`
+ * items resolve into `schemas/report.schema.json`.
+ *
+ * THIS IS NOT THE REMOTE LOADING DR-0013 CLAUSE 4 WITHHOLDS, and the
+ * difference is the whole reason the parameter exists rather than a
+ * `loadSchema` callback. A companion is supplied BY THE CALLER, from the
+ * shipped `schemas/` directory, named in `src/commands/validate.ts`'s
+ * companion table beside the type table. Nothing is fetched, nothing is
+ * resolved from the reference itself, and a `$ref` naming a document the
+ * caller did not supply still fails COMPILATION with the existing
+ * `unresolvedRef` or `remoteRef` diagnostic. The set of documents a schema
+ * may reach is therefore declared in one auditable place, which is the
+ * property clause 4 is protecting.
+ */
+const compiled = new WeakMap<object, CompilationCacheEntry[]>();
+
+interface CompilationCacheEntry {
+  companions: readonly SchemaDocument[];
+  result: Compilation;
+}
+
+function sameCompanions(
+  left: readonly SchemaDocument[],
+  right: readonly SchemaDocument[],
+): boolean {
+  return (
+    left.length === right.length && left.every((one, index) => one === right[index])
+  );
+}
 
 /**
  * Compile a schema. Cached by schema OBJECT IDENTITY, because a fresh Ajv per
@@ -564,15 +596,28 @@ const compiled = new WeakMap<object, Compilation>();
  * nothing. The witness was redone with a schema re-read from disk per arm.
  * Any future caller that wants to compile a modified schema must hand over a
  * NEW object.
+ *
+ * The cache is keyed by the schema object AND by the COMPANION LIST, also by
+ * identity: the same document compiled with and without a companion is two
+ * different compilations, and returning the first for the second would be the
+ * quiet wrong answer. Companion lists here are one or zero long, so the scan
+ * is a scan of a one-element array.
  */
-export function compileSchema(schema: SchemaDocument): Compilation {
-  const cachedResult = compiled.get(schema);
-  if (cachedResult !== undefined) {
-    return cachedResult;
+export function compileSchema(
+  schema: SchemaDocument,
+  companions: readonly SchemaDocument[] = [],
+): Compilation {
+  const entries = compiled.get(schema) ?? [];
+  const cached = entries.find((entry) => sameCompanions(entry.companions, companions));
+  if (cached !== undefined) {
+    return cached.result;
   }
   let result: Compilation;
   const ajv = makeAjv();
   try {
+    for (const companion of companions) {
+      ajv.addSchema(companion);
+    }
     result = { ok: true, validator: ajv.compile(schema) };
   } catch (error) {
     const diagnostics = compilationDiagnostics(error, ajv, schema);
@@ -582,7 +627,8 @@ export function compileSchema(schema: SchemaDocument): Compilation {
       reason: formatDiagnostics(diagnostics).join("; "),
     };
   }
-  compiled.set(schema, result);
+  entries.push({ companions: [...companions], result });
+  compiled.set(schema, entries);
   return result;
 }
 
@@ -696,8 +742,9 @@ export function compilationDiagnostics(
 export function validateInstance(
   schema: SchemaDocument,
   instance: unknown,
+  companions: readonly SchemaDocument[] = [],
 ): Diagnostic[] {
-  const compilation = compileSchema(schema);
+  const compilation = compileSchema(schema, companions);
   if (!compilation.ok) {
     return compilation.diagnostics;
   }
@@ -745,8 +792,9 @@ export function validateInstance(
 export function validateToLines(
   schema: SchemaDocument,
   instance: unknown,
+  companions: readonly SchemaDocument[] = [],
 ): string[] {
-  return formatDiagnostics(validateInstance(schema, instance));
+  return formatDiagnostics(validateInstance(schema, instance, companions));
 }
 
 /* ------------------------------------------------------------------ */
