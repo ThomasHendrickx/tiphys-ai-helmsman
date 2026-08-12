@@ -1,7 +1,12 @@
 # Delta verification: M3-P6 fix round 2 (`2a89757..4619bf8`)
 
-Status: IN PROGRESS (this file is appended to as each command completes; it is
-the agent's beacon under the T-008 dispatch contract at CLAUDE.md:355).
+**VERDICT: VERIFIED.** Two LOW findings (DV2-A, DV2-B), both documentation,
+neither blocking. Full verdict in section 10. Code delta verified against
+`4619bf8`; the branch has since settled at `077f339` and the difference is
+work-history prose only, verified in section 6.
+
+This file was written incrementally and committed on each append, as the agent's
+beacon under the T-008 dispatch contract at CLAUDE.md:355.
 
 Instrument: STRUCTURAL delta verification, not a criteria walk and not a
 re-review of the phase. The measured basis is the fix-round contract at
@@ -59,10 +64,6 @@ $ git diff --stat 2a89757..4619bf8
 exit 0 for both. Sixteen commits, six files, matching the dispatch exactly.
 The head had NOT moved when I fetched it: `origin/claude/m3-p6-delivery-role-briefs`
 resolved to `4619bf8`.
-
-## Log
-
-(appended as work proceeds)
 
 ## 2. THE CENTRAL CLAIM: was the removed check redundant? (task 1)
 
