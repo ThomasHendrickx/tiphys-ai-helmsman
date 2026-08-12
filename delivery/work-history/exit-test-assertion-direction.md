@@ -3390,3 +3390,251 @@ re-reviewed fix rounds.
 This section is written before any file is touched. It is the beacon; every
 section below is appended after the command it cites has run, and committed
 locally at once.
+
+## FR3.1 The MECHANISM (fix-round contract item 1)
+
+DV-3 as reported is an instance: a manifest whose `gates` key is a well-formed
+EMPTY array empties the manifest leg and neither new check fires. DV-4 as
+reported is an instance: a leg spelled `...(expr)` is invisible to the guard.
+Fixing those two spellings would leave the defect.
+
+**The mechanism both are members of: a check's CONDITION recognises a
+SYNTACTIC OR TYPED SUBSET of the class its message quantifies over, so every
+member of the class outside that subset passes in silence.**
+
+| check | the class its message names | what its condition actually recognises | outside the condition |
+|---|---|---|---|
+| the manifest guard | manifests that declare no gates | `gates` is not an ARRAY | `gates: []`, and any array whose entries carry no usable id |
+| the fourth-leg guard | sources spread into the derived expected set | spreads written `...IDENTIFIER` | `...(x ?? [])`, `...[a, b]`, and any id arriving other than through this array literal |
+
+This is the same family as the defect the whole branch exists to remove. The
+original assertion-direction defect was: the program iterates a hand-written
+table, so a gate outside the table is not asserted on. That is a condition
+(membership of the table) standing in for a property (being a gate that ran).
+Round 1 replaced the table with a DERIVED union. Round 2 added two guards over
+that union, and both guards were written the same way the original defect was
+written: recognise the shape you thought of, not the property.
+
+The remedy is the same at every level and it is the one this repository already
+applies elsewhere: **make the condition test the property, and where the
+property is a set, enumerate the set structurally rather than by the spelling
+its members happen to have today.**
+
+Two consequences that decide the shape of the fix:
+
+1. The manifest guard's condition becomes `manifestIds.length === 0`. That is
+   the property itself, "this leg contributed nothing", and it covers the
+   not-an-array shape, the empty-array shape, the absent-key shape and the
+   array-of-unusable-entries shape as ONE condition rather than four.
+2. The fourth-leg guard stops matching spread spellings and enumerates the
+   TOP-LEVEL ELEMENTS of the union's array literal with a depth-aware scan, and
+   separately pins every statement that WRITES `expectedIds`. A new source of
+   expected ids is then caught whatever it looks like and whether or not it
+   arrives inside that array literal at all.
+
+## FR3.2 The DERIVATION (fix-round contract item 2)
+
+Two enumerations, both with a built-in negative control, both printed in full.
+
+### FR3.2a Every recognition condition in the files this branch changes
+
+The class is "a condition that decides membership by testing a TYPE or by
+matching TEXT". The command enumerates the files from the diff itself rather
+than from a hand-typed list, so a file added to the branch later cannot fall
+out of scope silently. Script:
+`delivery/work-history/exit-test-assertion-direction.md:1` is this file; the
+script is reproduced inline below and its full output follows.
+
+```
+files=$(git diff --name-only origin/main...HEAD | grep -E '\.(sh|ts|yml)$')
+grep -nE 'Array\.isArray\(|typeof [A-Za-z_$]|instanceof ' ${files}
+grep -nE '\.(exec|match|matchAll|test)\(|= */\^|\.exec\(' ${files} | grep -E '/[^ ]*/[gimsuy]*'
+grep -nE '\.filter\(' ${files}
+```
+
+FULL OUTPUT:
+
+```
+=== files enumerated (from git diff --name-only origin/main...HEAD) ===
+.github/workflows/gates.yml
+scripts/m2-exit-test.sh
+test/gate-registry.test.ts
+test/m2-exit-test.test.ts
+
+=== A. type-predicate recognitions (Array.isArray / typeof / instanceof) ===
+scripts/m2-exit-test.sh:232:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:470:const rows = Array.isArray(summary.gates) ? summary.gates : [];
+scripts/m2-exit-test.sh:501:const manifestIds = Array.isArray(manifestRead.value?.gates)
+scripts/m2-exit-test.sh:504:      .filter((id) => typeof id === "string" && id !== "")
+scripts/m2-exit-test.sh:516:  if (typeof id !== "string" || id === "" || absentIds.has(id) || expectedIds.includes(id)) {
+scripts/m2-exit-test.sh:534:if (!Array.isArray(manifestRead.value?.gates)) {
+scripts/m2-exit-test.sh:595:        typeof pre.id === "string" && pre.id !== "" &&
+scripts/m2-exit-test.sh:596:        typeof pre.reason === "string" && pre.reason !== "";
+scripts/m2-exit-test.sh:636:    typeof pre.id === "string" && pre.id !== "" &&
+scripts/m2-exit-test.sh:637:    typeof pre.reason === "string" && pre.reason !== "";
+scripts/m2-exit-test.sh:726:if (typeof summary.manifestSha256 === "string" && summary.manifestSha256 !== "") {
+test/gate-registry.test.ts:432:    assert.ok(Array.isArray(gate.events) && gate.events.length > 0, `${gate.id} declares no events`);
+test/gate-registry.test.ts:853:    (step) => typeof step.run === "string" && step.run.includes("render-agent-rules-gates.mjs"),
+test/m2-exit-test.test.ts:1432:        table: typeof table;
+grep A exit=0
+
+=== B. text-pattern recognitions (a regex literal driving exec/match/matchAll/test) ===
+scripts/m2-exit-test.sh:638:  const sha256 = /\b[0-9a-f]{64}\b/.test(detail) || /\b[0-9a-f]{64}\b/.test(JSON.stringify(rec));
+scripts/m2-exit-test.sh:640:    /declar/i.test(detail) && /\.json|declaration/i.test(detail) && sha256;
+scripts/m2-exit-test.sh:651:      /structural/i.test(detail) ||
+scripts/m2-exit-test.sh:652:      /structural/i.test(JSON.stringify(pre ?? {})) ||
+scripts/m2-exit-test.sh:653:      /o-3/i.test(JSON.stringify(pre ?? {}));
+scripts/m2-exit-test.sh:884:  const line = (log.stdout ?? "").split("\n").find((l) => /\bM2-P2:/.test(l));
+test/gate-registry.test.ts:414:  const mainBundle = /^MAIN_ONLY_GATES="([^"]+)"/m.exec(harness);
+test/gate-registry.test.ts:470:  assert.match(deploy.precondition.id, /STRUCTURAL/);
+test/gate-registry.test.ts:612:  assert.match(capturedRecord.detail, /--base/);
+test/gate-registry.test.ts:643:    assert.match(String(withoutBase.record?.["detail"]), /--base/);
+test/m2-exit-test.test.ts:491:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:528:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:723:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:772:  const stepAt = lines.findIndex((l) => /^ {6}- uses: actions\/checkout/.test(l));
+test/m2-exit-test.test.ts:778:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:924:    assert.match(rejected.stdout + rejected.stderr, /\[scope\]/, "the rejection did not name scope");
+test/m2-exit-test.test.ts:1042:    assert.match(rejectedNoPre.stdout + rejectedNoPre.stderr, /\[scope\]/, "the rejection did not name scope");
+test/m2-exit-test.test.ts:1711:  const sources = [...(union[1] as string).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)]
+grep B exit=0
+
+=== C. membership filters over a derived collection (.filter with a predicate) ===
+.github/workflows/gates.yml:197:              .filter((f) => f.endsWith("-C2.json"))
+.github/workflows/gates.yml:199:              .filter((r) => r.kind === "executed");
+.github/workflows/gates.yml:200:            const failing = c2.filter((r) => r.exitCode !== 0 && r.outcome === "fail");
+scripts/m2-exit-test.sh:229:    const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
+scripts/m2-exit-test.sh:232:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:504:      .filter((id) => typeof id === "string" && id !== "")
+scripts/m2-exit-test.sh:521:const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+scripts/m2-exit-test.sh:565:  const dup = rows.filter((r) => r.id === spec.id).length;
+scripts/m2-exit-test.sh:617:  (expect.gates ?? []).filter((g) => g.structural === true).map((g) => g.id),
+scripts/m2-exit-test.sh:670:const redRows = rows.filter((r) => r.status === "red");
+scripts/m2-exit-test.sh:675:const errorRows = rows.filter((r) => r.status === "error");
+scripts/m2-exit-test.sh:679:const vacuousRows = rows.filter((r) => r.vacuous === true);
+scripts/m2-exit-test.sh:689:  applicable: rows.filter((r) => r.applicable === true).length,
+scripts/m2-exit-test.sh:690:  verdict: rows.filter((r) => r.status === "green" || r.status === "red").length,
+scripts/m2-exit-test.sh:691:  green: rows.filter((r) => r.status === "green").length,
+scripts/m2-exit-test.sh:692:  red: rows.filter((r) => r.status === "red").length,
+scripts/m2-exit-test.sh:693:  "not-applicable": rows.filter((r) => r.status === "not-applicable").length,
+scripts/m2-exit-test.sh:694:  error: rows.filter((r) => r.status === "error").length,
+scripts/m2-exit-test.sh:695:  vacuous: rows.filter((r) => r.vacuous === true).length,
+test/gate-registry.test.ts:395:  shape["required"] = (shape["required"] as string[]).filter((name) => name !== "events");
+test/gate-registry.test.ts:420:  const pushGates = new Set((mainBundle[1] as string).split(/\s+/).filter((id) => id !== ""));
+test/gate-registry.test.ts:518:    const greenWithUnmet = [...captured.gates, outcome.row as { id: string; status: string }].filter(
+test/gate-registry.test.ts:852:  const matching = steps.filter(
+test/gate-registry.test.ts:1055:    .filter((gate) => gate["verified-by"] === "script" && !manifestIds.has(gate.id))
+test/gate-registry.test.ts:1106:      .filter((gate) => gate["verified-by"] === "clean-room-checklist")
+test/m2-exit-test.test.ts:544:    .filter(
+test/m2-exit-test.test.ts:1129:    applicable: summaryRows.filter((r) => r.applicable).length,
+test/m2-exit-test.test.ts:1130:    verdict: summaryRows.filter((r) => r.status === "green" || r.status === "red").length,
+test/m2-exit-test.test.ts:1131:    green: summaryRows.filter((r) => r.status === "green").length,
+test/m2-exit-test.test.ts:1132:    red: summaryRows.filter((r) => r.status === "red").length,
+test/m2-exit-test.test.ts:1133:    "not-applicable": summaryRows.filter((r) => r.status === "not-applicable").length,
+test/m2-exit-test.test.ts:1134:    error: summaryRows.filter((r) => r.status === "error").length,
+test/m2-exit-test.test.ts:1334:        ...healthy.filter((r) => r.id !== UNLISTED),
+test/m2-exit-test.test.ts:1427:        gates: table.gates.filter((gate) => gate.id !== dropped),
+test/m2-exit-test.test.ts:1429:      const withoutDropped = healthy.filter((r) => r.id !== dropped);
+test/m2-exit-test.test.ts:1506:        const findings = output.split("\n").filter((line) => line.startsWith("  - "));
+test/m2-exit-test.test.ts:1512:        const foreign = findings.filter((line) => !line.includes(probe.reason));
+test/m2-exit-test.test.ts:1537:          writeBundle(dir, [...healthy.filter((r) => r.id !== UNLISTED), { id: UNLISTED, status }]);
+test/m2-exit-test.test.ts:1819:  // computed `red: rows.filter(r => r.status === "red").length` and compared it
+grep C exit=0
+```
+
+### FR3.2b Every leg of the union, and every rejection stating a universal
+
+The first enumeration is broad and most of its rows are counting filters rather
+than membership recognitions. The second is the tight one: it extracts the
+assertion program from the heredoc (aborting nonzero unless the anchor occurs
+exactly ONCE), locates the union's array literal, splits its TOP-LEVEL elements
+with a depth-aware scan that is string, template and comment aware, and then
+prints every rejection in the program whose message states a universal together
+with the condition that guards it.
+
+The negative control is structural: both the heredoc anchor and the union
+anchor abort with exit 2 unless they occur exactly once, so an empty result
+cannot read as a clean one.
+
+FULL OUTPUT:
+
+```
+=== PART 1: the legs of the derived expected set ===
+union anchor line: 98 (within the extracted program)
+top-level elements: 3
+  element | ...manifestIds
+  element | ...rows.map((row) => row?.id)
+  element | ...explicitById.keys()
+
+--- leg 1: ...manifestIds  (root identifier: manifestIds)
+      84 | const manifestIds = Array.isArray(manifestRead.value?.gates)
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+--- leg 2: ...rows.map((row) => row?.id)  (root identifier: rows)
+      53 | const rows = Array.isArray(summary.gates) ? summary.gates : [];
+      54 | const rowById = new Map(rows.map((r) => [r.id, r]));
+      59 | // the bundle's rows. That constrains the relation in ONE direction only: every
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+     148 | const dup = rows.filter((r) => r.id === spec.id).length;
+     202 | for (const row of rows) {
+     253 | const redRows = rows.filter((r) => r.status === "red");
+     258 | const errorRows = rows.filter((r) => r.status === "error");
+     262 | const vacuousRows = rows.filter((r) => r.vacuous === true);
+     267 | // -- 7. Recomputed counts equal summary.json's counts. The rows ARE the
+     269 | //       re-deriving them from the rows and comparing is the CR-602 check.
+     271 | declared: rows.length,
+     272 | applicable: rows.filter((r) => r.applicable === true).length,
+     273 | verdict: rows.filter((r) => r.status === "green" || r.status === "red").length,
+     274 | green: rows.filter((r) => r.status === "green").length,
+     275 | red: rows.filter((r) => r.status === "red").length,
+     276 | "not-applicable": rows.filter((r) => r.status === "not-applicable").length,
+     277 | error: rows.filter((r) => r.status === "error").length,
+     278 | vacuous: rows.filter((r) => r.vacuous === true).length,
+     335 | console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
+--- leg 3: ...explicitById.keys()  (root identifier: explicitById)
+      90 | const explicitById = new Map((expect.gates ?? []).map((spec) => [spec.id, spec]));
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+     104 | const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+     136 | const explicit = explicitById.get(id);
+
+=== PART 2: every rejection whose message states a UNIVERSAL ===
+#1 rejection at program line 118-120
+   condition | 117: if (!Array.isArray(manifestRead.value?.gates)) {
+   message   | fail(null, `the manifest ${manifestPath} parses but its "gates" key is not an array, so the ` + "manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest " + "that declares no gates cannot certify a bundle");
+#2 rejection at program line 123-125
+   condition | 122: if (expectedIds.length === 0) {
+   message   | fail(null, "the derived expected set is EMPTY, so this run would certify a bundle having " + "asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule " + "binds this program as much as the gates it inspects");
+#3 rejection at program line 141-145
+   condition | 140: if (row === undefined) {
+   message   | fail(spec.id, explicit ? `no record in the bundle for a gate the table lists (expected ${spec.expect})` : "gates.manifest.json declares this gate and the bundle carries NO record for it, " + "and the table does not list it as absent from this bundle; a declared gate that " + "produced no record is a gate that did not run." + why);
+#4 rejection at program line 189-189
+   condition | 188: if (row.status === "green" && !(Number(row.units) > 0)) {
+   message   | fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
+#5 rejection at program line 214-214
+   condition | 213: if (detail.trim() === "") {
+   message   | fail(row.id, "not-applicable with an empty reason");
+#6 rejection at program line 255-256
+   condition | 254: if (redRows.length > 0) {
+   message   | fail(null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. ` + "No expectation in section 1.4 permits a red gate, on either bundle.");
+TOTAL universal-bearing rejections: 6
+```
+
+### FR3.2c Walking every row of FR3.2b
+
+Six rejections state a universal. Each is walked, none is summarised.
+
+| # | condition | is the condition the property its message names? |
+|---|---|---|
+| 1 | `!Array.isArray(manifestRead.value?.gates)` | **NO.** Message: "a manifest that declares no gates cannot certify a bundle". Condition recognises only the wrong-TYPE shape. **This is DV-3, and it is the defect.** |
+| 2 | `expectedIds.length === 0` | YES. The message names the derived expected set being empty and the condition is exactly that. Its REACHABILITY is a separate question, settled in FR3.5. |
+| 3 | `row === undefined` over `expectedIds` | YES. "a declared gate that produced no record is a gate that did not run" is exactly "this expected id has no row". |
+| 4 | `row.status === "green" && !(Number(row.units) > 0)` | YES. "a green with no units examined is vacuous" is exactly the condition. |
+| 5 | `detail.trim() === ""` | YES. "not-applicable with an empty reason", and `detail` is `String(rec.detail ?? "")` so a missing or non-string detail lands in the same branch. |
+| 6 | `rows.filter((r) => r.status === "red").length > 0` | YES for the class "rows reporting red", under the closed status vocabulary. It is NOT a guard on the rows leg being emptied: `rows` is `[]` whenever `summary.gates` is not an array, and then this check is trivially satisfied. That sibling is measured in FR3.3 rather than assumed. |
+
+One row of six is a subset recognition, and it is the one DV-3 names. The other
+five conditions equal the properties they state.
+
+The leg enumeration in the same output shows THREE legs, `manifestIds`, `rows`
+and `explicitById`, and prints every line of the program that mentions each. It
+is that enumeration, not a spread-spelling regex, that becomes the shipped
+guard in FR3.4.
