@@ -206,14 +206,19 @@ is wrong: verify against git and the PR list before trusting it.
   Tiphys completed guarded, squash-aware teardown with exit 0: the task is
   closed, its durable records survive, the task worktree/pool record/local
   branch are removed, and the lease is released. The required closeout is
-  delivery/verification/macos-portability-pilot-lifecycle.md:1. The lifecycle
-  actions are complete, but the plan defines the pilot as incomplete until
-  that closeout is durable on `main`. Once it is, the final verdict is a
-  partial controlled pilot: delivery and teardown succeeded, but the
+  delivery/verification/macos-portability-pilot-lifecycle.md:1. PR #91 made
+  that closeout durable on `main` as `c154ef8`, so the closeout process is now
+  complete. The final pilot verdict remains partial: delivery and teardown
+  succeeded, but the
   implementation agent could not make the plan-required local commit and the
   current process had to recover it, and the final-head delta-review outcomes
-  were not committed before merge as DR-0026 required. This is not M4 cutover
-  or acceptance of the temporary adapter.
+  were not committed before merge as DR-0026 required. Those are historical
+  lifecycle results, not open paperwork that a later commit can convert into
+  success. The pre-merge watcher invoker and host also remain unknown because
+  the surviving fleet records never captured that provenance. A successful
+  rerun would require a newly scoped and explicitly owner-authorized pilot;
+  DR-0025 authorized exactly one subprocess and DR-0026 authorized no second
+  one. This is not M4 cutover or acceptance of the temporary adapter.
   Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
   M3-P4 round-3 verification and the stop arbitration). Its push run
   31414562777 completed success. The owner has authorized DR-0025, one

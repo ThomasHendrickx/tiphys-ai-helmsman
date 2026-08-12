@@ -6,8 +6,9 @@
 - implementation PR: [#89](https://github.com/ThomasHendrickx/tiphys-ai-helmsman/pull/89)
 - reviewed PR head: `0997de2bdc756c895ba2eeb55f8ce9ead4c5e7ca`
 - merged commit: `1e020983d7f5de1bb212113f240a0982fd3ac83e`
-- closeout verdict: partial controlled pilot once this record is durable on
-  `main`; delivery, watcher, landedness, and teardown succeeded, but the
+- closeout status: complete on `main` through PR 91 (`c154ef8`)
+- pilot verdict: partial controlled pilot; delivery, watcher, landedness, and
+  teardown succeeded, but the
   implementation agent could not perform the plan-required local commit and
   the current process had to recover it, and final-head delta-review outcomes
   were not committed before merge; this is not M4 cutover or acceptance of
@@ -154,7 +155,43 @@ complete the plan-required local commit because its sandbox could not write
 the shared Git worktree index; current-process recovery made the code safe and
 deliverable but does not turn that missed lifecycle step into success. The
 final-head delta reviews also lacked the durable pre-merge evidence required by
-DR-0026. Until this closeout lands, the plan defines the pilot itself as
-incomplete. This is evidence for the exercised lifecycle surfaces only. It
-neither decides DR-0010, lifts the M3-P4 stop, accepts the temporary adapter,
-nor claims M4 self-hosting or cutover.
+DR-0026. Before this closeout landed, the plan defined the pilot itself as
+incomplete. PR 91 completed that durability step without changing the partial
+verdict. This is evidence for the exercised lifecycle surfaces only. It neither
+decides DR-0010, lifts the M3-P4 stop, accepts the temporary adapter, nor claims
+M4 self-hosting or cutover.
+
+## Post-landing reconciliation (2026-08-12)
+
+PR 91 made this closeout durable on `main` as `c154ef8`. That satisfies the
+plan's criterion 15 durability condition and completes the closeout process.
+It does not change the measured pilot verdict from partial to successful.
+
+The three recorded gaps classify as follows:
+
+1. The implementation agent's local commit is inherently historical. The
+   binding sequence assigns that commit to the implementation agent at
+   delivery/plan/macos-portability-pilot.md:157, and the persisted brief also
+   required that agent to finish with one local commit and a clean worktree.
+   The current process's recovery commit safely preserved and delivered the
+   work, but a later commit cannot make the implementation agent have completed
+   the missed step.
+2. DR-0026's final-head review-evidence condition is inherently historical.
+   The decision required both current-head outcomes to be committed before
+   merge at delivery/decisions/DR-0026-current-process-pilot-fix-round.md:48.
+   The sessions reported no findings, and the closeout already records that
+   fact, but committing a new summary after PR 89 merged cannot satisfy a
+   before-merge condition.
+3. The pre-merge watcher invoker and host remain unknown. A post-landing audit
+   of the surviving task and watcher records found timestamps, cadence, wake,
+   and task identity, but no invoker, process identity, session, or host field.
+   Assigning one now would manufacture provenance rather than recover it.
+
+No further documentation can truthfully upgrade this completed partial pilot
+to a successful pilot. Re-exercising the missed lifecycle properties would be
+a new pilot, not remediation of the 2026-08-11 run. That requires explicit
+owner authorization because DR-0025 authorizes exactly one controlled
+subprocess and DR-0026 expressly authorizes no second Tiphys subprocess at
+delivery/decisions/DR-0026-current-process-pilot-fix-round.md:35. No new
+subprocess was run for this reconciliation, and it makes no M4 adapter,
+self-hosting, or cutover claim.
