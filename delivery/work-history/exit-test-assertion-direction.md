@@ -2068,6 +2068,16 @@ by `git diff --stat`, so every changed file has a reviewable diff.
    would say so. I could not find a form of guard that is not a pinned count over
    a source line, which CLAUDE.md:201 warns against, so I am raising it rather
    than improvising one.
+
+   **CLOSED in fix round 2 (findings CR-V-1 and CR-FR-2), and the item was wrong
+   in two ways.** The TENSE was wrong: the union spread THREE sources when this
+   was written, not two, and the third was unwitnessed already rather than
+   prospectively. The REASON was wrong: CLAUDE.md:201 forbids pinning a count
+   over an append-only REGISTRY, where growth is routine so the assertion yields
+   a false red, and the union's source list is not one. The form CLAUDE.md:201
+   prescribes, BY NAME, applies here directly and pins no count. FR2.5 has the
+   guard and its red witnesses in both directions, and FR2.4 has the probe for
+   the third leg on both arms.
 2. **Promoting `agent-rules-drift` into `gates.manifest.json`** is now unblocked
    on the harness side (FR1.7), and is NOT done here. It changes what CI runs and
    it is the open half of R-094, which is tracked with the orchestrator.
