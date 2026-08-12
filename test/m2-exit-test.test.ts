@@ -1414,3 +1414,68 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("no expectations row admits a lax status the gate it names can never legitimately produce", () => {
+  // THE ADJACENT DEFECT. The derivation above closes "a row is ABSENT, so the
+  // gate is asserted by nothing". Its sibling is "a row is PRESENT but its
+  // expectation is wrong", and the shape that matters here is a row admitting
+  // not-applicable for a gate that has NO precondition. Such a gate is always
+  // applicable, so it can never legitimately be N/A, and admitting it means the
+  // row silently accepts a gate that was skipped or mis-declared.
+  //
+  // Only that ONE direction is asserted, deliberately. The converse (a gate WITH
+  // a precondition whose row does not admit not-applicable) is not a defect but
+  // a legitimate extra strictness, and `coverage` is exactly that case today:
+  // its precondition names delivery/requirements/migration-table.md:1, a tracked
+  // file that always exists, so a not-applicable coverage means the inventory
+  // vanished and SHOULD fail. Asserting the converse would redden a correct row.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const manifestGates = (
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL("../gates.manifest.json", import.meta.url)), "utf8"),
+      ) as { gates: { id: string; precondition?: unknown }[] }
+    ).gates;
+    const hasPrecondition = new Map(
+      manifestGates.map((gate) => [gate.id, gate.precondition !== undefined && gate.precondition !== null]),
+    );
+    // Both arms, and both resolutions of the per-run scope placeholder, since the
+    // non-phase resolution is the one that widens a row's alternates.
+    const tables = [
+      printExpect(harness, root, env, "pr", "green"),
+      printExpect(harness, root, env, "pr", "green|not-applicable"),
+      printExpect(harness, root, env, "main"),
+    ];
+    let checked = 0;
+    for (const table of tables) {
+      for (const row of table.gates) {
+        const alternates = String(row.expect).split("|").map((s) => s.trim());
+        assert.ok(
+          !alternates.includes("red") && !alternates.includes("error"),
+          `${table.label}: the row for ${row.id} admits ${row.expect}; no expectation in ` +
+            "section 1.4 permits a red or errored gate on either bundle",
+        );
+        if (!alternates.includes("not-applicable")) {
+          continue;
+        }
+        checked += 1;
+        assert.equal(
+          hasPrecondition.get(row.id),
+          true,
+          `${table.label}: the row for ${row.id} admits not-applicable, but gates.manifest.json ` +
+            "declares that gate with no precondition, so it is always applicable and can never " +
+            "legitimately report not-applicable. A row admitting a status the gate cannot " +
+            "legitimately produce accepts a skipped or mis-declared gate as a pass.",
+        );
+      }
+    }
+    assert.ok(
+      checked > 0,
+      "no expectations row admits not-applicable on any arm, so this test examined nothing and " +
+        "would pass however the tables were written",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

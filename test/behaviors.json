@@ -594,5 +594,6 @@
   "role-brief-set-derived-not-listed": "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does",
   "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it",
   "m2-exit-main-absent-list-derived-from-manifest": "the main bundle expectation derives its absent list from the manifest, so a newly declared gate it does not run is asserted absent",
-  "m2-exit-red-gate-rejected-on-both-bundles": "a red gate is rejected on both bundles under three structurally different shapes, including one the expectations table names and permits"
+  "m2-exit-red-gate-rejected-on-both-bundles": "a red gate is rejected on both bundles under three structurally different shapes, including one the expectations table names and permits",
+  "m2-exit-expect-row-admits-only-reachable-statuses": "no expectations row admits a lax status the gate it names can never legitimately produce"
 }
