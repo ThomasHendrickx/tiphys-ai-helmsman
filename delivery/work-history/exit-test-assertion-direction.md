@@ -5910,6 +5910,15 @@ one of the filtered names in argument position would not appear above; I read th
 unfiltered output as well and found no such case, but that is a reading of one
 file today.
 
+**CORRECTION, round five, DV4-3.** The sentence immediately above is FALSE and is
+left standing rather than edited away, because a work history is the artifact a
+later reviewer trusts and a silently corrected claim is worse than a visible
+wrong one. There ARE such cases: nine of them at this head, all invoking a
+filtered name in argument position. They are enumerated with the command that
+finds them in FR5.6 below. What round four should have written, and what the
+round-five section does write, is the output it read rather than a verdict on
+it.
+
 **The DV3-F2 closure, measured against production rather than a synthetic.**
 `main` carries the pre-fix program, so the control column is the live behaviour.
 Three manifest shapes, `--print-expect main` on each, asking two questions: what
@@ -6028,4 +6037,561 @@ CLAUDE.md:375.
 Worktree: a detached checkout of 392f97f on a local branch `fr5-round5`.
 Toolchain: node v26.6.0 from the scratch prefix, verified in every shell that
 ran a command.
+
+
+### FR5.1 The mechanism
+
+**A SET-BASED COMPARISON IS BLIND TO MULTIPLICITY.**
+
+Putting values in a `Set`, or comparing a length against a `Set`'s `.size`, or
+deciding an equality with a membership test, discards how many times each value
+occurs. Any defect that preserves the value-set while changing multiplicity is
+then invisible.
+
+The finding DV4-1 named is one instance. The shipped condition was
+
+```
+if (expectedIds.length !== legContributed.size || expectedIds.some((id) => !legContributed.has(id))) {
+```
+
+with `legContributed` a `Set` and `expectedIds` an `Array`. A write that
+substitutes a DUPLICATE for a dropped id cancels out in both halves: `[A, A]` has
+length two, `{A, B}` has size two, and both elements are members. The comment
+above it quantified over "a dropped id ... break[s] the equality", and the
+condition recognised only a drop that CHANGES CARDINALITY.
+
+I am naming the mechanism rather than the four inputs deliberately, because the
+four previous rounds each closed the instance they were handed and re-introduced
+the same shape one level down: a regex that matched one spread spelling, a
+`!Array.isArray` type test, a member-name allowlist, and then this. The
+instrument this round installs is one that cannot have this shape at all rather
+than one that handles the reported members: an equality over a sequence is
+decided POSITIONALLY, element by element, so multiplicity, order and substitution
+are all part of the comparison instead of being discarded by it.
+
+The mechanism has a second confirmed instance in a different program:
+`describeDrift` in `scripts/render-agent-rules-gates.mjs` builds a `Set` of each
+block's lines, so a DUPLICATED line leaves both sets unchanged and it prints a
+sentence that is actively false. That is recorded at
+delivery/verification/render-agent-rules-gates-duplicate-row.md:44 and is
+OUTSIDE the scope I was given. I did not touch it. It is reported again in FR5.6
+so that a reader of this file does not have to know the other document exists.
+
+### FR5.2 What changed
+
+Three edits to scripts/m2-exit-test.sh:1, one to test/m2-exit-test.test.ts:1,
+one appended row in test/behaviors.json:604.
+
+1. **The comparator.** scripts/m2-exit-test.sh:602 adds `sameSequence(a, b)`. It
+   compares `.length` and then every index. It uses no `.every`, no `.some` and
+   no iteration, so no prototype method stands between the check and the two
+   arrays it compares.
+2. **The leg check.** scripts/m2-exit-test.sh:613 derives `legExpected`, the same
+   three legs filtered for usability and absence and then reduced to first
+   occurrences with `all.indexOf(id) === at`, which is a DIFFERENT algorithm from
+   the closure's `out.includes(id)` push loop rather than the same loop written
+   twice. scripts/m2-exit-test.sh:627 compares the two with `sameSequence`. It is
+   still terminal, for the reason round four gave and I did not disturb.
+3. **The consumption check.** scripts/m2-exit-test.sh:710 records every id the
+   per-gate loop actually handled, and scripts/m2-exit-test.sh:773 compares that
+   recording against the derived set, positionally, with the same comparator.
+   This is DV4-2's fix and it is described in FR5.5.
+
+One further edit, scripts/m2-exit-test.sh:921: the findings-printing loop is
+indexed rather than iterated. That is not cosmetic, it is a measurement. See
+FR5.5.
+
+### FR5.3 The derivation
+
+**The mechanism enumerated: every site in the two files this branch changes
+where a `Set`, a `.size`, a `.length` comparison or a membership test could stand
+in for an equality over a collection that can contain duplicates.**
+
+The scan runs a NEGATIVE CONTROL first and it is fatal. A copy carrying one
+synthetic line per probed shape must be reported in full; a scan whose pattern
+had rotted would otherwise return a short list indistinguishable from an absence
+of sites. It also reports whether the old set-based anchor and the new comparator
+are present, so a reader can tell which state the files are in.
+
+The script is `$SP/FR5-lab/derive.sh` in the scratch tree; its body is reproduced
+here so the derivation does not depend on a file outside the repository:
+
+```
+files="scripts/m2-exit-test.sh test/m2-exit-test.test.ts"
+pattern='new Set\(|\.size\b|\.has\(|\.includes\(|\.indexOf\(|\bsort -u\b|\buniq\b|wc -l|\.length\s*(===|!==|==|!=|<|>|<=|>=)|(===|!==|==|!=|<|>|<=|>=)\s*[A-Za-z_$][A-Za-z0-9_$.]*\.length'
+grep -nE "${pattern}" ${files}
+```
+
+Full output, unedited, at the post-fix head:
+
+```
+### files under scan, with their blob shas
+65835b4b00d8ed505211d78e51a5b340c53df1b0  scripts/m2-exit-test.sh
+a976d30883736a388eeacab7073d021fa6736a74  test/m2-exit-test.test.ts
+
+### NEGATIVE CONTROL: eight synthetic sites, one per probed shape
+synthetic lines: 10   reported by the scan: 10
+NEGATIVE CONTROL PASSED
+
+### ANCHOR CONTROL: the site the round fixes must occur exactly once
+old set-based anchor 'const legContributed = new Set(' occurrences: 0
+new sequence comparator 'const sameSequence = (' occurrences: 1
+
+### FULL SCAN, every hit, no filtering
+scripts/m2-exit-test.sh:239:    const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
+scripts/m2-exit-test.sh:243:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:350:    for (let i = 0; i + 1 < args.length; i += 2) {
+scripts/m2-exit-test.sh:445:  const i = process.argv.indexOf(name);
+scripts/m2-exit-test.sh:531:const absentIds = new Set(expect.absent ?? []);
+scripts/m2-exit-test.sh:546:const contribution = (leg) => new Set(leg.filter(usableId)).size;
+scripts/m2-exit-test.sh:562:    if (!usableId(id) || absentIds.has(id) || out.includes(id)) {
+scripts/m2-exit-test.sh:586://        compared `expectedIds.length` against a Set's `.size` and then asked
+scripts/m2-exit-test.sh:594://        mechanism generalises past this file: a Set, a `.size`, or a length
+scripts/m2-exit-test.sh:603:  if (a.length !== b.length) {
+scripts/m2-exit-test.sh:606:  for (let i = 0; i < a.length; i += 1) {
+scripts/m2-exit-test.sh:614:  .filter((id) => usableId(id) && !absentIds.has(id))
+scripts/m2-exit-test.sh:615:  .filter((id, at, all) => all.indexOf(id) === at);
+scripts/m2-exit-test.sh:636:const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+scripts/m2-exit-test.sh:664:if (manifestIds.length === 0) {
+scripts/m2-exit-test.sh:669:    : (manifestGates.length === 0
+scripts/m2-exit-test.sh:682:if (expectedIds.length === 0) {
+scripts/m2-exit-test.sh:730:  if (!allow.includes(row.status)) {
+scripts/m2-exit-test.sh:788:const structuralExpected = new Set(
+scripts/m2-exit-test.sh:819:  if (structuralExpected.has(row.id)) {
+scripts/m2-exit-test.sh:843:if (redRows.length > 0) {
+scripts/m2-exit-test.sh:848:if (errorRows.length > 0) {
+scripts/m2-exit-test.sh:852:if (vacuousRows.length > 0) {
+scripts/m2-exit-test.sh:887:  if (rowById.has(id)) {
+scripts/m2-exit-test.sh:913:if (failures.length > 0) {
+scripts/m2-exit-test.sh:921:  for (let i = 0; i < failures.length; i += 1) {
+scripts/m2-exit-test.sh:948:  `${derivedIds.length > 0 ? `: ${derivedIds.join(", ")}` : ""}); ` +
+scripts/m2-exit-test.sh:949:  `${absentIds.size} asserted absent${absentIds.size > 0 ? `: ${[...absentIds].join(", ")}` : ""}; ` +
+scripts/m2-exit-test.sh:1012:  const i = process.argv.indexOf(name);
+scripts/m2-exit-test.sh:1192:if (failures.length > 0) {
+scripts/m2-exit-test.sh:1312:  # only.includes(id)), so a comma-joined value is one unknown id and errors.
+scripts/m2-exit-test.sh:1374:const i = process.argv.indexOf("--result");
+test/m2-exit-test.test.ts:452:  const ALLOWED_NAMES = new Set(["TIPHYS_IMPLEMENTER_TOKEN"]);
+test/m2-exit-test.test.ts:459:          ALLOWED_NAMES.has(name),
+test/m2-exit-test.test.ts:522:      declaredKeys([l], 2, "jobs").has(name),
+test/m2-exit-test.test.ts:526:  for (let i = start + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:531:    if ((/^ */.exec(line)?.[0] ?? "").length <= 2) {
+test/m2-exit-test.test.ts:547:        l.toLowerCase().includes(nameFragment.toLowerCase()),
+test/m2-exit-test.test.ts:562:  for (let i = start + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:587:  assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
+test/m2-exit-test.test.ts:611:      !keys.has(key),
+test/m2-exit-test.test.ts:721:  for (let i = onAt + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:733:    triggers.has("pull_request"),
+test/m2-exit-test.test.ts:776:  for (let i = stepAt + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:805:    keys.has("ref"),
+test/m2-exit-test.test.ts:1180:      derived.absent.includes(NEW_GATE),
+test/m2-exit-test.test.ts:1196:        !derived.absent.includes(id),
+test/m2-exit-test.test.ts:1307:      const runsUnlisted = !table.absent.includes(UNLISTED);
+test/m2-exit-test.test.ts:1508:          findings.length > 0,
+test/m2-exit-test.test.ts:1512:        const foreign = findings.filter((line) => !line.includes(probe.reason));
+test/m2-exit-test.test.ts:1776:    for (let i = openIndex; i < text.length; i += 1) {
+test/m2-exit-test.test.ts:1832:  const openIndex = source.indexOf(ANCHOR) + ANCHOR.length - 1;
+test/m2-exit-test.test.ts:1915:    for (let i = 0; i < text.length; i += 1) {
+test/m2-exit-test.test.ts:2008:        index += ahead.indexOf("\n") + 1;
+test/m2-exit-test.test.ts:2012:        index += ahead.indexOf("*/") + 2;
+test/m2-exit-test.test.ts:2140:      !controlOut.includes(INJECTED),
+test/m2-exit-test.test.ts:2145:      controlOut.includes(GATE_A) && controlOut.includes(GATE_B),
+test/m2-exit-test.test.ts:2150:    const AFTER = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+test/m2-exit-test.test.ts:2239:          !output.includes(`[${INJECTED}]`),
+test/m2-exit-test.test.ts:2265:  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+test/m2-exit-test.test.ts:2266:  // || expectedIds.some((id) => !legContributed.has(id))`. A write substituting
+test/m2-exit-test.test.ts:2331:    const attributed = (output: string): boolean => output.includes(`[${GATE_B}]`);
+test/m2-exit-test.test.ts:2353:    const AFTER_DERIVATION = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+test/m2-exit-test.test.ts:2359:      "return { next: () => (i < self.length - 1 ? { value: self[i++], done: false } : " +
+test/m2-exit-test.test.ts:2363:      "return { next: () => (i < self.length ? { value: (i === self.length - 1 ? self[0] : self[i]), " +
+test/m2-exit-test.test.ts:2552:          !alternates.includes("red") && !alternates.includes("error"),
+test/m2-exit-test.test.ts:2556:        if (!alternates.includes("not-applicable")) {
+
+### ROW COUNT
+scripts/m2-exit-test.sh:32
+test/m2-exit-test.test.ts:35
+```
+
+**Every row walked, with a verdict.** The predicate that separates a defect from
+a correct use is: does this site decide an EQUALITY between two collections in
+which multiplicity carries meaning? A membership test, an emptiness test, a loop
+bound and a string search are not equalities and cannot have this defect.
+
+scripts/m2-exit-test.sh, grouped because the groups are exact and a per-line
+table of thirty-two rows saying the same thing four times would obscure rather
+than show:
+
+| rows | what they are | verdict |
+|---|---|---|
+| :239, :243 | `--only` set, built once and used only through `.has` | MEMBERSHIP, not an equality. Duplicates in `--only` carry no meaning. Correct. |
+| :350, :445, :1012, :1374 | `args.length` loop bound; `process.argv.indexOf` locating a flag | Neither is an equality over a collection. Correct for this mechanism. See FR5.4 for what `indexOf` on argv does hide, which is a different mechanism. |
+| :531 | `absentIds` built as a Set | MEMBERSHIP only, at :562 and :614. Correct. |
+| :546 | `contribution()`, a deliberately deduplicated count for the REPORT line | Not an equality; it reports and asserts nothing. Round four made all three legs use it for exactly this reason. Correct. |
+| :562 | `out.includes(id)` inside the derivation | The DEDUPLICATOR itself, a membership test doing membership work. Correct. |
+| :603, :606 | `sameSequence`'s own `.length` compare and index loop | THE FIX. A length compare followed by a positional walk IS the exact equality; it is not a stand-in for one. Correct. |
+| :614, :615 | `legExpected`'s two filters | Filters, not equalities. `.indexOf(id) === at` is the first-occurrence test, and it is what makes the reference sequence deterministic. Correct. |
+| :636 | `explicitById.has(id)` | Map membership. Correct. |
+| :664, :669, :682, :843, :848, :852, :913, :1192 | `length === 0` and `length > 0` | EMPTINESS tests. A collection is empty or it is not, whatever its multiplicities. Correct. |
+| :730 | `allow.includes(row.status)` | A scalar in a list of alternates. Correct. |
+| :788, :819 | `structuralExpected` Set and its `.has` | Membership. Correct. |
+| :887 | `rowById.has(id)` | Membership. Correct. |
+| :921 | the indexed findings loop | Added by this round; an index walk, not an equality. Correct. |
+| :948, :949 | report line: `derivedIds.length`, `absentIds.size` | REPORTING, not assertion. Walked in FR5.4 because `absentIds.size` is the closest thing to the mechanism in the file. |
+| :1312 | a COMMENT | Not code. |
+
+test/m2-exit-test.test.ts, same treatment:
+
+| rows | what they are | verdict |
+|---|---|---|
+| :452, :459, :522, :611, :733, :805 | Sets and Maps used through `.has` | Membership. Correct. |
+| :526, :531, :562, :587, :721, :776, :1508, :1776, :1915 | `lines.length` loop bounds and emptiness tests | Not equalities. Correct. |
+| :547, :1180, :1196, :1307, :1512, :2140, :2145, :2239, :2331, :2552, :2556 | `.includes` on a string or on a list of alternates | Substring and membership. Correct. |
+| :1832, :2008, :2012 | `indexOf` doing string arithmetic | Not a collection equality. Correct. |
+| :2150, :2353, :2359, :2363 | string LITERALS that happen to contain `.has(` or `.length` | Not code paths at all; they are injection anchors and iterator bodies. Correct. |
+| :2265, :2266 | a COMMENT quoting the defect this round removes | Not code. |
+
+**The one comparison in the two files that decides an equality over a collection
+where multiplicity carries meaning is the one this round fixed.** Its sibling,
+the consumption check at scripts/m2-exit-test.sh:773, is new and uses the same
+positional comparator.
+
+Two nearby sites deserve naming rather than a table row, because a reader could
+reasonably expect them to be defects and they are not:
+
+- scripts/m2-exit-test.sh:493 builds `rowById` as a `Map` keyed by gate id, which
+  collapses duplicate rows. That WOULD be the mechanism, and the program already
+  handles it: scripts/m2-exit-test.sh:725 counts `rows.filter((r) => r.id ===
+  spec.id).length` and requires exactly one. Multiplicity is checked where it
+  matters, by a count over the raw rows rather than by the Map. This is the
+  correct pattern and it was already there.
+- test/m2-exit-test.test.ts:1852 and test/m2-exit-test.test.ts:2036 both use
+  `assert.deepEqual` over ARRAYS. `deepEqual` on arrays is positional, so it is
+  multiplicity- and order-sensitive already. Neither is a set comparison, and
+  neither needed changing. This matters because the obvious way to have written
+  the leg pin would have been `new Set(legs)`, and it was not written that way.
+  One loose word survives next to the correct code: the comment at
+  test/m2-exit-test.test.ts:1739 calls that assertion "a set equality over
+  identifier names" when the code sorts an array and deepEquals it, which is a
+  sequence equality and is STRONGER than what the prose promises. I am recording
+  the mismatch rather than editing the comment, because the code is right and the
+  next reader of this mechanism should know the word "set" appears there and does
+  not mean a `Set`.
+
+### FR5.4 What the derivation did NOT cover
+
+**Read this section first.** Round four's equivalent contained a false absence,
+which is DV4-3, and a false statement here is worth more than a missing one
+because it is where a reviewer looks.
+
+1. **Two files.** Only `scripts/m2-exit-test.sh` and
+   `test/m2-exit-test.test.ts`, because those are the files this branch changes
+   and the scope I was given. Every other file in the repository is uncovered by
+   this derivation. One uncovered site is KNOWN and is named in FR5.6 rather than
+   left to be found.
+2. **A textual scan, not a parser.** The pattern is a list of shapes. A
+   multiplicity-discarding comparison written in a shape the pattern does not
+   name would not appear. Concretely, and I looked for each of these by eye
+   afterwards, and the three searches with their COMPLETE output are:
+
+   ```
+   $ grep -n 'Object.keys' scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   scripts/m2-exit-test.sh:870:for (const key of Object.keys(recomputed)) {
+
+   $ grep -n 'JSON.stringify([A-Za-z_$][A-Za-z0-9_$.]*)\s*[=!]==' \
+       scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   (no hits)
+
+   $ grep -n '\.size\b' scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   scripts/m2-exit-test.sh:546:const contribution = (leg) => new Set(leg.filter(usableId)).size;
+   scripts/m2-exit-test.sh:586://        compared `expectedIds.length` against a Set's `.size` and then asked
+   scripts/m2-exit-test.sh:594://        mechanism generalises past this file: a Set, a `.size`, or a length
+   scripts/m2-exit-test.sh:949:  `${absentIds.size} asserted absent${absentIds.size > 0 ? `: ${[...absentIds].join(", ")}` : ""}; ` +
+   test/m2-exit-test.test.ts:2265:  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+   ```
+
+   The single `Object.keys` is a loop over a recomputed-counts object and is not
+   a comparison of two collections. There is no `JSON.stringify` equality in
+   either file, and that shape is multiplicity-SENSITIVE anyway. The only `.size`
+   in a non-comment position other than `contribution()` is `absentIds.size` at
+   scripts/m2-exit-test.sh:949, which is item 3 below. What I am NOT claiming is
+   that these three shapes exhaust the ways of writing the mechanism; they are
+   the three I thought of, and I am publishing what they returned rather than a
+   verdict on what they mean.
+3. **`absentIds.size` at scripts/m2-exit-test.sh:949 is the mechanism, and I left
+   it.** The success line reports `${absentIds.size} asserted absent` while the
+   loop that does the asserting, scripts/m2-exit-test.sh:886, iterates the RAW
+   `expect.absent ?? []` array. If the absent list carried a duplicate the two
+   would disagree. I did not change it, and the reason is a judgment a reviewer
+   may overturn: asserting the same id absent twice is asserting it absent once,
+   so the deduplicated number is the honest report of what was asserted, and
+   changing it to the raw length would make the line claim MORE than was done,
+   which is the shape round four removed from the rows leg. What I am NOT
+   claiming is that a duplicate in the absent list is harmless generally; I did
+   not look for what else would be affected by one.
+4. **`process.argv.indexOf(name)` at scripts/m2-exit-test.sh:445 and :1012 and
+   :1374 hides a different defect and I did not fix it.** A repeated flag
+   (`--summary a --summary b`) silently takes the first. That is not this
+   mechanism, it is a different one, and it is out of the round's scope. I am
+   recording it because the derivation put it in front of me.
+5. **The shell half of `scripts/m2-exit-test.sh` was scanned but is thinly
+   covered.** The pattern includes `sort -u`, `uniq` and `wc -l`, which are the
+   shell spellings of the mechanism, and none of the three occurs in a comparison
+   position. The only `wc` in the file is scripts/m2-exit-test.sh:1251, in a
+   diagnostic string. But shell has more ways to discard multiplicity than three
+   commands, and I did not enumerate them.
+6. **Run time versus source.** The derivation reads SOURCE. A multiplicity-blind
+   comparison arriving at run time, from a value read out of a JSON fixture for
+   instance, is not visible to it. The run-time half is what the new test in
+   test/m2-exit-test.test.ts:2260 covers, and it covers ten members at two
+   injection sites, not the class.
+
+### FR5.5 The red witness
+
+The dangerous state is a bundle whose manifest declares two gates and which
+carries a record for ONE. The second gate is a declared gate that did not run,
+and the shipped program REJECTS such a bundle, naming it. Every member below
+makes the program ACCEPT it. So the control's direction is reject-to-accept, and
+"exit 0" here means "certified a bundle in which a manifest-declared gate
+produced no record", which is this branch's whole subject.
+
+Exit code alone is not sufficient, and it is worse here than usual: the shipped
+program ALSO exits nonzero on this fixture, for the honest reason. So every row
+carries an ENTERED column, derived from whether the output contains the
+attributed form `[<gate-id>]`, which is how a finding about a gate is printed. A
+bare id is not attribution; it appears in the success line and in stack traces.
+
+**Ten members against the pre-fix program at 392f97f.** All ten reach the success
+line, all ten never assert on the missing gate. The control rejects it, so the
+fixture is discriminating.
+
+```
+FIXTURE=gap  CONTROL exit=1  entered-B=true
+    - [fixture-control-gate-b] gates.manifest.json declares this gate and the bundle carries NO record for it, ...
+
+v1-pop-then-push-first      exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v2-index-substitute         exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v3-splice-substitute        exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v4-fill                     exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n5-copywithin               exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n6-unshift-then-pop         exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n7-object-assign            exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n8-truncate-then-regrow     exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+iter-truncate-last          exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+iter-substitute-last        exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+```
+
+The first four are the members the delta verification constructed. **The next
+four are mine and the verifier did not construct them**, which is the point:
+`copyWithin`, an `unshift` followed by a `pop`, an `Object.assign` that names no
+array method at all, and a `length` truncation followed by a regrow. The fix has
+to be right for the mechanism, not for the reported list, and these four say
+whether it is.
+
+**The same ten against the fixed program.** All ten refused, each by the check
+intended for it.
+
+```
+FIXTURE=gap  CONTROL exit=1  entered-B=true
+v1-pop-then-push-first      exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v2-index-substitute         exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v3-splice-substitute        exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v4-fill                     exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n5-copywithin               exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n6-unshift-then-pop         exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n7-object-assign            exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n8-truncate-then-regrow     exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+iter-truncate-last          exit=1  OKline=false  entered-B=false  caught-by=coverage-check
+iter-substitute-last        exit=1  OKline=false  entered-B=false  caught-by=coverage-check
+```
+
+**ATTRIBUTION, because a mutation being caught does not prove my check caught
+it.** Two control programs, each defanging exactly one of the two new checks and
+nothing else:
+
+```
+ATTR-A  the sequence check reverted to a length-plus-membership form,
+        the coverage check left in place:
+  v1..n8   all eight   exit=0  OKline=true   caught-by=(none: reached OK)
+
+ATTR-B  the coverage check defanged, the sequence check left in place:
+  iter-truncate-last     exit=0  OKline=true  caught-by=(none: reached OK)
+  iter-substitute-last   exit=0  OKline=true  caught-by=(none: reached OK)
+```
+
+Each check is necessary for its family and neither family is being caught by
+something else in the program.
+
+**An incidental catch, found while building the witness and reported because it
+is exactly the trap I was warned about.** My first attempt at a test-level red
+witness reverted only the COMPARATOR, which is shared by both checks. The
+derivation members then escaped the leg check as intended, and were caught by the
+CONSUMPTION check instead, because a set-blind comparator applied to `[A, A]`
+versus `[A, A]` compares length two against set size one and fails. So the run
+exited nonzero and a careless reading would have called the leg check load-bearing
+when it had just been proven not to fire. The captured assertion message says so
+in its own words:
+
+```
+AssertionError: closure-pop-then-push-first was refused, but not by the derivation
+check that is supposed to catch it. ...
+  - this run asserted on a SEQUENCE that is not the derived expected set. ...
+    asserted=["fixture-recorded-gate","fixture-recorded-gate"]
+    derived=["fixture-recorded-gate","fixture-recorded-gate"]
+```
+
+I then built the isolated control (comparator reverted AND the consumption
+check's body neutered, both pinned check strings left intact) and all eight
+derivation members reach OK. That is the fully isolated dangerous state for the
+leg check and it is the run quoted as ATTR-A above.
+
+**The test itself, red and green.**
+
+- Against the pre-fix harness at 392f97f the new test is RED, but it reddens on
+  its structural control ("the check ... occurs 0 times in the assertion
+  program"), which is red against the ABSENT FEATURE. That is not good enough on
+  its own and I did not stop there.
+- Against a harness whose comparator alone is reverted, the test is RED on the
+  members, with the message quoted above.
+- Against the shipped harness it is GREEN, in 883ms.
+- The test carries the isolation permanently: each family runs a DEFANGED
+  CONTROL inside the test, asserting that with its check neutered the member
+  REACHES the success line. A future edit that makes one of these checks
+  non-load-bearing reddens the suite rather than passing quietly.
+
+**Two structurally different members per family, and more.** The derivation
+family has eight, four of which no earlier instrument or reviewer named. The
+consumption family has two: a TRUNCATING iterator and a SUBSTITUTING one. The
+second is deliberately the multiplicity-preserving shape, which is the same
+mechanism one level up from the derivation: the set is correct, sealed, and
+simply consumed wrong.
+
+### FR5.6 Disposition of DV4-2, DV4-3 and DV4-4
+
+**DV4-2 (LOW), FIXED, and a second member found.** The verifier reported one
+prototype-level iterator override and declined to call it a class. It is one: I
+built a second, structurally different member (substituting rather than
+truncating) and both defeat the pre-fix program. The freeze cannot help against
+either, because the override is on the shared prototype and not on the frozen
+instance.
+
+The fix is not an indexed loop. An indexed loop would make the shipped `for ...
+of` immune and produce no witness, and it would close the spelling rather than
+the mechanism. scripts/m2-exit-test.sh:710 records every id the loop actually
+handled and scripts/m2-exit-test.sh:773 compares that recording against the
+derived set positionally. The check does not care HOW the consumption was
+curtailed: an overridden iterator, a substituting one, an injected `break` or a
+`continue` before the first statement all present the same way.
+
+One measured detail that changed a second line. Under the TRUNCATING override the
+program exited 1 correctly and printed `FAIL with 1 finding(s):` followed by
+NOTHING, because the findings-printing loop is itself iterator-mediated and a
+one-element array truncates to zero. The run that caught the override could not
+say what it had caught. scripts/m2-exit-test.sh:921 is now an index walk, so the
+count and the listing come from the same reads. I am naming this as one line
+changed for a measured reason rather than a general conversion: the other
+`for ... of` loops in the program (over `rows`, over `expect.absent`, over
+`Object.keys(recomputed)`) are NOT converted, and an override would still remove
+those checks. That residue is real and I am stating it rather than leaving it.
+What the coverage check does cover is the one place where a curtailed consumption
+becomes a FALSE GREEN rather than a lost check.
+
+**DV4-3 (LOW), CORRECTED, and the output pasted.** The round-four not-covered
+section said it read the unfiltered `$(` output "and found no such case". That is
+false. The correction is written in place at the original sentence rather than
+edited over it. Here is what I looked at, with the command:
+
+```
+$ grep -n '\$(' scripts/m2-exit-test.sh \
+    | grep -E '\$\((date|printf|cd |git |basename|dirname|node -e|wc |sed |grep |cat |mktemp|pwd|jq)' \
+    | grep -vE '^[0-9]+: *(local [a-z_]+; )?[a-z_]+=\$\('
+397:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+418:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+970:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1224:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1251:    "$(wc -c <"${TIPHYS}" | tr -d ' ') bytes at ${TIPHYS}"
+1279:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1338:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1467:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1468:    >"${evidence}/records/$(printf '%03d' $((record_seq + 1))).json"
+--- count ---
+9
+```
+
+Nine sites, each invoking a filtered name in ARGUMENT position, each discarding
+the exit status of what it ran. A tenth is arguable: scripts/m2-exit-test.sh:84's
+`script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)` has an inner
+substitution in argument position inside an outer assignment, and my
+argument-position filter excludes it because the outer form is an assignment.
+DV4-3 reports eight; I measure nine by the command above, ten if the nested one
+counts. I am reporting my measurement and the command rather than reconciling to
+the verifier's number.
+
+What these nine are is a bounded thing and I want to be precise rather than
+alarming: they are all in evidence-RECORDING paths, so a failing `date` or `wc`
+writes an empty field into a record instead of changing a verdict. That is an
+assessment of consequence. It is not a reason the round-four sentence was true,
+and it does not make the sites absent. I did not fix them: they are the DV3-F2
+mechanism, not this round's, and touching seven `json_object` call sites is not a
+change to make inside a round whose subject is one comparison.
+
+**DV4-4 (LOW, observation), RECORDED, NOT CHANGED.** The two derivations share
+their legs (`manifestLeg`, `rowsLeg`, `tableLeg`) and their filters (`usableId`,
+`absentIds.has`), so a defect in a filter is agreed by both computations and the
+check stays silent. That is true of my version as it was of round four's, and
+making the two derivations share nothing would mean writing the filters twice,
+which trades one silent-agreement risk for a drift risk between two copies of the
+same predicate. I am not making that trade inside this round.
+
+Two things bound it, and neither is a claim that it cannot bite:
+
+- The success line names the ids asserted and the ids asserted absent, so a
+  filter that swallowed an id leaves the id missing from a line a reader can
+  compare against the manifest.
+- test/m2-exit-test.test.ts:1731 pins the union's LEGS by source text, which is
+  the half no run-time check can see. It does not pin the filters.
+
+The uncovered part, stated plainly: a change to `usableId` or to `absentIds` that
+removes an id from BOTH the derivation and the reference sequence produces two
+computations that agree and a program that asserts on fewer gates than the
+manifest declares. Nothing in this round detects that. It is the same residue
+round four recorded and I am not claiming to have closed it.
+
+### FR5.7 The suite, on every arm I ran
+
+Toolchain: node v26.6.0 from the scratch prefix, npm 11.18.0, verified with
+`node --version` in the shell that ran each command. Build state: `dist/` built
+(`npm run build` exit 0, `git status` clean afterwards apart from the tracked
+edits of this round). Head: the round-five commits on branch `fr5-round5` off
+392f97f.
+
+| invocation | tests | pass | fail | SKIPPED | exit |
+|---|---|---|---|---|---|
+| `npm ci` | n/a | n/a | n/a | n/a | 0, no EBADENGINE line |
+| `npm run build` | n/a | n/a | n/a | n/a | 0, `git status` clean |
+| `npm test` | 599 | 599 | 0 | **0** | 0 |
+| bare `node --test` from the repository root | 601 | 601 | 0 | **0** | 0 |
+
+Round four measured 598 for `npm test` and 600 for bare `node --test` at 392f97f.
+This round adds exactly one test, so 599 and 601 are the expected values and are
+what was measured. The two-test gap between the invocations is the tracked
+`sandbox/test/greet.test.js` fixture that `package.json`'s `test` script pattern
+excludes, per CLAUDE.md:677.
+
+The `# skipped` lines in the run output are vendored JSON-Schema-suite subtests
+declining fixtures outside the declared vocabulary. They are counted by neither
+the `skipped` summary line nor the `tests` line, and they are present identically
+on both arms and at the base head. They are not a skip in the sense CLAUDE.md:642
+means.
+
+**test/watcher.test.ts flake: NOT OBSERVED in this round.** Both full suite runs
+show `fail 0` and `skipped 0`. Load averages, from `uptime` captured either side
+of each run: the `npm test` run started at 4.41 and ended at 3.68; the bare
+`node --test` run started at 1.15 and ended at **9.94**, which is the highest
+load either run saw and it is the one that would have been most likely to trip
+the flake. It did not trip on either. I am reporting the loads because the brief
+asked for them and because another agent is looping that test on this machine.
+I have no flake instance to report, and "I did not see it" is not the same
+sentence as "it does not happen": the brief puts it at roughly one run in five
+and I ran the full suite twice.
+
+### FR5.8 The claim grep
 
