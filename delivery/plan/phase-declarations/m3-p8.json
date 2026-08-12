@@ -14,6 +14,7 @@
     "src/commands/tuition.ts",
     "test/tuition.test.ts",
     "test/mechanism-index.test.ts",
+    "test/fixtures/",
     "tuition/README.md",
     "src/commands/doctor.ts",
     "test/doctor.test.ts",
