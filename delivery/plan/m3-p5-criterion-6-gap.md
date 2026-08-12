@@ -83,3 +83,43 @@ the whole reason this is recorded rather than left to the dispatch turn.
 - Whether `R-015a`'s wording obliges exactly this schema shape, or whether the
   plan intends some other mechanism. The criterion names "the report contract"
   and Kind A `if`/`then`, which is what the reading above rests on.
+
+## ADDENDUM, same day: the write-direction sweep WAS run, and it FAILED to find this
+
+The section above says the write-direction sweep "has not been run" and is worth
+doing. It was then run, over the phase sections of
+delivery/plan/kernel-plan-m3.md:1 at `origin/main`, looking for criteria lines
+that carry a write verb (add, register, append, declare, extend, made mechanical,
+through the) AND name a path some other phase owns.
+
+**It reported `none` for M3-P5.** That is a FALSE CLEAN, and the counter-example
+is the very gap this document exists to record.
+
+The cause is exact and worth stating, because it generalises. Criterion 6 reads:
+
+> R-015a made mechanical through the report contract rather than left as brief
+> prose
+
+**It never names `schemas/report.schema.json`.** It says "the report contract",
+which is the artifact's NAME IN PROSE, not its path. A substring search over
+paths cannot see it, and no amount of widening the verb list would help.
+
+So the honest conclusion is the opposite of a clean bill:
+
+- **Path-matching sweeps cannot establish the absence of a cross-phase
+  dependency.** They can only find the ones written as paths. This one was
+  written as a noun phrase, and that is normal prose, not an error in the plan.
+- The two M3-P10 hits the sweep DID return are, on reading, a rejected
+  alternative ("hand-write per-type checks") and a requirements-table row, so
+  the sweep's positives were both uninteresting while its one important case was
+  invisible. That is the worst possible combination for a screen and is the
+  reason it is recorded rather than relied on.
+- **The rule stands and cannot be mechanised away**: before clearing a phase,
+  READ its acceptance criteria and ask which artifacts each one must change,
+  resolving prose names to paths by hand. delivery/plan/m3-dependency-screen.md:1
+  already says a screen over-reports; this addendum says it also UNDER-reports,
+  and the under-reporting is the dangerous half.
+
+Recorded against myself: I wrote in the screen that the false-clean direction
+was "the one worth worrying about", then ran a sweep in a new direction and got
+a false clean on the known case within the hour.
