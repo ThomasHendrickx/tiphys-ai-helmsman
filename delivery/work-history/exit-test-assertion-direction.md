@@ -1398,8 +1398,9 @@ one extra gate, exactly as `harnessCopy` (test/m2-exit-test.test.ts:1147) builds
 it. Manifest gate count in the lab: 12 (11 real + `fixture-gate-with-no-table-row`).
 
 Defang variants, each produced by an anchored single replacement that ABORTS
-unless the anchor occurs EXACTLY once, so a silent no-op defang is impossible,
-and each `node --check`ed:
+unless the anchor occurs EXACTLY once, and each `node --check`ed. The abort is
+not an assertion about the tool, it is exercised in FR1.11 in both directions
+(zero matches and many), each exiting 2 and writing no file:
 
 | variant | anchor replaced | sha256 |
 |---|---|---|
@@ -1756,8 +1757,10 @@ authority there.
 
 The reviewer's related MINOR is also fixed: section 7 said "Two behaviours
 registered" and listed four, and section 8 said "APPENDS two entries". Both now
-say four. The list and the registry were always correct; only the prose counts
-were stale from incremental writing.
+say four. The prose counts were stale from incremental writing: the list held
+TWO ids when the sentence was written (`git show 5563b42:<work history> | grep -c
+"^- .m2-exit-"` gives 2) and four at HEAD. All four resolve BY NAME at HEAD,
+checked mechanically rather than by eye, in FR1.11.
 
 ## FR1.8 The complete suite sentence
 
@@ -1839,7 +1842,7 @@ defect where the claim is "rejected BY check C" rather than "rejected":
 | block | claim it makes | uniqueness needed | how it is established | verdict |
 |---|---|---|---|---|
 | 310 (counterfactual 1) | rejected, and the rejection names the gate | no | `match(/red-witness/)` | SOUND, asserts exactly what it claims |
-| 310 (counterfactual 2) | rejected (an error row never passes as diff-scoped) | no | exit code only | SOUND, it is an outcome claim, not a mechanism claim |
+| 310 (counterfactual 2) | rejected (the test asserts an error row is rejected rather than accepted as diff-scoped) | no | exit code only | SOUND, it is an outcome claim, not a mechanism claim |
 | 865 | rejected, and the rejection names `[scope]` | no | `match(/\[scope\]/)` | SOUND |
 | 970 | accepted (an acceptance arm) | n/a | exit 0 | SOUND |
 | 1212 | rejected BY the derived expected set | YES | was `doesNotMatch(/reported RED/)` | THE DEFECT, fixed here |
@@ -1914,3 +1917,142 @@ Read this first (CLAUDE.md:326).
    No local run exercises that workflow. Its correctness rests on the measurement
    in FR1.7 plus the file being a comment; CI is the authority that the workflow
    still parses.
+
+## FR1.11 The claim grep, and what settles each hit
+
+Run in BOTH forms over the fix-round section of this document (from the
+`# FIX ROUND 1` header to the end), because a claim split across a line wrap is
+invisible to the line-based form.
+
+Line-based:
+
+```
+$ sed -n '<fix-round section>' delivery/work-history/exit-test-assertion-direction.md \
+    | grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
+1401: unless the anchor occurs EXACTLY once, so a silent no-op defang is impossible,
+1663: derivation back to the hand-written table would leave this probe red anyway:   - 1 gate(s)
+1673: U2 is the important one: the guard added this round catches, by exit code and by
+1718: NOT in `gates.manifest.json`, so the runner never runs it and it produces no
+1759: say four. The list and the registry were always correct; only the prose counts
+1842: | 310 (counterfactual 2) | rejected (an error row never passes as diff-scoped) | no | exit code only | SOUND, it is an outcome claim, not a mechanism claim |
+```
+
+Wrap-insensitive (the same pattern over the section with newlines collapsed to
+spaces, reporting only matches that SPAN a wrap and so could not appear above):
+
+```
+(wrap-spanning hits above; line-based hits reported separately)
+```
+
+Zero wrap-spanning hits. Disposition of the six line-based hits:
+
+**1401, "impossible".** RESTATED, and then measured rather than asserted. The
+anchored-replacement tool is exercised in both failure directions:
+
+```
+$ node mkvariant.mjs harness-evidence/m2-assert.mjs /tmp/never.mjs 'this anchor does not occur' 'x'
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur
+EXIT=2
+$ ls /tmp/never.mjs
+ls: cannot access '/tmp/never.mjs': No such file or directory
+
+$ node mkvariant.mjs harness-evidence/m2-assert.mjs /tmp/never2.mjs 'const ' 'const '
+ANCHOR NOT UNIQUE (53 occurrences), aborting: const
+EXIT=2
+```
+
+Zero matches and 53 matches both exit 2 and write no output file, so a defang that
+matched nothing cannot be mistaken for one that matched. That is the property the
+sentence needed and it is now the sentence.
+
+**1663, "anyway".** Not my prose. It is inside CAPTURED OUTPUT, the assertion
+message the new uniqueness check prints, quoted verbatim from the U1 run. Left
+exactly as the program emitted it.
+
+**1673, "catches".** Settled by the capture immediately above it: U2's
+`EXIT=1` and the assertion text naming `2 check(s) OTHER than the derived expected
+set`, with the two section-8 findings quoted. U2 is the old main-arm member 4
+rebuilt inside the new probe, so "the exact defect that reached a pull request" is
+the literal construction, not an analogy.
+
+**1718, "never runs it".** Settled by measurement:
+
+```
+$ grep -c 'agent-rules-drift' gates.manifest.json
+0
+$ grep -n 'agent-rules-drift' gate-registry.yaml
+16:#   does not run in CI, and `agent-rules-drift` is exactly that case: it runs
+186:  - id: agent-rules-drift
+```
+
+The gate is declared in the registry and absent from the manifest, and the harness
+passes `--manifest gates.manifest.json` on both arms (`grep -c -- '--registry'
+scripts/m2-exit-test.sh` is 0, re-checked at HEAD), so the runner is never given
+it to run. Scoped honestly: this is a statement about the harness as invoked
+today, not a proof that no other path could run it.
+
+**1759, "always correct".** RESTATED, because it was a claim about history I had
+not checked. Checked now:
+
+```
+$ git show 5563b42:delivery/work-history/exit-test-assertion-direction.md | grep -c '^- `m2-exit-'
+2
+```
+
+The list held two ids when the "Two behaviours registered" sentence was written,
+so the sentence was true then and stale later. All four resolve BY NAME at HEAD:
+
+```
+RESOLVES m2-exit-main-absent-list-derived-from-manifest
+RESOLVES m2-exit-red-gate-rejected-on-both-bundles
+RESOLVES m2-exit-expect-row-admits-only-reachable-statuses
+RESOLVES m2-exit-zero-red-reads-rows-not-counts
+total behaviors: 598 (reported for context only; no test asserts this number)
+```
+
+`m2-exit-red-gate-rejected-on-both-bundles` keeps its id and its row is UPDATED,
+not appended: this round renames the test it points at, and the id was introduced
+on this unmerged branch, so the registry's append-only rule against `main` is not
+touched. No count is pinned anywhere.
+
+**1842, "never passes".** RESTATED as what the test asserts rather than as a
+property of the program.
+
+## FR1.12 Files changed, and the position on scope
+
+```
+$ git diff --name-only origin/main...HEAD
+.github/workflows/gates.yml
+delivery/work-history/exit-test-assertion-direction.md
+scripts/m2-exit-test.sh
+test/behaviors.json
+test/gate-registry.test.ts
+test/m2-exit-test.test.ts
+```
+
+`scripts/m2-exit-test.sh` appears because of the previous round; this round did
+not touch it, and `git diff --stat 21509d1..HEAD -- scripts/m2-exit-test.sh` is
+EMPTY. **No production code changed in this round.** The defect was in the
+witness, not in the thing witnessed.
+
+`.github/workflows/gates.yml` is NEW to the changed set at this round, added by
+CR-H-1's fix, and it is comment text only. Nothing in the diff is reported `Bin`
+by `git diff --stat`, so every changed file has a reviewable diff.
+
+`node scripts/check-authored-bytes.mjs` exits 0 with the tree equal to the index
+(staged first, since it exits 2 without checking otherwise).
+
+## FR1.13 Open, and explicitly NOT closed by me
+
+1. **The union's leg count has no guard** (FR1.10 item 5). Two legs today, one
+   probe each. A third spread into that union would be unwitnessed and nothing
+   would say so. I could not find a form of guard that is not a pinned count over
+   a source line, which CLAUDE.md:201 warns against, so I am raising it rather
+   than improvising one.
+2. **Promoting `agent-rules-drift` into `gates.manifest.json`** is now unblocked
+   on the harness side (FR1.7), and is NOT done here. It changes what CI runs and
+   it is the open half of R-094, which is tracked with the orchestrator.
+3. **The two salvaged clean-room reviews carry NO verdict.** They died mid-walk.
+   This round answers the one fully evidenced finding in the first and the three
+   LOW findings in the second; it is not a substitute for a completed review of
+   this head, and neither salvaged document should be read as one.
