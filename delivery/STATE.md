@@ -5,8 +5,72 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12, and the bullets below this one are OLDER. Where they
-  disagree with this one, this one is later.
+- as of: 2026-08-12 later in the day, and the bullets below this one are OLDER.
+  Where they disagree with this one, this one is later.
+- **`main` IS `bb8f656`. M3 IS STILL 5/10: M3-P6 IS REVIEWED AND ARBITRATED BUT
+  NOT MERGED, AND IT IS BLOCKED ON ONE THING.** The blocker in a line: DR-0012
+  condition 2 requires the medium finding resolved, and an orchestrator-side fix
+  round is in flight to resolve it.
+  **Both clean-room reviews are done, on different model families, of the same
+  head `16bab6f`.** Contract A (criteria walk) APPROVE with three low; contract B
+  (the self-comparing-check audit) found the phase's own named hazard GENUINELY
+  ABSENT, with one medium and two low. Neither disagrees with the other on any
+  mechanical fact. Both reports and the arbitration are in PR #107.
+  **The pair's most valuable output is a CONVERGENCE, not a dispute.** Contract
+  A's finding 3 and contract B's F-B2 are the same defect reached from two
+  directions, and NEITHER CONTRACT WAS POINTED AT IT: the implementer brief
+  declares its own gate-list mode and nothing asserts it is `full`, so switching
+  it to `local-only` yields a GREEN drift check over a brief advertising 5 gates
+  instead of 15, and the vacuity guard cannot fire because `units` counts three
+  mode-independent preflight steps. That is T-007's claim about decorrelating the
+  QUESTION rather than the reviewer, and it is the strongest instance of it this
+  project has recorded. **Convergence is treated as evidence a defect is real and
+  reachable, never that its impact is larger**, so it stays low.
+  **The medium is NOT downgraded, and the reason is recorded rather than
+  assumed.** `scripts/m2-exit-test.sh`'s assertion program iterates the
+  hand-written expectation and keys into the bundle's rows, so a row the table
+  does not name is never asserted on: 12 manifest gates, exactly one
+  (`brief-drift`) absent from the table, no rows-to-expectation direction and no
+  global zero-red. The reviewer proved it by running the extracted program
+  against two bundles differing only in a red row; both exited 0. The
+  orchestrator confirmed all of it independently before acting. Reclassifying a
+  reviewer's severity to ease the orchestrator's own merge is what condition 6
+  forbids.
+  **The fix's ORDER was forced by a circularity worth not re-deriving.** The
+  naive rule ("every bundle row must be named by the table") would redden
+  M3-P6's OWN pull request once it adds `brief-drift` to the manifest, and
+  M3-P6 cannot fix that because the harness is on no M3 declaration; the mirror
+  order trips the existing "no record in the bundle for a gate the table lists".
+  The row and the gate would have to land together and cannot. The design put to
+  the implementer derives the expected set FROM the manifest with an unlisted
+  gate defaulting to REQUIRED-GREEN, which leaves `main` unchanged today and
+  needs no M3-P6 edit.
+  **TWO IMPLEMENTERS ARE LIVE, CONCURRENTLY, AND THEY ARE DISJOINT**: the
+  harness fix on `claude/exit-test-harness-assertion-direction`, and M3-P6 fix
+  round 1 on the phase branch. They share only `test/behaviors.json`, which is
+  append-only and resolved as a union. Each brief forbids the other's files by
+  name. M3-P6 has had ZERO prior fix rounds, so this is its first and DR-0012's
+  bound of two is not near.
+  **M3-P7 IS NOT DISPATCHABLE and the reason is not conflict.** The pair is
+  conflict-disjoint, measured at declaration level and against M3-P6's actual
+  diff. M3-P7's own grounding names both review-side briefs, which are M3-P6
+  deliverables, and its blocked-by reads "M3-P6 merged". A conflict pre-pass is
+  a VETO, NOT A PERMIT, and the orchestrator got this wrong once today and
+  corrected it in `delivery/plan/m3-conflict-pre-pass.md` rather than quietly.
+  **Merged this session, each with its post-merge push run verified BY STEP on
+  both workflows**: `3ff2023` (PR #104, T-016) and `bb8f656` (PR #106, the
+  generated-block enumeration plus the M3-P9 and M3-P10 declaration
+  amendments). `bb8f656`'s `gates` push run was still in flight when this bullet
+  was written and is NOT claimed here.
+  **A SECOND GENERATED-FILE COUPLING WAS FOUND BEFORE IT COST ANYTHING.**
+  Exactly two files carry a `BEGIN GENERATED` block and both render from
+  `gate-registry.yaml`: `CLAUDE.md`, and, arriving with M3-P6,
+  `roles/implementer.md`. M3-P9 and M3-P10 declared the source and not the
+  second generated file; both amended on `main` before either phase pushes,
+  because the scope auditor reads declarations from the MERGE BASE. The
+  enumeration is a grep over a marker both renderers must write, which is the
+  generalisable part: search over a property the artifact CANNOT AVOID HAVING,
+  never over a list of places that seem likely.
 - **M3-P5 IS MERGED at `086b8df` (PR #96). FIVE OF TEN M3 PHASES ARE ON `main`,
   AND M3-P6 IS DISPATCHED.** Two fix rounds after the first dual review, which is
   the DR-0012 limit and not past it. Both findings were closed at the MECHANISM:

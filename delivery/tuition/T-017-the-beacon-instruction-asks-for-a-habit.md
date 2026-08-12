@@ -50,7 +50,9 @@ PER-ACTION rule bound to something the agent was already about to do:
 
 That fires at a specific, frequent, unmissable moment. The original does not.
 
-This is the shape this project has now recorded four times over: T-005 and T-006
+This is the shape this project has now recorded four times over:
+delivery/tuition/T-005-lessons-do-not-propagate-between-phases.md:1 and
+delivery/tuition/T-006-unexecuted-claims-about-the-world.md:1
 both conclude that a rule depending on memory does not survive a busy session
 and that the answer is a mechanism, and `CLAUDE.md`'s claim-grep entry says
 outright that "a grep is mechanical; a reminder is not". The beacon instruction
@@ -59,7 +61,8 @@ was left as a reminder while the rules around it were being mechanised.
 ## Why the nudge is not the fix
 
 The nudge works every time and it is still the wrong answer, for the reason
-T-016 gives: it costs ORCHESTRATOR ATTENTION, and attention is what a busy
+delivery/tuition/T-016-an-acknowledged-alarm-says-nothing-new-when-the-state-changes.md:98
+gives: it costs ORCHESTRATOR ATTENTION, and attention is what a busy
 session does not have. Three nudges today were three interruptions that happened
 to land because the watchdogs were being watched closely. On a session where
 they were not, the same three agents would have batched.
@@ -93,7 +96,8 @@ they were not, the same three agents would have batched.
   all three were dispatched by the same orchestrator with near-identical briefs,
   so the sample is not independent in the way the count suggests.
 - **It does not measure what would have been lost.** No agent died during a
-  batching window today, so the cost of the pattern is inferred from T-002 and
+  batching window today, so the cost of the pattern is inferred from
+  delivery/tuition/T-002-agent-death-mid-fix-round.md:1 and
   from the M3-P6 death rather than observed here.
 - **It says nothing about why agents batch.** No cause was established. That
   writing up feels like a closing activity is a guess, not a finding.
