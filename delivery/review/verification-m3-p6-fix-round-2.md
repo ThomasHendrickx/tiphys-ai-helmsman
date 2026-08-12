@@ -252,3 +252,46 @@ removed.
   no code mutation can reach it. Its dangerous state is a shipped brief whose
   rows disagree with the registry, which is a CONTENT state, not a code state. I
   did not construct that state, and section 6 records what I think that means.
+
+## 4. The gate's own verdict, which is the authority my probes only anticipate
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --only red-witness --evidence <scratch> --base origin/main --head HEAD
+gates: run d23342c427e8bb5fb3839533
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: every applicable gate is green
+RW_EXIT=0
+```
+
+`red-witness: green, 19 witnesses evaluated (5 own, 14 stored re-evaluated in
+191468ms); every witness red against every declared dangerous state and green at
+head`. Base `c75152b`, head `4619bf8`, `uncoveredSources: []`.
+
+The record for the witness this delta touches, read out of
+`witness-records.json` rather than summarised:
+
+```
+--- witness implementer-brief-gate-list-drift status green reasons []
+  member 0 mutation of src/roles.ts               rate {"red":2,"total":2} headGreen true
+    run exit 1 red true  failed [T1, T2] passed []       missing []
+    run exit 1 red true  failed [T1, T2] passed []       missing []
+    run exit 0 red false failed []       passed [T1, T2] missing []
+  member 1 mutation of scripts/check-brief-drift.mjs rate {"red":2,"total":2} headGreen true
+    run exit 1 red true  failed [T1, T2] passed []       missing []
+    run exit 1 red true  failed [T1, T2] passed []       missing []
+    run exit 0 red false failed []       passed [T1, T2] missing []
+```
+
+(T1 and T2 are the two full test names, quoted in section 3; the runner prints
+them in full and they match the `tests` array byte for byte, so `missing` is
+empty in every run, which is the failure mode the arithmetic would otherwise
+hide.)
+
+The THIRD run of each member is the runner's own control arm at the audited head
+with the mutation reverted, and it is green with both tests passing. So the
+gate's evidence carries a control the same way my probes do, and it agrees with
+probe 2 exactly.
+
+All nineteen witnesses green, including the four other witnesses over this
+phase's tests.
