@@ -1011,6 +1011,97 @@ m2-exit-test.sh no longer declares MAIN_ONLY_GATES", rather than silently
 deriving an empty set. Verified: 13 tests, 13 pass with the declaration present;
 the named test red without it.
 
+## 9a. THE CASE THE FIX EXISTS FOR, ON A REAL RUNNER-PRODUCED BUNDLE
+
+Every witness up to here uses a bundle I built. That is legitimate for isolating
+a mechanism and it is weaker than it could be, because a synthetic bundle is a
+bundle whose shape I chose. The orchestrator also pointed out that CI on this
+branch CANNOT exercise the case the fix exists for, since `brief-drift` is not in
+`gates.manifest.json` on `main` and no bundle here has an unlisted manifest gate
+in it. So the strongest evidence available is a real one, and it is constructible.
+
+**The stand-in is not an analogue, it is the same shape.** `agent-rules-drift` is
+a REAL script gate, declared in `gate-registry.yaml`, absent from
+`gates.manifest.json`, `required` with NO precondition, and blocked from the
+manifest by THIS VERY CIRCULARITY, in writing, at test/gate-registry.test.ts:1014.
+It is what `brief-drift` will be: a required, precondition-free script gate added
+to the manifest with no expectations row.
+
+### Arm 1: a real GREEN bundle. The default fires and correctly accepts.
+
+Manifest under test: three real manifest gates PLUS `agent-rules-drift`.
+Expectations table: the three, and NOT `agent-rules-drift`. Runner: the real one.
+
+```
+$ node bin/tiphys.ts gates run --manifest <manifest+drift> --evidence <ev-green>
+gates: declared 4 applicable 4 verdict 4 green 4 red 0 not-applicable 0 error 0 vacuous 0
+gates: every applicable gate is green
+runner exit=0
+
+the record the RUNNER wrote for the unlisted gate:
+{ "gate": "agent-rules-drift", "status": "green", "units": 17,
+  "detail": "CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 14 gate(s))" }
+
+PRE-FIX : OK. 4 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.   exit=0
+POST-FIX: OK. 4 gate record(s) match section 1.4; 4 gate(s) asserted (3 from an explicit table row, 1 under the default required-green: agent-rules-drift); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.   exit=0
+```
+
+The post-fix line names `agent-rules-drift` as asserted under the default, on a
+bundle the gate runner produced. The default is not a code path I reasoned about;
+it is one that ran.
+
+### Arm 2: the same gate genuinely RED. Pre-fix passes it, post-fix rejects it.
+
+The red is real, not injected: a scratch `git worktree` at the same HEAD, with ONE
+rendered row deleted from `CLAUDE.md`'s generated gate block, so the gate's own
+script fails on its own terms. My own tree was never modified.
+
+```
+CONTROL, undrifted scratch worktree, identical setup:
+  agent-rules-drift: green (17 rendered gate rows compared)
+  CLEAN tree gate exit=0
+DRIFTED scratch worktree:
+  agent-rules-drift: red (17 rendered gate rows compared)
+  CLAUDE.md's gate block has drifted from gate-registry.yaml: the registry has a row the file does not: | `clause-map` | ... |
+  DRIFTED tree gate exit=1
+
+$ ( cd <drifted> && node <wt>/bin/tiphys.ts gates run --manifest <manifest+drift> --evidence <ev-red> )
+gates: declared 4 applicable 4 verdict 4 green 3 red 1 not-applicable 0 error 0 vacuous 0
+gates: 1 gate(s) reported red: agent-rules-drift
+runner exit=1
+   manifest-self-check  green units=8
+   credential-scrub     green units=7
+   clause-map           green units=34
+   agent-rules-drift    red   units=17
+  counts.red = 1
+```
+
+Same bundle, same table, same manifest, the two assertion programs:
+
+```
+=== PRE-FIX assertion program ===
+m2-assert (real bundle, agent-rules-drift unlisted): OK. 4 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+PRE-FIX exit=0
+
+=== POST-FIX assertion program ===
+m2-assert (real bundle, agent-rules-drift unlisted): FAIL with 3 finding(s):
+  - [agent-rules-drift] expected status green, observed red (CLAUDE.md's gate block has drifted from gate-registry.yaml: the registry has a row the file does not: | `clause-map` | script | required | full, direct-pr | pull_request | clause-map rows checked |. Re-render with node scripts/render-agent-rules-gates.mjs --write) This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+  - [agent-rules-drift] is a REQUIRED gate but its status is red, not green ...
+  - 1 gate(s) reported RED: agent-rules-drift. No expectation in section 1.4 permits a red gate, on either bundle.
+POST-FIX exit=1
+```
+
+**A genuinely broken REAL gate, in a REAL runner-produced bundle, passed the exit
+test before this change and fails it after.** The runner's own exit code was 1
+and the assertion program returned 0, which is the defect in one line: the
+harness records the runner's exit and does not act on it (`.github/workflows/
+gates.yml:98` says so), so the assertion program was the only thing deciding, and
+it was not looking.
+
+Note the units: 17 on a red row. This is not a vacuous or skipped gate that the
+existing zero-vacuous check would have caught. It examined seventeen rows, found
+a real drift, said so, and was ignored.
+
 ## 9b. A TRUNCATING EDIT ON THIS FILE, and its blast radius
 
 Recorded as an event rather than left in a commit subject.
