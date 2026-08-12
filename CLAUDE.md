@@ -452,9 +452,26 @@ killed it three-quarters through its work.
 
 Answer these three IN WRITING in the dispatch turn, before arming anything:
 
-1. **Where does THIS agent write?** Not the last one. Read its brief: if it runs
-   gates it writes evidence outside the tree; if it clones it writes nowhere
-   until the clone lands. Enumerate the paths and watch ALL of them.
+1. **Where does THIS agent write? MEASURE IT, DO NOT PREDICT IT.** An earlier
+   version of this line said "read its brief", and that is structurally
+   unreliable: agents create working directories that no brief names, because
+   the directories did not exist when the brief was written. Measured
+   2026-08-12, BOTH watchdogs armed that afternoon watched a subset, and both
+   read a busy agent as possibly dead, one for twenty-three minutes. The better
+   the agent behaves the surer this is: a delta verifier built its own mutation
+   lab precisely so it would not touch the tree under review, which is correct
+   practice and invisible to any prediction.
+
+   ```
+   find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
+   ```
+
+   Every directory the agent has made for itself appears at the top by recency.
+   Run it BEFORE arming and AGAIN at every stale reading, because an agent
+   starting a new kind of work has just made a new place to write. Watch the
+   UNION of what appears, plus `/tmp` scratch used by gate runs, which still do
+   write evidence outside the tree. A watchdog pointed at one of an agent's
+   several paths is not weak, it is FALSE: it reports quiet at full speed.
 2. **What is the baseline before its first write?** DISPATCH TIME, never the
    inherited mtime of whatever the previous agent left, or the watchdog fires
    instantly on a healthy agent. On a RE-ARM the baseline is the newest existing

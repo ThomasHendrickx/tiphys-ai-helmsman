@@ -313,6 +313,52 @@ The mtime beacon keeps its job, which C-2 does bear on: it is what survives a
 dead agent and leaves partial work behind. Liveness and salvage-value are
 different questions and each has its own instrument.
 
+### POSTSCRIPT 5: stop PREDICTING where an agent writes, and MEASURE it
+
+Instances eight and nine, both live, both mine, both the class this file is
+named for, and this time the fix is a command rather than a resolution.
+
+CLAUDE.md's dispatch contract says to answer, in writing, "Where does THIS
+agent write? Not the last one. **Read its brief.**" That instruction asks the
+orchestrator to PREDICT the write set from the brief. Measured 2026-08-12, both
+predictions were wrong on the same afternoon:
+
+| agent | watched | actually writing to | misread as |
+|---|---|---|---|
+| delta verifier | `scratchpad/dv2` | `scratchpad/dvr2-lab`, `dvr2-ctl`, `dvr2-probe*.mjs`, `/tmp/tiphys-*` | "no report, possibly dead", 23 minutes |
+| harness fix round | `scratchpad/hfix3` | `scratchpad/hfix3-lab` | "quiet 1267s, CANNOT distinguish" |
+
+Neither lab directory is named in any brief, because **neither existed when the
+brief was written**. Both agents invented them, and inventing them was CORRECT:
+the delta verifier built a separate lab precisely so it could apply mutations
+without touching the tree under review, which is the mutate-in-place discipline
+done properly. The better the agent behaves, the more surely the predicted
+watch set is wrong.
+
+So the prediction is structurally unreliable, and no amount of care fixes it.
+The measurement takes one command:
+
+```
+find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
+```
+
+Every directory an agent has created for itself appears at the top, by
+recency, whether or not anyone anticipated it. Run it BEFORE arming, and again
+whenever a beacon looks stale, because an agent that has just started a new
+kind of work has just created a new place to write.
+
+**The rule, replacing the predictive one for this question:**
+
+> Do not derive the watch set from the brief. Derive it from the filesystem, by
+> recency, at arming time and again at every stale reading. Watch the UNION of
+> everything that appears, plus `/tmp` scratch used by gate runs. A watchdog
+> pointed at one path of an agent's several is not a weak watchdog, it is a
+> FALSE one: it reports quiet while the agent is at full speed.
+
+Both watchdogs were re-armed on the union. The delta verifier's union went to
+`0s` immediately, having read `1362s` a minute earlier against the same live
+agent.
+
 ### THE THIRD READING OF A STALE BEACON: starved, by the orchestrator itself
 
 "Dead or in a long run" is not the full disjunction either. There is a third
