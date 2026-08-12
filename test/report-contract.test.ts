@@ -1387,11 +1387,31 @@ test("a check guarding a definition reached through a chain of references is cau
     );
   }
 
-  /* THE MEASUREMENT, derived rather than pinned: the one-hop set is the three
-     direct cross-document pointers, and the closure is far larger. Counts are
-     compared as an inequality because both grow as later phases add schemas,
-     and a pinned number would be a claim about every future phase. */
-  assert.equal(oneHop.size, 3, [...oneHop.keys()].join(", "));
+  /* THE MEASUREMENT, and it is NAMED rather than counted, for the same reason
+     the block above is. `oneHop` is derived from `readdirSync(schemasDir)`, so
+     it grows with every schema a later phase ships, and `assert.equal(
+     oneHop.size, 3)` (which is what fix round 4 shipped here, three lines under
+     a comment forbidding exactly that) is a claim about every FUTURE phase:
+     CLAUDE.md convention 5, and the shape M3-P1 already paid for once. Clean-
+     room finding CR-A-1 reddened it `4 !== 3` by staging an M3-P7-shaped
+     `verdict.schema.json` carrying a cross-document `$ref`, and M3-P7 is named
+     in this phase's own `conflicts-with`, so the phase it would have reddened
+     was already on the plan. The property the assertion exists for survives
+     naming: each of the three DIRECT cross-document pointers must still be
+     visible one hop out, which is what makes the chained pointers above a
+     contrast rather than a tautology, and a later phase adding a fourth
+     direct pointer is not a defect. Counts stay inequalities. */
+  for (const direct of [
+    "report.schema.json#/$defs/gateResult",
+    "report.schema.json#/$defs/claim",
+    "report.schema.json#/$defs/fixRound",
+  ]) {
+    assert.equal(
+      oneHop.has(direct),
+      true,
+      `${direct} was expected to be visible one hop out; the one-hop set is ${[...oneHop.keys()].join(", ")}`,
+    );
+  }
   assert.ok(
     closure.size > oneHop.size,
     `closure ${String(closure.size)} is not larger than one-hop ${String(oneHop.size)}`,
