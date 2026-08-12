@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-11
+- as of: 2026-08-12
 - PR #89, the controlled macOS portability pilot, merged to main as
   `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
   commit each passed Linux `gates` and macOS smoke. The owner-authorized
@@ -41,7 +41,68 @@ is wrong: verify against git and the PR list before trusting it.
   the same way.
   The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
   M3-P4's round-1 and round-2 evidence.
-- **M3-P4 HAS HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE.**
+- **M3-P4 IS IN DR-0016's RESPONSE TO THE STOP RULE (2026-08-12), AND THAT IS
+  THE SANCTIONED PATH RATHER THAN A LIFTING OF THE STOP.** The stop is recorded
+  below and is unchanged; what follows is what DR-0016 requires to happen next,
+  which is explicitly NOT waiting for the owner.
+  The ruling that stopped the phase and set this response is
+  delivery/review/arbitration-m3-p4-round-3.md:1, and the decision that makes
+  the response immediate rather than owner-blocking is
+  delivery/decisions/DR-0016-escalation-threshold.md:1.
+  ROUND 4 (fresh implementer) is pushed. It was briefed to fix the MECHANISM,
+  not the two findings, and its work history records the enumeration, what the
+  enumeration did NOT cover, the derivations with captured output, the mechanism
+  in one sentence, a post-repair measurement, and a red witness with BOTH arms
+  captured (3 fail, then 3 pass), registered by name.
+  **BOTH IMPLEMENTERS WERE KILLED MID-WORK BY A WEEKLY USAGE LIMIT on 2026-08-10
+  and BOTH WERE SALVAGED**, which is the T-008 beacon rule paying for itself a
+  second time: M3-P4's two commits were complete and merely unpushed, and
+  M3-P5's entire phase was uncommitted in a scratch worktree and is now
+  preserved on its branch by an explicitly attributed salvage commit.
+  Round 4 died before its final gate bundle, so that evidence is CI's rather
+  than the implementer's, and this line says so instead of implying the
+  implementer produced it.
+  The head under review is `c7d9d2c`, which MERGES `origin/main` into the phase
+  branch. That merge was necessary: the macOS pilot moved `main` and made PR #81
+  `mergeable: false`. The one conflict was `test/behaviors.json`, the
+  append-only registry, resolved as a UNION and verified by accounting: ours
+  558 keys, theirs 523, merged 568, which is exactly the size of the union, with
+  nothing lost from either side. Suite on that head, naming all three axes:
+  node v26.6.0, `dist/` built, invocation `npm test`, 562 tests, 562 pass, 0
+  fail, **0 skipped**, exit 0.
+  DUAL CROSS-MODEL REVIEW IS IN FLIGHT on that head: contract A (acceptance
+  criteria, executed not read) and **contract C, THE ARGUMENT AUDIT, which is
+  new**. Contract C exists because A and B have each run twice on this phase and
+  neither caught the recurring defect; both times a delta verifier did, by
+  RUNNING the program. C's instruction is to build a counter-example to every
+  load-bearing universal claim by execution, looking inside the round's own
+  artifacts first, because that is where both previous counter-examples were
+  already sitting.
+- **"CI IS GREEN" NOW HAS TWO ARMS ON A PULL REQUEST, AND DR-0012 CONDITION 4
+  MEANS BOTH.** The macOS pilot added a second workflow, `macOS smoke`, which
+  runs on `pull_request` beside `gates`. Measured on `c7d9d2c`: `macOS smoke`
+  completed success while `gates` was still in progress. **So a tool that reads
+  "the newest run" for a branch can report success from one workflow while the
+  other is unfinished or red**, which is T-009's mechanism (a gate result is
+  evidence only for the configuration it ran under) reappearing on a new axis.
+  Name the workflow as well as the event and the head sha. The orchestrator's
+  own branch watchdog had exactly this defect when the second workflow appeared.
+- **A SHIPPED FILE CITES A LINE OF THIS ONE, AND THAT CITATION HAS NOW ROTTED
+  FOUR TIMES.** `assurance-modes.yaml` line 48 cites a bullet in this file by
+  line number. Every edit ABOVE that bullet moves it, and the citations gate
+  cannot see the rot because the line still resolves, it just resolves to
+  different prose. Measured 2026-08-12: the citation read `528` while the target
+  sat at `552` ON `main`, so it was ALREADY STALE before this session touched
+  anything, having been shifted by a previous session's edit and not repointed.
+  It is repointed to 594 here, with the target verified by reading the line
+  rather than by arithmetic.
+  **The failure is structural, not careless**: a line-numbered citation INTO a
+  file that grows at the top is guaranteed to rot, and nothing mechanical
+  notices. Whoever next touches M3-P3's territory should consider whether that
+  reference should name the bullet rather than its line. Recorded here rather
+  than fixed in place because `assurance-modes.yaml` is not on any current
+  phase's declaration.
+- **M3-P4 HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE ON ROUND 3.**
   Fix round 3 closed all four round-2 findings, several verified from
   independently written reproductions, and found a real third error nobody had
   named. It also introduced a NEW HIGH in the very fix that closed DV-003.
