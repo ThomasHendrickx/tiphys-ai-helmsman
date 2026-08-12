@@ -783,6 +783,29 @@ Each of these bit someone once. Forward them to every implementer.
     repository has now paid three times for an unexplained suite-count
     difference, and the third time the reviewer refused to average a two-test gap
     and found the cause instead.
+13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
+    fallen behind it reads as though the branch DELETES things.** Measured
+    2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported
+    `CLAUDE.md | +2 -35`, showing the branch removing a whole binding rule
+    (T-008's third) and a standing-warning extension, both of which had been
+    added to `main` after the branch was cut. Nothing was being deleted. A
+    two-dot diff compares two TREES, so anything `main` gained and the branch
+    never saw appears as a deletion by the branch.
+    The alarming reading nearly bought a wrong action, which would have been to
+    "restore" those lines onto the branch and thereby create the conflict that
+    did not exist. **Ask git for the MERGE RESULT instead, and inspect it:**
+
+    ```
+    T=$(git merge-tree --write-tree origin/main origin/<branch>)
+    git cat-file -p "$T:CLAUDE.md" | grep -c '<the text you fear losing>'
+    ```
+
+    That produced a merged `CLAUDE.md` carrying BOTH sides: the branch's new
+    gate row and every rule `main` had gained meanwhile. `merge-tree` exit 0
+    already said the merge was clean; the diff was the misleading artefact, and
+    the fix was to read the thing that answers the question rather than the
+    thing that was easy to run. Use `git diff main...branch`, three dots, when
+    you want the branch's own changes since the merge base.
 
 ## The orchestrator does not decide when it is finished (binding)
 
