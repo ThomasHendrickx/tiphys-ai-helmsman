@@ -3318,3 +3318,53 @@ verification note rather than as a finding on this branch, which is the right
 place for it: closing it means changing what `red-witness` is preconditioned on,
 which is not this branch's business and would widen it well past a fix round.
 
+## FR2.18 A SECOND completed CI run, and the honest statement about the last head
+
+Two heads of this round have completed `gates` runs, and they differ only in
+`delivery/work-history/exit-test-assertion-direction.md`:
+
+| head | run | event | conclusion | code delta from 8db93b2 |
+|---|---|---|---|---|
+| `8db93b2` | 31613587959 | pull_request | **success** | (the code-bearing head) |
+| `16a3ec6` | 31614967377 | pull_request | **success** | none, documentation only |
+
+The second run, by step, identical to the first including the skip:
+
+```
+JOB gates completed success
+STEP  6 completed success Run npm test
+STEP  7 completed success Agent-rules gate-list drift
+STEP  8 completed success M2 exit test (pull request)
+STEP  9 completed skipped M2 exit test (push)
+STEP 10 completed success M2 exit test self-test guard
+STEP 11 completed success M1 exit test (local mode)
+STEP 12 completed success M1 exit test falsifiability guard
+STEP 25 completed success Complete job
+```
+
+`macOS smoke` is also success on both heads (31613588277 and 31614967383).
+
+That the code is unchanged between the two is not asserted, it is measured:
+
+```
+$ git diff --name-only 8db93b2..16a3ec6
+delivery/work-history/exit-test-assertion-direction.md
+$ git diff --stat 8db93b2..16a3ec6 -- src/ bin/ test/ scripts/ schemas/ roles/
+(empty)
+```
+
+**And the statement I owe about the head this file ends on.** This section and
+FR2.17 are themselves commits after `16a3ec6`. They change no code, only this
+document. Whoever reads this should assume, unless they check, that **no CI run
+had completed on the very last commit of this branch at the time it was
+written**, because a run cannot observe the commit that describes it. What IS
+established is stronger than a bare green and worth stating precisely: two
+consecutive heads carrying IDENTICAL code both completed with conclusion success
+on the `pull_request` event, and the delta from either of them to the branch tip
+is confined to this file.
+
+The remaining CI obligation is the one CLAUDE.md:468 names and no run on a
+pull request can discharge: the post-merge `push` run on the new `main` head,
+which is the first time step 9 will actually execute rather than skip. That run
+belongs to whoever merges, and this round does not merge.
+
