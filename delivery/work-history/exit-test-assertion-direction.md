@@ -1328,3 +1328,190 @@ the second (CR-H-1, CR-H-2, CR-H-3) are dispositioned in section FR1.7.
 
 The test at issue is test/m2-exit-test.test.ts:1212, "a RED gate is rejected on
 BOTH bundles under three structurally different shapes".
+
+## FR1.1 The MECHANISM (fix-round contract item 1)
+
+The INSTANCE is "five main-arm members of test/m2-exit-test.test.ts:1212 do not
+discriminate". The dispatch brief offered a mechanism ("every one of them carries
+a RED ROW"). I measured it and it is FALSE for two of the five, so I state a
+different and stronger one.
+
+**MECHANISM: a probe witnesses a check only when that check is its UNIQUE
+rejecter. This test establishes uniqueness by excluding the competing rejecters
+it NAMES IN ADVANCE, and the set of competing rejecters is a function of the ARM.
+Naming one arm's competitors and then running both arms leaves the other arm's
+competitor unexcluded, and the probe silently degrades from a witness into a
+tautology.**
+
+Concretely: the test's derivation-only probes carry
+`assert.doesNotMatch(output, /reported RED/)` at test/m2-exit-test.test.ts:1394,
+which excludes ONE competitor, the global zero-red check. On the PR arm zero-red
+is the only competitor and the exclusion is sufficient. On the MAIN arm a
+DIFFERENT competitor exists, section 8's declared-absent check
+(scripts/m2-exit-test.sh:692), it is not named, and it rejects both main-arm
+probes on its own.
+
+The brief's proposed mechanism is refuted by measurement in FR1.2: main-arm
+members 4 and 5 carry NO red row, and are still non-discriminating, because their
+rejecter is section 8 rather than zero-red. A fix that only removed red rows
+would therefore have left the main arm exactly as vacuous as it was.
+
+The fix must consequently do TWO things, and doing only the first is what would
+make this a fix of the instance:
+
+1. add main-arm probes whose unique rejecter IS the derivation (FR1.3);
+2. replace the hand-named exclusion with a MECHANICAL uniqueness assertion that
+   does not require anticipating the competitor set at all (FR1.4).
+
+## FR1.2 The derivation (fix-round contract item 2), part 1: every member classified
+
+Lab: `$SCRATCH/FR1-lab`. The assertion program is not a replica, it is the
+shipped one, extracted by the harness's own `--self-test` hook from
+scripts/m2-exit-test.sh:417 and sha256-verified:
+
+```
+$ sha256sum harness-evidence/m2-assert.mjs
+c06fdf264b35e2d6767a915fec5615a23e967bebee51b36b71940c03abd6b531  harness-evidence/m2-assert.mjs
+```
+
+That is the same hash the salvaged contract-H-A reviewer recorded for the
+post-fix program, so my extraction and its extraction agree.
+
+The expectation documents are the REAL ones, produced by the shipped
+`--print-expect` hook against a manifest of the real `gates.manifest.json` plus
+one extra gate, exactly as `harnessCopy` (test/m2-exit-test.test.ts:1147) builds
+it. Manifest gate count in the lab: 12 (11 real + `fixture-gate-with-no-table-row`).
+
+Defang variants, each produced by an anchored single replacement that ABORTS
+unless the anchor occurs EXACTLY once, so a silent no-op defang is impossible,
+and each `node --check`ed:
+
+| variant | anchor replaced | sha256 |
+|---|---|---|
+| `v-tableonly` | the whole union collapsed to `[...explicitById.keys()]` | `8d2cc914855fc58931f3bbb4abd9f5d2bee27ecadf834bf808a02a2c916b549b` |
+| `v-nored` | `rows.filter((r) => r.status === "red")` becomes `[]` | `a9cb5f83ce995b8c5fae9eb434270af1f59a8a883d2e69f75650c02dfefd0f38` |
+| `v-nosec8` | `for (const id of expect.absent ?? [])` becomes `for (const id of [])` | `09c71afd8ddbeb5a000376f59b888b62c9422312cab5fbb4b2dd4674269f4491` |
+
+`v-tableonly` is the mutation this change must be witnessed against: the
+derivation collapsed back to the hand-written table, which is the pre-fix
+direction.
+
+Command: `node drive.mjs`, which replicates the member construction of
+test/m2-exit-test.test.ts:1212 and its `writeBundle`
+(test/m2-exit-test.test.ts:1101) against those real documents. FULL output:
+
+```
+| arm | member | pristine | v-tableonly | v-nored | v-nosec8 |
+|---|---|---|---|---|---|
+| pr | control-healthy | 0 | 0 | 0 | 0 |
+| pr | member-1 | 1 | 1 | 1 | 1 |
+| pr | member-2 | 1 | 1 | 1 | 1 |
+| pr | member-3 | 1 | 1 | 0 | 1 |
+| pr | member-4 | 1 | 0 | 1 | 1 |
+| pr | member-5 | 1 | 0 | 1 | 1 |
+| pr | probe-X | 1 | 0 | 1 | 1 |
+| main | control-healthy | 0 | 0 | 0 | 0 |
+| main | member-1 | 1 | 1 | 1 | 1 |
+| main | member-2 | 1 | 1 | 1 | 1 |
+| main | member-3 | 1 | 1 | 0 | 1 |
+| main | member-4 | 1 | 1 | 1 | 0 |
+| main | member-5 | 1 | 1 | 1 | 0 |
+| main | probe-X | 1 | 0 | 1 | 1 |
+```
+
+CR-V01 is CONFIRMED, independently of the salvaged review: every one of the five
+main-arm members exits 1 under `v-tableonly`, so not one of them can see the
+derivation disappear. The replica is cross-checked against the real test in FR1.5.
+
+Now the classification that produces the mechanism, rather than restating the
+instance. For each member, the finding list the PRISTINE program produced (a
+member is a witness for a check only if that check is the ONLY entry in its
+finding list):
+
+| arm | member | rejected by |
+|---|---|---|
+| pr | member-1 | derivation (2 findings) AND zero-red |
+| pr | member-2 | derivation (2 findings) AND zero-red |
+| pr | member-3 | zero-red ALONE |
+| pr | member-4 | derivation ALONE (2 findings) |
+| pr | member-5 | derivation ALONE (1 finding) |
+| main | member-1 | zero-red AND section 8 (2 findings) |
+| main | member-2 | derivation (2 findings) AND zero-red |
+| main | member-3 | zero-red ALONE |
+| main | member-4 | section 8 ALONE (2 findings) |
+| main | member-5 | section 8 ALONE (2 findings) |
+
+Two things the brief's proposed mechanism does not predict and this one does:
+
+- main member-2 DOES reach the derivation (its output carries the default-spec
+  findings verbatim) and still fails to discriminate, because zero-red rejects it
+  too. Reaching the check is not witnessing it.
+- main members 4 and 5 carry NO red row at all. Their rejecter is section 8,
+  which is why `v-nosec8` turns BOTH green together (exit 0 and exit 0), which is
+  the salvaged reviewer's same-code-path observation reproduced.
+
+## FR1.3 The derivation, part 2: two probes, and PROOF they differ
+
+Probe X is the salvaged reviewer's constructed repair. I reproduced it rather
+than assuming it (row `pr | probe-X` and `main | probe-X` above): pristine 1,
+`v-tableonly` 0, on BOTH arms.
+
+One witness is not a class (CLAUDE.md:348), so a second member is required, and
+"structurally different" has to be MEASURED rather than asserted. The union at
+scripts/m2-exit-test.sh:515 is a spread of THREE sources, so the two legs a
+derivation probe can enter by are the MANIFEST leg and the ROWS leg. I built one
+probe per leg and then defanged the legs SEPARATELY:
+
+- `v-norows`: the union becomes `[...manifestIds, ...explicitById.keys()]`.
+- `v-nomanifest`: the union becomes `[...rows.map((row) => row?.id), ...explicitById.keys()]`.
+
+Probe X (ROWS leg): a gate declared in NEITHER the manifest NOR the table,
+present only as a bundle row, reporting `not-applicable` with a valid evaluated
+precondition, so section 4 is satisfied and no red, error or vacuous row exists
+anywhere in the bundle.
+
+Probe Y (MANIFEST leg): a gate this arm DOES run, with its expectations-table row
+removed AND its record removed. Its id is reachable from `manifestIds` only: it
+is not in the derived absent list, and with no record it is not in
+`rows.map(...)` either.
+
+Command: `node drive2.mjs`. FULL output:
+
+```
+| arm | probe | pristine | v-tableonly | v-norows | v-nomanifest | v-nored | v-nosec8 |
+|---|---|---|---|---|---|---|---|
+| pr | probe-X-rows-leg | 1 | 0 | 0 | 1 | 1 | 1 |
+| pr | probe-Y-manifest-leg(credential-token) | 1 | 0 | 1 | 0 | 1 | 1 |
+| main | probe-X-rows-leg | 1 | 0 | 0 | 1 | 1 | 1 |
+| main | probe-Y-manifest-leg(migrations) | 1 | 0 | 1 | 0 | 1 | 1 |
+```
+
+That table is an ORTHOGONALITY PROOF, not a claim: Probe X dies when the ROWS leg
+is removed and SURVIVES removal of the manifest leg; Probe Y does the exact
+opposite. The salvaged reviewer's complaint about the old members 4 and 5 was
+that they looked different and were one code path; these two are demonstrated to
+be two, by a defang that separates them. Neither is affected by `v-nored` or
+`v-nosec8`, so neither has a competing rejecter on either arm.
+
+## FR1.4 The mechanical uniqueness assertion
+
+Every finding either probe produces carries the default-spec reason string
+(scripts/m2-exit-test.sh:509), measured:
+
+```
+### pr/probe-X-rows-leg
+    findings: 2  ALL carry the default-spec signature: true
+### pr/probe-Y-manifest-leg(credential-token)
+    findings: 1  ALL carry the default-spec signature: true
+### main/probe-X-rows-leg
+    findings: 2  ALL carry the default-spec signature: true
+### main/probe-Y-manifest-leg(migrations)
+    findings: 1  ALL carry the default-spec signature: true
+```
+
+So the test can assert uniqueness MECHANICALLY: parse every `  - ` finding line
+the program printed and require that they are ALL default-spec findings. That
+assertion needs no advance knowledge of the competitor set, so it does not have
+the arm-blindness that produced this defect. `doesNotMatch(/reported RED/)`
+excludes one competitor a human thought of; "every finding is a derivation
+finding" excludes all of them, including ones added later.
