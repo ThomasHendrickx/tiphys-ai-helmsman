@@ -95,6 +95,19 @@ Findings go back to the SAME implementer, resumed. Rules:
 
 - Dispute is allowed with concrete evidence, surfaced for the orchestrator
   to arbitrate. Silent non-application is forbidden.
+- **"RECORD THE OBSERVED CI CONCLUSION IN THE WORK HISTORY" IS SELF-INVALIDATING
+  AT THE LAST STEP, and briefs must stop asking for it in that form.** Writing
+  the green for head H produces H+1, a head with no completed run; recording the
+  green for H+1 produces H+2, and so on. The observation cannot be written into
+  the artifact it describes. Measured 2026-08-12: an M3-P6 fix round was
+  instructed exactly this way, and it terminated correctly on its own by
+  refusing the last write and explaining why.
+  The resolution it used, which is the one to ask for: **record the green on the
+  CODE head, and record separately that every commit after it is prose-only and
+  verifiable with `git diff --name-only`.** Then the final head's own run is a
+  CONFIRMATION of a recorded claim rather than a new claim needing its own
+  entry, and the recursion stops at one. The orchestrator observes the final
+  head's run itself; it does not belong to the implementer.
 - One push per fix round, not six. A fix round is 1 to 2 pushes.
   **COMMITTING AND PUSHING ARE SEPARATE DECISIONS, and a brief that fuses them
   breaks this rule while looking like it obeys the beacon rule.** Measured
