@@ -7,6 +7,20 @@ is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-12 later in the day, and the bullets below this one are OLDER.
   Where they disagree with this one, this one is later.
+- **A MERGE PRECONDITION FOR M3-P6 THAT A GREEN CI RUN WILL NOT SATISFY, written
+  down now because it has to survive the moment the orchestrator is eager to
+  merge.** The exit-test harness fix and M3-P6 are ordered: the harness fix
+  merges first, then `main` is merged into the phase branch and M3-P6's CI
+  re-runs. **That re-run is the FIRST and ONLY place the fix is exercised on the
+  case it exists for**, because `brief-drift` is not in `gates.manifest.json` on
+  `main` and arrives only with M3-P6. The harness fix's own pull request cannot
+  exercise it.
+  So on that re-run, "gates green by step" is NOT sufficient evidence. The
+  question is whether `brief-drift` was ASSERTED in the bundle or silently
+  defaulted past, and that is answered by reading the exit-test EVIDENCE, not
+  the step conclusion. A green that proves nothing is precisely the shape this
+  whole fix exists to remove, and accepting one here would be the same defect
+  one level up.
 - **`main` IS `bb8f656`. M3 IS STILL 5/10: M3-P6 IS REVIEWED AND ARBITRATED BUT
   NOT MERGED, AND IT IS BLOCKED ON ONE THING.** The blocker in a line: DR-0012
   condition 2 requires the medium finding resolved, and an orchestrator-side fix
