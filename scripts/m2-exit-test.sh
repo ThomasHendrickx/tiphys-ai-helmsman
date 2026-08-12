@@ -222,13 +222,24 @@ MAIN_ONLY_GATES="manifest-self-check suite coverage credential-scrub deploy migr
 #   a gate added to the manifest without being added to the main bundle is
 #   asserted ABSENT from that bundle at once, instead of being named by neither
 #   list and so asserted by nothing.
+#
+#   TWO READERS OF ONE STRUCTURE MUST AGREE ABOUT WHAT IT TOLERATES. This
+#   function and the assertion program both read the manifest's gates list, and
+#   they disagreed: the program reads it with Array.isArray and gate?.id, this
+#   one read it with (gates ?? []).map((gate) => gate.id). So a manifest whose
+#   gates key is an object, or an array carrying a null entry, threw HERE, the
+#   command substitution below swallowed the status, --print-expect main exited
+#   0 emitting a document that is not JSON, and the assertion program then died
+#   at "expectations does not parse" before it could reach the manifest-leg
+#   check that exists for exactly those shapes. The reads are now the same read.
 main_absent_json() {
   node -e '
     const fs = require("node:fs");
     const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
-    const absent = (manifest.gates ?? [])
-      .map((gate) => gate.id)
+    const gates = Array.isArray(manifest.gates) ? manifest.gates : [];
+    const absent = gates
+      .map((gate) => gate?.id)
       .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
     process.stdout.write(JSON.stringify(absent));
   ' "${MANIFEST}" "${MAIN_ONLY_GATES}"
@@ -249,8 +260,19 @@ MAIN_EXPECT_JSON='{
   "absent": __MAIN_ABSENT__
 }'
 
+# Defence in depth for the same defect: a command substitution inside a
+# parameter expansion discards the exit status of what it ran, so a future
+# failure of main_absent_json would substitute an EMPTY string and emit a
+# malformed document with status 0 all over again. The status is taken here
+# explicitly, and this runs before die() is defined (the --print-expect hook is
+# above it), so the message and the exit are written out rather than delegated.
 main_expect_json() {
-  printf '%s\n' "${MAIN_EXPECT_JSON//__MAIN_ABSENT__/$(main_absent_json)}"
+  local absent
+  if ! absent="$(main_absent_json)"; then
+    echo "m2-exit-test: could not derive the main bundle's absent list from ${MANIFEST}" >&2
+    exit 1
+  fi
+  printf '%s\n' "${MAIN_EXPECT_JSON//__MAIN_ABSENT__/${absent}}"
 }
 
 # A second internal, behaviour-testing entry point, the same shape and for the
@@ -498,8 +520,9 @@ if (!manifestRead.ok) {
   console.error(`m2-assert (${label}): FAIL: ${manifestRead.reason}`);
   process.exit(1);
 }
-const manifestIds = Array.isArray(manifestRead.value?.gates)
-  ? manifestRead.value.gates
+const manifestGates = manifestRead.value?.gates;
+const manifestIds = Array.isArray(manifestGates)
+  ? manifestGates
       .map((gate) => gate?.id)
       .filter((id) => typeof id === "string" && id !== "")
   : [];
@@ -511,31 +534,151 @@ const DEFAULT_SPEC_WHY =
   " default for a declared-but-unlisted gate, which is deliberately the STRICT one" +
   " (required, green). If this gate is legitimately allowed another status, that is a" +
   " row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.";
-const expectedIds = [];
-for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
-  if (typeof id !== "string" || id === "" || absentIds.has(id) || expectedIds.includes(id)) {
-    continue;
+// THE THREE LEGS, EACH NAMED ONCE. The union below, the self-check under it and
+// the success line at the end all read THESE bindings, so what is reported as a
+// leg's contribution cannot drift from what the leg contributed. Before this,
+// the success line reported the rows leg by RAW ROW COUNT and the other two by
+// contributed ids, under a comment saying each leg's contribution is reported.
+const manifestLeg = manifestIds;
+const rowsLeg = rows.map((row) => row?.id);
+const tableLeg = [...explicitById.keys()];
+const usableId = (id) => typeof id === "string" && id !== "";
+const contribution = (leg) => new Set(leg.filter(usableId)).size;
+
+// THE DERIVED SET IS SEALED AT THE POINT OF DERIVATION, AND THAT IS A CHECK.
+// A delta verification added ids to this set through an index assignment, an
+// alias and Function.prototype.apply, flipped the program's verdict on
+// byte-identical fixtures, and the source-level guard in the suite exited 0 on
+// all three, because its condition was a member-NAME lookup while its message
+// quantified over every operation that writes the binding. Widening that list
+// by the three spellings someone happened to construct would leave a fourth.
+// So the instrument is changed rather than widened: the array is frozen, which
+// is a property of the OBJECT and holds for every write shape and through every
+// alias, and the loop's accumulator has no binding outside the closure, so a
+// later write must name `expectedIds` and will throw.
+const expectedIds = Object.freeze((() => {
+  const out = [];
+  for (const id of [...manifestLeg, ...rowsLeg, ...tableLeg]) {
+    if (!usableId(id) || absentIds.has(id) || out.includes(id)) {
+      continue;
+    }
+    out.push(id);
   }
-  expectedIds.push(id);
+  return out;
+})());
+
+// -- 0a. THE SET IS EXACTLY WHAT THE DECLARED LEGS CONTRIBUTE, RE-DERIVED A
+//        SECOND WAY. The freeze above refuses a write AFTER the derivation; it
+//        cannot refuse one INSIDE the closure, where the accumulator is still
+//        extensible. This check covers that region and does not care how the
+//        write is spelled either: it recomputes the set from the same three
+//        legs a different way and requires the two to agree, ELEMENT BY
+//        ELEMENT. An id that no leg contributed, an id the table declared
+//        absent, a duplicate, a substitution, a reordering or a dropped id all
+//        break the equality. What it CANNOT see is a change to the LEGS
+//        themselves: a fourth leg added to the union enters both computations
+//        and they agree. That is the element pin's job, in
+//        test/m2-exit-test.test.ts, and the two are complementary rather than
+//        redundant.
+//
+//        AN EQUALITY OVER A SEQUENCE IS POSITIONAL, NEVER SET MEMBERSHIP, AND
+//        THAT IS THE WHOLE OF THIS ROUND. The previous version of this check
+//        compared `expectedIds.length` against a Set's `.size` and then asked
+//        whether every element was a MEMBER of that Set. A Set discards
+//        multiplicity, so a write that substitutes a DUPLICATE for a dropped id
+//        cancels out exactly: [A, A] has length 2, the set {A, B} has size 2,
+//        and both elements are members, so the check passed while B was never
+//        asserted on. Eight such writes were measured on the previous program
+//        exiting 0 and certifying a bundle in which a manifest-declared gate
+//        produced NO RECORD, which is this branch's entire subject. The
+//        mechanism generalises past this file: a Set, a `.size`, or a length
+//        plus a membership test is blind to how many times each value occurs,
+//        so any defect that preserves the value-set while changing multiplicity
+//        is invisible to it.
+//
+//        sameSequence is therefore positional. It uses `.length` and indexing
+//        and nothing else: no `.every`, no iteration, so no prototype method
+//        stands between the check and the two arrays it compares.
+const sameSequence = (a, b) => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+const legExpected = [...manifestLeg, ...rowsLeg, ...tableLeg]
+  .filter((id) => usableId(id) && !absentIds.has(id))
+  .filter((id, at, all) => all.indexOf(id) === at);
+//
+//        IT IS TERMINAL, and that is deliberate rather than stylistic. Every
+//        other check here records a finding and carries on, because each one is
+//        about a single gate and the others are still worth asserting. This one
+//        says the SET is not the set the legs justify, so everything downstream
+//        is an assertion about a set this program has just disowned, and a run
+//        that continued printed a second finding claiming the manifest declares
+//        a gate it does not. A false diagnostic is the failure mode this whole
+//        round is about; the program stops instead. Nothing has recorded a
+//        finding at this point, so nothing is lost by exiting here, exactly as
+//        the manifest and expectations read failures above do.
+if (!sameSequence(expectedIds, legExpected)) {
+  console.error(`m2-assert (${label}): FAIL: the derived expected set is NOT the union of the ` +
+    "declared legs minus the ids the table declares absent. Something added to it, removed from " +
+    "it, duplicated one of its ids over another or reordered it, so the set this run would " +
+    "assert on is not the set its legs justify. The comparison is element by element, so a " +
+    "substitution that keeps the count and the value-set unchanged is caught here too. " +
+    `derived=${JSON.stringify(expectedIds)} legs=${JSON.stringify(legExpected)}`);
+  process.exit(1);
 }
 const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
 
 // -- 0. THIS PROGRAM IS NOT EXEMPT FROM ITS OWN RULE. It rejects any gate that
 //       reports green having examined zero units as vacuous (M2-C-2), and until
-//       these two checks existed it could itself exit 0 having asserted on zero
-//       gates, printing "0 gate(s) asserted" as a pass. Both inputs that produce
-//       that state degrade SILENTLY rather than erroring: a manifest that parses
-//       but whose `gates` key is not an array makes the manifest leg empty
-//       (the Array.isArray fallback above), and an expectations document with no
-//       gates makes the explicit leg empty. Neither is reachable through the
-//       shipped harness, whose two expectation tables are non-empty shell
-//       literals; both are reachable by anything else that runs this program,
-//       and "not reachable today" is not a property a later edit preserves.
-if (!Array.isArray(manifestRead.value?.gates)) {
-  fail(null, `the manifest ${manifestPath} parses but its "gates" key is not an array, so the ` +
-    "manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest " +
-    "that declares no gates cannot certify a bundle");
+//       these checks existed it could itself exit 0 having asserted on zero
+//       gates, printing "0 gate(s) asserted" as a pass.
+//
+//       THE CONDITION IS THE PROPERTY, NOT A SHAPE THAT PRODUCES IT. The first
+//       version of this check tested `!Array.isArray(gates)`, which is one
+//       syntactic route into an empty manifest leg out of several, and its own
+//       message quantified over all of them ("a manifest that declares no gates
+//       cannot certify a bundle"). A well-formed `gates: []` and a non-empty
+//       array whose entries carry no usable id both empty the leg while passing
+//       an Array.isArray test, and both were measured CERTIFYING a bundle in
+//       which a manifest-declared gate produced no record at all. So the
+//       condition below is the contribution of the leg itself, which covers the
+//       wrong-type shape, the absent-key shape, the empty-array shape and the
+//       unusable-entries shape as one condition rather than four; the observed
+//       shape is reported in the message for diagnosis, never used as the test.
+//
+//       WHY ONLY THIS LEG. Measured, on both arms, against the shipped tables:
+//       emptying the ROWS leg is loud (every manifest and table id then has no
+//       record and each is rejected by name), and emptying the EXPLICIT leg
+//       makes the program stricter rather than weaker (every manifest id falls
+//       to the default required-green). The manifest leg is the only one of the
+//       three whose emptying is silent, because it is the sole source for the
+//       one thing the derivation exists to provide: a NEWLY DECLARED gate, which
+//       no table row names and which, having not run, no bundle row carries.
+if (manifestIds.length === 0) {
+  const observed = !Array.isArray(manifestGates)
+    ? (manifestGates === undefined
+        ? 'its "gates" key is absent'
+        : `its "gates" key is not an array (it is ${manifestGates === null ? "null" : typeof manifestGates})`)
+    : (manifestGates.length === 0
+        ? 'its "gates" key is an empty array'
+        : `its "gates" key is an array of ${manifestGates.length} entries and NONE carries a ` +
+          "non-empty string id");
+  fail(null, `the manifest ${manifestPath} parses but ${observed}, so the manifest leg of the ` +
+    "derived expected set is EMPTY. A gate that is declared but did not run is then invisible, " +
+    "which is the whole class this derivation exists to close; a manifest that declares no gates " +
+    "cannot certify a bundle");
 }
+//       The second check is the aggregate one and its condition already IS its
+//       property. It stays reachable on its own: the legs can each contribute
+//       and the expected set still be empty, when the table declares every
+//       contributed id absent from this bundle.
 if (expectedIds.length === 0) {
   fail(null, "the derived expected set is EMPTY, so this run would certify a bundle having " +
     "asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule " +
@@ -549,7 +692,24 @@ function allowed(spec) {
 }
 
 // -- 1, 2, 3. One record per expected gate, the expected status, required green.
+//
+//       WHAT THE LOOP ACTUALLY CONSUMED IS RECORDED AND CHECKED BELOW. Sealing
+//       the set says what it CONTAINS; it says nothing about what this loop
+//       READS out of it. `for ... of` goes through Array.prototype[Symbol.iterator],
+//       which is a shared, writable prototype slot, and an override there was
+//       measured making this program exit 0 while a manifest-declared gate with
+//       no record was never asserted on: the set was correct, sealed, and simply
+//       not consumed. The freeze cannot help, because the override is on the
+//       PROTOTYPE and not on the frozen instance.
+//
+//       So every id the loop actually handled is appended here and compared with
+//       the derived set afterwards, positionally. The check does not care HOW the
+//       consumption was curtailed: an overridden iterator, a substituting one, an
+//       injected `break`, a `continue` before the first statement all show up the
+//       same way, as a run whose asserted sequence is not the sequence it derived.
+const assertedIds = [];
 for (const id of expectedIds) {
+  assertedIds.push(id);
   const explicit = explicitById.get(id);
   const spec = explicit ?? { id, expect: "green", required: true };
   const why = explicit ? "" : DEFAULT_SPEC_WHY;
@@ -605,6 +765,18 @@ for (const id of expectedIds) {
   if (row.status === "green" && !(Number(row.units) > 0)) {
     fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
   }
+}
+// -- 3b. THE LOOP ABOVE CONSUMED THE WHOLE DERIVED SET, IN ORDER. Same
+//        comparator as the leg check, for the same reason: a count plus a
+//        membership test would accept a consumption that visited one id twice
+//        and another never.
+if (!sameSequence(assertedIds, expectedIds)) {
+  fail(null, "this run asserted on a SEQUENCE that is not the derived expected set. Every id the " +
+    "per-gate loop handled was recorded as it went, and the recording does not match what the " +
+    "derivation produced, so at least one gate in the derived set was never asserted on or was " +
+    "asserted on in place of another. A gate that is declared, derived, and then not consumed is " +
+    "as unasserted as one that was never derived at all. " +
+    `asserted=${JSON.stringify(assertedIds)} derived=${JSON.stringify(expectedIds)}`);
 }
 
 // -- 4. Every not-applicable record names its reason AND the evidence of its
@@ -740,8 +912,14 @@ if (typeof summary.manifestSha256 === "string" && summary.manifestSha256 !== "")
 
 if (failures.length > 0) {
   console.error(`m2-assert (${label}): FAIL with ${failures.length} finding(s):`);
-  for (const f of failures) {
-    console.error(`  - ${f}`);
+  // INDEXED, NOT ITERATED, and measured rather than stylistic. This is the one
+  // loop whose curtailment turns a CORRECT rejection into an unexplained one:
+  // under a truncating Array.prototype[Symbol.iterator] the program printed
+  // "FAIL with 1 finding(s):" and then listed none, so the run that caught the
+  // override could not say what it had caught. The count and the listing now
+  // come from the same reads.
+  for (let i = 0; i < failures.length; i += 1) {
+    console.error(`  - ${failures[i]}`);
   }
   process.exit(1);
 }
@@ -749,7 +927,22 @@ if (failures.length > 0) {
 // can see how many gates were asserted on, how many carried an explicit table
 // row, and which were asserted under the strict default. A run in which the
 // derived set is smaller than the manifest is visible here rather than silent.
+//
+// EACH LEG'S CONTRIBUTION IS REPORTED TOO, and that is not decoration. The
+// check above refuses an empty manifest leg; this line is what makes a leg that
+// has SHRUNK rather than emptied visible to a reader of the evidence, which is
+// the failure mode no check inside this program can catch, because the program
+// holds no independent record of what the manifest ought to contain.
+//
+// ALL THREE ARE MEASURED THE SAME WAY, by contribution(), which is usable ids
+// deduplicated. They were not: the rows leg was reported as rows.length, the
+// RAW row count, under this very comment. For a bundle carrying a duplicate or
+// an idless row that number exceeds what the leg contributed, so the line
+// claimed slightly more than the value under it, which is the same shape as the
+// defect this whole round is about, one order of magnitude down.
 console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
+  `derived from ${contribution(manifestLeg)} manifest id(s), ${contribution(rowsLeg)} bundle ` +
+  `row id(s) and ${contribution(tableLeg)} table row id(s); ` +
   `${expectedIds.length} gate(s) asserted (${expectedIds.length - derivedIds.length} from an ` +
   `explicit table row, ${derivedIds.length} under the default required-green` +
   `${derivedIds.length > 0 ? `: ${derivedIds.join(", ")}` : ""}); ` +
@@ -1146,7 +1339,16 @@ run_main_bundle() {
     >"${evidence}/records/${seq}.json"
   cat "${evidence}/${out_rel}"
   local expect="${evidence}/main-expect.json"
-  write_expect "${expect}" "$(main_expect_json)"
+  # The status is TAKEN here, not discarded. A command substitution used as an
+  # argument throws its exit status away even under set -e, so the explicit exit
+  # main_expect_json now takes would still have arrived at write_expect as an
+  # empty document with the harness none the wiser. This is the same swallowed
+  # status one call frame out.
+  local main_expect
+  if ! main_expect="$(main_expect_json)"; then
+    die "could not build the main bundle's expectations document from ${MANIFEST}"
+  fi
+  write_expect "${expect}" "${main_expect}"
   run_assert "main bundle" "${dir}/summary.json" "${dir}" "${expect}" "${MANIFEST}"
   if [ "${ASSERT_EXIT}" -ne 0 ]; then
     die "the main bundle does not match section 1.4's main-bundle column (assertion exit ${ASSERT_EXIT})"
