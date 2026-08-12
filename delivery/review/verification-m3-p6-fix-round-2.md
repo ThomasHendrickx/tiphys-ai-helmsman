@@ -295,3 +295,119 @@ probe 2 exactly.
 
 All nineteen witnesses green, including the four other witnesses over this
 phase's tests.
+
+## 5. The suite, all three axes plus the SKIPPED count, and a two-test flake I hit
+
+Standing warning 12 requires the toolchain, the build state and the invocation.
+All four numbers below are node v26.6.0, `dist/` BUILT (`npm run build` exit 0,
+`git status --porcelain` empty afterwards), in a fresh worktree at `4619bf8`
+with `npm ci` exit 0.
+
+| invocation | tests | pass | fail | SKIPPED | exit |
+|---|---|---|---|---|---|
+| `npm test` (run 1) | 620 | 618 | 2 | 0 | 1 |
+| `npm test` (run 2) | 620 | 620 | 0 | 0 | 0 |
+| bare `node --test` from the repository root | 622 | 622 | 0 | 0 | 0 |
+
+The 620/622 gap is the documented one: `sandbox/test/greet.test.js`, excluded by
+`package.json`'s `test` script pattern. 620 is what CI and the `suite` gate
+mean. This reproduces the implementer's reported 620 and 622 exactly.
+
+**RUN 1 FAILED AND I DID NOT AVERAGE IT AWAY.** Two tests:
+
+```
+test at test/watcher.test.ts:419:1
+x the heartbeat schedule is on disk and shared by single passes (8069.081866ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  0 !== 3
+      at TestContext.<anonymous> (.../test/watcher.test.ts:432:10)
+    actual: 0, expected: 3
+```
+
+plus `test/coverage-gate.test.ts:189` (`actual: 'error', expected: 'green'`).
+
+test/watcher.test.ts:432 is `assert.equal(immediate.status, 3, ...)`, the third
+of three consecutive CLI spawns inside a 0.4s heartbeat interval: the assertion
+is that the third spawn is NOT yet due. Actual 0 means more than 0.4s of wall
+clock elapsed between spawns, which is standing warning 11's territory rather
+than a defect.
+
+Attribution, measured rather than asserted:
+
+```
+$ git log --oneline 2a89757..4619bf8 -- test/watcher.test.ts src/watcher.ts src/watcher
+(no output: the delta touches none of them)
+
+CONTROL ARM, worktree at 2a89757 (PRE-delta):
+$ node --test --test-name-pattern "the heartbeat schedule is on disk and shared by single passes" test/watcher.test.ts
+i tests 1  i pass 1  i fail 0  i skipped 0    CTL_EXIT=0
+
+HEAD ARM, worktree at 4619bf8:
+(same command)
+i tests 1  i pass 1  i fail 0  i skipped 0    HEAD_EXIT=0
+
+$ node --test test/watcher.test.ts test/coverage-gate.test.ts   (both files, under load)
+i tests 40  i pass 39  i fail 1     (the same watcher test)     exit 1
+```
+
+So it reproduces under LOAD and not under isolation, at BOTH heads. I did not
+run the full suite at `2a89757` to see whether it flakes there too, so I am not
+claiming the two heads have equal flake rates; I am reporting that the isolated
+arms are identical and that the delta touches neither file. The implementer
+recorded two DIFFERENT flakes in the same family (R2-11, R2-12); mine is a
+third instance of the same real-clock family and a fourth distinct test.
+
+TRANSLITERATION DECLARED for every capture in this report: node's reporter
+prints U+2139 (INFORMATION SOURCE) and U+2716 (HEAVY MULTIPLICATION X). I
+rendered U+2139 as `i` and U+2716 as `x` with
+`sed 's/\xe2\x84\xb9/i/g; s/\xe2\x9c\x96/x/g'`. Measured counts in the two full
+captures I quote from: `dvr2-npmtest-2.txt` carries 8 of U+2139 and 0 of U+2716;
+`dvr2-bare.txt` carries 8 and 0. Nothing else in any captured output was
+altered.
+
+## 6. CI, read by step rather than by conclusion
+
+T-009 requires the event and the head sha, so "CI is green" is not the sentence.
+
+**Run 31607900355, event `pull_request`, head_sha `4619bf8`, conclusion
+SUCCESS.** By step, job `gates` (id 94151628958):
+
+| # | step | conclusion |
+|---|---|---|
+| 1-5 | set up, checkout, setup-node, `npm ci`, `npm run build` | success |
+| 6 | `npm test` | success |
+| 7 | Agent-rules gate-list drift | success |
+| 8 | Implementer brief gate-list drift | success |
+| 9 | **M2 exit test (pull request)** | **success** |
+| 10 | M2 exit test (push) | **skipped** |
+| 11 | M2 exit test self-test guard | success |
+| 12 | M1 exit test (local mode) | success |
+| 13 | M1 exit test falsifiability guard | success |
+
+Step 9 is the step that FAILED at `64e1ba8`, and run 31604059724 on `64e1ba8` is
+recorded as conclusion `failure`, which corroborates the round's own account of
+why the added check had to go rather than merely being tested.
+
+**Step 10 is SKIPPED, so this run is evidence about the pull-request arm ONLY.**
+Under T-009 rule 1 the push arm on the new `main` head remains unobserved and is
+the orchestrator's to watch after merge. Nothing in this report speaks to it.
+
+**The head moved while I worked, and the code did not.** The branch settled at
+`077f339`. Verified myself rather than taken:
+
+```
+$ git diff --name-only 4619bf8..077f339
+delivery/work-history/m3-p6.md
+$ git diff --stat 4619bf8..077f339
+ delivery/work-history/m3-p6.md | 241 +++++++++++++++++++++-
+ 1 file changed, 238 insertions(+), 3 deletions(-)
+```
+
+One file, work-history prose. **The code delta I verified, `2a89757..4619bf8`,
+is the code delta at the settled head.** Run 31610473874 on `077f339`, event
+`pull_request`, is also SUCCESS with the same thirteen steps and step 10 again
+skipped.
+
+**I verified against `4619bf8` for everything mechanical**, and read
+`delivery/work-history/m3-p6.md` at BOTH `4619bf8` and `077f339`, because the
+prose-only commits add sections R2-23 to R2-28 that bear on the findings below.
