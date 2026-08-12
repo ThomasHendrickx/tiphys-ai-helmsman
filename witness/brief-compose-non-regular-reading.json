@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-non-regular-reading",
+  "behavior": "brief-compose-refuses-non-regular-reading-path",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose refuses a named pipe at a mandated-reading path in bounded time naming the path and the entry type"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (entry.kind === \"irregular\" || entry.kind === \"unexaminable\") {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "        reason: `mandated-reading path ${declared}: ${entry.reason}`,",
+      "replace": "        reason: \"a mandated-reading path was refused\","
+    }
+  ]
+}

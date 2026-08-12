@@ -36,10 +36,14 @@
       "pattern": "\\S"
     },
     "verdict": {
-      "$comment": "OPTIONAL because plan step 1 says `verdict` where applicable: an investigation report has no verdict and a review report does. A verdict that IS present must say something, which is the criterion 2e rule applied here.",
+      "$comment": "OPTIONAL because plan step 1 says `verdict` where applicable: an investigation report has no verdict and a review report does. A verdict that IS present must say something, which is the criterion 2e rule applied here. M3-P5 CORRECTION, made here rather than in a new comment because a reader arriving at this field must not be told the old thing: the sentence `an investigation report has no verdict` is not true of the investigator role as M3-P5 shipped it. roles/investigator.md:31 states under clause R-004 that the role's output IS a root-cause verdict, roles/investigator.md:17 lists `report` as its only output, and roles/investigator.md:10 puts `declares a cause it did not reproduce without saying so` on the role's `never` list, so an investigator report that reaches a conclusion carries it HERE. The field stays optional, because the investigator that has not concluded is exactly the report M3-P4 had in mind and it must stay writable; what changed is that the presence of a verdict on an investigator report now costs a `repro`, by the top-level if/then this document adds for M3-P5 criterion 6.",
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"
+    },
+    "repro": {
+      "$comment": "R-015a and R-092, M3-P5 criterion 6, and the field the top-level if/then requires. THE POINT OF THE FIELD IS THAT R-015a STOPS BEING PROSE: the requirement row (delivery/requirements/migration-table.md:39) reads `investigator must produce a runnable repro that is red on current code, not just an explanation`, and until this document carried a field for it the only enforcement was a clause in a brief, which is a sentence an agent reads and not a thing a validator refuses. OPTIONAL at the top level and REQUIRED BY THE CONDITIONAL, which is not the same as required: a report that owes no verdict owes no repro, and pinning it here instead would have made every review report unwritable. THE SHAPE IS A ONEOF OVER TWO REAL OUTCOMES AND NOT OVER ONE, and that is the whole design: see `#/$defs/repro`.",
+      "$ref": "#/$defs/repro"
     },
     "no-findings-statement": {
       "$comment": "Criterion 2e's TOP-LEVEL SCALAR member. NO KEYWORD CAN REQUIRE THIS FIELD WHEN `findings` IS EMPTY: `maxItems` is outside the declared authoring vocabulary (schemas/README.md), `minItems` says the opposite, and `contains` asks about a member that exists, so the emptiness of a sibling array is not a keyword property. The KEYWORDS here therefore reach only the empty and whitespace-only statement. THE MISSING ONE IS REACHED BY A DERIVED CHECK, `report-no-findings-statement` in src/checks.ts, added by M3-P4 fix round 2 on the orchestrator's arbitration, which amended section 2.3's table to three rows for this phase (D-M3-22 is satisfied by that amendment, not by this comment). It closes BOTH directions: an empty `findings` with no statement, and a statement sitting beside real findings. IT IS REGISTERED FOR `report` ALONE AND THAT IS CORRECT, because `findings` and `no-findings-statement` are report-local properties and no other document type reaches them. FIX ROUND 2 CLAIMED HERE THAT THE ENUMERATION IN test/report-contract.test.ts MADE THAT `a checked fact rather than an assertion`, AND IT DID NOT (finding DV-004): that enumeration walks `$defs` reached by `$ref` and skips any check declaring no `guards`, and this check declares none, so it is skipped on every pointer and these two are top-level properties that could never appear there anyway. The round's own work history said the registration was asserted by hand, so the shipped artifact and the work history disagreed and the shipped one is the one a later author reads. The registration is still correct; what was wrong was the account of HOW IT IS KNOWN, and it is known by reading this schema's `properties` block, where `findings` and `no-findings-statement` appear and no other shipped schema names either. RESIDUE: whether the statement SAYS anything is M3-P7's `contract-avoidance` probe, not a schema property.",
@@ -81,7 +85,64 @@
       "items": { "$ref": "#/$defs/gateResult" }
     }
   },
+  "if": {
+    "$comment": "M3-P5 CRITERION 6, R-015a. Kind A, both sides on the SAME document, and the TOP-LEVEL if/then slot was free before this (M3-P4 spent its conditionals inside $defs). THE CONDITION IS TWO PROPERTIES AND EACH IS DERIVED RATHER THAN CHOSEN. (1) THE ROLE. `role` is documented above as `the role brief this report answers`, and the briefs' own ids are a CLOSED enum of six in schemas/role-brief.schema.json:22. Measured against that enum, exactly ONE of the six matches this pattern: `orchestrator` no, `investigator` YES, `plan-writer` no, `adversarial-plan-reviewer` no, `implementer` no, `clean-room-reviewer` no. So the pattern cannot over-trigger on any role this process defines, and it is a PATTERN rather than a `const` so that `Investigator` and `investigator, round 2` are inside the rule instead of outside it; every letter is a two-member character class for the reason `$defs/universalQuantifier` gives, that ECMA-262 patterns here carry no flags and there is no `i` to set. (2) THE VERDICT. Presence, not wording. A ROOT-CAUSE-VERDICT PATTERN WAS THE OBVIOUS ALTERNATIVE AND IT IS WORSE HERE, which is a statement about this role and not about verdicts generally: roles/investigator.md:31 makes the root-cause verdict the role's ONLY output, so for an investigator report `has a verdict` and `has a root-cause verdict` name the same reports, while a token list would add a second escape (word the verdict without the token) and buy nothing. WHY THE ROLE IS IN THE CONDITION AT ALL, measured rather than argued: dropping it and keying on `verdict` alone rejects the repository's own shipped example, templates/report.example.yaml:13, which is `role: implementer` with a verdict at templates/report.example.yaml:19 and no repro, and which validates today. The unscoped rule was built and run against that file; its diagnostic is recorded in delivery/work-history/m3-p5.md. TWO RESIDUES, NEITHER OF THEM REACHED BY ANY KEYWORD AND BOTH MEASURED. FIRST: an investigator who states the cause somewhere OTHER than `verdict`, in `findings[].analysis` for instance, carries no `verdict`, so this rule does not fire and no repro is owed. Closing it would mean requiring a repro of every report carrying findings, which is every review report this process produces, and that makes the honest record unwritable, which is this contract's worst hazard. SECOND: a report whose `role` is outside the six, or misspelt past this pattern, escapes; that report has misdeclared which brief it answers, and comparing a record to the run that produced it is M3-P7's clean-room checklist throughout this document.",
+    "type": "object",
+    "required": ["role", "verdict"],
+    "properties": {
+      "role": { "$ref": "#/$defs/investigatorRole" },
+      "verdict": {
+        "$comment": "PRESENCE, and deliberately nothing else: `type: string` is the widest subschema that still satisfies the validator's strict policy, which refuses a `required` name this block does not define (Ajv strictRequired, and every `if` in this document declares its own required names for the same reason). Narrowing it here would make the condition depend on the verdict's WORDING, which the top-level comment gives the derivation against. The empty and whitespace-only verdict is already refused by the `verdict` property above, so widening it here costs nothing.",
+        "type": "string"
+      }
+    }
+  },
+  "then": {
+    "$comment": "The obligation, and `required` is the guarding keyword the witness removes and restores. The diagnostic names `repro`, which is why this is an if/then and not a bare oneOf: a oneOf alone would report only that no alternative matched, which is the reason M3-P4 gives for the same shape at `$defs/claim`.",
+    "type": "object",
+    "required": ["repro"],
+    "properties": {
+      "repro": { "$ref": "#/$defs/repro" }
+    }
+  },
   "$defs": {
+    "investigatorRole": {
+      "$comment": "See the top-level `if` for the derivation against schemas/role-brief.schema.json:22's closed six. Kept as a named definition so the pattern has one home rather than being restated wherever a later phase needs it.",
+      "type": "string",
+      "pattern": "[Ii][Nn][Vv][Ee][Ss][Tt][Ii][Gg][Aa][Tt][Oo][Rr]"
+    },
+    "repro": {
+      "$comment": "R-015a AND R-092 TOGETHER, AND THE TWO BRANCHES ARE WHY. R-015a (delivery/requirements/migration-table.md:39) demands a runnable repro that is red on current code. R-092 (delivery/requirements/migration-table.md:165) says what to do when it will not reproduce: ship the harness and say so, and the migration table's own note calls R-092 the complement of R-015a. A ONE-BRANCH `repro` WOULD HAVE ENFORCED THE FIRST ROW BY MAKING THE SECOND ROW'S HONEST RECORD UNWRITABLE, and an investigator who genuinely could not force the arm would then have had two options, both bad: fabricate a repro, which validates and is invisible, or leave the verdict out, which loses the investigation. That is the authoring-cost hazard this document's own header names, arriving through a new field, so it is priced here instead of being discovered later. IT IS ALSO THE SHAPE M3-P4 PAID FOUR ROUNDS FOR at `$defs/claim`: round 2 shipped a pattern that refused the honest open question, and round 4 had to add a fourth branch for the records a truthful author writes. This definition is built with that already known, which is the only reason it does not repeat it. WHAT NEITHER BRANCH REACHES, and the list is what was examined rather than the size of the class. (1) NO KEYWORD HERE MAKES `exit-code` NONZERO, so a repro recording `exit-code: 0` validates while claiming to be red. The closed authoring vocabulary (schemas/README.md, src/validate.ts:111) has no `not` and no numeric bound, so this is not a thing that could have been written and left out; `const: 0` would say the opposite and an enum of every nonzero integer is not a finite object. (2) NOTHING RELATES THE `command` TO THE `exit-code` RECORDED BESIDE IT, which is the third member of the class M3-P4 names at `$defs/fixRound/properties/derivation/properties/output`: relating an output to the command that produced it needs the command to be RUN. (3) NOTHING HERE CAN TELL A TRUE `red-against` OR `not-covered` FROM A FALSE ONE. All three are the same bound this document states everywhere else, and all three are M3-P7's clean-room checklist rather than a keyword.",
+      "oneOf": [
+        {
+          "$comment": "BRANCH 1 OF TWO: IT REPRODUCED. Every required field here is a sentence in the clause it discharges, and none was invented for shape. `command` is roles/investigator.md:67's `a command someone else can run, which fails now`. `exit-code` is what makes the command a measurement instead of a description, and it is the field residue (1) above cannot constrain. `red-against` is roles/investigator.md:75, the red-witness rule's strong form applied to the repro: the repro must be red against the DANGEROUS STATE and not merely against an absent feature, and the brief asks in so many words which state the investigator drove the system into and how they know it got there. `not-covered` is roles/investigator.md:80, and it is required for exactly the reason `$defs/fixRound`'s field of the same name is required: a repro whose scope is wrong returns a clean result indistinguishable from an absence of the defect, and this project has been bitten by that shape three times.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "exit-code", "red-against", "not-covered"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "exit-code": { "type": "integer" },
+            "red-against": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "not-covered": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        },
+        {
+          "$comment": "BRANCH 2 OF TWO: IT DID NOT REPRODUCE, AND THE HARNESS IS THE DELIVERABLE (R-092). roles/investigator.md:92 is the clause: hand over the scaffolding, the exact commands, the states driven into, and the arms that stayed green. `harness` is that scaffolding, `arms-that-stayed-green` is that list, and `minItems: 1` is on it because a non-reproduction that names no arm it tried has reported nothing; an author who has tried nothing has an investigation to finish, not a record to file. `did-not-reproduce` is the honest sentence itself. THE PATTERN THAT IS DELIBERATELY NOT ON `did-not-reproduce`: the impossibility-token refusal at `$defs/claim`'s third `oneOf` branch is the obvious thing to copy here, since roles/investigator.md:94 tells the investigator to write `I did not find a way to force this arm` and not `this arm cannot be forced`, which is the same distinction. It is not copied, and the reason is measured rather than aesthetic: M3-P4 fix round 4 found four honest records that the identical pattern refused outright at the sibling site, one of them `I did not check every call site, so this is still open`, and had to add a whole branch to make them writable again. Reproducing a defect that cost four members and a fix round, in a field whose entire purpose is that the honest non-reproduction stays cheap, is not a trade this branch makes. WHAT THAT LEAVES OPEN, stated because the alternative is a reader assuming it was closed: an investigator can write `this arm cannot be forced` here and it validates. The brief refuses that sentence in prose (roles/investigator.md:95) and M3-P7's checklist is what reads it; what this branch buys is that the non-reproduction is DECLARED, with a harness beside it, instead of being a verdict with nothing behind it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["did-not-reproduce", "harness", "arms-that-stayed-green"],
+          "properties": {
+            "did-not-reproduce": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "harness": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "arms-that-stayed-green": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+            }
+          }
+        }
+      ]
+    },
     "nonEmptyText": {
       "$comment": "CRITERION 2e, THE EMPTY-STRING SATISFACTION CLASS. `required` alone is satisfied by \"\", so every field whose VALUE is the point carries BOTH keywords: minLength 1 reaches the empty string and pattern \\S reaches the whitespace-only block scalar, which minLength alone does not catch. This definition is NOT used by $ref at every site, because a $ref would hide the two keywords from the removing-and-restoring witness section 2.3 rule 2 requires; the keywords are written out at each field and this definition records the rule once.",
       "type": "string",

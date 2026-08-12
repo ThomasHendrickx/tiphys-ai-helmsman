@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-command-registered",
+  "behavior": "brief-compose-renders-phase",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose emits the resolved mandated-reading list, the brief body and the named phase's rendered text in that order"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"brief\", cmdBrief],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "  if (subcommand === \"compose\") {",
+      "replace": "  if (false) {"
+    }
+  ]
+}

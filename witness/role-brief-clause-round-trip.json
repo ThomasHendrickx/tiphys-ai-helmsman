@@ -1,0 +1,24 @@
+{
+  "id": "role-brief-clause-round-trip",
+  "behavior": "role-brief-clause-round-trip",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "deleting a clause heading orphans its id and a stray anchor is reported, in both directions"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (count === 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (!declared.has(anchor)) {",
+      "replace": "    if (false) {"
+    }
+  ]
+}

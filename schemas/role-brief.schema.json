@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/role-brief.schema.json",
+  "title": "Tiphys role-brief frontmatter",
+  "$comment": "Kernel plan M3, M3-P5 step 1. THIS DOCUMENT VALIDATES THE FRONTMATTER OF A ROLE BRIEF AND NOTHING ELSE. Section 1.5 of the plan grants role briefs the markdown-with-YAML-frontmatter exception on the ground that a brief's effect comes from argument, ordering and emphasis, which have no field decomposition that preserves them; the frontmatter carries everything that IS enumerable and this schema is what makes that half checkable. FOUR THINGS THIS SCHEMA CANNOT DO, stated here rather than left to be discovered. (1) IT CANNOT SEE THE BODY. `clauses[]` is a list of ids; whether each id has a heading with text under it, and whether that text says the opposite of the row it discharges, are not keyword properties. The first half is closed by the clause round trip in src/roles.ts, which `tiphys validate --type role-brief` runs after this schema passes; the second half is judgment and is M3-P7's `clause-text-matches-row` probe (the phase's own hazard-class table says so). (2) IT CANNOT SEE THE FILESYSTEM. Every entry of `mandated-reading[]` is a string here; whether the path exists, and whether it is a regular file rather than a named pipe, are resolved by `tiphys brief compose` (criteria 2 and 6c). (3) IT CANNOT TELL A COMPLETE MANDATED-READING LIST FROM AN INCOMPLETE ONE. Nothing can compute which document a role NEEDS, which the phase's hazard-class table records as unreachable by any criterion. (4) IT CARRIES NO `kind` FIELD AND THEREFORE NEVER RESOLVES UNDER `--type auto`. That is deliberate and it is not an oversight of M3R-001: `--type auto` reads `kind` from the DECODED instance, and decoding a role brief means knowing first that it is markdown with frontmatter rather than a YAML document, so the type must be named before the document can be decoded at all. The half of M3R-001 that matters, registering the type in `TYPE_TABLE` in the same step that ships the schema, is done in src/commands/validate.ts.",
+  "description": "The YAML frontmatter block of every roles/*.md file and of AGENTS.md. Role identity, lifetime, visibility, the reading it must do in order, the verifiers attached to it, what it may output, its default model tier, and the clause ids the clause map resolves against.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "role",
+    "lifetime",
+    "sees",
+    "never",
+    "mandated-reading",
+    "verifiers",
+    "outputs",
+    "model-tier",
+    "clauses"
+  ],
+  "properties": {
+    "role": {
+      "$comment": "R-004, R-005, R-006. The six roles of blueprint section 6 and of the process document's section 0 role table. A CLOSED enum, and closed on purpose: role-model-config.yaml binds a tier to each of these six names and a seventh role would silently have no tier. The vocabulary is identical to role-model-config.yaml's `role` values, which is the property test/roles.test.ts asserts rather than this comment.",
+      "type": "string",
+      "enum": [
+        "orchestrator",
+        "investigator",
+        "plan-writer",
+        "adversarial-plan-reviewer",
+        "implementer",
+        "clean-room-reviewer"
+      ]
+    },
+    "lifetime": {
+      "$comment": "The process document's role table, column 2. One mystery, one plan, one review, one phase, one pull request, or persistent across the whole run.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "sees": {
+      "$comment": "R-006 and SC-001. The process document's role table, column 3. An ARRAY rather than a sentence because the adversarial plan reviewer's visibility is the thing SC-001 found the two governing documents disagreeing about, and a list of three named inputs is comparable across documents where a sentence is not.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "never": {
+      "$comment": "The process document's role table, column 4. The separation is the point: an investigator that fixes things and a reviewer that edits things are the two failures this column exists to prevent.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "mandated-reading": {
+      "$comment": "R-033a's ordered-reading family. ORDER IS THE SEMANTIC: the first entry is read first. `minItems: 1` because a role with no mandated reading has declared that it needs no grounding, which no role in this process does. Resolution is done by `tiphys brief compose`, against the kernel root, through classifyEntry (D-M3-27), so a missing path and a named pipe are different reported failures rather than one hang.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "verifiers": {
+      "$comment": "Blueprint section 6 attaches a verifier to a role. Values are gate ids from gate-registry.yaml or the name of an M2 component. NOT resolved against the registry here: that is a reference into another document and therefore Kind B, and this phase adds no entry to section 2.3's Kind B table (M3-P5 criterion 5). The residue is stated rather than hidden: a verifier naming a gate that does not exist passes this schema.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "outputs": {
+      "$comment": "The artifact types the role may produce, named as `tiphys validate --type` names them. A PATTERN rather than an enum, and the reason is that an enum here would have to be edited by M3-P6, M3-P7 and M3-P8 as each ships a new type, which makes a shared file a serialisation point between phases the conflict pre-pass ruled concurrent. Residue, stated: an `outputs` entry naming a type no schema is registered for passes this schema.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[a-z][a-z0-9-]*$"
+      }
+    },
+    "model-tier": {
+      "$comment": "R-075, resolved against role-model-config.yaml. The ENUM here is the Kind A half: the two tier names that file uses. The cross-document half, that this brief's tier equals the tier role-model-config.yaml binds to this role, is a reference into another document and is therefore Kind B; it is NOT built here, because a Kind B check registered for this type would need `--context` and criterion 1 requires `tiphys validate --type role-brief roles/<id>.md` to exit 0 with no context at all. test/roles.test.ts asserts the agreement instead, which is a registered test rather than a validator rule, and this comment says which of the two it is.",
+      "type": "string",
+      "enum": ["strongest", "cheaper"]
+    },
+    "clauses": {
+      "$comment": "The clause ids scripts/check-clause-map.mjs resolves against this artifact, plus the shared dispatch-contract clause ids. Every id here must occur EXACTLY ONCE as a body heading anchor of the form `## clause <id>` in the include-expanded body, and every anchor must occur here; that round trip is what stops a clause id being a label with nothing behind it, and it is enforced by src/roles.ts under `tiphys validate --type role-brief`. The pattern admits both requirement-row ids (R-004, R-010a) and named clauses (incremental-output).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "role-brief-set-derived-not-listed",
+  "behavior": "role-brief-set-derived-not-listed",
+  "tests": [
+    "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "test/roles.test.ts",
+      "find": "  .filter((name) => name.endsWith(\".md\"))",
+      "replace": "  .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/roles.test.ts",
+      "find": "  .filter((name) => readFileSync(join(rolesDir, name), \"utf8\").split(\"\\n\")[0]?.trim() === \"---\")",
+      "replace": "  .filter(() => true)"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node bin/tiphys.ts validate --type role-brief roles/<file>",
+    "captures": [
+      "witness/captures/role-brief-non-brief-refusal.txt"
+    ],
+    "provenance": "The named test partitions roles/ and checks the partition against the SHIPPED VALIDATOR rather than against itself, which means it spawns tiphys and reads what tiphys printed. Red-witness rule (f) binds it for exactly that reason: test/roles.test.ts is a changed file matching the spawn/parse derivation. The capture is the validator's own bytes refusing both files in roles/ that carry no frontmatter fence (roles/README.md and roles/_shared-dispatch-contract.md), taken 2026-08-12 in the branch worktree at ebc9b00 on node v22.22.2 with the command recorded in the file's header, stdout and stderr interleaved and the exit code appended by the capturing shell. The test compares the live refusal to the recorded line for the file under test by equality, not by a pattern, so a reworded message reddens rather than passing a regex that was chosen to match the implementation (CLAUDE.md warning 10)."
+  }
+}

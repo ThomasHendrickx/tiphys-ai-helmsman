@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-phase-projection",
+  "behavior": "brief-compose-renders-every-required-phase-field",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose renders every required field of the plan schema's phase definition"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  \"hazard-classes\",\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  \"acceptance\",\n",
+      "replace": ""
+    }
+  ]
+}
