@@ -424,6 +424,16 @@ depending on memory does not survive; the answer both times was a mechanism.
    the turn it arrives. This is the third variant of "cannot go red" this
    project has hit, after including the orchestrator's own worktrees in the
    watch set and after excluding the agent's.
+   **AND THE NOTICE DOES NOT ALWAYS ARRIVE, WHICH THIS RULE AS FIRST WRITTEN DID
+   NOT COVER.** Measured the same day, a few hours after the sentence above was
+   committed: a CI-completion monitor expired and produced NO timeout notice at
+   all. It was noticed only because its stream of events had stopped, which is
+   the weakest detection available, because **an expired monitor is
+   indistinguishable from one watching a quiet system.** Reacting to a notice is
+   therefore not sufficient; monitor LIFETIME has to be tracked. The cheap form
+   is to treat any monitor older than its reported timeout as expired by default
+   and re-arm it without waiting for evidence, since re-arming a live monitor
+   costs one restart and trusting a dead one costs the thing it was watching.
 
 The second rule has its own recorded failure: the first watchdog written after
 this incident tested whether the report file EXISTED, so it fired two minutes
