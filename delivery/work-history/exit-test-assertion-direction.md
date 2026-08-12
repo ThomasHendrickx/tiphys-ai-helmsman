@@ -3638,3 +3638,229 @@ The leg enumeration in the same output shows THREE legs, `manifestIds`, `rows`
 and `explicitById`, and prints every line of the program that mentions each. It
 is that enumeration, not a spread-spelling regex, that becomes the shipped
 guard in FR3.4.
+
+## FR3.3 The DANGEROUS state, measured BEFORE the fix, on BOTH arms
+
+The red-witness rule requires a witness to be red against the DANGEROUS state,
+not against an absent feature, and CLAUDE.md:348 requires a class witness to
+redden under at least TWO structurally different members. So the dangerous
+state is constructed and measured here, against the PRE-FIX code at 9b7752d,
+before a line of it is changed.
+
+**What the dangerous state actually is.** The verifier's DV-3 measured a
+degraded manifest against a bundle with one gate omitted. Re-running that shape
+against the SHIPPED tables it does not reproduce, and the reason matters: both
+shipped tables name every gate the real manifest declares, so an omitted gate
+re-enters the expected set through the EXPLICIT leg and is rejected whatever the
+manifest says. The manifest leg is masked by the table for every gate that
+exists today.
+
+The state the manifest leg is the SOLE source for is the one the derivation was
+built to provide, quoted from the shipped comment at
+scripts/m2-exit-test.sh:493: "a newly declared gate is asserted from the moment
+it enters the manifest, with no edit to this table". A newly declared gate is in
+the manifest leg ALONE: no table row names it, and having not run, no bundle row
+carries it. So the A/B below adds a twelfth gate to the manifest, gives it no
+record, and changes NOTHING else between arms except the manifest's `gates`
+array.
+
+Everything is driven through the harness's own `--print-expect`, so both tables
+are the shipped ones and not a replica of them. A replica is the thing that
+silently stops matching.
+
+Controls, both present and both necessary:
+
+- **GREEN CONTROL** (nothing omitted, real manifest) exits 0 on both arms, so
+  no rejection below is an artefact of the fixture.
+- **CONTROL-real-manifest** (one gate the arm RUNS omitted, real manifest)
+  exits 1 on both arms, so the fixture can detect a missing record at all. The
+  omitted gate is per arm, because red-witness is declared ABSENT from the main
+  bundle and its absence there is legitimate: pr omits `red-witness`, main omits
+  `coverage`.
+
+Toolchain: node v26.6.0 from the scratch prefix, checked in the shell that ran
+the command. Harness: the file at HEAD, UNMODIFIED.
+
+FULL OUTPUT:
+
+```
+manifest gates: 11 | gate omitted per arm: {"pr":"red-witness","main":"coverage"}
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+
+=== ARM pr: shipped table has 11 explicit row(s), 0 declared absent ===
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] CONTROL-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-pr-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG3-table-names-no-gates
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-empty-array
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] NEWGATE-manifest-entries-without-ids
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] NEWGATE-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-pr-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+=== ARM main: shipped table has 6 explicit row(s), 5 declared absent ===
+--- [main] GREEN-CONTROL-nothing-omitted
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] CONTROL-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-main-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG3-table-names-no-gates
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-empty-array
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] NEWGATE-manifest-entries-without-ids
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] NEWGATE-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-main-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (PR bundle): FAIL with 19 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(20 output line(s) total)
+EXIT=1
+
+--- [main] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (main bundle): FAIL with 14 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(15 output line(s) total)
+EXIT=1
+
+=== SUMMARY: exit status per case (0 = CERTIFIED, 1 = rejected) ===
+pr/GREEN-CONTROL                   EXIT=0
+pr/control                         EXIT=1
+pr/manifest-empty-array            EXIT=1
+pr/manifest-no-usable-ids          EXIT=1
+pr/manifest-not-an-array           EXIT=1
+pr/explicit-empty                  EXIT=1
+pr/NEWGATE-real-manifest           EXIT=1
+pr/NEWGATE-manifest-empty-array    EXIT=0
+pr/NEWGATE-manifest-no-usable-ids  EXIT=0
+pr/NEWGATE-manifest-not-an-array   EXIT=1
+main/GREEN-CONTROL                 EXIT=0
+main/control                       EXIT=1
+main/manifest-empty-array          EXIT=1
+main/manifest-no-usable-ids        EXIT=1
+main/manifest-not-an-array         EXIT=1
+main/explicit-empty                EXIT=1
+main/NEWGATE-real-manifest         EXIT=1
+main/NEWGATE-manifest-empty-array  EXIT=0
+main/NEWGATE-manifest-no-usable-ids EXIT=0
+main/NEWGATE-manifest-not-an-array EXIT=1
+pr/rows-not-an-array               EXIT=1
+main/rows-not-an-array             EXIT=1
+```
+
+### FR3.3a What that measures
+
+| case, both arms | pre-fix result |
+|---|---|
+| GREEN CONTROL, nothing omitted | EXIT=0, certified. The fixture is acceptable. |
+| a gate the arm runs is omitted, real manifest | EXIT=1, detected. |
+| **a NEWLY DECLARED gate did not run, real manifest** | **EXIT=1, detected by the manifest leg alone** |
+| **same bundle, manifest `gates: []`** | **EXIT=0, CERTIFIED. "11 gate(s) asserted ... zero red"** |
+| **same bundle, manifest `gates: [{name}, {id:""}, {id:7}]`** | **EXIT=0, CERTIFIED** |
+| same bundle, manifest `gates: {}` | EXIT=1, caught by the existing type check |
+
+**Two structurally different members of the class certify a run in which a
+declared gate did not run, and they do it on BOTH arms.** They are structurally
+different rather than two spellings of one thing: the first is an EMPTY array,
+the second is a NON-EMPTY array of three entries, and no type test distinguishes
+the second from a healthy manifest. The second member is not in the delta
+verification; it was found by asking what the property is rather than what the
+reported input was.
+
+That is DV-3 confirmed independently, at full strength, and widened.
+
+### FR3.3b The other two legs, measured rather than argued
+
+The same output settles what emptying each of the other two legs does, which is
+what stops this round from fixing the manifest leg and calling the class closed.
+
+- **The rows leg** (`summary.gates` is not an array, so `rows` is `[]`): EXIT=1
+  on both arms, 19 findings on pr and 14 on main, each naming a gate by id.
+  Emptying it is LOUD, because every manifest and table id then has no record
+  and check 3 rejects each one by name.
+- **The explicit leg** (the table names no gates): EXIT=1 on both arms. Emptying
+  it makes the program STRICTER, not weaker: every manifest id falls to the
+  default required-green and the newly declared gate is still rejected.
+
+So the manifest leg is the only one of the three whose emptying is silent, and
+the fix is scoped to it on measured grounds rather than on the grounds that it
+is the one that was reported. A check on the other two would have no dangerous
+state to be red against, which is the T-003 shape in its own right.
