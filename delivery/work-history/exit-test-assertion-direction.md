@@ -4977,7 +4977,8 @@ minutes.
 
 I did not write rounds 1, 2 or 3. I was dispatched as a fresh implementer against
 head 6fd51cb (round 3's 0475d8b plus a merge of main), to close the round-3 delta
-verification findings in delivery/verification/harness-round3-delta.md:1 and, more
+verification findings in `delivery/verification/harness-round3-delta.md` (on the unmerged branch
+claude/verify-harness-round3, so it is quoted rather than cited) and, more
 importantly, to fix the MECHANISM those findings are three instances of rather
 than the three spellings the verifier happened to construct.
 
@@ -5045,10 +5046,11 @@ substance:
 3. **The set is re-derived a second way and the two must agree**,
    scripts/m2-exit-test.sh:582 and scripts/m2-exit-test.sh:596. The freeze cannot
    reach INSIDE the closure, where the accumulator is still extensible. That
-   region is covered by recomputing the expected set from the same three legs
+   region is guarded by recomputing the expected set from the same three legs
    with a Set rather than the loop and requiring set equality. An id no leg
    contributed, an id the table declared absent, a duplicate, and a DROPPED id
-   all break it.
+   all break it. Measured in FR4.6: with this check removed, inside-closure-pop
+   exits 0 having asserted on one gate instead of two, and at head it is refused.
 
 The check at scripts/m2-exit-test.sh:596 is terminal (it reports and exits)
 rather than accumulating a finding. That is not stylistic. When I first wrote it
@@ -5426,7 +5428,7 @@ Three verdicts are used and they mean different things:
 | test/m2-exit-test.test.ts:588 | nothing | PROPERTY: the containment test is the claim. |
 | test/m2-exit-test.test.ts:610 | every | PROPERTY: the refused set is enumerated and every other key is explicitly allowed, which is what the message says. |
 | test/m2-exit-test.test.ts:662 | no, only | NOT A CLASS: one witness string. |
-| test/m2-exit-test.test.ts:672 | any | SUBSET, DECLARED AND UNCHANGED: "any nonzero self-test exit" is witnessed by one value (2). One witness is not a class (CLAUDE.md:350). Not this round's delta; recorded in FR4.5. |
+| test/m2-exit-test.test.ts:672 | any | SUBSET, DECLARED AND UNCHANGED: "any nonzero self-test exit" is witnessed by one value (2). One witness is not a class (CLAUDE.md:382). Not this round's delta; recorded in FR4.5. |
 | test/m2-exit-test.test.ts:719 | no | NOT A CLASS. |
 | test/m2-exit-test.test.ts:732 | no | NOT A CLASS. |
 | test/m2-exit-test.test.ts:736 | only | PROPERTY: the accepted form is stated and the condition is equality with it. |
@@ -5500,7 +5502,7 @@ used against me.
    test/m2-exit-test.test.ts:415 ("a broken gate is never accepted as diff-scoped",
    one errored fixture) and test/m2-exit-test.test.ts:672 ("it must accept any
    nonzero self-test exit", witnessed with the single value 2). Each is a
-   universal witnessed by one member, which CLAUDE.md:350 says is not a class. I
+   universal witnessed by one member, which CLAUDE.md:382 says is not a class. I
    did not widen them because they are outside the scope I was given, and I am
    recording them so that "the derivation found nothing else" is not read as
    "there is nothing else".
@@ -5533,12 +5535,13 @@ used against me.
    the freeze is already in force there, but the test does not measure it.
 9. **Everything measured here is the assertion program run directly.** The full
    harness path (a real `--full` or `--local` run) is not exercised by this
-   round's new tests, for the same reason the existing derivation probes are not:
-   it needs a real runner. What that costs is stated in FR4.10.
+   round's new tests, for the same reason the existing derivation probes are not,
+   and I did not attempt it here. What that leaves unmeasured is stated in
+   FR4.10.
 
 ### FR4.6 The red witness: two structurally different defangs, and every member measured
 
-CLAUDE.md:350 requires a witness for a CLASS to redden under at least two
+CLAUDE.md:382 requires a witness for a CLASS to redden under at least two
 structurally different members, and requires the test to be red against the
 DANGEROUS state rather than merely against the absent feature.
 
@@ -5676,10 +5679,10 @@ What this measures, read carefully rather than as a wall of noise:
 
 ### FR4.8 Suite results, with all three axes named
 
-CLAUDE.md:463 makes the complete sentence for a suite result name the toolchain,
+CLAUDE.md:747 makes the complete sentence for a suite result name the toolchain,
 the build state and the invocation, and quote the skipped count alongside pass.
 
-**Arm 1.** Head `THE_HEAD`, node v26.6.0 from the scratch prefix, `dist/` BUILT
+**Arm 1.** CODE head 04e83a7, node v26.6.0 from the scratch prefix, `dist/` BUILT
 (`npm ci` exit 0, `npm run build` exit 0, `git status --porcelain` empty
 afterwards), invocation `npm test`:
 
@@ -5695,7 +5698,12 @@ i duration_ms 249701.21055
 npm test EXIT=0
 ```
 
-598 tests, 598 pass, 0 fail, **0 skipped**, exit 0. Load average at the start of
+598 tests, 598 pass, 0 fail, **0 skipped**, exit 0. Both arms ran at code head
+04e83a7; the commits after it change only delivery/work-history/, and FR4.11
+records a re-run at the final head so that the numbers are not left resting on my
+assumption that a work-history commit cannot move them.
+
+Load average at the start of
 that run was 1.67 and 5.66 at the end. **596 was the count before this round and
 598 is the count after**, and the difference is exactly the two tests this round
 registers in test/behaviors.json:1, which is the accounting rather than a
@@ -5705,19 +5713,34 @@ coincidence.
 `node --test` from the repository root:
 
 ```
-BARE_RESULT
+i tests 600
+i suites 0
+i pass 600
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 257710.930221
+bare node --test EXIT=0
 ```
+
+600 tests, 600 pass, 0 fail, **0 skipped**, exit 0. The two extra against arm 1
+are `greet returns a greeting for a name` and `greet rejects an empty name`, the
+first two lines of that run's output, from the tracked sandbox fixture at the
+repository root that `package.json`'s test script excludes. That is the third
+axis exactly as CLAUDE.md:782 records it, and it is named rather than left as an
+unexplained two-test gap.
 
 **Transliteration declared.** Node's test reporter prints U+2139 INFORMATION
 SOURCE at the head of each summary line. Both captures above are real output from
 the runs described, with that codepoint rendered as the ASCII letter `i`.
-Occurrences replaced: TRANSLIT_COUNT. Nothing else in any captured output in this
-section was changed. There were no U+2716 failure glyphs to replace, because no
+Occurrences replaced: 16, eight in each of the two captures. Nothing else
+in any captured output in this section was changed. There were no U+2716 failure glyphs to replace, because no
 test failed in either arm.
 
 **What I did NOT run**: the DEFAULT toolchain arm (`bash -lc`, node v22.22.2).
 The two floor-gated doctor tests skip there, which is a known and unchanged
-property of this repository (CLAUDE.md:463), and this round touches nothing in
+property of this repository (CLAUDE.md:750), and this round touches nothing in
 that path. I say so rather than letting a two-arm report read as three.
 
 **test/watcher.test.ts**: I saw NO instance of the DV3-F6 flake in either arm.
@@ -5727,13 +5750,88 @@ that rate. Load averages for my runs are quoted above.
 
 ### FR4.9 Gates, bytes and citations
 
-BYTE_CHECK
+```
+$ node --version
+v26.6.0
+$ git add -A
+$ node scripts/check-authored-bytes.mjs
+authored-bytes EXIT=0
+```
 
-CITATION_CHECK
+The check is the portable repository script, run with the index staged as it
+requires. Zero tracked authored files carry non-ASCII or control characters,
+which includes the 251 lines of captured derivation output pasted into FR4.3 and
+the two transliterated suite captures in FR4.8.
+
+
+**The citations gate does not run on this change, and I checked why rather than
+reading a green.**
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --only citations --evidence $SP/FR4-ev-citations --base origin/main --head HEAD
+gates: registry gate-registry.yaml mode full
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: no applicable gate
+citations EXIT=0
+$ cat $SP/FR4-ev-citations/citations/result.json
+  "status": "not-applicable",
+  "detail": "precondition citations-diff-touches-documents evaluated and unmet: no changed
+             path under delivery/plan/, delivery/verification/, delivery/decisions/,
+             delivery/tuition/, delivery/requirements/, delivery/STATE.md"
+```
+
+`delivery/work-history/` is not in that precondition's path list, so a
+work-history-only paperwork change never reaches the gate. **A not-applicable is
+not a pass**, so I resolved every citation in this section myself instead, by
+reading each cited line out of this worktree:
+
+```
+80 distinct citation tokens, 1 unresolvable
+```
+
+The one unresolvable was `delivery/verification/harness-round3-delta.md:1`, which
+lives on the unmerged branch claude/verify-harness-round3. Per CLAUDE.md:206 a
+path you are not asserting exists at that line belongs in backticks, so it is
+quoted in FR4.0 rather than cited, and it buys nothing toward the substantive
+floor. The other 79 resolve, and 76 of them are inside the pasted derivation
+output, which is a useful property: those line numbers were produced BY a tool
+reading these files rather than typed by me, and re-resolving them is a check
+that the paste and the tree agree.
+
 
 ### FR4.10 The claim grep, and what a green here cannot claim
 
-CLAIM_GREP
+```
+$ F=delivery/work-history/exit-test-assertion-direction.md
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' $F \
+    | awk -F: '$1>=4976'
+23 hits
+```
+
+Every hit, and what settles it:
+
+- **Fourteen hits (lines 5196 to 5386 and 5643) are inside the pasted derivation
+  output or the pasted matrix.** They are captured output from the tools and from
+  the shipped messages those tools quote, not sentences I wrote. Altering them
+  would be the fabrication the red-witness rule exists to prevent.
+- **Four hits are rows of the FR4.4 walk that QUOTE a shipped message** and label
+  it (test/m2-exit-test.test.ts:415, test/m2-exit-test.test.ts:804,
+  test/m2-exit-test.test.ts:2317 and the FR4.5 restatement of the first). In each
+  the universal is the code's claim, and the walk's verdict is my judgement about
+  it, given with the reason.
+- **"is covered" at what was line 5049 was restated** to "is guarded", with the
+  adjacent measurement naming the FR4.6 row that demonstrates it.
+- **"it needs a real runner" was removed** and replaced by "I did not attempt it
+  here", because I did not measure that it needs one; the existing probes avoid
+  that path for the same reason and I inherited the avoidance.
+- **The FR4.5 item 3 sentence listing the universal word list** contains "never"
+  and "always" as ITEMS OF THE LIST, quoted from my own script.
+- **"What it cannot see is a write that never names the binding"** and its
+  siblings in FR4.5 are statements of what an instrument does NOT cover. They are
+  limitations, which is the direction that cannot flatter the change, and each is
+  the reason the next instrument exists.
+
 
 **The grep's known hole, checked by eye.** It carries `cannot be` and no other
 `cannot X` form. I read every `cannot fire`, `cannot reach`, `cannot happen`,
