@@ -2,10 +2,48 @@
 
 - date: 2026-08-12
 - author: orchestrator
-- status: both recorded as findings with mechanisms; NEITHER is a demonstrated
-  cause, and the experiments that would settle them are named and were not run.
+- status: **FINDING 1'S MECHANISM HAS SINCE BEEN REFUTED BY MEASUREMENT. See the
+  postscript below before reading it.** Finding 2 stands.
+- original status, kept because it is the reason the refutation was possible:
+  both recorded as findings with mechanisms; NEITHER is a demonstrated cause, and
+  the experiments that would settle them are named and were not run.
 
-## Finding 1: the orchestrator's own optional work injected wall-clock flakes
+## POSTSCRIPT, same day: finding 1's mechanism is WRONG
+
+Finding 1 says CPU contention that the orchestrator caused is the best available
+explanation for a cluster of intermittent suite failures. **It is not the
+explanation.** The experiment named below as the one that would settle it, and
+which was not run at the time, was run afterwards by the harness round-3 delta
+verifier. Its result:
+
+- the failure reproduces at load average **0.27**, against the 13.00 this
+  document treats as the mechanism;
+- **one of five ISOLATED single-file runs** of `test/watcher.test.ts` failed, on
+  a third distinct test, with no other suite running at all.
+
+So `test/watcher.test.ts` is flaky ON AN IDLE BOX at roughly one run in five, and
+the required `suite` gate is nondeterministic. The load was real and the
+correlation was real; the causal claim was wrong.
+
+**Two things are worth keeping from this rather than deleting the finding.**
+
+First, the refutation was CHEAP because the original was written with its own
+falsifier attached. The document named the experiment, in the sentence beginning
+"The cheap experiment that would settle it, and which was NOT run", so a later
+agent had something to execute rather than an opinion to argue with. A finding
+recorded as a demonstrated cause would have been defended instead of tested.
+
+Second, the ORIGINAL CAUTION was correct on its own terms and is untouched by
+this: the orchestrator did generate load 13.00 on a 4-core box with optional
+work while two agents were on the critical path, and T-014's postscript about
+not starving the critical path still holds. What is refuted is that the load
+CAUSED these particular failures, not that generating it was a good idea.
+
+**What is now open**: the actual mechanism of the `test/watcher.test.ts` flake is
+unknown, it affects every merge because `suite` is required, and it is nobody's
+phase. A fix round is dispatched for it separately.
+
+## Finding 1 (mechanism REFUTED, see postscript above): the orchestrator's own optional work injected wall-clock flakes
 
 Two independent agents hit intermittent suite failures inside one window, and
 the best available explanation is CPU contention that the orchestrator caused.

@@ -180,6 +180,38 @@ artifact behind it is treated as unknown.
    on an unmerged branch. Use it deliberately, and know that it buys you nothing
    toward the substantive-citation floor.
 
+   **THAT LAST CASE IS NOT HYPOTHETICAL AND IT COLLIDES WITH T-019.** An
+   evidence document ABOUT an unmerged branch (a clean-room review, a delta
+   verification) is caught between two rules that are each right:
+
+   - T-019 says cut the evidence branch from `main`, never from the branch under
+     review, or landing the evidence lands its subject.
+   - This gate requires a `path:line` to resolve IN THE TREE BEING LINTED, and
+     on `main` the branch's version of a changed file does not exist.
+
+   So a delta verification citing `test/foo.test.ts:1911` reddens on `main`
+   because that file is shorter there. Measured 2026-08-12, run 31628258664
+   step 8. **Quote every citation into a file the reviewed branch CHANGES**, and
+   leave resolving only those into files that are byte-identical on both sides,
+   which is a fact to CHECK rather than assume:
+
+   ```
+   git diff --name-only origin/main...<branch>    # these must be quoted
+   ```
+
+   **The citation that reddens is not the dangerous one.** Out-of-range reddens
+   loudly. A branch-line citation that happens to be IN range on `main` resolves
+   SILENTLY, against the old version, pointing at a line that is not the line
+   under discussion. In the measured case one of fifteen was out of range and
+   fourteen resolved silently.
+
+   Two further traps from the same incident, both cheap to avoid:
+
+   - **The gate lints at HEAD, not the working tree.** Staging a fix and
+     re-running gives the OLD verdict. Commit, then re-run.
+   - **A rule number is not a line number.** `CLAUDE.md:3b` is rejected as
+     malformed; the rule at 3b lives at CLAUDE.md:155.
+
    Verify before pushing rather than after a red gate:
 
    ```
@@ -517,6 +549,48 @@ harness code IS a fix round and owes the full fix-round contract above. PR #27
 fixed one arm of "the harness assumes a run has a phase" and left the sibling
 arm twelve lines away, because it was treated as too small to open the contract
 for. PR #30 is what that exemption cost.
+
+### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
+
+One level down from the rule above, and the reading procedure is written out
+because the obvious method does not exist. **The `gates` workflow uploads no
+evidence artifact**, so `summary.json`, which is the only place carrying per-gate
+`units`, `applicable` and `vacuous`, never leaves the runner. That last word is a
+universal, so here is what settles it rather than a reader having to trust it:
+
+```
+grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits
+```
+
+Re-run it before relying on this; the day a workflow gains an upload step, the
+procedure below is superseded by just reading `summary.json`. A reviewer asking
+"did gate X actually assert something on this head" has the JOB LOG and nothing
+else, and the log prints bundle-level counts, not per-gate rows.
+
+So quoting `declared N applicable N verdict N green N` as evidence about one
+gate is a bundle-level green being passed off as a gate-level one. That is the
+same substitution T-009 names, one scope smaller.
+
+Four printed facts settle it, and all four are needed:
+
+1. the gate id is in the `gates.manifest.json` **on that branch** (the harness
+   runs `--manifest`, not `--registry`, so registry membership is not enough);
+2. the bundle's `declared` count equals that manifest's gate count;
+3. the `required gate(s) not applicable:` line does NOT name the gate (a
+   required gate that was skipped is named there, which is what makes its
+   absence informative);
+4. the assertion line reports `zero error; zero vacuous`.
+
+Worked example, `brief-drift` at head `077f339`, run 31610473840: manifest 12
+ids against `main`'s 11, `declared 12`, not-applicable named only `citations`,
+`12 gate record(s) match section 1.4 ... zero error; zero vacuous`.
+
+**Say which half is observed and which is deduced.** In that example the units
+and the green came DIRECTLY from a separate workflow step; that the gate sat
+among the green inside the ASSERTED BUNDLE is a deduction from the four facts,
+because no per-gate line names it. Both are sound. Reporting the second as
+though it were the first is how a bundle-level green becomes a gate-level claim
+in the next document that cites it.
 
 ## Branch names are load-bearing, not labels (binding)
 

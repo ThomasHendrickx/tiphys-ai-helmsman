@@ -5,7 +5,128 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12 late afternoon, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-12 evening, NEWEST BLOCK. Everything below is OLDER.
+- **READ THIS FIRST: THE BLOCKED HARNESS CODE IS ON `main`, AND THE
+  ORCHESTRATOR PUT IT THERE.** PR #117 was opened to land one verification
+  document. It carried the rounds 1-2 harness fix with it, because its branch was
+  cut from the harness branch rather than from `main`, and the merge commit I
+  wrote says "No source or test changes". That sentence is false. `main` and the
+  end of round 2 (`9b7752d`) are byte-identical across `scripts/m2-exit-test.sh`
+  (sha256 prefix `4b607dd9`), `test/m2-exit-test.test.ts`, `test/behaviors.json`,
+  `.github/workflows/gates.yml` and `test/gate-registry.test.ts`. **So DV-3 and
+  DV-4, the two MEDIUM findings that blocked the merge, are live on `main`.**
+  Recorded in full at
+  delivery/tuition/T-019-a-verification-branch-carried-the-code-it-was-verifying.md:1.
+  Both are LATENT rather than active, and the bound is stated as measured rather
+  than as a guarantee: DV-3 has TWO demonstrated members, an empty gate list and
+  entries carrying no usable id, both degenerate, while the shipped manifest
+  carries eleven ordinary gates; nobody has established that the class has only
+  those two. DV-4 falsifies a registered behaviour and miscompiles nothing.
+  `main` CI is green and genuinely asserting.
+- **NOTHING CAUGHT IT, WHICH IS THE PART THAT MATTERS.** The `scope` gate does
+  not apply to a non-phase branch, CI was green on both arms, and both post-merge
+  push runs were read BY STEP and were green. Every check this repository has was
+  satisfied by a merge that landed blocked code, because no check compares a pull
+  request's DESCRIPTION to its DIFF. The mechanical answer, before any merge:
+  `git diff --stat $(git merge-base origin/main FETCH_HEAD)..FETCH_HEAD`, and if
+  the file list does not match the stated subject, stop.
+- **CONSEQUENCE, AND IT CUTS THE OTHER WAY: M3-P6 WAS NOT BLOCKED ON THE HARNESS
+  AFTER THAT MERGE, AND THIS FILE KEPT SAYING IT WAS.** Measured against `main`
+  at `9781212`, M3-P6 has exactly ONE conflict, `test/behaviors.json`, which is
+  the append-only registry resolved as a union by the standing rule at
+  CLAUDE.md:198. M3 is 5 of 10 merged.
+- **PR #109 IS CONFLICTED AND THEREFORE GETS NO CI AT ALL.** `mergeable_state`
+  is `dirty`, and **GitHub creates no `pull_request` run for a conflicted pull
+  request**, so no `gates` run has ever completed on ANY round-3 head. Confirmed
+  by `total_count: 0` for the head sha on both the runs and check-runs endpoints,
+  while the same workflow ran normally for two other branches in the same
+  minutes. The pull request still displays the green from `9b7752d`, which is a
+  worse version of the T-009 shape: not a stale ARM, a stale HEAD with no run at
+  all. Round 3 diagnosed this independently and recorded it on the branch.
+- **ROUND 3 IS HANDED BACK at `0475d8b`**, 18 commits, closing DV-3 (widened: it
+  found a SECOND member, entries present but carrying no usable id, that the
+  round-2 verifier missed), DV-4 (widened: six variants were invisible to the
+  shipped guard), and DV-1 by restatement. Its delta verification is in flight
+  and has been re-targeted onto `0475d8b`. The resolution path for the conflict
+  is measured rather than proposed: `git diff 9b7752d..de2d806` over the four
+  files applies to current `main` with `git apply --check` exit 0.
+- **THE HARNESS MERGE IS BLOCKED ON TWO MEDIUM FINDINGS THAT ROUND 2 ITSELF
+  INTRODUCED**, found by the independent delta verification and arbitrated at
+  delivery/review/arbitration-harness-round2-and-delta.md:7. DV-3 is the serious
+  one: a manifest with `gates: []` empties the manifest leg silently and neither
+  new check fires, so the program certifies a bundle containing a red gate,
+  `EXIT=0, "10 gate(s) asserted, zero red"`
+  (delivery/review/arbitration-harness-round2-and-delta.md:80). **That is the
+  original assertion-direction defect restored in full, inside the fix built to
+  remove it.** DV-4 makes a registered behaviour false as written: the
+  fourth-leg guard's regex misses this codebase's own spread-expression idiom
+  (delivery/review/arbitration-harness-round2-and-delta.md:109).
+- **ROUND 3 IS A FRESH IMPLEMENTER, AND THAT IS THE RULE, NOT A PREFERENCE.**
+  This is the third fix round on one branch, which trips the stop rule at
+  delivery/decisions/DR-0012-delegated-merge-authority.md:34; DR-0016 changes
+  what stopping MEANS, so the work does not wait for the owner. It is in flight
+  with a 4807-line work history, beacon fresh, and it has NOT pushed, which is
+  correct under the corrected push rule and must not be read as a stall.
+- **HOW DV-3 WAS FOUND IS THE TRANSFERABLE PART.** The verification fed the
+  check a REAL manifest with one gate omitted; round 2 fed it hand-built
+  degenerate fixtures. A check exercised only against inputs its author
+  constructs is exercised against the author's MODEL of what can go wrong, and
+  DV-3 sits outside that model: an ordinary manifest with an ordinary empty
+  list, which no degenerate fixture happened to represent.
+- **PR #116 (the M3-P6 delta verification) IS MERGED**, as `9781212`, green by
+  step on `2af6c81` with step 8 success and step 9 correctly skipped. It was a
+  merge precondition for #105 and it is discharged. It had to be updated onto
+  `main` TWICE: the first update was invalidated when #117 merged and moved
+  `main` underneath it.
+  **The general fact, worth pre-computing before the M3-P6 sequence: branch
+  protection requires an up-to-date head, so sequential merges each invalidate
+  the next PR's status and a queue of ready PRs costs ONE CI CYCLE APIECE.**
+  Budget for it; do not read it as a failure.
+- **M3-P7 AND M3-P8 ARE DELIBERATELY NOT DISPATCHED YET, AND THE REASON IS LOAD,
+  NOT READINESS.** Both briefs are written and both are ready
+  (delivery/plan/m3-p7-p8-dispatch-addenda.md:1). This box has 4 cores; this
+  afternoon the orchestrator's own optional `npm test` took the load to 13.00
+  and injected wall-clock flakes into two agents' measurements, which they then
+  had to attribute without being able to see the cause
+  (delivery/verification/orchestrator-load-and-the-claim-grep-hole.md:26). Round
+  3 is on the critical path and runs suites. Adding two implementers beside it
+  buys nothing and degrades the measurement that everything is waiting on.
+- **A CORRECTION IS OWED TO A BINDING FILE.** Standing warning 12 at
+  CLAUDE.md:725 records that the no-dist arm skips NINE tests. Measured at the
+  harness head it is TEN, the extra being a fifth dist-gated test that does not
+  exist on `origin/main`. Round 3 was told it may correct the warning, after
+  RE-MEASURING rather than trusting either figure.
+- **ONE M3-P6 MERGE PRECONDITION IS NOW PRE-CLEARED: `brief-drift` IS ASSERTED,
+  not merely green.** That distinction was an open question and it is the one
+  this whole harness episode is about, so it was settled mechanically rather
+  than assumed. Directly observed in run 31610473874 at head `077f339`:
+  `gates.manifest.json` on the branch carries TWELVE gate ids including
+  `brief-drift` where `main` carries eleven; the harness bundle printed
+  `declared 12`; `required gate(s) not applicable` named ONLY `citations`; and
+  the assertion printed `12 gate record(s) match section 1.4 ... zero error;
+  zero vacuous`. The standalone workflow step separately printed
+  `brief-drift: green (15 generated brief gate rows compared)`.
+  **Being precise about which half is observed and which is deduced**, because
+  this file is trusted later: the fifteen units and the green are DIRECT. That
+  it sat among the eight green INSIDE the asserted bundle is a DEDUCTION from
+  those four printed facts, since no per-gate line naming it appears in the job
+  log. The deduction holds because a required gate that was not-applicable would
+  have been named on the not-applicable line.
+- **THE GENERAL RULE THAT CAME OUT OF SETTLING IT, and it is T-009 one level
+  down.** T-009 says a green is scoped to the run that produced it. This adds:
+  **a green BUNDLE is not evidence that any PARTICULAR gate asserted anything.**
+  The workflow uploads no evidence artifact, so `summary.json` (which carries
+  per-gate `vacuous`, `applicable` and `units`) never leaves the runner, and the
+  job log is all a reviewer gets. The four printed facts above are the reading
+  procedure: manifest membership, the declared count, the required-not-applicable
+  list, and the zero-vacuous assertion. Anything less is a bundle-level green
+  being quoted as a gate-level one.
+- **STILL UNOWNED ON `main`**: the `render-agent-rules-gates.mjs` duplicate-row
+  MEDIUM at delivery/verification/render-agent-rules-gates-duplicate-row.md:1,
+  and the `red-witness` gate not running on `scripts/` diffs at
+  delivery/verification/red-witness-does-not-run-on-scripts.md:1. Neither blocks
+  M3-P6. Both need a phase or a decision to own them, and neither has one.
+- as of: 2026-08-12 late afternoon, older block. Everything below is OLDER.
 - **WHERE M3 STANDS: 5 of 10 merged, and M3-P6 is blocked on ONE THING.** The
   exit-test harness fix must merge first (DR-0012 condition 2), and its own
   delta verification is in flight. Nothing else stands in M3-P6's way: its
