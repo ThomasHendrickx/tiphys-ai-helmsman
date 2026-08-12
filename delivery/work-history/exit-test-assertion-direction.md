@@ -1359,8 +1359,10 @@ competitor unexcluded, and the probe silently degrades from a witness into a
 tautology.**
 
 Concretely: the test's derivation-only probes carry
-`assert.doesNotMatch(output, /reported RED/)` at test/m2-exit-test.test.ts:1394,
-which excludes ONE competitor, the global zero-red check. On the PR arm zero-red
+`assert.doesNotMatch(output, /reported RED/)`, which stood at line 1394 of
+`test/m2-exit-test.test.ts` AT `21509d1` and is DELETED by this round, so it is
+quoted here rather than cited (a citation must resolve at the audited head, and
+this one no longer can). It excludes ONE competitor, the global zero-red check. On the PR arm zero-red
 is the only competitor and the exclusion is sufficient. On the MAIN arm a
 DIFFERENT competitor exists, section 8's declared-absent check
 (scripts/m2-exit-test.sh:692), it is not named, and it rejects both main-arm
@@ -1472,7 +1474,7 @@ Probe X is the salvaged reviewer's constructed repair. I reproduced it rather
 than assuming it (row `pr | probe-X` and `main | probe-X` above): pristine 1,
 `v-tableonly` 0, on BOTH arms.
 
-One witness is not a class (CLAUDE.md:348), so a second member is required, and
+One witness is not a class (CLAUDE.md:380), so a second member is required, and
 "structurally different" has to be MEASURED rather than asserted. The union at
 scripts/m2-exit-test.sh:515 is a spread of THREE sources, so the two legs a
 derivation probe can enter by are the MANIFEST leg and the ROWS leg. I built one
@@ -1541,7 +1543,7 @@ defanging the SHIPPED harness and running the REAL test, twice, each defang
 predicting a DIFFERENT first failure.
 
 The harness was snapshotted with `cp` and restored with `cp`; no `git checkout --`
-was used anywhere in this round (CLAUDE.md:627). Pristine sha256
+was used anywhere in this round (CLAUDE.md:659). Pristine sha256
 `9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138`, verified
 before and after every defang.
 
@@ -1764,7 +1766,7 @@ checked mechanically rather than by eye, in FR1.11.
 
 ## FR1.8 The complete suite sentence
 
-Three axes, all named (CLAUDE.md:642, CLAUDE.md:664, CLAUDE.md:677).
+Three axes, all named (CLAUDE.md:686, CLAUDE.md:708, CLAUDE.md:721).
 
 TOOLCHAIN node v26.6.0 (the fetched floor toolchain, `node --version` checked in
 the same shell), BUILD STATE `dist/` present, built by `npm run build` exit 0 with
@@ -1777,7 +1779,7 @@ a clean `git status` for tracked build output afterwards.
 
 The two-test delta is the `sandbox/test/greet.test.js` fixture that
 `package.json`'s `test` script pattern excludes, already recorded at
-CLAUDE.md:684 and reproduced at `21509d1` by this branch's previous round and by
+CLAUDE.md:731 and reproduced at `21509d1` by this branch's previous round and by
 the salvaged contract-H-A reviewer. 594 is what CI and the `suite` gate mean.
 
 The totals are UNCHANGED from `21509d1` (594 and 596), which is expected: this
