@@ -2813,3 +2813,84 @@ above at item 1; this is the list for round 2's own enumeration.
    not the same thing as the `gates` workflow, and they are LOCAL. The CI
    conclusion is reported separately and is not assumed.
 
+## FR2.10 The complete suite sentence, and ONE intermittent failure I could not identify
+
+All three axes CLAUDE.md:699 requires, plus the skipped count.
+
+TOOLCHAIN: node v26.6.0 from the scratch prefix, `node --version` checked in the
+shell that ran each command. BUILD STATE: `dist/` present, `npm run build` exit 0,
+`git status --porcelain` clean afterwards.
+
+| invocation | tests | pass | fail | SKIPPED | exit | duration |
+|---|---|---|---|---|---|---|
+| `npm test` | 596 | 596 | 0 | **0** | 0 | 490624 ms |
+| bare `node --test` from the repository root, run B | 598 | 598 | 0 | **0** | 0 | 223719 ms |
+
+Round 1 measured 594 and 596 at `fdb3120`. This round adds TWO tests, so 596 and
+598 are the same two numbers plus two, and the two-test gap between the
+invocations is unchanged: it is `sandbox/test/greet.test.js`, which
+`package.json`'s test pattern excludes and the `suite` gate therefore never runs
+(CLAUDE.md:721). **596 is what CI and the `suite` gate mean; 598 is what gate-list
+step 3 literally asks for.**
+
+### The failure, reported rather than averaged away
+
+The FIRST bare `node --test` run of this round exited **1**. Its tail:
+
+```
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+```
+
+**I did not capture the test name, and that is my error, not a property of the
+failure.** The redirection I used was `node --test 2>&1 > file`, which sends
+stderr to the terminal and stdout to the file rather than both to the file, so
+the reporter's failing-test block was never written down and I saw only the tail
+that had already scrolled. The two runs after it, with the redirection corrected,
+both exit 0 with 0 failures.
+
+What I can establish, and what I cannot:
+
+- **Not one of mine.** `generatedMessage: true` means the assertion carried NO
+  message argument. Every assertion this round adds passes an explicit message,
+  and none of them expects `3`. Verified by reading the two new tests.
+- **The candidate set is enumerable.** Assertions expecting `3` with no message
+  argument:
+  ```
+  $ grep -rnE 'assert\.(strict)?[eE]qual\([^,]+,\s*3\s*[,)]' test/*.ts
+  test/citation-gate.test.ts:321:  assert.equal(tokens.length, 3);
+  test/citation-gate.test.ts:337:  assert.equal(tokens[1]?.startLine, 3);
+  test/citation-gate.test.ts:354:  assert.equal(dangling.endLine, 3);
+  test/citation-gate.test.ts:1129:  assert.equal(a.totalNonQuoted, 3);
+  test/citation-gate.test.ts:1139:  assert.equal(s.substantiveCount, 3);
+  test/deploy-gate.test.ts:220:    assert.equal(outcome.attempts.length, 3);
+  test/gate-registry.test.ts:657:    assert.equal(withBase.record?.["units"], 3);
+  test/release-contract.test.ts:184:  assert.equal(outcome.attempts.length, 3);
+  test/release-contract.test.ts:195:  assert.equal(files.filter((f) => /^deploy-attempt-\d+\.json$/.test(f)).length, 3);
+  test/release-contract.test.ts:196:  assert.equal(files.filter((f) => /^deploy-request-\d+\.json$/.test(f)).length, 3);
+  test/release-contract.test.ts:243:  assert.equal(outcome.attempts.length, 3);
+  test/suite-gate.test.ts:237:  assert.equal(run.record.units, 3);
+  test/suite-gate.test.ts:240:  assert.equal(counts["reported"], 3);
+  test/suite-gate.test.ts:401:  assert.equal(run.counts.counts["reported"], 3);
+  ```
+  (`test/watcher.test.ts` and `test/liveness.test.ts` also compare against 3 but
+  every one of those passes `stderr` as a message, so `generatedMessage` would be
+  false. They are excluded by that, not by preference.)
+- **I could not reproduce it.** Each of the five candidate files run three times
+  in isolation, fifteen runs, all exit 0:
+  ```
+  run1..run3 x {release-contract, deploy-gate, suite-gate, citation-gate, gate-registry}
+  ALL EXIT=0
+  ```
+
+**What I am NOT claiming:** that this is a flake, that it is in a file this branch
+does not touch, or that it cannot recur in CI. I have not identified it. The
+honest sentence is that one bare-invocation run in three failed, in an assertion
+that is not one of mine, and fifteen targeted re-runs did not reproduce it. If CI
+reddens on something in the list above, this is the note that says it was seen
+here first and was not attributed.
+
