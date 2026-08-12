@@ -2058,3 +2058,99 @@ by `git diff --stat`, so every changed file has a reviewable diff.
    This round answers the one fully evidenced finding in the first and the three
    LOW findings in the second; it is not a substitute for a completed review of
    this head, and neither salvaged document should be read as one.
+
+## FR1.14 Gate runs, including one RED that is reported rather than averaged away
+
+Toolchain node v26.6.0, `dist/` built, run from the branch worktree at the fix
+round's head, `--base origin/main --head HEAD`.
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --only red-witness --only agent-rules-drift --only manifest-self-check \
+    --only clause-map --only coverage --only credential-scrub --only scope \
+    --evidence <ev> --base origin/main --head HEAD
+gates: declared 7 applicable 5 verdict 5 green 5 red 0 not-applicable 1 error 1 vacuous 0
+gates: 1 gate(s) reported error: scope
+EXIT=21
+```
+
+Per gate:
+
+| gate | status | units | detail |
+|---|---|---|---|
+| `red-witness` | not-applicable | 0 | precondition `red-witness-diff` evaluated and unmet: no changed path under `src/`, `bin/` |
+| `agent-rules-drift` | green | 17 | CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight steps, 14 gates) |
+| `manifest-self-check` | green | 8 | validated 8 schema documents against the closed keyword set |
+| `clause-map` | green | 34 | 34 rows checked, 40 pending a phase not yet in force |
+| `coverage` | green | 115 | 115 inventory ids checked |
+| `credential-scrub` | green | 7 | no pull-request-capable credential resolvable from any of the 7 probed sources |
+| `scope` | ERROR | 0 | `gate scope requires --phase, which was not supplied` |
+
+`scope` erroring is PRE-EXISTING on this branch and not introduced here: it is
+already recorded as open item 2 of section 8, and it is the consequence of this
+being a non-phase branch, which is itself required by CLAUDE.md's branch-naming
+rule (only a phase's own implementation branch may match the phase pattern).
+
+`citations` is not-applicable at this head:
+
+```
+detail: precondition citations-diff-touches-documents evaluated and unmet: no changed
+path under delivery/plan/, delivery/verification/, delivery/decisions/,
+delivery/tuition/, delivery/requirements/, delivery/STATE.md
+```
+
+`delivery/work-history/` is not in that precondition's path list, so the gate does
+not machine-check this document's citations. They were therefore checked BY HAND
+instead, and the check found real errors rather than confirming a hope: every
+`path.ext:LINE` token in this fix-round section was extracted and resolved against
+the working tree, 54 of them, and NINE were wrong. Six `CLAUDE.md` citations
+pointed at a NEWER copy of that file than the one on this branch (this branch was
+cut before `main` advanced), and one pointed at
+`test/m2-exit-test.test.ts` line 1394, a line this round DELETES. All are
+corrected: the six now resolve to their intended content on this branch's
+`CLAUDE.md`, and the deleted line is QUOTED rather than cited, because a citation
+has to resolve at the audited head and that one no longer can. Re-run after the
+correction: 54 citations, zero unresolved.
+
+### The `suite` gate went RED once, and the cause is named rather than averaged
+
+```
+run 1: status=red units=594
+  detail: 1 finding(s): failing test: "a resident watcher keeps running and backs off
+  with growing beacon gaps" (test/watcher.test.ts)
+
+run 2: status=green units=594
+  detail: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 594
+  test(s) from 36 file(s) (pass 594, fail 0, skipped 0, todo 0, did-not-run 0);
+  discovered 36 file(s) walking test for .test.ts; 598 behavior(s) resolve;
+  merge base bb8f6564cce6
+```
+
+Same head, same toolchain, same command, opposite verdicts. This repository has
+paid three times for an unexplained suite discrepancy (CLAUDE.md:721), so it is
+measured rather than shrugged at:
+
+```
+$ git diff --name-only origin/main...HEAD -- test/watcher.test.ts
+(empty: the file is UNTOUCHED by this branch)
+$ git log --oneline -1 -- test/watcher.test.ts
+8cadeac Fix real-clock test flakes: liveness exact-age bands and watcher duplicate-not-drop (#26)
+$ node --test --test-name-pattern 'a resident watcher keeps running and backs off with growing beacon gaps' test/watcher.test.ts
+run 1 EXIT=0  pass 1  fail 0
+run 2 EXIT=0  pass 1  fail 0
+run 3 EXIT=0  pass 1  fail 0
+```
+
+The failing test is in a file this branch does not touch, its last change was
+itself a real-clock flake fix, and it passes three times out of three in
+isolation. Two direct `npm test` runs at this head also reported 594 pass and 0
+fail. CLAUDE.md:684 records that suite wall time grows with real-clock lease
+waits, and the gate run adds load.
+
+So the conclusion I am willing to defend is: a pre-existing real-clock flake in an
+UNTOUCHED file, surfaced under the extra load of a gate run. What I am NOT
+claiming, because I did not establish it: that this flake is rare, that it cannot
+recur in CI, or that no change of mine influenced scheduling. One red is reported
+here in full so that a reviewer seeing it in CI recognises it rather than
+attributing it to this round, and so that it is not quietly dropped from the
+record if CI happens to be green.
