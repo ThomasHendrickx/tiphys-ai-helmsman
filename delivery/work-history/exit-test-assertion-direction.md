@@ -1780,3 +1780,137 @@ the salvaged contract-H-A reviewer. 594 is what CI and the `suite` gate mean.
 The totals are UNCHANGED from `21509d1` (594 and 596), which is expected: this
 round changed assertions inside existing `test()` blocks and renamed one; it added
 and removed no `test()` block.
+
+## FR1.9 The derivation, part 3: every other site of the same mechanism
+
+The mechanism is "uniqueness of rejecter established by naming the anticipated
+competitor". Its call sites are wherever a test drives the shipped assertion
+program (a program with SIX independent rejecting checks, so over-determination is
+possible) and then claims the rejection came from a particular one.
+
+Enumeration command and FULL output:
+
+```
+$ git grep -n 'm2-assert' -- . | grep -v '^delivery/'
+scripts/m2-exit-test.sh:41:#       once, below, to <evidence-dir>/m2-assert.mjs and reused) over two
+scripts/m2-exit-test.sh:102:#   DR-0018 diff-scoped handling in m2-assert.mjs). A run is a phase-branch run
+scripts/m2-exit-test.sh:140:# gate asserted. m2-assert.mjs DERIVES the set of gates it asserts on (see its
+scripts/m2-exit-test.sh:175:#     (the diffScoped handling in m2-assert.mjs, unchanged).
+scripts/m2-exit-test.sh:416:ASSERT="${evidence}/m2-assert.mjs"
+scripts/m2-exit-test.sh:432:  console.error("m2-assert: --summary --evidence --expect --manifest are all required");
+scripts/m2-exit-test.sh:456:  console.error(`m2-assert: ${expectRead.reason}`);
+scripts/m2-exit-test.sh:466:  console.error(`m2-assert (${label}): FAIL: ${summaryRead.reason}`);
+scripts/m2-exit-test.sh:498:  console.error(`m2-assert (${label}): FAIL: ${manifestRead.reason}`);
+scripts/m2-exit-test.sh:720:  console.error(`m2-assert (${label}): FAIL with ${failures.length} finding(s):`);
+scripts/m2-exit-test.sh:730:console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
+test/citation-gate.test.ts:1231:      // with precondition undefined, which is exactly what m2-assert rejects.
+test/m2-exit-test.test.ts:143: * the harness's own m2-assert.mjs directly. `withPrecondition` controls whether
+test/m2-exit-test.test.ts:325:    // Obtain the exact m2-assert.mjs the harness writes (it is emitted before any
+test/m2-exit-test.test.ts:329:    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+test/m2-exit-test.test.ts:330:    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+test/m2-exit-test.test.ts:840:/** Run the harness's shipped m2-assert.mjs over a bundle against an expect doc. */
+test/m2-exit-test.test.ts:904:    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+test/m2-exit-test.test.ts:905:    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+test/m2-exit-test.test.ts:1018:    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+test/m2-exit-test.test.ts:1019:    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+test/m2-exit-test.test.ts:1238:    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+test/m2-exit-test.test.ts:1239:    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+test/m2-exit-test.test.ts:1636:    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+test/m2-exit-test.test.ts:1637:    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+```
+
+Resolved to the `test()` blocks that actually INVOKE it, with the hit count per
+block:
+
+```
+test/m2-exit-test.test.ts:310   hits=4  the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated pre...
+test/m2-exit-test.test.ts:865   hits=5  the PR bundle requires scope green: the harness assertion code rejects a scope not-applica...
+test/m2-exit-test.test.ts:970   hits=5  the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differe...
+test/m2-exit-test.test.ts:1212  hits=3  a RED gate is rejected on BOTH bundles ...
+test/m2-exit-test.test.ts:1585  hits=3  the zero-red check reads the bundle's ROWS, not the summary's own red count, ...
+```
+
+`test/citation-gate.test.ts:1231` is a COMMENT mentioning the program, not an
+invocation, so five blocks, not six.
+
+Each was then read for the claim it makes, because over-determination is only a
+defect where the claim is "rejected BY check C" rather than "rejected":
+
+| block | claim it makes | uniqueness needed | how it is established | verdict |
+|---|---|---|---|---|
+| 310 (counterfactual 1) | rejected, and the rejection names the gate | no | `match(/red-witness/)` | SOUND, asserts exactly what it claims |
+| 310 (counterfactual 2) | rejected (an error row never passes as diff-scoped) | no | exit code only | SOUND, it is an outcome claim, not a mechanism claim |
+| 865 | rejected, and the rejection names `[scope]` | no | `match(/\[scope\]/)` | SOUND |
+| 970 | accepted (an acceptance arm) | n/a | exit 0 | SOUND |
+| 1212 | rejected BY the derived expected set | YES | was `doesNotMatch(/reported RED/)` | THE DEFECT, fixed here |
+| 1585 | rejected BY a check that read the ROW | YES | `match(/1 gate\(s\) reported RED: suite/)`, the exact message | SOUND, it names the check positively |
+
+The syntactic signature of the mechanism (an exclusion carrying the weight of a
+uniqueness claim) was also grepped for directly:
+
+```
+$ grep -n "doesNotMatch" test/m2-exit-test.test.ts
+test/m2-exit-test.test.ts:253:    assert.doesNotMatch(
+test/m2-exit-test.test.ts:494:    assert.doesNotMatch(
+test/m2-exit-test.test.ts:750:    assert.doesNotMatch(
+test/m2-exit-test.test.ts:953:    assert.doesNotMatch(
+test/m2-exit-test.test.ts:959:    assert.doesNotMatch(
+```
+
+Read individually: 253 excludes one failure mode and is IMMEDIATELY PAIRED with a
+positive `assert.match` naming what did happen, which is the sound form and is the
+form this round adopts; 494, 750, 953 and 959 are source-text and YAML assertions
+over file contents, not probes over the assertion program, so the mechanism does
+not apply to them.
+
+**Conclusion of the derivation: block 1212 was the only live instance.** 1585 is
+the same hazard already handled correctly, and it is worth naming because it shows
+the sound form existed twenty lines of file away from the defect and was not
+applied there.
+
+## FR1.10 What this derivation did NOT cover (fix-round contract item 3)
+
+Read this first (CLAUDE.md:326).
+
+1. **The enumeration is by the LITERAL token `m2-assert`.** A test that obtained
+   the assertion program by a computed path, or that re-implemented its checks
+   rather than running it, would not appear. Bounded, not proved, by the harness
+   writing exactly one literal name (scripts/m2-exit-test.sh:416) and by every
+   invoking block above reaching it through the same `--self-test` hook. I did not
+   search for re-implementations.
+2. **`delivery/**` is excluded from the enumeration** (the `grep -v '^delivery/'`
+   is in the published command). Those are documents, not call sites. The cost is
+   that a prose claim in another delivery document repeating the vacuous-witness
+   reasoning would not be found; CR-H-1 is one such stale-prose case and was found
+   by a reviewer reading, not by a grep.
+3. **The five invoking blocks were audited for THIS mechanism only**, uniqueness
+   of rejecter. They were not re-audited for other over-assertion or
+   under-assertion families. A block can be sound on uniqueness and wrong about
+   something else.
+4. **The lab replicates the member CONSTRUCTION rather than importing it.** It is
+   cross-checked against the real test in FR1.5 by two defangs with different
+   predicted first failures, and both predictions held, so the replica is
+   validated for the shapes exercised. It is not proof that the replica matches
+   the test in every respect, only in the respects those two defangs discriminate.
+5. **The union has exactly two legs TODAY.** Probes 1 and 2 are one per leg
+   (scripts/m2-exit-test.sh:515). If a third source were spread into that union,
+   nothing in this test would notice that it has no probe. I did not add a guard
+   over the number of legs, because a count over a source line is the kind of
+   pinned assertion CLAUDE.md:201 warns against, and I could not find a
+   non-pinning form. Recorded as an open question rather than as a closed one.
+6. **The `defaultSpecReason` regex is over the harness SOURCE.** It derives the
+   first quoted segment of `DEFAULT_SPEC_WHY`. If that constant were rewritten as
+   a template literal or built by concatenation starting from a variable, the
+   regex would not match and the test fails HARD by design, which is the intended
+   direction; but I did not enumerate the ways it could be rewritten.
+7. **I did not run either full bundle end to end IN THIS ROUND.** Section 9 and 9a
+   of this document record those runs at `21509d1`, and the harness is
+   byte-identical here (sha256
+   `9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138`, and
+   `git diff 21509d1..HEAD -- scripts/m2-exit-test.sh` is EMPTY), so those runs
+   still describe the shipped program. They do not describe the tests, which is
+   what this round changed, and the tests are covered by the suite instead.
+8. **The `.github/workflows/gates.yml` edit is comment text and is UNRUN here.**
+   No local run exercises that workflow. Its correctness rests on the measurement
+   in FR1.7 plus the file being a comment; CI is the authority that the workflow
+   still parses.
