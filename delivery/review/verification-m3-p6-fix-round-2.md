@@ -63,3 +63,92 @@ resolved to `4619bf8`.
 ## Log
 
 (appended as work proceeds)
+
+## 2. THE CENTRAL CLAIM: was the removed check redundant? (task 1)
+
+The round's argument is that the row-and-field check it added over the LOCATED
+BLOCK, and then deleted in `6c1b010`, could never fire on an input the surviving
+checks accept.
+
+Name the three checks, because "the surviving checks" is not a sentence a reader
+can verify:
+
+- **A**, scripts/check-brief-drift.mjs:367, `gateBlockFindings(rendered.text, decoded.value, located.mode)`.
+  Rendering against registry. Runs in EVERY mode, `--write` included. `error`.
+- **R**, the REMOVED one. `gateBlockFindings(located.block, ...)`. Block against
+  registry. Ran in `--check` only, between A and B. `red`.
+- **B**, scripts/check-brief-drift.mjs:432, `describeDrift(rendered.text, located.block)`.
+  Rendering against block. `--check` only. `red`.
+
+### 2a. The structural argument, from the source rather than from the comment
+
+`describeDrift` returns a NON-EMPTY list whenever its two arguments differ at
+all, because of its final clause at scripts/check-brief-drift.mjs:167:
+
+```
+  if (differences.length === 0 && expected !== observed) {
+    differences.push("the two blocks differ only in blank-line placement or line order");
+  }
+```
+
+So B empty implies `located.block === rendered.text` as STRINGS, and therefore
+`gateBlockFindings(located.block, ...)` and `gateBlockFindings(rendered.text, ...)`
+are calls with identical arguments. R empty follows from A empty. R cannot fire
+where A and B are both silent. The argument does not depend on judgment about
+what the two functions "mean"; it depends on string equality and on A and B
+being present, both of which are in the tree.
+
+### 2b. The falsification attempt, run rather than reasoned
+
+I did not stop at the proof. I built a two-armed probe
+(`scratchpad/dvr2-probe1.mjs`, not committed): arm HEAD is the shipped script,
+arm LAB is the shipped script with R textually restored in the position
+`6c1b010` deleted it from. Fourteen inputs, each a real edit to the staged
+brief, registry or renderer, both arms run on the same staged tree.
+
+A falsifying input is one where LAB's R fires FIRST (so nothing before it
+caught the input) and HEAD exits 0.
+
+```
+case                                                     HEAD exit  HEAD fired                   LAB exit  LAB fired
+CONTROL pristine                                         0          green                        0         green
+registry gains a gate, block stale                       1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+block: a gate id renamed                                 1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+block: a whole gate row deleted                          1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+block: the unitLabel cell dropped from one row           1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+block: two gate rows transposed (set-identical)          1          B(describeDrift)             1         B(describeDrift)
+block: a preflight step reworded (non-row)               1          B(describeDrift)             1         B(describeDrift)
+block: the table header shortened (non-row)              1          B(describeDrift)             1         B(describeDrift)
+block: extra spaces inside a row cell (cells still trim-equal) 1     B(describeDrift)            1         B(describeDrift)
+registry: a gate's unitLabel changed, block stale        1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+renderer narrowed: strict-subset row filter              21         A(rendering-vs-registry)     21        A(rendering-vs-registry)
+renderer narrowed: unitLabel column dropped              21         A(rendering-vs-registry)     21        A(rendering-vs-registry)
+block: a bogus extra gate row appended to the table      1          B(describeDrift)             1         R(block-vs-registry, REMOVED)
+block: a row's applicability cell changed to another legal value 1  B(describeDrift)             1         R(block-vs-registry, REMOVED)
+
+FALSIFYING CASES (LAB's removed check fired first AND HEAD exited 0): 0
+CASES WHERE THE TWO ARMS DISAGREE ON GREEN/NOT-GREEN: 0
+PROBE1_EXIT=0
+```
+
+**THE CONTROL ARM IS THE FIRST ROW AND IT IS LOAD-BEARING.** Both arms exit 0 on
+the pristine tree, so a probe in which every case exits nonzero for a staging
+reason unrelated to the mutation is excluded. Six of the fourteen inputs are
+cases where R DID fire first in LAB, which is the second control: the lab arm is
+not inert, it is catching things, and HEAD catches every one of them too.
+
+**VERDICT ON TASK 1: I could not falsify it. No coverage was lost.** The removal
+is sound and the structural argument behind it is correct as written.
+
+### 2c. What this probe did NOT reach, stated before anyone asks
+
+- Inputs where `locateGateBlock` fails or the registry fails `decodeDocument`:
+  those return before A, R and B alike, so R is irrelevant there, but I did not
+  enumerate them.
+- Inputs expressible only as changes to `gateBlockFindings` itself. A mutation
+  of that function changes A and R together, so it cannot separate them.
+- Invocations carrying `--result`/`--evidence`. I ran bare `--check` only. The
+  `emit` path is common to all three checks, so it cannot separate them either,
+  but I did not measure it.
+- Non-UTF8 or control-character content in the brief.
+- The `print` mode, where neither R nor B ever ran.
