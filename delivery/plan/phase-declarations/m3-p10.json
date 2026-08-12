@@ -12,6 +12,7 @@
     ".github/workflows/gates.yml",
     "gate-registry.yaml",
     "CLAUDE.md",
+    "roles/implementer.md",
     "delivery/evidence/m3-exit-test/",
     "supervision-rules.md",
     "delivery/evidence/m2-exit-test/",
