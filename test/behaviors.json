@@ -592,5 +592,11 @@
   "role-brief-output-contract-declared": "every authoring brief puts the schema of every output type it declares on its mandated-reading list",
   "role-brief-output-contract-refused": "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes",
   "role-brief-set-derived-not-listed": "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does",
-  "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it"
+  "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it",
+  "m2-exit-main-absent-list-derived-from-manifest": "the main bundle's absent list is DERIVED from the manifest, so a newly declared gate it does not run is asserted absent rather than named by neither list",
+  "m2-exit-red-gate-rejected-on-both-bundles": "a RED gate is rejected on BOTH bundles under three structurally different shapes, and the derived expected set is separately witnessed on BOTH bundles by probes it alone rejects",
+  "m2-exit-expect-row-admits-only-reachable-statuses": "no expectations row admits a lax status the gate it names can never legitimately produce",
+  "m2-exit-zero-red-reads-rows-not-counts": "the zero-red check reads the bundle's ROWS, not the summary's own red count, so a summary under-reporting its reds cannot pass",
+  "m2-exit-assert-program-not-exempt-from-m2-c-2": "the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in two structurally different degenerate shapes",
+  "m2-exit-union-sources-named-by-this-suite": "every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed"
 }

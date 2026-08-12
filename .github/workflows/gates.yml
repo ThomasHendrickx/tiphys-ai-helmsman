@@ -95,11 +95,22 @@ jobs:
       #      ids; a gate outside that list is never run on a push to main. That
       #      script is owned by M2-P9 and is not on this phase's files-to-touch
       #      list, so this phase cannot extend the list.
-      #   2. A red would not fail CI otherwise. run_pr_bundle records the
+      #   2. The assertion program never SEES it. run_pr_bundle records the
       #      runner's exit code but does not act on it; the assertion program
-      #      decides, and it only examines gates named in its expectations
-      #      table, which is in the same out-of-scope script. That is exactly
-      #      the defect PR #44 fixed for the clause-map gate.
+      #      decides. That program USED to examine only gates named in its
+      #      expectations table, which was the defect PR #44 fixed for the
+      #      clause-map gate; it no longer does, and this reason has been
+      #      rewritten rather than left standing. It now derives its expected
+      #      set from gates.manifest.json and from the bundle's own rows, and a
+      #      declared gate with no table row is asserted required-green, so a
+      #      table row is NOT what a manifest gate needs any more. What still
+      #      holds is narrower and is what keeps this step necessary:
+      #      `agent-rules-drift` is declared in gate-registry.yaml and NOT in
+      #      gates.manifest.json, so the runner never runs it, it produces no
+      #      bundle row, and neither the manifest leg nor the rows leg of that
+      #      derivation can reach it. Promoting it to the manifest is a
+      #      separate decision, tracked with the orchestrator as the open half
+      #      of R-094; until then this step is what executes it.
       #
       # CLAUDE.md drift is a property of `main`, not of a pull request (T-009),
       # so this step carries NO `if:` and runs on BOTH events. Adding one would
