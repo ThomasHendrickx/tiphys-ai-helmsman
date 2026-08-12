@@ -25,6 +25,13 @@ The relation is constrained in one direction only. Every gate the TABLE names
 must have an acceptable row; a row the table does not name is unconstrained. A
 red gate absent from the table therefore passes the exit test in silence.
 
+Two things settle that rather than one, because the first alone would be a
+reading. STRUCTURALLY, the only loop over expectations is
+`for (const spec of expect.gates ?? [])` at line 325 of the pre-change file, and
+the enumeration of every global row-driven check is the table below.
+EMPIRICALLY, six probes in section 6 drive the pre-fix program over bundles
+carrying a RED gate and it exits 0 on every one, on both arms.
+
 This is the fourth occurrence in this project of one shape: a check that
 constrains a relation in one direction while its own documentation claims both.
 
@@ -216,7 +223,16 @@ pre-landed on `main` now and start biting when the gate arrives. Rejected on
 evidence, for three reasons. It WEAKENS the existing check at
 scripts/m2-exit-test.sh:328, which today catches a gate the table names that
 produced no record, a real detection of a gate that silently failed to run; a
-typo'd id in the table would become inert instead of red. It requires this
+typo'd id in the table would become inert instead of red. Settled by driving the
+PRE-fix program over a two-gate table and a one-row bundle:
+
+```
+$ node <pre-fix m2-assert.mjs> --summary <bundle>/summary.json --evidence <bundle> \
+    --expect <table naming scope AND citations> --manifest <two-gate manifest>
+m2-assert (named but missing): FAIL with 1 finding(s):
+  - [citations] no record in the bundle for a gate the table lists (expected green)
+PRE-FIX exit=1
+``` It requires this
 branch to predict a future gate's id exactly. And it does not remove the
 circularity, it only moves it: the phase after next adds gate X, forgets the
 row, and gets a red it cannot fix.
@@ -346,9 +362,28 @@ rowById          m1=0 m2=scripts/m2-exit-test.sh:3
 
 Three patterns, 0/0/0 in `m1-exit-test.sh` against 9/1/3 in `m2-exit-test.sh`.
 The zeroes are a real absence, not a mis-scoped search: the same command finds
-the same patterns in the sibling file. `scripts/m1-exit-test.sh` carries no
-expectation table, never invokes the gate runner and never reads a bundle
-summary, so it cannot carry this mechanism.
+the same patterns in the sibling file.
+
+**I FIRST WROTE THAT `m1-exit-test.sh` "never invokes the gate runner", AND THE
+CLAIM GREP CAUGHT IT AS FALSE.** It does invoke the CLI, at
+scripts/m1-exit-test.sh:147 and about fifteen call sites after it. The precise
+measurement:
+
+```
+$ grep -nE '\bgates\b' scripts/m1-exit-test.sh
+54:# task whose branch never landed. That guard is itself guarded: the gates
+$ grep -cE '\bgates\b' scripts/m2-exit-test.sh
+49
+$ wc -l scripts/m1-exit-test.sh
+1285
+```
+
+The corrected statement: `scripts/m1-exit-test.sh` invokes the CLI for `init`,
+`doctor`, `lock`, `watch`, `spawn` and `teardown`, and NEVER for the `gates`
+subcommand; its single occurrence of the word "gates" is prose in a comment. It
+therefore produces no bundle summary and holds no expectation table, so it
+cannot carry this mechanism. The 1285-line count is there so "one hit" reads as
+a real result rather than an empty file.
 
 ### The five test files, audited (this is what the brief's derivation did NOT
 ### cover, and it was handed to me)
@@ -943,8 +978,11 @@ report it.
 The one row the cross-check flagged, `coverage`, is correct and deliberately
 STRICTER than its precondition permits. Its precondition is a file-exists on
 delivery/requirements/migration-table.md:1, which `git ls-files --error-unmatch`
-confirms is tracked, so it always holds; a not-applicable `coverage` would mean
-the inventory vanished, and failing on that is right. Asserting the converse
+confirms is tracked at this head, so the precondition is met on any checkout
+that carries that file; a not-applicable `coverage` would mean the inventory had
+gone missing, and failing on that is right. I have not established that the file
+can never be moved or renamed, only that `expect: green` is the correct row while
+it is tracked. Asserting the converse
 direction would redden a correct row, so the new guard asserts one direction
 only and says so.
 
