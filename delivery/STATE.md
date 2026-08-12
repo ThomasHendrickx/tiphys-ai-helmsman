@@ -7,6 +7,26 @@ is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-12, LATEST BULLET BLOCK. Everything below this block is OLDER;
   where they disagree, this block is later.
+- **A BINDING PROCEDURE CHANGED: the dispatch skill's push rule now carries its
+  mechanism, at .claude/skills/phase-delivery/SKILL.md:98.** Orchestrator briefs
+  said "COMMIT AND PUSH as you go" beside "let the gates workflow COMPLETE
+  before reporting". A push cancels the in-flight run, so the two conflict and
+  the M3-P6 round, obeying both faithfully, pushed six heads and cancelled five
+  runs, leaving the critical-path branch with no completed gate evidence for two
+  hours. **The skill ALREADY said "not six" and the brief overrode it**, which is
+  the real defect: a per-dispatch brief silently beats a standing rule because it
+  is more recent and addressed to the agent personally. Committing and pushing
+  are separate decisions; durability is satisfied by the LOCAL commit. Recorded
+  as the postscript at delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:113.
+  **Still outstanding: this has NOT landed in `roles/implementer.md`**, which is
+  an M3-P6 deliverable and not yet on main.
+- **T-018 WAS CORRECTED AT THE IMPLEMENTER'S REQUEST.** Its first version said
+  the round REFUSED the instructed fix. It did not; it tried it first and it
+  stayed red. The decisive fact is at src/witness/run.ts:886, where red requires
+  EVERY named test to fail, so adding a named test makes a witness member
+  strictly HARDER to redden. The instruction was counterproductive rather than
+  merely misaimed. The implementer asked for the flattering version to be
+  corrected, which is the behaviour a work history is supposed to have.
 - **M3-P6 FIX ROUND 2 REFUSED THE FIX IT WAS INSTRUCTED TO MAKE, AND WAS RIGHT
   TO.** The orchestrator's brief said "add a named test reaching
   `scripts/check-brief-drift.mjs` line 421", which is what the red `red-witness`
