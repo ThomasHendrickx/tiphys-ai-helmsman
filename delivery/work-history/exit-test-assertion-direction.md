@@ -5985,3 +5985,34 @@ instances and load averages, and I am refusing to attribute it, because the
 capture cannot support an attribution. The clean re-run above, at the same head,
 shows no failure. That is the same failing test the verification named, at the
 same line.
+
+**One commit follows that run, and it changes only this file.** The suite above
+ran at b969cd0; the commit after it settles the FR4.10 claim grep and adds this
+paragraph. The three code files are byte-identical across it, which is a
+measurement rather than an assurance:
+
+```
+$ for f in scripts/m2-exit-test.sh test/m2-exit-test.test.ts test/behaviors.json; do ... done
+scripts/m2-exit-test.sh    b969cd0=6203f9344a750c1f HEAD=6203f9344a750c1f SAME
+test/m2-exit-test.test.ts  b969cd0=d6163795e836c570 HEAD=d6163795e836c570 SAME
+test/behaviors.json        b969cd0=01eafa09678be071 HEAD=01eafa09678be071 SAME
+$ git diff --stat b969cd0..HEAD
+ .../work-history/exit-test-assertion-direction.md  | 53 +++++++++++++++++-----
+ 1 file changed, 42 insertions(+), 11 deletions(-)
+```
+
+A work-history commit cannot be quoted inside the run it postdates, and this is
+where that regress stops: a reviewer wanting the suite at the very tip runs it,
+and the two shas above are what tells them whether it can differ.
+
+### FR4.13 Handover
+
+- Scope touched: scripts/m2-exit-test.sh, test/m2-exit-test.test.ts,
+  test/behaviors.json and this work history. Nothing else, verified with
+  `git diff --stat` against 6fd51cb and against origin/main.
+- test/behaviors.json:1 gains two entries and changes none, which is the
+  append-only form CLAUDE.md:201 requires. Nothing in this round asserts a count
+  over it.
+- Not pushed. Committing and pushing are separate decisions and the push is the
+  orchestrator's, so that an in-flight gates run is not cancelled.
+- No `gates` run exists for this head and none was created by me.
