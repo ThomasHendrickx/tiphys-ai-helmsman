@@ -489,12 +489,27 @@ The reviewer's FIRST check (CLAUDE.md:326).
    tracked separately. I have deliberately NOT introduced `--registry` into the
    harness: test/gate-registry.test.ts:1056 asserts it is absent, and that
    assertion is correct until R-094's CI half is done as its own piece of work.
-6. **I did not run either full bundle end to end.** Running the PR bundle runs
-   the whole gate set, which runs this repository's own suite in a subprocess;
-   test/m2-exit-test.test.ts:38 records that a test doing so is re-entered by the
-   suite it invoked. The arms are exercised here through the shipped assertion
-   program driven over crafted bundles, and through the real resolved
-   expectation documents of both arms. CI is what runs the bundles.
+6. **I had not, WHEN THIS LINE WAS WRITTEN, run either full bundle end to end.**
+   Running the PR bundle runs the whole gate set, which runs this repository's
+   own suite in a subprocess; test/m2-exit-test.test.ts:38 records that a test
+   doing so is re-entered by the suite it invoked. The arms are exercised here
+   through the shipped assertion program driven over crafted bundles, and through
+   the real resolved expectation documents of both arms.
+
+   **CORRECTED, and the correction is the point of this item rather than a
+   footnote to it (CR-H-3).** This exclusion is STALE at HEAD and was left
+   standing when the runs landed. Section 9 of this document
+   (delivery/work-history/exit-test-assertion-direction.md:862) records BOTH full
+   bundles run end to end against the real repository, `HARNESS PR BUNDLE exit=0`
+   and `HARNESS MAIN BUNDLE exit=0`, and section 9a records a runner-produced
+   bundle as well. The commit order is what produced it: the exclusion was
+   written in `77bbcdb` and the runs landed in `4d6cda6`, and nothing revisited
+   the first. It understates the work rather than overstating it, so no reader is
+   told something was checked that was not; the cost is the opposite, a reviewer
+   whose FIRST check is this section (CLAUDE.md:326) is sent looking for evidence
+   that is already three sections further down. The residual exclusion is real
+   and narrower: neither bundle is run end to end FROM THE SUITE, for the
+   re-entrancy reason above, and CI remains the authority for that.
 
 ## 5. The change
 
@@ -722,7 +737,7 @@ the cause is a real coupling rather than an accident:
 
 ## 7. The registry
 
-Two behaviours registered in `test/behaviors.json`, BY NAME, appended, with no
+FOUR behaviours registered in `test/behaviors.json`, BY NAME, appended, with no
 count anywhere asserting over the registry (CLAUDE.md:201):
 
 - `m2-exit-main-absent-list-derived-from-manifest`
@@ -798,7 +813,7 @@ exit=21
 TWO OPEN ITEMS, being investigated now, NOT yet explained:
 
 1. `suite` RED under `--base origin/main`. The suite gate compares the behaviors
-   registry against the merge base, and this branch APPENDS two entries to
+   registry against the merge base, and this branch APPENDS four entries to
    `test/behaviors.json`, so a red here may be the registry comparison rather
    than a failing test. `npm test` itself is exit 0 with 593 pass and 0 skipped.
 2. `scope` ERROR rather than not-applicable. Expected not-applicable on a
@@ -1661,3 +1676,107 @@ name, the exact defect that reached a pull request. The old guard did not, and
 
 Test file restored from the pristine copy after every variant, sha256 re-verified
 each time.
+
+## FR1.7 Disposition of the three LOW findings from the salvaged contract-H-A review
+
+### CR-H-1 (LOW): two documents assert, in the present tense, the blocker this change removes
+
+ACCEPTED AND FIXED, not deferred. The salvaged reviewer proposed disposing of it
+as an open-items line on the ground that editing the workflow would widen this
+branch's surface. I disagree and I state why rather than skipping it silently:
+both sentences are FALSE at HEAD, both are exactly what the next agent reads when
+deciding whether a registry-only gate can be promoted, and this branch is what
+made them false. CLAUDE.md's own repeated finding (T-005, T-006) is that a stale
+written statement outlives the memory of the change that invalidated it and that
+the answer is a mechanism, not a note in a section nobody re-reads. Both edits are
+comment or message text with no behavioural effect, and the surface they add is
+one file, .github/workflows/gates.yml:98.
+
+The half of each statement that is now false was measured with the REAL gate id
+rather than argued. A manifest carrying `agent-rules-drift` with NO row added to
+the expectations table, driven through the shipped `--print-expect pr green` and
+the shipped assertion program:
+
+```
+--- does the PR table name agent-rules-drift?  0
+--- is it in the main arm's DERIVED absent list?  agent-rules-drift
+--- agent-rules-drift green: EXIT=0
+    m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; 12 gate(s) asserted
+    (11 from an explicit table row, 1 under the default required-green: agent-rules-drift)
+--- agent-rules-drift red: EXIT=1
+    m2-assert (PR bundle): FAIL with 3 finding(s):
+      - [agent-rules-drift] expected status green, observed red This gate has NO row in the
+        expectations table, so it was asserted under the default for a declared-but-unlist...
+--- agent-rules-drift not-applicable: EXIT=1
+    m2-assert (PR bundle): FAIL with 2 finding(s):
+      - [agent-rules-drift] expected status green, observed not-applicable ...
+```
+
+So an expectation row is not what a manifest gate requires any more, and
+required-green is the right expectation for this gate specifically. Both comments
+are rewritten to say the narrower thing that is still true: `agent-rules-drift` is
+NOT in `gates.manifest.json`, so the runner never runs it and it produces no
+bundle row, and neither leg of the derivation can reach a gate that has no row and
+no manifest entry. The workflow step remains what executes it. Reason 1 of the
+workflow comment (the hard-coded `--only` list on the push arm) was re-checked and
+is unchanged and still true.
+
+### CR-H-2 (LOW, observation): the expectations-row test hand-writes the two scope resolutions
+
+ACCEPTED AND FIXED. The reviewer filed it as an observation; I treat it as a
+defect because the branch's own design argument is that "a replica is the thing
+that silently stops matching", and the test was carrying a two-string replica of
+`resolve_scope_expect` (scripts/m2-exit-test.sh:108) while a pure hook for it was
+already shipped and already used at test/m2-exit-test.test.ts:834.
+
+Both resolutions are now derived through that hook, from a phase-branch input and
+a non-phase input, and asserted DIFFERENT from each other, so a resolver collapsed
+to a single value cannot leave the test quietly covering one case twice instead of
+two.
+
+What this does NOT cover, stated rather than implied: it derives the two
+resolutions the phase-vs-non-phase distinction produces, and it does not enumerate
+every string the function could ever return. A third resolution added later would
+not be picked up by this test. That is unchanged from before and is bounded by the
+row-driven zero-red check at run time, which is the reviewer's own argument and I
+reproduce rather than repeat it: main member-3 in FR1.2 is rejected by zero-red
+ALONE even under a table row that names the gate, marks it `required:false` and
+lists red among its permitted alternates.
+
+### CR-H-3 (LOW): one exclusion in the not-covered section is STALE at HEAD
+
+ACCEPTED AND FIXED IN PLACE, at
+delivery/work-history/exit-test-assertion-direction.md:492. Item 6 of section 4
+said "I did not run either full bundle end to end", which is false at HEAD because
+section 9 records both. The item is rewritten to say what it was true of (the
+moment it was written), to point at the sections that superseded it, and to state
+the residual exclusion that IS still true and is narrower: neither bundle is run
+end to end FROM THE SUITE, for the re-entrancy reason, and CI remains the
+authority there.
+
+The reviewer's related MINOR is also fixed: section 7 said "Two behaviours
+registered" and listed four, and section 8 said "APPENDS two entries". Both now
+say four. The list and the registry were always correct; only the prose counts
+were stale from incremental writing.
+
+## FR1.8 The complete suite sentence
+
+Three axes, all named (CLAUDE.md:642, CLAUDE.md:664, CLAUDE.md:677).
+
+TOOLCHAIN node v26.6.0 (the fetched floor toolchain, `node --version` checked in
+the same shell), BUILD STATE `dist/` present, built by `npm run build` exit 0 with
+a clean `git status` for tracked build output afterwards.
+
+| invocation | tests | pass | fail | SKIPPED | exit |
+|---|---|---|---|---|---|
+| `npm test` | 594 | 594 | 0 | **0** | 0 |
+| bare `node --test` from the repository root | 596 | 596 | 0 | **0** | 0 |
+
+The two-test delta is the `sandbox/test/greet.test.js` fixture that
+`package.json`'s `test` script pattern excludes, already recorded at
+CLAUDE.md:684 and reproduced at `21509d1` by this branch's previous round and by
+the salvaged contract-H-A reviewer. 594 is what CI and the `suite` gate mean.
+
+The totals are UNCHANGED from `21509d1` (594 and 596), which is expected: this
+round changed assertions inside existing `test()` blocks and renamed one; it added
+and removed no `test()` block.

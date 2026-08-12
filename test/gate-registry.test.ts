@@ -1027,8 +1027,12 @@ const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<string, string> = new Map([
     "agent-rules-drift",
     "M3-P2 declares it per D-M3-34, but CI invokes the runner with --manifest, " +
       "so what executes it in CI is a step in .github/workflows/gates.yml. " +
-      "Adding it to gates.manifest.json needs an expectation row in " +
-      "scripts/m2-exit-test.sh, which is not on this phase's declaration.",
+      "Promoting it to gates.manifest.json no longer requires an expectation row " +
+      "in scripts/m2-exit-test.sh: that script derives its expected gate set " +
+      "from the manifest, and a declared gate with no table row is asserted " +
+      "required-green, which is the correct expectation for this one. What is " +
+      "left is a scope decision about what CI runs, tracked with the " +
+      "orchestrator as the open half of R-094, not a blocker in the harness.",
   ],
 ]);
 

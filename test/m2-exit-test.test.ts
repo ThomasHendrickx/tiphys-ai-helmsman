@@ -1526,9 +1526,27 @@ test("no expectations row admits a lax status the gate it names can never legiti
     );
     // Both arms, and both resolutions of the per-run scope placeholder, since the
     // non-phase resolution is the one that widens a row's alternates.
+    //
+    // The two resolutions are DERIVED from the harness's own resolver rather
+    // than copied here (CR-H-2). Hand-writing them made this test assert over
+    // two strings that happened to match `resolve_scope_expect`
+    // (scripts/m2-exit-test.sh:108) on the day it was written, which is the same
+    // replica hazard this branch's design argument names. The two inputs below
+    // are a phase-branch run and a non-phase run, the only distinction that
+    // resolver draws; they are asserted DIFFERENT so a resolver collapsed to one
+    // value cannot leave this test quietly covering one case twice.
+    const phaseScope = resolveScopeExpect(root, env, "m9-p9", "claude/m9-p9-fixture-branch");
+    const nonPhaseScope = resolveScopeExpect(root, env, "", "claude/fixture-not-a-phase-branch");
+    assert.notEqual(
+      phaseScope,
+      nonPhaseScope,
+      "the harness resolved the scope placeholder identically for a phase-branch run and a " +
+        `non-phase run (both ${phaseScope}), so the two tables below are the same table and ` +
+        "this test covers one resolution twice",
+    );
     const tables = [
-      printExpect(harness, root, env, "pr", "green"),
-      printExpect(harness, root, env, "pr", "green|not-applicable"),
+      printExpect(harness, root, env, "pr", phaseScope),
+      printExpect(harness, root, env, "pr", nonPhaseScope),
       printExpect(harness, root, env, "main"),
     ];
     let checked = 0;
