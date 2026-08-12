@@ -489,3 +489,71 @@ hit wall-clock flakes today: `uptime` read load average 0.08 before the first
 run and 2.80 before the second. No test failed in any of the four runs, so the
 `test/watcher.test.ts` and `test/coverage-gate.test.ts:189` flakes did not
 arise here.
+
+## 13. DV-3 at full strength: the A/B against the REAL manifest
+
+Section 8's DV-3 was measured on hand-built fixtures, which is the same
+limitation the round declares at its FR2.9 item 6. So I ran the A/B that item
+asks for, against this repository's own `gates.manifest.json` (11 gates), with a
+bundle in which one manifest-declared gate produced NO record, and the ONLY
+difference between the two arms being the manifest's `gates` array:
+
+```
+gates in manifest: 11 | gate omitted from the bundle: red-witness
+
+--- CONTROL: REAL manifest ---
+m2-assert (ab): FAIL with 1 finding(s):
+  - [red-witness] gates.manifest.json declares this gate and the bundle carries
+    NO record for it, and the table does not list it as absent from this bundle;
+    a declared gate that produced no record is a gate that did not run. ...
+EXIT=1
+
+--- DEGRADED: same bundle, same expectations, manifest gates:[] ---
+m2-assert (ab): OK. 10 gate record(s) match section 1.4; 10 gate(s) asserted
+  (0 from an explicit table row, 10 under the default required-green: ...);
+  0 asserted absent; counts re-derived and equal to summary.json; zero red;
+  zero error; zero vacuous.
+EXIT=0
+```
+
+**A gate that did not run is detected with the real manifest and CERTIFIED with
+`gates: []`, on the same bundle.** That is the original assertion-direction
+defect, restored in full, by a well-formed empty array, with neither new check
+firing and the success line reporting ten gates asserted. This is what makes
+DV-3 a MEDIUM rather than a note: the fix for CR-V-2 covers the shapes that
+degrade the manifest leg to empty by MALFORMEDNESS and not the one that degrades
+it to empty while staying well formed.
+
+## 14. Settling my own claim-grep hits by measurement
+
+Two hits in my own text were universals about MY instruments rather than about
+the branch. Both are settled here rather than reworded.
+
+**"a `fail(` inside a comment or a string cannot be counted".** Four decoy
+`fail(` tokens were planted into the assertion program at `fdb3120`, one each in
+a line comment, a block comment, a double-quoted string and a template literal,
+by an anchored single replacement whose anchor was verified to occur once:
+
+```
+anchor occurrences: 1
+planted 4 decoy fail( tokens, none in code position
+--- PLANTED, my tokenizer ---    TOTAL rejection tokens: 24   fail(): 19
+--- CONTROL unplanted ---        TOTAL rejection tokens: 24   fail(): 19
+--- SANITY: a naive line grep is fooled by the decoys ---
+planted: 23   unplanted: 19
+```
+
+The naive grep moves 19 to 23; my enumerator does not move. The exclusion is
+measured, and the control shows the two files differ.
+
+**"check B can never fire on either bundle".** Both shipped expectation tables
+are non-empty shell literals whatever the manifest holds, measured through the
+harness's own `--print-expect` in section 8: the main table keeps 6 gates with a
+`gates: []` manifest, and the PR table keeps its full list. An expected set with
+six or more members is never zero, so check B's condition is never reached on
+either shipped bundle. The consequence is stated, not the absence of a route I
+failed to find.
+
+The remaining hits are quotations of the branch's own text (the shipped check-A
+message, the `behaviors.json` row, a test comment) or are settled by an adjacent
+measured command in the same section.
