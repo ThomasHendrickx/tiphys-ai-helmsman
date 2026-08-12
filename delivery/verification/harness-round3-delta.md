@@ -19,10 +19,16 @@ try to falsify it.
 >   (run 31628258664, step 8).
 >
 > An evidence document about an unmerged branch therefore CANNOT cite that
-> branch's line numbers in resolving form while sitting on `main`. CLAUDE.md:3b
-> already prescribes the remedy and says so in as many words: a path in
-> backticks is how you name a file you are NOT asserting exists at that line,
-> "such as one on an unmerged branch". That is exactly this case.
+> branch's line numbers in resolving form while sitting on `main`. The rules
+> file already prescribes the remedy and says so in as many words at
+> CLAUDE.md:180: a path in backticks is how you name a file you are NOT
+> asserting exists at that line, "such as one on an unmerged branch". That is
+> exactly this case.
+>
+> (The first version of this note cited that rule as `CLAUDE.md:3b`, which is
+> its RULE number and not a line number, so the gate rejected it as malformed.
+> Recorded because it is the same class of error as the one the note is about:
+> a citation that looks right to its author and does not resolve.)
 >
 > **The four citations that were the most dangerous were not the failing one.**
 > `:1911` was out of range and went red loudly. `:1731`, `:1870`, `:1878` and
