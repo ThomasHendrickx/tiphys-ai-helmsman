@@ -2272,7 +2272,16 @@ The proxy is narrower than the thing: the reason is bound
 `const why = explicit ? "" : DEFAULT_SPEC_WHY` (scripts/m2-exit-test.sh:555), so
 for any member carrying an explicit table row the key is the EMPTY STRING on
 every branch. The explicit leg is precisely the set of members that always carry
-an explicit row.
+an explicit row, and that is true BY CONSTRUCTION rather than by observation:
+
+```
+$ grep -n 'const explicitById = new Map' scripts/m2-exit-test.sh
+507:const explicitById = new Map((expect.gates ?? []).map((spec) => [spec.id, spec]));
+```
+
+Every key of that map is put there together with its spec, so `explicitById.get(id)`
+is truthy for every one of them and `explicit ? "" : DEFAULT_SPEC_WHY` takes the
+empty branch for all of them.
 
 The reviewer H-B reached the same conclusion and its brief told me not to try to
 close CR-V-1 with the existing mechanism. I checked that instruction rather than
@@ -3059,8 +3068,9 @@ and it passes five times out of five in isolation. Both observed failures happen
 under LOAD: the first immediately after a full `npm test` had just finished, the
 second inside a gate run that runs the suite as a subprocess. Round 1 reported the
 same class in the same file under the same conditions
-(delivery/work-history/exit-test-assertion-direction.md:2723 region), with a
-different test named.
+(delivery/work-history/exit-test-assertion-direction.md:2177), with a different
+test named, `a resident watcher keeps running and backs off with growing beacon
+gaps` at delivery/work-history/exit-test-assertion-direction.md:2146.
 
 **The conclusion I am willing to defend:** a pre-existing real-clock test in an
 UNTOUCHED file, failing under load, now identified by name and by assertion rather
