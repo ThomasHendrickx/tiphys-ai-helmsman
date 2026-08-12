@@ -74,11 +74,10 @@ artifact behind it is treated as unknown.
 2. npm only, never pnpm or yarn.
 3. No em dashes in any authored text (commas, colons, parentheses instead).
    Authored files must be pure ASCII **and free of control characters**, and
-   that is TWO checks because one grep cannot do both:
+   Check tracked authored bytes with the portable repository script:
 
    ```
-   grep -raP '[^\x00-\x7F]' <paths>                    # non-ASCII
-   grep -raP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
+   node scripts/check-authored-bytes.mjs
    ```
 
    **The `-a` is LOAD-BEARING and its absence is why the second check was
@@ -130,7 +129,7 @@ artifact behind it is treated as unknown.
    VENDORED fixtures such as `test/fixtures/json-schema-test-suite/**`, where
    non-ASCII content is the thing under test and transliterating it would
    destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
-   run both checks over `git ls-files` minus those two trees and expect zero.
+   The script checks `git ls-files`, minus those two trees, and expects zero.
    **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
    resolution.** The red-witness rule demands real captured output from the
    program under test rather than hand-written strings. Node's test reporter
@@ -387,6 +386,34 @@ this incident tested whether the report file EXISTED, so it fired two minutes
 in, reported success, and said nothing. A guard whose condition does not test
 the property that matters is green and worthless, which is the red-witness rule
 one level up.
+
+**AND "THE NEWEST MTIME UNDER THE AGENT'S WORKING DIRECTORY" IS NOT MECHANICAL
+ENOUGH, which is why it was got wrong SIX TIMES in one session (T-014).** It
+reads as precise and needs judgment at every application: a gate run writes
+EVIDENCE outside the working tree, a freshly dispatched agent has no directory
+yet, and a finished agent leaves one that goes stale forever. The worst instance
+read a healthy round as approaching stale for fifteen minutes, and the correct
+response to a stale watchdog is to salvage and re-dispatch, which would have
+killed it three-quarters through its work.
+
+Answer these three IN WRITING in the dispatch turn, before arming anything:
+
+1. **Where does THIS agent write?** Not the last one. Read its brief: if it runs
+   gates it writes evidence outside the tree; if it clones it writes nowhere
+   until the clone lands. Enumerate the paths and watch ALL of them.
+2. **What is the baseline before its first write?** DISPATCH TIME, never the
+   inherited mtime of whatever the previous agent left, or the watchdog fires
+   instantly on a healthy agent. On a RE-ARM the baseline is the newest existing
+   write, because the grace was already spent.
+3. **What does silence mean here?** State which of "dead", "in a long run" and
+   "finished" this watchdog can distinguish, and label its output accordingly.
+   One that cannot tell them apart must SAY so rather than print a number
+   implying it can.
+
+**Exclude the orchestrator's own worktrees from any agent watchdog.** Including
+them keeps it green regardless of the agent, and a watchdog that cannot go red
+is worse than none because it is trusted. Full account in
+delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1.
 
 ## Green is scoped to the run that produced it (T-009, binding)
 

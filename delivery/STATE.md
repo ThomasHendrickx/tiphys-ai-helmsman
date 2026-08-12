@@ -5,12 +5,133 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-09
-- main head: `e33fe4c` (PR #67, the round-8 paperwork, tuition T-012 and T-013,
-  the arbitrations and the stop record), and its T-009 arm is DISCHARGED: job
-  success AND its `M2 exit test (push)` step success. **Zero open pull requests
-  at this head**, so the whole evidence chain for M3-P3's eight rounds is on
-  `main` rather than on side branches. The three heads before it are discharged
+- as of: 2026-08-11
+- PR #89, the controlled macOS portability pilot, merged to main as
+  `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
+  commit each passed Linux `gates` and macOS smoke. The owner-authorized
+  current-process fix round in DR-0026 used no second Tiphys subprocess and
+  received two independent clean-room reviews with no findings. The current
+  process then invoked and observed Tiphys's watcher mechanism, after which
+  Tiphys completed guarded, squash-aware teardown with exit 0: the task is
+  closed, its durable records survive, the task worktree/pool record/local
+  branch are removed, and the lease is released. The required closeout is
+  delivery/verification/macos-portability-pilot-lifecycle.md:1. The lifecycle
+  actions are complete, but the plan defines the pilot as incomplete until
+  that closeout is durable on `main`. Once it is, the final verdict is a
+  partial controlled pilot: delivery and teardown succeeded, but the
+  implementation agent could not make the plan-required local commit and the
+  current process had to recover it, and the final-head delta-review outcomes
+  were not committed before merge as DR-0026 required. This is not M4 cutover
+  or acceptance of the temporary adapter.
+  Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
+  M3-P4 round-3 verification and the stop arbitration). Its push run
+  31414562777 completed success. The owner has authorized DR-0025, one
+  controlled pre-M4 local pilot for macOS portability. The authorization and
+  exact boundary are in
+  delivery/decisions/DR-0025-controlled-pre-m4-local-pilot.md:1 and the pilot
+  plan is delivery/plan/macos-portability-pilot.md:1. M3-P4 remains stopped;
+  the pilot neither modifies PR #81 nor lifts that stop.
+  The earlier head `a7d5686` (PR #86, tuition T-014 and the watchdog questions in
+  CLAUDE.md). Its push run 31411940057 completed success. Earlier heads this
+  session are DISCHARGED BY STEP, and each
+  completed rather than being cancelled once the batch stopped overlapping:
+  `b1e9ac7` (PR #84) all 15 steps success, step 9 `M2 exit test (push)` success,
+  step 8 correctly skipped, steps 10 and 12 (the two guards) success; `253740e`
+  (PR #83), `90ebedf` (PR #82), `d0d55e4` (PR #80) and `4e7e1fd` (PR #85) each
+  the same way.
+  The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
+  M3-P4's round-1 and round-2 evidence.
+- **M3-P4 HAS HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE.**
+  Fix round 3 closed all four round-2 findings, several verified from
+  independently written reproductions, and found a real third error nobody had
+  named. It also introduced a NEW HIGH in the very fix that closed DV-003.
+  The ruling is delivery/review/arbitration-m3-p4-round-3.md:1 and the
+  verification is delivery/review/verification-m3-p4-round-3.md:1.
+  **BOTH DR-0012 limits are reached, not one**: round 3 was the second fix round
+  after the dual review (`max-fix-rounds-after-review: 2`), and over-rejection of
+  the honest record is now a HIGH twice in one component
+  (`recurrence-of-high-in-one-component: 1`).
+  **DV3-001 (HIGH): the `oneOf` puts `error` in the branch that REQUIRES
+  `wrapper-exit-code`, and a gate that errored on a missing parameter never ran a
+  child, so it has no exit code.** The orchestrator reproduced both ends: the
+  runner emits exactly that record, the schema refuses it, and the same record
+  with a FABRICATED exit code validates. That is this phase's own thesis running
+  backwards.
+  DV3-002 (MEDIUM): the new prose guard refuses honest NEGATIONS ("this does not
+  contradict the plan"), which is the natural sentence beside
+  `contradicts-plan: false`.
+  **THE MECHANISM RULED, and it is the third occurrence in one phase: a universal
+  claim over a class is used to justify a keyword, and no member of the class is
+  ever derived.** Round 2's arbitration ruled exactly this ("the defect is the
+  ARGUMENT, not the sentence") and round 3 committed the same shape one site
+  over, with the counter-example already sitting in its own work history.
+  DR-0016's response is in force: a FRESH IMPLEMENTER and a THIRD review contract
+  (the ARGUMENT AUDIT, distinct from the criteria and expressible-lie contracts
+  already run twice each), dispatched immediately, owner NOTIFIED rather than
+  waited on (DR-0023).
+  Round 2 history, kept because the lesson is still live: DV-002 (HIGH) was round
+  2 claiming a site "unreachable by keyword or check" when the verifier BUILT the
+  thing it said could not exist. Round 2 DID run the mandated claim grep and
+  still shipped it: **a grep catches the WORDING, not the REASONING.**
+  DV-001 (MEDIUM, latent) is the one-hop enumeration hole, and it exists in the
+  record ONLY because a verifier killed by a container restart had written its
+  beacon incrementally; its 40-line partial carried the lead.
+  Round 1 history follows. Round 1 was dual clean-room reviewed
+  at `a3ea489` and BOTH contracts returned CHANGES REQUIRED. The arbitration is
+  delivery/review/arbitration-m3-p4-round-1.md:1; the reports are
+  delivery/review/clean-room-m3-p4-expressible-lie.md:1 (2 high, 2 medium, 3
+  low) and delivery/review/clean-room-m3-p4-criteria.md:1 (1 medium, 2 low, no
+  high). They agreed on the verdict and shared almost no finding, which is the
+  T-007 pairing working rather than two models duplicating one contract.
+  **The two HIGH findings, both ruled at the MECHANISM:**
+  CR-001, a derived check registered PER TYPE reads a TYPE-SPECIFIC KEY while
+  the `$defs` it guards are SHARED ACROSS TYPES, so sharing a definition does
+  not share its check. This is the FOURTH occurrence of the one-directional
+  shape in M3 and the first where the phase's own converse table asserted the
+  opposite.
+  CR-002, an enum branch requiring NOTHING makes every sibling branch that
+  requires something optional, because the author picks the branch;
+  `kind: open-question` was the free escape from every other claim kind.
+  **TWO PLAN CHANGES were DECIDED by the orchestrator under DR-0016 rather than
+  escalated**, both recorded with reasoning in the arbitration: the `todo`
+  bucket gets a sixth gate-result field (the M2-P3 wrapper reports six buckets
+  and the five-field vocabulary made a legitimate run unrecordable), and the
+  empty-`findings` hole gets a THIRD derived check (verified independently:
+  `AUTHORING_VOCABULARY` is sixteen keywords and `maxItems` is ABSENT, so no
+  permitted schema keyword can express "this array is empty").
+- **THE T-009 DISCHARGE PICTURE FOR THIS BATCH, STATED AS MEASURED RATHER THAN
+  ROUNDED UP.** Five merges landed in quick succession and the workflow's
+  concurrency group cancelled the push runs of the intermediate heads:
+
+  | head | PR | push run | conclusion |
+  |---|---|---|---|
+  | `c7a7ce9` | #54, M3-P3 | 31381226164 | success, discharged by step |
+  | `f70c712` | #77 | 31382497764 | **cancelled**, step 9 reached success |
+  | `0c6ca35` | #76 | 31383185512 | **success, all 12 steps** |
+  | `80925bc` | #78 | 31384190575 | **cancelled** at step 11 |
+  | `ba9f35e` | #79 | 31385057964 | **success, all 15 steps**, verified by step |
+  | `d0d55e4` | #80 | 31386206998 | **success, all 15 steps** |
+  | `90ebedf` | #82 | 31390555506 | **success, all 15 steps** |
+
+  Two of the five were cancelled, and one of those (`80925bc`) was cancelled by
+  the orchestrator's own decision to merge #79 while it sat on step 11. That was
+  a deliberate trade, not an accident, and it is recorded as one.
+  **The rule this batch establishes, and it is in the standing reminders below:
+  discharge the FINAL head, and say plainly that the intermediates were
+  SUPERSEDED rather than verified.** Their content is contained in the final
+  head, so nothing is unverified; what is unavailable is a per-head claim, and
+  the fix is to stop making one. The three heads after the cancellations each
+  had nothing open behind them and each completed.
+  All six M3-P3 deliverables were confirmed present at `c7a7ce9` with
+  `git cat-file`, because a green merge is not the same claim as the files
+  having landed.
+  Those three heads carried M3-P3 evidence that TRAILED the phase merge: #76
+  (round-10 clean-room review), #77 (round-10 delta verification), #78 (the
+  merge arbitration). See the standing note below on why that ordering was a
+  mistake and what it cost.
+  The previous head `e33fe4c` (PR #67, the round-8 paperwork, tuition T-012 and
+  T-013, the arbitrations and the stop record) is discharged the same way. The
+  three heads before it are discharged
   the same way, each checked as the STEP and not inferred from the run:
   `3dca8ec` (PR #69, the round-8 criteria clean-room review), `0299634`
   (PR #68, the round-8 delta verification), and `a8d7016` (PR #65, the earlier
@@ -28,31 +149,34 @@ is wrong: verify against git and the PR list before trusting it.
   (31298592287). T-009's rule is that a merge is not complete until the
   post-merge push run on the NEW tip is observed, and "the run was green" is
   not that observation; the arm is.
-- **M3-P3 IS STOPPED AND WAITING ON THE OWNER (2026-08-10). Do not dispatch a
-  round 9.** Head `108eed0` (PR #54). Rounds 7 and 8 are the two fix rounds
-  DR-0012 allows after the A2 dual review, and the second clean-room review of
-  the current head returned one MEDIUM (CR-002) whose fix requires SOURCE
-  changes. That is a round 9, which crosses the limit, so the phase goes to the
-  owner with the evidence rather than grinding on. The full reasoning, the
-  recommendation, and two alternatives the orchestrator would not argue with are
-  in delivery/review/arbitration-m3-p3-stop.md:1. Everything else about the phase
-  is DONE and independently verified: every acceptance criterion executed and
-  passing, V-1 to V-6 closed, round 8 the first round of this phase to introduce
-  no defect in `src/`, the owner's DR-0022 criterion holding at 20/20 in two
-  separate re-derivations from `git archive`, scope green at 41 paths, CI green
-  on the exact head (run 31345592259).
-- milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1 and M3-P2 are MERGED.
-  M3-P4 through M3-P10 are blocked behind M3-P3 merging, which is the cost of
-  the stop above. The historical record of rounds 6 to 8 follows.
-  M3-P3 was at `218fc12` for round 6, executing the owner's
-  DR-0022 answer (option A2). It was under DUAL clean-room review of that head:
-  the supply-chain and regression contract returned APPROVE with zero findings
-  and is recorded in `delivery/review/clean-room-m3-p3-a2-supply-chain.md`
-  (PR #64); the correctness contract is still running. M3-P4 to M3-P10 are not
-  dispatched and are blocked strictly behind P3, because M3 is a serial chain
-  with no conflict pre-pass. M2 COMPLETE including its post-exit-test fix
+- **M3-P3 IS MERGED AND CLOSED (2026-08-10), after TEN rounds.** The stop that
+  stood here is discharged and its history is below. The owner answered CR-002
+  by authorising round 9; rounds 9 and 10 followed; the merge decision is
+  delivery/review/arbitration-m3-p3-merge.md:1. Both round-10 contracts agree
+  from different angles, no high and no medium: the delta verification closes
+  V-1 to V-4 and CRB9-02, the criteria clean-room approves. V-1 is closed at the
+  MECHANISM rather than at its instances, the three parts pinning `skips[]` to
+  an equality instead of bounding it, verified twice by independent routes
+  including a 20,000-case differential fuzz that disagrees 1,416 times with the
+  round-9 check and zero times with this one. Five LOWs are tracked with reasons
+  under DR-0012 condition 2 and are listed under "Carried forward" below.
+  Round 10 is the first round of this phase that both changed behaviour and
+  introduced no defect in the executable change.
+- M3-P4's declaration was pre-checked complete BEFORE dispatch at
+  delivery/plan/m3-p4-declaration-precheck.md:8, so the three mid-phase
+  declaration amendments M3-P3 needed were not repeated. It has held: `scope`
+  green at 18 paths with the declaration unamended through the whole phase.
+- milestone: **M3 (judgment layer), IN PROGRESS.** M3-P1, M3-P2 and M3-P3 are
+  MERGED. M3-P4 is in fix round 3. M3-P5 is PRE-CHECKED and brief-ready but not
+  dispatched; M3-P6 to M3-P10 are not dispatched. All remain
+  blocked strictly behind their predecessor, because M3 is a serial chain with
+  no conflict pre-pass. M2 COMPLETE including its post-exit-test fix
   round; M1 complete, exit test passed on `7e1b5f1`, completion record merged
-  in PR #10 at `037477e`.
+  in PR #10 at `037477e`. The historical record of M3-P3's rounds 6 to 8
+  follows. It was at `218fc12` for round 6, executing the owner's
+  DR-0022 answer (option A2), under DUAL clean-room review of that head: the
+  supply-chain and regression contract returned APPROVE with zero findings and
+  is recorded in `delivery/review/clean-room-m3-p3-a2-supply-chain.md` (PR #64).
 - plan: `delivery/plan/kernel-plan-v1.md` revision 7, owner-approved
 - assurance mode: full (adversarial pipeline). Merge authority is DELEGATED
   to the orchestrator under DR-0012, conditional on dual cross-model clean
@@ -177,11 +301,17 @@ modelled and bound five phases to.
 | M3 prerequisites (ten phase declarations, witness clone, citations arm A) | merged, #38 |
 | M3-P1 schemas and validator | MERGED #39 |
 | M3-P2 canonical gate registry | MERGED #48 |
-| M3-P3 assurance modes | PR #54 open at `108eed0`, **STOPPED, waiting on the owner over CR-002** |
+| M3-P3 assurance modes | **MERGED #54** at `c7a7ce9`, after ten rounds |
 | Round-8 verification | MERGED #68 |
-| Round-8 criteria review | PR #69 open |
-| M3 round-8 paperwork | PR #67 open |
-| M3-P4 to M3-P10 | not dispatched |
+| Round-8 criteria review | MERGED #69 |
+| M3 round-8 paperwork | MERGED #67 |
+| Round-10 delta verification | MERGED #77 at `f70c712` |
+| Round-10 criteria review | MERGED #76 at `0c6ca35` |
+| M3-P3 merge arbitration | MERGED #78 at `80925bc` |
+| STATE currency, assurance-modes correction, M3-P5 pre-check | MERGED #79 at `ba9f35e` |
+| M3-P4 report and work-history contracts | ROUND 1 REVIEWED, both CHANGES REQUIRED; FIX ROUND 2 in flight; PR #81 open |
+| M3-P4 round-1 reviews and arbitration | MERGED #82 at `90ebedf` |
+| M3-P5 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
 
@@ -338,11 +468,26 @@ Supervision is beacon/transcript freshness, not completion notifications.
 Items discovered during M1 that belong to a later milestone and have no owner
 yet. Recorded here so they are not rediscovered the expensive way.
 
-- **Uncaught `RangeError` in `collectUnits` above roughly 8,000 nested quote
-  markers.** Found by the round-8 delta verifier, measured IDENTICAL at both
-  `986f58a` and `108eed0`, so it is pre-existing and was correctly refused as a
-  round-8 finding. **Named for M3-P4**, which touches `src/checks.ts`. Evidence
-  in delivery/review/verification-m3-p3-round-8.md:1.
+- **Uncaught `RangeError` in `collectUnits` under deep nested quote markers.
+  THE THRESHOLD IS A FUNCTION OF AVAILABLE STACK, NOT A CONSTANT, and this
+  entry stated a constant until 2026-08-10.** The round-8 delta verifier
+  measured "roughly 8,000" and the M3-P4 implementer measured 5,000 to 6,000.
+  **Both are true of their own probes and NEITHER is a property of the code.**
+  The correction came from the M3-P4 implementer, unprompted, about a number
+  this file had been carrying as fact.
+  Pre-existing either way: measured IDENTICAL at `986f58a` and `108eed0` by the
+  round-8 verifier, and identical again at the M3-P4 merge base and head, so it
+  was correctly refused as a finding by both rounds. Evidence in
+  delivery/review/verification-m3-p3-round-8.md:1.
+  **STILL NOT FIXED, and the reason is mechanical rather than a judgement:** its
+  red witness would have to live in `test/checks.test.ts` or
+  `test/assurance-modes.test.ts`, neither of which is on M3-P4's declaration, so
+  the only options were a scope violation or an unwitnessed fix. It needs a phase
+  whose declaration covers one of those files.
+  The general lesson, which is why this is written at length: **a measured
+  threshold that depends on the environment must be recorded WITH its
+  environment, or the next reader treats one probe's number as the code's
+  property.** Two honest measurements differing by 3,000 is what exposed it.
 - **Rule (g) compares witness `find` TEXT rather than mutation EFFECT.** W-2 of
   the round-8 verification measured two dangerous states that are one shape
   (`span.length >= 0` is unconditionally true, so that member equals deleting the
@@ -358,6 +503,60 @@ yet. Recorded here so they are not rediscovered the expensive way.
   M12, M13, M16, M18, M19), decided as recorded non-coverage in
   delivery/review/arbitration-m3-p3-round-8.md:1. Tracked BY NAME, never as a
   count, because a count is what turns a bounded decision into an invisible one.
+
+### The M3-P3 merge lows, tracked under DR-0012 condition 2 (2026-08-10)
+
+Merged with rather than fixed, each with its reason, from
+delivery/review/arbitration-m3-p3-merge.md:49. Four carry forward; the fifth
+(O-1, round 10's gate table taken at a different head) was CLOSED before merge by
+the clean-room reviewer re-running the whole bundle at the reviewed head.
+
+- **CITATIONS IN `src/` AND `test/` ARE ENTIRELY UNGATED, and this is the one
+  that matters.** Two `path:line` citations round 10 added are stale AT THE HEAD
+  THAT ADDED THEM, moved by round 10's own insertion: `src/modes.ts:221` should
+  be 234, `test/assurance-modes.test.ts:2119` should be about 2333. Found
+  independently by both round-10 contracts (V-1 and CR-001). Confirmed by the
+  orchestrator directly: every `citations` gate precondition path and every
+  `documents` glob is under `delivery/`. **Fixing the two numbers does not close
+  the hole**, and closing it is a gate-configuration change belonging to a phase
+  that owns the registry. This is the V-4 class recurring inside the very commit
+  dispatched to fix V-4, which is the argument for treating it as configuration
+  rather than as two typos.
+- **The claim grep's own accounting is wrong** (V-2): the shipped section yields
+  four hits, not three, and the one the record names is not among them. The
+  substance is unharmed; the report of the mandated mechanism is not.
+- **`assurance-modes.yaml:18` still claims `mode-gate-sets-resolve` "keeps the
+  two files from drifting apart"** (V-3), four lines above a paragraph the same
+  commit rewrote, contradicted by that same commit's own measurement. **This is
+  the low the orchestrator named as least comfortable**, because it is a false
+  claim in a SHIPPED file and this project's whole thesis is that false claims in
+  durable records are what hide defects. Low rather than medium only because it
+  is a descriptive comment and not anything the CLI prints. **CORRECTED in this
+  same commit**, which is what "queued as the first text correction after merge"
+  was supposed to mean. The comment now states which direction IS checked, which
+  is NOT, that no code path could see the omission, the measurement, and the
+  consequence that the document can under-report. The claim was verified false
+  by reading the check rather than by trusting the review: the loop iterates the
+  entries present in `gate-sets` and never iterates the registry.
+- **`mode-gate-sets-resolve` enforces its relation in ONE DIRECTION** while its
+  documentation claims both (CR-002, carried as an open question with no id).
+  Dropping `deploy` from `full`'s `gate-sets` while the registry declares
+  `modes: [full]` validates at exit 0 with no diagnostic; adding a mode to a
+  registry gate while leaving the modes document untouched does the same. Two
+  structurally different routes, both exit 0, and the checked direction reddens.
+  Adopted as **the same mechanism, not a lookalike**. One difference is recorded
+  rather than smoothed over: `skips`' unchecked direction let a document
+  OVERSTATE its downgrades and made the CLI contradict itself, whereas
+  `gate-sets`' unchecked direction makes the modes document UNDER-report, so
+  today's consequence is a false description rather than a false assurance claim.
+- **THE MECHANISM ITSELF, which is the item to carry rather than the three
+  instances.** A one-directional check occurred THREE times in M3-P3: a relation
+  stated redundantly with the word "exactly", one containment enforced, shipped
+  data satisfying both so the hole stays latent, and documentation claiming the
+  drift is closed. Three occurrences in one phase is a mechanism, not three
+  anecdotes. Any later phase writing a check over a relation between two
+  documents must ask what the CONVERSE admits, and either close it or say plainly
+  that it is open.
 
 - **Non-atomic task metadata write.** `src/task.ts` writes `meta.json` with a
   plain write, which is the mechanism that produces the torn record the M1-P5
@@ -494,14 +693,24 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 
 ## Owner action items
 
-> **OPEN AND BLOCKING, 2026-08-10: M3-P3's CR-002.** This is a CHOICE, not an
-> `A-n` act, so it has no id here and lives in
-> delivery/review/arbitration-m3-p3-stop.md:1. It is listed at the top of this
-> section because it is the only thing the pipeline is waiting on and because
-> the whole of M3-P4 to M3-P10 sits behind it. The orchestrator's recommendation
-> is to authorise one final round to close CR-002 and then merge; two
-> alternatives it would not argue with are recorded there. **No round 9 may be
-> dispatched until the owner answers.**
+> **ANSWERED AND CLOSED, 2026-08-10: M3-P3's CR-002.** The owner authorised the
+> final round. Rounds 9 and 10 followed and the phase merged at `c7a7ce9`. The
+> question and the alternatives are at delivery/review/arbitration-m3-p3-stop.md:1
+> and the merge decision is delivery/review/arbitration-m3-p3-merge.md:1.
+>
+> **NOTHING IS BLOCKING THE OWNER RIGHT NOW.** The one owner action outstanding
+> anywhere in M3 is A-7, and it does not bite until M3-P10. Its irreversible
+> half (claiming the `@tiphys` scope) is DONE as of 2026-08-10, and DR-0024
+> removed the credential from the other half entirely.
+>
+> This escalation should not have happened, and the reason is recorded as a
+> decision rather than a resolution: DR-0023 rules that the DR-0012 stop rule
+> NOTIFIES, it does not WAIT. The owner's own words on receiving it were that
+> this was the second recommendation in a row they had simply accepted. An
+> orchestrator that has just caught a possible bias in itself and resolves the
+> next call by escalating is outsourcing the bias rather than fixing it. Under
+> DR-0023 the equivalent situation today produces evidence, a recommendation, a
+> notification, and CONTINUED WORK.
 
 **This section is the sole allocator of `A-n` ids** (CLAUDE.md identifier
 schemes). An `A-n` is an ACT the owner must perform because it needs access an
@@ -543,11 +752,38 @@ and `A-3` meant three, one of them a literal string inside
    `claude/m3-plan-regrounding`, which is the state this project wanted:
    `main` is the source of truth and the M3 branch is where M3 is worked,
    rebased onto `main` rather than diverging from it.
-6. **A-7, before the M3 exit run.** Provide the npm publish credential and
-   claim the `@tiphys` scope, per DR-0008 (public npmjs, `@tiphys/kernel` and
-   `@tiphys/claude-code-plugin`). This is elevated access the orchestrator does
-   not hold, so it is owner-reserved by construction under DR-0016. It blocks
-   M3-P10 only; M3-P1 through M3-P9 run without it.
+6. **A-7, before the M3 exit run. PART 1 IS DONE; PART 2 CHANGED SHAPE.**
+   - **Part 1, claim the `@tiphys` scope on npmjs: DONE (owner, 2026-08-10.)**
+     The irreversible half is closed: the scope cannot now be taken by anyone
+     else, which was the reason to do it early rather than at M3-P10.
+   - **Part 2 is NO LONGER "provide a credential".** DR-0024 decides that
+     publishing authenticates by OIDC trusted publishing rather than a
+     long-lived token, so there is no secret to transport, store, or rotate.
+     What remains is a CONFIGURATION the owner makes in the npm UI, linking
+     `@tiphys/kernel` to this repository and the release workflow, and it
+     cannot be done until M3-P10 can name the workflow file.
+   Still owner-reserved, because it needs npm account access the orchestrator
+   does not hold. Still blocks M3-P10 only; M3-P1 through M3-P9 run without it.
+   **The reason for the change, in one line: this repository runs two gates whose
+   whole purpose is keeping credentials out of artifacts, and the better move is
+   to have no credential rather than a well-guarded one.**
+   **THE BOOTSTRAP IS SETTLED BY THE OWNER (2026-08-10), and it makes M3-P10
+   NON-AUTONOMOUS.** The owner will publish a `0.0.0` stub for both package
+   names, deprecate it immediately, and prime the packages that way, and needs
+   the release workflow FILENAME before doing so. That does not answer the open
+   question about never-published packages; it makes it moot, which is recorded
+   as the different thing it is.
+   **The owner step therefore lands in the MIDDLE of M3-P10, not at its end:**
+   (1) M3-P10 writes the workflow and does NOT publish; (2) OWNER stub-publishes,
+   deprecates, and configures the trusted publisher against that workflow;
+   (3) M3-P10's exit run publishes `0.1.0` over OIDC. Every other M3 phase has
+   been dispatch-to-merge with the owner outside the loop. **Read the M3-P10 plan
+   with that in mind BEFORE dispatching it**, so it is not designed as one
+   uninterrupted run and then found to have a hole in the middle.
+   One benefit falls out and is worth naming: once the `0.0.0` stub exists, npm
+   refuses to republish that version, so an M3-P10 that forgot the `0.1.0` bump
+   FAILS CLOSED at publish time instead of shipping a package contradicting its
+   own five disclosures.
    **Id note:** the M3 plan called this `A-4` through revision 2, colliding
    with the branch deletion above. Revision 3 renumbered the PLAN's id to A-7.
    M2's `A-3` is deliberately untouched because it is embedded as a literal
@@ -676,8 +912,95 @@ fact rather than a memory.
   adversarial review (DR-0011, recorded consequence).
 - Process paperwork must reach `main`, not only a side branch. This file
   exists because it once did not.
+- **A PUSHED BRANCH WITH NO PULL REQUEST IS NOT ON THE PATH TO `main`, and the
+  orchestrator has made this mistake three times.** The third and worst was
+  `claude/paperwork-m3p3-merge`, which carried the arbitration AUTHORISING the
+  M3-P3 merge: the phase was merged on the strength of a document that was not
+  yet heading anywhere. It was caught by the OWNER asking why two review PRs
+  were still open, which is the process being audited by the person it is meant
+  to protect. Push and open the PR in the same turn; a branch is not evidence
+  until it has somewhere to land.
+- **Merge the evidence BEFORE or WITH the phase, not after it.** Merging the
+  phase first is what stranded #76, #77 and #78, and it also costs a rebase per
+  merge, since branch protection requires up-to-date-with-base and therefore
+  405s every other open PR each time one lands.
+- **A phase branch that exists is not a phase branch that is checked out.**
+  Measured 2026-08-10: M3-P4's implementer created its branch, left HEAD on
+  `main`, and committed its beacon there. Nothing was pushed, so `origin/main`
+  never saw it, and it was corrected by moving the branch to the commit and
+  resetting `main`, with no change to any file content. `git rev-parse
+  --abbrev-ref HEAD` before every commit is the mechanical form; "remember to be
+  on the branch" is not, and this project has recorded twice that a rule
+  depending on memory does not survive a busy session.
 - A merge is not complete until the post-merge `push` run on the new `main`
   head is observed green. The PR check and the push run execute DIFFERENT
   bundles, so a green PR check is not evidence about `main` (tuition T-009,
   which cost four hours and twenty-one minutes of red `main` and four merges
   landed on top of it).
+- **EDITING A FILE BREAKS CITATIONS POINTING INTO IT FROM FILES YOU ARE NOT
+  TOUCHING. This is the CONVERSE direction and it is easy to miss entirely.**
+  Measured 2026-08-10, second occurrence the same day. `assurance-modes.yaml`
+  cites the one-directional-check bullet in this file. Inserting the M3-P4
+  round-1 section ABOVE that bullet moved it from 442 to 488 and left the yaml
+  pointing at unrelated text, **in a file the change did not open**.
+  The usual rule ("resolve your citations last") only covers citations you
+  WROTE. It does not cover citations that point AT what you edited. The
+  mechanical form for that direction: **after editing any file, grep the tree for
+  citations naming it and re-resolve them**, because nothing else will.
+  ```
+  grep -rn 'delivery/STATE.md:[0-9]' --include='*.md' --include='*.yaml' . | grep -v node_modules
+  ```
+  **BUT DO NOT REPOINT EVERYTHING THE GREP RETURNS, and this rule produced its
+  own counter-example the first time it was run.** That sweep found
+  `delivery/review/clean-room-m3-p3-r8-criteria.md` citing `delivery/STATE.md`
+  line 530 for the M3-P10 blocking obligation, which this edit moved to 728. It
+  was left ALONE, deliberately. `delivery/review/` and
+  `delivery/work-history/` are records of what was examined WHEN THEY WERE
+  WRITTEN, which is why src/gates/citations.ts:185 removes both trees from the
+  `documents` globs: re-checking them at head re-litigates settled history.
+  Repointing that line would have made the record say something the reviewer
+  never checked.
+  **So the sweep's output splits in two:** forward-claiming documents
+  (`delivery/plan/`, `delivery/verification/`, `delivery/decisions/`,
+  `delivery/requirements/`, this file, and root-level files like
+  `assurance-modes.yaml`) get repointed; historical records get left exactly as
+  written. Getting this backwards corrupts the record in the name of tidiness.
+  Neither direction is covered by the `citations` gate for a root-level file
+  like `assurance-modes.yaml`, whose every `documents` glob is under
+  `delivery/`.
+- **A CITATION IS STALE THE MOMENT YOUR OWN INSERTION MOVES ITS TARGET, and the
+  author is the last person who will notice.** Measured 2026-08-10, by the
+  orchestrator, against itself. `assurance-modes.yaml` cites the
+  one-directional-check bullet in this file. It was verified correct at
+  `delivery/STATE.md:425` when written. Editing the main-head section ABOVE it,
+  in a later commit on the same branch, moved the bullet to 442 and left the
+  citation pointing at an unrelated sentence.
+  This is the SAME defect M3-P3 round 10 shipped twice and that this file tracks
+  as a merge low, and the orchestrator had warned the M3-P4 implementer about
+  this exact trap thirty minutes earlier. Knowing the rule did not prevent it;
+  running a check did.
+  **`assurance-modes.yaml` is at the repository root, so it is NOT under the
+  citations gate's `documents` globs** (all of which are `delivery/**/*.md` plus
+  `delivery/STATE.md`). Nothing in this repository could have caught it.
+  The mechanical form, and it is the only form that works: **resolve every
+  `path:line` you wrote LAST, after your final edit to the cited file**, and
+  check the line MEANS what it is cited for rather than merely existing. Doing
+  it when you write the citation verifies a state your own later commits then
+  invalidate.
+- **CONSECUTIVE MERGES CANCEL EACH OTHER'S PUSH RUNS, so a per-head T-009
+  discharge is not always achievable and must not be claimed.** Measured
+  2026-08-10 while landing the M3-P3 evidence PRs: the push run on `f70c712`
+  (run 31382497764) reports conclusion **cancelled**, because merging #76
+  seconds later superseded it under the workflow's concurrency group. Its step 9
+  `M2 exit test (push)` did reach **success**, and steps 10 and 11 too, but step
+  12 was cancelled, so the run as a whole never completed.
+  The honest reading, and the one to use: **step 9 succeeded, the run did not
+  finish, and that is a PARTIAL observation rather than a discharge.** The trap
+  is that step 9 is exactly the arm T-009 names, so quoting it alone produces a
+  true sentence that reads as a complete one, which is the same shape T-009 and
+  warning 12 both record.
+  The rule when merges are batched: **discharge the FINAL head of the batch with
+  a run that completed**, and say plainly that the intermediate heads were
+  superseded rather than verified. An intermediate head's content is contained
+  in the final head, so nothing is unverified; what is missing is a per-head
+  claim, and the fix is to stop making one.

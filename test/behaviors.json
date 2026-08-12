@@ -556,5 +556,15 @@
   "work-history-gate-evidence-shares-the-exit-code-obligation": "the exit-code obligation on a gate result that ran travels to a work history's gate-evidence, and not-applicable stays free there too",
   "guards-pointer-through-a-chain-is-enumerated": "a check guarding a definition reached through a chain of references is caught, where the one-hop enumeration fix round 2 shipped saw nothing",
   "open-question-carrying-a-guarded-token-declares-why-it-is-open": "an honest open question whose prose carries a guarded token is writable once it declares why it is still open",
-  "verification-first-denial-of-a-plan-divergence-is-writable": "a verification-first finding that DENIES a plan divergence is writable once it declares why its prose carries the token"
+  "verification-first-denial-of-a-plan-divergence-is-writable": "a verification-first finding that DENIES a plan divergence is writable once it declares why its prose carries the token",
+  "macos-fixed-git-config-nosystem": "a parent GIT_CONFIG_NOSYSTEM value cannot override the fixed child value",
+  "macos-credentials-direct-entry-alias": "credentials direct entry runs through an aliased path and writes its result",
+  "macos-suite-direct-entry-alias": "suite direct entry runs through an aliased path and writes its result",
+  "authored-bytes-reject-forbidden": "authored-byte checker rejects NUL SOH and non-ASCII tracked bytes",
+  "authored-bytes-accept-ascii": "authored-byte checker accepts ordinary tracked ASCII",
+  "authored-bytes-exemptions-narrow": "authored-byte checker exempts only the owner input and vendored fixture paths",
+  "macos-scope-direct-entry-logical-alias": "scope direct entry runs through the logical macOS alias and writes its error result",
+  "authored-bytes-symlink-blob": "authored-byte checker reads tracked symlink text without following its target",
+  "authored-bytes-unmerged-index": "authored-byte checker fails closed on an unmerged index",
+  "authored-bytes-worktree-divergence": "authored-byte checker refuses tracked worktree bytes that differ from the index"
 }

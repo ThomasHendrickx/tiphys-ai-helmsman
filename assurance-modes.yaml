@@ -15,10 +15,37 @@
 #                    adversarial layers".
 #   local-only       blueprint section 8 row 3, "implement, orchestrator diff
 #                    review, local fast-forward".
-#   gate-sets        derived from gate-registry.yaml: each mode selects exactly
-#                    the gates whose own `modes` list names it. That is a
-#                    mechanical derivation, and `mode-gate-sets-resolve` is what
-#                    keeps the two files from drifting apart.
+#   gate-sets        derived from gate-registry.yaml: each mode selects the
+#                    gates whose own `modes` list names it.
+#                    `mode-gate-sets-resolve` checks that derivation in ONE
+#                    DIRECTION ONLY, and this comment used to claim it "keeps
+#                    the two files from drifting apart", which is FALSE and is
+#                    corrected here rather than left standing.
+#                    CHECKED: every entry listed here names a gate the registry
+#                      declares, and that gate's `modes` list names this mode.
+#                      So an entry that resolves to a gate which never runs in
+#                      this mode is a violation.
+#                    NOT CHECKED, and this is the open hole: the CONVERSE. A
+#                      gate the registry declares with `modes` naming this mode,
+#                      but which is ABSENT from the list below, is invisible.
+#                      The check iterates the entries present here and never
+#                      iterates the registry, so there is no code path that
+#                      could see the omission (src/checks.ts:626).
+#                      Measured: dropping `deploy` from `full` while the
+#                      registry still declares `modes: [full]` for it validates
+#                      at exit 0 with no diagnostic, and so does adding a mode
+#                      to a registry gate without adding the gate here.
+#                    CONSEQUENCE, stated so nobody has to re-derive it: this
+#                      document can UNDER-report which gates a mode runs. That
+#                      is a false description rather than a false assurance
+#                      claim, which is why it is tracked as a low rather than
+#                      fixed in place, but "one direction" and "no drift" are
+#                      not the same sentence and this file may not say the
+#                      second while meaning the first.
+#                    This is the third occurrence in one phase of a check that
+#                      constrains a relation in one direction while its own
+#                      documentation claims both. Three is a mechanism, not
+#                      three anecdotes; it is tracked in delivery/STATE.md:528.
 #   skips            derived: every stage in `full`'s pipeline that this mode's
 #                    pipeline omits, AND NOTHING ELSE.
 #                    `mode-no-undeclared-downgrade` recomputes it rather than

@@ -1,0 +1,18 @@
+{
+  "id": "macos-portability-git-nosystem",
+  "behavior": "macos-fixed-git-config-nosystem",
+  "tests": [
+    "a parent GIT_CONFIG_NOSYSTEM value cannot override the fixed child value"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/exec/env.ts",
+      "find": "  env[\"GIT_CONFIG_NOSYSTEM\"] = \"1\";",
+      "replace": "  env[\"GIT_CONFIG_NOSYSTEM\"] = \"0\";"
+    }
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2
+}

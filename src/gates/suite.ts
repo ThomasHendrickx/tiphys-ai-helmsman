@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
   classifyEntry,
   readRegularFileIfPresent,
@@ -1135,7 +1136,7 @@ export function runSuiteGate(argv: string[]): number {
 
 const invokedDirectly =
   process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1]);
 
 if (invokedDirectly) {
   process.exit(runSuiteGate(process.argv.slice(2)));

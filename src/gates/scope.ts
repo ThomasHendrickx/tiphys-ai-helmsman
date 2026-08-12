@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
   readRegularFileIfPresent,
   refuseOpenForWrite,
@@ -819,7 +820,8 @@ export function main(argv: string[]): number {
  * would call `process.exit` out from under the test runner.
  */
 const invokedDirectly =
-  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
+  process.argv[1] !== undefined &&
+  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1]);
 if (invokedDirectly) {
   // CR-1047, second layer: `main` already wraps its own body, but this
   // catches anything that could escape from outside that wrap (flag

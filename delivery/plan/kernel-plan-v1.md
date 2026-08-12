@@ -35,7 +35,7 @@ The repository at the baseline commit contains only delivery/ documents: the two
 3. Topology and distribution per blueprint section 3.
 4. Assurance modes per blueprint section 8.
 5. Charter boundary is reversibility (blueprint section 7).
-6. Tiphys is built with the current process; nothing runs on Tiphys before M4. The M3 exit test's self-delivery is a controlled exception under current-process supervision (SC-013 disposition).
+6. Tiphys is built with the current process; nothing runs on Tiphys before M4. The M3 exit test's self-delivery is a controlled exception under current-process supervision (SC-013 disposition). DR-0025 authorizes one additional controlled pre-M4 local pilot for the macOS portability task only; Tiphys owns the bounded local lifecycle while the current process retains planning, review, credentials, PR, merge, recovery, and pilot-closeout authority. This exception is not M4 cutover or acceptance of the unfinished harness adapter.
 7. Decorrelation deferred; red-witness against latest main, re-verified at merge; hard cutover (blueprint section 12).
 
 ### 1.4 Binding conventions (every phase, every artifact)
