@@ -4,6 +4,7 @@
   "filesToTouch": [
     "schemas/role-brief.schema.json",
     "schemas/finding.schema.json",
+    "schemas/report.schema.json",
     "roles/investigator.md",
     "roles/plan-writer.md",
     "roles/adversarial-plan-reviewer.md",
