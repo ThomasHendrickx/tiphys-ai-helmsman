@@ -2252,7 +2252,7 @@ Two clean-room reviews of `fdb3120` both APPROVE. Four findings between them:
 CR-V-1 as WRITTEN is a finding: "the third spread of the union is unwitnessed".
 That is the instance. The round that fixed CR-V01 already knew a leg could be
 unwitnessed; it wrote the risk down at
-delivery/work-history/exit-test-assertion-direction.md:2050. Fixing the instance
+delivery/work-history/exit-test-assertion-direction.md:2067. Fixing the instance
 means adding one probe and leaving the reason it was missing intact.
 
 The MECHANISM is this:
@@ -2269,7 +2269,7 @@ round's own substituted mechanism ("a probe witnesses a check only when that
 check is its UNIQUE rejecter") is correct, but its IMPLEMENTATION picks one
 message, `DEFAULT_SPEC_WHY`, as the proxy for "the derivation rejected this".
 The proxy is narrower than the thing: the reason is bound
-`const why = explicit ? "" : DEFAULT_SPEC_WHY` (scripts/m2-exit-test.sh:533), so
+`const why = explicit ? "" : DEFAULT_SPEC_WHY` (scripts/m2-exit-test.sh:555), so
 for any member carrying an explicit table row the key is the EMPTY STRING on
 every branch. The explicit leg is precisely the set of members that always carry
 an explicit row.
@@ -2406,7 +2406,13 @@ for (const s of sources) {
 }
 ```
 
-Its FULL output, not a summary:
+Its FULL output, not a summary. **The line numbers in section A are `fdb3120`'s**,
+because that is the state the derivation was run against and the state the finding
+is about; the fix in FR2.3 later shifted `scripts/m2-exit-test.sh` by twenty-two
+lines, so prose elsewhere in this section cites the SHIPPED positions
+(scripts/m2-exit-test.sh:555 for the reason binding, scripts/m2-exit-test.sh:558
+for the ternary) while the capture below is left exactly as it printed:
+
 
 ```
 === A. rejection branches of the shipped assertion program ===
@@ -2480,7 +2486,7 @@ was run:
    the reason variable. All three read it from one binding whose value is `""`
    whenever the member is explicit, so the number of branches that can carry the
    attribution key for an EXPLICIT member is ZERO, not "few". Branch
-   scripts/m2-exit-test.sh:536 is the one a reader is most likely to miscount: it
+   scripts/m2-exit-test.sh:558 is the one a reader is most likely to miscount: it
    is a TERNARY and only its non-explicit arm concatenates the reason, so the
    very branch that rejects the explicit-leg shape is the branch that cannot
    name itself under this key.
@@ -2526,7 +2532,7 @@ EXIT=2
 ```
 
 Pristine snapshots taken before any mutation, and restored by `cp` after every
-run (no `git checkout --` anywhere in this round, CLAUDE.md:627):
+run (no `git checkout --` anywhere in this round, CLAUDE.md:659):
 
 ```
 4b607dd9696485e5ef5e68838b99d596e532f516db2aa2012630873a14b9d452  snap/harness.sh
@@ -2602,7 +2608,7 @@ $ grep -nE 'sources\.length|\.length\s*(===|==|>=|<=|>|<)\s*[0-9]' test/m2-exit-
 ```
 
 This closes CR-FR-2 and the open item at
-delivery/work-history/exit-test-assertion-direction.md:2050, and it corrects that
+delivery/work-history/exit-test-assertion-direction.md:2067, and it corrects that
 item's TENSE as CR-V-1 requires: the item said a third spread "would be"
 unwitnessed; there were three spreads and the third WAS unwitnessed. Both are now
 probed and the arrival of a fourth is guarded.
@@ -2611,7 +2617,7 @@ The guard is deliberately NOT behind the `dist/` skip that the probe test uses.
 It reads one source file, so it runs under `npm test` and under a bare
 `node --test` alike, on the `pull_request` arm and the `push` arm alike. A guard
 present on one arm and absent from the other is the shape T-009 records
-(CLAUDE.md:418), and it would have been easy to inherit here by copying the
+(CLAUDE.md:472), and it would have been easy to inherit here by copying the
 neighbouring test's skip.
 
 ## FR2.6 Red witness 3: the two self-vacuity checks, each witnessed ALONE
@@ -2654,14 +2660,16 @@ $ node --test --test-name-pattern 'a RED gate is rejected on BOTH bundles' test/
 `h-reworded` replaces the whole explicit-branch message with a sentinel sharing
 no word with the original, and the test stays GREEN: the key TRACKED the reword,
 which is what a derived value does and what a hard-coded literal could not. The
-`--test-name-pattern` shape here matters and is easy to get wrong: CLAUDE.md:625
+`--test-name-pattern` shape here matters and is easy to get wrong: CLAUDE.md:657
 records that the pattern must precede the positional path or it is silently
 ignored, and every invocation above puts it there.
 
 `h-underivable` breaks only the shape the regex looks for (`explicit` becomes
 `Boolean(explicit)`, the message untouched), and the test HARD-FAILS rather than
-falling back to a default. So the explicit leg cannot become vacuously witnessed
-by a rename.
+falling back to a default. So a rename OF THAT SHAPE reddens instead of silently
+leaving the explicit leg witnessed by an empty string. I tested one rename shape,
+not every one; a rewrite that preserved the regex's shape while changing what the
+branch means would not be caught here, and I did not look for one.
 
 One thing this pair does NOT establish, stated because H-B raised the identical
 limitation as O-1 about the first key: these witnesses show the key is DERIVABLE
@@ -2735,7 +2743,7 @@ PR BUNDLE EXIT=0
 ```
 
 Both OK lines are IDENTICAL to the ones round 1 recorded at
-delivery/work-history/exit-test-assertion-direction.md:888 and
+delivery/work-history/exit-test-assertion-direction.md:886 and
 delivery/work-history/exit-test-assertion-direction.md:895, gate for gate and
 count for count. So the harness edit changes nothing about what either real
 bundle asserts, which is the property a production change to this file most needs
@@ -2792,7 +2800,7 @@ above at item 1; this is the list for round 2's own enumeration.
    the union's legs. Round 1 recorded that its equivalent exclusion is where
    CR-H-1 was found (by reading, not grep), and the same risk stands here: a
    document asserting "two legs" is not caught by anything I ran. I did correct
-   the two I knew of, at delivery/work-history/exit-test-assertion-direction.md:2050
+   the two I knew of, at delivery/work-history/exit-test-assertion-direction.md:2067
    and in FR1.10 item 1, both because a review named them, not because a search
    found them.
 5. **`git grep` over `src/` was not run for this mechanism.** The mechanism
@@ -2815,7 +2823,7 @@ above at item 1; this is the list for round 2's own enumeration.
 
 ## FR2.10 The complete suite sentence, and ONE intermittent failure I could not identify
 
-All three axes CLAUDE.md:699 requires, plus the skipped count.
+All three axes CLAUDE.md:708 requires, plus the skipped count.
 
 TOOLCHAIN: node v26.6.0 from the scratch prefix, `node --version` checked in the
 shell that ran each command. BUILD STATE: `dist/` present, `npm run build` exit 0,
@@ -2829,9 +2837,18 @@ shell that ran each command. BUILD STATE: `dist/` present, `npm run build` exit 
 Round 1 measured 594 and 596 at `fdb3120`. This round adds TWO tests, so 596 and
 598 are the same two numbers plus two, and the two-test gap between the
 invocations is unchanged: it is `sandbox/test/greet.test.js`, which
-`package.json`'s test pattern excludes and the `suite` gate therefore never runs
-(CLAUDE.md:721). **596 is what CI and the `suite` gate mean; 598 is what gate-list
-step 3 literally asks for.**
+`package.json`'s test pattern excludes, so the `suite` gate does not run it. That
+is not taken on trust from CLAUDE.md:721; the pattern is read back here:
+
+```
+$ node -e 'console.log(JSON.parse(require("node:fs").readFileSync("package.json","utf8")).scripts.test)'
+node --test "test/**/*.test.ts"
+$ git ls-files 'sandbox/test/*.js'
+sandbox/test/greet.test.js
+```
+
+**596 is what CI and the `suite` gate mean; 598 is what gate-list step 3
+literally asks for.**
 
 ### The failure, reported rather than averaged away
 
@@ -2893,4 +2910,68 @@ honest sentence is that one bare-invocation run in three failed, in an assertion
 that is not one of mine, and fifteen targeted re-runs did not reproduce it. If CI
 reddens on something in the list above, this is the note that says it was seen
 here first and was not attributed.
+
+## FR2.11 An event: six wrong citations, and a near-miss on corrupting captured evidence
+
+Recorded because it nearly went the other way, and because round 1 paid for the
+same class (nine wrong citations, caught by hand).
+
+**The wrong citations.** Six of my fifteen `path:line` tokens resolved to a line
+that existed and said something else. The cause is specific and worth naming:
+**I took the CLAUDE.md line numbers from the copy in the main checkout, which is
+on a different branch, while citations resolve against THIS branch's tree.** The
+two files differ. `CLAUDE.md:326` and `CLAUDE.md:380` happened to agree, which is
+what made the rest look safe. Corrected: `627 -> 659` (the `git checkout --`
+warning), `418 -> 472` (both arms need a witness), `625 -> 657`
+(`--test-name-pattern` precedes the path), `699 -> 708` (the toolchain-and-build
+sentence). Plus two of my own making: my harness edit shifted
+`scripts/m2-exit-test.sh` by twenty-two lines, so `533 -> 555` and `536 -> 558`,
+and my in-place edits shifted this document, so `2050 -> 2067` and `888 -> 886`.
+
+The check that caught them is content-based, not existence-based, and that
+distinction is the whole point: all fifteen tokens RESOLVED before the fix, and
+six of them were wrong. Resolution to an in-range line is a weaker property than
+resolution to the intended content, and only the second is worth anything.
+
+**The near-miss.** My first correction was a blanket string replacement of
+`scripts/m2-exit-test.sh:536`. That token also appears FOUR times inside the
+published derivation: twice in the captured output and once in the pasted script.
+The replacement rewrote them, which would have altered captured evidence to match
+a later state of the file, and after the fact that is indistinguishable from
+fabricating it (CLAUDE.md:153). Caught by inspecting the occurrences before
+committing, reverted line by line, and both blocks are now verified byte-identical
+to what ran:
+
+```
+pasted script is VERBATIM equal to the file that ran: True
+captured output block is VERBATIM: True
+```
+
+The line numbers inside the capture are `fdb3120`'s and are LEFT that way, with a
+note above the fence saying so. Prose cites the shipped positions. A capture and a
+citation are different kinds of thing and only one of them tracks the current
+tree.
+
+## FR2.12 Disposition of the four findings
+
+| id | severity | disposition |
+|---|---|---|
+| CR-V-1 | MEDIUM | **FIXED.** `probe-4-explicit-table-leg` witnesses the explicit leg on BOTH arms, keyed on the branch that actually rejects it. Red witness: FR2.4, `h-noexplicit` EXIT=1 on pr and on main, where H-B measured the whole 594-test suite green. The reviewer's recommended remedy was adopted after checking rather than obeying it: the derivation in FR2.2 shows 0 of 24 branches can carry the old key for an explicit member, so the round's own mechanism genuinely could not close this. |
+| CR-V-2 | LOW | **FIXED**, in production code. Two checks in the assertion program: a manifest whose `gates` key is not an array, and an empty derived expected set. Red witnesses FR2.6, each check witnessed ALONE by a member the other cannot reject. H-B's E6 and E2 flip from exit 0 to exit 1. |
+| CR-FR-1 | LOW | **FIXED as paperwork**, corrected in place at FR1.10 item 1 rather than appended, with the reason the old bound was wrong (the missed site reaches the program through a harness MODE, not by a computed path or a re-implementation) and the measurement that the site is still sound against the MODIFIED harness (FR2.8, same 4 and 2 findings). |
+| CR-FR-2 | LOW | **FIXED.** The open item at delivery/work-history/exit-test-assertion-direction.md:2067 is closed in place, its premise corrected, and the guard exists: FR2.5, a BY-NAME set equality over the union's spread sources, red on an added source and on each removed one, pinning no count. |
+
+Two things the orchestrator's correction to my brief prompted me to check, and
+the answers:
+
+- **No witness spec member is touched by this round**, so the arithmetic at
+  `src/witness/run.ts` (a member is red only when every named test fails, making
+  an added test strictly harder to redden) does not apply here:
+  ```
+  $ grep -rn 'm2-exit-test' --include='*.json' --include='*.yaml' . | grep -v node_modules | grep -v dist/ | grep -iE 'witness|spec'
+  (no output)
+  ```
+- **Nothing was pushed while a run was in flight.** Everything above was
+  committed LOCALLY as it was produced; the first push of this round is the one
+  reported at the end, and no gate run existed to cancel before it.
 
