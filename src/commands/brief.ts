@@ -35,12 +35,16 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  REVIEW_CONTRACTS,
+  REVIEW_CONTRACT_ROLE,
   ROLE_IDS,
   clauseRoundTripDiagnostics,
   expandIncludes,
   kernelRoot,
+  missingRequiredSections,
   renderPhase,
   resolveMandatedReading,
+  selectReviewContract,
   splitFrontmatter,
 } from "../roles.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
@@ -67,6 +71,16 @@ export interface ComposeOptions {
   root: string;
   /** Where to look for the fleet warnings file. */
   workingDirectory: string;
+  /**
+   * Which review contract the clean-room brief is running (M3-P6 criterion 10,
+   * T-007). `undefined` means the caller named none, which DEFAULTS to
+   * `criteria` for the one role that has contracts and is a usage error for
+   * every other role. The default is not a shrug: `criteria` is the contract
+   * R-053 already described and the one every existing dispatch means, so the
+   * three briefs M3-P5 shipped and every caller that predates this flag keep
+   * composing unchanged.
+   */
+  reviewContract?: string;
 }
 
 export type ComposeResult =
@@ -130,6 +144,46 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     return { ok: false, reason: expanded.reason };
   }
 
+  /* R-033a, CRITERION 2. Checked on the INCLUDE-EXPANDED body and only for the
+     implementer, because R-033a is the implementer brief's template and no
+     other role's row enumerates sections. A brief that has lost one is refused
+     HERE rather than emitted with a hole, because the failure mode this guards
+     is a brief that reads complete: five sections and no gate list composes
+     cleanly, dispatches cleanly, and instructs an agent to pass gates it was
+     never shown. */
+  if (options.roleId === "implementer") {
+    const missing = missingRequiredSections(expanded.text);
+    if (missing.length > 0) {
+      return { ok: false, reason: `${rolePath}: ${missing.join("; ")}` };
+    }
+  }
+
+  /* T-007, CRITERION 10. The composed brief declares ONE contract and carries
+     one contract's clauses. The flag is refused for any other role rather than
+     ignored: silently accepting it would let a dispatch believe it had selected
+     a contract for a role that has none. */
+  let body = expanded.text;
+  let reviewContract: string | undefined;
+  if (options.roleId === REVIEW_CONTRACT_ROLE) {
+    reviewContract = options.reviewContract ?? "criteria";
+    if (!REVIEW_CONTRACTS.includes(reviewContract)) {
+      return {
+        ok: false,
+        reason: `unknown review contract ${reviewContract}; the contracts are ${REVIEW_CONTRACTS.join(", ")}`,
+      };
+    }
+    const selected = selectReviewContract(body, reviewContract);
+    if (!selected.ok) {
+      return { ok: false, reason: selected.reason };
+    }
+    body = selected.text;
+  } else if (options.reviewContract !== undefined) {
+    return {
+      ok: false,
+      reason: `--review-contract applies to ${REVIEW_CONTRACT_ROLE} and ${options.roleId} declares no review contracts`,
+    };
+  }
+
   const planRead = readOperatorPath(options.planFile);
   if (!planRead.ok) {
     return { ok: false, reason: `plan ${options.planFile}: ${planRead.reason}` };
@@ -156,6 +210,7 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     `role: ${String(frontmatter["role"] ?? options.roleId)}`,
     `lifetime: ${String(frontmatter["lifetime"] ?? "")}`,
     `model-tier: ${String(frontmatter["model-tier"] ?? "")}`,
+    ...(reviewContract === undefined ? [] : [`review-contract: ${reviewContract}`]),
     "",
     "## Mandated reading, in order",
     "",
@@ -190,7 +245,7 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   lines.push("");
   lines.push("# Brief body");
   lines.push("");
-  lines.push(expanded.text.replace(/^\n+/, "").replace(/\n+$/, ""));
+  lines.push(body.replace(/^\n+/, "").replace(/\n+$/, ""));
   lines.push("");
   lines.push(...renderPhase(phase));
 
@@ -215,13 +270,15 @@ interface Options {
   phase?: string;
   phaseId?: string;
   out?: string;
+  reviewContract?: string;
 }
 
 function usage(): string {
   return (
     "usage: tiphys brief compose --role <" +
     ROLE_IDS.join(" | ") +
-    "> --phase <plan-file> --phase-id <id> [--out <file>]"
+    "> --phase <plan-file> --phase-id <id> [--out <file>] " +
+    `[--review-contract <${REVIEW_CONTRACTS.join(" | ")}>]`
   );
 }
 
@@ -232,6 +289,7 @@ function parseArgs(argv: string[]): { options?: Options; usageError?: string } {
     ["--phase", "phase"],
     ["--phase-id", "phaseId"],
     ["--out", "out"],
+    ["--review-contract", "reviewContract"],
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] as string;
@@ -246,8 +304,9 @@ function parseArgs(argv: string[]): { options?: Options; usageError?: string } {
     options[field] = value;
     index += 1;
   }
+  const optional = new Set<keyof Options>(["out", "reviewContract"]);
   for (const [flag, field] of flags) {
-    if (field !== "out" && options[field] === undefined) {
+    if (!optional.has(field) && options[field] === undefined) {
       return { usageError: `${flag} is required` };
     }
   }
@@ -261,7 +320,7 @@ function cmdCompose(argv: string[]): number {
     process.stderr.write(`${usage()}\n`);
     return EX_USAGE;
   }
-  const { role, phase, phaseId, out } = parsed.options;
+  const { role, phase, phaseId, out, reviewContract } = parsed.options;
 
   let root: string;
   try {
@@ -277,6 +336,7 @@ function cmdCompose(argv: string[]): number {
     phaseId: phaseId as string,
     root,
     workingDirectory: process.cwd(),
+    ...(reviewContract === undefined ? {} : { reviewContract }),
   });
   if (!composed.ok) {
     process.stderr.write(`tiphys brief compose: ${composed.reason}\n`);

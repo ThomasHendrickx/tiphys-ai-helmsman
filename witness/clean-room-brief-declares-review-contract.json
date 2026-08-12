@@ -1,0 +1,24 @@
+{
+  "id": "clean-room-brief-declares-review-contract",
+  "behavior": "clean-room-brief-declares-review-contract",
+  "tests": [
+    "both review contracts compose, declare themselves, and differ in their first instruction; an unknown contract exits nonzero naming it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "    body = selected.text;",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  const drop = new Set(\n    REVIEW_CONTRACTS.filter((other) => other !== contract).map(reviewContractClause),\n  );",
+      "replace": "  const drop = new Set();"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

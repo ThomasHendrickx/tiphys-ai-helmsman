@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/mechanism-index.schema.json",
+  "title": "Tiphys mechanism index",
+  "$comment": "Kernel plan M3, M3-P6 criterion 8 and D-M3-23. T-005's structural consequence: a rule M1-P3 paid for in a multi-hour investigation did not reach M1-P5, which reimplemented the same claim-file mechanism silently and produced the most severe defect found in M1. The implementer there had read the plan, the agent-rules file, the constraint list, the environment warnings and three work histories, and NONE of them carried the rule, because a rule about a MECHANISM has no home in a document organised by phase. This document is that home. THE SCHEMA SHIPS HERE AND THE GENERATOR SHIPS AT M3-P8, which is the only forward reference in M3-P6 and is why D-M3-23 exists: M3-P8 EDITS this document to add `machine-readable-form` and does not create it. WHAT THIS SCHEMA CANNOT DO. It cannot tell a rule from a platitude: `rule` is a string, and whether its text is something an implementer can obey or a sentiment they can agree with is judgment. It cannot check that `evidence[]` resolves; entries are prose citations of artifacts that may live in delivery/, which the kernel does not ship, so resolution is not computable from an installed package. And it cannot tell whether the index is COMPLETE, which is the property M3-P6's registered superset test and M3-P8 criterion 4c cover from the two ends.",
+  "description": "One document per project. Every mechanism this project has already learned something about, the rule that learning established, the sibling implementations that share the mechanism, and the artifacts that paid for it. Read the row before you use the mechanism.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "mechanisms"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "mechanism-index"
+    },
+    "version": {
+      "$comment": "Document format version, not a project version. A closed set rather than a minimum, for the reason schemas/gate-registry.schema.json:21 already records: the authoring vocabulary has no `minimum` keyword, so a bare `type: integer` would admit 0 and negatives.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "supersedes": {
+      "$comment": "The interim artifact this index replaces, by path, when there is one. Carried so a reader of the index can find what it was converted FROM, and so M3-P8's generated projection can be checked against the same source rather than against a memory of it. Optional: a project with no interim file omits it.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "mechanisms": {
+      "$comment": "minItems 1, because an index with no mechanisms is a file that satisfies every lookup obligation by having nothing to look up. That is the third row of M3-P6's own hazard table ('the index it names is the stub nobody replaced'), and the schema closes the degenerate end of it; the other end is the registered superset test, which no schema can express.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "name", "rule", "evidence"],
+        "properties": {
+          "key": {
+            "$comment": "The stable id, and the thing a citation elsewhere names. DERIVED FROM `name` rather than invented: lowercase, every run of characters outside [a-z0-9] replaced by a single hyphen, leading and trailing hyphens removed. M3-P6's registered test applies that derivation to `name` and compares, so a key that drifts from its name is red rather than merely odd. Ids are never renumbered and a retired key is never reused, which is the rule CLAUDE.md's identifier-schemes section states for every scheme in this project.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "name": {
+            "$comment": "The mechanism in the words a reader would search for. For a row converted from an interim index, this is the interim table's own first column VERBATIM, which is what makes the conversion checkable against the file it came from instead of against a paraphrase of it.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "rule": {
+            "$comment": "What this project learned, stated as something to DO or NOT DO. Not a description of the mechanism: an implementer who reads this row and changes nothing has read a description, and the row has failed.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "siblings": {
+            "$comment": "The other implementations that share this mechanism, by path. The `mechanism-sibling` clause in roles/implementer.md is the instruction that keeps this list current: a phase establishing a rule about a mechanism records it here AND names the siblings, because the recorded cost of not doing so is one silent reimplementation two phases later. Optional, and an EMPTY list is meaningful: it says the mechanism has exactly one implementation today.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "evidence": {
+            "$comment": "What paid for the rule: a defect, a fix round, an investigation, a review finding, a tuition entry. minItems 1 is the load-bearing constraint of this whole document. The interim index states it in prose ('a rule with no citation is not a rule'), and prose is what this project has recorded three times as not surviving; here it is a validation failure.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        }
+      }
+    }
+  }
+}

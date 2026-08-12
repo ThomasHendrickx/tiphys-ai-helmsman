@@ -1,0 +1,24 @@
+{
+  "id": "seed-index-covers-interim-mechanisms",
+  "behavior": "seed-index-covers-interim-mechanisms",
+  "tests": [
+    "the seed mechanism index validates, and its mechanism keys are a superset of the interim index's, naming any that is missing"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"mechanism-index\", \"mechanism-index.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "tuition/mechanism-index.yaml",
+      "find": "  - key: append-only-log\n    name: Append-only log\n",
+      "replace": "  - key: append-only-log\n    name: Append only logs\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

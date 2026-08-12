@@ -1,0 +1,24 @@
+{
+  "id": "implementer-brief-six-sections",
+  "behavior": "implementer-brief-six-sections",
+  "tests": [
+    "deleting any one R-033a section makes brief compose exit nonzero naming that section, and restoring it returns 0"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  const problems: string[] = [];\n  const seen = sectionAnchors(body);",
+      "replace": "  const problems: string[] = [];\n  return problems;\n  const seen = sectionAnchors(body);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if ((sectionBody(body, section) ?? \"\").trim() === \"\") {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

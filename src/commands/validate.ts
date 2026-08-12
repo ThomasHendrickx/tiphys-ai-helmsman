@@ -85,6 +85,13 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      satisfied by this row. */
   ["role-brief", "role-brief.schema.json"],
   ["finding", "finding.schema.json"],
+  /* M3-P6 criterion 8. The seed index carries its own `kind`, so this row
+     extends `--type` and `resolveAutoType` in one act (M3R-001). The SCHEMA
+     ships here and the GENERATOR ships at M3-P8, which is D-M3-23's forward
+     reference: M3-P8 edits the schema to add `machine-readable-form` and
+     replaces the seed's contents with the generated projection, and neither of
+     those acts touches this row. */
+  ["mechanism-index", "mechanism-index.schema.json"],
 ]);
 
 /**

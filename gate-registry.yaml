@@ -201,6 +201,32 @@ gates:
     modes: [full, direct-pr, local-only]
     events: [pull_request, push]
 
+  # NEW IN M3-P6 (R-094, D-M3-28, D-M3-34).
+  - id: brief-drift
+    $comment: >-
+      R-094's briefs half, applied to roles/implementer.md the way
+      agent-rules-drift applies it to CLAUDE.md: the brief's gate-list section is
+      a generated projection of THIS file for the mode its own begin marker
+      declares, and this check re-renders and compares. UNLIKE agent-rules-drift,
+      it is ALSO in gates.manifest.json, so on a pull request the runner executes
+      it as a real gate with a GateResult and M2-C-2's vacuity protection rather
+      than as a raw workflow step. WHY `events` IS pull_request ALONE, stated
+      exactly because "declared" and "runs" are not the same thing: the push arm
+      of scripts/m2-exit-test.sh has a hard-coded `--only` list of six gate ids
+      and that script is on no M3 phase's declaration, so a manifest gate outside
+      that list cannot run on push, and test/gate-registry.test.ts asserts
+      `events` against the harness rather than against a wish. The push arm is
+      covered instead by a direct step in .github/workflows/gates.yml carrying no
+      `if:`, because brief drift is a property of the default branch and not only
+      of a pull request (T-009). Both arms have a witness; they are not the same
+      witness, and that is recorded here rather than left to be discovered.
+    command: [node, scripts/check-brief-drift.mjs, --check]
+    unitLabel: generated brief gate rows compared
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request]
+
   # NEW IN M3-P2, entry two of three (R-043, D-11).
   - id: unit-tests-for-changed-service-methods
     $comment: >-
