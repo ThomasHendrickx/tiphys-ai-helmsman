@@ -196,6 +196,29 @@ EXACTLY what it had been told, promptly and visibly, and the outcome was still
 bad. When a diligent agent's diligence is producing the damage, suspect the
 instruction before the agent.
 
+### The author of the rule broke it within the hour
+
+Recorded because it is the strongest available evidence about how easy this is
+to violate, and because omitting it would leave the postscript reading as
+though the problem belongs to implementers.
+
+While writing everything above, the orchestrator pushed its own paperwork
+branch EIGHT times in roughly ninety minutes, once after each document, and
+cancelled that branch's own `gates` run every time. It was doing precisely what
+it had just finished telling two agents not to do, in the commits that told
+them not to do it, and it noticed only when it stopped to read its own CI list.
+
+The pattern is identical: append, commit, push, all as one reflex, because the
+beacon rule feels like it names a single action. It names one, and only the
+first two thirds of it.
+
+Two things follow. **A rule stated is not a rule practised**, which this
+project has recorded before and has now recorded against the person writing the
+entry. And the paperwork branch is the case where the cost looked like zero, so
+the reflex was never interrupted: nothing depended on those runs until a merge
+needed one, at which point the last eight were all cancelled and the ninth had
+to run from scratch anyway.
+
 ### What this postscript does NOT cover
 
 - **It does not establish that the conflict caused the earlier quiet periods.**

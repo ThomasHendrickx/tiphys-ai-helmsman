@@ -107,20 +107,16 @@ executable.
 
 Not covered, stated rather than left to be assumed:
 
-- **The second live instance was NOT successfully probed, and the attempt
-  measured NOTHING.** `scripts/check-brief-drift.mjs` was copied out of the
+- **The first attempt at the second live instance measured NOTHING, and the
+  re-run is below.** `scripts/check-brief-drift.mjs` was first copied out of the
   branch to a scratch directory and run there; it failed with
   `ERR_MODULE_NOT_FOUND` on BOTH the control and the mutant arm, because
   copying it away from the tree broke its relative imports. Two arms failing
   identically for a reason unrelated to the mutation is a measurement of
-  nothing, and it is recorded here rather than quietly dropped, because a
-  reader who saw only "both arms exit 1" could mistake it for a result. The
-  control arm is what exposed it. The probe must be re-run IN PLACE in a
-  worktree of that branch.
-- **Whether the sibling shares the defect is therefore UNKNOWN from this
-  document.** It is likely, since the M3-P6 review already recorded F-B3
-  against it and the functions appear to be near-duplicates, but likely is not
-  measured and this document does not assert it.
+  nothing, and it is kept here rather than deleted, because a reader who saw
+  only "both arms exit 1" could mistake it for a result. **The control arm is
+  the only reason it was not mistaken for one**, which is the argument for
+  always running one.
 - **No other multiplicity case was probed.** Duplication is one way for two
   line sequences to have equal sets and unequal text; a line appearing three
   times against two, or two different lines swapping counts, are others. Only
@@ -129,6 +125,38 @@ Not covered, stated rather than left to be assumed:
   a script on `main`, which is a change like any other and owes its own branch,
   witness and review. It is NOT folded into M3-P6, whose scope does not include
   it.
+
+## The re-run, IN PLACE: the sibling shares the defect
+
+The failed probe was repeated correctly, in a detached worktree of the M3-P6
+branch at `4619bf8` with `npm ci` run, so the script's relative imports
+resolve. Same mutation: one gate row duplicated byte for byte in a COPY of the
+shipped `roles/implementer.md`.
+
+```
+duplicating line 381: | `manifest-self-check` | script | required | sche
+=== CONTROL (unmutated copy of the shipped brief) ===
+brief-drift: green (15 generated brief gate rows compared)
+.../probe2/control.md's full gate block matches gate-registry.yaml row for row (15 row(s) compared)
+CONTROL_EXIT=0
+=== MUTANT (one gate row duplicated) ===
+brief-drift: red (15 generated brief gate rows compared)
+.../probe2/dup.md's full gate block has drifted from gate-registry.yaml: the two blocks differ only in blank-line placement or line order. Re-render with node scripts/check-brief-drift.mjs --write
+MUTANT_EXIT=1
+```
+
+**CONFIRMED, and the message is the same false sentence.** So BOTH live
+implementations carry it, the class has exactly two members, and both are now
+measured rather than one measured and one assumed. The derivation is complete.
+
+This corroborates the M3-P6 review's F-B3 with a concrete witness rather than
+an argument, and it does NOT change F-B3's disposition: the exit code is
+correct in both members, so it stays LOW and stays tracked. It is not a new
+blocker for M3-P6.
+
+The near-duplicate functions are the reason both carry it. **A defect copied
+with the code it lives in is one mechanism with two instances, not two
+findings**, and the fix for either is the fix for both.
 
 ## Disposition
 
