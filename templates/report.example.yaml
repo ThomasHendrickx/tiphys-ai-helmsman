@@ -1,0 +1,236 @@
+# Tiphys report, worked example.
+#
+# FILLED WITH REAL CONTENT FROM THIS REPOSITORY, not with placeholders
+# (kernel plan M3, M3-P4 step 4 and the hazard row on authoring cost). The
+# hazard this phase cannot test is that an honest record might be more
+# expensive to write than a dishonest one; nothing here measures that ratio,
+# and the only thing the plan can do about it is pay the cost of one honest
+# record once, in the open, so a reader can see what it costs. This is that
+# record. Every command quoted below was run, and every exit code is the one
+# it returned.
+
+kind: report
+role: implementer
+task: >-
+  Deliver M3-P4: the report contract, the final-report shape, the work-history
+  contract and the environment-warnings template, so that every later role
+  brief has a validated output format to point at instead of describing one in
+  prose.
+verdict: >-
+  Delivered on the branch, with two residues stated rather than closed and one
+  declared deviation from criterion 2(e)'s letter.
+
+findings:
+  - id: VF-1
+    severity: high
+    source-pinned: true
+    pinned-evidence: origin/main at c7a7ce97e03fc0788c92b401de92f0f4a7b8ee0d
+    evidence:
+      - path: src/validate.ts
+        lines: "568"
+        note: >-
+          compileSchema built a fresh Ajv per document and registered nothing
+          beside it, so a reference leaving the document failed compilation.
+      - path: src/validate.ts
+        lines: "642"
+        note: >-
+          The reference is classified as remote or unresolved and either way
+          the compilation fails closed.
+    analysis: |
+      Plan step 3 requires the work-history schema to share the report
+      schema's claims and fix-round definitions by $ref rather than restating
+      them, and requires a registered test that both resolve to the same
+      definition object. As shipped at the merge base, no schema could reach
+      another document at all, so shipping the $ref without a change to the
+      compile path would have made `tiphys validate --type work-history` fail
+      on this phase's own example, which is acceptance criterion 1.
+    outcome: >-
+      Closed by a declared COMPANION_TABLE in src/commands/validate.ts and an
+      optional companions argument on compileSchema, so the set of documents a
+      schema may reach is declared in one auditable place rather than derived
+      from the reference.
+
+  - id: VF-2
+    severity: medium
+    source-pinned: false
+    evidence:
+      - path: src/gates/coverage.ts
+        lines: "599"
+        note: checkFindingOutcomeParity is an exported function.
+      - path: src/gates/coverage.ts
+        command: node src/gates/coverage.ts --help
+        exit-code: 64
+        note: >-
+          The gate CLI answers with its usage line, which accepts only
+          --result, --evidence and --config.
+
+    analysis: |
+      Acceptance criterion 4 asks for the M2-P6 coverage checker run in
+      finding-to-outcome parity mode against the final-report template, with
+      an exit code on both arms. The checker has no CLI flag that reaches that
+      mode, and src/gates/coverage.ts is not on this phase's declaration.
+    outcome: >-
+      Discharged by invoking the exported checker in a subprocess from the
+      registered test, so the exit code is a real process exit code and the
+      checker itself is unmodified.
+
+  - id: VF-3
+    severity: low
+    source-pinned: false
+    counter-experiment: >-
+      Removing minLength from the field and re-validating the whitespace-only
+      instance, which then passes, is the experiment that would falsify this.
+    evidence:
+      - path: schemas/report.schema.json
+        command: node bin/tiphys.ts validate --type report templates/report.example.yaml
+        exit-code: 0
+    analysis: |
+      Every field in these three schemas whose value is the point rather than
+      its presence carries minLength 1 and a non-whitespace pattern, because
+      required alone is satisfied by the empty string. The inventory of those
+      fields is written into the work history as a list, since which fields
+      were considered is a judgment made once at authoring time.
+    outcome: Closed; the field inventory is in delivery/work-history/m3-p4.md.
+
+claims:
+  - id: C-1
+    kind: open-question
+    statement: >-
+      I did not find a way to make a gate result record a todo bucket without
+      breaking the parity rule, because the plan's five-field count vocabulary
+      has no field for it.
+
+  - id: C-2
+    kind: impossibility
+    statement: >-
+      A relative $ref into a sibling schema cannot be compiled by this
+      validator unless the caller registers that sibling as a companion.
+    settled-by:
+      executed-construction:
+        command: >-
+          node --input-type=module -e "import {compileSchema} from
+          './src/validate.ts'; const s = JSON.parse(await
+          (await import('node:fs/promises')).readFile('schemas/work-history.schema.json','utf8'));
+          const r = compileSchema(s); console.log(r.ok ? 'compiled' : r.reason);"
+        exit-code: 0
+        output: |
+          INVALID # schema reference report.schema.json#/$defs/gateResult does not resolve
+
+  - id: C-3
+    kind: coverage
+    statement: >-
+      The derived check report-parity-arithmetic reddens on a gate result
+      whose sum exceeds discovered, and not only on one where discovered
+      exceeds the sum.
+    settled-by:
+      executed-construction:
+        command: node --test --test-name-pattern "parity" test/report-contract.test.ts
+        exit-code: 0
+        output: |
+          # tests 2
+          # suites 0
+          # pass 2
+          # fail 0
+          # cancelled 0
+          # skipped 0
+          # todo 0
+
+  - id: C-4
+    kind: remedy
+    statement: >-
+      Registering report.schema.json as a companion makes the work-history
+      schema compile and its example validate.
+    settled-by:
+      executed-construction:
+        command: node bin/tiphys.ts validate --type work-history templates/work-history.example.yaml
+        exit-code: 0
+        output: |
+          (no output; the command exits 0 with nothing on either stream)
+
+  - id: C-5
+    kind: universal
+    statement: >-
+      Every field in these schemas whose value carries the meaning has both
+      minLength and a non-whitespace pattern.
+    settled-by:
+      counter-experiment: >-
+        The falsifying experiment is a grep for minLength without an adjacent
+        pattern in the three schema documents; it is recorded with its output
+        in delivery/work-history/m3-p4.md.
+
+fix-round:
+  mechanism: >-
+    A schema document compiled without the sibling documents its references
+    reach, so a reference that leaves the document fails closed at
+    compilation rather than resolving.
+  derivation:
+    command: "grep -rn 'compileSchema(\\|validateInstance(\\|validateToLines(' src/ bin/ | grep -v '^src/validate.ts:'"
+    output: |
+      src/gates/run.ts:361:  const diagnostics = formatDiagnostics(validateInstance(schema, decoded.value));
+      src/gates/validate.ts:524:  return validateInstance(schema, instance) as Diagnostic[];
+      src/gates/validate.ts:528:export function validateToLines(
+      src/commands/mode.ts:125:  const lines = formatDiagnostics(validateInstance(loadTypeSchema(MODES_TYPE), read.raw));
+      src/commands/validate.ts:273:  const diagnostics = validateInstance(
+      src/commands/status.ts:127:  const diagnostics = validateInstance(loadTypeSchema("status-line"), record);
+  not-covered: >-
+    The search covered src/ and bin/ only. It did NOT cover test/, where the
+    same three functions are called through a computed dynamic import and a
+    literal grep for the call would find the import rather than the call; it
+    did not cover scripts/, which reaches the validator only through
+    src/gates/result.ts and never compiles a schema of its own; and it did not
+    cover dist/, which is generated and is never committed. The six sites
+    listed are the ones a companion-needing schema could reach today, and only
+    src/commands/validate.ts:273 was changed, because it is the only one that
+    resolves a type through the type table.
+
+deviations:
+  - plan-clause: M3-P4 acceptance criterion 2(e)
+    why: >-
+      The criterion calls for an if/then over a pattern on the same object.
+      The finding object already spends its one if/then slot on T-004's
+      source-pinned coupling, allOf is outside the declared authoring
+      vocabulary, and two independent conditional rules cannot share one slot,
+      so the universal-quantifier rule is expressed as a two-branch oneOf. It
+      remains Kind A and its guarding keyword is witnessed by removal and
+      restoration.
+
+honest-failures:
+  - cause: >-
+      The first copy of this phase's work history was created in the working
+      tree and not committed, and it disappeared within twenty-one minutes,
+      together with HEAD moving back to main.
+    exposure-window: >-
+      Twenty-one minutes, from the file's creation at 10:37 to the empty git
+      status at 10:58. Nothing was pushed in that window, so no branch outside
+      this container ever saw the misplaced commit.
+    structural-fix: >-
+      The beacon is committed in the same turn it is created, and the branch
+      is pushed early rather than at the end, so the beacon lives in git
+      rather than only in a working tree another process can reset.
+
+environmental-claims:
+  - claim: >-
+      The build fails at build:runtime-deps on a checkout whose node_modules
+      predates M3-P3, because commonmark is a new dependency.
+    evidence:
+      - path: package.json
+        command: npm run build
+        exit-code: 1
+        note: >-
+          Error ENOENT no such file or directory, open
+          node_modules/commonmark/package.json
+      - path: package-lock.json
+        command: npm ci
+        exit-code: 0
+        note: After npm ci the same build command exits 0.
+
+gate-results:
+  - gate: suite
+    result: green
+    wrapper-exit-code: 0
+    discovered: 507
+    passed: 505
+    failed: 0
+    skipped: 2
+    todo: 0
+    did-not-run: 0

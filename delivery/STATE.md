@@ -5,32 +5,138 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-10
-- main head: `b1e9ac7` (PR #84, the M3-P4 fix-round-2 delta verification and
-  arbitration). DISCHARGED BY STEP, and EVERY head this session completed
-  rather than being cancelled once the batch stopped overlapping: all 15 steps
-  success, step 9 `M2 exit test (push)` success, step 8 correctly skipped, steps
-  10 and 12 (the two guards) success. `253740e` (PR #83) and `90ebedf` (PR #82)
-  and `d0d55e4` (PR #80) are each discharged the same way.
+- as of: 2026-08-12
+- PR #89, the controlled macOS portability pilot, merged to main as
+  `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
+  commit each passed Linux `gates` and macOS smoke. The owner-authorized
+  current-process fix round in DR-0026 used no second Tiphys subprocess and
+  received two independent clean-room reviews with no findings. The current
+  process then invoked and observed Tiphys's watcher mechanism, after which
+  Tiphys completed guarded, squash-aware teardown with exit 0: the task is
+  closed, its durable records survive, the task worktree/pool record/local
+  branch are removed, and the lease is released. The required closeout is
+  delivery/verification/macos-portability-pilot-lifecycle.md:1. The lifecycle
+  actions are complete, but the plan defines the pilot as incomplete until
+  that closeout is durable on `main`. Once it is, the final verdict is a
+  partial controlled pilot: delivery and teardown succeeded, but the
+  implementation agent could not make the plan-required local commit and the
+  current process had to recover it, and the final-head delta-review outcomes
+  were not committed before merge as DR-0026 required. This is not M4 cutover
+  or acceptance of the temporary adapter.
+  Main before the controlled-pilot authorization PR was `c8b742f` (PR #87,
+  M3-P4 round-3 verification and the stop arbitration). Its push run
+  31414562777 completed success. The owner has authorized DR-0025, one
+  controlled pre-M4 local pilot for macOS portability. The authorization and
+  exact boundary are in
+  delivery/decisions/DR-0025-controlled-pre-m4-local-pilot.md:1 and the pilot
+  plan is delivery/plan/macos-portability-pilot.md:1. M3-P4 remains stopped;
+  the pilot neither modifies PR #81 nor lifts that stop.
+  The earlier head `a7d5686` (PR #86, tuition T-014 and the watchdog questions in
+  CLAUDE.md). Its push run 31411940057 completed success. Earlier heads this
+  session are DISCHARGED BY STEP, and each
+  completed rather than being cancelled once the batch stopped overlapping:
+  `b1e9ac7` (PR #84) all 15 steps success, step 9 `M2 exit test (push)` success,
+  step 8 correctly skipped, steps 10 and 12 (the two guards) success; `253740e`
+  (PR #83), `90ebedf` (PR #82), `d0d55e4` (PR #80) and `4e7e1fd` (PR #85) each
+  the same way.
   The whole M3-P3 evidence chain, all ten rounds, is on `main`, and so is
-  M3-P4's round-1 evidence.
-- **M3-P4 IS IN FIX ROUND 3 (2026-08-10), the LAST the DR-0012 stop rule allows.**
-  Fix round 2 closed every round-1 finding AT THE MECHANISM, and independent
-  delta verification then found FOUR NEW ones, so round 3 is closing those. The
-  round-2 arbitration is delivery/review/arbitration-m3-p4-round-2.md:1 and the
-  verification is delivery/review/verification-m3-p4-fix-round.md:1.
-  **DV-002 (HIGH) is the one that matters: round 2 claimed a site was
-  "unreachable by keyword or check" and the verifier BUILT the thing it said
-  could not exist**, using a technique round 2 had itself applied elsewhere. The
-  defect ruled was the ARGUMENT, not the sentence: one claim justified a whole
-  class, it was false for one site, so the rest are UNJUDGED rather than upheld.
-  Round 2 DID run the mandated claim grep and still shipped it, which is the
-  lesson: **a grep catches the WORDING, not the REASONING.**
+  M3-P4's round-1 and round-2 evidence.
+- **M3-P4 IS IN DR-0016's RESPONSE TO THE STOP RULE (2026-08-12), AND THAT IS
+  THE SANCTIONED PATH RATHER THAN A LIFTING OF THE STOP.** The stop is recorded
+  below and is unchanged; what follows is what DR-0016 requires to happen next,
+  which is explicitly NOT waiting for the owner.
+  The ruling that stopped the phase and set this response is
+  delivery/review/arbitration-m3-p4-round-3.md:1, and the decision that makes
+  the response immediate rather than owner-blocking is
+  delivery/decisions/DR-0016-escalation-threshold.md:1.
+  ROUND 4 (fresh implementer) is pushed. It was briefed to fix the MECHANISM,
+  not the two findings, and its work history records the enumeration, what the
+  enumeration did NOT cover, the derivations with captured output, the mechanism
+  in one sentence, a post-repair measurement, and a red witness with BOTH arms
+  captured (3 fail, then 3 pass), registered by name.
+  **BOTH IMPLEMENTERS WERE KILLED MID-WORK BY A WEEKLY USAGE LIMIT on 2026-08-10
+  and BOTH WERE SALVAGED**, which is the T-008 beacon rule paying for itself a
+  second time: M3-P4's two commits were complete and merely unpushed, and
+  M3-P5's entire phase was uncommitted in a scratch worktree and is now
+  preserved on its branch by an explicitly attributed salvage commit.
+  Round 4 died before its final gate bundle, so that evidence is CI's rather
+  than the implementer's, and this line says so instead of implying the
+  implementer produced it.
+  The head under review is `c7d9d2c`, which MERGES `origin/main` into the phase
+  branch. That merge was necessary: the macOS pilot moved `main` and made PR #81
+  `mergeable: false`. The one conflict was `test/behaviors.json`, the
+  append-only registry, resolved as a UNION and verified by accounting: ours
+  558 keys, theirs 523, merged 568, which is exactly the size of the union, with
+  nothing lost from either side. Suite on that head, naming all three axes:
+  node v26.6.0, `dist/` built, invocation `npm test`, 562 tests, 562 pass, 0
+  fail, **0 skipped**, exit 0.
+  DUAL CROSS-MODEL REVIEW IS IN FLIGHT on that head: contract A (acceptance
+  criteria, executed not read) and **contract C, THE ARGUMENT AUDIT, which is
+  new**. Contract C exists because A and B have each run twice on this phase and
+  neither caught the recurring defect; both times a delta verifier did, by
+  RUNNING the program. C's instruction is to build a counter-example to every
+  load-bearing universal claim by execution, looking inside the round's own
+  artifacts first, because that is where both previous counter-examples were
+  already sitting.
+- **"CI IS GREEN" NOW HAS TWO ARMS ON A PULL REQUEST, AND DR-0012 CONDITION 4
+  MEANS BOTH.** The macOS pilot added a second workflow, `macOS smoke`, which
+  runs on `pull_request` beside `gates`. Measured on `c7d9d2c`: `macOS smoke`
+  completed success while `gates` was still in progress. **So a tool that reads
+  "the newest run" for a branch can report success from one workflow while the
+  other is unfinished or red**, which is T-009's mechanism (a gate result is
+  evidence only for the configuration it ran under) reappearing on a new axis.
+  Name the workflow as well as the event and the head sha. The orchestrator's
+  own branch watchdog had exactly this defect when the second workflow appeared.
+- **A SHIPPED FILE CITES A LINE OF THIS ONE, AND THAT CITATION HAS NOW ROTTED
+  FOUR TIMES.** `assurance-modes.yaml` line 48 cites a bullet in this file by
+  line number. Every edit ABOVE that bullet moves it, and the citations gate
+  cannot see the rot because the line still resolves, it just resolves to
+  different prose. Measured 2026-08-12: the citation read `528` while the target
+  sat at `552` ON `main`, so it was ALREADY STALE before this session touched
+  anything, having been shifted by a previous session's edit and not repointed.
+  It is repointed to 594 here, with the target verified by reading the line
+  rather than by arithmetic.
+  **The failure is structural, not careless**: a line-numbered citation INTO a
+  file that grows at the top is guaranteed to rot, and nothing mechanical
+  notices. Whoever next touches M3-P3's territory should consider whether that
+  reference should name the bullet rather than its line. Recorded here rather
+  than fixed in place because `assurance-modes.yaml` is not on any current
+  phase's declaration.
+- **M3-P4 HIT THE DR-0012 STOP RULE (2026-08-10). IT DOES NOT MERGE ON ROUND 3.**
+  Fix round 3 closed all four round-2 findings, several verified from
+  independently written reproductions, and found a real third error nobody had
+  named. It also introduced a NEW HIGH in the very fix that closed DV-003.
+  The ruling is delivery/review/arbitration-m3-p4-round-3.md:1 and the
+  verification is delivery/review/verification-m3-p4-round-3.md:1.
+  **BOTH DR-0012 limits are reached, not one**: round 3 was the second fix round
+  after the dual review (`max-fix-rounds-after-review: 2`), and over-rejection of
+  the honest record is now a HIGH twice in one component
+  (`recurrence-of-high-in-one-component: 1`).
+  **DV3-001 (HIGH): the `oneOf` puts `error` in the branch that REQUIRES
+  `wrapper-exit-code`, and a gate that errored on a missing parameter never ran a
+  child, so it has no exit code.** The orchestrator reproduced both ends: the
+  runner emits exactly that record, the schema refuses it, and the same record
+  with a FABRICATED exit code validates. That is this phase's own thesis running
+  backwards.
+  DV3-002 (MEDIUM): the new prose guard refuses honest NEGATIONS ("this does not
+  contradict the plan"), which is the natural sentence beside
+  `contradicts-plan: false`.
+  **THE MECHANISM RULED, and it is the third occurrence in one phase: a universal
+  claim over a class is used to justify a keyword, and no member of the class is
+  ever derived.** Round 2's arbitration ruled exactly this ("the defect is the
+  ARGUMENT, not the sentence") and round 3 committed the same shape one site
+  over, with the counter-example already sitting in its own work history.
+  DR-0016's response is in force: a FRESH IMPLEMENTER and a THIRD review contract
+  (the ARGUMENT AUDIT, distinct from the criteria and expressible-lie contracts
+  already run twice each), dispatched immediately, owner NOTIFIED rather than
+  waited on (DR-0023).
+  Round 2 history, kept because the lesson is still live: DV-002 (HIGH) was round
+  2 claiming a site "unreachable by keyword or check" when the verifier BUILT the
+  thing it said could not exist. Round 2 DID run the mandated claim grep and
+  still shipped it: **a grep catches the WORDING, not the REASONING.**
   DV-001 (MEDIUM, latent) is the one-hop enumeration hole, and it exists in the
   record ONLY because a verifier killed by a container restart had written its
   beacon incrementally; its 40-line partial carried the lead.
-  If round 3 does not close them, DR-0016 sends a fresh implementer and a third
-  contract, and DR-0023 means the owner is NOTIFIED rather than waited on.
   Round 1 history follows. Round 1 was dual clean-room reviewed
   at `a3ea489` and BOTH contracts returned CHANGES REQUIRED. The arbitration is
   delivery/review/arbitration-m3-p4-round-1.md:1; the reports are

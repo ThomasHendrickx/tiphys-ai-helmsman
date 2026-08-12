@@ -4,7 +4,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -167,6 +169,55 @@ function cleanup(...dirs: string[]): void {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test("scope direct entry runs through the logical macOS alias and writes its error result", () => {
+  // The witness runner's child-output contract is anchored by node-test-tap-real.txt.
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(declDir, { recursive: true });
+    writeFileSync(join(declDir, "m2-p4.json"), "{}\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+
+    const scopeCopy = copyInstallation(outside);
+    rmSync(join(scopeCopy, "..", "schemas", "phase-declaration.schema.json"));
+    let invocationPath = scopeCopy;
+    if (process.platform === "darwin") {
+      assert.match(scopeCopy, /^\/var\//, "macOS temp path must retain its logical /var spelling");
+      assert.notEqual(scopeCopy, realpathSync(scopeCopy), "logical and physical spellings must differ");
+    } else {
+      invocationPath = join(outside, "scope-alias.ts");
+      symlinkSync(scopeCopy, invocationPath);
+    }
+
+    const resultPath = join(outside, "scope-alias-result.json");
+    const run = spawnSync(
+      process.execPath,
+      [
+        invocationPath,
+        "--declarations",
+        "delivery/plan/phase-declarations",
+        "--result",
+        resultPath,
+        "--base",
+        base,
+        "--head",
+        "HEAD",
+        "--phase",
+        "m2-p4",
+      ],
+      { cwd: dir, encoding: "utf8" },
+    );
+    assert.equal(run.status, EXIT_GATE_ERROR, run.stdout + run.stderr);
+    const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateResultRecord;
+    assert.equal(record.status, "error");
+    assert.match(record.detail, /missing from this installation/);
+  } finally {
+    cleanup(dir, outside);
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Criterion 1: declared green, undeclared red, both directions,        */

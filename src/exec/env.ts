@@ -134,6 +134,7 @@ export function permittedChildEnvNames(
     ...DEFAULT_CHILD_ENV_ALLOWLIST,
     ...extraAllowlist,
     ...CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => redirection.name),
+    "GIT_CONFIG_NOSYSTEM",
   ]);
 }
 
@@ -226,5 +227,8 @@ export function buildChildEnv(spec: ChildEnvSpec): ChildEnvResult {
     }
     env[redirection.name] = target;
   }
+  // Apple Git reads a prefix system config in addition to GIT_CONFIG_SYSTEM.
+  // This fixed kernel value is applied after copying and cannot be inherited.
+  env["GIT_CONFIG_NOSYSTEM"] = "1";
   return { ok: true, env };
 }

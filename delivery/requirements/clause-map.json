@@ -89,6 +89,51 @@
     "artifact": "role-model-config.yaml",
     "clause": "R-075"
   },
+  "R-035": {
+    "phase": "M3-P4",
+    "artifact": "schemas/work-history.schema.json",
+    "clause": "R-035"
+  },
+  "R-049": {
+    "phase": "M3-P4",
+    "artifact": "schemas/report.schema.json",
+    "clause": "R-049"
+  },
+  "R-052a": {
+    "phase": "M3-P4",
+    "artifact": "schemas/work-history.schema.json",
+    "clause": "R-052a"
+  },
+  "R-057a": {
+    "phase": "M3-P4",
+    "artifact": "schemas/report.schema.json",
+    "clause": "R-057a"
+  },
+  "R-083a": {
+    "phase": "M3-P4",
+    "artifact": "templates/warnings.md",
+    "clause": "R-083a"
+  },
+  "R-085": {
+    "phase": "M3-P4",
+    "artifact": "schemas/report.schema.json",
+    "clause": "R-085"
+  },
+  "R-086": {
+    "phase": "M3-P4",
+    "artifact": "schemas/report.schema.json",
+    "clause": "R-086"
+  },
+  "R-088": {
+    "phase": "M3-P4",
+    "artifact": "schemas/report.schema.json",
+    "clause": "R-088"
+  },
+  "R-089a": {
+    "phase": "M3-P4",
+    "artifact": "schemas/final-report.schema.json",
+    "clause": "R-089a"
+  },
   "R-004": {
     "phase": "M3-P5",
     "artifact": "roles/investigator.md",

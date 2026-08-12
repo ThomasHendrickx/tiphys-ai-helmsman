@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, realpathSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, writeFileSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
   buildChildEnv,
   permittedChildEnvNames,
@@ -685,12 +686,7 @@ function gateMain(argv: string[]): number {
 // import (tests import the probe functions without running a gate).
 const entry = process.argv[1];
 if (entry !== undefined) {
-  let isMain = false;
-  try {
-    isMain = fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    isMain = false;
-  }
+  const isMain = pathsIdentifySameObject(fileURLToPath(import.meta.url), entry);
   if (isMain) {
     process.exit(gateMain(process.argv.slice(2)));
   }

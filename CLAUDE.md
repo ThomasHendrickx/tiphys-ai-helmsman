@@ -74,11 +74,10 @@ artifact behind it is treated as unknown.
 2. npm only, never pnpm or yarn.
 3. No em dashes in any authored text (commas, colons, parentheses instead).
    Authored files must be pure ASCII **and free of control characters**, and
-   that is TWO checks because one grep cannot do both:
+   Check tracked authored bytes with the portable repository script:
 
    ```
-   grep -raP '[^\x00-\x7F]' <paths>                    # non-ASCII
-   grep -raP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <paths>    # control characters
+   node scripts/check-authored-bytes.mjs
    ```
 
    **The `-a` is LOAD-BEARING and its absence is why the second check was
@@ -130,7 +129,7 @@ artifact behind it is treated as unknown.
    VENDORED fixtures such as `test/fixtures/json-schema-test-suite/**`, where
    non-ASCII content is the thing under test and transliterating it would
    destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
-   run both checks over `git ls-files` minus those two trees and expect zero.
+   The script checks `git ls-files`, minus those two trees, and expects zero.
    **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
    resolution.** The red-witness rule demands real captured output from the
    program under test rather than hand-written strings. Node's test reporter
