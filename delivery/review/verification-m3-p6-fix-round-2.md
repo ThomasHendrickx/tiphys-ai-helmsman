@@ -357,6 +357,17 @@ arms are identical and that the delta touches neither file. The implementer
 recorded two DIFFERENT flakes in the same family (R2-11, R2-12); mine is a
 third instance of the same real-clock family and a fourth distinct test.
 
+**AND THE LOAD WAS MEASURED, WHICH TURNS "under load" FROM A GUESS INTO A
+NUMBER.** This box has 4 cores. The orchestrator reports a one-minute load
+average of 13.00 during my run 1, with three agents running suites concurrently
+plus one optional full `npm test` it then killed, after which the one-minute
+figure fell to 6.56 against a fifteen-minute 10.43. My own `uptime` after the
+gate bundle read `load average: 1.07, 2.97, 5.16`. A 0.4s wall-clock budget
+evaluated at roughly three times core count is contention, and I want no reader
+of this section concluding that the suite is inherently flaky: run 2 of the same
+command at the same head on the same toolchain was 620/620/0 fail/0 SKIPPED at
+exit 0.
+
 TRANSLITERATION DECLARED for every capture in this report: node's reporter
 prints U+2139 (INFORMATION SOURCE) and U+2716 (HEAVY MULTIPLICATION X). I
 rendered U+2139 as `i` and U+2716 as `x` with
@@ -411,3 +422,124 @@ skipped.
 **I verified against `4619bf8` for everything mechanical**, and read
 `delivery/work-history/m3-p6.md` at BOTH `4619bf8` and `077f339`, because the
 prose-only commits add sections R2-23 to R2-28 that bear on the findings below.
+
+## 7. The full PR gate bundle, run locally
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --phase m3-p6 --evidence <scratch> --base origin/main --head HEAD
+gates: declared 13 applicable 8 verdict 8 green 8 red 0 not-applicable 5 error 0 vacuous 0
+gates: required gate(s) not applicable: citations, scope
+PRBUNDLE_EXIT=20
+```
+
+**Eight applicable, eight green, zero red, zero error, zero vacuous**, which
+matches the implementer's reported counts on the applicable arm exactly. Per
+gate:
+
+| applicable | status | units | gate |
+|---|---|---|---|
+| true | green | 8 | `manifest-self-check` |
+| true | green | 115 | `coverage` |
+| true | green | 7 | `credential-scrub` |
+| false | not-applicable | 0 | `credential-token` (precondition `implementer-token-present-owner-action-a-3` unmet) |
+| true | green | 620 | `suite` (pass 620, fail 0, skipped 0, todo 0, did-not-run 0, child node v26.6.0) |
+| false | not-applicable | 0 | `citations` (no changed path under the documents globs) |
+| false | not-applicable | 0 | `scope` (precondition unmet: **branch HEAD** does not match the phase pattern) |
+| false | not-applicable | 0 | `deploy`, `migrations` (structural in any pre-merge bundle) |
+| true | green | 47 | `clause-map` (27 rows pending a phase not yet in force) |
+| true | green | 19 | `red-witness` |
+| true | green | 18 | `agent-rules-drift` |
+| true | green | 15 | `brief-drift` (the gate this delta changes) |
+
+**THE EXIT 20 IS MINE, NOT THE BRANCH'S, and saying so precisely matters.** My
+worktree is DETACHED at `4619bf8`, so the branch name is the literal string
+`HEAD`, which cannot match `^(?:claude/m[0-9]+-p[0-9]+-.*)$`. That makes `scope`
+not-applicable, and a required gate that is not applicable is what the runner
+exits 20 on. It is an artifact of how I checked the tree out. The authority for
+`scope` on this branch is CI step 9 (`M2 exit test (pull request)`, success at
+both `4619bf8` and `077f339`), which runs with `--phase` derived from
+`github.head_ref` on the real branch name, plus the implementer's own
+`--only scope --phase m3-p6` run recorded at R2-13. I did not reproduce that
+arm locally, and I say so rather than implying my bundle covered it.
+
+`brief-drift`, the gate whose script this delta rewrites, is green at 15 rows
+compared. `red-witness` is green at 19 witnesses (section 4).
+
+## 8. The two registries, hunk by hunk: FORCED or RELAXED?
+
+### 8a. `witness/implementer-brief-gate-list-drift.json` (+2, -1)
+
+One hunk: the `tests` array gains a second entry and the first entry gains a
+trailing comma. Nothing else in the spec changed: `class`, `dangerousStates`,
+`deterministic` and `repeats` are byte-identical.
+
+**This is a RELAXATION on its face, and it is the single most important hunk in
+the delta.** `red` at src/witness/run.ts:886 requires `failed.length ===
+tests.length`, so every name added to this array makes the witness HARDER to be
+red, which means easier to be reported unreached and, if the spec ever slipped
+past the gate, weaker as a guarantee. A second name is not a free addition.
+
+**It is JUSTIFIED and, more to the point, MEASURED.** Section 3 and section 4
+both show both named tests failing under both declared dangerous states, twice
+each in the gate's own run. And the round documents the arithmetic itself at
+R2-18, having discovered it by getting a still-red gate out of the naive fix.
+So the relaxation is declared, understood and discharged.
+
+**The standing hazard it creates is worth writing down, because nobody has:**
+this witness now couples two tests. Any FUTURE dangerous state added to it must
+redden BOTH, and any future test added to `tests` must redden under BOTH
+existing members, or the witness silently stops being red and reports "no named
+test reaches this arm" against code that is perfectly well covered. That is a
+maintenance trap of exactly the shape this repository keeps paying for. It is
+not a defect in this delta and I am not raising it as a finding; it belongs in
+the phase's tuition or in the witness file as a comment.
+
+### 8b. `test/behaviors.json` (+4, -1)
+
+Purely additive: three new rows, plus a trailing comma on the row that used to
+be last. Nothing widened, nothing deleted, no assertion relaxed. Each row's
+value is the EXACT test name it registers, so all three resolve by name; the
+`suite` gate is green at 620 reported tests with 0 did-not-run.
+
+### 8c. `tuition/mechanism-index.yaml` (+35)
+
+Purely additive: one `mechanisms` entry,
+`checking-a-generated-artifact-against-its-own-generator`.
+
+```
+$ node bin/tiphys.ts validate --type mechanism-index tuition/mechanism-index.yaml
+VALIDATE_EXIT=0
+```
+
+Its two `evidence` documents are absent from the phase branch and PRESENT on
+`origin/main` (`git cat-file -e origin/main:<path>` exit 0 for both), so they
+resolve after merge rather than dangling.
+
+### 8d. Registry over-assertion (task 6)
+
+Convention 5 forbids a test pinning a COUNT or an exact SET over an append-only
+registry. Checked:
+
+- `test/behaviors.json`: every test referencing it does so through FIXTURES
+  (`fixtureBehaviors({...})` in test/witness.test.ts, scratch files in
+  test/scope-gate.test.ts and test/suite-gate.test.ts). No test asserts a count
+  or a membership set over the REAL file.
+- `tuition/mechanism-index.yaml`: the only consumer test derives its expected
+  set from `MECHANISMS.md`'s own first column at run time and asserts a
+  SUPERSET, then asserts per entry that `key` is the slug of `name` and that
+  `evidence` is non-empty. The one numeric assertion is
+  `assert.ok(interimNames.length >= 12, ...)`, a FLOOR guarding the parser
+  against silently returning nothing, not a pin: appending rows keeps it green.
+
+**No over-assertion found.** The round's own claim at R2-10 ("with no count
+pinned") holds.
+
+### 8e. `scripts/check-brief-drift.mjs`, executable lines only
+
+To be sure nothing else rode along in the +143, I filtered the diff to
+non-comment lines. The ONLY executable additions across the whole delta are the
+`gateBlockFindings` function and check A with its `failed(...)` arm. There are
+no executable DELETIONS other than the removed check itself, and no pre-existing
+arm changed. So the regression surface of this delta is exactly the pair
+analysed in sections 2 and 3.
