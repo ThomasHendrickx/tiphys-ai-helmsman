@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-unknown-phase-id",
+  "behavior": "brief-compose-unknown-phase-id-fails",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose with a phase id absent from the plan exits nonzero naming the id"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "  if (phase === undefined) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "      reason: `${options.planFile} declares no phase with id ${options.phaseId}`,",
+      "replace": "      reason: \"the plan declares no such phase\","
+    }
+  ]
+}
