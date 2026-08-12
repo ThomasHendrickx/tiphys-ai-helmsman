@@ -346,6 +346,187 @@ test("the shipped brief's gate-list block declares the mode the kernel pins, and
   }
 });
 
+/**
+ * THE THIRD SEAT, AND THE ONE NO CALLER OF THE RENDERER CAN CLOSE (M3-P6 fix
+ * round 2, DV-1).
+ *
+ * The mechanism one level above the three tests before this one: A CHECK THAT
+ * COMPARES A GENERATED ARTIFACT AGAINST ITS OWN GENERATOR CAN ONLY SEE DRIFT
+ * BETWEEN THE TWO, so a narrowing INSIDE the generator is a fixed point of the
+ * loop and is silent. Test 3 above compares the composed brief to a rendering,
+ * but THROUGH `renderBriefGateBlock`, so it agrees with such a narrowing by
+ * construction. Test 5 derives from the registry independently, which is right,
+ * but it only compares mode against mode and never against the rows the shipped
+ * brief actually carries.
+ *
+ * So this test reads the SHIPPED FILE, parses the registry itself, and never
+ * calls `renderBriefGateBlock`, `locateGateBlock` or anything else from `src`.
+ * That is deliberate duplication of the SELECTION and the FIELD LIST, never of
+ * the rendering: a shared helper with the script would put both statements back
+ * inside one loop, and the whole property being bought is that the two fail
+ * independently. Deleting the script's own copy leaves this one standing.
+ *
+ * TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class, and
+ * they are caught for DIFFERENT REASONS rather than by one code path wearing two
+ * hats. Dropping ROWS is caught by set equality and is invisible to any per-field
+ * assertion, since an absent row has no fields. Dropping a COLUMN leaves the row
+ * set identical, all fifteen ids present, and is invisible to set equality. Both
+ * are exercised below against the real script.
+ */
+test("the shipped brief's gate rows are exactly the gates the pinned mode selects, each carrying its registry fields, derived without the renderer", () => {
+  const registry = yamlModule.parse(
+    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
+  ) as {
+    gates: {
+      id: string;
+      modes: string[];
+      applicability: string;
+      unitLabel: string;
+      probe?: string;
+      "verified-by": string;
+    }[];
+  };
+
+  /* THE BLOCK IS SLICED HERE, not located by the kernel's locator, so this test
+     depends on no `src` function at all. The markers are matched by their
+     literal opening text; a change to their shape should redden this. */
+  const brief = readFileSync(briefPath, "utf8");
+  const begin = brief.indexOf("<!-- BEGIN GENERATED GATE LIST");
+  const end = brief.indexOf("<!-- END GENERATED GATE LIST -->");
+  assert.ok(begin !== -1, "the shipped brief carries no generated gate-list begin marker");
+  assert.ok(end > begin, "the shipped brief carries no matching end marker after the begin marker");
+  const block = brief.slice(begin, end);
+
+  const selected = registry.gates.filter((gate) =>
+    (gate.modes ?? []).includes(rolesModule.BRIEF_GATE_BLOCK_MODE),
+  );
+  assert.ok(selected.length > 0, "the pinned mode selects no gate at all");
+
+  const rows = new Map<string, string>();
+  for (const line of block.split("\n")) {
+    const match = /^\| `([^`]+)` \|(.*)$/.exec(line);
+    if (match !== null) {
+      rows.set(match[1] as string, match[2] as string);
+    }
+  }
+
+  /* SET EQUALITY, NOT CONTAINMENT, and NEVER BY COUNT: the registry is
+     append-only, so a pinned number would be a claim about every future phase. */
+  const expectedIds = new Set(selected.map((gate) => gate.id));
+  for (const id of expectedIds) {
+    assert.ok(
+      rows.has(id),
+      `the pinned mode selects ${id} and the shipped brief's gate table has no row for it`,
+    );
+  }
+  for (const id of rows.keys()) {
+    assert.ok(
+      expectedIds.has(id),
+      `the shipped brief's gate table carries a row for ${id}, which the pinned mode does not select`,
+    );
+  }
+
+  /* AND EVERY REGISTRY FIELD OF THAT GATE IS IN A CELL OF ITS OWN. This is the
+     half that survives a renderer which keeps every row and drops a column. */
+  for (const gate of selected) {
+    const cells = (rows.get(gate.id) as string).split("|").map((cell) => cell.trim());
+    const fields: [string, string][] = [
+      ["verified-by", gate["verified-by"]],
+      ["applicability", gate.applicability],
+      ["unitLabel", gate.unitLabel],
+    ];
+    for (const [field, value] of fields) {
+      assert.ok(
+        cells.some((cell) => cell === value || cell.startsWith(`${value} (probe \``)),
+        `${gate.id}'s row in the shipped brief carries no cell holding its registry ${field} "${value}"`,
+      );
+    }
+  }
+});
+
+test("a narrowing inside the renderer is caught by the drift check in --check and refused in --write, under both a dropped row set and a dropped column", () => {
+  const dir = stageKernel("tiphys-impl-renderer-");
+  try {
+    const rolesPath = join(dir, "src", "roles.ts");
+    const script = join(dir, "scripts", "check-brief-drift.mjs");
+    const pristine = readFileSync(rolesPath, "utf8");
+
+    const green = run(script, ["--check"], dir);
+    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+
+    /* MEMBER 1: the ROW SET narrowed, by a strict-subset filter on the
+       selection. This is DV-1's own defang. */
+    const rowNarrowed = pristine.replace(
+      "const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));",
+      "const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode))" +
+        '.filter((gate) => gate["verified-by"] === "script");',
+    );
+    assert.notEqual(rowNarrowed, pristine, "the row-narrowing defang did not apply");
+    writeFileSync(rolesPath, rowNarrowed);
+
+    const rowWrite = run(script, ["--write"], dir);
+    assert.notEqual(
+      rowWrite.status,
+      0,
+      `--write laundered a row-narrowed renderer into the brief: ${rowWrite.stdout}`,
+    );
+    const rowCheck = run(script, ["--check"], dir);
+    assert.notEqual(rowCheck.status, 0, `--check missed the row narrowing: ${rowCheck.stdout}`);
+    assert.match(
+      `${rowCheck.stdout}${rowCheck.stderr}`,
+      /carries no row for it/,
+      "the row narrowing was caught but not named as a missing row",
+    );
+
+    /* MEMBER 2: the ROW SET UNTOUCHED and a COLUMN dropped. Every id still
+       appears, so anything built only from set membership is green here. */
+    writeFileSync(rolesPath, pristine);
+    const backToGreen = run(script, ["--check"], dir);
+    assert.equal(backToGreen.status, 0, `${backToGreen.stdout}${backToGreen.stderr}`);
+
+    const columnDropped = pristine.replace(
+      " | ${gate.applicability} | ${gate.unitLabel} |`,",
+      " | ${gate.applicability} |`,",
+    );
+    assert.notEqual(columnDropped, pristine, "the column-dropping defang did not apply");
+    writeFileSync(rolesPath, columnDropped);
+
+    const colWrite = run(script, ["--write"], dir);
+    assert.notEqual(
+      colWrite.status,
+      0,
+      `--write laundered a column-dropped renderer into the brief: ${colWrite.stdout}`,
+    );
+    const colCheck = run(script, ["--check"], dir);
+    assert.notEqual(colCheck.status, 0, `--check missed the dropped column: ${colCheck.stdout}`);
+    assert.match(
+      `${colCheck.stdout}${colCheck.stderr}`,
+      /carries no cell holding its registry unitLabel/,
+      "the dropped column was caught but not named as a missing field",
+    );
+
+    /* AND THE TWO ARE CAUGHT FOR DIFFERENT REASONS rather than by one path: the
+       row narrowing never reports a missing field, and the column drop never
+       reports a missing row. */
+    assert.doesNotMatch(
+      `${rowCheck.stdout}${rowCheck.stderr}`,
+      /carries no cell holding its registry/,
+      "the row narrowing was caught by the field assertion, so the two members share a path",
+    );
+    assert.doesNotMatch(
+      `${colCheck.stdout}${colCheck.stderr}`,
+      /carries no row for it/,
+      "the column drop was caught by the row assertion, so the two members share a path",
+    );
+
+    writeFileSync(rolesPath, pristine);
+    const restored = run(script, ["--check"], dir);
+    assert.equal(restored.status, 0, `${restored.stdout}${restored.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green", () => {
   const dir = stageKernel("tiphys-impl-mode-");
   try {

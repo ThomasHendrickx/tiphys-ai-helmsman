@@ -170,6 +170,99 @@ function describeDrift(expected, observed) {
   return differences;
 }
 
+/**
+ * THE SECOND, INDEPENDENT STATEMENT OF WHAT THE BLOCK MUST CONTAIN (M3-P6 fix
+ * round 2, DV-1).
+ *
+ * The mechanism, one level above the one round 1 named: A CHECK THAT COMPARES A
+ * GENERATED ARTIFACT AGAINST ITS OWN GENERATOR CAN ONLY SEE DRIFT BETWEEN THE
+ * TWO. `--write` renders the brief FROM `renderBriefGateBlock` and `--check`
+ * compares the brief TO `renderBriefGateBlock`, so any narrowing INSIDE that
+ * function is a fixed point of the loop and is silent by construction. Round 1
+ * closed the two seats that select the subject from OUTSIDE the renderer (the
+ * mode in the marker, and the unit count); the seat INSIDE it stayed open, and
+ * a strict-subset filter on the selection left this check reporting
+ * `green (13 ...)` over a brief advertising thirteen gates where the registry
+ * declares fifteen, with the whole suite green.
+ *
+ * Nothing that calls `renderBriefGateBlock` can close that seat, because the
+ * seat is inside it. So this function derives what the block must contain from
+ * the REGISTRY ALONE and never calls the renderer.
+ *
+ * THE DUPLICATION IS DELIBERATE AND IT IS NOT THE ONE THE HEADER WARNS ABOUT.
+ * The header says a second copy of the TABLE would make a check agree with
+ * itself, and that is still true. What is duplicated here is the SELECTION and
+ * the FIELD LIST, never the rendering, and duplicating the selection is exactly
+ * how a narrowing of one copy becomes visible to the other. A shared helper
+ * between this and the registered test would put both copies back inside one
+ * loop, so `test/implementer-brief.test.ts` states the same property a third
+ * time in its own code over the SHIPPED BYTES, and neither imports the other.
+ *
+ * IT IS SET EQUALITY AND FIELD PRESENCE, NOT CONTAINMENT, and both halves are
+ * load-bearing against a different member. Containment ("every selected gate
+ * appears") is green when the renderer WIDENS, and it is green when the renderer
+ * drops a COLUMN from rows that all still appear: deleting the `unitLabel` cell
+ * leaves fifteen rows carrying fifteen ids and strips the column the table
+ * exists to teach. Measured both ways in this round's work history.
+ *
+ * NEVER BY COUNT. The registry is append-only, so a pinned number is a claim
+ * about every future phase (CLAUDE.md binding convention 5). Every assertion
+ * below is per gate and per field, derived at run time.
+ */
+function gateBlockFindings(block, registry, mode) {
+  const selected = (registry.gates ?? []).filter((gate) =>
+    (gate.modes ?? []).includes(mode),
+  );
+  const findings = [];
+
+  /* The rows the block actually carries, keyed by the id in the first cell. */
+  const rows = new Map();
+  for (const line of block.split("\n")) {
+    const match = /^\| `([^`]+)` \|(.*)$/.exec(line);
+    if (match !== null) {
+      rows.set(match[1], match[2]);
+    }
+  }
+
+  for (const gate of selected) {
+    const row = rows.get(gate.id);
+    if (row === undefined) {
+      findings.push(
+        `the registry's ${mode} mode selects ${gate.id} and the block carries no row for it`,
+      );
+      continue;
+    }
+    const cells = row.split("|").map((cell) => cell.trim());
+    const fields = [
+      ["verified-by", gate["verified-by"]],
+      ["applicability", gate.applicability],
+      ["unitLabel", gate.unitLabel],
+    ];
+    for (const [field, value] of fields) {
+      /* `verified-by` renders with the probe appended for a checklist gate, so
+         the cell is that value FOLLOWED BY the probe rather than equal to it. */
+      const present = cells.some(
+        (cell) => cell === value || cell.startsWith(`${value} (probe \``),
+      );
+      if (!present) {
+        findings.push(
+          `${gate.id}'s row carries no cell holding its registry ${field} "${String(value)}"`,
+        );
+      }
+    }
+  }
+
+  for (const id of rows.keys()) {
+    if (!selected.some((gate) => gate.id === id)) {
+      findings.push(
+        `the block carries a row for ${id}, which the registry's ${mode} mode does not select`,
+      );
+    }
+  }
+
+  return findings;
+}
+
 function emit(options, fields) {
   const result = makeGateResult({
     gate: GATE_ID,
@@ -263,6 +356,24 @@ function main(argv) {
 
   const rendered = renderBriefGateBlock(decoded.value, located.mode);
 
+  /* AND THE RENDERING IS CHECKED AGAINST THE REGISTRY DIRECTLY, IN EVERY MODE
+     INCLUDING `--write` (M3-P6 fix round 2, DV-1). `--write` is the command that
+     launders a narrowed renderer into the shipped brief, which is the same
+     reason round 1 put the mode refusal in `--write` as well as `--check`. A
+     narrowing inside `renderBriefGateBlock` is invisible to the row-for-row
+     compare below, because that compare has the narrowed rendering on both
+     sides. Refusing here is an `error` and not a `red`: the check cannot make a
+     statement about drift when its own rendering does not match the authority. */
+  const renderingFindings = gateBlockFindings(rendered.text, decoded.value, located.mode);
+  if (renderingFindings.length > 0) {
+    return failed(
+      `the block ${options.registry} renders for mode ${located.mode} does not ` +
+        `match the registry it was rendered from: ${renderingFindings.join("; ")}. ` +
+        "This is a defect in the renderer, not drift in the brief",
+      rendered.units,
+    );
+  }
+
   if (options.mode === "print") {
     process.stdout.write(`${rendered.text}\n`);
     return 0;
@@ -284,6 +395,27 @@ function main(argv) {
         `(${String(rendered.units)} row(s) from ${options.registry})\n`,
     );
     return 0;
+  }
+
+  /* THE SHIPPED BYTES, ASSERTED DIRECTLY RATHER THAN BY TRANSITIVITY. A green
+     row-for-row compare below does imply the block equals the validated
+     rendering, so this is redundant TODAY. It is here because that implication
+     is a property of `describeDrift`, and a check whose coverage depends on a
+     second function staying correct is the shape this phase has now paid for
+     twice. Costs one pass over the block; buys a direct statement about the file
+     that ships. */
+  const blockFindings = gateBlockFindings(located.block, decoded.value, located.mode);
+  if (blockFindings.length > 0) {
+    return emit(options, {
+      status: "red",
+      units: rendered.units,
+      startedAt,
+      endedAt: new Date().toISOString(),
+      detail:
+        `${options.brief}'s ${located.mode} gate block does not match ` +
+        `${options.registry}: ${blockFindings.join("; ")}. Re-render with ` +
+        "node scripts/check-brief-drift.mjs --write",
+    });
   }
 
   const differences = describeDrift(rendered.text, located.block);
