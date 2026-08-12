@@ -1293,17 +1293,43 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
     for (const arm of ["pr", "main"] as const) {
       const table = printExpect(copy, root, env, arm, arm === "pr" ? "green" : undefined);
       // The healthy rows for this arm: every gate the table expects, in the
-      // status it expects (taking the first alternate), plus the unlisted gate
-      // green. Derived from the table so it cannot fall behind it.
+      // status it expects (taking the first alternate), PLUS every gate the
+      // manifest declares that the table neither names nor lists as absent,
+      // green under the program's strict default for a declared-but-unlisted
+      // gate. Both halves are DERIVED, from the two documents the program
+      // itself reads, so the control cannot fall behind either of them.
+      //
+      // THE SECOND HALF IS WHY THIS ROUND EXISTS. It used to be one pinned
+      // extra, `UNLISTED`, which made the control a claim that the manifest
+      // contains exactly the table's gates plus that one. gates.manifest.json
+      // is APPEND-ONLY, so that claim is about every future phase and is false
+      // the moment one appends: M3-P6 took the manifest from eleven gates to
+      // twelve by adding brief-drift, the twelfth got no record, and the
+      // program correctly rejected a control that was supposed to be healthy.
+      // M3-P7 and M3-P8 append after this one. CLAUDE.md's rule for an
+      // append-only registry is to assert BY NAME and derive at run time, never
+      // to pin a set or a count, and that is what the loop below does.
+      const manifestGateIds = (
+        JSON.parse(readFileSync(manifest, "utf8")) as { gates: { id: string }[] }
+      ).gates.map((gate) => gate.id);
       const healthy = table.gates.map((gate) => ({
         id: gate.id,
         status: String(gate.expect).split("|")[0] as string,
       }));
-      // The unlisted gate belongs in the bundle only on the arm that RUNS it.
-      // The PR bundle runs the whole manifest, so it appears there and is
-      // asserted under the derived default. The main bundle runs a subset, so
-      // the derivation puts the unlisted gate in that arm's ABSENT list, and a
-      // bundle carrying a record for it is a different (also rejected) shape.
+      for (const id of manifestGateIds) {
+        if (table.absent.includes(id) || healthy.some((row) => row.id === id)) {
+          continue;
+        }
+        healthy.push({ id, status: "green" });
+      }
+      // The unlisted gate belongs in the bundle only on the arm that RUNS it,
+      // and the derivation above is what puts it there: the PR bundle runs the
+      // whole manifest, so it appears in that arm's healthy rows and is asserted
+      // under the derived default; the main bundle runs a subset, so the
+      // harness's derivation puts it in that arm's ABSENT list and the loop
+      // skips it. The equality is kept because the two arms differing is the
+      // property the probes below depend on, and a harness that ran the same
+      // set on both would make half of them assert nothing.
       const runsUnlisted = !table.absent.includes(UNLISTED);
       assert.equal(
         runsUnlisted,
@@ -1311,9 +1337,12 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
         `[${arm}] expected the unlisted manifest gate to be run on the pr arm and derived into ` +
           `the main arm's absent list; absent is ${JSON.stringify(table.absent)}`,
       );
-      if (runsUnlisted) {
-        healthy.push({ id: UNLISTED, status: "green" });
-      }
+      assert.equal(
+        healthy.some((row) => row.id === UNLISTED),
+        runsUnlisted,
+        `[${arm}] the healthy rows must be derived to include the unlisted manifest gate exactly ` +
+          `on the arm that runs it; rows are ${JSON.stringify(healthy.map((row) => row.id))}`,
+      );
 
       // CONTROL: the healthy bundle is ACCEPTED, so nothing below is an
       // always-red assertion. The unlisted gate passes on its default green.

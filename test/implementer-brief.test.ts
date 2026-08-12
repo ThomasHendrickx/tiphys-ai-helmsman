@@ -1233,13 +1233,50 @@ test("brief-drift is declared in the gate registry and in the gate manifest, and
 
   /* THE `events` VALUE IS DERIVED FROM THE HARNESS, not asserted from a memory
      of it, which is the rule test/gate-registry.test.ts:400 already applies to
-     every promoted entry. A gate the main bundle's hard-coded --only list does
-     not name cannot run on push, whatever the registry claims. */
-  const harness = readFileSync(join(repoRoot, "scripts", "m2-exit-test.sh"), "utf8");
-  const mainBundle = /--only manifest-self-check[\s\S]*?\) \\/.exec(harness);
-  assert.ok(mainBundle !== null, "the main bundle's --only list was not found in the harness");
-  const pushGates = new Set(
-    [...mainBundle[0].matchAll(/--only ([a-z0-9-]+)/g)].map((match) => match[1] as string),
+     every promoted entry. A gate the main bundle does not run cannot run on
+     push, whatever the registry claims.
+
+     THE DERIVATION ASKS THE HARNESS, IT NO LONGER READS ITS SHAPE. The previous
+     version scraped `--only <id>` arguments out of the script's text with a
+     regex anchored on the first id. That pinned a SPELLING rather than a fact:
+     the harness now declares the set once, in MAIN_ONLY_GATES, and builds the
+     repeated flags in a loop from it, so the regex matched nothing and this
+     test failed on its own guard rather than on anything about brief-drift.
+     Re-anchoring the regex would only move the breakage to the next edit.
+
+     `--print-expect main` is the harness's own resolved answer to what the main
+     bundle asserts. Its `absent` list is derived INSIDE the harness from the
+     manifest and MAIN_ONLY_GATES (scripts/m2-exit-test.sh:234), which is the
+     same one declaration the runner's --only flags are built from
+     (scripts/m2-exit-test.sh:1134), so the push arm is the manifest minus that
+     list however the flags are spelled. The hook runs before argument parsing,
+     needs no dist and does no gate work. */
+  const printed = spawnSync(
+    "bash",
+    [join(repoRoot, "scripts", "m2-exit-test.sh"), "--print-expect", "main"],
+    { cwd: repoRoot, encoding: "utf8", timeout: BOUNDED_MS },
+  );
+  assert.equal(
+    printed.status,
+    0,
+    "the harness could not print its main-bundle expectations: " +
+      `${String(printed.stdout)}${String(printed.stderr)}`,
+  );
+  const mainTable = JSON.parse(printed.stdout) as { gates: { id: string }[]; absent: string[] };
+  const manifestIds = manifest.gates.map((gate) => gate.id);
+  const pushGates = new Set(manifestIds.filter((id) => !mainTable.absent.includes(id)));
+  /* NON-VACUITY, because the equality below is satisfied by two degenerate
+     answers as readily as by the true one. An empty `absent` makes every
+     manifest gate look reachable on push; an `absent` naming everything makes
+     none of them reachable. Both would be a silent derivation failure wearing
+     the shape of a result, which is the guard-condition failure this repository
+     keeps paying for, so the derived set is required to be a PROPER, NON-EMPTY
+     subset of what the manifest declares. */
+  assert.ok(
+    pushGates.size > 0 && pushGates.size < manifestIds.length,
+    "the derived push-arm set must be a proper non-empty subset of the manifest's gates, or " +
+      `this test asserts nothing; derived ${JSON.stringify([...pushGates])} from ` +
+      `${String(manifestIds.length)} declared gates`,
   );
   assert.equal(
     declared.events.includes("push"),
