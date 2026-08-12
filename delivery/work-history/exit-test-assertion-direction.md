@@ -2219,3 +2219,248 @@ Two clean-room reviews of `fdb3120` both APPROVE. Four findings between them:
 | CR-FR-1 | LOW | criteria contract | the round's derivation missed a sixth live call site (test/m2-exit-test.test.ts:272) and its stated exclusions do not describe how it was missed |
 | CR-FR-2 | LOW | criteria contract | the leg-count open item's stated reason misapplies CLAUDE.md:201; a BY-NAME guard exists and the reviewer red-witnessed a prototype |
 
+
+## FR2.1 The MECHANISM (item 1 of the fix-round contract)
+
+CR-V-1 as WRITTEN is a finding: "the third spread of the union is unwitnessed".
+That is the instance. The round that fixed CR-V01 already knew a leg could be
+unwitnessed; it wrote the risk down at
+delivery/work-history/exit-test-assertion-direction.md:2050. Fixing the instance
+means adding one probe and leaving the reason it was missing intact.
+
+The MECHANISM is this:
+
+> **The witness family's ADMISSION TEST is keyed on a message that only SOME
+> branches of the program under test emit. A member of the class whose only
+> possible rejecter is a branch that does not emit that message is not merely
+> unwitnessed, it is UNWITNESSABLE: the same key is also the
+> over-determination filter, so a probe written for such a member is REJECTED
+> by the test as "rejected by a check OTHER than the derived expected set".**
+
+That is why this gap could not have been closed by noticing it. The previous
+round's own substituted mechanism ("a probe witnesses a check only when that
+check is its UNIQUE rejecter") is correct, but its IMPLEMENTATION picks one
+message, `DEFAULT_SPEC_WHY`, as the proxy for "the derivation rejected this".
+The proxy is narrower than the thing: the reason is bound
+`const why = explicit ? "" : DEFAULT_SPEC_WHY` (scripts/m2-exit-test.sh:533), so
+for any member carrying an explicit table row the key is the EMPTY STRING on
+every branch. The explicit leg is precisely the set of members that always carry
+an explicit row.
+
+The reviewer H-B reached the same conclusion and its brief told me not to try to
+close CR-V-1 with the existing mechanism. I checked that instruction rather than
+obeying it, and it is correct: measured below, 0 of the program's 24 rejection
+branches can carry the key for an explicit member.
+
+The general form, which is the part worth carrying forward: **an attribution key
+partitions the program's branches, and a witness family can only cover the part
+its key names. Any member outside that part needs its own key, derived from the
+branch that actually rejects it.**
+
+## FR2.2 The DERIVATION (item 2 of the fix-round contract)
+
+The class is: every source spread into the derived union, paired with the set of
+rejection branches that can name a member entering by it, and with the
+attribution keys the test applies to that program's output.
+
+The exact command, run in this worktree at fdb3120 on node v26.6.0:
+
+```
+$ node ../hfix3-lab/derive.mjs "$PWD"
+```
+
+The script in full, so the enumeration is re-runnable rather than asserted:
+
+```javascript
+// DERIVATION for fix round 2.
+//
+// MECHANISM: a probe's rejecter is attributed by a MESSAGE KEY, and the key in
+// use (`DEFAULT_SPEC_WHY`) is appended by only SOME of the assertion program's
+// rejection branches. A union member that can only be rejected by a branch that
+// never appends it is not merely unwitnessed: the test's own over-determination
+// filter (`foreign`) REJECTS any probe for it. So the admission test for the
+// witness family and the property under test are different sets.
+//
+// This enumerates, mechanically:
+//   A. every rejection branch of the shipped assertion program, and whether it
+//      appends the default-spec reason;
+//   B. every source spread into the derived union, BY NAME, and whether a member
+//      entering by that source can ever carry the default-spec reason;
+//   C. every attribution key applied to the assertion program's output in the
+//      test file, and which branches it can name.
+import { readFileSync } from "node:fs";
+
+const repo = process.argv[2];
+const harnessPath = `${repo}/scripts/m2-exit-test.sh`;
+const testPath = `${repo}/test/m2-exit-test.test.ts`;
+const harness = readFileSync(harnessPath, "utf8");
+
+const progMatch = /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(harness);
+if (!progMatch) { console.error("could not extract the assertion program"); process.exit(2); }
+const prog = progMatch[1];
+const base = harness.slice(0, progMatch.index).split("\n").length + 1;
+const L = prog.split("\n");
+
+// --- A. rejection branches -------------------------------------------------
+const branches = [];
+for (let i = 0; i < L.length; i += 1) {
+  if (!/\bfail\(/.test(L[i]) && !/process\.exit\((1|2)\)/.test(L[i])) continue;
+  // the whole call: from this line to the line whose trimmed text ends the call
+  let j = i, depth = 0, call = "";
+  do { call += L[j] + "\n"; for (const ch of L[j]) { if (ch === "(") depth += 1; if (ch === ")") depth -= 1; } j += 1; }
+  while (depth > 0 && j < L.length && j - i < 12);
+  const kind = /\bfail\(/.test(L[i]) ? "fail" : "exit";
+  // does this branch append the default-spec reason?
+  const appendsWhy = /(\+\s*why\b)|(\bwhy\s*\))|(\+ why)/.test(call);
+  branches.push({ line: base + i, kind, appendsWhy, call: call.trim().replace(/\s+/g, " ") });
+  i = j - 1;
+}
+
+console.log("=== A. rejection branches of the shipped assertion program ===");
+console.log("line | kind | appends DEFAULT_SPEC_WHY | call");
+for (const b of branches) {
+  console.log(`scripts/m2-exit-test.sh:${b.line} | ${b.kind} | ${b.appendsWhy ? "YES" : "no "} | ${b.call.slice(0, 120)}`);
+}
+console.log(`TOTAL branches: ${branches.length}; branches REFERENCING the reason variable: ${branches.filter((b) => b.appendsWhy).length}`);
+
+// The reason is bound ONCE. Its value for an EXPLICIT member decides whether any
+// branch can ever carry the key for such a member.
+const whyBind = /const why = (.+);/.exec(prog);
+console.log(`\nthe reason variable is bound as: const why = ${whyBind ? whyBind[1] : "(NOT FOUND)"}`);
+const emptyWhenExplicit = whyBind ? /explicit\s*\?\s*""/.test(whyBind[1]) : false;
+console.log(`  -> for a member WITH an explicit table row the reason is ${emptyWhenExplicit ? "THE EMPTY STRING" : "(not empty)"}`);
+console.log(`  -> branches that can carry the key for an EXPLICIT member: ${emptyWhenExplicit ? 0 : branches.filter((b) => b.appendsWhy).length} of ${branches.length}`);
+console.log(`  -> branches that can carry the key for a DERIVED member:  ${branches.filter((b) => b.appendsWhy).length} of ${branches.length}`);
+console.log("  NOTE scripts/m2-exit-test.sh:536 is a TERNARY: only its non-explicit arm concatenates the reason.");
+
+// --- B. the union's sources, by name, and their reachable branches ----------
+const union = /const expectedIds = \[\];\n\s*for \(const id of \[([\s\S]*?)\]\)/.exec(prog);
+if (!union) { console.error("could not locate the union"); process.exit(2); }
+const sources = [...union[1].matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1]);
+const whyLine = /const why = (.+);/.exec(prog);
+console.log("\n=== B. the union's spread sources, BY NAME ===");
+console.log(`sources: ${JSON.stringify(sources)}`);
+console.log(`the reason is appended under: ${whyLine ? whyLine[1] : "(NOT FOUND)"}`);
+for (const s of sources) {
+  // a member entering by explicitById ALWAYS has an explicit spec, so `explicit`
+  // is truthy and `why` is the empty string for it, on every branch.
+  const alwaysExplicit = /explicit/i.test(s);
+  console.log(`  source ${s}: member can carry the default-spec reason = ${alwaysExplicit ? "NEVER" : "yes"}` +
+    (alwaysExplicit ? "   <== UNWITNESSABLE by a key on that reason" : ""));
+}
+
+// --- C. attribution keys applied to the assertion program's output ----------
+const t = readFileSync(testPath, "utf8").split("\n");
+console.log("\n=== C. attribution keys applied to the assertion program's output (test/m2-exit-test.test.ts) ===");
+for (let i = 0; i < t.length; i += 1) {
+  const l = t[i];
+  if (/!line\.includes\(/.test(l) || /line\.includes\(/.test(l)) {
+    console.log(`test/m2-exit-test.test.ts:${i + 1} | over-determination filter | ${l.trim()}`);
+  }
+  if (/\/const DEFAULT_SPEC_WHY|whyMatch|defaultSpecReason\s*=/.test(l)) {
+    console.log(`test/m2-exit-test.test.ts:${i + 1} | derived key            | ${l.trim().slice(0, 120)}`);
+  }
+  if (/assert\.match\(/.test(l)) {
+    const win = t.slice(i, i + 4).join(" ");
+    const rx = /\/((?:[^/\\\n]|\\.)+)\/[a-z]*\s*,/.exec(win);
+    if (rx && /output|stdout|stderr/.test(win)) {
+      console.log(`test/m2-exit-test.test.ts:${i + 1} | literal regex over output | /${rx[1]}/`);
+    }
+  }
+}
+
+// --- D. probes that exist today, per union source --------------------------
+console.log("\n=== D. probes declared in the derivation-only family, per union source ===");
+const probeNames = [...readFileSync(testPath, "utf8").matchAll(/name: "(probe-[^"]+)"/g)].map((m) => m[1]);
+console.log(`probe entries found: ${JSON.stringify(probeNames)}`);
+for (const s of sources) {
+  const hit = probeNames.filter((n) => n.toLowerCase().includes(s.toLowerCase().replace("ids", "").replace("byid", "")));
+  console.log(`  source ${s}: probe(s) naming it = ${hit.length > 0 ? JSON.stringify(hit) : "NONE   <== UNWITNESSED"}`);
+}
+```
+
+Its FULL output, not a summary:
+
+```
+=== A. rejection branches of the shipped assertion program ===
+line | kind | appends DEFAULT_SPEC_WHY | call
+scripts/m2-exit-test.sh:433 | exit | no  | process.exit(2);
+scripts/m2-exit-test.sh:457 | exit | no  | process.exit(2);
+scripts/m2-exit-test.sh:467 | exit | no  | process.exit(1);
+scripts/m2-exit-test.sh:499 | exit | no  | process.exit(1);
+scripts/m2-exit-test.sh:536 | fail | YES | fail(spec.id, explicit ? `no record in the bundle for a gate the table lists (expected ${spec.expect})` : "gates.manifes
+scripts/m2-exit-test.sh:545 | fail | no  | fail(spec.id, `${dup} records for one gate; the table requires exactly one`);
+scripts/m2-exit-test.sh:549 | fail | YES | fail(spec.id, `expected status ${allow.join(" or ")}, observed ${row.status}` + (row.detail ? ` (${row.detail})` : "") +
+scripts/m2-exit-test.sh:556 | fail | YES | fail(spec.id, `is a REQUIRED gate but its status is ${row.status}, not green` + why);
+scripts/m2-exit-test.sh:568 | fail | no  | fail(spec.id, `is a diff-scoped gate reporting not-applicable but ${scopedRec.reason}`);
+scripts/m2-exit-test.sh:576 | fail | no  | fail(spec.id, "is a diff-scoped gate reporting not-applicable WITHOUT an evaluated, unmet precondition " + "(preconditio
+scripts/m2-exit-test.sh:584 | fail | no  | fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
+scripts/m2-exit-test.sh:603 | fail | no  | fail(row.id, `not-applicable but ${recRead.reason}`);
+scripts/m2-exit-test.sh:609 | fail | no  | fail(row.id, "not-applicable with an empty reason");
+scripts/m2-exit-test.sh:620 | fail | no  | fail(row.id, "not-applicable but names NEITHER an evaluated precondition (id, met:false, reason, " + "evidence) NOR a de
+scripts/m2-exit-test.sh:633 | fail | no  | fail(row.id, "expected not-applicable for a STRUCTURAL reason (a post-merge check in a pre-merge " + "bundle), but the r
+scripts/m2-exit-test.sh:650 | fail | no  | fail(null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. ` + "No expectation in secti
+scripts/m2-exit-test.sh:655 | fail | no  | fail(null, `${errorRows.length} gate(s) reported error: ${errorRows.map((r) => r.id).join(", ")}`);
+scripts/m2-exit-test.sh:659 | fail | no  | fail(null, `${vacuousRows.length} vacuous gate(s): ${vacuousRows.map((r) => r.id).join(", ")}`);
+scripts/m2-exit-test.sh:678 | fail | no  | fail(null, `recomputed count ${key}=${String(recomputed[key])} does not equal ` + `summary.json ${key}=${String(counts[k
+scripts/m2-exit-test.sh:694 | fail | no  | fail(id, "expected to be ABSENT from this bundle (not run) but has a summary record");
+scripts/m2-exit-test.sh:697 | fail | no  | fail(id, "expected to be ABSENT from this bundle (not run) but has a result.json on disk");
+scripts/m2-exit-test.sh:711 | fail | no  | fail(null, `summary.manifestSha256 ${summary.manifestSha256} does not equal a fresh ` + `hash of ${manifestPath} (${reco
+scripts/m2-exit-test.sh:715 | fail | no  | fail(null, manifestRead.reason);
+scripts/m2-exit-test.sh:724 | exit | no  | process.exit(1);
+TOTAL branches: 24; branches REFERENCING the reason variable: 3
+
+the reason variable is bound as: const why = explicit ? "" : DEFAULT_SPEC_WHY
+  -> for a member WITH an explicit table row the reason is THE EMPTY STRING
+  -> branches that can carry the key for an EXPLICIT member: 0 of 24
+  -> branches that can carry the key for a DERIVED member:  3 of 24
+  NOTE scripts/m2-exit-test.sh:536 is a TERNARY: only its non-explicit arm concatenates the reason.
+
+=== B. the union's spread sources, BY NAME ===
+sources: ["manifestIds","rows","explicitById"]
+the reason is appended under: explicit ? "" : DEFAULT_SPEC_WHY
+  source manifestIds: member can carry the default-spec reason = yes
+  source rows: member can carry the default-spec reason = yes
+  source explicitById: member can carry the default-spec reason = NEVER   <== UNWITNESSABLE by a key on that reason
+
+=== C. attribution keys applied to the assertion program's output (test/m2-exit-test.test.ts) ===
+test/m2-exit-test.test.ts:258 | literal regex over output | /--no-build was passed but .* does not exist/
+test/m2-exit-test.test.ts:291 | literal regex over output | /fixture-vacuous/
+test/m2-exit-test.test.ts:296 | literal regex over output | /fixture-required-na/
+test/m2-exit-test.test.ts:395 | literal regex over output | /red-witness/
+test/m2-exit-test.test.ts:662 | literal regex over output | /[.*+?^${}()|[\]\\]/
+test/m2-exit-test.test.ts:924 | literal regex over output | /\[scope\]/
+test/m2-exit-test.test.ts:1042 | literal regex over output | /\[scope\]/
+test/m2-exit-test.test.ts:1249 | derived key            | const whyMatch = /const DEFAULT_SPEC_WHY =\s*\n\s*"([^"]+)"/.exec(readFileSync(harness, "utf8"));
+test/m2-exit-test.test.ts:1251 | derived key            | whyMatch,
+test/m2-exit-test.test.ts:1255 | derived key            | const defaultSpecReason = (whyMatch[1] as string).trim();
+test/m2-exit-test.test.ts:1359 | literal regex over output | /reported RED/
+test/m2-exit-test.test.ts:1453 | over-determination filter | const foreign = findings.filter((line) => !line.includes(defaultSpecReason));
+test/m2-exit-test.test.ts:1488 | literal regex over output | /expected to be ABSENT from this bundle/
+test/m2-exit-test.test.ts:1647 | literal regex over output | /1 gate\(s\) reported RED: suite/
+
+=== D. probes declared in the derivation-only family, per union source ===
+probe entries found: ["probe-1-rows-leg","probe-2-manifest-leg","probe-3-manifest-gate-not-applicable"]
+  source manifestIds: probe(s) naming it = ["probe-2-manifest-leg","probe-3-manifest-gate-not-applicable"]
+  source rows: probe(s) naming it = ["probe-1-rows-leg"]
+  source explicitById: probe(s) naming it = NONE   <== UNWITNESSED
+```
+
+Three things the enumeration establishes, each of which was a guess before it
+was run:
+
+1. **0 of 24.** The program has twenty-four rejection branches. Three reference
+   the reason variable. All three read it from one binding whose value is `""`
+   whenever the member is explicit, so the number of branches that can carry the
+   attribution key for an EXPLICIT member is ZERO, not "few". Branch
+   scripts/m2-exit-test.sh:536 is the one a reader is most likely to miscount: it
+   is a TERNARY and only its non-explicit arm concatenates the reason, so the
+   very branch that rejects the explicit-leg shape is the branch that cannot
+   name itself under this key.
+2. **The union's sources, BY NAME, are `manifestIds`, `rows`, `explicitById`**,
+   read out of the source rather than counted by eye. `explicitById` is the one
+   whose members can never carry the key.
+3. **Probes exist for two of the three sources.** Section D maps the declared
+   probe entries onto the sources and prints `NONE` for `explicitById`. That is
+   CR-V-1, produced mechanically instead of by reading.
+
