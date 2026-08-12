@@ -823,14 +823,151 @@ Neither is called settled until its result record has been read.
    applicable"; the harness's assertion program is what decides that, and under
    DR-0018 it accepts each of the three with an evaluated, unmet precondition.
 
-## [in progress] Running the REAL harness PR bundle end to end
+## The REAL harness, both bundles, end to end
 
-Command now running (this is the integration check: the shipped harness, the
-real repository, both changes live, no lab):
+The integration check: the shipped harness, the real repository, both changes
+live, no lab. BOTH arms, because T-009.
 
 ```
-scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD \
-  --phase claude/exit-test-harness-assertion-direction <evidence>
+$ scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD \
+    --phase claude/exit-test-harness-assertion-direction <evidence>
+HARNESS PR BUNDLE exit=0
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history)
+m2-green: scope GREEN with 2 unit(s) against scratch repo: declaration governs claude/m2-p4-scope-auditor, diff touches only src/a.ts and src/b.ts
+m2-green: citations GREEN with 1 unit(s) against scratch repo: changed delivery/plan/fixture.md cites src/target.ts:1 which resolves
+m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+m2-exit-test: OK. evidence in <evidence>
+
+$ scripts/m2-exit-test.sh --no-build --bundle main <evidence>
+HARNESS MAIN BUNDLE exit=0
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+m2-exit-test: OK. evidence in <evidence>
 ```
 
-Full capture to follow when it returns.
+### THE ORCHESTRATOR'S TEST OF WHETHER I CHANGED MORE THAN THE MECHANISM
+
+The brief's follow-up said: on `main` today all eleven manifest gates are in the
+PR table, so the derive-from-manifest design must change NOTHING on `main`, and
+if the implementation makes `main` behave differently that is a signal of scope
+creep. Two lines above settle it:
+
+- PR arm: `11 gate(s) asserted (11 from an explicit table row, 0 under the
+  default required-green); 0 asserted absent`. NOTHING defaulted.
+- Main arm: `6 gate(s) asserted (6 from an explicit table row, 0 under the
+  default required-green); 5 asserted absent`. NOTHING defaulted, and the five
+  derived absent ids are the same five the hand-written list held, as a SET
+  (`["credential-token","citations","scope","clause-map","red-witness"]` against
+  the old `["red-witness","citations","scope","credential-token","clause-map"]`,
+  which differ only in order).
+
+And the runner invocation the harness records is byte-identical to the pre-fix
+one, which is the direct evidence that the main bundle was not widened:
+
+```
+"command": "node dist/bin/tiphys.js gates run --manifest gates.manifest.json --evidence main-bundle --base main --only manifest-self-check --only suite --only coverage --only credential-scrub --only deploy --only migrations"
+```
+
+Same six ids, same order, generated from `MAIN_ONLY_GATES` instead of written
+out. Behaviour on `main` today is unchanged, measured on both arms.
+
+### PREVENTIVE, NOT CORRECTIVE, on the main arm, and why I did not just document it
+
+The brief's follow-up also recorded that the main arm's two hand-written copies
+currently AGREE (`MAIN table NOT in --only: []`), so there is no live divergence
+to repair and the work there is preventive. That matches my own measurement
+above: `--only` (6) and `absent` (5) partition the eleven-gate manifest exactly.
+It was offered as defensible to leave the duplication and document it instead.
+
+I did not, and the reason is that the hazard is not speculative, it is SCHEDULED.
+`brief-drift` is a twelfth manifest gate sitting in review at PR #105, and the
+moment it merges it lands in NEITHER copy. A comment saying "keep these two in
+sync" is the class of guard this repository has recorded failing twice (T-005,
+T-006: a rule that depends on remembering does not survive a busy session), and
+the counterfactual here is a COMMAND rather than a judgment, which
+CLAUDE.md:306 says is exactly when to make it mechanical. Deriving the
+complement costs one shell function and removes the possibility rather than
+documenting it.
+
+What I did NOT do is derive the `--only` list itself, for the measured reason in
+section 2: `clause-map` is `required` with no precondition and is still
+deliberately excluded, so no rule reproduces the six-id set, and deriving it
+would widen what a push to `main` runs.
+
+### THE EXTRACTION PHANTOM, avoided by construction
+
+The brief's follow-up warned that a lazy regex over the `--only` list picks up
+the words "is" and "to" out of prose in the surrounding comments, and that a diff
+against those phantoms would look like a finding. My extractions cannot pick
+them up: the tables are read by `JSON.parse` of the block, and the gate set is
+read from `MAIN_ONLY_GATES="..."` anchored at line start with a quoted value.
+
+This is more than luck, because a reader in the repository WAS doing it the
+scrapeable way. test/gate-registry.test.ts:406 derived the push arm by matching
+`/--only ([a-z0-9-]+)/g` over a slice of the harness text. My change removed the
+literal flags it was scraping and the test went red, which is how I found it (see
+below). Its replacement reads the single `MAIN_ONLY_GATES` declaration, which is
+both phantom-proof and strictly closer to that test's own stated intent of
+"DERIVED, NOT ASSIGNED".
+
+### THE ADJACENT DEFECT: are the per-gate `expect` strings CORRECT?
+
+The brief's follow-up explicitly did not check whether a row PRESENT carries the
+RIGHT expectation, said it is inside the mechanism's blast radius, and left the
+scope call to me. I put it IN scope and checked it, rather than excluding it.
+
+Every row of every arm, cross-checked against the manifest entry it names
+(both resolutions of the per-run scope placeholder):
+
+```
+=== pr(phase)                                        === main
+  manifest-self-check  expect=green            req=true    manifest-self-check  expect=green          req=true
+  red-witness          expect=green|not-applicable req=true suite              expect=green          req=true
+  suite                expect=green            req=true    coverage            expect=green          req=true  <== (see below)
+  scope                expect=green            req=true    credential-scrub    expect=green          req=true
+  citations            expect=green|not-applicable req=true deploy             expect=not-applicable req=false
+  coverage             expect=green            req=true  <== (see below)
+  clause-map           expect=green            req=true    migrations          expect=not-applicable req=false
+  credential-scrub     expect=green            req=true
+  deploy               expect=not-applicable   req=false
+  migrations           expect=not-applicable   req=false
+  credential-token     expect=green|not-applicable req=false
+=== pr(non-phase): identical except scope expect=green|not-applicable
+```
+
+RESULT: no defect. Every `required` flag agrees with the manifest's
+`applicability`, no row admits `red` or `error`, and every row admitting
+`not-applicable` names a gate that HAS a precondition and so can legitimately
+report it.
+
+The one row the cross-check flagged, `coverage`, is correct and deliberately
+STRICTER than its precondition permits. Its precondition is a file-exists on
+delivery/requirements/migration-table.md:1, which `git ls-files --error-unmatch`
+confirms is tracked, so it always holds; a not-applicable `coverage` would mean
+the inventory vanished, and failing on that is right. Asserting the converse
+direction would redden a correct row, so the new guard asserts one direction
+only and says so.
+
+That check is now permanent, as
+`m2-exit-expect-row-admits-only-reachable-statuses`, red-witnessed under two
+structurally different members: widening a no-precondition gate's row
+(`clause-map`) to admit not-applicable, and widening a row (`suite`) to admit
+red. Both redden; the test is green as written.
+
+### A SITE MY OWN DERIVATION MISSED, found by execution rather than by grep
+
+Recorded because a missed site is exactly what section 4 is for, and this one was
+NOT in my `git grep -ln 'summary\.json'` enumeration.
+
+test/gate-registry.test.ts:406 reads the main bundle's gate set out of the
+harness, to derive which registry entries should declare `events: [push]`. It
+does not read a bundle summary, so no search for `summary.json` could ever have
+found it; it surfaced only when the full suite went red after my change. That is
+the fourth reader of this gate set, and it is the same lesson as CLAUDE.md:206:
+a site no grep could see was found only by execution.
+
+Its fix is one line of intent-preserving change, red-witnessed: renaming
+`MAIN_ONLY_GATES` in the harness makes it fail loudly with "scripts/
+m2-exit-test.sh no longer declares MAIN_ONLY_GATES", rather than silently
+deriving an empty set. Verified: 13 tests, 13 pass with the declaration present;
+the named test red without it.
