@@ -1867,7 +1867,7 @@ test("every source spread into the derived expected set is named by this suite, 
   // catches a new source that arrives INSIDE it. A new source can equally
   // arrive as a separate write to `expectedIds` somewhere else in the program,
   // and no enumeration of that one literal would ever notice. So every
-  // statement that WRITES the binding is pinned too, by its own text.
+  // operation that WRITES the binding is pinned too.
   //
   // THE SCAN IS WHITESPACE-INSENSITIVE ON PURPOSE. A line-based version of this
   // assertion was written first and measured: a write split across two lines
