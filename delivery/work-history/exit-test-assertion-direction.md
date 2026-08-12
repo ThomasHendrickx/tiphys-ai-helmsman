@@ -2483,7 +2483,7 @@ review H-B's "two claims I was told to attack" each rest on the sha256 of
 that identity to carry forward round 1's sections 9 and 9a without re-running the
 bundles. That premise is now void. The harness sha256 moves from
 `9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138` to the value
-recorded in FR2.7, and the end-to-end runs are re-done in FR2.7 rather than
+recorded in FR2.7, and the end-to-end runs are re-done in FR2.8 rather than
 inherited.
 
 ## FR2.4 Red witness 1: each leg of the union, on BOTH arms
@@ -2644,4 +2644,94 @@ other findings would absorb them. The test now asserts
 the one collision that would silently merge the two probe families, and nothing
 more. I did not find a non-perverse edit that defeats it, and I am not claiming
 none exists.
+
+## FR2.8 The REAL harness, end to end, BECAUSE production code changed
+
+Round 1 could inherit its section 9 because the harness bytes had not moved.
+They have now, so all three end-to-end runs were redone against the modified
+file. New harness sha256:
+
+```
+$ sha256sum scripts/m2-exit-test.sh
+4b607dd9696485e5ef5e68838b99d596e532f516db2aa2012630873a14b9d452  scripts/m2-exit-test.sh
+```
+
+(was `9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138` at
+`21509d1` and `fdb3120`.)
+
+### The self-test, which is CR-FR-1's sixth call site
+
+```
+$ bash scripts/m2-exit-test.sh --self-test <evidence>
+=== fixture (a), vacuous green, assertion output (exit 1) ===
+m2-assert (self-test fixture a (a gate writing green units 0)): FAIL with 4 finding(s):
+  - [fixture-vacuous] expected status green, observed error (M2-C-2 (never green by omission): a gate reporting green with units 0 examined nothing, so this record is error; the gate reported: claims green having examined nothing (a hand-written record))
+  - [fixture-vacuous] is a REQUIRED gate but its status is error, not green
+  - 1 gate(s) reported error: fixture-vacuous
+  - 1 vacuous gate(s): fixture-vacuous
+=== fixture (b), required not-applicable, assertion output (exit 1) ===
+m2-assert (self-test fixture b (a required gate whose file-exists precondition is unmet)): FAIL with 2 finding(s):
+  - [fixture-required-na] expected status green, observed not-applicable (precondition fixture-file-must-exist evaluated and unmet: ...this-file-does-not-exist.json does not exist)
+  - [fixture-required-na] is a REQUIRED gate but its status is not-applicable, not green
+m2-exit-test: self-test OK: the assertion code REJECTED both fixtures, naming fixture-vacuous (assert exit 1) and fixture-required-na (assert exit 1).
+SELFTEST EXIT=1
+```
+
+Four findings and two findings, the same counts H-A measured at `fdb3120`. **The
+two new checks added NOTHING here**, which is the property CR-FR-1 exists to
+protect: the self-test is the falsifiability guard for the assertion code, and a
+new check that fired on its fixtures would quietly turn that guard into a witness
+for my change instead. Both fixture manifests carry a well-formed `gates` array
+of one and both expectation tables name one gate, so neither new check can fire.
+Exit 1 is the working state.
+
+### Both bundles, both arms
+
+```
+$ bash scripts/m2-exit-test.sh --no-build --bundle main --base origin/main --head HEAD <evidence>
+gates: declared 6 applicable 4 verdict 4 green 4 red 0 not-applicable 2 error 0 vacuous 0
+gates: every applicable gate is green
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+m2-exit-test: OK. evidence in <evidence>
+MAIN BUNDLE EXIT=0
+
+$ bash scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD --phase claude/exit-test-harness-assertion-direction <evidence>
+gates: declared 11 applicable 5 verdict 5 green 5 red 0 not-applicable 6 error 0 vacuous 0
+gates: required gate(s) not applicable: citations, scope, red-witness
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history)
+m2-green: scope GREEN with 2 unit(s) against scratch repo: declaration governs claude/m2-p4-scope-auditor, diff touches only src/a.ts and src/b.ts
+m2-green: citations GREEN with 1 unit(s) against scratch repo: changed delivery/plan/fixture.md cites src/target.ts:1 which resolves
+m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+m2-exit-test: OK. evidence in <evidence>
+PR BUNDLE EXIT=0
+```
+
+Both OK lines are IDENTICAL to the ones round 1 recorded at
+delivery/work-history/exit-test-assertion-direction.md:888 and
+delivery/work-history/exit-test-assertion-direction.md:895, gate for gate and
+count for count. So the harness edit changes nothing about what either real
+bundle asserts, which is the property a production change to this file most needs
+to demonstrate. The `--phase` argument on the pr arm is the branch name, exactly
+as round 1 used it: this is a non-phase branch, so `resolve_scope_expect` returns
+`green|not-applicable` and scope is legitimately N/A.
+
+**AND THE OK LINES CONTAIN THE STRONGEST ARGUMENT FOR CR-V-1 BEING A MEDIUM
+RATHER THAN BOOKKEEPING, which neither review had in front of it.** Read the
+parenthetical on both arms:
+
+| bundle | gates asserted | from an EXPLICIT table row | under the derived default |
+|---|---|---|---|
+| pr | 11 | **11** | 0 |
+| main | 6 | **6** | 0 |
+
+On the real repository today, EVERY gate either bundle asserts on enters the
+expected set through `explicitById`, the leg that was unwitnessed. The two legs
+that carried three probes between them carry, on the live configuration, nothing
+at all: the manifest and rows legs contribute members only when a gate is
+declared or reported without a table row, which is exactly the drift case that
+has not happened yet. H-B scoped the finding as "at HEAD it is redundant, because
+the pr table's 11 ids and the manifest's 11 ids are the same set", and that is
+true of the SET; it is not true of the PATH, and the path is what a probe
+witnesses. The unwitnessed leg was the one doing all the work.
 
