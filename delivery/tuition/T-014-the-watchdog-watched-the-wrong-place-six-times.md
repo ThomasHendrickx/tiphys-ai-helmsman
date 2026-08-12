@@ -313,8 +313,53 @@ The mtime beacon keeps its job, which C-2 does bear on: it is what survives a
 dead agent and leaves partial work behind. Liveness and salvage-value are
 different questions and each has its own instrument.
 
+### THE THIRD READING OF A STALE BEACON: starved, by the orchestrator itself
+
+"Dead or in a long run" is not the full disjunction either. There is a third
+state and the orchestrator CAUSED it.
+
+Measured 2026-08-12, minutes after the entry above: two agents had gone quiet
+for seventeen and twenty minutes and the orchestrator was weighing whether one
+was dead. `uptime` reported **load average 13.00 on 4 cores**, better than
+three times oversubscribed. The orchestrator was itself running a full `npm
+test` in a scratch worktree, in the background, to settle an optional question
+about an unowned finding, while two critical-path agents ran suites and gate
+bundles of their own.
+
+The agents were not stuck. **They were starved, by their own orchestrator, and
+the beacon reports starvation exactly as it reports death.** Worse, the
+starvation was invisible from the artefact this entry has spent four
+postscripts learning to watch: mtime says quiet, and quiet is quiet whatever
+the cause.
+
+Two things follow, and the second is the uncomfortable one.
+
+> **Before reading a stale beacon as trouble, check the LOAD.** `uptime` against
+> `nproc` costs nothing. A load average several times the core count means every
+> quiet beacon on the box is explained without any of them being dead.
+
+> **The orchestrator's own optional work is not free, and it competes with the
+> critical path it is supposed to be protecting.** The measurement being run
+> here was a nice-to-have on an unowned finding against `main`. It was slowing
+> a milestone's blocking fix round. It was killed, and killing it was correct.
+
+The general shape: an orchestrator that fills its waiting time with local
+computation is not idling productively, it is taxing the work it is waiting
+for. Waiting is sometimes the highest-value action available, and this project's
+standing rule against false stops does NOT mean every idle moment must be
+filled with a heavy command. Do paperwork, which is cheap; do not run suites.
+
 ### What this postscript does NOT cover
 
+- **The load was not attributed per process.** How much of the 13.00 was the
+  orchestrator's own suite and how much was the two agents was not measured;
+  killing the probe dropped it to 11.85, which suggests the orchestrator was a
+  minority of it. So this records a real effect of unknown size, not a
+  quantified one, and the agents were heavy in their own right.
+- **No threshold is proposed.** "Several times the core count" is a judgement,
+  and this file's whole thesis is that judgements do not survive. A mechanical
+  version would have the watchdog emit the load alongside the mtime, and no
+  watchdog here does that.
 - **The mtime watchdogs in this session were NOT rewritten to consult the
   harness.** They still print "CANNOT distinguish". The rule above is applied by
   the orchestrator at the moment of acting, which is a habit and therefore
