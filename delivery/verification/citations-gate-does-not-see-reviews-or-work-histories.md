@@ -10,7 +10,6 @@
   found while writing this document and is recorded below: the gate registry
   itself cannot be cited by line. See delivery/STATE.md:103 for the merge
   precondition this interacts with.
-  reason a whole class of wrong citations has been passing.
 - measured at: `origin/main` c75152b.
 
 ## The evidence
