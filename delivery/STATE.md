@@ -34,9 +34,11 @@ is wrong: verify against git and the PR list before trusting it.
   constructs is exercised against the author's MODEL of what can go wrong, and
   DV-3 sits outside that model: an ordinary manifest with an ordinary empty
   list, which no degenerate fixture happened to represent.
-- **PR #116 (the M3-P6 delta verification) IS A MERGE PRECONDITION FOR #105 AND
-  HAS NOW BEEN UPDATED ONTO `main` TWICE**, head `2af6c81`, CI in flight. The
-  first update was invalidated when #117 merged and moved `main` underneath it.
+- **PR #116 (the M3-P6 delta verification) IS MERGED**, as `9781212`, green by
+  step on `2af6c81` with step 8 success and step 9 correctly skipped. It was a
+  merge precondition for #105 and it is discharged. It had to be updated onto
+  `main` TWICE: the first update was invalidated when #117 merged and moved
+  `main` underneath it.
   **The general fact, worth pre-computing before the M3-P6 sequence: branch
   protection requires an up-to-date head, so sequential merges each invalidate
   the next PR's status and a queue of ready PRs costs ONE CI CYCLE APIECE.**
@@ -55,6 +57,31 @@ is wrong: verify against git and the PR list before trusting it.
   harness head it is TEN, the extra being a fifth dist-gated test that does not
   exist on `origin/main`. Round 3 was told it may correct the warning, after
   RE-MEASURING rather than trusting either figure.
+- **ONE M3-P6 MERGE PRECONDITION IS NOW PRE-CLEARED: `brief-drift` IS ASSERTED,
+  not merely green.** That distinction was an open question and it is the one
+  this whole harness episode is about, so it was settled mechanically rather
+  than assumed. Directly observed in run 31610473874 at head `077f339`:
+  `gates.manifest.json` on the branch carries TWELVE gate ids including
+  `brief-drift` where `main` carries eleven; the harness bundle printed
+  `declared 12`; `required gate(s) not applicable` named ONLY `citations`; and
+  the assertion printed `12 gate record(s) match section 1.4 ... zero error;
+  zero vacuous`. The standalone workflow step separately printed
+  `brief-drift: green (15 generated brief gate rows compared)`.
+  **Being precise about which half is observed and which is deduced**, because
+  this file is trusted later: the fifteen units and the green are DIRECT. That
+  it sat among the eight green INSIDE the asserted bundle is a DEDUCTION from
+  those four printed facts, since no per-gate line naming it appears in the job
+  log. The deduction holds because a required gate that was not-applicable would
+  have been named on the not-applicable line.
+- **THE GENERAL RULE THAT CAME OUT OF SETTLING IT, and it is T-009 one level
+  down.** T-009 says a green is scoped to the run that produced it. This adds:
+  **a green BUNDLE is not evidence that any PARTICULAR gate asserted anything.**
+  The workflow uploads no evidence artifact, so `summary.json` (which carries
+  per-gate `vacuous`, `applicable` and `units`) never leaves the runner, and the
+  job log is all a reviewer gets. The four printed facts above are the reading
+  procedure: manifest membership, the declared count, the required-not-applicable
+  list, and the zero-vacuous assertion. Anything less is a bundle-level green
+  being quoted as a gate-level one.
 - **STILL UNOWNED ON `main`**: the `render-agent-rules-gates.mjs` duplicate-row
   MEDIUM at delivery/verification/render-agent-rules-gates-duplicate-row.md:1,
   and the `red-witness` gate not running on `scripts/` diffs at

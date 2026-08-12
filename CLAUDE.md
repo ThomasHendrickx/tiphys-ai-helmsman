@@ -518,6 +518,48 @@ fixed one arm of "the harness assumes a run has a phase" and left the sibling
 arm twelve lines away, because it was treated as too small to open the contract
 for. PR #30 is what that exemption cost.
 
+### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
+
+One level down from the rule above, and the reading procedure is written out
+because the obvious method does not exist. **The `gates` workflow uploads no
+evidence artifact**, so `summary.json`, which is the only place carrying per-gate
+`units`, `applicable` and `vacuous`, never leaves the runner. That last word is a
+universal, so here is what settles it rather than a reader having to trust it:
+
+```
+grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits
+```
+
+Re-run it before relying on this; the day a workflow gains an upload step, the
+procedure below is superseded by just reading `summary.json`. A reviewer asking
+"did gate X actually assert something on this head" has the JOB LOG and nothing
+else, and the log prints bundle-level counts, not per-gate rows.
+
+So quoting `declared N applicable N verdict N green N` as evidence about one
+gate is a bundle-level green being passed off as a gate-level one. That is the
+same substitution T-009 names, one scope smaller.
+
+Four printed facts settle it, and all four are needed:
+
+1. the gate id is in the `gates.manifest.json` **on that branch** (the harness
+   runs `--manifest`, not `--registry`, so registry membership is not enough);
+2. the bundle's `declared` count equals that manifest's gate count;
+3. the `required gate(s) not applicable:` line does NOT name the gate (a
+   required gate that was skipped is named there, which is what makes its
+   absence informative);
+4. the assertion line reports `zero error; zero vacuous`.
+
+Worked example, `brief-drift` at head `077f339`, run 31610473840: manifest 12
+ids against `main`'s 11, `declared 12`, not-applicable named only `citations`,
+`12 gate record(s) match section 1.4 ... zero error; zero vacuous`.
+
+**Say which half is observed and which is deduced.** In that example the units
+and the green came DIRECTLY from a separate workflow step; that the gate sat
+among the green inside the ASSERTED BUNDLE is a deduction from the four facts,
+because no per-gate line names it. Both are sound. Reporting the second as
+though it were the first is how a bundle-level green becomes a gate-level claim
+in the next document that cites it.
+
 ## Branch names are load-bearing, not labels (binding)
 
 The scope auditor derives a phase id from the BRANCH NAME. Any branch matching
