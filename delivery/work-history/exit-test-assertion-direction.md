@@ -4849,3 +4849,55 @@ twice.
    sentence names the event and the head sha (CLAUDE.md:463), and the last
    commit of this round is the one describing the run, which no run can have
    observed.
+
+## FR3.17 CI on the final head: stated as measured, including a run that did not start
+
+The round-3 head is `402c534`, pushed to
+`claude/exit-test-harness-assertion-direction` at 2026-08-12T17:52:46Z. The push
+landed: `git rev-parse origin/claude/exit-test-harness-assertion-direction`
+returns `402c534bf2dda3d173074afd2aaa8cf56d86efe7`, and the GitHub API returns
+the commit.
+
+**No `gates` run was created for that head.** Polled repeatedly from 17:53 to
+18:00, by workflow and by branch and repository-wide:
+
+```
+$ list_workflow_runs gates.yml branch=claude/exit-test-harness-assertion-direction
+total: 13   newest: 31616267035 pull_request completed success 9b7752d8 2026-08-12T16:10:40Z
+$ ... status=queued      -> total_count 0
+$ ... status=in_progress -> total_count 0
+$ get_check_runs PR #109 -> total_count 0
+```
+
+The runner is NOT the problem, and that is measured rather than assumed: the
+repository-wide list shows runs created at 17:43, 17:50 and 17:57 on three other
+refs, two of them still in progress, spanning the minute of my push.
+
+```
+31625251732 gates  push          in_progress  97812122 main                              17:57:55Z
+31624674797 gates  pull_request  in_progress  6cd24449 claude/state-currency-harness-round3  17:50:56Z
+31624021278 gates  pull_request  completed success 2af6c817 claude/verify-m3-p6-round2    17:43:06Z
+```
+
+`.github/workflows/gates.yml` declares `on: pull_request` with no path filter
+and no `types` list, and pull request #109 is open, so a synchronize on this
+branch is exactly what it subscribes to. I did not determine why the event
+produced no run. I am reporting the fact and not a diagnosis.
+
+**What this means for anyone reading a green on this branch.** The newest
+completed `gates` run is `31616267035`, `pull_request`, conclusion success, head
+`9b7752d`. That is round 2's head. The delta `9b7752d..402c534` includes
+PRODUCTION CODE (`scripts/m2-exit-test.sh`, 67 lines changed) and the guard test.
+**So that green does not cover this head, and no CI run has evaluated this
+round's changes at the time of writing.** Everything asserted about this round's
+code in the sections above is local evidence: four suite arms, the local
+registry bundle in FR3.13, and the mutation matrices, all on node v26.6.0 in
+this worktree.
+
+The remaining CI obligations, neither of which a pull-request run discharges:
+
+1. A `gates` run on `402c534` or its successor, `pull_request` event, read BY
+   STEP rather than by conclusion.
+2. The post-merge `push` run on the new `main` head (CLAUDE.md:468), which is
+   the first execution of the `push` arm and belongs to whoever merges. This
+   round does not merge and does not open a pull request.
