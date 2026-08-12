@@ -1845,74 +1845,410 @@ test("every source spread into the derived expected set is named by this suite, 
   // defect this guard exists to catch. No count is pinned: this is a set
   // equality over names, which is the form CLAUDE.md:201 prescribes.
   const probed = [
-    "...explicitById.keys()",
-    "...manifestIds",
-    "...rows.map((row) => row?.id)",
+    "...manifestLeg",
+    "...rowsLeg",
+    "...tableLeg",
   ];
   assert.deepEqual(
     legs,
     probed,
     "the derived expected set draws from a set of legs that this suite does not probe " +
-      "one-for-one. probe-1-rows-leg witnesses `rows` alone and probe-4-explicit-table-leg " +
-      "witnesses `explicitById` alone; `manifestIds` has exactly ONE witness, " +
+      "one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg " +
+      "witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, " +
       "probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of " +
-      "`manifestIds` and `rows` and neither of them alone, so removing probe-2 would leave the " +
+      "`manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the " +
       "manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a " +
       "probe for it needs the attribution key of the branch that rejects its members, which is " +
       "NOT automatically the default-spec reason: that is exactly how `explicitById` stayed " +
       `unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`,
   );
 
+});
+
+test("every occurrence of the derived expected set's binding that this suite cannot prove is a read is pinned, so an unrecognised operation reddens instead of passing", () => {
   // THE SIBLING THE ELEMENT LIST CANNOT SEE. Pinning the array literal's legs
   // catches a new source that arrives INSIDE it. A new source can equally
   // arrive as a separate write to `expectedIds` somewhere else in the program,
-  // and no enumeration of that one literal would ever notice. So every
-  // operation that WRITES the binding is pinned too.
+  // and no enumeration of that one literal would ever notice.
   //
-  // THE SCAN IS WHITESPACE-INSENSITIVE ON PURPOSE. A line-based version of this
-  // assertion was written first and measured: a write split across two lines
-  // (`expectedIds` on one, `.push(...)` on the next) walked straight past it and
-  // the guard exited 0. A guard that a newline defeats is the same defect one
-  // level up, so every occurrence of the identifier is classified by the
-  // operation that FOLLOWS it, with whitespace and comments skipped.
-  const MUTATORS = ["push", "splice", "unshift", "pop", "shift", "sort", "reverse", "fill", "copyWithin"];
-  const writes: string[] = [];
-  for (const match of source.matchAll(/(^|[^.\w$])expectedIds\b/g)) {
-    let index = (match.index ?? 0) + match[0].length;
-    // skip whitespace and comments before reading the operation
+  // THE FIRST VERSION OF THIS ASSERTION HAD THE DEFECT THIS WHOLE BRANCH IS
+  // ABOUT, and it was introduced by the round that named the defect. It
+  // classified each occurrence by looking the FOLLOWING member name up in a
+  // fixed list (push, splice, unshift, ...) and its message quantified over
+  // "every operation that WRITES the binding". A delta verification wrote to the
+  // set through an index assignment, through an alias, and through
+  // Function.prototype.apply, proved each one admitted an id and flipped the
+  // program's verdict on byte-identical fixtures, and this assertion exited 0 on
+  // all three. Adding those three names to the list would have left a fourth:
+  // `expectedIds["pu" + "sh"](id)` is a write no list of names can ever contain.
+  //
+  // SO THE DEFAULT IS INVERTED. An occurrence is recorded unless this scan can
+  // PROVE it is a read, and the proof is a narrow allowlist of read forms. A
+  // spelling nobody anticipated is therefore recorded rather than skipped, which
+  // is the difference between a guard that fails closed and one that fails open.
+  // The pinned list below is deliberately NOT a list of writes: it is every
+  // occurrence not proven to be a read, and it includes occurrences that are in
+  // fact reads (an identifier passed as an ARGUMENT is indistinguishable here
+  // from one passed to something that mutates it). Over-strict is the safe
+  // direction; the previous instrument was over-permissive and that is what it
+  // cost.
+  //
+  // WHAT THIS CANNOT SEE, stated rather than left to be found: a write that
+  // never names this binding. That is not a residue this suite leaves open, it
+  // is the half the RUN-TIME instruments cover, and they are witnessed by
+  // execution in the test below rather than by reading source at all.
+  //
+  // THE SCAN IS WHITESPACE- AND COMMENT-INSENSITIVE ON PURPOSE. A line-based
+  // version was written first and measured: a write split across two lines
+  // (`expectedIds` on one, `.push(...)` on the next) walked straight past it.
+  // COMMENTS ARE MASKED, STRINGS ARE NOT. A mention of the binding in prose is
+  // not a use of it, and leaving comments in made this assertion redden on a
+  // sentence. Strings are deliberately left alone: the interior of a template
+  // literal is CODE, and masking templates to get rid of string mentions would
+  // hide `${expectedIds.push(id)}` from the scan, which is a new blind spot of
+  // exactly the kind this rewrite exists to remove. A mention inside a plain
+  // string is therefore recorded, which is the fail-closed direction.
+  const maskComments = (text: string): string => {
+    let out = "";
+    let state: "code" | "string" | "line" | "block" = "code";
+    let quote = "";
+    for (let i = 0; i < text.length; i += 1) {
+      const c = text[i] as string;
+      const next = text[i + 1];
+      if (state === "line") {
+        if (c === "\n") {
+          state = "code";
+          out += c;
+        } else {
+          out += " ";
+        }
+        continue;
+      }
+      if (state === "block") {
+        out += c === "\n" ? c : " ";
+        if (c === "*" && next === "/") {
+          out += " ";
+          i += 1;
+          state = "code";
+        }
+        continue;
+      }
+      if (state === "string") {
+        out += c;
+        if (c === "\\") {
+          out += next ?? "";
+          i += 1;
+          continue;
+        }
+        if (c === quote) state = "code";
+        continue;
+      }
+      if (c === "/" && next === "/") {
+        state = "line";
+        out += "  ";
+        i += 1;
+        continue;
+      }
+      if (c === "/" && next === "*") {
+        state = "block";
+        out += "  ";
+        i += 1;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        state = "string";
+        quote = c;
+      }
+      out += c;
+    }
+    return out;
+  };
+  const source = maskComments(readFileSync(harness, "utf8"));
+  const BINDING = "expectedIds";
+  // The ONLY forms accepted as proof of a read. Anything else is recorded.
+  //
+  // `.length` is a read ONLY when it is not being assigned to. `expectedIds.length = 0`
+  // empties the set, which is the DANGEROUS direction for this program (it
+  // asserts on fewer gates than its legs justify) and it is not a method call at
+  // all, so no list of mutator names would ever have held it. The negative
+  // lookahead is what keeps this allowlist from re-opening the hole it closes.
+  const PROVEN_READS = [
+    /^\.\s*length\b(?!\s*=[^=])/,
+    /^\.\s*filter\s*\(/,
+    /^\.\s*includes\s*\(/,
+    /^\.\s*indexOf\s*\(/,
+    /^\.\s*some\s*\(/,
+    /^\.\s*every\s*\(/,
+    /^\.\s*map\s*\(/,
+    /^\.\s*join\s*\(/,
+    /^\.\s*slice\s*\(/,
+    /^\.\s*concat\s*\(/,
+    /^\.\s*entries\s*\(/,
+    /^\.\s*keys\s*\(/,
+    /^\.\s*values\s*\(/,
+  ];
+  const occurrences: string[] = [];
+  const pattern = new RegExp(`(^|[^.\\w$])${BINDING}\\b`, "g");
+  for (const match of source.matchAll(pattern)) {
+    const at = match.index ?? 0;
+    // Iteration and spread are proven reads from what PRECEDES the identifier.
+    const before = source.slice(Math.max(0, at - 8), at + (match[0]?.length ?? 0));
+    if (new RegExp(`(\\bof|\\.\\.\\.)\\s*${BINDING}$`).test(before)) {
+      continue;
+    }
+    let index = at + (match[0] as string).length;
     for (;;) {
-      const rest = source.slice(index);
-      const ws = /^\s+/.exec(rest);
+      const ahead = source.slice(index);
+      const ws = /^\s+/.exec(ahead);
       if (ws) {
         index += ws[0].length;
         continue;
       }
-      if (rest.startsWith("//")) {
-        index += rest.indexOf("\n") + 1;
+      if (ahead.startsWith("//")) {
+        index += ahead.indexOf("\n") + 1;
         continue;
       }
-      if (rest.startsWith("/*")) {
-        index += rest.indexOf("*/") + 2;
+      if (ahead.startsWith("/*")) {
+        index += ahead.indexOf("*/") + 2;
         continue;
       }
       break;
     }
     const rest = source.slice(index);
-    const member = /^\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
-    if (member && MUTATORS.includes(member[1] as string)) {
-      writes.push(`.${member[1] as string}`);
-    } else if (/^(\+\+|--)/.test(rest) || /^=[^=]/.test(rest)) {
-      writes.push("=");
+    if (PROVEN_READS.some((form) => form.test(rest))) {
+      continue;
     }
+    // A SHORT, STABLE TOKEN rather than a slice of source text, so reformatting
+    // the pinned line does not redden this and a new OPERATION does.
+    const member = /^\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
+    occurrences.push(
+      member
+        ? `.${member[1] as string}`
+        : /^\[/.test(rest)
+          ? "[]"
+          : /^(\+\+|--)/.test(rest)
+            ? "++"
+            : /^=[^=]/.test(rest)
+              ? "="
+              : (rest.slice(0, 1) as string),
+    );
   }
   assert.deepEqual(
-    writes,
-    ["=", ".push"],
-    "the derived expected set is written by an operation this suite does not know about. A leg " +
-      "does not have to arrive inside the union's array literal: a second push, a splice or a " +
-      "reassignment adds ids that the leg enumeration above cannot see, and the probes above " +
-      `would not cover it. Derived from the harness: ${JSON.stringify(writes)}`,
+    occurrences,
+    ["=", ")"],
+    `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a ` +
+      "read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to " +
+      "JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked " +
+      "at: if it writes the set, the derivation's legs no longer justify what is asserted and the " +
+      "probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say " +
+      `in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`,
   );
+});
+
+test("a write that adds an id to the derived expected set is refused at RUN TIME, in spellings no list of names contains", () => {
+  // THE INSTRUMENT, NOT THE SPELLINGS. Every guard on this branch that has
+  // failed has failed the same way: its CONDITION recognised a syntactic subset
+  // of the class its MESSAGE quantified over. Widening the subset by the members
+  // the last reviewer built produces the next instance, and this branch has now
+  // produced three (a spread form, a type test, a member-name list).
+  //
+  // This test does not read source. It takes the assertion program AS SHIPPED,
+  // injects a write, runs it against fixtures that are byte-identical across
+  // every member, and asks the program what it asserted on. A write is then
+  // caught because of what it DOES, so how it is spelled stops mattering: the
+  // three shapes the delta verification used to defeat the source scan are here
+  // alongside two that no list of member names could ever hold.
+  //
+  // TWO REGIONS, TWO MECHANISMS, WITNESSED SEPARATELY. Outside the derivation
+  // the set is frozen, so the write throws. Inside the derivation's closure the
+  // accumulator is still extensible, and the program's own check that the set
+  // equals what its legs contributed is what catches it. Members of both
+  // families are run, and the inside-the-closure members additionally assert the
+  // message, so a freeze that silently swallowed them could not read as a pass.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const progMatch =
+      /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      progMatch,
+      "could not extract the assertion program from the harness heredoc; every assertion below " +
+        "would be about nothing, so this is a hard failure rather than a fallback",
+    );
+    const pristine = progMatch[1] as string;
+
+    const GATE_A = "fixture-control-gate-a";
+    const GATE_B = "fixture-control-gate-b";
+    const INJECTED = "fixture-id-no-leg-contributed";
+    // THE FIXTURES ARE BYTE-IDENTICAL FOR EVERY MEMBER, so the only variable is
+    // the injected write. Two manifest gates, both with green records, no table
+    // rows and nothing declared absent: the honest derived set is exactly
+    // [GATE_A, GATE_B] and the program accepts.
+    //
+    // BOTH DIRECTIONS ARE INJECTED, and the REMOVING one is the one that makes
+    // the dangerous state SILENT. A write that ADDS an unjustified id is caught
+    // loudly on the unfixed program too (the id has no record, so it is
+    // reported), and only the ATTRIBUTION of that finding distinguishes fixed
+    // from unfixed. A write that REMOVES an id leaves the unfixed program
+    // exiting 0 having asserted on fewer gates than its legs justify, which is
+    // this whole branch's subject, and it is invisible in the exit code. Both
+    // families are here because a witness that only covered the loud direction
+    // would be a witness against the absent feature rather than against the
+    // dangerous state.
+    const dir = join(root, "bundle");
+    writeBundle(dir, [{ id: GATE_A, status: "green" }, { id: GATE_B, status: "green" }]);
+    const expectPath = join(root, "expect.json");
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(expectPath, JSON.stringify({ label: "writes", gates: [], absent: [] }));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: 1, gates: [{ id: GATE_A }, { id: GATE_B }] }),
+    );
+    const runProgram = (programPath: string): RunResult =>
+      run(
+        process.execPath,
+        [programPath, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifestPath],
+        { cwd: root, env },
+      );
+
+    // POSITIVE CONTROL: the shipped program accepts these fixtures and does NOT
+    // assert on INJECTED. Without this row every rejection below could be a
+    // rejection of the lab rather than of the write.
+    const pristinePath = join(root, "m2-assert-pristine.mjs");
+    writeFileSync(pristinePath, pristine);
+    const control = runProgram(pristinePath);
+    const controlOut = control.stdout + control.stderr;
+    assert.equal(
+      control.status,
+      0,
+      `the shipped program must ACCEPT the unmutated fixtures, or every member below is a ` +
+        `rejection of the fixtures rather than of the injected write: ${controlOut}`,
+    );
+    assert.match(
+      controlOut,
+      /: OK\./,
+      `the control must reach the success line: ${controlOut}`,
+    );
+    assert.ok(
+      !controlOut.includes(INJECTED),
+      `the control already names ${INJECTED}, so the fixture does not isolate the injected ` +
+        `write: ${controlOut}`,
+    );
+    assert.ok(
+      controlOut.includes(GATE_A) && controlOut.includes(GATE_B),
+      `the control must report BOTH manifest gates as asserted, or a member that REMOVES one ` +
+        `has nothing to remove and measures nothing: ${controlOut}`,
+    );
+
+    const AFTER = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+    const INSIDE = "  return out;";
+    const ID = JSON.stringify(INJECTED);
+    const members: {
+      name: string;
+      anchor: string;
+      inject: string;
+      family: "frozen" | "closure";
+      direction: "add" | "remove";
+    }[] = [
+      // OUTSIDE THE DERIVATION, where the freeze is the mechanism. The first is
+      // the one shape the replaced member-name list DID recognise, kept so the
+      // new instrument is measured to be at least as strong as the one it
+      // replaced rather than merely different.
+      { name: "after-push", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds.push(${ID});` },
+      // ... and then the shapes it did not and could not. The first three are
+      // the delta verification's W3, W4 and W5 verbatim.
+      { name: "after-index-assignment", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds[expectedIds.length] = ${ID};` },
+      { name: "after-alias-then-push", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `const aliasOfExpected = expectedIds; aliasOfExpected.push(${ID});` },
+      { name: "after-push-apply", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `Array.prototype.push.apply(expectedIds, [${ID}]);` },
+      // The member name is COMPUTED, so it exists in no source text at all and
+      // no allowlist of names could ever contain it.
+      { name: "after-computed-member", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds["pu" + "sh"](${ID});` },
+      // The REMOVING direction: silent on the unfixed program.
+      { name: "after-pop", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "expectedIds.pop();" },
+      // Not a method call at all: a property assignment that empties the set.
+      { name: "after-length-truncation", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "expectedIds.length = 0;" },
+      { name: "after-reflect-splice", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "Reflect.apply(Array.prototype.splice, expectedIds, [0, 1]);" },
+      // INSIDE THE DERIVATION'S CLOSURE, where the accumulator is not yet frozen
+      // and the program's leg-union check has to be the mechanism instead.
+      { name: "inside-closure-push", anchor: INSIDE, family: "closure", direction: "add",
+        inject: `  out.push(${ID});` },
+      { name: "inside-closure-pop", anchor: INSIDE, family: "closure", direction: "remove",
+        inject: "  out.pop();" },
+    ];
+
+    for (const member of members) {
+      // THE MUTATOR'S OWN NEGATIVE CONTROL. An anchor that has moved or been
+      // duplicated would produce an unmutated program, which runs green and is
+      // indistinguishable from a clean result. It is a hard failure instead.
+      const anchorCount = pristine.split(member.anchor).length - 1;
+      assert.equal(
+        anchorCount,
+        1,
+        `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} ` +
+          `times in the assertion program, not once, so member ${member.name} would run an ` +
+          "unmutated program and pass while measuring nothing",
+      );
+      const mutated = pristine.replace(member.anchor, `${member.inject}\n${member.anchor}`);
+      assert.notEqual(
+        mutated,
+        pristine,
+        `member ${member.name} did not change the program, so it measures nothing`,
+      );
+      const programPath = join(root, `m2-assert-${member.name}.mjs`);
+      writeFileSync(programPath, mutated);
+      const result = runProgram(programPath);
+      const output = result.stdout + result.stderr;
+
+      assert.notEqual(
+        result.status,
+        0,
+        `${member.name} makes the derived expected set differ from what its legs contributed ` +
+          `(direction: ${member.direction}). The program must REFUSE rather than certify a ` +
+          `bundle against a set its own derivation does not justify: ${output}`,
+      );
+      assert.doesNotMatch(
+        output,
+        /: OK\./,
+        `${member.name} reached the success line, so the program certified a bundle against a ` +
+          `set that an injected write had changed: ${output}`,
+      );
+      if (member.direction === "add") {
+        // ATTRIBUTION, not merely a nonzero exit. On the unfixed program this
+        // member exits 1 as well, because the added id has no record, so the
+        // exit code alone does not tell fixed from unfixed. What does is
+        // whether the program ever ASSERTED on the id: a finding attributed to
+        // it means the id entered the set. The bracketed form is required
+        // because an uncaught throw prints the injected source line, so the
+        // bare id appears in the output either way.
+        assert.ok(
+          !output.includes(`[${INJECTED}]`),
+          `${member.name} produced a finding attributed to ${INJECTED}, which means the id ` +
+            "ENTERED the derived expected set and the program asserted on a gate no leg " +
+            `contributed: ${output}`,
+        );
+      }
+      if (member.family === "closure") {
+        assert.match(
+          output,
+          /derived expected set is NOT the union of the declared legs/,
+          `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the ` +
+            "leg-union check is the only mechanism that can catch it and it must be the one that " +
+            `names the failure: ${output}`,
+        );
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("no expectations row admits a lax status the gate it names can never legitimately produce", () => {
