@@ -1701,29 +1701,144 @@ test("every source spread into the derived expected set is named by this suite, 
   // It is deliberately NOT gated on dist/: it reads one source file, so it runs
   // under every invocation and on both CI events, which is where an unwitnessed
   // arm has bitten this repository before (CLAUDE.md:418).
+  // THE CONDITION IS THE SET OF LEGS, NOT THE SPELLING THEY HAPPEN TO HAVE.
+  // The first version of this guard read the union with
+  // /\.\.\.\s*([A-Za-z_$][\w$]*)/g, which requires a spread to be followed by a
+  // bare identifier. A delta verification added a FULLY FUNCTIONAL fourth leg
+  // spelled `...(summary.extraGates ?? [])`, in this file's own idiom, proved a
+  // gate id entered the expected set through it and flipped the verdict, and
+  // this guard still exited 0. So the universal the registered behaviour states
+  // was false as written: the condition recognised one spelling of the class it
+  // quantified over. It now enumerates the array literal's TOP-LEVEL ELEMENTS
+  // with a depth-aware scan and compares their source text, so a leg is seen
+  // whatever it is spelled like, including one that is not a spread at all.
   const source = readFileSync(harness, "utf8");
-  const union = /const expectedIds = \[\];\n\s*for \(const id of \[([\s\S]*?)\]\)/.exec(source);
-  assert.ok(
-    union,
-    "could not locate the derived expected set's union statement in the harness; this guard " +
-      "would be vacuous without it, so it is a hard failure rather than a fallback",
+  const ANCHOR = "for (const id of [";
+  const anchorCount = source.split(ANCHOR).length - 1;
+  assert.equal(
+    anchorCount,
+    1,
+    `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times ` +
+      "in the harness, not once; this guard would be reading the wrong statement or none at all, " +
+      "so it is a hard failure rather than a fallback",
   );
-  const sources = [...(union[1] as string).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)]
-    .map((m) => m[1] as string)
+  // Split the array literal's top-level elements. Tracks (), [], {} depth and
+  // is string, template and comment aware, so a comma inside a nested call, a
+  // string or a comment cannot split an element and a bracket inside one cannot
+  // end the literal.
+  const splitTopLevel = (text: string, openIndex: number): string[] | null => {
+    const out: string[] = [];
+    let depth = 0;
+    let start = openIndex + 1;
+    let state: "code" | "string" | "line" | "block" = "code";
+    let quote = "";
+    for (let i = openIndex; i < text.length; i += 1) {
+      const c = text[i] as string;
+      const next = text[i + 1];
+      if (state === "line") {
+        if (c === "\n") state = "code";
+        continue;
+      }
+      if (state === "block") {
+        if (c === "*" && next === "/") {
+          state = "code";
+          i += 1;
+        }
+        continue;
+      }
+      if (state === "string") {
+        if (c === "\\") {
+          i += 1;
+          continue;
+        }
+        if (c === quote) state = "code";
+        continue;
+      }
+      if (c === "/" && next === "/") {
+        state = "line";
+        i += 1;
+        continue;
+      }
+      if (c === "/" && next === "*") {
+        state = "block";
+        i += 1;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        state = "string";
+        quote = c;
+        continue;
+      }
+      if (c === "(" || c === "[" || c === "{") {
+        depth += 1;
+        continue;
+      }
+      if (c === ")" || c === "]" || c === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          out.push(text.slice(start, i));
+          return out;
+        }
+        continue;
+      }
+      if (c === "," && depth === 1) {
+        out.push(text.slice(start, i));
+        start = i + 1;
+      }
+    }
+    return null;
+  };
+  const openIndex = source.indexOf(ANCHOR) + ANCHOR.length - 1;
+  const raw = splitTopLevel(source, openIndex);
+  assert.ok(
+    raw,
+    "the union's array literal is not balanced, so its legs cannot be enumerated and every " +
+      "assertion below would be about nothing",
+  );
+  const legs = (raw as string[])
+    .map((element) => element.replace(/\s+/g, " ").trim())
+    .filter((element) => element !== "")
     .sort();
-  // One entry per source, naming the probe that witnesses it. A source added
-  // here without a probe added above is the defect this guard exists to catch.
-  const probed = ["explicitById", "manifestIds", "rows"];
+  // One entry per LEG, named by its source text rather than by an identifier a
+  // regex happened to find. A leg added here without a probe added above is the
+  // defect this guard exists to catch. No count is pinned: this is a set
+  // equality over names, which is the form CLAUDE.md:201 prescribes.
+  const probed = [
+    "...explicitById.keys()",
+    "...manifestIds",
+    "...rows.map((row) => row?.id)",
+  ];
   assert.deepEqual(
-    sources,
+    legs,
     probed,
-    "the derived expected set draws from a set of sources that this suite does not probe " +
-      "one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and " +
-      "probe-3-manifest-gate-not-applicable witness `manifestIds`, probe-4-explicit-table-leg " +
-      "witnesses `explicitById`. A source ADDED to the union needs its own probe, and a probe " +
-      "for it needs the attribution key of the branch that rejects its members, which is NOT " +
-      "automatically the default-spec reason: that is exactly how `explicitById` stayed " +
-      `unwitnessed. Derived from the harness: ${JSON.stringify(sources)}`,
+    "the derived expected set draws from a set of legs that this suite does not probe " +
+      "one-for-one. probe-1-rows-leg witnesses `rows` alone and probe-4-explicit-table-leg " +
+      "witnesses `explicitById` alone; `manifestIds` has exactly ONE witness, " +
+      "probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of " +
+      "`manifestIds` and `rows` and neither of them alone, so removing probe-2 would leave the " +
+      "manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a " +
+      "probe for it needs the attribution key of the branch that rejects its members, which is " +
+      "NOT automatically the default-spec reason: that is exactly how `explicitById` stayed " +
+      `unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`,
+  );
+
+  // THE SIBLING THE ELEMENT LIST CANNOT SEE. Pinning the array literal's legs
+  // catches a new source that arrives INSIDE it. A new source can equally
+  // arrive as a separate write to `expectedIds` somewhere else in the program,
+  // and no enumeration of that one literal would ever notice. So every
+  // statement that WRITES the binding is pinned too, by its own text.
+  const writes = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /(^|[^.\w$])expectedIds\s*(=[^=]|\.push\(|\.splice\(|\.unshift\(|\.pop\(|\.shift\()/.test(line))
+    .sort();
+  assert.deepEqual(
+    writes,
+    ["const expectedIds = [];", "expectedIds.push(id);"],
+    "the derived expected set is written by a statement this suite does not know about. A leg " +
+      "does not have to arrive inside the union's array literal: a second push, a splice or a " +
+      "reassignment adds ids that the leg enumeration above cannot see, and the probes above " +
+      `would not cover it. Derived from the harness: ${JSON.stringify(writes)}`,
   );
 });
 

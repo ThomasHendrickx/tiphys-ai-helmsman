@@ -4133,3 +4133,113 @@ gates: 6 absent: []
 Both files were restored from saved pristine bytes, never with `git checkout --`
 (CLAUDE.md:659), and `git status --porcelain` reported `gates.manifest.json`
 unmodified afterwards.
+
+## FR3.5 The fix to the fourth-leg guard (DV-4), and its mutation matrix
+
+Two changes, and the second is the one that makes this a mechanism fix rather
+than an instance fix.
+
+1. The guard stops matching spread SPELLINGS. It splits the union's array
+   literal into TOP-LEVEL ELEMENTS with a depth-aware scan that is string,
+   template and comment aware, and compares their source text against a pinned
+   list of three. A leg is then seen whatever it is spelled like, including one
+   that is not a spread at all. test/m2-exit-test.test.ts:1704 onward.
+2. **A leg does not have to arrive inside that array literal.** It can arrive
+   as a separate write to `expectedIds` twenty lines further down, and no
+   enumeration of the literal would ever notice. So every statement that WRITES
+   the binding is pinned too, by its own text:
+   test/m2-exit-test.test.ts:1817. This is the member of the class that the
+   element-list fix alone does not cover, and it was not in the delta
+   verification; it came out of asking what the class is.
+
+Neither assertion pins a count. Both are set equalities over names, which is the
+form CLAUDE.md:201 prescribes.
+
+### FR3.5a The matrix: ten harness variants, OLD guard against NEW
+
+Each variant is an anchored SINGLE replacement of the union statement (or of the
+line after it), applied to the harness IN PLACE and restored from saved pristine
+bytes afterwards. Nothing was copied out of its tree and no `git checkout --`
+was used anywhere.
+
+Negative control FIRST, so a silently missing anchor cannot read as a clean
+result: the mutator aborts with exit 2 on an anchor that does not occur.
+
+FULL OUTPUT:
+
+```
+=== NEGATIVE CONTROL for the mutator itself ===
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur anywhere at all
+mutator EXIT=2
+
+PRISTINE-control             guard=OLD  EXIT=0
+PRISTINE-control             guard=NEW  EXIT=0
+ADD-paren-expression         guard=OLD  EXIT=0
+ADD-paren-expression         guard=NEW  EXIT=1
+ADD-array-literal            guard=OLD  EXIT=0
+ADD-array-literal            guard=NEW  EXIT=1
+ADD-bare-identifier          guard=OLD  EXIT=1
+ADD-bare-identifier          guard=NEW  EXIT=1
+ADD-non-spread-element       guard=OLD  EXIT=0
+ADD-non-spread-element       guard=NEW  EXIT=1
+REMOVE-manifest-leg          guard=OLD  EXIT=1
+REMOVE-manifest-leg          guard=NEW  EXIT=1
+REMOVE-rows-leg              guard=OLD  EXIT=1
+REMOVE-rows-leg              guard=NEW  EXIT=1
+REMOVE-explicit-leg          guard=OLD  EXIT=1
+REMOVE-explicit-leg          guard=NEW  EXIT=1
+WRITE-extra-push             guard=OLD  EXIT=0
+WRITE-extra-push             guard=NEW  EXIT=1
+WRITE-splice                 guard=OLD  EXIT=0
+WRITE-splice                 guard=NEW  EXIT=1
+
+restored, sha256 of both files:
+5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh
+1d51e5cd7361cf12b6daa26b5be2d7b0ff0ed9660224e7dd028efaed5db241db  test/m2-exit-test.test.ts
+```
+
+| variant | OLD guard | NEW guard |
+|---|---|---|
+| PRISTINE control | 0 | **0** (still green) |
+| ADD `...(summary.extraGates ?? [])` | **0 BLIND** | 1 |
+| ADD `...["fixture-extra-leg"]` | **0 BLIND** | 1 |
+| ADD `...extraLeg` | 1 | 1 |
+| ADD a non-spread element `"fixture-extra-leg"` | **0 BLIND** | 1 |
+| REMOVE the manifest leg | 1 | 1 |
+| REMOVE the rows leg | 1 | 1 |
+| REMOVE the explicit leg | 1 | 1 |
+| ADD `expectedIds.push(...)` after the loop | **0 BLIND** | 1 |
+| ADD `expectedIds.splice(...)` after the loop | **0 BLIND** | 1 |
+
+FIVE structurally different members were invisible to the old guard: a
+parenthesised expression, an array literal, a non-spread element, an extra push
+and a splice. The last two are invisible to the element-list fix as well and are
+what the second assertion exists for. The green control holds and all three
+REMOVALS still redden, so nothing that worked was traded away.
+
+### FR3.5b The added leg is FUNCTIONAL, not a syntactic decoration
+
+A guard that reddens on a decoration proves nothing. So one of the members the
+old guard could not see is shown to change the program's verdict, on fixtures
+that are otherwise byte-identical between the two runs:
+
+```
+=== Is a leg the OLD guard could not see actually FUNCTIONAL? ===
+--- CONTROL: pristine harness, same fixtures
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; derived from 11 manifest id(s), 11 bundle row(s) and 11 table row(s); 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+mutated scripts/m2-exit-test.sh: 1 occurrence replaced
+--- MUTATED (array-literal leg added), same fixtures
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-leg-the-old-guard-could-not-see] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+restored: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+Control exits 0; with the leg added, the id
+`fixture-leg-the-old-guard-could-not-see` enters the derived expected set, is
+asserted under the strict default, and the verdict flips to EXIT=1. That is a
+real leg, and the old guard exited 0 on the harness carrying it.
