@@ -609,7 +609,90 @@ m2-pr-named-alternates-admit-red               arm=pr    PRE-FIX exit=1   POST-F
    pre : m2-assert (...): FAIL with 1 finding(s):   - [coverage] is a REQUIRED gate but its status is red, not green
 ```
 
-## 7. Suite
+### The committed guards, and the mutation test that found a hole in them
+
+The lab above is evidence, not a guard. The permanent guards are two tests in
+test/m2-exit-test.test.ts:1182, and they were mutation-tested rather than
+trusted.
+
+**The first defang was WORTHLESS and is recorded as such.** Restoring the whole
+pre-fix harness reddened both guards, but with
+`m2-exit-test: unknown option "--print-expect"`: red against the ABSENT FEATURE,
+not against the DANGEROUS STATE, which is exactly what the stronger red-witness
+form at CLAUDE.md:289 forbids. It proved nothing. The real defangs are surgical:
+each removes ONE mechanism and leaves the rest, including the hook.
+
+**The second round found a real hole.** With the derived union collapsed back to
+the hand-written table alone (DEFANG A, the pre-fix direction), BOTH guards
+stayed GREEN:
+
+```
+=================== DEFANG A: expected set = the hand-written table only (the pre-fix direction)
+(*) the main bundle's absent list is DERIVED from the manifest ... (45.237052ms)
+(*) a RED gate is rejected on BOTH bundles under three structurally different shapes ... (1005.986057ms)
+```
+
+(The two `(*)` marks are PASS marks; see the transliteration note at the end.)
+
+The cause is the one this repository keeps paying for, one level up from where I
+was looking. Members 1, 2 and 3 all carry a RED row, so the global zero-red
+backstop satisfied every one of them on its own, and the DERIVATION was guarded
+by nothing. Two mechanisms, one witness between them.
+
+The fix is members 4 and 5, which carry NO red row and are therefore only ever
+rejected by the derivation: a manifest gate with no table row reporting
+not-applicable, and one with no record at all. Each asserts that the rejection
+did NOT come from zero-red (`assert.doesNotMatch(output, /reported RED/)`), so
+the isolation cannot silently lapse again.
+
+With those added, all three surgical defangs redden, each through a DIFFERENT
+assertion, which is what makes the two mechanisms independently guarded:
+
+| defang | what it removes | result | which assertion reddened |
+|---|---|---|---|
+| A | the derived union collapses to the explicit table | RED | member 4: "a manifest gate with no table row reporting not-applicable must be REJECTED" |
+| B | the global zero-red check never fires | RED | member 3: "a RED gate must be rejected even when the table names it, marks it required:false and lists red among its permitted alternates" |
+| C | the main arm's absent list is hand-written again | RED | both guards: "the derived absent list is [...]. A gate in neither list is asserted by nothing on this arm" |
+
+Captured, defang A after the fix (contrast with the green above):
+
+```
+=================== DEFANG A: expected set collapses to the hand-written table only (the pre-fix direction)
+(x) a RED gate is rejected on BOTH bundles under three structurally different shapes ... (816.8135ms)
+  AssertionError [ERR_ASSERTION]: [pr] a manifest gate with no table row reporting not-applicable must be REJECTED: it is asserted under the default required-green, and accepting it is how a silently skipped gate reads as legitimately N/A: m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+```
+
+Defang procedure note: `git checkout --` was NOT used at any point, per
+CLAUDE.md:627. Each defang is a plain write over the file and each restore is
+`git show HEAD:scripts/m2-exit-test.sh > scripts/m2-exit-test.sh`, with
+`git status --porcelain` empty afterwards each time.
+
+### Consequences of the fix that fell on EXISTING tests
+
+Three tests that already existed went red on the first run of the change, and
+the cause is a real coupling rather than an accident:
+
+- test/m2-exit-test.test.ts:332, test/m2-exit-test.test.ts:906 and
+  test/m2-exit-test.test.ts:1020 handed the assertion program the repository's
+  REAL eleven-gate `gates.manifest.json` beside a bundle carrying ONE row. That
+  was only ever coherent because the manifest argument was INERT: it was read
+  solely to recompute `summary.manifestSha256`, and those crafted summaries set
+  no such field. Making the manifest load-bearing turns the pairing into ten
+  genuinely missing records.
+
+  Each now declares a manifest describing the bundle it actually built, via a
+  new `manifestFor` helper. This is the coupling CLAUDE.md:214 names: work that
+  extends a registry may have to edit the test that over-asserts on it.
+
+## 7. The registry
+
+Two behaviours registered in `test/behaviors.json`, BY NAME, appended, with no
+count anywhere asserting over the registry (CLAUDE.md:201):
+
+- `m2-exit-main-absent-list-derived-from-manifest`
+- `m2-exit-red-gate-rejected-on-both-bundles`
+
+## 8. Suite
 
 Baseline before any change, at `3ff2023` with the fix branch's beacon commit
 only: node v26.6.0 (the fetched floor toolchain), `dist/` BUILT, invocation
