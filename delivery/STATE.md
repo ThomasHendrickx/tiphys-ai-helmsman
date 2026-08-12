@@ -38,6 +38,16 @@ is wrong: verify against git and the PR list before trusting it.
   M1 exit test and its falsifiability guard success. This bullet was first
   written while steps 11 and 12 were still running and said so; it is now
   updated from the finished run rather than from the earlier partial one.
+- **M3-P8 HAD THE M3-P5 GAP FOR REAL, AND IT IS ALREADY FIXED.**
+  delivery/plan/m3-p8-declaration-gap.md:1. Criterion 4c requires a verbatim
+  capture checked in as `test/fixtures/mechanisms-interim.md`, and criterion 4b
+  needs a fixture manifest, while `test/fixtures/` was absent from
+  delivery/plan/phase-declarations/m3-p8.json:1. Same shape as M3-P5's criterion
+  6, caught BEFORE dispatch this time instead of at an implementer's handback.
+  The declaration is amended in the same change, so nothing is left open and no
+  mid-phase merge-base amendment is needed. The four other M3 phases with no
+  `test/fixtures/` entry were checked and are NOT gaps: their plan sections
+  contain no occurrence of the word "fixture".
 - **M3-P7 IS PRE-READ TOO, AND ITS ONE DANGEROUS CANDIDATE IS REFUTED.**
   delivery/plan/m3-p7-dispatch-read.md:1. M3-P7's criterion 3c needs a gate id
   RENAMED and a gate entry DELETED as its two witnesses, against
