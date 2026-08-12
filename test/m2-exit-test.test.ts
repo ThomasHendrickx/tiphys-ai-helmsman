@@ -1558,19 +1558,25 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
   }
 });
 
-test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in two structurally different degenerate shapes", () => {
+test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in structurally different degenerate shapes", () => {
   // The program rejects any gate that reports green having examined zero units
   // as vacuous (M2-C-2). It exempted ITSELF: it could print "0 gate(s) asserted"
   // and exit 0, which is the same shape as the defect the whole branch is about,
-  // one level up. Both routes into that state degrade SILENTLY rather than
-  // erroring, which is why neither showed up as a failure: a manifest that
-  // parses but whose `gates` key is not an array makes the manifest leg empty,
-  // and an expectations document with no gates makes the explicit leg empty.
+  // one level up. Every route into that state degrades SILENTLY rather than
+  // erroring, which is why none of them showed up as a failure.
   //
-  // Two members, and they are structurally different rather than two spellings
-  // of one thing: member 1 has a NON-empty expected set and trips only the
-  // manifest-shape check, member 2 has a well-formed empty manifest and trips
-  // only the empty-expected-set check. Each check is therefore witnessed alone.
+  // THE FIRST VERSION OF THIS TEST HAD TWO MEMBERS AND THE CHECK IT GUARDED
+  // TESTED A TYPE. `!Array.isArray(gates)` is one syntactic route into an empty
+  // manifest leg out of several, while the message it prints quantifies over
+  // ALL of them ("a manifest that declares no gates cannot certify a bundle").
+  // A delta verification measured a well-formed `gates: []` CERTIFYING a bundle
+  // in which a manifest-declared gate produced no record, on both arms. The
+  // check now tests the leg's CONTRIBUTION, so the members below are three
+  // shapes of one condition rather than three conditions, and a fourth shape
+  // nobody has thought of is covered by the same line.
+  //
+  // The title deliberately pins no count: a shape added later must not have to
+  // edit a number, which is the same reason CLAUDE.md:201 gives for registries.
   const root = scratch();
   const env = cleanEnv(root);
   try {
@@ -1623,64 +1629,99 @@ test("the assertion program applies M2-C-2 to ITSELF and refuses to certify a bu
       `a well-formed manifest and a green bundle must be ACCEPTED: ${ok.stdout}\n${ok.stderr}`,
     );
 
-    // MEMBER 1: the manifest parses and its `gates` key is an OBJECT, not an
-    // array. The expected set is NOT empty (the table names the gate), so the
-    // empty-set check cannot fire and the manifest-shape check is alone.
-    const m1Dir = join(root, "manifest-not-an-array");
-    writeBundle(m1Dir, [{ id: GATE, status: "green" }]);
-    const m1 = runAssert(
-      m1Dir,
-      { label: "m1", gates: [{ id: GATE, expect: "green", required: true }], absent: [] },
-      { version: 1, gates: {} },
-      "manifest-not-an-array",
-    );
-    assert.notEqual(
-      m1.status,
-      0,
-      "a manifest whose `gates` key is not an array silently empties the manifest leg of the " +
-        `derived expected set, and must be REJECTED rather than read as a manifest declaring ` +
-        `nothing: ${m1.stdout}\n${m1.stderr}`,
-    );
-    assert.match(
-      m1.stdout + m1.stderr,
-      /"gates" key is not an array/,
-      "member 1 was not rejected by the manifest-shape check, which is the only check it exercises",
-    );
-    assert.doesNotMatch(
-      m1.stdout + m1.stderr,
-      /derived expected set is EMPTY/,
-      "member 1 is meant to isolate the manifest-shape check; if the empty-set check also fired, " +
-        "the two are not separately witnessed here",
-    );
+    // MEMBERS 1 to 3: three STRUCTURALLY DIFFERENT manifests that all empty the
+    // manifest leg. Each keeps the expected set NON-empty (the table names the
+    // gate), so the empty-set check cannot fire and the manifest-leg check is
+    // alone in every one of them. Member 1 is the shape a type test catches;
+    // members 2 and 3 are the shapes it does not, and member 3 is not even
+    // distinguishable from a healthy manifest by any test of type or length.
+    const emptyLegMembers: { name: string; manifest: unknown; names: RegExp }[] = [
+      {
+        name: "manifest-gates-not-an-array",
+        manifest: { version: 1, gates: {} },
+        names: /"gates" key is not an array/,
+      },
+      {
+        name: "manifest-gates-empty-array",
+        manifest: { version: 1, gates: [] },
+        names: /"gates" key is an empty array/,
+      },
+      {
+        name: "manifest-entries-without-usable-ids",
+        manifest: { version: 1, gates: [{ name: GATE }, { id: "" }, { id: 7 }] },
+        names: /array of 3 entries and NONE carries a non-empty string id/,
+      },
+    ];
+    for (const member of emptyLegMembers) {
+      const dir = join(root, member.name);
+      writeBundle(dir, [{ id: GATE, status: "green" }]);
+      const result = runAssert(
+        dir,
+        { label: member.name, gates: [{ id: GATE, expect: "green", required: true }], absent: [] },
+        member.manifest,
+        member.name,
+      );
+      const output = result.stdout + result.stderr;
+      assert.notEqual(
+        result.status,
+        0,
+        `${member.name} empties the manifest leg of the derived expected set, so a gate that is ` +
+          "DECLARED but did not run becomes invisible, and it must be REJECTED rather than read " +
+          `as a manifest declaring nothing: ${output}`,
+      );
+      assert.match(
+        output,
+        /manifest leg of the derived expected set is EMPTY/,
+        `${member.name} was not rejected by the manifest-leg check, which is the only check it ` +
+          `exercises: ${output}`,
+      );
+      assert.match(
+        output,
+        member.names,
+        `${member.name} was rejected without the message naming the shape observed, so a reader ` +
+          `cannot tell which degenerate input arrived: ${output}`,
+      );
+      assert.doesNotMatch(
+        output,
+        /derived expected set is EMPTY, so this run would certify/,
+        `${member.name} is meant to isolate the manifest-leg check; if the empty-set check also ` +
+          "fired, the two are not separately witnessed here",
+      );
+    }
 
-    // MEMBER 2: a well-formed manifest declaring no gates, an expectations
-    // document naming none, and an empty bundle. The manifest-shape check
-    // cannot fire; the expected set is empty and nothing at all is asserted.
-    const m2Dir = join(root, "zero-gates-asserted");
-    writeBundle(m2Dir, []);
-    const m2 = runAssert(
-      m2Dir,
-      { label: "m2", gates: [], absent: [] },
-      { version: 1, gates: [] },
+    // MEMBER 4: the aggregate check, witnessed ALONE. Every leg CONTRIBUTES
+    // here (the manifest declares a gate, so the manifest-leg check is silent)
+    // and the expected set is still empty, because the table declares the only
+    // contributed id absent from this bundle. That is the state in which
+    // nothing at all is asserted while every leg looks healthy, and it is the
+    // only remaining route to it.
+    const zeroDir = join(root, "zero-gates-asserted");
+    writeBundle(zeroDir, []);
+    const zero = runAssert(
+      zeroDir,
+      { label: "zero", gates: [], absent: [GATE] },
+      { version: 1, gates: [{ id: GATE }] },
       "zero-gates-asserted",
     );
+    const zeroOut = zero.stdout + zero.stderr;
     assert.notEqual(
-      m2.status,
+      zero.status,
       0,
       "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle " +
-        `having examined nothing, which is exactly what M2-C-2 forbids: ${m2.stdout}\n${m2.stderr}`,
+        `having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`,
     );
     assert.match(
-      m2.stdout + m2.stderr,
-      /derived expected set is EMPTY/,
-      "member 2 was not rejected by the empty-expected-set check, which is the only check it " +
-        "exercises",
+      zeroOut,
+      /derived expected set is EMPTY, so this run would certify/,
+      `member 4 was not rejected by the empty-expected-set check, which is the only check it ` +
+        `exercises: ${zeroOut}`,
     );
     assert.doesNotMatch(
-      m2.stdout + m2.stderr,
-      /"gates" key is not an array/,
-      "member 2's manifest IS a well-formed array, so the manifest-shape check must not fire; " +
-        "if it does, the two checks are not separately witnessed here",
+      zeroOut,
+      /manifest leg of the derived expected set is EMPTY/,
+      "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, " +
+        "the two checks are not separately witnessed here and the aggregate check has no witness " +
+        "of its own left",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -1701,30 +1742,756 @@ test("every source spread into the derived expected set is named by this suite, 
   // It is deliberately NOT gated on dist/: it reads one source file, so it runs
   // under every invocation and on both CI events, which is where an unwitnessed
   // arm has bitten this repository before (CLAUDE.md:418).
+  // THE CONDITION IS THE SET OF LEGS, NOT THE SPELLING THEY HAPPEN TO HAVE.
+  // The first version of this guard read the union with
+  // /\.\.\.\s*([A-Za-z_$][\w$]*)/g, which requires a spread to be followed by a
+  // bare identifier. A delta verification added a FULLY FUNCTIONAL fourth leg
+  // spelled `...(summary.extraGates ?? [])`, in this file's own idiom, proved a
+  // gate id entered the expected set through it and flipped the verdict, and
+  // this guard still exited 0. So the universal the registered behaviour states
+  // was false as written: the condition recognised one spelling of the class it
+  // quantified over. It now enumerates the array literal's TOP-LEVEL ELEMENTS
+  // with a depth-aware scan and compares their source text, so a leg is seen
+  // whatever it is spelled like, including one that is not a spread at all.
   const source = readFileSync(harness, "utf8");
-  const union = /const expectedIds = \[\];\n\s*for \(const id of \[([\s\S]*?)\]\)/.exec(source);
+  const ANCHOR = "for (const id of [";
+  const anchorCount = source.split(ANCHOR).length - 1;
+  assert.equal(
+    anchorCount,
+    1,
+    `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times ` +
+      "in the harness, not once; this guard would be reading the wrong statement or none at all, " +
+      "so it is a hard failure rather than a fallback",
+  );
+  // Split the array literal's top-level elements. Tracks (), [], {} depth and
+  // is string, template and comment aware, so a comma inside a nested call, a
+  // string or a comment cannot split an element and a bracket inside one cannot
+  // end the literal.
+  const splitTopLevel = (text: string, openIndex: number): string[] | null => {
+    const out: string[] = [];
+    let depth = 0;
+    let start = openIndex + 1;
+    let state: "code" | "string" | "line" | "block" = "code";
+    let quote = "";
+    for (let i = openIndex; i < text.length; i += 1) {
+      const c = text[i] as string;
+      const next = text[i + 1];
+      if (state === "line") {
+        if (c === "\n") state = "code";
+        continue;
+      }
+      if (state === "block") {
+        if (c === "*" && next === "/") {
+          state = "code";
+          i += 1;
+        }
+        continue;
+      }
+      if (state === "string") {
+        if (c === "\\") {
+          i += 1;
+          continue;
+        }
+        if (c === quote) state = "code";
+        continue;
+      }
+      if (c === "/" && next === "/") {
+        state = "line";
+        i += 1;
+        continue;
+      }
+      if (c === "/" && next === "*") {
+        state = "block";
+        i += 1;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        state = "string";
+        quote = c;
+        continue;
+      }
+      if (c === "(" || c === "[" || c === "{") {
+        depth += 1;
+        continue;
+      }
+      if (c === ")" || c === "]" || c === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          out.push(text.slice(start, i));
+          return out;
+        }
+        continue;
+      }
+      if (c === "," && depth === 1) {
+        out.push(text.slice(start, i));
+        start = i + 1;
+      }
+    }
+    return null;
+  };
+  const openIndex = source.indexOf(ANCHOR) + ANCHOR.length - 1;
+  const raw = splitTopLevel(source, openIndex);
   assert.ok(
-    union,
-    "could not locate the derived expected set's union statement in the harness; this guard " +
-      "would be vacuous without it, so it is a hard failure rather than a fallback",
+    raw,
+    "the union's array literal is not balanced, so its legs cannot be enumerated and every " +
+      "assertion below would be about nothing",
   );
-  const sources = [...(union[1] as string).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)]
-    .map((m) => m[1] as string)
+  const legs = (raw as string[])
+    .map((element) => element.replace(/\s+/g, " ").trim())
+    .filter((element) => element !== "")
     .sort();
-  // One entry per source, naming the probe that witnesses it. A source added
-  // here without a probe added above is the defect this guard exists to catch.
-  const probed = ["explicitById", "manifestIds", "rows"];
+  // One entry per LEG, named by its source text rather than by an identifier a
+  // regex happened to find. A leg added here without a probe added above is the
+  // defect this guard exists to catch. No count is pinned: this is a set
+  // equality over names, which is the form CLAUDE.md:201 prescribes.
+  const probed = [
+    "...manifestLeg",
+    "...rowsLeg",
+    "...tableLeg",
+  ];
   assert.deepEqual(
-    sources,
+    legs,
     probed,
-    "the derived expected set draws from a set of sources that this suite does not probe " +
-      "one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and " +
-      "probe-3-manifest-gate-not-applicable witness `manifestIds`, probe-4-explicit-table-leg " +
-      "witnesses `explicitById`. A source ADDED to the union needs its own probe, and a probe " +
-      "for it needs the attribution key of the branch that rejects its members, which is NOT " +
-      "automatically the default-spec reason: that is exactly how `explicitById` stayed " +
-      `unwitnessed. Derived from the harness: ${JSON.stringify(sources)}`,
+    "the derived expected set draws from a set of legs that this suite does not probe " +
+      "one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg " +
+      "witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, " +
+      "probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of " +
+      "`manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the " +
+      "manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a " +
+      "probe for it needs the attribution key of the branch that rejects its members, which is " +
+      "NOT automatically the default-spec reason: that is exactly how `explicitById` stayed " +
+      `unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`,
   );
+
+});
+
+test("every occurrence of the derived expected set's binding that this suite cannot prove is a read is pinned, so an unrecognised operation reddens instead of passing", () => {
+  // THE SIBLING THE ELEMENT LIST CANNOT SEE. Pinning the array literal's legs
+  // catches a new source that arrives INSIDE it. A new source can equally
+  // arrive as a separate write to `expectedIds` somewhere else in the program,
+  // and no enumeration of that one literal would ever notice.
+  //
+  // THE FIRST VERSION OF THIS ASSERTION HAD THE DEFECT THIS WHOLE BRANCH IS
+  // ABOUT, and it was introduced by the round that named the defect. It
+  // classified each occurrence by looking the FOLLOWING member name up in a
+  // fixed list (push, splice, unshift, ...) and its message quantified over
+  // "every operation that WRITES the binding". A delta verification wrote to the
+  // set through an index assignment, through an alias, and through
+  // Function.prototype.apply, proved each one admitted an id and flipped the
+  // program's verdict on byte-identical fixtures, and this assertion exited 0 on
+  // all three. Adding those three names to the list would have left a fourth:
+  // `expectedIds["pu" + "sh"](id)` is a write no list of names can ever contain.
+  //
+  // SO THE DEFAULT IS INVERTED. An occurrence is recorded unless this scan can
+  // PROVE it is a read, and the proof is a narrow allowlist of read forms. A
+  // spelling nobody anticipated is therefore recorded rather than skipped, which
+  // is the difference between a guard that fails closed and one that fails open.
+  // The pinned list below is deliberately NOT a list of writes: it is every
+  // occurrence not proven to be a read, and it includes occurrences that are in
+  // fact reads (an identifier passed as an ARGUMENT is indistinguishable here
+  // from one passed to something that mutates it). Over-strict is the safe
+  // direction; the previous instrument was over-permissive and that is what it
+  // cost.
+  //
+  // WHAT THIS CANNOT SEE, stated rather than left to be found: a write that
+  // never names this binding. That is not a residue this suite leaves open, it
+  // is the half the RUN-TIME instruments cover, and they are witnessed by
+  // execution in the test below rather than by reading source at all.
+  //
+  // THE SCAN IS WHITESPACE- AND COMMENT-INSENSITIVE ON PURPOSE. A line-based
+  // version was written first and measured: a write split across two lines
+  // (`expectedIds` on one, `.push(...)` on the next) walked straight past it.
+  // COMMENTS ARE MASKED, STRINGS ARE NOT. A mention of the binding in prose is
+  // not a use of it, and leaving comments in made this assertion redden on a
+  // sentence. Strings are deliberately left alone: the interior of a template
+  // literal is CODE, and masking templates to get rid of string mentions would
+  // hide `${expectedIds.push(id)}` from the scan, which is a new blind spot of
+  // exactly the kind this rewrite exists to remove. A mention inside a plain
+  // string is therefore recorded, which is the fail-closed direction.
+  const maskComments = (text: string): string => {
+    let out = "";
+    let state: "code" | "string" | "line" | "block" = "code";
+    let quote = "";
+    for (let i = 0; i < text.length; i += 1) {
+      const c = text[i] as string;
+      const next = text[i + 1];
+      if (state === "line") {
+        if (c === "\n") {
+          state = "code";
+          out += c;
+        } else {
+          out += " ";
+        }
+        continue;
+      }
+      if (state === "block") {
+        out += c === "\n" ? c : " ";
+        if (c === "*" && next === "/") {
+          out += " ";
+          i += 1;
+          state = "code";
+        }
+        continue;
+      }
+      if (state === "string") {
+        out += c;
+        if (c === "\\") {
+          out += next ?? "";
+          i += 1;
+          continue;
+        }
+        if (c === quote) state = "code";
+        continue;
+      }
+      if (c === "/" && next === "/") {
+        state = "line";
+        out += "  ";
+        i += 1;
+        continue;
+      }
+      if (c === "/" && next === "*") {
+        state = "block";
+        out += "  ";
+        i += 1;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        state = "string";
+        quote = c;
+      }
+      out += c;
+    }
+    return out;
+  };
+  const source = maskComments(readFileSync(harness, "utf8"));
+  const BINDING = "expectedIds";
+  // The ONLY forms accepted as proof of a read. Anything else is recorded.
+  //
+  // `.length` is a read ONLY when it is not being assigned to. `expectedIds.length = 0`
+  // empties the set, which is the DANGEROUS direction for this program (it
+  // asserts on fewer gates than its legs justify) and it is not a method call at
+  // all, so no list of mutator names would ever have held it. The negative
+  // lookahead is what keeps this allowlist from re-opening the hole it closes.
+  const PROVEN_READS = [
+    /^\.\s*length\b(?!\s*=[^=])/,
+    /^\.\s*filter\s*\(/,
+    /^\.\s*includes\s*\(/,
+    /^\.\s*indexOf\s*\(/,
+    /^\.\s*some\s*\(/,
+    /^\.\s*every\s*\(/,
+    /^\.\s*map\s*\(/,
+    /^\.\s*join\s*\(/,
+    /^\.\s*slice\s*\(/,
+    /^\.\s*concat\s*\(/,
+    /^\.\s*entries\s*\(/,
+    /^\.\s*keys\s*\(/,
+    /^\.\s*values\s*\(/,
+  ];
+  const occurrences: string[] = [];
+  const pattern = new RegExp(`(^|[^.\\w$])${BINDING}\\b`, "g");
+  for (const match of source.matchAll(pattern)) {
+    const at = match.index ?? 0;
+    // Iteration and spread are proven reads from what PRECEDES the identifier.
+    const before = source.slice(Math.max(0, at - 8), at + (match[0]?.length ?? 0));
+    if (new RegExp(`(\\bof|\\.\\.\\.)\\s*${BINDING}$`).test(before)) {
+      continue;
+    }
+    let index = at + (match[0] as string).length;
+    for (;;) {
+      const ahead = source.slice(index);
+      const ws = /^\s+/.exec(ahead);
+      if (ws) {
+        index += ws[0].length;
+        continue;
+      }
+      if (ahead.startsWith("//")) {
+        index += ahead.indexOf("\n") + 1;
+        continue;
+      }
+      if (ahead.startsWith("/*")) {
+        index += ahead.indexOf("*/") + 2;
+        continue;
+      }
+      break;
+    }
+    const rest = source.slice(index);
+    if (PROVEN_READS.some((form) => form.test(rest))) {
+      continue;
+    }
+    // A SHORT, STABLE TOKEN rather than a slice of source text, so reformatting
+    // the pinned line does not redden this and a new OPERATION does.
+    const member = /^\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
+    occurrences.push(
+      member
+        ? `.${member[1] as string}`
+        : /^\[/.test(rest)
+          ? "[]"
+          : /^(\+\+|--)/.test(rest)
+            ? "++"
+            : /^=[^=]/.test(rest)
+              ? "="
+              : (rest.slice(0, 1) as string),
+    );
+  }
+  assert.deepEqual(
+    occurrences,
+    ["=", ",", ")", ")", ")"],
+    `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a ` +
+      "read. The five pinned occurrences, in source order, are its DECLARATION (`=`); its pass as " +
+      "the FIRST argument to sameSequence in the leg-union check (`,`); a pass to JSON.stringify " +
+      "in that check's failure message (`)`); its pass as the SECOND argument to sameSequence in " +
+      "the consumption-coverage check (`)`); and a pass to JSON.stringify in THAT check's failure " +
+      "message (`)`). The four argument passes are in fact reads, and they stay pinned rather than " +
+      "allowlisted because an identifier passed as an argument is indistinguishable here from one " +
+      "passed to something that mutates it, and over-strict is the safe direction. Anything else " +
+      "here is a use nobody has looked at: if it writes the set, the derivation's legs no longer " +
+      "justify what is asserted and the probes above do not cover it; if it is a read, add its " +
+      "form to PROVEN_READS above and say in the work history why it is one. Derived from the " +
+      `harness: ${JSON.stringify(occurrences)}`,
+  );
+});
+
+test("a write that adds an id to the derived expected set is refused at RUN TIME, in spellings no list of names contains", () => {
+  // THE INSTRUMENT, NOT THE SPELLINGS. Every guard on this branch that has
+  // failed has failed the same way: its CONDITION recognised a syntactic subset
+  // of the class its MESSAGE quantified over. Widening the subset by the members
+  // the last reviewer built produces the next instance, and this branch has now
+  // produced three (a spread form, a type test, a member-name list).
+  //
+  // This test does not read source. It takes the assertion program AS SHIPPED,
+  // injects a write, runs it against fixtures that are byte-identical across
+  // every member, and asks the program what it asserted on. A write is then
+  // caught because of what it DOES, so how it is spelled stops mattering: the
+  // three shapes the delta verification used to defeat the source scan are here
+  // alongside two that no list of member names could ever hold.
+  //
+  // TWO REGIONS, TWO MECHANISMS, WITNESSED SEPARATELY. Outside the derivation
+  // the set is frozen, so the write throws. Inside the derivation's closure the
+  // accumulator is still extensible, and the program's own check that the set
+  // equals what its legs contributed is what catches it. Members of both
+  // families are run, and the inside-the-closure members additionally assert the
+  // message, so a freeze that silently swallowed them could not read as a pass.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const progMatch =
+      /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      progMatch,
+      "could not extract the assertion program from the harness heredoc; every assertion below " +
+        "would be about nothing, so this is a hard failure rather than a fallback",
+    );
+    const pristine = progMatch[1] as string;
+
+    const GATE_A = "fixture-control-gate-a";
+    const GATE_B = "fixture-control-gate-b";
+    const INJECTED = "fixture-id-no-leg-contributed";
+    // THE FIXTURES ARE BYTE-IDENTICAL FOR EVERY MEMBER, so the only variable is
+    // the injected write. Two manifest gates, both with green records, no table
+    // rows and nothing declared absent: the honest derived set is exactly
+    // [GATE_A, GATE_B] and the program accepts.
+    //
+    // BOTH DIRECTIONS ARE INJECTED, and the REMOVING one is the one that makes
+    // the dangerous state SILENT. A write that ADDS an unjustified id is caught
+    // loudly on the unfixed program too (the id has no record, so it is
+    // reported), and only the ATTRIBUTION of that finding distinguishes fixed
+    // from unfixed. A write that REMOVES an id leaves the unfixed program
+    // exiting 0 having asserted on fewer gates than its legs justify, which is
+    // this whole branch's subject, and it is invisible in the exit code. Both
+    // families are here because a witness that only covered the loud direction
+    // would be a witness against the absent feature rather than against the
+    // dangerous state.
+    const dir = join(root, "bundle");
+    writeBundle(dir, [{ id: GATE_A, status: "green" }, { id: GATE_B, status: "green" }]);
+    const expectPath = join(root, "expect.json");
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(expectPath, JSON.stringify({ label: "writes", gates: [], absent: [] }));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: 1, gates: [{ id: GATE_A }, { id: GATE_B }] }),
+    );
+    const runProgram = (programPath: string): RunResult =>
+      run(
+        process.execPath,
+        [programPath, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifestPath],
+        { cwd: root, env },
+      );
+
+    // POSITIVE CONTROL: the shipped program accepts these fixtures and does NOT
+    // assert on INJECTED. Without this row every rejection below could be a
+    // rejection of the lab rather than of the write.
+    const pristinePath = join(root, "m2-assert-pristine.mjs");
+    writeFileSync(pristinePath, pristine);
+    const control = runProgram(pristinePath);
+    const controlOut = control.stdout + control.stderr;
+    assert.equal(
+      control.status,
+      0,
+      `the shipped program must ACCEPT the unmutated fixtures, or every member below is a ` +
+        `rejection of the fixtures rather than of the injected write: ${controlOut}`,
+    );
+    assert.match(
+      controlOut,
+      /: OK\./,
+      `the control must reach the success line: ${controlOut}`,
+    );
+    assert.ok(
+      !controlOut.includes(INJECTED),
+      `the control already names ${INJECTED}, so the fixture does not isolate the injected ` +
+        `write: ${controlOut}`,
+    );
+    assert.ok(
+      controlOut.includes(GATE_A) && controlOut.includes(GATE_B),
+      `the control must report BOTH manifest gates as asserted, or a member that REMOVES one ` +
+        `has nothing to remove and measures nothing: ${controlOut}`,
+    );
+
+    const AFTER = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+    const INSIDE = "  return out;";
+    const ID = JSON.stringify(INJECTED);
+    const members: {
+      name: string;
+      anchor: string;
+      inject: string;
+      family: "frozen" | "closure";
+      direction: "add" | "remove";
+    }[] = [
+      // OUTSIDE THE DERIVATION, where the freeze is the mechanism. The first is
+      // the one shape the replaced member-name list DID recognise, kept so the
+      // new instrument is measured to be at least as strong as the one it
+      // replaced rather than merely different.
+      { name: "after-push", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds.push(${ID});` },
+      // ... and then the shapes it did not and could not. The first three are
+      // the delta verification's W3, W4 and W5 verbatim.
+      { name: "after-index-assignment", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds[expectedIds.length] = ${ID};` },
+      { name: "after-alias-then-push", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `const aliasOfExpected = expectedIds; aliasOfExpected.push(${ID});` },
+      { name: "after-push-apply", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `Array.prototype.push.apply(expectedIds, [${ID}]);` },
+      // The member name is COMPUTED, so it exists in no source text at all and
+      // no allowlist of names could ever contain it.
+      { name: "after-computed-member", anchor: AFTER, family: "frozen", direction: "add",
+        inject: `expectedIds["pu" + "sh"](${ID});` },
+      // The REMOVING direction: silent on the unfixed program.
+      { name: "after-pop", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "expectedIds.pop();" },
+      // Not a method call at all: a property assignment that empties the set.
+      { name: "after-length-truncation", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "expectedIds.length = 0;" },
+      { name: "after-reflect-splice", anchor: AFTER, family: "frozen", direction: "remove",
+        inject: "Reflect.apply(Array.prototype.splice, expectedIds, [0, 1]);" },
+      // INSIDE THE DERIVATION'S CLOSURE, where the accumulator is not yet frozen
+      // and the program's leg-union check has to be the mechanism instead.
+      { name: "inside-closure-push", anchor: INSIDE, family: "closure", direction: "add",
+        inject: `  out.push(${ID});` },
+      { name: "inside-closure-pop", anchor: INSIDE, family: "closure", direction: "remove",
+        inject: "  out.pop();" },
+    ];
+
+    for (const member of members) {
+      // THE MUTATOR'S OWN NEGATIVE CONTROL. An anchor that has moved or been
+      // duplicated would produce an unmutated program, which runs green and is
+      // indistinguishable from a clean result. It is a hard failure instead.
+      const anchorCount = pristine.split(member.anchor).length - 1;
+      assert.equal(
+        anchorCount,
+        1,
+        `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} ` +
+          `times in the assertion program, not once, so member ${member.name} would run an ` +
+          "unmutated program and pass while measuring nothing",
+      );
+      const mutated = pristine.replace(member.anchor, `${member.inject}\n${member.anchor}`);
+      assert.notEqual(
+        mutated,
+        pristine,
+        `member ${member.name} did not change the program, so it measures nothing`,
+      );
+      const programPath = join(root, `m2-assert-${member.name}.mjs`);
+      writeFileSync(programPath, mutated);
+      const result = runProgram(programPath);
+      const output = result.stdout + result.stderr;
+
+      assert.notEqual(
+        result.status,
+        0,
+        `${member.name} makes the derived expected set differ from what its legs contributed ` +
+          `(direction: ${member.direction}). The program must REFUSE rather than certify a ` +
+          `bundle against a set its own derivation does not justify: ${output}`,
+      );
+      assert.doesNotMatch(
+        output,
+        /: OK\./,
+        `${member.name} reached the success line, so the program certified a bundle against a ` +
+          `set that an injected write had changed: ${output}`,
+      );
+      if (member.direction === "add") {
+        // ATTRIBUTION, not merely a nonzero exit. On the unfixed program this
+        // member exits 1 as well, because the added id has no record, so the
+        // exit code alone does not tell fixed from unfixed. What does is
+        // whether the program ever ASSERTED on the id: a finding attributed to
+        // it means the id entered the set. The bracketed form is required
+        // because an uncaught throw prints the injected source line, so the
+        // bare id appears in the output either way.
+        assert.ok(
+          !output.includes(`[${INJECTED}]`),
+          `${member.name} produced a finding attributed to ${INJECTED}, which means the id ` +
+            "ENTERED the derived expected set and the program asserted on a gate no leg " +
+            `contributed: ${output}`,
+        );
+      }
+      if (member.family === "closure") {
+        assert.match(
+          output,
+          /derived expected set is NOT the union of the declared legs/,
+          `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the ` +
+            "leg-union check is the only mechanism that can catch it and it must be the one that " +
+            `names the failure: ${output}`,
+        );
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a change to the derived expected set that preserves its value-set is refused, in the derivation and in the loop that consumes it", () => {
+  // THE MECHANISM: A SET-BASED COMPARISON IS BLIND TO MULTIPLICITY. Putting
+  // values in a Set, or comparing a length against a Set's size, discards how
+  // many times each value occurs, so any defect that preserves the value-set
+  // while changing multiplicity is invisible to it. The check this test guards
+  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+  // || expectedIds.some((id) => !legContributed.has(id))`. A write substituting
+  // a DUPLICATE for a dropped id cancels out in both halves ([A, A] has length
+  // two, {A, B} has size two, and both elements are members), so the check
+  // passed while B was never asserted on.
+  //
+  // The mechanism is not confined to this file: `describeDrift` in
+  // scripts/render-agent-rules-gates.mjs:196 compares two blocks by building a
+  // Set of each block's lines, so a DUPLICATED line leaves both sets unchanged.
+  // That is recorded at delivery/verification/render-agent-rules-gates-duplicate-row.md:44
+  // and is tracked separately; it is deliberately not touched here.
+  //
+  // THE FIXTURE IS THE DANGEROUS STATE, not the absent feature. The manifest
+  // declares TWO gates and the bundle carries a record for ONE. GATE_B is
+  // therefore a declared gate that did not run, and the shipped program REJECTS
+  // this bundle, naming it. Every member below makes the program ACCEPT it. The
+  // control's direction is thus reject-to-accept rather than the reverse, which
+  // is what makes "exits 0" here mean "certified a bundle in which a
+  // manifest-declared gate produced no record".
+  //
+  // TWO FAMILIES, TWO CHECKS, ATTRIBUTED SEPARATELY. A nonzero exit is not
+  // enough: the shipped program already exits nonzero on this fixture, for the
+  // honest reason, so exit code alone cannot tell a caught member from an
+  // uncaught one. Each member therefore asserts (a) the program did NOT reach
+  // the success line, (b) the failure names the check that is supposed to catch
+  // it, and (c) the honest finding about GATE_B is ABSENT, which is what says
+  // the member really did stop the gate being asserted on rather than being
+  // caught incidentally by the pre-existing check.
+  //
+  // AND EACH FAMILY CARRIES A DEFANGED CONTROL, run inside this test rather than
+  // asserted in prose: the same member against a program whose new check has
+  // been neutered must reach the success line. Without that row, a member could
+  // be being caught by something else entirely and this test would not know.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const progMatch =
+      /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      progMatch,
+      "could not extract the assertion program from the harness heredoc; every assertion below " +
+        "would be about nothing, so this is a hard failure rather than a fallback",
+    );
+    const pristine = progMatch[1] as string;
+
+    const GATE_A = "fixture-recorded-gate";
+    const GATE_B = "fixture-declared-but-never-ran";
+    const dir = join(root, "bundle");
+    writeBundle(dir, [{ id: GATE_A, status: "green" }]);
+    const expectPath = join(root, "expect.json");
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(expectPath, JSON.stringify({ label: "multiplicity", gates: [], absent: [] }));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: 1, gates: [{ id: GATE_A }, { id: GATE_B }] }),
+    );
+    const runProgram = (programPath: string): RunResult =>
+      run(
+        process.execPath,
+        [programPath, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifestPath],
+        { cwd: root, env },
+      );
+    // A finding attributed to a gate is printed as "[<id>] ...". The BARE id is
+    // not attribution: it also appears in the success line and in any stack
+    // trace an injected throw produces.
+    const attributed = (output: string): boolean => output.includes(`[${GATE_B}]`);
+
+    const pristinePath = join(root, "m2-assert-pristine.mjs");
+    writeFileSync(pristinePath, pristine);
+    const control = runProgram(pristinePath);
+    const controlOut = control.stdout + control.stderr;
+    assert.notEqual(
+      control.status,
+      0,
+      `the shipped program must REJECT a bundle whose manifest declares ${GATE_B} and which ` +
+        `carries no record for it. If it accepts, this fixture is not the dangerous state and ` +
+        `every member below measures nothing: ${controlOut}`,
+    );
+    assert.ok(
+      attributed(controlOut),
+      `the shipped program's rejection must be ATTRIBUTED to ${GATE_B}, or the fixture is being ` +
+        `rejected for some unrelated reason and no member below is isolating anything: ${controlOut}`,
+    );
+
+    const INSIDE = "  return out;";
+    const LEG_CHECK = "if (!sameSequence(expectedIds, legExpected)) {";
+    const COVERAGE_CHECK = "if (!sameSequence(assertedIds, expectedIds)) {";
+    const AFTER_DERIVATION = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+    // A truncating and a SUBSTITUTING iterator: structurally different members
+    // of the consumption family, the second being the multiplicity-preserving
+    // one, which is the same shape one level up from the derivation family.
+    const TRUNCATING_ITERATOR =
+      "Array.prototype[Symbol.iterator] = function () { let i = 0; const self = this; " +
+      "return { next: () => (i < self.length - 1 ? { value: self[i++], done: false } : " +
+      "{ value: undefined, done: true }), [Symbol.iterator]() { return this; } }; };";
+    const SUBSTITUTING_ITERATOR =
+      "Array.prototype[Symbol.iterator] = function () { let i = 0; const self = this; " +
+      "return { next: () => (i < self.length ? { value: (i === self.length - 1 ? self[0] : self[i]), " +
+      "done: (i++, false) } : { value: undefined, done: true }), [Symbol.iterator]() { return this; } }; };";
+
+    const families = [
+      {
+        // The set is DERIVED wrong. Caught before the per-gate loop runs.
+        family: "derivation",
+        anchor: INSIDE,
+        // The check whose neutering must let a member through, and what to
+        // neuter it to. Both are exact source, so a check that moved or was
+        // reworded aborts this test rather than silently skipping its control.
+        check: LEG_CHECK,
+        defanged: "if (false && !sameSequence(expectedIds, legExpected)) {",
+        names: /derived expected set is NOT the union of the declared legs/,
+        members: [
+          // The four the delta verification constructed.
+          { name: "closure-pop-then-push-first", inject: "  out.pop(); out.push(out[0]);" },
+          { name: "closure-index-substitute", inject: "  out[1] = out[0];" },
+          { name: "closure-splice-substitute", inject: "  out.splice(1, 1, out[0]);" },
+          { name: "closure-fill", inject: "  out.fill(out[0]);" },
+          // Four it did not, so the fix is measured to generalise beyond the
+          // reported list rather than to handle it. copyWithin and Object.assign
+          // in particular name no mutator this or any earlier instrument listed.
+          { name: "closure-copy-within", inject: "  out.copyWithin(1, 0);" },
+          { name: "closure-unshift-then-pop", inject: "  out.unshift(out[0]); out.pop();" },
+          { name: "closure-object-assign", inject: "  Object.assign(out, [out[0], out[0]]);" },
+          { name: "closure-truncate-then-regrow", inject: "  out.length = 1; out.push(out[0]);" },
+        ],
+      },
+      {
+        // The set is derived RIGHT and then not consumed. The freeze cannot
+        // reach this: the override is on the shared prototype, not on the
+        // frozen instance.
+        family: "consumption",
+        anchor: AFTER_DERIVATION,
+        check: COVERAGE_CHECK,
+        defanged: "if (false && !sameSequence(assertedIds, expectedIds)) {",
+        names: /asserted on a SEQUENCE that is not the derived expected set/,
+        members: [
+          { name: "iterator-drops-last", inject: TRUNCATING_ITERATOR },
+          { name: "iterator-substitutes-last", inject: SUBSTITUTING_ITERATOR },
+        ],
+      },
+    ];
+
+    for (const fam of families) {
+      // THE MUTATOR'S OWN NEGATIVE CONTROLS, both fatal. An anchor or a check
+      // that has moved or been duplicated would produce an unmutated program or
+      // an un-neutered one, and both run green while measuring nothing.
+      const anchorCount = pristine.split(fam.anchor).length - 1;
+      assert.equal(
+        anchorCount,
+        1,
+        `the injection anchor ${JSON.stringify(fam.anchor)} occurs ${String(anchorCount)} times ` +
+          `in the assertion program, not once, so the ${fam.family} members would run an ` +
+          "unmutated program and pass while measuring nothing",
+      );
+      const checkCount = pristine.split(fam.check).length - 1;
+      assert.equal(
+        checkCount,
+        1,
+        `the check ${JSON.stringify(fam.check)} occurs ${String(checkCount)} times in the ` +
+          `assertion program, not once, so the ${fam.family} family's defanged control would ` +
+          "not actually defang anything and would prove the check load-bearing when it is not",
+      );
+
+      for (const member of fam.members) {
+        const mutated = pristine.replace(fam.anchor, `${member.inject}\n${fam.anchor}`);
+        assert.notEqual(
+          mutated,
+          pristine,
+          `member ${member.name} did not change the program, so it measures nothing`,
+        );
+        const programPath = join(root, `m2-assert-${member.name}.mjs`);
+        writeFileSync(programPath, mutated);
+        const result = runProgram(programPath);
+        const output = result.stdout + result.stderr;
+
+        assert.doesNotMatch(
+          output,
+          /: OK\./,
+          `${member.name} reached the success line, so the program CERTIFIED a bundle in which ` +
+            `${GATE_B} is declared by the manifest and produced no record: ${output}`,
+        );
+        assert.notEqual(
+          result.status,
+          0,
+          `${member.name} exited 0 on a bundle the shipped program rejects: ${output}`,
+        );
+        assert.match(
+          output,
+          fam.names,
+          `${member.name} was refused, but not by the ${fam.family} check that is supposed to ` +
+            "catch it. A member caught for the wrong reason is a member this suite is not " +
+            `measuring: ${output}`,
+        );
+        assert.ok(
+          !attributed(output),
+          `${member.name} produced a finding attributed to ${GATE_B}, which means the gate WAS ` +
+            "asserted on after all, so this member never reached the state it exists to " +
+            `witness and its refusal above is the control's refusal, not a new one: ${output}`,
+        );
+      }
+
+      // THE DEFANGED CONTROL. One member of the family against a program whose
+      // new check has been neutered and nothing else changed. It must reach the
+      // success line, which is what attributes every refusal above to that check
+      // rather than to anything else the program does.
+      const first = fam.members[0] as { name: string; inject: string };
+      const neutered = pristine
+        .replace(fam.check, fam.defanged)
+        .replace(fam.anchor, `${first.inject}\n${fam.anchor}`);
+      const neuteredPath = join(root, `m2-assert-defanged-${fam.family}.mjs`);
+      writeFileSync(neuteredPath, neutered);
+      const defangedResult = runProgram(neuteredPath);
+      const defangedOut = defangedResult.stdout + defangedResult.stderr;
+      assert.match(
+        defangedOut,
+        /: OK\./,
+        `with the ${fam.family} check neutered, member ${first.name} did NOT reach the success ` +
+          "line, so something other than that check is refusing it and the assertions above " +
+          `attribute the catch to the wrong place: ${defangedOut}`,
+      );
+      assert.equal(
+        defangedResult.status,
+        0,
+        `with the ${fam.family} check neutered, member ${first.name} still exited nonzero: ${defangedOut}`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("no expectations row admits a lax status the gate it names can never legitimately produce", () => {

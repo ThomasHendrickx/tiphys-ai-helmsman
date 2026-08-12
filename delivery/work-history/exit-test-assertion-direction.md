@@ -3368,3 +3368,3337 @@ pull request can discharge: the post-merge `push` run on the new `main` head,
 which is the first time step 9 will actually execute rather than skip. That run
 belongs to whoever merges, and this round does not merge.
 
+
+## FR3.0 Round 3: a fresh implementer, and what this round has to close
+
+This round is written by a FRESH implementer. Rounds 1 and 2 were the same
+agent; this is the third, which trips DR-0012's stop rule, and DR-0016 records
+that the half of that rule which measurably works is a fresh implementer rather
+than an owner decision. Nothing below inherits a conclusion from rounds 1 or 2:
+every claim this round makes is re-measured here, including the ones the delta
+verification upheld.
+
+Starting head: 9b7752d, confirmed by `git log -1` in a worktree of my own with
+its own `npm ci` (exit 0, node v26.6.0 from the scratch prefix, `npm` 11.18.0).
+
+The input is the independent delta verification of round 2, on branch
+`claude/verify-harness-round2`. It raised two MEDIUM findings (DV-3, DV-4), one
+LOW (DV-1) and one observation (DV-2). Both MEDIUMs are in code round 2 ADDED,
+which is the T-003 shape CLAUDE.md:299 measures at twelve of thirteen
+re-reviewed fix rounds.
+
+This section is written before any file is touched. It is the beacon; every
+section below is appended after the command it cites has run, and committed
+locally at once.
+
+## FR3.1 The MECHANISM (fix-round contract item 1)
+
+DV-3 as reported is an instance: a manifest whose `gates` key is a well-formed
+EMPTY array empties the manifest leg and neither new check fires. DV-4 as
+reported is an instance: a leg spelled `...(expr)` is invisible to the guard.
+Fixing those two spellings would leave the defect.
+
+**The mechanism both are members of: a check's CONDITION recognises a
+SYNTACTIC OR TYPED SUBSET of the class its message quantifies over, so every
+member of the class outside that subset passes in silence.**
+
+| check | the class its message names | what its condition actually recognises | outside the condition |
+|---|---|---|---|
+| the manifest guard | manifests that declare no gates | `gates` is not an ARRAY | `gates: []`, and any array whose entries carry no usable id |
+| the fourth-leg guard | sources spread into the derived expected set | spreads written `...IDENTIFIER` | `...(x ?? [])`, `...[a, b]`, and any id arriving other than through this array literal |
+
+This is the same family as the defect the whole branch exists to remove. The
+original assertion-direction defect was: the program iterates a hand-written
+table, so a gate outside the table is not asserted on. That is a condition
+(membership of the table) standing in for a property (being a gate that ran).
+Round 1 replaced the table with a DERIVED union. Round 2 added two guards over
+that union, and both guards were written the same way the original defect was
+written: recognise the shape you thought of, not the property.
+
+The remedy is the same at every level and it is the one this repository already
+applies elsewhere: **make the condition test the property, and where the
+property is a set, enumerate the set structurally rather than by the spelling
+its members happen to have today.**
+
+Two consequences that decide the shape of the fix:
+
+1. The manifest guard's condition becomes `manifestIds.length === 0`. That is
+   the property itself, "this leg contributed nothing", and it covers the
+   not-an-array shape, the empty-array shape, the absent-key shape and the
+   array-of-unusable-entries shape as ONE condition rather than four.
+2. The fourth-leg guard stops matching spread spellings and enumerates the
+   TOP-LEVEL ELEMENTS of the union's array literal with a depth-aware scan, and
+   separately pins every statement that WRITES `expectedIds`. A new source of
+   expected ids is then caught whatever it looks like and whether or not it
+   arrives inside that array literal at all.
+
+## FR3.2 The DERIVATION (fix-round contract item 2)
+
+Two enumerations, both with a built-in negative control, both printed in full.
+
+### FR3.2a Every recognition condition in the files this branch changes
+
+The class is "a condition that decides membership by testing a TYPE or by
+matching TEXT". The command enumerates the files from the diff itself rather
+than from a hand-typed list, so a file added to the branch later cannot fall
+out of scope silently. Script:
+`delivery/work-history/exit-test-assertion-direction.md:1` is this file; the
+script is reproduced inline below and its full output follows.
+
+```
+files=$(git diff --name-only origin/main...HEAD | grep -E '\.(sh|ts|yml)$')
+grep -nE 'Array\.isArray\(|typeof [A-Za-z_$]|instanceof ' ${files}
+grep -nE '\.(exec|match|matchAll|test)\(|= */\^|\.exec\(' ${files} | grep -E '/[^ ]*/[gimsuy]*'
+grep -nE '\.filter\(' ${files}
+```
+
+FULL OUTPUT:
+
+```
+=== files enumerated (from git diff --name-only origin/main...HEAD) ===
+.github/workflows/gates.yml
+scripts/m2-exit-test.sh
+test/gate-registry.test.ts
+test/m2-exit-test.test.ts
+
+=== A. type-predicate recognitions (Array.isArray / typeof / instanceof) ===
+scripts/m2-exit-test.sh:232:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:470:const rows = Array.isArray(summary.gates) ? summary.gates : [];
+scripts/m2-exit-test.sh:501:const manifestIds = Array.isArray(manifestRead.value?.gates)
+scripts/m2-exit-test.sh:504:      .filter((id) => typeof id === "string" && id !== "")
+scripts/m2-exit-test.sh:516:  if (typeof id !== "string" || id === "" || absentIds.has(id) || expectedIds.includes(id)) {
+scripts/m2-exit-test.sh:534:if (!Array.isArray(manifestRead.value?.gates)) {
+scripts/m2-exit-test.sh:595:        typeof pre.id === "string" && pre.id !== "" &&
+scripts/m2-exit-test.sh:596:        typeof pre.reason === "string" && pre.reason !== "";
+scripts/m2-exit-test.sh:636:    typeof pre.id === "string" && pre.id !== "" &&
+scripts/m2-exit-test.sh:637:    typeof pre.reason === "string" && pre.reason !== "";
+scripts/m2-exit-test.sh:726:if (typeof summary.manifestSha256 === "string" && summary.manifestSha256 !== "") {
+test/gate-registry.test.ts:432:    assert.ok(Array.isArray(gate.events) && gate.events.length > 0, `${gate.id} declares no events`);
+test/gate-registry.test.ts:853:    (step) => typeof step.run === "string" && step.run.includes("render-agent-rules-gates.mjs"),
+test/m2-exit-test.test.ts:1432:        table: typeof table;
+grep A exit=0
+
+=== B. text-pattern recognitions (a regex literal driving exec/match/matchAll/test) ===
+scripts/m2-exit-test.sh:638:  const sha256 = /\b[0-9a-f]{64}\b/.test(detail) || /\b[0-9a-f]{64}\b/.test(JSON.stringify(rec));
+scripts/m2-exit-test.sh:640:    /declar/i.test(detail) && /\.json|declaration/i.test(detail) && sha256;
+scripts/m2-exit-test.sh:651:      /structural/i.test(detail) ||
+scripts/m2-exit-test.sh:652:      /structural/i.test(JSON.stringify(pre ?? {})) ||
+scripts/m2-exit-test.sh:653:      /o-3/i.test(JSON.stringify(pre ?? {}));
+scripts/m2-exit-test.sh:884:  const line = (log.stdout ?? "").split("\n").find((l) => /\bM2-P2:/.test(l));
+test/gate-registry.test.ts:414:  const mainBundle = /^MAIN_ONLY_GATES="([^"]+)"/m.exec(harness);
+test/gate-registry.test.ts:470:  assert.match(deploy.precondition.id, /STRUCTURAL/);
+test/gate-registry.test.ts:612:  assert.match(capturedRecord.detail, /--base/);
+test/gate-registry.test.ts:643:    assert.match(String(withoutBase.record?.["detail"]), /--base/);
+test/m2-exit-test.test.ts:491:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:528:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:723:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:772:  const stepAt = lines.findIndex((l) => /^ {6}- uses: actions\/checkout/.test(l));
+test/m2-exit-test.test.ts:778:    if (line.trim() === "" || /^\s*#/.test(line)) {
+test/m2-exit-test.test.ts:924:    assert.match(rejected.stdout + rejected.stderr, /\[scope\]/, "the rejection did not name scope");
+test/m2-exit-test.test.ts:1042:    assert.match(rejectedNoPre.stdout + rejectedNoPre.stderr, /\[scope\]/, "the rejection did not name scope");
+test/m2-exit-test.test.ts:1711:  const sources = [...(union[1] as string).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)]
+grep B exit=0
+
+=== C. membership filters over a derived collection (.filter with a predicate) ===
+.github/workflows/gates.yml:197:              .filter((f) => f.endsWith("-C2.json"))
+.github/workflows/gates.yml:199:              .filter((r) => r.kind === "executed");
+.github/workflows/gates.yml:200:            const failing = c2.filter((r) => r.exitCode !== 0 && r.outcome === "fail");
+scripts/m2-exit-test.sh:229:    const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
+scripts/m2-exit-test.sh:232:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:504:      .filter((id) => typeof id === "string" && id !== "")
+scripts/m2-exit-test.sh:521:const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+scripts/m2-exit-test.sh:565:  const dup = rows.filter((r) => r.id === spec.id).length;
+scripts/m2-exit-test.sh:617:  (expect.gates ?? []).filter((g) => g.structural === true).map((g) => g.id),
+scripts/m2-exit-test.sh:670:const redRows = rows.filter((r) => r.status === "red");
+scripts/m2-exit-test.sh:675:const errorRows = rows.filter((r) => r.status === "error");
+scripts/m2-exit-test.sh:679:const vacuousRows = rows.filter((r) => r.vacuous === true);
+scripts/m2-exit-test.sh:689:  applicable: rows.filter((r) => r.applicable === true).length,
+scripts/m2-exit-test.sh:690:  verdict: rows.filter((r) => r.status === "green" || r.status === "red").length,
+scripts/m2-exit-test.sh:691:  green: rows.filter((r) => r.status === "green").length,
+scripts/m2-exit-test.sh:692:  red: rows.filter((r) => r.status === "red").length,
+scripts/m2-exit-test.sh:693:  "not-applicable": rows.filter((r) => r.status === "not-applicable").length,
+scripts/m2-exit-test.sh:694:  error: rows.filter((r) => r.status === "error").length,
+scripts/m2-exit-test.sh:695:  vacuous: rows.filter((r) => r.vacuous === true).length,
+test/gate-registry.test.ts:395:  shape["required"] = (shape["required"] as string[]).filter((name) => name !== "events");
+test/gate-registry.test.ts:420:  const pushGates = new Set((mainBundle[1] as string).split(/\s+/).filter((id) => id !== ""));
+test/gate-registry.test.ts:518:    const greenWithUnmet = [...captured.gates, outcome.row as { id: string; status: string }].filter(
+test/gate-registry.test.ts:852:  const matching = steps.filter(
+test/gate-registry.test.ts:1055:    .filter((gate) => gate["verified-by"] === "script" && !manifestIds.has(gate.id))
+test/gate-registry.test.ts:1106:      .filter((gate) => gate["verified-by"] === "clean-room-checklist")
+test/m2-exit-test.test.ts:544:    .filter(
+test/m2-exit-test.test.ts:1129:    applicable: summaryRows.filter((r) => r.applicable).length,
+test/m2-exit-test.test.ts:1130:    verdict: summaryRows.filter((r) => r.status === "green" || r.status === "red").length,
+test/m2-exit-test.test.ts:1131:    green: summaryRows.filter((r) => r.status === "green").length,
+test/m2-exit-test.test.ts:1132:    red: summaryRows.filter((r) => r.status === "red").length,
+test/m2-exit-test.test.ts:1133:    "not-applicable": summaryRows.filter((r) => r.status === "not-applicable").length,
+test/m2-exit-test.test.ts:1134:    error: summaryRows.filter((r) => r.status === "error").length,
+test/m2-exit-test.test.ts:1334:        ...healthy.filter((r) => r.id !== UNLISTED),
+test/m2-exit-test.test.ts:1427:        gates: table.gates.filter((gate) => gate.id !== dropped),
+test/m2-exit-test.test.ts:1429:      const withoutDropped = healthy.filter((r) => r.id !== dropped);
+test/m2-exit-test.test.ts:1506:        const findings = output.split("\n").filter((line) => line.startsWith("  - "));
+test/m2-exit-test.test.ts:1512:        const foreign = findings.filter((line) => !line.includes(probe.reason));
+test/m2-exit-test.test.ts:1537:          writeBundle(dir, [...healthy.filter((r) => r.id !== UNLISTED), { id: UNLISTED, status }]);
+test/m2-exit-test.test.ts:1819:  // computed `red: rows.filter(r => r.status === "red").length` and compared it
+grep C exit=0
+```
+
+### FR3.2b Every leg of the union, and every rejection stating a universal
+
+The first enumeration is broad and most of its rows are counting filters rather
+than membership recognitions. The second is the tight one: it extracts the
+assertion program from the heredoc (aborting nonzero unless the anchor occurs
+exactly ONCE), locates the union's array literal, splits its TOP-LEVEL elements
+with a depth-aware scan that is string, template and comment aware, and then
+prints every rejection in the program whose message states a universal together
+with the condition that guards it.
+
+The negative control is structural: both the heredoc anchor and the union
+anchor abort with exit 2 unless they occur exactly once, so an empty result
+cannot read as a clean one.
+
+FULL OUTPUT:
+
+```
+=== PART 1: the legs of the derived expected set ===
+union anchor line: 98 (within the extracted program)
+top-level elements: 3
+  element | ...manifestIds
+  element | ...rows.map((row) => row?.id)
+  element | ...explicitById.keys()
+
+--- leg 1: ...manifestIds  (root identifier: manifestIds)
+      84 | const manifestIds = Array.isArray(manifestRead.value?.gates)
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+--- leg 2: ...rows.map((row) => row?.id)  (root identifier: rows)
+      53 | const rows = Array.isArray(summary.gates) ? summary.gates : [];
+      54 | const rowById = new Map(rows.map((r) => [r.id, r]));
+      59 | // the bundle's rows. That constrains the relation in ONE direction only: every
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+     148 | const dup = rows.filter((r) => r.id === spec.id).length;
+     202 | for (const row of rows) {
+     253 | const redRows = rows.filter((r) => r.status === "red");
+     258 | const errorRows = rows.filter((r) => r.status === "error");
+     262 | const vacuousRows = rows.filter((r) => r.vacuous === true);
+     267 | // -- 7. Recomputed counts equal summary.json's counts. The rows ARE the
+     269 | //       re-deriving them from the rows and comparing is the CR-602 check.
+     271 | declared: rows.length,
+     272 | applicable: rows.filter((r) => r.applicable === true).length,
+     273 | verdict: rows.filter((r) => r.status === "green" || r.status === "red").length,
+     274 | green: rows.filter((r) => r.status === "green").length,
+     275 | red: rows.filter((r) => r.status === "red").length,
+     276 | "not-applicable": rows.filter((r) => r.status === "not-applicable").length,
+     277 | error: rows.filter((r) => r.status === "error").length,
+     278 | vacuous: rows.filter((r) => r.vacuous === true).length,
+     335 | console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
+--- leg 3: ...explicitById.keys()  (root identifier: explicitById)
+      90 | const explicitById = new Map((expect.gates ?? []).map((spec) => [spec.id, spec]));
+      98 | for (const id of [...manifestIds, ...rows.map((row) => row?.id), ...explicitById.keys()]) {
+     104 | const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+     136 | const explicit = explicitById.get(id);
+
+=== PART 2: every rejection whose message states a UNIVERSAL ===
+#1 rejection at program line 118-120
+   condition | 117: if (!Array.isArray(manifestRead.value?.gates)) {
+   message   | fail(null, `the manifest ${manifestPath} parses but its "gates" key is not an array, so the ` + "manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest " + "that declares no gates cannot certify a bundle");
+#2 rejection at program line 123-125
+   condition | 122: if (expectedIds.length === 0) {
+   message   | fail(null, "the derived expected set is EMPTY, so this run would certify a bundle having " + "asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule " + "binds this program as much as the gates it inspects");
+#3 rejection at program line 141-145
+   condition | 140: if (row === undefined) {
+   message   | fail(spec.id, explicit ? `no record in the bundle for a gate the table lists (expected ${spec.expect})` : "gates.manifest.json declares this gate and the bundle carries NO record for it, " + "and the table does not list it as absent from this bundle; a declared gate that " + "produced no record is a gate that did not run." + why);
+#4 rejection at program line 189-189
+   condition | 188: if (row.status === "green" && !(Number(row.units) > 0)) {
+   message   | fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
+#5 rejection at program line 214-214
+   condition | 213: if (detail.trim() === "") {
+   message   | fail(row.id, "not-applicable with an empty reason");
+#6 rejection at program line 255-256
+   condition | 254: if (redRows.length > 0) {
+   message   | fail(null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. ` + "No expectation in section 1.4 permits a red gate, on either bundle.");
+TOTAL universal-bearing rejections: 6
+```
+
+### FR3.2c Walking every row of FR3.2b
+
+Six rejections state a universal. Each is walked, none is summarised.
+
+| # | condition | is the condition the property its message names? |
+|---|---|---|
+| 1 | `!Array.isArray(manifestRead.value?.gates)` | **NO.** Message: "a manifest that declares no gates cannot certify a bundle". Condition recognises only the wrong-TYPE shape. **This is DV-3, and it is the defect.** |
+| 2 | `expectedIds.length === 0` | YES. The message names the derived expected set being empty and the condition is exactly that. Its REACHABILITY is a separate question, settled in FR3.5. |
+| 3 | `row === undefined` over `expectedIds` | YES. "a declared gate that produced no record is a gate that did not run" is exactly "this expected id has no row". |
+| 4 | `row.status === "green" && !(Number(row.units) > 0)` | YES. "a green with no units examined is vacuous" is exactly the condition. |
+| 5 | `detail.trim() === ""` | YES. "not-applicable with an empty reason", and `detail` is `String(rec.detail ?? "")` so a missing or non-string detail lands in the same branch. |
+| 6 | `rows.filter((r) => r.status === "red").length > 0` | YES for the class "rows reporting red", under the closed status vocabulary. It is NOT a guard on the rows leg being emptied: `rows` is `[]` whenever `summary.gates` is not an array, and then this check is trivially satisfied. That sibling is measured in FR3.3 rather than assumed. |
+
+One row of six is a subset recognition, and it is the one DV-3 names. The other
+five conditions equal the properties they state.
+
+The leg enumeration in the same output shows THREE legs, `manifestIds`, `rows`
+and `explicitById`, and prints every line of the program that mentions each. It
+is that enumeration, not a spread-spelling regex, that becomes the shipped
+guard in FR3.4.
+
+## FR3.3 The DANGEROUS state, measured BEFORE the fix, on BOTH arms
+
+The red-witness rule requires a witness to be red against the DANGEROUS state,
+not against an absent feature, and CLAUDE.md:380 requires a class witness to
+redden under at least TWO structurally different members. So the dangerous
+state is constructed and measured here, against the PRE-FIX code at 9b7752d,
+before a line of it is changed.
+
+**What the dangerous state actually is.** The verifier's DV-3 measured a
+degraded manifest against a bundle with one gate omitted. Re-running that shape
+against the SHIPPED tables it does not reproduce, and the reason matters: both
+shipped tables name every gate the real manifest declares, so an omitted gate
+re-enters the expected set through the EXPLICIT leg and is rejected whatever the
+manifest says. The manifest leg is masked by the table for every gate that
+exists today.
+
+The state the manifest leg is the SOLE source for is the one the derivation was
+built to provide, quoted from the shipped comment at
+scripts/m2-exit-test.sh:493: "a newly declared gate is asserted from the moment
+it enters the manifest, with no edit to this table". A newly declared gate is in
+the manifest leg ALONE: no table row names it, and having not run, no bundle row
+carries it. So the A/B below adds a twelfth gate to the manifest, gives it no
+record, and changes NOTHING else between arms except the manifest's `gates`
+array.
+
+Everything is driven through the harness's own `--print-expect`, so both tables
+are the shipped ones and not a replica of them. A replica is the thing that
+silently stops matching.
+
+Controls, both present and both necessary:
+
+- **GREEN CONTROL** (nothing omitted, real manifest) exits 0 on both arms, so
+  no rejection below is an artefact of the fixture.
+- **CONTROL-real-manifest** (one gate the arm RUNS omitted, real manifest)
+  exits 1 on both arms, so the fixture can detect a missing record at all. The
+  omitted gate is per arm, because red-witness is declared ABSENT from the main
+  bundle and its absence there is legitimate: pr omits `red-witness`, main omits
+  `coverage`.
+
+Toolchain: node v26.6.0 from the scratch prefix, checked in the shell that ran
+the command. Harness: the file at HEAD, UNMODIFIED.
+
+FULL OUTPUT:
+
+```
+manifest gates: 11 | gate omitted per arm: {"pr":"red-witness","main":"coverage"}
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+
+=== ARM pr: shipped table has 11 explicit row(s), 0 declared absent ===
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] CONTROL-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-pr-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG3-table-names-no-gates
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-empty-array
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] NEWGATE-manifest-entries-without-ids
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] NEWGATE-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-pr-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+=== ARM main: shipped table has 6 explicit row(s), 5 declared absent ===
+--- [main] GREEN-CONTROL-nothing-omitted
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] CONTROL-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-main-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG3-table-names-no-gates
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-empty-array
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] NEWGATE-manifest-entries-without-ids
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] NEWGATE-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-pre-18224/manifest-main-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array, so the manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (PR bundle): FAIL with 19 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(20 output line(s) total)
+EXIT=1
+
+--- [main] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (main bundle): FAIL with 14 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(15 output line(s) total)
+EXIT=1
+
+=== SUMMARY: exit status per case (0 = CERTIFIED, 1 = rejected) ===
+pr/GREEN-CONTROL                   EXIT=0
+pr/control                         EXIT=1
+pr/manifest-empty-array            EXIT=1
+pr/manifest-no-usable-ids          EXIT=1
+pr/manifest-not-an-array           EXIT=1
+pr/explicit-empty                  EXIT=1
+pr/NEWGATE-real-manifest           EXIT=1
+pr/NEWGATE-manifest-empty-array    EXIT=0
+pr/NEWGATE-manifest-no-usable-ids  EXIT=0
+pr/NEWGATE-manifest-not-an-array   EXIT=1
+main/GREEN-CONTROL                 EXIT=0
+main/control                       EXIT=1
+main/manifest-empty-array          EXIT=1
+main/manifest-no-usable-ids        EXIT=1
+main/manifest-not-an-array         EXIT=1
+main/explicit-empty                EXIT=1
+main/NEWGATE-real-manifest         EXIT=1
+main/NEWGATE-manifest-empty-array  EXIT=0
+main/NEWGATE-manifest-no-usable-ids EXIT=0
+main/NEWGATE-manifest-not-an-array EXIT=1
+pr/rows-not-an-array               EXIT=1
+main/rows-not-an-array             EXIT=1
+```
+
+### FR3.3a What that measures
+
+| case, both arms | pre-fix result |
+|---|---|
+| GREEN CONTROL, nothing omitted | EXIT=0, certified. The fixture is acceptable. |
+| a gate the arm runs is omitted, real manifest | EXIT=1, detected. |
+| **a NEWLY DECLARED gate did not run, real manifest** | **EXIT=1, detected by the manifest leg alone** |
+| **same bundle, manifest `gates: []`** | **EXIT=0, CERTIFIED. "11 gate(s) asserted ... zero red"** |
+| **same bundle, manifest `gates: [{name}, {id:""}, {id:7}]`** | **EXIT=0, CERTIFIED** |
+| same bundle, manifest `gates: {}` | EXIT=1, caught by the existing type check |
+
+**Two structurally different members of the class certify a run in which a
+declared gate did not run, and they do it on BOTH arms.** They are structurally
+different rather than two spellings of one thing: the first is an EMPTY array,
+the second is a NON-EMPTY array of three entries, and no type test distinguishes
+the second from a healthy manifest. The second member is not in the delta
+verification; it was found by asking what the property is rather than what the
+reported input was.
+
+That is DV-3 confirmed independently, at full strength, and widened.
+
+### FR3.3b The other two legs, measured rather than argued
+
+The same output settles what emptying each of the other two legs does, which is
+what stops this round from fixing the manifest leg and calling the class closed.
+
+- **The rows leg** (`summary.gates` is not an array, so `rows` is `[]`): EXIT=1
+  on both arms, 19 findings on pr and 14 on main, each naming a gate by id.
+  Emptying it is LOUD, because every manifest and table id then has no record
+  and check 3 rejects each one by name.
+- **The explicit leg** (the table names no gates): EXIT=1 on both arms. Emptying
+  it makes the program STRICTER, not weaker: every manifest id falls to the
+  default required-green and the newly declared gate is still rejected.
+
+So the manifest leg is the only one of the three whose emptying is silent, and
+the fix is scoped to it on measured grounds rather than on the grounds that it
+is the one that was reported. A check on the other two would have no dangerous
+state to be red against, which is the T-003 shape in its own right.
+
+## FR3.4 The fix to the assertion program, and its red witnesses
+
+The condition `!Array.isArray(manifestRead.value?.gates)` is replaced by
+`manifestIds.length === 0`, which is the property the message states. The
+observed shape (absent key, wrong type, empty array, entries without ids) is
+REPORTED in the message for diagnosis and is never the test. See
+scripts/m2-exit-test.sh:529 for the reasoning as shipped, and
+scripts/m2-exit-test.sh:550 for the condition.
+
+A second, smaller change at scripts/m2-exit-test.sh:782: the success line now
+reports what EACH LEG contributed. That is not decoration and it is not a
+check. It covers the failure mode no check inside this program can catch, a leg
+that has SHRUNK rather than emptied, because the program holds no independent
+record of what the manifest ought to contain. Stating that bound here is the
+point. Whether a program with only these three inputs (the manifest, the bundle
+summary and the expectations table) CAN distinguish a truncated manifest from a
+smaller one is an open question I did not settle; I did not find a way, and the
+per-leg contribution line is what I did instead.
+
+### FR3.4a The same lab, same fixtures, against the FIXED program
+
+Identical script, identical fixtures, only the program under test differs.
+
+FULL OUTPUT:
+
+```
+manifest gates: 11 | gate omitted per arm: {"pr":"red-witness","main":"coverage"}
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+
+=== ARM pr: shipped table has 11 explicit row(s), 0 declared absent ===
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; derived from 11 manifest id(s), 11 bundle row(s) and 11 table row(s); 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] CONTROL-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG3-table-names-no-gates
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] NEWGATE-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+=== ARM main: shipped table has 6 explicit row(s), 5 declared absent ===
+--- [main] GREEN-CONTROL-nothing-omitted
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; derived from 11 manifest id(s), 6 bundle row(s) and 6 table row(s); 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] CONTROL-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG3-table-names-no-gates
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [main] NEWGATE-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (PR bundle): FAIL with 19 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(20 output line(s) total)
+EXIT=1
+
+--- [main] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (main bundle): FAIL with 14 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(15 output line(s) total)
+EXIT=1
+
+=== SUMMARY: exit status per case (0 = CERTIFIED, 1 = rejected) ===
+pr/GREEN-CONTROL                   EXIT=0
+pr/control                         EXIT=1
+pr/manifest-empty-array            EXIT=1
+pr/manifest-no-usable-ids          EXIT=1
+pr/manifest-not-an-array           EXIT=1
+pr/explicit-empty                  EXIT=1
+pr/NEWGATE-real-manifest           EXIT=1
+pr/NEWGATE-manifest-empty-array    EXIT=1
+pr/NEWGATE-manifest-no-usable-ids  EXIT=1
+pr/NEWGATE-manifest-not-an-array   EXIT=1
+main/GREEN-CONTROL                 EXIT=0
+main/control                       EXIT=1
+main/manifest-empty-array          EXIT=1
+main/manifest-no-usable-ids        EXIT=1
+main/manifest-not-an-array         EXIT=1
+main/explicit-empty                EXIT=1
+main/NEWGATE-real-manifest         EXIT=1
+main/NEWGATE-manifest-empty-array  EXIT=1
+main/NEWGATE-manifest-no-usable-ids EXIT=1
+main/NEWGATE-manifest-not-an-array EXIT=1
+pr/rows-not-an-array               EXIT=1
+main/rows-not-an-array             EXIT=1
+```
+
+| case | pre-fix | post-fix |
+|---|---|---|
+| GREEN CONTROL, both arms | EXIT=0 | **EXIT=0** (still accepted) |
+| newly declared gate did not run, real manifest | EXIT=1 | EXIT=1 |
+| **same, manifest `gates: []`, both arms** | **EXIT=0 certified** | **EXIT=1 rejected** |
+| **same, manifest entries without ids, both arms** | **EXIT=0 certified** | **EXIT=1 rejected** |
+| same, manifest `gates: {}`, both arms | EXIT=1 | EXIT=1 |
+
+Two structurally different members of the class, red on both arms, with a green
+control that stays green. That satisfies CLAUDE.md:380 by measurement rather
+than by assertion.
+
+### FR3.4b The SECOND harm, through the harness's own pipeline
+
+The A/B above isolates the assertion program. It is not the whole of what an
+emptied manifest leg costs, because the harness DERIVES the main arm's absent
+list from the same file it then passes to the program
+(scripts/m2-exit-test.sh:225). So one degraded file degrades both halves, and
+the second harm is structurally different from the first: not a declared gate
+going unasserted, but the absent list collapsing so a STRAY record for a gate
+the main bundle must not run stops being rejected.
+
+Method: the manifest is degraded IN PLACE in the worktree, because
+`--print-expect` resolves it from the harness's own repository root and a copy
+of the harness outside its tree reads the wrong file. That is not hypothetical:
+the first attempt at this measurement did exactly that and both PRE arms died
+with ENOENT, which is why the run below swaps the harness file in place instead
+and prints each program's sha256 so the two arms cannot be confused.
+
+FULL OUTPUT:
+
+```
+########## manifest=REAL  program=PRE-FIX  (sha 4b607dd96964) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = ["credential-token","citations","scope","clause-map","red-witness"]
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [red-witness] expected to be ABSENT from this bundle (not run) but has a summary record
+EXIT=1
+
+########## manifest=REAL  program=POST-FIX  (sha 5791db626d2f) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = ["credential-token","citations","scope","clause-map","red-witness"]
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [red-witness] expected to be ABSENT from this bundle (not run) but has a summary record
+EXIT=1
+
+########## manifest=DEGRADED-gates-empty-array  program=PRE-FIX  (sha 4b607dd96964) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = []
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): OK. 7 gate record(s) match section 1.4; 7 gate(s) asserted (6 from an explicit table row, 1 under the default required-green: red-witness); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+########## manifest=DEGRADED-gates-empty-array  program=POST-FIX  (sha 5791db626d2f) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = []
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+```
+
+The collapse itself, isolated, so it is not inferred from the run above:
+
+```
+=== CONTROL: real gates.manifest.json ===
+-- arm=pr
+gates: 11 absent: []
+-- arm=main
+gates: 6 absent: ["credential-token","citations","scope","clause-map","red-witness"]
+
+=== DEGRADED: same file with gates:[] ===
+-- arm=pr
+gates: 11 absent: []
+-- arm=main
+gates: 6 absent: []
+```
+
+| manifest | program | result |
+|---|---|---|
+| real | pre-fix | EXIT=1, the stray `red-witness` record is rejected |
+| real | post-fix | EXIT=1, same finding, same text |
+| **`gates: []`** | **pre-fix** | **EXIT=0, "7 gate(s) asserted ... zero red"** |
+| **`gates: []`** | **post-fix** | **EXIT=1, the manifest leg is named as empty** |
+
+Both files were restored from saved pristine bytes, never with `git checkout --`
+(CLAUDE.md:659), and `git status --porcelain` reported `gates.manifest.json`
+unmodified afterwards.
+
+## FR3.5 The fix to the fourth-leg guard (DV-4), and its mutation matrix
+
+Two changes, and the second is the one that makes this a mechanism fix rather
+than an instance fix.
+
+1. The guard stops matching spread SPELLINGS. It splits the union's array
+   literal into TOP-LEVEL ELEMENTS with a depth-aware scan that is string,
+   template and comment aware, and compares their source text against a pinned
+   list of three. A leg is then seen whatever it is spelled like, including one
+   that is not a spread at all. test/m2-exit-test.test.ts:1745 onward.
+2. **A leg does not have to arrive inside that array literal.** It can arrive
+   as a separate write to `expectedIds` twenty lines further down, and no
+   enumeration of the literal would ever notice. So every statement that WRITES
+   the binding is pinned too, by its own text:
+   test/m2-exit-test.test.ts:1866. This is the member of the class that the
+   element-list fix alone does not cover, and it was not in the delta
+   verification; it came out of asking what the class is.
+
+Neither assertion pins a count. Both are set equalities over names, which is the
+form CLAUDE.md:201 prescribes.
+
+### FR3.5a The matrix: ten harness variants, OLD guard against NEW
+
+Each variant is an anchored SINGLE replacement of the union statement (or of the
+line after it), applied to the harness IN PLACE and restored from saved pristine
+bytes afterwards. Nothing was copied out of its tree and no `git checkout --`
+was used anywhere.
+
+Negative control FIRST, so a silently missing anchor cannot read as a clean
+result: the mutator aborts with exit 2 on an anchor that does not occur.
+
+FULL OUTPUT:
+
+```
+=== NEGATIVE CONTROL for the mutator itself ===
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur anywhere at all
+mutator EXIT=2
+
+PRISTINE-control             guard=OLD  EXIT=0
+PRISTINE-control             guard=NEW  EXIT=0
+ADD-paren-expression         guard=OLD  EXIT=0
+ADD-paren-expression         guard=NEW  EXIT=1
+ADD-array-literal            guard=OLD  EXIT=0
+ADD-array-literal            guard=NEW  EXIT=1
+ADD-bare-identifier          guard=OLD  EXIT=1
+ADD-bare-identifier          guard=NEW  EXIT=1
+ADD-non-spread-element       guard=OLD  EXIT=0
+ADD-non-spread-element       guard=NEW  EXIT=1
+REMOVE-manifest-leg          guard=OLD  EXIT=1
+REMOVE-manifest-leg          guard=NEW  EXIT=1
+REMOVE-rows-leg              guard=OLD  EXIT=1
+REMOVE-rows-leg              guard=NEW  EXIT=1
+REMOVE-explicit-leg          guard=OLD  EXIT=1
+REMOVE-explicit-leg          guard=NEW  EXIT=1
+WRITE-extra-push             guard=OLD  EXIT=0
+WRITE-extra-push             guard=NEW  EXIT=1
+WRITE-splice                 guard=OLD  EXIT=0
+WRITE-splice                 guard=NEW  EXIT=1
+
+restored, sha256 of both files:
+5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh
+1d51e5cd7361cf12b6daa26b5be2d7b0ff0ed9660224e7dd028efaed5db241db  test/m2-exit-test.test.ts
+```
+
+| variant | OLD guard | NEW guard |
+|---|---|---|
+| PRISTINE control | 0 | **0** (still green) |
+| ADD `...(summary.extraGates ?? [])` | **0 BLIND** | 1 |
+| ADD `...["fixture-extra-leg"]` | **0 BLIND** | 1 |
+| ADD `...extraLeg` | 1 | 1 |
+| ADD a non-spread element `"fixture-extra-leg"` | **0 BLIND** | 1 |
+| REMOVE the manifest leg | 1 | 1 |
+| REMOVE the rows leg | 1 | 1 |
+| REMOVE the explicit leg | 1 | 1 |
+| ADD `expectedIds.push(...)` after the loop | **0 BLIND** | 1 |
+| ADD `expectedIds.splice(...)` after the loop | **0 BLIND** | 1 |
+
+FIVE structurally different members were invisible to the old guard: a
+parenthesised expression, an array literal, a non-spread element, an extra push
+and a splice. The last two are invisible to the element-list fix as well and are
+what the second assertion exists for. The green control holds and all three
+REMOVALS still redden, so nothing that worked was traded away.
+
+### FR3.5b The added leg is FUNCTIONAL, not a syntactic decoration
+
+A guard that reddens on a decoration proves nothing. So one of the members the
+old guard could not see is shown to change the program's verdict, on fixtures
+that are otherwise byte-identical between the two runs:
+
+```
+=== Is a leg the OLD guard could not see actually FUNCTIONAL? ===
+--- CONTROL: pristine harness, same fixtures
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; derived from 11 manifest id(s), 11 bundle row(s) and 11 table row(s); 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+mutated scripts/m2-exit-test.sh: 1 occurrence replaced
+--- MUTATED (array-literal leg added), same fixtures
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-leg-the-old-guard-could-not-see] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+restored: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+Control exits 0; with the leg added, the id
+`fixture-leg-the-old-guard-could-not-see` enters the derived expected set, is
+asserted under the strict default, and the verdict flips to EXIT=1. That is a
+real leg, and the old guard exited 0 on the harness carrying it.
+
+## FR3.6 The self-vacuity test rewritten, and its red witness against the SHIPPED code
+
+The test that guards the manifest-leg check now carries three members that all
+empty the leg and one that does not, and its title pins no count. The three:
+`gates: {}` (the shape a type test catches), `gates: []`, and
+`gates: [{name}, {id: ""}, {id: 7}]` (a NON-empty array of three entries that no
+test of type or of length distinguishes from a healthy manifest). Each asserts
+that the message NAMES the shape observed, so the diagnostic that the old type
+test provided is not lost when the condition stops being a type test.
+
+The fourth member keeps the aggregate empty-set check witnessed ALONE, and it
+had to be rebuilt to stay that way. Its old form was a manifest with `gates: []`,
+which the new condition now rejects first, so the two checks would no longer
+have been separately witnessed. Its new form gives every leg something to
+contribute and empties the expected set through the ABSENT list instead:
+test/m2-exit-test.test.ts:1692. That is the only remaining route to "every leg
+looks healthy and nothing at all is asserted".
+
+The title changed, so `test/behaviors.json` changed with it (the registry's
+description must equal the reported test name exactly, src/gates/suite.ts:1042).
+"two structurally different degenerate shapes" became "structurally different
+degenerate shapes": a count in a title is a claim about every future member.
+
+### FR3.6a Three defangs, and the third is the one that matters
+
+FULL OUTPUT:
+
+```
+CONTROL-pristine                     EXIT=0
+DEFANG-manifest-leg-check            EXIT=1
+        AssertionError [ERR_ASSERTION]: manifest-gates-not-an-array empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: m2-assert (manifest-gates-not-an-array): OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s), 1 bundle row(s) and 1 table row(s); 1 gate(s) asserted (1 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+DEFANG-aggregate-empty-check         EXIT=1
+        AssertionError [ERR_ASSERTION]: a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: m2-assert (zero): OK. 0 gate record(s) match section 1.4; derived from 1 manifest id(s), 0 bundle row(s) and 0 table row(s); 0 gate(s) asserted (0 from an explicit table row, 0 under the default required-green); 1 asserted absent: fixture-control-gate; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+REVERT-to-the-old-type-test          EXIT=1
+        AssertionError [ERR_ASSERTION]: manifest-gates-empty-array empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: m2-assert (manifest-gates-empty-array): OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s), 1 bundle row(s) and 1 table row(s); 1 gate(s) asserted (1 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+
+restored harness sha: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+| defang | result |
+|---|---|
+| CONTROL, pristine | EXIT=0 |
+| the manifest-leg check removed | EXIT=1, member `manifest-gates-not-an-array` fails |
+| the aggregate empty-set check removed | EXIT=1, member 4 fails, so the aggregate check has a witness of its own |
+| **the condition REVERTED to the old `!Array.isArray(manifestGates)`** | **EXIT=1, member `manifest-gates-empty-array` fails** |
+
+The third row is the red-witness rule in its stronger form (CLAUDE.md:289): the
+test is red against the DANGEROUS STATE, which is the code as it actually shipped
+at 9b7752d, not merely against the feature being absent. The captured failure
+shows the pre-fix program printing
+`OK. 1 gate record(s) match section 1.4; derived from 0 manifest id(s) ...` and
+exiting 0, which is the certification DV-3 reported.
+
+## FR3.7 DV-1 settled by my own measurement, not by inheriting the verifier's
+
+The guard's assertion message credited `probe-3-manifest-gate-not-applicable`
+with witnessing `manifestIds`. I did not take the delta verification's word for
+that being wrong. The probe loop was instrumented IN PLACE to report per probe
+instead of aborting at the first failure (a whole-test exit code can only show
+which probe failed FIRST), and the four probes were run against five harness
+variants on BOTH arms.
+
+The instrumenter aborts with exit 2 on an anchor that does not occur, and that
+negative control is run and recorded before any result is believed.
+
+FULL OUTPUT:
+
+```
+mutated test/m2-exit-test.test.ts: 1 occurrence replaced
+--- negative control for the instrumenter (anchor that does not exist)
+ANCHOR NOT UNIQUE (0 occurrences), aborting: no such anchor anywhere in this file
+instrumenter EXIT=2 (2 = aborted, correct)
+
+=== harness: PRISTINE (all three legs)
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the rows leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=0
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=0
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the manifest leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=0
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=0
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+=== harness: MINUS the explicit leg
+FR3PROBE arm=pr probe=probe-1-rows-leg status=1
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=1
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=0
+FR3PROBE arm=main probe=probe-1-rows-leg status=1
+FR3PROBE arm=main probe=probe-2-manifest-leg status=1
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=1
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=0
+
+=== harness: MINUS BOTH manifest and rows legs
+FR3PROBE arm=pr probe=probe-1-rows-leg status=0
+FR3PROBE arm=pr probe=probe-2-manifest-leg status=0
+FR3PROBE arm=pr probe=probe-3-manifest-gate-not-applicable status=0
+FR3PROBE arm=pr probe=probe-4-explicit-table-leg status=1
+FR3PROBE arm=main probe=probe-1-rows-leg status=0
+FR3PROBE arm=main probe=probe-2-manifest-leg status=0
+FR3PROBE arm=main probe=probe-3-manifest-gate-not-applicable status=0
+FR3PROBE arm=main probe=probe-4-explicit-table-leg status=1
+
+restored sha256: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh 5059b021db51ed4de67a2f3a948db287592aa91d083cea19a549a3b3c5c45fe6  test/m2-exit-test.test.ts 
+```
+
+| probe | pristine | minus rows | minus manifest | minus explicit | minus BOTH manifest and rows |
+|---|---|---|---|---|---|
+| probe-1-rows-leg | 1 | **0** | 1 | 1 | 0 |
+| probe-2-manifest-leg | 1 | 1 | **0** | 1 | 0 |
+| probe-3-manifest-gate-not-applicable | 1 | 1 | 1 | 1 | **0** |
+| probe-4-explicit-table-leg | 1 | 1 | 1 | **0** | 1 |
+
+Identical on both arms. **probe-3 is red in every single-leg column and green
+only when both the manifest and rows legs are gone**, so it witnesses the
+DISJUNCTION of those two legs and neither of them alone, and `manifestIds` has
+exactly ONE witness, probe-2. DV-1 is upheld by independent measurement.
+
+The guard's message now says exactly that, and says the consequence a
+maintainer needs: removing probe-2 would leave the manifest leg with no witness
+at all. test/m2-exit-test.test.ts:1858.
+
+**DV-2 is left alone deliberately.** It is an observation that round 2's FR2.4
+prose ("each leg reddens a DIFFERENT named assertion") is looser than its
+evidence, and the property that matters holds. The matrix above is the accurate
+statement of what is true, and it is recorded here rather than by rewriting a
+previous round's prose to look better than it was.
+
+## FR3.8 The complete suite sentence: toolchain, build state, INVOCATION and skipped
+
+Four arms, all at the round-3 head with this file, all measured in the shell
+that ran the command with `node --version` checked there.
+
+| toolchain | build state | invocation | tests | pass | SKIPPED | exit |
+|---|---|---|---|---|---|---|
+| node v26.6.0 (scratch prefix) | `dist/` built | `npm test` | 596 | 596 | **0** | 0 |
+| node v26.6.0 | `dist/` built | bare `node --test` from the repository root | **598** | 598 | **0** | 0 |
+| node v26.6.0 | `dist/` REMOVED | `npm test` | 596 | 586 | **10** | 0 |
+| node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 596 | 594 | **2** | 0 |
+
+596 is what CI and the `suite` gate mean. The bare-invocation +2 are the tracked
+`sandbox/test/greet.test.js` fixture CLAUDE.md:732 records. The default
+toolchain's 2 are the floor-gated doctor tests, named rather than inferred:
+
+```
+ok 153 - doctor in a healthy fleet exits 0 # SKIP local Node v22.22.2 is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)
+ok 157 - doctor with gh absent exits 0 under the generic profile # SKIP local Node v22.22.2 is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)
+```
+
+### FR3.8a The no-dist arm skips TEN, and CLAUDE.md:688 still says nine
+
+All ten named from the run itself:
+
+```
+- the compiled entry resolves its schema documents and behaves identically to the source entry (0.348294ms)
+- npm pack output contains both schema documents (0.083687ms)
+- the workflow's gate bundle step runs the gate runner and is able to fail (0.183465ms)
+- a throw escaping the runner is error with a summary, never the red exit code (0.086071ms)
+- a run releases only the claim it holds, and writes nothing after releasing (0.183287ms)
+- --self-test rejects a vacuous-green fixture and a required-not-applicable fixture, naming each, and exits nonzero (0.50977ms)
+- the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018) (0.386729ms)
+- the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green (0.359169ms)
+- the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differently for phase vs non-phase runs (M2R-026) (1.466376ms)
+- a RED gate is rejected on BOTH bundles under three structurally different shapes, and the derived expected set is separately witnessed on BOTH bundles by probes it alone rejects (0.804933ms)
+```
+
+The tenth is `a RED gate is rejected on BOTH bundles ...`, a fifth dist-gated
+test in `test/m2-exit-test.test.ts` that does not exist on `origin/main`. That
+is the delta verification's correction, re-measured here rather than inherited.
+It is a consequence of this branch, not a defect in it, and warning 12 is worth
+an edit when the branch merges. I have NOT edited CLAUDE.md: it is outside this
+round's files and an edit to it here would be an unannounced scope widening.
+
+### FR3.8b BOTH new guards run on BOTH CI events
+
+Neither guard is dist-gated, so both PASS in the arm where the five dist-gated
+tests skip. That is the T-009 property (CLAUDE.md:472): a witness on one arm and
+nothing on the other is the exact shape that broke this repository before.
+
+```
++ the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in structurally different degenerate shapes
++ every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed
+```
+
+### FR3.8c ONE failure, reported rather than averaged away
+
+The FIRST no-dist run exited 1 with one failure, and it is recorded here because
+a run that failed is evidence and deleting it would be the fabrication this
+project keeps paying for:
+
+```
+i tests 596
+i suites 0
+i pass 585
+i fail 1
+i cancelled 0
+i skipped 10
+i todo 0
+i duration_ms 221217.253961
+
+x failing tests:
+
+test at test/citation-gate.test.ts:596:1
+x citing a path that is a git TREE (directory), not a blob, at the reviewed revision is error naming the object type and returns (M2-C-6's mechanism restated for git objects) (20758.506297ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'SIGTERM' !== null
+  
+      at TestContext.<anonymous> (file:///tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/test/citation-gate.test.ts:612:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+```
+
+The failing test is `test/citation-gate.test.ts:596`, which this round does not
+touch: the diff is `scripts/m2-exit-test.sh`, `test/m2-exit-test.test.ts`,
+`test/behaviors.json` and this file. The signal is SIGTERM at 20.7 seconds
+against a 15 second CLI timeout declared at test/citation-gate.test.ts:219, and
+the machine's load average was 3.78 after two full suites back to back
+(`uptime` was read before and after each run rather than assumed). Re-run alone
+at load 1.92, that file reported 41 tests, 41 pass, 0 skipped, exit 0. The
+no-dist arm re-run whole then gave 596/586/10 skipped, exit 0, the row in the
+table above.
+
+That is consistent with the contention family this branch's round 2 recorded at
+FR2.15, and it is a statement about what I measured, not a diagnosis I proved: I
+did not force the failure to recur, so "contention" here is the best-supported
+reading of two runs and not a demonstrated cause.
+
+TRANSLITERATION NOTE. Node's test reporter prints non-ASCII glyphs that the
+repository's authored-bytes check forbids, and hand-writing the output instead
+is the fabrication CLAUDE.md:140 forbids outright. So the captures above are
+transliterated and the substitution is declared: U+2714 rendered `+` (2
+occurrences), U+2139 rendered `i` (8), U+2716 rendered `x` (2), U+FE63
+rendered `-` (10). Nothing else in any captured output was changed.
+
+## FR3.9 A residual found by probing my own exclusion, and closed
+
+I did not write "a two-line write would probably escape the pin" into the
+not-covered section. I ran it.
+
+```
+=== A. the same mechanism in src/ and bin/: a leg that degrades to [] on a TYPE test ===
+scripts/m2-exit-test.sh:470:const rows = Array.isArray(summary.gates) ? summary.gates : [];
+scripts/m2-exit-test.sh:502:const manifestIds = Array.isArray(manifestGates)
+scripts/m2-exit-test.sh:551:  const observed = !Array.isArray(manifestGates)
+src/checks.ts:98:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/checks.ts:104:  return Array.isArray(value) ? value : [];
+src/commands/brief.ts:77:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/commands/brief.ts:83:  return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+src/commands/brief.ts:142:  const phases = Array.isArray(plan?.["phases"]) ? (plan["phases"] as unknown[]) : [];
+src/commands/validate.ts:271:  const clauses = Array.isArray(frontmatter["clauses"])
+src/commands/validate.ts:291:      Array.isArray(frontmatter["outputs"])
+src/commands/validate.ts:294:      Array.isArray(frontmatter["mandated-reading"])
+src/modes.ts:86:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/modes.ts:93:  return Array.isArray(value)
+src/plan.ts:121:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/plan.ts:127:  return Array.isArray(value)
+src/plan.ts:148:  const phases = Array.isArray(document["phases"]) ? document["phases"] : [];
+grep exit=0
+
+=== B. does the expectedIds writes pin survive a write split across two lines? ===
+mutated scripts/m2-exit-test.sh: 1 occurrence replaced
+guard EXIT=0 against a two-line write
+restored: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+Part B is the finding: the first version of the `expectedIds` writes pin was
+LINE-BASED, and a write split as `expectedIds` on one line and `.push(...)` on
+the next walked straight past it, guard EXIT=0. A guard that a newline defeats
+is the mechanism of this whole round one level up, in code I had just written.
+
+It is closed rather than declared. The pin now classifies every occurrence of
+the identifier by the operation that FOLLOWS it, skipping whitespace AND
+comments. The four write shapes measured in FR3.10, two of which the line-based
+version passed, all redden against it: test/m2-exit-test.test.ts:1866. I did not
+enumerate every syntactic form a write can take, so that is four measured
+shapes, not a proof over all of them.
+
+Part A is the same mechanism looked for in `src/` and `bin/`. Twelve sites
+degrade a value to `[]` on a type test. None of them is this defect: they are
+input coercions in `plan.ts`, `modes.ts`, `checks.ts`, `brief.ts` and
+`validate.ts`, feeding validators that report on what they find, not guards
+whose message quantifies over a class the coercion silently empties. The two
+inside `scripts/m2-exit-test.sh` are the rows leg (measured LOUD in FR3.3b) and
+the manifest leg (fixed here). I am reporting the enumeration and my reading of
+it; I did not construct a degenerate input for each of the twelve, so this is a
+survey, not twelve measurements.
+
+## FR3.10 Every red witness RE-RUN against the files that SHIP
+
+The matrix in FR3.5a was measured before the writes pin was rewritten, so it
+describes a file that is no longer the one being submitted. It is re-run here in
+full against the final bytes, with both files' sha256 printed so the two runs
+cannot be confused, rather than left to a reader to assume nothing moved.
+
+FULL OUTPUT:
+
+```
+harness sha256 under test: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+test    sha256 under test: 787b62e2a3f2942eb50ea3d8a3b3c046aa3435cbf3338b5a9753bccad4c3711a
+
+=== NEGATIVE CONTROL for the mutator ===
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur anywhere at all
+mutator EXIT=2
+
+PRISTINE-control                         guard=OLD  EXIT=0
+PRISTINE-control                         guard=NEW  EXIT=0
+ADD-paren-expression                     guard=OLD  EXIT=0
+ADD-paren-expression                     guard=NEW  EXIT=1
+ADD-array-literal                        guard=OLD  EXIT=0
+ADD-array-literal                        guard=NEW  EXIT=1
+ADD-bare-identifier                      guard=OLD  EXIT=1
+ADD-bare-identifier                      guard=NEW  EXIT=1
+ADD-non-spread-element                   guard=OLD  EXIT=0
+ADD-non-spread-element                   guard=NEW  EXIT=1
+REMOVE-manifest-leg                      guard=OLD  EXIT=1
+REMOVE-manifest-leg                      guard=NEW  EXIT=1
+REMOVE-rows-leg                          guard=OLD  EXIT=1
+REMOVE-rows-leg                          guard=NEW  EXIT=1
+REMOVE-explicit-leg                      guard=OLD  EXIT=1
+REMOVE-explicit-leg                      guard=NEW  EXIT=1
+WRITE-extra-push-one-line                guard=OLD  EXIT=0
+WRITE-extra-push-one-line                guard=NEW  EXIT=1
+WRITE-extra-push-SPLIT-two-lines         guard=OLD  EXIT=0
+WRITE-extra-push-SPLIT-two-lines         guard=NEW  EXIT=1
+WRITE-splice-SPLIT-two-lines             guard=OLD  EXIT=0
+WRITE-splice-SPLIT-two-lines             guard=NEW  EXIT=1
+READ-added-must-stay-GREEN               guard=OLD  EXIT=0
+READ-added-must-stay-GREEN               guard=NEW  EXIT=0
+
+restored sha256:
+5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh
+787b62e2a3f2942eb50ea3d8a3b3c046aa3435cbf3338b5a9753bccad4c3711a  test/m2-exit-test.test.ts
+```
+
+| variant | OLD guard | NEW guard |
+|---|---|---|
+| PRISTINE control | 0 | **0** |
+| ADD a parenthesised expression leg | **0 BLIND** | 1 |
+| ADD an array-literal leg | **0 BLIND** | 1 |
+| ADD a bare-identifier leg | 1 | 1 |
+| ADD a non-spread element | **0 BLIND** | 1 |
+| REMOVE the manifest leg | 1 | 1 |
+| REMOVE the rows leg | 1 | 1 |
+| REMOVE the explicit leg | 1 | 1 |
+| WRITE an extra push, one line | **0 BLIND** | 1 |
+| WRITE an extra push, split across two lines | **0 BLIND** | 1 |
+| WRITE a splice, split across two lines | **0 BLIND** | 1 |
+| a READ added, which must NOT redden | 0 | **0** |
+
+Twelve variants. Six were invisible to the guard that shipped at 9b7752d. The
+last row is the control that matters for the new pin: it is not a blanket trip
+on the identifier appearing, it fires on WRITES.
+
+## FR3.11 What THIS round's derivation did NOT cover (fix-round contract item 3)
+
+This section is the reviewer's FIRST check (CLAUDE.md:326). A search whose scope
+is wrong returns an empty result that reads exactly like an absence of defects.
+
+1. **The enumeration is scoped to the files this branch changes.** FR3.2a takes
+   its file list from `git diff --name-only origin/main...HEAD` filtered to
+   `.sh`, `.ts` and `.yml`, which is four files. A member of the mechanism
+   living in a file this branch does not touch is outside it. FR3.9 part A is a
+   PARTIAL closure of that gap for `src/` and `bin/`, and it is a survey of
+   twelve sites read by eye, not twelve constructed inputs.
+2. **The leg scan reads ONE array literal, located by ONE anchor, in ONE file.**
+   A second union feeding a different binding in a different program would not
+   appear. The anchor assertion makes a MISSING anchor loud, not a SECOND union
+   elsewhere visible.
+3. **A leg that GROWS is not covered, only a leg that ARRIVES.** Writing
+   `const rows = [...summary.gates, ...somethingElse]` adds a source of expected
+   ids without changing the set of legs, and every probe and both new
+   assertions stay green. This is the closest uncovered neighbour of DV-4 and I
+   am naming it rather than leaving it to be found.
+4. **TRUNCATION is not covered, only EMPTINESS.** A manifest carrying three of
+   its eleven gates degrades the leg by eight ids and passes every check here.
+   No check inside this program can catch that, because the program holds no
+   independent record of what the manifest ought to contain. The per-leg
+   contribution now printed on the success line makes it VISIBLE to a reader of
+   the evidence; it does not make it fail.
+5. **No `gates` registry run of mine covers the whole registry.** I ran the
+   subset recorded in FR3.12 locally. Everything else on this head is CI's word,
+   not mine.
+6. **The `red-witness` gate DOES NOT RUN on this pull request.** Its
+   precondition is `diff-touches src/ bin/` and this diff is `scripts/`,
+   `test/` and `delivery/`. So no gate evaluates whether the witnesses above can
+   fail, and the evidence that they can is MY OWN LAB WORK in FR3.3, FR3.4,
+   FR3.6, FR3.7 and FR3.10, not a gate result. A green CI on this branch does
+   not mean the witnesses were checked.
+7. **The `push` arm has not run and cannot run on a pull request.** Both new
+   guards are dist-free and PASS in the no-dist arm (FR3.8b), which is the
+   strongest statement available before merge, and it is not the same as having
+   watched the post-merge run.
+8. **The probe and mutation matrices were run on node v26.6.0 only.** The suite
+   was run on both toolchains; the matrices were not.
+9. **I did not re-verify rounds 1 and 2 beyond what the delta verification
+   checked.** FR2.10 and FR2.13 to FR2.18 are unverified by me, as they were by
+   the verifier.
+10. **I did not construct a route by which a shipped `gates.manifest.json`
+    becomes degraded in production.** FR3.3 and FR3.4 measure the consequence if
+    it does. This is the same exclusion the delta verification declared at its
+    item 6 and I have not closed it either.
+11. **`.github/workflows/gates.yml` was not examined.** It is unchanged in this
+    round's delta.
+12. **The 3370 lines of this work history preceding FR3.0 are not re-verified.**
+    I read FR2.0 to FR2.9 and the delta verification in full; the rest I did not
+    re-measure.
+
+## FR3.12 Disposition of DV-1 to DV-4
+
+| id | severity | disposition |
+|---|---|---|
+| DV-3 | MEDIUM | **CLOSED.** The condition now tests the leg's contribution, not the type of its input. Two structurally different degenerate manifests that CERTIFIED a bundle with a declared gate that did not run are now rejected, on both arms (FR3.3, FR3.4a), and so is the derived-absent-list collapse through the harness's own pipeline (FR3.4b). Red-witnessed against the code as it shipped (FR3.6a). |
+| DV-4 | MEDIUM | **CLOSED, and widened.** The guard enumerates the union's top-level elements structurally, so all three spellings the old regex missed redden; and a SECOND assertion pins every write to `expectedIds`, which covers a leg arriving outside the array literal entirely. Six variants that the shipped guard passed now fail (FR3.10). The registered behaviour is left as written because it is now true of that union, with its bounds stated at FR3.11 items 2 and 3. |
+| DV-1 | LOW | **CLOSED by restatement, backed by my own measurement.** The guard's message no longer credits probe-3 with witnessing `manifestIds`. It says probe-2 is that leg's only witness and probe-3 witnesses the disjunction of the manifest and rows legs, which FR3.7's matrix establishes on both arms. |
+| DV-2 | observation | **Left alone deliberately.** Round 2's prose is looser than its evidence; the property that matters holds. FR3.7's matrix is the accurate statement, recorded rather than substituted for a previous round's account of itself. |
+
+## FR3.13 The registry gates run locally, with one RED and one ERROR reported
+
+`node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
+--evidence <scratch> --base origin/main --head HEAD`, node v26.6.0:
+
+```
+gates: declared 12 applicable 6 verdict 6 green 5 red 1 not-applicable 5 error 1 vacuous 0
+gates: 1 gate(s) reported error: scope
+
+green                8 manifest-self-check
+green              115 coverage
+green                7 credential-scrub
+not-applicable       0 credential-token
+red                596 suite
+not-applicable       0 citations
+error                0 scope
+not-applicable       0 deploy
+not-applicable       0 migrations
+green               34 clause-map
+not-applicable       0 red-witness
+green               17 agent-rules-drift
+```
+
+The RED and the ERROR are both reported rather than re-run until they are
+convenient.
+
+**`suite` RED, and it is the real-clock flake.** The two findings were
+`a resident watcher keeps running and backs off with growing beacon gaps` and
+`a resident watcher is silent on heartbeats unless bounded`, both in
+`test/watcher.test.ts`, neither touched by this round. The run happened at load
+average 2.89 immediately after four full suites. Re-run alone:
+
+```
+suite gate EXIT=0
+status: green units: 596
+detail: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 596 test(s)
+from 36 file(s) (pass 596, fail 0, skipped 0, todo 0, did-not-run 0); discovered 36 file(s)
+walking test for .test.ts; 600 behavior(s) resolve; merge base bb8f6564cce6
+```
+
+600 behaviours resolve, which is the check that both registry rows below map to
+a reported test name. As with FR3.8c I am stating what I measured: two runs,
+one red under load and one green, with the failures in a real-clock test this
+round does not touch. I did not force the failure to recur, so the flake
+attribution is a reading, not a demonstration.
+
+**`scope` ERROR is the branch being a non-phase branch**, and it is correct
+behaviour. Without `--phase` it errors "gate scope requires --phase"; run the
+way the workflow runs it (.github/workflows/gates.yml:132) it is
+not-applicable with `branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$`.
+That is the naming rule CLAUDE.md:499 states: only a phase's own implementation
+branch may match that pattern, and this harness branch deliberately does not.
+
+**`red-witness` not-applicable, from the gate's own record rather than from
+the registry text:** `precondition red-witness-diff evaluated and unmet: no
+changed path under src/, bin/`. Confirmed independently of the brief.
+
+**`citations` not-applicable**, and the reason matters for this document:
+`no changed path under delivery/plan/, delivery/verification/,
+delivery/decisions/, delivery/tuition/, delivery/requirements/,
+delivery/STATE.md`. `delivery/work-history/` is NOT on that list, so **no gate
+checks the citations in this file**. Every one of the twenty `path:line` tokens
+in the FR3 sections was therefore opened by hand in this worktree and its target
+line printed; eleven of the twenty were wrong on the first pass, all for the
+reason CLAUDE.md records, reading line numbers out of a checkout on a different
+head. They were corrected in commit `09238b7` and re-verified.
+
+## FR3.14 The pre-submission checks
+
+**Authored bytes, with the tree STAGED** (the script exits 2 WITHOUT CHECKING if
+the tree differs from the index, which reads exactly like a pass):
+
+```
+$ git add -A && node scripts/check-authored-bytes.mjs
+EXIT=0
+```
+
+And a negative control, because an exit 0 from a check that inspected nothing is
+worthless:
+
+```
+$ printf 'x\xc3\xa9y\n' > delivery/work-history/FR3-nonascii-probe.md && git add ...
+delivery/work-history/FR3-nonascii-probe.md:1: non-ASCII byte 0xc3
+delivery/work-history/FR3-nonascii-probe.md:2: non-ASCII byte 0xa9
+rc-with-probe=1
+rc-after-removal=0
+```
+
+**The claim grep, both forms, over the FR3 sections.** The line-based form
+returned eight hits and the wrap-insensitive form (`tr '\n' ' '` first) returned
+the same eight, which is the point of running both: this prose is hard-wrapped
+and a phrase split across a line break is invisible to the first.
+
+The alternation carries `cannot be` but NOT `cannot fire`, `cannot reach`,
+`cannot see` or `can never`, so those were checked by eye with a third pattern.
+Twenty-two hits, of which nineteen are the shipped check's own message quoted
+inside captured output. That sentence, "a manifest that declares no gates cannot
+certify a bundle", was FALSE when the delta verification measured it and is now
+TRUE, which is what FR3.4a establishes; it is quoted, not asserted.
+
+The three that were mine:
+
+| hit | settled how |
+|---|---|
+| "the members the old guard could not see" | FR3.10's matrix, six variants |
+| "so a new leg cannot arrive unprobed" | the test's own title, quoted; bounds declared at FR3.11 items 2 and 3 |
+| "the form of the write cannot hide it" | **RESTATED.** Four write shapes are measured, which is not a proof over all forms, and the text now says so |
+
+One more was restated rather than defended: a sentence claiming a reader "needs
+a source of truth this program does not have" to catch manifest truncation. I
+did not settle whether these three inputs can distinguish truncation from a
+smaller manifest, so it is now written as the open question it is.
+
+**No `git checkout --` was run in this round at any point.** Every mutation was
+an anchored single replacement applied in place and restored from a saved
+pristine copy, with the restored sha256 printed in the same capture.
+
+## FR3.15 Files changed, and the position on scope
+
+```
+$ git diff --stat 9b7752d..HEAD
+ delivery/work-history/exit-test-assertion-direction.md | 1437 ++++++++++++++++
+ scripts/m2-exit-test.sh                                |   67 +-
+ test/behaviors.json                                    |    2 +-
+ test/m2-exit-test.test.ts                              |  336 ++++-
+ 4 files changed, 1752 insertions(+), 90 deletions(-)
+```
+
+Four files, all of them ones this branch already owns. `test/behaviors.json` and
+the phase work history are the two standing pre-authorized extras
+(CLAUDE.md:281). No file is reported as `Bin` by `git diff --stat`, which is the
+quick check CLAUDE.md:121 names for the control-character failure mode.
+
+Two things I did NOT change and could have been expected to:
+
+- **CLAUDE.md warning 12 still says nine dist-gated skips and the true number on
+  this branch is ten.** Re-measured here (FR3.8a) and named. Editing CLAUDE.md
+  from this round would be an unannounced scope widening onto a file this branch
+  does not touch, so it is reported for whoever merges rather than done.
+- **`delivery/STATE.md` is untouched.** This round changes no phase or decision
+  state; it is a fix round inside an open pull request.
+
+## FR3.16 What a reader should NOT conclude from a green CI on this head
+
+Stated plainly because the shape it guards against has cost this repository
+twice.
+
+1. **`red-witness` did not run** (FR3.13, from the gate's own result record). No
+   gate evaluated whether any witness in this round can fail. That evidence is
+   my own lab work and nothing else.
+2. **The `push` arm did not run.** Everything measured here is the
+   `pull_request` configuration. The post-merge run on the new `main` head is
+   the obligation CLAUDE.md:468 names and no pull-request run discharges it.
+3. **`citations` and `scope` are not-applicable on this diff**, for
+   preconditions quoted in FR3.13. A green bundle here is a green bundle with
+   those two not evaluated.
+4. **A green on an EARLIER head is not a green on this one.** The complete
+   sentence names the event and the head sha (CLAUDE.md:463), and the last
+   commit of this round is the one describing the run, which no run can have
+   observed.
+
+## FR3.17 CI on the final head: stated as measured, including a run that did not start
+
+The round-3 head is `402c534`, pushed to
+`claude/exit-test-harness-assertion-direction` at 2026-08-12T17:52:46Z. The push
+landed: `git rev-parse origin/claude/exit-test-harness-assertion-direction`
+returns `402c534bf2dda3d173074afd2aaa8cf56d86efe7`, and the GitHub API returns
+the commit.
+
+**No `gates` run was created for that head.** Polled repeatedly from 17:53 to
+18:00, by workflow and by branch and repository-wide:
+
+```
+$ list_workflow_runs gates.yml branch=claude/exit-test-harness-assertion-direction
+total: 13   newest: 31616267035 pull_request completed success 9b7752d8 2026-08-12T16:10:40Z
+$ ... status=queued      -> total_count 0
+$ ... status=in_progress -> total_count 0
+$ get_check_runs PR #109 -> total_count 0
+```
+
+The runner is NOT the problem, and that is measured rather than assumed: the
+repository-wide list shows runs created at 17:43, 17:50 and 17:57 on three other
+refs, two of them still in progress, spanning the minute of my push.
+
+```
+31625251732 gates  push          in_progress  97812122 main                              17:57:55Z
+31624674797 gates  pull_request  in_progress  6cd24449 claude/state-currency-harness-round3  17:50:56Z
+31624021278 gates  pull_request  completed success 2af6c817 claude/verify-m3-p6-round2    17:43:06Z
+```
+
+`.github/workflows/gates.yml` declares `on: pull_request` with no path filter
+and no `types` list, and pull request #109 is open, so a synchronize on this
+branch is exactly what it subscribes to. I did not determine why the event
+produced no run. I am reporting the fact and not a diagnosis.
+
+**What this means for anyone reading a green on this branch.** The newest
+completed `gates` run is `31616267035`, `pull_request`, conclusion success, head
+`9b7752d`. That is round 2's head. The delta `9b7752d..402c534` includes
+PRODUCTION CODE (`scripts/m2-exit-test.sh`, 67 lines changed) and the guard test.
+**So that green does not cover this head, and no CI run has evaluated this
+round's changes at the time of writing.** Everything asserted about this round's
+code in the sections above is local evidence: four suite arms, the local
+registry bundle in FR3.13, and the mutation matrices, all on node v26.6.0 in
+this worktree.
+
+The remaining CI obligations, neither of which a pull-request run discharges:
+
+1. A `gates` run on `402c534` or its successor, `pull_request` event, read BY
+   STEP rather than by conclusion.
+2. The post-merge `push` run on the new `main` head (CLAUDE.md:468), which is
+   the first execution of the `push` arm and belongs to whoever merges. This
+   round does not merge and does not open a pull request.
+
+## FR3.18 WHY no run was created: the pull request is CONFLICTED, and round 2 is already on `main`
+
+FR3.17 reported the fact and declined to guess the cause. The cause is now
+measured, and it changes what should happen next, so it is here rather than in a
+hand-back message that could be lost.
+
+**Pull request #109 reports `mergeable_state: "dirty"`.** GitHub cannot compute
+the merge ref for a conflicted pull request, and no `pull_request` workflow run
+is created for one. That is a complete explanation of the silence, and it is not
+caused by anything this round pushed: `main` moved to `3d0fa5a` at 17:40:25Z,
+twelve minutes BEFORE the first round-3 push at 17:52:46Z.
+
+**What moved.** `main`'s commit `3d0fa5a` is titled "Land the harness fix-round-2
+delta verification: two MEDIUM findings (#117)", and it carries this branch's
+round-2 CONTENT. Measured by hashing the blobs rather than by reading the title:
+
+| file | on `main` (9781212) | at `9b7752d` (round 2) | |
+|---|---|---|---|
+| scripts/m2-exit-test.sh | 4b607dd9696485e5 | 4b607dd9696485e5 | SAME |
+| test/behaviors.json | b76c628f031a7947 | b76c628f031a7947 | SAME |
+| test/m2-exit-test.test.ts | 5bb732f77ce3e0a3 | 5bb732f77ce3e0a3 | SAME |
+| delivery/work-history/exit-test-assertion-direction.md | cdeb8ae161b6ceee | cdeb8ae161b6ceee | SAME |
+
+All four are byte-identical, and `git merge-base --is-ancestor 9b7752d
+origin/main` answers NO. So round 2's content reached `main` through a DIFFERENT
+commit, and git sees the same file introduced twice with no shared ancestry:
+
+```
+$ git merge-tree --write-tree origin/main HEAD   (EXIT=1)
+CONFLICT (add/add): Merge conflict in delivery/work-history/exit-test-assertion-direction.md
+CONFLICT (content): Merge conflict in scripts/m2-exit-test.sh
+CONFLICT (content): Merge conflict in test/behaviors.json
+```
+
+**The resolution is mechanical, and it is measured rather than proposed.**
+Because `main`'s four files are byte-identical to `9b7752d`'s, this round's
+delta against `9b7752d` applies to current `main` with no conflict at all:
+
+```
+$ git diff 9b7752d..de2d806 -- scripts/m2-exit-test.sh test/behaviors.json \
+    test/m2-exit-test.test.ts delivery/work-history/exit-test-assertion-direction.md \
+    > round3.patch          (2028 lines)
+$ git worktree add --detach <probe> origin/main
+$ git apply --check round3.patch
+git apply --check EXIT=0
+$ git apply round3.patch     -> applied cleanly, 4 files modified
+```
+
+and the result is byte-identical to this branch for every one of the four:
+
+```
+scripts/m2-exit-test.sh                     probe=5791db626d2ff268 mine=5791db626d2ff268 SAME
+test/behaviors.json                         probe=71205e1b55027221 mine=71205e1b55027221 SAME
+test/m2-exit-test.test.ts                   probe=4baa388bda4016c8 mine=4baa388bda4016c8 SAME
+delivery/work-history/...-direction.md      probe=affb3c41ad79a061 mine=affb3c41ad79a061 SAME
+```
+
+The probe worktree was removed afterwards and this worktree is unchanged
+(`git status --porcelain` empty).
+
+**I did not act on it.** Replaying this round onto `main`, or resolving #109 in
+place, changes what the pull request contains and which branch carries the work,
+and an implementer neither opens pull requests nor merges. It is recorded here
+so that whoever does it has the measurement rather than the guess, and so that
+the missing CI is not read as a defect in the change.
+
+Until that is resolved, **no `pull_request` run can be created for any head of
+this branch**, which is why three pushes (`402c534`, `e5b7bfe`, `de2d806`)
+produced no run while the same workflow ran for two other branches in the same
+minutes.
+
+## FR4.0 Fix round 4: fresh implementer, the subset-condition mechanism
+
+I did not write rounds 1, 2 or 3. I was dispatched as a fresh implementer against
+head 6fd51cb (round 3's 0475d8b plus a merge of main), to close the round-3 delta
+verification findings in `delivery/verification/harness-round3-delta.md` (on the unmerged branch
+claude/verify-harness-round3, so it is quoted rather than cited) and, more
+importantly, to fix the MECHANISM those findings are three instances of rather
+than the three spellings the verifier happened to construct.
+
+This section is my beacon under the T-008 dispatch contract: it was created before
+I had any results and appended to as the round proceeded. Everything below it was
+written in the order the work happened.
+
+Toolchain for every measurement in this section unless a line says otherwise: node
+v26.6.0 from the scratch prefix, checked with node --version in the shell that ran
+the command.
+
+### FR4.1 The mechanism, named before anything is edited
+
+The fix-round contract (CLAUDE.md:301) requires the MECHANISM, not the finding.
+The mechanism here was named by round 3's own verifier and then instantiated by
+round 3's own new code:
+
+**A check's CONDITION recognises a syntactic or typed SUBSET of the class its
+MESSAGE quantifies over, so members outside that subset pass in silence.**
+
+Instances already paid for on this branch:
+
+| instance | message quantifies over | condition recognises | escaped |
+|---|---|---|---|
+| DV-4 | every element of the union | `...IDENTIFIER` spellings | spread of a call, split lines |
+| DV-3 | a manifest that declares no gates | `!Array.isArray(gates)` | empty array, idless entries |
+| DV3-F1 | every operation that WRITES the binding | a member-NAME allowlist | index write, alias, `.apply` |
+
+The third was introduced by the round that named the first two. That is the
+signature of a mechanism that is not being fixed: each round widens the subset by
+the members the last reviewer constructed, and the next reviewer constructs
+another. Work in progress below.
+
+### FR4.2 What changed, and why the instrument was replaced rather than widened
+
+The delta verification offered two ways to close DV3-F1: restate the claim to the
+class the condition recognises, or widen the condition. I took neither, because
+both leave the mechanism in place. Widening a member-name list by the three
+spellings a verifier constructed is what produces a fourth, and
+`expectedIds["pu" + "sh"](id)` is a write that exists in no source text at all,
+so no list of names can ever be complete. Restating the claim would have been
+honest and would have left a real, unguarded class.
+
+What I did instead is change what is being tested. The class is "an operation
+that changes the set of gate ids this program asserts on". That is a property of
+a RUN, not of the source text, and it can be tested by running the program.
+Three changes to scripts/m2-exit-test.sh:1, and the two run-time ones are the
+substance:
+
+1. **The three legs are named once.** scripts/m2-exit-test.sh:542 to
+   scripts/m2-exit-test.sh:544 bind `manifestLeg`, `rowsLeg` and `tableLeg`, and
+   the union, the self-check and the success line all read those bindings. This
+   is also the fix for DV3-F3: there is now one expression per leg and the number
+   reported for it is computed from that expression by `contribution` at
+   scripts/m2-exit-test.sh:546, so the report cannot disagree with the thing
+   reported.
+2. **The derived set is FROZEN at the point of derivation**,
+   scripts/m2-exit-test.sh:559. The accumulator lives in a closure and has no
+   binding outside it, so any later write must name `expectedIds`, and
+   `Object.freeze` makes every such write throw in a module, whatever it is
+   spelled like and through whatever alias it arrives. This is a property of the
+   OBJECT, so index assignment, aliasing, `Function.prototype.apply`,
+   `Reflect.apply` and a computed member name are all covered by one line rather
+   than by five entries in a list.
+3. **The set is re-derived a second way and the two must agree**,
+   scripts/m2-exit-test.sh:582 and scripts/m2-exit-test.sh:596. The freeze cannot
+   reach INSIDE the closure, where the accumulator is still extensible. That
+   region is guarded by recomputing the expected set from the same three legs
+   with a Set rather than the loop and requiring set equality. An id no leg
+   contributed, an id the table declared absent, a duplicate, and a DROPPED id
+   all break it. Measured in FR4.6: with this check removed, inside-closure-pop
+   exits 0 having asserted on one gate instead of two, and at head it is refused.
+
+The check at scripts/m2-exit-test.sh:596 is terminal (it reports and exits)
+rather than accumulating a finding. That is not stylistic. When I first wrote it
+as a `fail` the program carried on and emitted a second finding saying
+"gates.manifest.json declares this gate" about a gate the manifest does not
+declare. A false diagnostic is the failure mode this round is about, so the
+program stops instead. Nothing has recorded a finding at that point in the
+program, so nothing is lost by exiting there, which I checked rather than assumed:
+the only earlier exits are the argument check and the two read failures, and no
+`fail` call precedes it.
+
+In the suite, test/m2-exit-test.test.ts:1868 replaces the member-name pin. It
+still reads source, and I am explicit that it is a source scan, but its default
+is INVERTED: an occurrence is recorded unless the scan can PROVE it is a read.
+An unanticipated spelling is therefore recorded rather than skipped. The pinned
+list at test/m2-exit-test.test.ts:2036 is not a list of writes; it is every
+occurrence not proven to be a read, and it deliberately includes one that IS a
+read (an identifier passed as an argument is indistinguishable, locally, from one
+passed to something that mutates it). Over-strict is the safe direction. The
+previous instrument was over-permissive and that is exactly what it cost.
+
+test/m2-exit-test.test.ts:2048 is the new instrument that does not read source at
+all. It takes the assertion program as shipped, injects a write, runs it against
+byte-identical fixtures, and asks the program what it asserted on.
+
+Two smaller things, both raised by the verification and both in
+scripts/m2-exit-test.sh:
+
+- DV3-F2: `main_absent_json` at scripts/m2-exit-test.sh:235 read the manifest's
+  gates list with `(manifest.gates ?? []).map((gate) => gate.id)` while the
+  assertion program reads the same structure with `Array.isArray` and `gate?.id`.
+  Two readers of one structure disagreeing about what it tolerates is why a
+  manifest whose gates key is an object, or an array carrying a null entry, threw
+  there, exited 0 through a swallowed status, and killed the assertion program at
+  "expectations does not parse" before the manifest-leg check could run. The two
+  reads are now the same read.
+- The swallowed status itself: `main_expect_json` at
+  scripts/m2-exit-test.sh:269 took `$(main_absent_json)` inside a parameter
+  expansion, which discards the exit status. It is taken explicitly now, so a
+  future failure there is loud rather than a malformed document with status 0.
+
+### FR4.3 The derivation, in full
+
+The mechanism is "a check whose CONDITION recognises a syntactic or typed SUBSET
+of the class its MESSAGE quantifies over". The enumeration of its call sites is
+therefore: every check in the two program files this round changes, paired with
+the message it prints and the condition that guards it, with the messages that
+quantify over a class flagged.
+
+The script is at `$SP/FR4-derive.mjs` in the scratchpad. It joins adjacent string
+literals before matching, because without that a message is broken at every `+`
+and a needle spanning a concatenation matches nothing.
+
+It carries its own negative control: four sites known to exist by construction
+must each match exactly once, and it exits 2 otherwise. **That control fired on
+its first two runs**, which is the only reason I know the enumeration is not
+silently short: my first needles spanned concatenation boundaries and matched
+zero rows, and a scan that matched nothing would otherwise have printed a shorter
+list that looked clean.
+
+```
+$ node --version
+v26.6.0
+$ node $SP/FR4-derive.mjs scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+EXIT=2
+CONTROL FAILED: scripts/m2-exit-test.sh :: "manifest leg of the derived expected set is EMPTY" matched 0 rows, expected 1
+CONTROL FAILED: scripts/m2-exit-test.sh :: "NOT the union of the declared legs" matched 0 rows, expected 1
+CONTROL FAILED: test/m2-exit-test.test.ts :: "cannot prove is a read" matched 0 rows, expected 1
+aborting: the enumeration lost or duplicated a known anchor, so its output is not evidence
+```
+
+and after the literal-joining fix, the run whose output is walked below:
+
+```
+$ node $SP/FR4-derive.mjs scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+EXIT=0
+control OK: all 4 known anchors matched exactly once
+enumerated 154 check sites across 2 file(s)
+of those, 62 carry a message that quantifies over a class
+```
+
+**The complete output follows, unedited.** The fix-round contract asks for the
+derivation's full output and not a summary of it, so all 252 lines are here rather
+than in a scratchpad file that does not survive this session. The walk in FR4.4
+then takes every one of the 62 rows in turn.
+
+```
+control OK: all 4 known anchors matched exactly once
+enumerated 154 check sites across 2 file(s)
+of those, 62 carry a message that quantifies over a class
+
+scripts/m2-exit-test.sh:454  [console.error]  universals: all
+    CONDITION:  (!summaryPath || !evidenceDir || !expectPath || !manifestPath)
+    MESSAGE:   ("m2-assert: --summary --evidence --expect --manifest are all required")
+
+scripts/m2-exit-test.sh:640  [fail]  universals: no,cannot
+    CONDITION:  (manifestIds.length === 0)
+    MESSAGE:   (null, `the manifest ${manifestPath} parses but ${observed}, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle")
+
+scripts/m2-exit-test.sh:650  [fail]  universals: no
+    CONDITION:  (expectedIds.length === 0)
+    MESSAGE:   (null, "the derived expected set is EMPTY, so this run would certify a bundle having asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule binds this program as much as the gates it inspects")
+
+scripts/m2-exit-test.sh:668  [fail]  universals: no
+    CONDITION:  (row === undefined)
+    MESSAGE:   (spec.id, explicit ? `no record in the bundle for a gate the table lists (expected ${spec.expect})` : "gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run." + why)
+
+scripts/m2-exit-test.sh:708  [fail]  universals: only
+    CONDITION:  (!evaluatedUnmet)
+    MESSAGE:   (spec.id, "is a diff-scoped gate reporting not-applicable WITHOUT an evaluated, unmet precondition (precondition{id, met:false, reason}); DR-0018 accepts a diff-scoped N/A only when its trigger was evaluated and legitimately unmet, distinguishable from a skipped or errored gate")
+
+scripts/m2-exit-test.sh:716  [fail]  universals: no
+    CONDITION:  (row.status === "green" && !(Number(row.units) > 0))
+    MESSAGE:   (spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`)
+
+scripts/m2-exit-test.sh:752  [fail]  universals: none
+    CONDITION:  (!preconditionUnmet && !declaredNone)
+    MESSAGE:   (row.id, "not-applicable but names NEITHER an evaluated precondition (id, met:false, reason, evidence) NOR a declared-none (declaration path + merge-base blob sha256); the three M2-P7 states must stay distinguishable, not collapsed")
+
+scripts/m2-exit-test.sh:782  [fail]  universals: no
+    CONDITION:  (redRows.length > 0)
+    MESSAGE:   (null, `${redRows.length} gate(s) reported RED: ${redRows.map((r) => r.id).join(", ")}. No expectation in section 1.4 permits a red gate, on either bundle.")
+
+scripts/m2-exit-test.sh:954  [console.error]  universals: all
+    CONDITION:  (!repo || !tiphys || !manifest || !out || !scratch)
+    MESSAGE:   ("m2-green: --repo --tiphys --manifest --out --scratch are all required")
+
+scripts/m2-exit-test.sh:1465  [die]  universals: no
+    CONDITION: (no enclosing if)
+    MESSAGE:    die "--no-build was passed but ${TIPHYS} does not exist; build first"
+
+test/m2-exit-test.test.ts:258  [assert]  universals: no
+    CONDITION: ( result.stderr, /--no-build was passed but .* does not exist/, `expected the build check (proof the derivation was skipped) but got: ${result.stderr}`, )
+    MESSAGE:   ( result.stderr, /--no-build was passed but .* does not exist/, `expected the build check (proof the derivation was skipped) but got: ${result.stderr}`, )
+
+test/m2-exit-test.test.ts:304  [assert]  universals: no
+    CONDITION: (existsSync(selfTestRecord), "the self-test wrote no evidence records")
+    MESSAGE:   (existsSync(selfTestRecord), "the self-test wrote no evidence records")
+
+test/m2-exit-test.test.ts:390  [assert]  universals: no,cannot
+    CONDITION: ( invalid.status, 0, "a diff-scoped gate not-applicable with NO evaluated precondition must be rejected (a silently skipped gate cannot pass as legitimately N/A)", )
+    MESSAGE:   ( invalid.status, 0, "a diff-scoped gate not-applicable with NO evaluated precondition must be rejected (a silently skipped gate cannot pass as legitimately N/A)", )
+
+test/m2-exit-test.test.ts:415  [assert]  universals: never
+    CONDITION: ( errored.status, 0, "a diff-scoped gate reported error must still fail the harness (a broken gate is never accepted as diff-scoped)", )
+    MESSAGE:   ( errored.status, 0, "a diff-scoped gate reported error must still fail the harness (a broken gate is never accepted as diff-scoped)", )
+
+test/m2-exit-test.test.ts:458  [assert]  universals: only
+    CONDITION: ( ALLOWED_NAMES.has(name), `${file}:${String(i + 1)} reads the named environment variable ${name}: ${line.trim()}. A production gate must not read a named environment variable that changes its reported status (M2-P9 criterion 3); the only permitted named read is the TIPHYS_IMPLEMENTER_TOKEN PRESENCE probe, which is applicability, not a status override.", )
+    MESSAGE:   ( ALLOWED_NAMES.has(name), `${file}:${String(i + 1)} reads the named environment variable ${name}: ${line.trim()}. A production gate must not read a named environment variable that changes its reported status (M2-P9 criterion 3); the only permitted named read is the TIPHYS_IMPLEMENTER_TOKEN PRESENCE probe, which is applicability, not a status override.", )
+
+test/m2-exit-test.test.ts:504  [assert]  universals: cannot,nothing
+    CONDITION: ( entry, `${what}: gates.yml has a line at the key indent that this test cannot read as a single "key: value" entry: ${JSON.stringify(line)}. This test pins the shapes it accepts and refuses to guess at the rest, because a reader that guesses returns nothing for a shape it does not know and reports that as an absence of keys (CR-722).", )
+    MESSAGE:   ( entry, `${what}: gates.yml has a line at the key indent that this test cannot read as a single "key: value" entry: ${JSON.stringify(line)}. This test pins the shapes it accepts and refuses to guess at the rest, because a reader that guesses returns nothing for a shape it does not know and reports that as an absence of keys (CR-722).", )
+
+test/m2-exit-test.test.ts:524  [assert]  universals: no
+    CONDITION: (start, -1, `no job named ${name} in gates.yml`)
+    MESSAGE:   (start, -1, `no job named ${name} in gates.yml`)
+
+test/m2-exit-test.test.ts:549  [assert]  universals: no
+    CONDITION: ( named.length, 1, `expected exactly 1 workflow step named for "${nameFragment}", found ${named.length}. Renaming this step, or adding a second step whose name also matches, is a deliberate change: this test identifies the step by its name and has no other handle on it.", )
+    MESSAGE:   ( named.length, 1, `expected exactly 1 workflow step named for "${nameFragment}", found ${named.length}. Renaming this step, or adding a second step whose name also matches, is a deliberate change: this test identifies the step by its name and has no other handle on it.", )
+
+test/m2-exit-test.test.ts:582  [assert]  universals: no
+    CONDITION: (runAt, -1, `step ${nameFragment} has no "run: |" or "run: >" block`)
+    MESSAGE:   (runAt, -1, `step ${nameFragment} has no "run: |" or "run: >" block`)
+
+test/m2-exit-test.test.ts:588  [assert]  universals: nothing
+    CONDITION: ( start > job.start && end <= job.end, `the "${nameFragment}" step is not inside the job this test was asked about (step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). A guard in a job that is not the required check gates nothing.", )
+    MESSAGE:   ( start > job.start && end <= job.end, `the "${nameFragment}" step is not inside the job this test was asked about (step lines ${start + 1}-${end}, job lines ${job.start + 1}-${job.end}). A guard in a job that is not the required check gates nothing.", )
+
+test/m2-exit-test.test.ts:610  [assert]  universals: every
+    CONDITION: ( !keys.has(key), `${what} declares ${key}: ${JSON.stringify(keys.get(key))}. ${WHY_REFUSED[key] ?? ""} Exactly ${String(refused.length)} keys are refused here and every other key (permissions, env, timeout-minutes, defaults, id, with, ...) is allowed. If you need this one, that is a decision about whether the milestone certification is still gated.", )
+    MESSAGE:   ( !keys.has(key), `${what} declares ${key}: ${JSON.stringify(keys.get(key))}. ${WHY_REFUSED[key] ?? ""} Exactly ${String(refused.length)} keys are refused here and every other key (permissions, env, timeout-minutes, defaults, id, with, ...) is allowed. If you need this one, that is a decision about whether the milestone certification is still gated.", )
+
+test/m2-exit-test.test.ts:662  [assert]  universals: no,only
+    CONDITION: ( working.stdout, new RegExp(GUARD_WITNESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `the guard no longer prints "${GUARD_WITNESS}" on its success path, which is the only per-run evidence that the step actually executed in CI", )
+    MESSAGE:   ( working.stdout, new RegExp(GUARD_WITNESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `the guard no longer prints "${GUARD_WITNESS}" on its success path, which is the only per-run evidence that the step actually executed in CI", )
+
+test/m2-exit-test.test.ts:672  [assert]  universals: any
+    CONDITION: ( workingOther.status, 0, "the guard rejected a self-test that exited 2; it must accept any nonzero self-test exit", )
+    MESSAGE:   ( workingOther.status, 0, "the guard rejected a self-test that exited 2; it must accept any nonzero self-test exit", )
+
+test/m2-exit-test.test.ts:719  [assert]  universals: no
+    CONDITION: (onAt, -1, "gates.yml declares no on: trigger")
+    MESSAGE:   (onAt, -1, "gates.yml declares no on: trigger")
+
+test/m2-exit-test.test.ts:732  [assert]  universals: no
+    CONDITION: ( triggers.has("pull_request"), "gates.yml no longer runs on pull_request, so no pull request is gated by it", )
+    MESSAGE:   ( triggers.has("pull_request"), "gates.yml no longer runs on pull_request, so no pull request is gated by it", )
+
+test/m2-exit-test.test.ts:736  [assert]  universals: only
+    CONDITION: ( triggers.get("pull_request"), "", "the pull_request: trigger carries an inline value; this test only accepts the unfiltered form", )
+    MESSAGE:   ( triggers.get("pull_request"), "", "the pull_request: trigger carries an inline value; this test only accepts the unfiltered form", )
+
+test/m2-exit-test.test.ts:773  [assert]  universals: no
+    CONDITION: (stepAt, -1, "gates.yml has no `- uses: actions/checkout` step")
+    MESSAGE:   (stepAt, -1, "gates.yml has no `- uses: actions/checkout` step")
+
+test/m2-exit-test.test.ts:789  [assert]  universals: no
+    CONDITION: (withAt, -1, "the actions/checkout step declares no `with:` block")
+    MESSAGE:   (withAt, -1, "the actions/checkout step declares no `with:` block")
+
+test/m2-exit-test.test.ts:804  [assert]  universals: no,every,never
+    CONDITION: ( keys.has("ref"), "the actions/checkout step declares no `ref:`; on a pull_request event it then defaults to a detached HEAD, and the scope gate reports not-applicable on every CI run (never auditing a real diff). Set `ref: ${{ github.head_ref }}`.", )
+    MESSAGE:   ( keys.has("ref"), "the actions/checkout step declares no `ref:`; on a pull_request event it then defaults to a detached HEAD, and the scope gate reports not-applicable on every CI run (never auditing a real diff). Set `ref: ${{ github.head_ref }}`.", )
+
+test/m2-exit-test.test.ts:810  [assert]  universals: only
+    CONDITION: ( keys.get("ref"), "${{ github.head_ref }}", "the actions/checkout `ref:` is not `${{ github.head_ref }}`; only the head-branch-by-name form puts the runner on claude/mN-pM-... so the scope gate audits. A SHA there re-detaches HEAD and reintroduces the vacuous scope pass.", )
+    MESSAGE:   ( keys.get("ref"), "${{ github.head_ref }}", "the actions/checkout `ref:` is not `${{ github.head_ref }}`; only the head-branch-by-name form puts the runner on claude/mN-pM-... so the scope gate audits. A SHA there re-detaches HEAD and reintroduces the vacuous scope pass.", )
+
+test/m2-exit-test.test.ts:819  [assert]  universals: no
+    CONDITION: ( keys.get("fetch-depth"), "0", "the actions/checkout step must keep `fetch-depth: 0`; a shallow checkout has no merge base for the diff-scoped gates to compute against.", )
+    MESSAGE:   ( keys.get("fetch-depth"), "0", "the actions/checkout step must keep `fetch-depth: 0`; a shallow checkout has no merge base for the diff-scoped gates to compute against.", )
+
+test/m2-exit-test.test.ts:947  [assert]  universals: no
+    CONDITION: ( harnessText, /\{"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer resolves scope per run via the __SCOPE_EXPECT__ placeholder; scope's expected status must be chosen by resolve_scope_expect, not hardcoded.", )
+    MESSAGE:   ( harnessText, /\{"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON no longer resolves scope per run via the __SCOPE_EXPECT__ placeholder; scope's expected status must be chosen by resolve_scope_expect, not hardcoded.", )
+
+test/m2-exit-test.test.ts:953  [assert]  universals: every
+    CONDITION: ( harnessText, /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green again; that fails every NON-phase PR (scope is legitimately N/A there) and reopens the block M2R-026 introduced.", )
+    MESSAGE:   ( harnessText, /\{"id": "scope", "expect": "green", "required": true, "diffScoped": true\}/, "scripts/m2-exit-test.sh PR_EXPECT_JSON hardcodes scope green again; that fails every NON-phase PR (scope is legitimately N/A there) and reopens the block M2R-026 introduced.", )
+
+test/m2-exit-test.test.ts:997  [assert]  universals: every
+    CONDITION: ( nonPhase, "green|not-applicable", "a non-phase run (non-phase --phase and non-phase branch) must resolve scope to green|not-applicable, or every non-phase PR fails CI on scope", )
+    MESSAGE:   ( nonPhase, "green|not-applicable", "a non-phase run (non-phase --phase and non-phase branch) must resolve scope to green|not-applicable, or every non-phase PR fails CI on scope", )
+
+test/m2-exit-test.test.ts:1179  [assert]  universals: nothing
+    CONDITION: ( derived.absent.includes(NEW_GATE), `a manifest gate the main bundle does not run must be asserted ABSENT from it, but the derived absent list is ${JSON.stringify(derived.absent)}. A gate in neither the gates list nor the absent list is asserted by nothing on this arm.", )
+    MESSAGE:   ( derived.absent.includes(NEW_GATE), `a manifest gate the main bundle does not run must be asserted ABSENT from it, but the derived absent list is ${JSON.stringify(derived.absent)}. A gate in neither the gates list nor the absent list is asserted by nothing on this arm.", )
+
+test/m2-exit-test.test.ts:1200  [assert]  universals: every,none,nothing
+    CONDITION: ( [...listed, ...derived.absent].sort(), [...manifestIds].sort(), "the main bundle's expected gates and its derived absent list must PARTITION the manifest: every declared gate is either asserted to have a record or asserted to have none, and nothing is asserted twice. A gate in neither is the defect this derivation closes.", )
+    MESSAGE:   ( [...listed, ...derived.absent].sort(), [...manifestIds].sort(), "the main bundle's expected gates and its derived absent list must PARTITION the manifest: every declared gate is either asserted to have a record or asserted to have none, and nothing is asserted twice. A gate in neither is the defect this derivation closes.", )
+
+test/m2-exit-test.test.ts:1323  [assert]  universals: no
+    CONDITION: ( ok.status, 0, `a healthy ${arm} bundle must be ACCEPTED, including a manifest gate with no table row that is green: ${ok.stdout}\n${ok.stderr}`, )
+    MESSAGE:   ( ok.status, 0, `a healthy ${arm} bundle must be ACCEPTED, including a manifest gate with no table row that is green: ${ok.stdout}\n${ok.stderr}`, )
+
+test/m2-exit-test.test.ts:1377  [assert]  universals: no
+    CONDITION: ( m3.status, 0, `[${arm}] a RED gate must be rejected even when the expectations table names it, marks it required:false and lists red among its permitted alternates; no expectation in section 1.4 permits a red gate: ${m3.stdout}\n${m3.stderr}`, )
+    MESSAGE:   ( m3.status, 0, `[${arm}] a RED gate must be rejected even when the expectations table names it, marks it required:false and lists red among its permitted alternates; no expectation in section 1.4 permits a red gate: ${m3.stdout}\n${m3.stderr}`, )
+
+test/m2-exit-test.test.ts:1507  [assert]  universals: no,cannot
+    CONDITION: ( findings.length > 0, `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot be established: ${output}`, )
+    MESSAGE:   ( findings.length > 0, `[${arm}] ${probe.name} printed no itemised finding, so which check rejected it cannot be established: ${output}`, )
+
+test/m2-exit-test.test.ts:1540  [assert]  universals: only,nothing
+    CONDITION: ( result.status, 0, `[${arm}] a ${status} record for a gate the DERIVED absent list covers must be REJECTED: the two bundles stay distinguishable only if what one does not run is asserted to have produced nothing: ${output}`, )
+    MESSAGE:   ( result.status, 0, `[${arm}] a ${status} record for a gate the DERIVED absent list covers must be REJECTED: the two bundles stay distinguishable only if what one does not run is asserted to have produced nothing: ${output}`, )
+
+test/m2-exit-test.test.ts:1547  [assert]  universals: only
+    CONDITION: ( output, /expected to be ABSENT from this bundle/, `[${arm}] ${name} was not rejected by the declared-absent check, which is the only check it exercises: ${output}`, )
+    MESSAGE:   ( output, /expected to be ABSENT from this bundle/, `[${arm}] ${name} was not rejected by the declared-absent check, which is the only check it exercises: ${output}`, )
+
+test/m2-exit-test.test.ts:1589  [assert]  universals: every,nothing
+    CONDITION: ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+    MESSAGE:   ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:1665  [assert]  universals: nothing
+    CONDITION: ( result.status, 0, `${member.name} empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: ${output}`, )
+    MESSAGE:   ( result.status, 0, `${member.name} empties the manifest leg of the derived expected set, so a gate that is DECLARED but did not run becomes invisible, and it must be REJECTED rather than read as a manifest declaring nothing: ${output}`, )
+
+test/m2-exit-test.test.ts:1672  [assert]  universals: only
+    CONDITION: ( output, /manifest leg of the derived expected set is EMPTY/, `${member.name} was not rejected by the manifest-leg check, which is the only check it exercises: ${output}`, )
+    MESSAGE:   ( output, /manifest leg of the derived expected set is EMPTY/, `${member.name} was not rejected by the manifest-leg check, which is the only check it exercises: ${output}`, )
+
+test/m2-exit-test.test.ts:1678  [assert]  universals: cannot
+    CONDITION: ( output, member.names, `${member.name} was rejected without the message naming the shape observed, so a reader cannot tell which degenerate input arrived: ${output}`, )
+    MESSAGE:   ( output, member.names, `${member.name} was rejected without the message naming the shape observed, so a reader cannot tell which degenerate input arrived: ${output}`, )
+
+test/m2-exit-test.test.ts:1707  [assert]  universals: nothing
+    CONDITION: ( zero.status, 0, "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`, )
+    MESSAGE:   ( zero.status, 0, "a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: ${zeroOut}`, )
+
+test/m2-exit-test.test.ts:1713  [assert]  universals: only
+    CONDITION: ( zeroOut, /derived expected set is EMPTY, so this run would certify/, `member 4 was not rejected by the empty-expected-set check, which is the only check it exercises: ${zeroOut}`, )
+    MESSAGE:   ( zeroOut, /derived expected set is EMPTY, so this run would certify/, `member 4 was not rejected by the empty-expected-set check, which is the only check it exercises: ${zeroOut}`, )
+
+test/m2-exit-test.test.ts:1719  [assert]  universals: no
+    CONDITION: ( zeroOut, /manifest leg of the derived expected set is EMPTY/, "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, the two checks are not separately witnessed here and the aggregate check has no witness of its own left", )
+    MESSAGE:   ( zeroOut, /manifest leg of the derived expected set is EMPTY/, "member 4's manifest DECLARES a gate, so the manifest-leg check must not fire; if it does, the two checks are not separately witnessed here and the aggregate check has no witness of its own left", )
+
+test/m2-exit-test.test.ts:1759  [assert]  universals: none,all
+    CONDITION: ( anchorCount, 1, `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times in the harness, not once; this guard would be reading the wrong statement or none at all, so it is a hard failure rather than a fallback", )
+    MESSAGE:   ( anchorCount, 1, `the union statement's anchor ${JSON.stringify(ANCHOR)} occurs ${String(anchorCount)} times in the harness, not once; this guard would be reading the wrong statement or none at all, so it is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:1834  [assert]  universals: cannot,every,nothing
+    CONDITION: ( raw, "the union's array literal is not balanced, so its legs cannot be enumerated and every assertion below would be about nothing", )
+    MESSAGE:   ( raw, "the union's array literal is not balanced, so its legs cannot be enumerated and every assertion below would be about nothing", )
+
+test/m2-exit-test.test.ts:1852  [assert]  universals: no,all
+    CONDITION: ( legs, probed, "the derived expected set draws from a set of legs that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of `manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a probe for it needs the attribution key of the branch that rejects its members, which is NOT automatically the default-spec reason: that is exactly how `explicitById` stayed unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`, )
+    MESSAGE:   ( legs, probed, "the derived expected set draws from a set of legs that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rowsLeg` alone and probe-4-explicit-table-leg witnesses `tableLeg` alone; `manifestLeg` has exactly ONE witness, probe-2-manifest-leg. probe-3-manifest-gate-not-applicable witnesses the DISJUNCTION of `manifestLeg` and `rowsLeg` and neither of them alone, so removing probe-2 would leave the manifest leg with no witness at all. A leg ADDED to the union needs its own probe, and a probe for it needs the attribution key of the branch that rejects its members, which is NOT automatically the default-spec reason: that is exactly how `explicitById` stayed unwitnessed. Derived from the harness: ${JSON.stringify(legs)}`, )
+
+test/m2-exit-test.test.ts:2036  [assert]  universals: cannot,anything,no
+    CONDITION: ( occurrences, ["=", ")"], `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked at: if it writes the set, the derivation's legs no longer justify what is asserted and the probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`, )
+    MESSAGE:   ( occurrences, ["=", ")"], `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked at: if it writes the set, the derivation's legs no longer justify what is asserted and the probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`, )
+
+test/m2-exit-test.test.ts:2073  [assert]  universals: every,nothing
+    CONDITION: ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+    MESSAGE:   ( progMatch, "could not extract the assertion program from the harness heredoc; every assertion below would be about nothing, so this is a hard failure rather than a fallback", )
+
+test/m2-exit-test.test.ts:2122  [assert]  universals: every
+    CONDITION: ( control.status, 0, `the shipped program must ACCEPT the unmutated fixtures, or every member below is a rejection of the fixtures rather than of the injected write: ${controlOut}`, )
+    MESSAGE:   ( control.status, 0, `the shipped program must ACCEPT the unmutated fixtures, or every member below is a rejection of the fixtures rather than of the injected write: ${controlOut}`, )
+
+test/m2-exit-test.test.ts:2138  [assert]  universals: nothing
+    CONDITION: ( controlOut.includes(GATE_A) && controlOut.includes(GATE_B), `the control must report BOTH manifest gates as asserted, or a member that REMOVES one has nothing to remove and measures nothing: ${controlOut}`, )
+    MESSAGE:   ( controlOut.includes(GATE_A) && controlOut.includes(GATE_B), `the control must report BOTH manifest gates as asserted, or a member that REMOVES one has nothing to remove and measures nothing: ${controlOut}`, )
+
+test/m2-exit-test.test.ts:2193  [assert]  universals: nothing
+    CONDITION: ( anchorCount, 1, `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} times in the assertion program, not once, so member ${member.name} would run an unmutated program and pass while measuring nothing", )
+    MESSAGE:   ( anchorCount, 1, `the injection anchor ${JSON.stringify(member.anchor)} occurs ${String(anchorCount)} times in the assertion program, not once, so member ${member.name} would run an unmutated program and pass while measuring nothing", )
+
+test/m2-exit-test.test.ts:2201  [assert]  universals: nothing
+    CONDITION: ( mutated, pristine, `member ${member.name} did not change the program, so it measures nothing`, )
+    MESSAGE:   ( mutated, pristine, `member ${member.name} did not change the program, so it measures nothing`, )
+
+test/m2-exit-test.test.ts:2232  [assert]  universals: no
+    CONDITION: ( !output.includes(`[${INJECTED}]`), `${member.name} produced a finding attributed to ${INJECTED}, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: ${output}`, )
+    MESSAGE:   ( !output.includes(`[${INJECTED}]`), `${member.name} produced a finding attributed to ${INJECTED}, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: ${output}`, )
+
+test/m2-exit-test.test.ts:2240  [assert]  universals: cannot,only
+    CONDITION: ( output, /derived expected set is NOT the union of the declared legs/, `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the leg-union check is the only mechanism that can catch it and it must be the one that names the failure: ${output}`, )
+    MESSAGE:   ( output, /derived expected set is NOT the union of the declared legs/, `${member.name} writes INSIDE the derivation, where the freeze cannot reach it, so the leg-union check is the only mechanism that can catch it and it must be the one that names the failure: ${output}`, )
+
+test/m2-exit-test.test.ts:2308  [assert]  universals: no
+    CONDITION: ( !alternates.includes("red") && !alternates.includes("error"), `${table.label}: the row for ${row.id} admits ${row.expect}; no expectation in section 1.4 permits a red or errored gate on either bundle", )
+    MESSAGE:   ( !alternates.includes("red") && !alternates.includes("error"), `${table.label}: the row for ${row.id} admits ${row.expect}; no expectation in section 1.4 permits a red or errored gate on either bundle", )
+
+test/m2-exit-test.test.ts:2317  [assert]  universals: no,always,can never,cannot
+    CONDITION: ( hasPrecondition.get(row.id), true, `${table.label}: the row for ${row.id} admits not-applicable, but gates.manifest.json declares that gate with no precondition, so it is always applicable and can never legitimately report not-applicable. A row admitting a status the gate cannot legitimately produce accepts a skipped or mis-declared gate as a pass.", )
+    MESSAGE:   ( hasPrecondition.get(row.id), true, `${table.label}: the row for ${row.id} admits not-applicable, but gates.manifest.json declares that gate with no precondition, so it is always applicable and can never legitimately report not-applicable. A row admitting a status the gate cannot legitimately produce accepts a skipped or mis-declared gate as a pass.", )
+
+test/m2-exit-test.test.ts:2327  [assert]  universals: no,any,nothing
+    CONDITION: ( checked > 0, "no expectations row admits not-applicable on any arm, so this test examined nothing and would pass however the tables were written", )
+    MESSAGE:   ( checked > 0, "no expectations row admits not-applicable on any arm, so this test examined nothing and would pass however the tables were written", )
+```
+
+### FR4.4 The walk: every quantifying row, and whether its condition is the property
+
+Three verdicts are used and they mean different things:
+
+- **PROPERTY**: the condition tests the thing the message names. Nothing escapes
+  by being spelled differently.
+- **SUBSET**: the condition recognises a proper subset of the class the message
+  quantifies over. This is the mechanism, and any row here is a finding.
+- **NOT A CLASS**: the universal word is prose about the single instance being
+  reported (for example "no record in the bundle for this gate"), not a
+  quantification over a class of inputs. There is nothing for a condition to be a
+  subset of.
+
+| site | universals | verdict |
+|---|---|---|
+| scripts/m2-exit-test.sh:454 | all | PROPERTY: "all required" over exactly the four parsed arguments, and the condition is the disjunction of those same four. |
+| scripts/m2-exit-test.sh:640 | no, cannot | PROPERTY: `manifestIds.length === 0` is the leg's contribution, not a shape that produces it. Eleven inputs were thrown at this by the delta verification and none escaped. |
+| scripts/m2-exit-test.sh:650 | no | PROPERTY: `expectedIds.length === 0` is exactly "asserted on zero gates". |
+| scripts/m2-exit-test.sh:668 | no | NOT A CLASS: reports one gate's missing record. |
+| scripts/m2-exit-test.sh:708 | only | PROPERTY: the condition is the conjunction the message states (id present, met false, reason present). |
+| scripts/m2-exit-test.sh:716 | no | PROPERTY: `Number(row.units) > 0` is the units claim. |
+| scripts/m2-exit-test.sh:752 | none | PROPERTY: the condition is the disjunction of the two named states, and the message names both. |
+| scripts/m2-exit-test.sh:782 | no | PROPERTY: quantifies over rows and the condition scans all rows. |
+| scripts/m2-exit-test.sh:954 | all | PROPERTY: same shape as :454. |
+| scripts/m2-exit-test.sh:1465 | no | NOT A CLASS: one path, one existence test. |
+| test/m2-exit-test.test.ts:258 | no | NOT A CLASS: matches one expected message. |
+| test/m2-exit-test.test.ts:304 | no | NOT A CLASS: one path exists or does not. |
+| test/m2-exit-test.test.ts:390 | no, cannot | NOT A CLASS: one fixture, one verdict. |
+| test/m2-exit-test.test.ts:415 | never | SUBSET, DECLARED AND UNCHANGED: "a broken gate is never accepted as diff-scoped" is checked with one errored fixture. It is one member of a class, and this round did not touch it. Recorded in FR4.5 as a region the derivation covered and the round did not walk further. |
+| test/m2-exit-test.test.ts:458 | only | PROPERTY over the enumerated lines: every line of the scanned files is classified and the allowlist is the exception set the message names. |
+| test/m2-exit-test.test.ts:504 | cannot, nothing | PROPERTY: this is the fail-closed shape already. A line the reader cannot parse is a hard failure rather than an absence. |
+| test/m2-exit-test.test.ts:524 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:549 | no | PROPERTY: a count over the enumerated steps, and the message is about that count. |
+| test/m2-exit-test.test.ts:582 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:588 | nothing | PROPERTY: the containment test is the claim. |
+| test/m2-exit-test.test.ts:610 | every | PROPERTY: the refused set is enumerated and every other key is explicitly allowed, which is what the message says. |
+| test/m2-exit-test.test.ts:662 | no, only | NOT A CLASS: one witness string. |
+| test/m2-exit-test.test.ts:672 | any | SUBSET, DECLARED AND UNCHANGED: "any nonzero self-test exit" is witnessed by one value (2). One witness is not a class (CLAUDE.md:382). Not this round's delta; recorded in FR4.5. |
+| test/m2-exit-test.test.ts:719 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:732 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:736 | only | PROPERTY: the accepted form is stated and the condition is equality with it. |
+| test/m2-exit-test.test.ts:773 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:789 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:804 | no, every, never | NOT A CLASS: the universals are in the CONSEQUENCE clause ("reports not-applicable on every CI run"), not in the condition's scope. The condition is the presence of one key. |
+| test/m2-exit-test.test.ts:810 | only | PROPERTY: equality with the one accepted value. |
+| test/m2-exit-test.test.ts:819 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:947 | no | NOT A CLASS: one regex, one placeholder. |
+| test/m2-exit-test.test.ts:953 | every | NOT A CLASS: "every non-phase PR" is the consequence, the condition is one literal's absence. |
+| test/m2-exit-test.test.ts:997 | every | NOT A CLASS: same shape, consequence clause. |
+| test/m2-exit-test.test.ts:1179 | nothing | NOT A CLASS: one gate, one membership test. |
+| test/m2-exit-test.test.ts:1200 | every, none, nothing | PROPERTY: a set equality that IS the partition claim, derived at run time from the manifest rather than pinned. |
+| test/m2-exit-test.test.ts:1323 | no | NOT A CLASS. |
+| test/m2-exit-test.test.ts:1377 | no | PROPERTY over the row: no alternate list is consulted, the status itself is rejected. |
+| test/m2-exit-test.test.ts:1507 | no, cannot | PROPERTY: findings are counted, and the message is about there being none. |
+| test/m2-exit-test.test.ts:1540 | only, nothing | NOT A CLASS: one probe, one verdict. |
+| test/m2-exit-test.test.ts:1547 | only | PROPERTY: attribution by the rejecting check's own message. |
+| test/m2-exit-test.test.ts:1589 | every, nothing | PROPERTY: the extraction either produced the program or it did not. |
+| test/m2-exit-test.test.ts:1665 | nothing | NOT A CLASS: per-member verdict. |
+| test/m2-exit-test.test.ts:1672 | only | PROPERTY: attribution. |
+| test/m2-exit-test.test.ts:1678 | cannot | PROPERTY: the message must name the shape, and the shape's own regex is the condition. |
+| test/m2-exit-test.test.ts:1707 | nothing | NOT A CLASS. |
+| test/m2-exit-test.test.ts:1713 | only | PROPERTY: attribution. |
+| test/m2-exit-test.test.ts:1719 | no | PROPERTY: a negative attribution check, the condition is the absence of that message. |
+| test/m2-exit-test.test.ts:1759 | none, all | PROPERTY: the anchor count is the claim. |
+| test/m2-exit-test.test.ts:1834 | cannot, every, nothing | PROPERTY: balanced or not, and unbalanced is a hard failure. |
+| test/m2-exit-test.test.ts:1852 | no, all | PROPERTY over the literal's top-level elements: the splitter enumerates elements by depth rather than by a spread spelling, which is what closed DV-4. Its limit is stated in FR4.5. |
+| test/m2-exit-test.test.ts:2036 | cannot, anything, no | PROPERTY, BY INVERSION, and this is the row the round exists for. The message says "every occurrence this suite cannot prove is a read", and the condition is exactly "not matched by PROVEN_READS". The recognised set and the claimed set are the same set by construction. What it cannot see is a write that never names the binding, which is stated in the assertion's own comment and in FR4.5, and which is why the run-time instruments exist. |
+| test/m2-exit-test.test.ts:2073 | every, nothing | PROPERTY: extraction succeeded or it did not. |
+| test/m2-exit-test.test.ts:2122 | every | NOT A CLASS: the positive control's own verdict. |
+| test/m2-exit-test.test.ts:2138 | nothing | PROPERTY: both control ids must be present, which is what makes a removing member able to remove something. |
+| test/m2-exit-test.test.ts:2193 | nothing | PROPERTY: the anchor count is the claim. |
+| test/m2-exit-test.test.ts:2201 | nothing | PROPERTY: the injection changed the text or it did not. |
+| test/m2-exit-test.test.ts:2232 | no | PROPERTY: attribution of a finding to the injected id is exactly "the id entered the set". |
+| test/m2-exit-test.test.ts:2240 | cannot, only | PROPERTY: the closure family must be caught by the named mechanism, and the condition is that mechanism's own message. |
+| test/m2-exit-test.test.ts:2308 | no | PROPERTY: the alternates list is scanned. |
+| test/m2-exit-test.test.ts:2317 | no, always, can never, cannot | PROPERTY: the precondition's presence is derived from the manifest at run time, and it is the claim. |
+| test/m2-exit-test.test.ts:2327 | no, any, nothing | PROPERTY: the anti-vacuity guard on the loop above it. |
+
+Two rows are SUBSET and both are pre-existing, outside this round's delta, and
+recorded in FR4.5 rather than fixed here. Nothing in the code this round CHANGED
+is SUBSET.
+
+### FR4.5 What the derivation did NOT cover
+
+This is the section a reviewer reads first (CLAUDE.md:326), so it is written to be
+used against me.
+
+1. **Only two files were enumerated**: scripts/m2-exit-test.sh and
+   test/m2-exit-test.test.ts. The branch also changes test/behaviors.json, which
+   carries no checks, and the work history, which carries none either. It does
+   NOT enumerate the rest of the repository. A check with this mechanism in
+   src/gates/, in another test file, or in another script is outside this
+   derivation entirely. I did not look, and this round makes no claim about them.
+2. **The enumeration recognises five call shapes**: `assert.<method>(`,
+   `assert(`, `fail(`, `console.error(` and a line-initial `die "`. A check
+   written some other way (a bare `if` that sets an exit code with no message, a
+   `throw`, a shell `[ ] ||` chain) is not in the 154. I chose those five by
+   reading the two files, not by proving them exhaustive, and the honest
+   statement is that the enumeration covers the shapes I found rather than every
+   shape that could exist.
+3. **The universal detector is a word list**: every, all, any, anything, none,
+   no, never, cannot, can never, always, each, whatever, nothing, only. A message
+   that quantifies over a class WITHOUT one of those words is not flagged. "A
+   declared gate that produced no record is a gate that did not run" happens to
+   contain "no"; a differently worded universal would not be caught. This is the
+   same subset shape one level up, in my own tooling, and I state it rather than
+   letting the count read as complete.
+4. **Two SUBSET rows were found and NOT fixed**, both outside this round's delta:
+   test/m2-exit-test.test.ts:415 ("a broken gate is never accepted as diff-scoped",
+   one errored fixture) and test/m2-exit-test.test.ts:672 ("it must accept any
+   nonzero self-test exit", witnessed with the single value 2). Each is a
+   universal witnessed by one member, which CLAUDE.md:382 says is not a class. I
+   did not widen them because they are outside the scope I was given, and I am
+   recording them so that "the derivation found nothing else" is not read as
+   "there is nothing else".
+5. **The element pin at test/m2-exit-test.test.ts:1852 cannot see a leg that
+   arrives outside the union's array literal**, and the run-time instruments
+   cannot see a leg that arrives INSIDE it, because a new leg enters both the
+   derivation and the re-derivation and they agree. The two are complementary and
+   neither alone is sufficient. That is stated at scripts/m2-exit-test.sh:582 in
+   the code as well as here.
+6. **A write inside the derivation closure that adds an id A LEG ALREADY
+   CONTRIBUTED is not caught by anything.** `out.push(out[0])` would break the
+   equality by length, so a duplicate is caught, but a write that re-adds an id
+   the table declared ABSENT is caught only because absent ids are filtered out of
+   the re-derivation, and a write that changes the ORDER of the set is not caught
+   at all. Order carries no meaning in this program today (the set is iterated,
+   not indexed), which is why I did not guard it, and if a future change makes
+   order meaningful this is where that assumption is written down.
+7. **The occurrence pin masks comments and does not mask strings.** A mention of
+   the binding inside a plain string literal is recorded as an occurrence, which
+   is noise in the safe direction. The masker is a hand-written scanner and does
+   NOT know about regular-expression literals: a regex containing `//` or `/*`
+   would put it into a comment state wrongly. I checked that no such literal
+   exists in the harness today by running the scan and comparing its result to
+   the eight occurrences `grep -n expectedIds` reports, and they agree, but that
+   is a measurement of today's file rather than a proof about future ones.
+8. **The behavioural test covers writes at TWO injection sites**, one after the
+   derivation and one inside the closure. A write at a third position, for
+   example between the `const legContributed` line and the check that consumes
+   it, is not injected by any member. The freeze covers that position, because
+   the freeze is already in force there, but the test does not measure it.
+9. **Everything measured here is the assertion program run directly.** The full
+   harness path (a real `--full` or `--local` run) is not exercised by this
+   round's new tests, for the same reason the existing derivation probes are not,
+   and I did not attempt it here. What that leaves unmeasured is stated in
+   FR4.10.
+
+### FR4.6 The red witness: two structurally different defangs, and every member measured
+
+CLAUDE.md:382 requires a witness for a CLASS to redden under at least two
+structurally different members, and requires the test to be red against the
+DANGEROUS state rather than merely against the absent feature.
+
+Two defangs, each removing ONE mechanism, in a dedicated worktree at
+`$SP/FR4-lab`. The driver restores the pristine bytes afterwards and prints the
+sha256 before and after, and it aborts nonzero if an anchor is not unique or if a
+defang changes nothing. Its control fired once during development, on an anchor
+(`  process.exit(1);` plus a brace) that occurs five times in the harness, which
+is why the anchor it now uses is the check's own opening line.
+
+```
+$ node --version
+v26.6.0
+$ node $SP/FR4-defang.mjs $SP/FR4-lab
+pristine sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+defang control OK: all 3 anchors occur exactly once
+PRISTINE-control             guard=GREEN exit=0
+    first finding: (none)
+    members named in findings: (none)
+D1-freeze-removed            guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: after-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes): FAIL w
+    members named in findings: after-push
+D2-leg-union-check-removed   guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: inside-closure-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes
+    members named in findings: inside-closure-push
+D3-both-removed              guard=RED  exit=1
+    first finding: AssertionError [ERR_ASSERTION]: after-push produced a finding attributed to fixture-id-no-leg-contributed, which means the id ENTERED the derived expected set and the program asserted on a gate no leg contributed: m2-assert (writes): FAIL w
+    members named in findings: after-push
+restored sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+```
+
+Both mechanisms are load-bearing: removing either one alone reddens the guard, so
+neither is decoration on top of the other.
+
+**The guard stops at its first failed assertion, so the capture above names ONE
+escaping member per defang and no more.** That is a limitation of the reporting,
+not of the witness, and averaging over it would leave the class unmeasured. So
+every member was also measured against the PROGRAM directly, which is the method
+the delta verification used, with two columns because one is ambiguous:
+
+- EXIT: the program's exit code.
+- ENTERED: did the injected id become part of the set the program asserted on,
+  read from a finding attributed to it or from the certified list. An adding
+  member exits 1 either way, once because the write was refused and once because
+  the id it added has no bundle record, so the exit code alone does not
+  distinguish fixed from unfixed. ENTERED does.
+
+```
+$ node $SP/FR4-progmatrix.mjs $SP/FR4-lab $SP/FR4-ev-progmatrix
+harness sha256 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+
+variant                    member                       EXIT  ENTERED  ASSERTED-ON
+head (both mechanisms)     none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+head (both mechanisms)     after-push                   1     no       (did not certify)
+head (both mechanisms)     after-index-assignment       1     no       (did not certify)
+head (both mechanisms)     after-alias-then-push        1     no       (did not certify)
+head (both mechanisms)     after-push-apply             1     no       (did not certify)
+head (both mechanisms)     after-computed-member        1     no       (did not certify)
+head (both mechanisms)     after-pop                    1     no       (did not certify)
+head (both mechanisms)     after-length-truncation      1     no       (did not certify)
+head (both mechanisms)     after-reflect-splice         1     no       (did not certify)
+head (both mechanisms)     inside-closure-push          1     no       (did not certify)
+head (both mechanisms)     inside-closure-pop           1     no       (did not certify)
+
+freeze removed             none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+freeze removed             after-push                   1     YES      (did not certify)
+freeze removed             after-index-assignment       1     YES      (did not certify)
+freeze removed             after-alias-then-push        1     YES      (did not certify)
+freeze removed             after-push-apply             1     YES      (did not certify)
+freeze removed             after-computed-member        1     YES      (did not certify)
+freeze removed             after-pop                    0     no       fixture-control-gate-a
+freeze removed             after-length-truncation      1     no       (did not certify)
+freeze removed             after-reflect-splice         0     no       fixture-control-gate-b
+freeze removed             inside-closure-push          1     no       (did not certify)
+freeze removed             inside-closure-pop           1     no       (did not certify)
+
+leg-check removed          none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+leg-check removed          after-push                   1     no       (did not certify)
+leg-check removed          after-index-assignment       1     no       (did not certify)
+leg-check removed          after-alias-then-push        1     no       (did not certify)
+leg-check removed          after-push-apply             1     no       (did not certify)
+leg-check removed          after-computed-member        1     no       (did not certify)
+leg-check removed          after-pop                    1     no       (did not certify)
+leg-check removed          after-length-truncation      1     no       (did not certify)
+leg-check removed          after-reflect-splice         1     no       (did not certify)
+leg-check removed          inside-closure-push          1     no       (did not certify)
+leg-check removed          inside-closure-pop           0     no       fixture-control-gate-a
+
+both removed (= pre-fix)   none (control)               0     no       fixture-control-gate-a+fixture-control-gate-b
+both removed (= pre-fix)   after-push                   1     YES      (did not certify)
+both removed (= pre-fix)   after-index-assignment       1     YES      (did not certify)
+both removed (= pre-fix)   after-alias-then-push        1     YES      (did not certify)
+both removed (= pre-fix)   after-push-apply             1     YES      (did not certify)
+both removed (= pre-fix)   after-computed-member        1     YES      (did not certify)
+both removed (= pre-fix)   after-pop                    0     no       fixture-control-gate-a
+both removed (= pre-fix)   after-length-truncation      1     no       (did not certify)
+both removed (= pre-fix)   after-reflect-splice         0     no       fixture-control-gate-b
+both removed (= pre-fix)   inside-closure-push          1     no       (did not certify)
+both removed (= pre-fix)   inside-closure-pop           0     fixture-control-gate-a
+
+harness sha256 after (unchanged, never written) 97683545d80c439d6d477ed4a160ae2d62c5275328d528a8fc3bfeb250920344
+```
+
+What this measures, read carefully rather than as a wall of noise:
+
+- **The control row is 0 in every variant** and asserts on both gates, so the lab
+  is wired and a refusal is a refusal of the injected write.
+- **At head, all ten members are refused and none of them enters the set.** That
+  includes the three the delta verification used to defeat the source scan and
+  two that no list of names could hold.
+- **On the pre-fix program (`both removed`), three members SILENTLY CERTIFY.**
+  after-pop, after-reflect-splice and inside-closure-pop all exit 0 having
+  asserted on ONE gate instead of two. That is the dangerous state stated exactly:
+  the exit test certifies a bundle having asserted on fewer gates than its own
+  legs justify, and the exit code says nothing. Five more members enter the set
+  and exit 1.
+- **Each defang leaves a different member escaping**, which is why both
+  mechanisms are shipped: `freeze removed` lets the two after-derivation removals
+  through silently, `leg-check removed` lets inside-closure-pop through silently.
+- **after-length-truncation was already covered pre-fix**, by the empty-set check
+  at scripts/m2-exit-test.sh:650: emptying the set entirely is loud. I report this
+  because a null result is evidence, and because it means that member is not part
+  of what this round closed.
+
+### FR4.7 Disposition of the delta verification's findings
+
+| finding | disposition |
+|---|---|
+| DV3-F1 MEDIUM | CLOSED, and by replacing the instrument rather than widening it. The three named shapes plus two more are refused at run time (FR4.6). The comment and the message that carried the false universal are gone; test/m2-exit-test.test.ts:2036 now states the class its condition actually recognises, and the run-time claim is witnessed by execution. |
+| DV3-F2 LOW | CLOSED at scripts/m2-exit-test.sh:235 and scripts/m2-exit-test.sh:269. The two readers of the manifest's gates list now tolerate the same shapes, and the swallowed exit status is taken explicitly. |
+| DV3-F3 LOW | CLOSED at scripts/m2-exit-test.sh:546 and scripts/m2-exit-test.sh:876. All three legs are reported by one function over one binding each, so the reported contribution is computed from the contributing expression. |
+| DV3-F4 observation | LEFT ALONE, and I agree with the verifier. A comment placed between two legs reddens the element pin. It fails safe, and making the comparison comment-blind would mean stripping comments from the compared text, which is a second scanner in the guard for no gain in the property guarded. |
+| DV3-F5 observation | LEFT ALONE. Truncating the manifest also collapses the main arm's derived absent list, and the verifier's point is that this is equally visible on the same success line. It still is. |
+| DV3-F6 LOW, outside the delta | NOT TOUCHED. test/watcher.test.ts is byte-identical between origin/main and this branch and I made no edit to it. See FR4.8 for what my runs saw. |
+
+### FR4.8 Suite results, with all three axes named
+
+CLAUDE.md:747 makes the complete sentence for a suite result name the toolchain,
+the build state and the invocation, and quote the skipped count alongside pass.
+
+**Arm 1.** CODE head 04e83a7, node v26.6.0 from the scratch prefix, `dist/` BUILT
+(`npm ci` exit 0, `npm run build` exit 0, `git status --porcelain` empty
+afterwards), invocation `npm test`:
+
+```
+i tests 598
+i suites 0
+i pass 598
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 249701.21055
+npm test EXIT=0
+```
+
+598 tests, 598 pass, 0 fail, **0 skipped**, exit 0. Both arms ran at code head
+04e83a7; the commits after it change only delivery/work-history/, and FR4.11
+records a re-run at the final head so that the numbers are not left resting on my
+assumption that a work-history commit cannot move them.
+
+Load average at the start of
+that run was 1.67 and 5.66 at the end. **596 was the count before this round and
+598 is the count after**, and the difference is exactly the two tests this round
+registers in test/behaviors.json:1, which is the accounting rather than a
+coincidence.
+
+**Arm 2.** Same head, same toolchain, same build state, invocation bare
+`node --test` from the repository root:
+
+```
+i tests 600
+i suites 0
+i pass 600
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 257710.930221
+bare node --test EXIT=0
+```
+
+600 tests, 600 pass, 0 fail, **0 skipped**, exit 0. The two extra against arm 1
+are `greet returns a greeting for a name` and `greet rejects an empty name`, the
+first two lines of that run's output, from the tracked sandbox fixture at the
+repository root that `package.json`'s test script excludes. That is the third
+axis exactly as CLAUDE.md:782 records it, and it is named rather than left as an
+unexplained two-test gap.
+
+**Transliteration declared.** Node's test reporter prints U+2139 INFORMATION
+SOURCE at the head of each summary line. Both captures above are real output from
+the runs described, with that codepoint rendered as the ASCII letter `i`.
+Occurrences replaced: 16, eight in each of the two captures. Nothing else
+in any captured output in this section was changed. There were no U+2716 failure glyphs to replace, because no
+test failed in either arm.
+
+**What I did NOT run**: the DEFAULT toolchain arm (`bash -lc`, node v22.22.2).
+The two floor-gated doctor tests skip there, which is a known and unchanged
+property of this repository (CLAUDE.md:750), and this round touches nothing in
+that path. I say so rather than letting a two-arm report read as three.
+
+**test/watcher.test.ts**: I saw NO instance of the DV3-F6 flake in either arm.
+That is not evidence against it. The verification measured roughly one failure in
+five isolated runs on an idle box, and two clean runs is a sample consistent with
+that rate. Load averages for my runs are quoted above.
+
+### FR4.9 Gates, bytes and citations
+
+```
+$ node --version
+v26.6.0
+$ git add -A
+$ node scripts/check-authored-bytes.mjs
+authored-bytes EXIT=0
+```
+
+The check is the portable repository script, run with the index staged as it
+requires. Zero tracked authored files carry non-ASCII or control characters,
+which includes the 251 lines of captured derivation output pasted into FR4.3 and
+the two transliterated suite captures in FR4.8.
+
+
+**The citations gate does not run on this change, and I checked why rather than
+reading a green.**
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --only citations --evidence $SP/FR4-ev-citations --base origin/main --head HEAD
+gates: registry gate-registry.yaml mode full
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: no applicable gate
+citations EXIT=0
+$ cat $SP/FR4-ev-citations/citations/result.json
+  "status": "not-applicable",
+  "detail": "precondition citations-diff-touches-documents evaluated and unmet: no changed
+             path under delivery/plan/, delivery/verification/, delivery/decisions/,
+             delivery/tuition/, delivery/requirements/, delivery/STATE.md"
+```
+
+`delivery/work-history/` is not in the path list the precondition quotes above,
+which is why a change touching only that directory did not reach the gate on this
+run. **A not-applicable is not a pass**, so I resolved every citation in this
+section myself instead, by reading each cited line out of this worktree:
+
+```
+80 distinct citation tokens, 1 unresolvable
+```
+
+The one unresolvable was `delivery/verification/harness-round3-delta.md:1`, which
+lives on the unmerged branch claude/verify-harness-round3. Per CLAUDE.md:206 a
+path you are not asserting exists at that line belongs in backticks, so it is
+quoted in FR4.0 rather than cited, and it buys nothing toward the substantive
+floor. The other 79 resolve, and 76 of them are inside the pasted derivation
+output, which is a useful property: those line numbers were produced BY a tool
+reading these files rather than typed by me, and re-resolving them is a check
+that the paste and the tree agree.
+
+
+### FR4.10 The claim grep, and what a green here cannot claim
+
+```
+$ F=delivery/work-history/exit-test-assertion-direction.md
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' $F \
+    | awk -F: '$1>=4976'
+27 hits, of which 14 are inside pasted captures and 13 are sentences I wrote
+```
+
+The count moved as this section was edited, and the number above is the one that
+holds for the text as committed. Every hit, and what settles it:
+
+- **Fourteen hits are inside the pasted derivation output or the pasted matrix**
+  (every line matching `CONDITION:`, `MESSAGE:`, `universals:` or `harness
+  sha256`). They are captured output from the tools and from
+  the shipped messages those tools quote, not sentences I wrote. Altering them
+  would be the fabrication the red-witness rule exists to prevent.
+- **Four hits are rows of the FR4.4 walk that QUOTE a shipped message** and label
+  it (test/m2-exit-test.test.ts:415, test/m2-exit-test.test.ts:804,
+  test/m2-exit-test.test.ts:2317 and the FR4.5 restatement of the first). In each
+  the universal is the code's claim, and the walk's verdict is my judgement about
+  it, given with the reason.
+- **"is covered" at what was line 5049 was restated** to "is guarded", with the
+  adjacent measurement naming the FR4.6 row that demonstrates it.
+- **"it needs a real runner" was removed** and replaced by "I did not attempt it
+  here", because I did not measure that it needs one; the existing probes avoid
+  that path for the same reason and I inherited the avoidance.
+- **The FR4.5 item 3 sentence listing the universal word list** contains "never"
+  and "always" as ITEMS OF THE LIST, quoted from my own script.
+- **The citations paragraph's "never reaches the gate" was restated** to name
+  the run it was measured on, with the precondition's own path list quoted
+  immediately above it.
+- **"What it cannot see is a write that never names the binding"** and its
+  siblings in FR4.5 are statements of what an instrument does NOT cover. They are
+  limitations, which is the direction that cannot flatter the change, and each is
+  the reason the next instrument exists.
+
+
+**The grep's known hole, checked by eye.** It carries `cannot be` and no other
+`cannot X` form. I read every `cannot fire`, `cannot reach`, `cannot happen`,
+`cannot see` and `cannot certify` in this section. Every one of them is either
+(a) inside a quotation of a shipped message, (b) a statement about what an
+instrument does NOT cover, which is the FR4.5 direction and is a limitation
+rather than a guarantee, or (c) carried by a measurement in FR4.6.
+
+**What a green on this branch cannot claim, stated plainly:**
+
+- It cannot claim that no write to the derived expected set can ever escape. It
+  claims that ten members, at two injection sites, are refused, and that the
+  mechanism refusing eight of them is a property of the frozen object rather than
+  a list of spellings. A write inside the derivation closure that produces a set
+  the legs also produce is not caught by anything here (FR4.5 item 6).
+- It cannot claim the derivation covers the repository. Two files (FR4.5 item 1).
+- It cannot claim the enumeration found every check. Five call shapes and a word
+  list of universals (FR4.5 items 2 and 3).
+- It cannot claim CI has run. At the time of writing no `gates` run exists for
+  this head, and the pull-request arm of the workflow has not produced a run for
+  ANY head of this branch, for the reason round 3 diagnosed. Whether that is
+  resolved is not an implementer's call and I did not act on it.
+
+### FR4.11 The swallowed status one frame out, and the DV3-F2 measurement
+
+Writing FR4.7 I noticed I had fixed the INSTANCE of DV3-F2 and not its mechanism,
+which is the exact error this round exists to stop. The mechanism there is: **a
+command substitution used as an ARGUMENT discards the exit status of what it ran,
+even under `set -e`.** Making `main_expect_json` exit explicitly closed nothing at
+its only real call site, because that call site was
+`write_expect "${expect}" "$(main_expect_json)"`, and the explicit exit would have
+arrived as an empty document with the harness none the wiser.
+
+So the derivation, over the whole harness rather than the one line I had in hand:
+
+```
+$ grep -n '\$(' scripts/m2-exit-test.sh \
+    | grep -vE '\$\((date|printf|cd |git |basename|dirname|node -e|wc |sed |grep |cat |mktemp|pwd|jq)'
+85:repo_root=$(CDPATH= cd -- "${script_dir}/.." && pwd)
+271:  if ! absent="$(main_absent_json)"; then
+338:evidence=$(CDPATH= cd -- "${evidence}" && pwd)
+375:  record_seq=$((record_seq + 1))
+414:  record_seq=$((record_seq + 1))
+890:  record_seq=$((record_seq + 1))
+1143:  record_seq=$((record_seq + 1))
+1199:  record_seq=$((record_seq + 1))
+1238:  record_seq=$((record_seq + 1))
+1280:  if ! main_expect="$(main_expect_json)"; then
+1401:  record_seq=$((record_seq + 1))
+1466:  scope_expect=$(resolve_scope_expect "${phase}" "${head_branch}")
+```
+
+Walked in full. The `$((...))` rows are arithmetic expansion, not command
+substitution, and the filter left them because the pattern `$(` is a prefix of
+both; they are not call sites and I say so rather than quietly dropping them.
+That leaves five real substitutions:
+
+| site | position | status taken? |
+|---|---|---|
+| scripts/m2-exit-test.sh:85 | plain assignment | YES, by `set -e`: a `var=$(cmd)` assignment takes the substitution's status as its own. |
+| scripts/m2-exit-test.sh:338 | plain assignment | YES, same. |
+| scripts/m2-exit-test.sh:1466 | plain assignment | YES, same. |
+| scripts/m2-exit-test.sh:271 | `if !` guard | YES, explicitly. This round added it. |
+| scripts/m2-exit-test.sh:1280 | was an ARGUMENT | This was the escaping one. This round changed it to an `if !` guard. |
+
+**What this derivation did NOT cover**: only `scripts/m2-exit-test.sh`. The same
+shape may exist in the other scripts under scripts/ and in the workflow, and I
+did not look, because they are outside the scope I was given. The filter is also
+a blocklist of common commands rather than a parser, so a substitution invoking
+one of the filtered names in argument position would not appear above; I read the
+unfiltered output as well and found no such case, but that is a reading of one
+file today.
+
+**CORRECTION, round five, DV4-3.** The sentence immediately above is FALSE and is
+left standing rather than edited away, because a work history is the artifact a
+later reviewer trusts and a silently corrected claim is worse than a visible
+wrong one. There ARE such cases: nine of them at this head, all invoking a
+filtered name in argument position. They are enumerated with the command that
+finds them in FR5.6 below. What round four should have written, and what the
+round-five section does write, is the output it read rather than a verdict on
+it.
+
+**The DV3-F2 closure, measured against production rather than a synthetic.**
+`main` carries the pre-fix program, so the control column is the live behaviour.
+Three manifest shapes, `--print-expect main` on each, asking two questions: what
+did it exit, and is what it printed JSON.
+
+```
+$ node --version
+v26.6.0
+=== head
+object: --print-expect main EXIT=0  VALID-JSON
+nulls: --print-expect main EXIT=0  VALID-JSON
+empty: --print-expect main EXIT=0  VALID-JSON
+=== the same three against origin/main's harness (pre-fix)
+object: --print-expect main EXIT=0  NOT-JSON: Unexpected token 'e', "[eval]:6
+nulls: --print-expect main EXIT=0  NOT-JSON: Unexpected token 'e', "[eval]:6
+empty: --print-expect main EXIT=0  VALID-JSON
+```
+
+`empty` is the control and it is valid on both, so the lab is not simply
+rejecting everything, and the two shapes the verification named are exactly the
+two that changed. On `main` right now, both of them exit 0 while emitting a
+document that is not JSON, which is what made the assertion program die at
+"expectations does not parse" before it could reach the manifest-leg check.
+
+### FR4.12 The suite re-run at the final head
+
+FR4.8's two arms ran at code head 04e83a7. Two things happened after it: the work
+history was committed, and FR4.11's fix to scripts/m2-exit-test.sh:1280 landed.
+The second is a real code change, so quoting only the earlier run would be
+quoting a green scoped to a configuration that no longer exists, which is exactly
+what T-009 forbids. **The FR4.8 arms are therefore superseded by this one**, and I
+am leaving them in place rather than deleting them because a later reader should
+be able to see that the count moved and why.
+
+I also record, because it cost a measurement: I edited the harness WHILE a
+background suite run was in flight in the same worktree. That run's result is
+discarded and is not quoted anywhere in this document. A suite result is scoped to
+the bytes it ran against, and those bytes changed underneath it.
+
+**Complete sentence.** Head b969cd0, node v26.6.0 from the scratch prefix,
+`dist/` BUILT (`npm run build` exit 0, `git status --porcelain` empty
+afterwards), invocation `npm test`:
+
+```
+i tests 598
+i suites 0
+i pass 598
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 300566.216401
+npm test EXIT=0
+```
+
+Same transliteration as FR4.8: U+2139 rendered as `i`, eight occurrences,
+nothing else altered.
+
+598 tests, 598 pass, 0 fail, **0 skipped**, exit 0, and zero U+2716 failure
+markers anywhere in the capture. Load average 3.18 at the start and 12.06 at the
+end, which is not mine: another session was running test/watcher.test.ts in a
+loop on this box throughout, and I record it because DV3-F6 makes load a variable
+a reader will want.
+
+**One test/watcher.test.ts instance to report, and I cannot attribute it.** An
+earlier capture at this head showed `a resident watcher keeps running and backs
+off with growing beacon gaps` failing at test/watcher.test.ts:293 with "expected
+at least 4 beacon writes, saw 3", under load average between 6.00 and 6.99. That
+capture is UNUSABLE as evidence, because two suite runs were writing to the same
+file at once and I cannot say which one produced the failure line, and the summary
+above it reported 0 fail. I am reporting the instance because DV3-F6 asks for
+instances and load averages, and I am refusing to attribute it, because the
+capture cannot support an attribution. The clean re-run above, at the same head,
+shows no failure. That is the same failing test the verification named, at the
+same line.
+
+**One commit follows that run, and it changes only this file.** The suite above
+ran at b969cd0; the commit after it settles the FR4.10 claim grep and adds this
+paragraph. The three code files are byte-identical across it, which is a
+measurement rather than an assurance:
+
+```
+$ for f in scripts/m2-exit-test.sh test/m2-exit-test.test.ts test/behaviors.json; do ... done
+scripts/m2-exit-test.sh    b969cd0=6203f9344a750c1f HEAD=6203f9344a750c1f SAME
+test/m2-exit-test.test.ts  b969cd0=d6163795e836c570 HEAD=d6163795e836c570 SAME
+test/behaviors.json        b969cd0=01eafa09678be071 HEAD=01eafa09678be071 SAME
+$ git diff --stat b969cd0..HEAD
+ .../work-history/exit-test-assertion-direction.md  | 53 +++++++++++++++++-----
+ 1 file changed, 42 insertions(+), 11 deletions(-)
+```
+
+A work-history commit cannot be quoted inside the run it postdates, and this is
+where that regress stops: a reviewer wanting the suite at the very tip runs it,
+and the two shas above are what tells them whether it can differ.
+
+### FR4.13 Handover
+
+- Scope touched: scripts/m2-exit-test.sh, test/m2-exit-test.test.ts,
+  test/behaviors.json and this work history. Nothing else, verified with
+  `git diff --stat` against 6fd51cb and against origin/main.
+- test/behaviors.json:1 gains two entries and changes none, which is the
+  append-only form CLAUDE.md:201 requires. Nothing in this round asserts a count
+  over it.
+- Not pushed. Committing and pushing are separate decisions and the push is the
+  orchestrator's, so that an in-flight gates run is not cancelled.
+- No `gates` run exists for this head and none was created by me.
+
+## FR5.0 Fix round five: a set-based comparison is blind to multiplicity
+
+Fresh implementer. I did not write rounds one to four. I am closing DV4-1
+(MEDIUM) and dispositioning DV4-2, DV4-3 and DV4-4 (LOW).
+
+Beacon opened at the start of the round, appended to as the work proceeded, per
+CLAUDE.md:407.
+
+Worktree: a detached checkout of 392f97f on a local branch `fr5-round5`.
+Toolchain: node v26.6.0 from the scratch prefix, verified in every shell that
+ran a command.
+
+
+### FR5.1 The mechanism
+
+**A SET-BASED COMPARISON IS BLIND TO MULTIPLICITY.**
+
+Putting values in a `Set`, or comparing a length against a `Set`'s `.size`, or
+deciding an equality with a membership test, discards how many times each value
+occurs. Any defect that preserves the value-set while changing multiplicity is
+then invisible.
+
+The finding DV4-1 named is one instance. The shipped condition was
+
+```
+if (expectedIds.length !== legContributed.size || expectedIds.some((id) => !legContributed.has(id))) {
+```
+
+with `legContributed` a `Set` and `expectedIds` an `Array`. A write that
+substitutes a DUPLICATE for a dropped id cancels out in both halves: `[A, A]` has
+length two, `{A, B}` has size two, and both elements are members. The comment
+above it quantified over "a dropped id ... break[s] the equality", and the
+condition recognised only a drop that CHANGES CARDINALITY.
+
+I am naming the mechanism rather than the four inputs deliberately, because the
+four previous rounds each closed the instance they were handed and re-introduced
+the same shape one level down: a regex that matched one spread spelling, a
+`!Array.isArray` type test, a member-name allowlist, and then this. The
+instrument this round installs is chosen so that this shape has nowhere to hide
+in it, rather than to handle the reported members: an equality over a sequence is
+decided POSITIONALLY, element by element, so multiplicity, order and substitution
+are all part of the comparison instead of being discarded by it. That is a claim
+about a comparator, and FR5.5's ATTR-A run is what settles it in this program: the
+comparator reverted to the length-plus-membership form lets all eight derivation
+members through, and the positional one refuses all eight. I did not find a way
+to construct a member that preserves the positional sequence and still drops a
+gate, which is a different sentence from saying none exists.
+
+The mechanism has a second confirmed instance in a different program:
+`describeDrift` in `scripts/render-agent-rules-gates.mjs` builds a `Set` of each
+block's lines, so a DUPLICATED line leaves both sets unchanged and it prints a
+sentence that is actively false. That is recorded at
+delivery/verification/render-agent-rules-gates-duplicate-row.md:44 and is
+OUTSIDE the scope I was given. I did not touch it. It is reported again in FR5.6
+so that a reader of this file does not have to know the other document exists.
+
+### FR5.2 What changed
+
+Three edits to scripts/m2-exit-test.sh:1, one to test/m2-exit-test.test.ts:1,
+one appended row in test/behaviors.json:604.
+
+1. **The comparator.** scripts/m2-exit-test.sh:602 adds `sameSequence(a, b)`. It
+   compares `.length` and then every index. It uses no `.every`, no `.some` and
+   no iteration, so no prototype method stands between the check and the two
+   arrays it compares.
+2. **The leg check.** scripts/m2-exit-test.sh:613 derives `legExpected`, the same
+   three legs filtered for usability and absence and then reduced to first
+   occurrences with `all.indexOf(id) === at`, which is a DIFFERENT algorithm from
+   the closure's `out.includes(id)` push loop rather than the same loop written
+   twice. scripts/m2-exit-test.sh:627 compares the two with `sameSequence`. It is
+   still terminal, for the reason round four gave and I did not disturb.
+3. **The consumption check.** scripts/m2-exit-test.sh:710 records every id the
+   per-gate loop actually handled, and scripts/m2-exit-test.sh:773 compares that
+   recording against the derived set, positionally, with the same comparator.
+   This is DV4-2's fix and it is described in FR5.5.
+
+One further edit, scripts/m2-exit-test.sh:921: the findings-printing loop is
+indexed rather than iterated. That is not cosmetic, it is a measurement. See
+FR5.5.
+
+### FR5.3 The derivation
+
+**The mechanism enumerated: every site in the two files this branch changes
+where a `Set`, a `.size`, a `.length` comparison or a membership test could stand
+in for an equality over a collection that can contain duplicates.**
+
+The scan runs a NEGATIVE CONTROL first and it is fatal. A copy carrying one
+synthetic line per probed shape must be reported in full; a scan whose pattern
+had rotted would otherwise return a short list indistinguishable from an absence
+of sites. It also reports whether the old set-based anchor and the new comparator
+are present, so a reader can tell which state the files are in.
+
+The script is `$SP/FR5-lab/derive.sh` in the scratch tree; its body is reproduced
+here so the derivation does not depend on a file outside the repository:
+
+```
+files="scripts/m2-exit-test.sh test/m2-exit-test.test.ts"
+pattern='new Set\(|\.size\b|\.has\(|\.includes\(|\.indexOf\(|\bsort -u\b|\buniq\b|wc -l|\.length\s*(===|!==|==|!=|<|>|<=|>=)|(===|!==|==|!=|<|>|<=|>=)\s*[A-Za-z_$][A-Za-z0-9_$.]*\.length'
+grep -nE "${pattern}" ${files}
+```
+
+Full output, unedited, at the post-fix head:
+
+```
+### files under scan, with their blob shas
+65835b4b00d8ed505211d78e51a5b340c53df1b0  scripts/m2-exit-test.sh
+a976d30883736a388eeacab7073d021fa6736a74  test/m2-exit-test.test.ts
+
+### NEGATIVE CONTROL: eight synthetic sites, one per probed shape
+synthetic lines: 10   reported by the scan: 10
+NEGATIVE CONTROL PASSED
+
+### ANCHOR CONTROL: the site the round fixes must occur exactly once
+old set-based anchor 'const legContributed = new Set(' occurrences: 0
+new sequence comparator 'const sameSequence = (' occurrences: 1
+
+### FULL SCAN, every hit, no filtering
+scripts/m2-exit-test.sh:239:    const only = new Set(String(process.argv[2]).split(/\s+/).filter(Boolean));
+scripts/m2-exit-test.sh:243:      .filter((id) => typeof id === "string" && id !== "" && !only.has(id));
+scripts/m2-exit-test.sh:350:    for (let i = 0; i + 1 < args.length; i += 2) {
+scripts/m2-exit-test.sh:445:  const i = process.argv.indexOf(name);
+scripts/m2-exit-test.sh:531:const absentIds = new Set(expect.absent ?? []);
+scripts/m2-exit-test.sh:546:const contribution = (leg) => new Set(leg.filter(usableId)).size;
+scripts/m2-exit-test.sh:562:    if (!usableId(id) || absentIds.has(id) || out.includes(id)) {
+scripts/m2-exit-test.sh:586://        compared `expectedIds.length` against a Set's `.size` and then asked
+scripts/m2-exit-test.sh:594://        mechanism generalises past this file: a Set, a `.size`, or a length
+scripts/m2-exit-test.sh:603:  if (a.length !== b.length) {
+scripts/m2-exit-test.sh:606:  for (let i = 0; i < a.length; i += 1) {
+scripts/m2-exit-test.sh:614:  .filter((id) => usableId(id) && !absentIds.has(id))
+scripts/m2-exit-test.sh:615:  .filter((id, at, all) => all.indexOf(id) === at);
+scripts/m2-exit-test.sh:636:const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
+scripts/m2-exit-test.sh:664:if (manifestIds.length === 0) {
+scripts/m2-exit-test.sh:669:    : (manifestGates.length === 0
+scripts/m2-exit-test.sh:682:if (expectedIds.length === 0) {
+scripts/m2-exit-test.sh:730:  if (!allow.includes(row.status)) {
+scripts/m2-exit-test.sh:788:const structuralExpected = new Set(
+scripts/m2-exit-test.sh:819:  if (structuralExpected.has(row.id)) {
+scripts/m2-exit-test.sh:843:if (redRows.length > 0) {
+scripts/m2-exit-test.sh:848:if (errorRows.length > 0) {
+scripts/m2-exit-test.sh:852:if (vacuousRows.length > 0) {
+scripts/m2-exit-test.sh:887:  if (rowById.has(id)) {
+scripts/m2-exit-test.sh:913:if (failures.length > 0) {
+scripts/m2-exit-test.sh:921:  for (let i = 0; i < failures.length; i += 1) {
+scripts/m2-exit-test.sh:948:  `${derivedIds.length > 0 ? `: ${derivedIds.join(", ")}` : ""}); ` +
+scripts/m2-exit-test.sh:949:  `${absentIds.size} asserted absent${absentIds.size > 0 ? `: ${[...absentIds].join(", ")}` : ""}; ` +
+scripts/m2-exit-test.sh:1012:  const i = process.argv.indexOf(name);
+scripts/m2-exit-test.sh:1192:if (failures.length > 0) {
+scripts/m2-exit-test.sh:1312:  # only.includes(id)), so a comma-joined value is one unknown id and errors.
+scripts/m2-exit-test.sh:1374:const i = process.argv.indexOf("--result");
+test/m2-exit-test.test.ts:452:  const ALLOWED_NAMES = new Set(["TIPHYS_IMPLEMENTER_TOKEN"]);
+test/m2-exit-test.test.ts:459:          ALLOWED_NAMES.has(name),
+test/m2-exit-test.test.ts:522:      declaredKeys([l], 2, "jobs").has(name),
+test/m2-exit-test.test.ts:526:  for (let i = start + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:531:    if ((/^ */.exec(line)?.[0] ?? "").length <= 2) {
+test/m2-exit-test.test.ts:547:        l.toLowerCase().includes(nameFragment.toLowerCase()),
+test/m2-exit-test.test.ts:562:  for (let i = start + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:587:  assert.ok(script.trim().length > 0, `step ${nameFragment} has an empty run block`);
+test/m2-exit-test.test.ts:611:      !keys.has(key),
+test/m2-exit-test.test.ts:721:  for (let i = onAt + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:733:    triggers.has("pull_request"),
+test/m2-exit-test.test.ts:776:  for (let i = stepAt + 1; i < lines.length; i += 1) {
+test/m2-exit-test.test.ts:805:    keys.has("ref"),
+test/m2-exit-test.test.ts:1180:      derived.absent.includes(NEW_GATE),
+test/m2-exit-test.test.ts:1196:        !derived.absent.includes(id),
+test/m2-exit-test.test.ts:1307:      const runsUnlisted = !table.absent.includes(UNLISTED);
+test/m2-exit-test.test.ts:1508:          findings.length > 0,
+test/m2-exit-test.test.ts:1512:        const foreign = findings.filter((line) => !line.includes(probe.reason));
+test/m2-exit-test.test.ts:1776:    for (let i = openIndex; i < text.length; i += 1) {
+test/m2-exit-test.test.ts:1832:  const openIndex = source.indexOf(ANCHOR) + ANCHOR.length - 1;
+test/m2-exit-test.test.ts:1915:    for (let i = 0; i < text.length; i += 1) {
+test/m2-exit-test.test.ts:2008:        index += ahead.indexOf("\n") + 1;
+test/m2-exit-test.test.ts:2012:        index += ahead.indexOf("*/") + 2;
+test/m2-exit-test.test.ts:2140:      !controlOut.includes(INJECTED),
+test/m2-exit-test.test.ts:2145:      controlOut.includes(GATE_A) && controlOut.includes(GATE_B),
+test/m2-exit-test.test.ts:2150:    const AFTER = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+test/m2-exit-test.test.ts:2239:          !output.includes(`[${INJECTED}]`),
+test/m2-exit-test.test.ts:2265:  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+test/m2-exit-test.test.ts:2266:  // || expectedIds.some((id) => !legContributed.has(id))`. A write substituting
+test/m2-exit-test.test.ts:2331:    const attributed = (output: string): boolean => output.includes(`[${GATE_B}]`);
+test/m2-exit-test.test.ts:2353:    const AFTER_DERIVATION = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+test/m2-exit-test.test.ts:2359:      "return { next: () => (i < self.length - 1 ? { value: self[i++], done: false } : " +
+test/m2-exit-test.test.ts:2363:      "return { next: () => (i < self.length ? { value: (i === self.length - 1 ? self[0] : self[i]), " +
+test/m2-exit-test.test.ts:2552:          !alternates.includes("red") && !alternates.includes("error"),
+test/m2-exit-test.test.ts:2556:        if (!alternates.includes("not-applicable")) {
+
+### ROW COUNT
+scripts/m2-exit-test.sh:32
+test/m2-exit-test.test.ts:35
+```
+
+**Every row walked, with a verdict.** The predicate that separates a defect from
+a correct use is: does this site decide an EQUALITY between two collections in
+which multiplicity carries meaning? A membership test, an emptiness test, a loop
+bound and a string search do not decide an equality between two collections at
+all, so there is no multiplicity for them to discard. Where that reasoning is
+doing real work rather than restating a definition, the row says so.
+
+scripts/m2-exit-test.sh, grouped because the groups are exact and a per-line
+table of thirty-two rows saying the same thing four times would obscure rather
+than show:
+
+| rows | what they are | verdict |
+|---|---|---|
+| :239, :243 | `--only` set, built once and used only through `.has` | MEMBERSHIP, not an equality. Duplicates in `--only` carry no meaning. Correct. |
+| :350, :445, :1012, :1374 | `args.length` loop bound; `process.argv.indexOf` locating a flag | Neither is an equality over a collection. Correct for this mechanism. See FR5.4 for what `indexOf` on argv does hide, which is a different mechanism. |
+| :531 | `absentIds` built as a Set | MEMBERSHIP only, at :562 and :614. Correct. |
+| :546 | `contribution()`, a deliberately deduplicated count for the REPORT line | Not an equality; it reports and asserts nothing. Round four made all three legs use it for exactly this reason. Correct. |
+| :562 | `out.includes(id)` inside the derivation | The DEDUPLICATOR itself, a membership test doing membership work. Correct. |
+| :603, :606 | `sameSequence`'s own `.length` compare and index loop | THE FIX. A length compare followed by a positional walk IS the exact equality; it is not a stand-in for one. Correct. |
+| :614, :615 | `legExpected`'s two filters | Filters, not equalities. `.indexOf(id) === at` is the first-occurrence test, and it is what makes the reference sequence deterministic. Correct. |
+| :636 | `explicitById.has(id)` | Map membership. Correct. |
+| :664, :669, :682, :843, :848, :852, :913, :1192 | `length === 0` and `length > 0` | EMPTINESS tests. A collection is empty or it is not, whatever its multiplicities. Correct. |
+| :730 | `allow.includes(row.status)` | A scalar in a list of alternates. Correct. |
+| :788, :819 | `structuralExpected` Set and its `.has` | Membership. Correct. |
+| :887 | `rowById.has(id)` | Membership. Correct. |
+| :921 | the indexed findings loop | Added by this round; an index walk, not an equality. Correct. |
+| :948, :949 | report line: `derivedIds.length`, `absentIds.size` | REPORTING, not assertion. Walked in FR5.4 because `absentIds.size` is the closest thing to the mechanism in the file. |
+| :1312 | a COMMENT | Not code. |
+
+test/m2-exit-test.test.ts, same treatment:
+
+| rows | what they are | verdict |
+|---|---|---|
+| :452, :459, :522, :611, :733, :805 | Sets and Maps used through `.has` | Membership. Correct. |
+| :526, :531, :562, :587, :721, :776, :1508, :1776, :1915 | `lines.length` loop bounds and emptiness tests | Not equalities. Correct. |
+| :547, :1180, :1196, :1307, :1512, :2140, :2145, :2239, :2331, :2552, :2556 | `.includes` on a string or on a list of alternates | Substring and membership. Correct. |
+| :1832, :2008, :2012 | `indexOf` doing string arithmetic | Not a collection equality. Correct. |
+| :2150, :2353, :2359, :2363 | string LITERALS that happen to contain `.has(` or `.length` | Not code paths at all; they are injection anchors and iterator bodies. Correct. |
+| :2265, :2266 | a COMMENT quoting the defect this round removes | Not code. |
+
+**The one comparison in the two files that decides an equality over a collection
+where multiplicity carries meaning is the one this round fixed.** Its sibling,
+the consumption check at scripts/m2-exit-test.sh:773, is new and uses the same
+positional comparator.
+
+Two nearby sites deserve naming rather than a table row, because a reader could
+reasonably expect them to be defects and they are not:
+
+- scripts/m2-exit-test.sh:493 builds `rowById` as a `Map` keyed by gate id, which
+  collapses duplicate rows. That WOULD be the mechanism, and the program already
+  handles it: scripts/m2-exit-test.sh:725 counts `rows.filter((r) => r.id ===
+  spec.id).length` and requires exactly one. Multiplicity is checked where it
+  matters, by a count over the raw rows rather than by the Map. This is the
+  correct pattern and it was already there.
+- test/m2-exit-test.test.ts:1852 and test/m2-exit-test.test.ts:2036 both use
+  `assert.deepEqual` over ARRAYS. `deepEqual` on arrays is positional, so it is
+  multiplicity- and order-sensitive already. Neither is a set comparison, and
+  neither needed changing. This matters because the obvious way to have written
+  the leg pin would have been `new Set(legs)`, and it was not written that way.
+  One loose word survives next to the correct code: the comment at
+  test/m2-exit-test.test.ts:1739 calls that assertion "a set equality over
+  identifier names" when the code sorts an array and deepEquals it, which is a
+  sequence equality and is STRONGER than what the prose promises. I am recording
+  the mismatch rather than editing the comment, because the code is right and the
+  next reader of this mechanism should know the word "set" appears there and does
+  not mean a `Set`.
+
+### FR5.4 What the derivation did NOT cover
+
+**Read this section first.** Round four's equivalent contained a false absence,
+which is DV4-3, and a false statement here is worth more than a missing one
+because it is where a reviewer looks.
+
+1. **Two files.** Only `scripts/m2-exit-test.sh` and
+   `test/m2-exit-test.test.ts`, because those are the files this branch changes
+   and the scope I was given. Every other file in the repository is uncovered by
+   this derivation. One uncovered site is KNOWN and is named in FR5.6 rather than
+   left to be found.
+2. **A textual scan, not a parser.** The pattern is a list of shapes. A
+   multiplicity-discarding comparison written in a shape the pattern does not
+   name would not appear. Concretely, and I looked for each of these by eye
+   afterwards, and the three searches with their COMPLETE output are:
+
+   ```
+   $ grep -n 'Object.keys' scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   scripts/m2-exit-test.sh:870:for (const key of Object.keys(recomputed)) {
+
+   $ grep -n 'JSON.stringify([A-Za-z_$][A-Za-z0-9_$.]*)\s*[=!]==' \
+       scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   (no hits)
+
+   $ grep -n '\.size\b' scripts/m2-exit-test.sh test/m2-exit-test.test.ts
+   scripts/m2-exit-test.sh:546:const contribution = (leg) => new Set(leg.filter(usableId)).size;
+   scripts/m2-exit-test.sh:586://        compared `expectedIds.length` against a Set's `.size` and then asked
+   scripts/m2-exit-test.sh:594://        mechanism generalises past this file: a Set, a `.size`, or a length
+   scripts/m2-exit-test.sh:949:  `${absentIds.size} asserted absent${absentIds.size > 0 ? `: ${[...absentIds].join(", ")}` : ""}; ` +
+   test/m2-exit-test.test.ts:2265:  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+   ```
+
+   The single `Object.keys` is a loop over a recomputed-counts object and is not
+   a comparison of two collections. There is no `JSON.stringify` equality in
+   either file, and that shape is multiplicity-SENSITIVE anyway, which is a claim
+   and so is measured rather than asserted:
+
+   ```
+   $ node -e 'const a=["A","A"],b=["A","B"];
+     console.log("stringify-equality on a substitution:", JSON.stringify(a)===JSON.stringify(b));
+     console.log("set-equality on the same pair:",
+       a.length===new Set(b).size && !a.some(x=>!new Set(b).has(x)));'
+   stringify-equality on a substitution: false
+   set-equality on the same pair: true
+   ```
+
+   The two lines are the whole defect in four values: the same pair of arrays is
+   UNEQUAL to a stringify comparison and EQUAL to a set-and-length one. The only `.size`
+   in a non-comment position other than `contribution()` is `absentIds.size` at
+   scripts/m2-exit-test.sh:949, which is item 3 below. What I am NOT claiming is
+   that these three shapes exhaust the ways of writing the mechanism; they are
+   the three I thought of, and I am publishing what they returned rather than a
+   verdict on what they mean.
+3. **`absentIds.size` at scripts/m2-exit-test.sh:949 is the mechanism, and I left
+   it.** The success line reports `${absentIds.size} asserted absent` while the
+   loop that does the asserting, scripts/m2-exit-test.sh:886, iterates the RAW
+   `expect.absent ?? []` array. If the absent list carried a duplicate the two
+   would disagree. I did not change it, and the reason is a judgment a reviewer
+   may overturn: asserting the same id absent twice is asserting it absent once,
+   so the deduplicated number is the honest report of what was asserted, and
+   changing it to the raw length would make the line claim MORE than was done,
+   which is the shape round four removed from the rows leg. What I am NOT
+   claiming is that a duplicate in the absent list is harmless generally; I did
+   not look for what else would be affected by one.
+4. **`process.argv.indexOf(name)` at scripts/m2-exit-test.sh:445 and :1012 and
+   :1374 hides a different defect and I did not fix it.** A repeated flag
+   (`--summary a --summary b`) silently takes the first. That is not this
+   mechanism, it is a different one, and it is out of the round's scope. I am
+   recording it because the derivation put it in front of me.
+5. **The shell half of `scripts/m2-exit-test.sh` was scanned but is thinly
+   covered.** The pattern includes `sort -u`, `uniq` and `wc -l`, which are the
+   shell spellings of the mechanism, and none of the three occurs in a comparison
+   position. The only `wc` in the file is scripts/m2-exit-test.sh:1251, in a
+   diagnostic string. But shell has more ways to discard multiplicity than three
+   commands, and I did not enumerate them.
+6. **Run time versus source.** The derivation reads SOURCE. A multiplicity-blind
+   comparison arriving at run time, from a value read out of a JSON fixture for
+   instance, is not visible to it. The run-time half is what the new test in
+   test/m2-exit-test.test.ts:2260 covers, and it covers ten members at two
+   injection sites, not the class.
+
+### FR5.5 The red witness
+
+The dangerous state is a bundle whose manifest declares two gates and which
+carries a record for ONE. The second gate is a declared gate that did not run,
+and the shipped program REJECTS such a bundle, naming it. Every member below
+makes the program ACCEPT it. So the control's direction is reject-to-accept, and
+"exit 0" here means "certified a bundle in which a manifest-declared gate
+produced no record", which is this branch's whole subject.
+
+Exit code alone is not sufficient, and it is worse here than usual: the shipped
+program ALSO exits nonzero on this fixture, for the honest reason. So every row
+carries an ENTERED column, derived from whether the output contains the
+attributed form `[<gate-id>]`, which is how a finding about a gate is printed. A
+bare id is not attribution; it appears in the success line and in stack traces.
+
+**Ten members against the pre-fix program at 392f97f.** All ten reach the success
+line, and in all ten runs the output carries no finding attributed to the missing
+gate. That second half is a MEASUREMENT, printed as the `entered-B` column in the
+capture below and derived from a search for the attributed form `[<gate-id>]` in
+each run's combined output, not an inference from the exit code. The control
+rejects the same fixture and its `entered-B` reads true, so the column is known
+to be capable of reading true and the fixture is discriminating.
+
+```
+FIXTURE=gap  CONTROL exit=1  entered-B=true
+    - [fixture-control-gate-b] gates.manifest.json declares this gate and the bundle carries NO record for it, ...
+
+v1-pop-then-push-first      exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v2-index-substitute         exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v3-splice-substitute        exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+v4-fill                     exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n5-copywithin               exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n6-unshift-then-pop         exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n7-object-assign            exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+n8-truncate-then-regrow     exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+iter-truncate-last          exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+iter-substitute-last        exit=0  OKline=true  entered-B=false  caught-by=(none: reached OK)
+```
+
+The first four are the members the delta verification constructed. **The next
+four are mine and the verifier did not construct them**, which is the point:
+`copyWithin`, an `unshift` followed by a `pop`, an `Object.assign` that names no
+array method at all, and a `length` truncation followed by a regrow. The fix has
+to be right for the mechanism, not for the reported list, and these four say
+whether it is.
+
+**The same ten against the fixed program.** All ten refused, each by the check
+intended for it.
+
+```
+FIXTURE=gap  CONTROL exit=1  entered-B=true
+v1-pop-then-push-first      exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v2-index-substitute         exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v3-splice-substitute        exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+v4-fill                     exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n5-copywithin               exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n6-unshift-then-pop         exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n7-object-assign            exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+n8-truncate-then-regrow     exit=1  OKline=false  entered-B=false  caught-by=leg-union-check
+iter-truncate-last          exit=1  OKline=false  entered-B=false  caught-by=coverage-check
+iter-substitute-last        exit=1  OKline=false  entered-B=false  caught-by=coverage-check
+```
+
+**ATTRIBUTION, because a mutation being caught does not prove my check caught
+it.** Two control programs, each defanging exactly one of the two new checks and
+nothing else:
+
+```
+ATTR-A  the sequence check reverted to a length-plus-membership form,
+        the coverage check left in place:
+  v1..n8   all eight   exit=0  OKline=true   caught-by=(none: reached OK)
+
+ATTR-B  the coverage check defanged, the sequence check left in place:
+  iter-truncate-last     exit=0  OKline=true  caught-by=(none: reached OK)
+  iter-substitute-last   exit=0  OKline=true  caught-by=(none: reached OK)
+```
+
+Each check is necessary for its family and neither family is being caught by
+something else in the program.
+
+**An incidental catch, found while building the witness and reported because it
+is exactly the trap I was warned about.** My first attempt at a test-level red
+witness reverted only the COMPARATOR, which is shared by both checks. The
+derivation members then escaped the leg check as intended, and were caught by the
+CONSUMPTION check instead, because a set-blind comparator applied to `[A, A]`
+versus `[A, A]` compares length two against set size one and fails. So the run
+exited nonzero and a careless reading would have called the leg check load-bearing
+when it had just been proven not to fire. The captured assertion message says so
+in its own words:
+
+```
+AssertionError: closure-pop-then-push-first was refused, but not by the derivation
+check that is supposed to catch it. ...
+  - this run asserted on a SEQUENCE that is not the derived expected set. ...
+    asserted=["fixture-recorded-gate","fixture-recorded-gate"]
+    derived=["fixture-recorded-gate","fixture-recorded-gate"]
+```
+
+I then built the isolated control (comparator reverted AND the consumption
+check's body neutered, both pinned check strings left intact) and all eight
+derivation members reach OK. That is the fully isolated dangerous state for the
+leg check and it is the run quoted as ATTR-A above.
+
+**The test itself, red and green.**
+
+- Against the pre-fix harness at 392f97f the new test is RED, but it reddens on
+  its structural control ("the check ... occurs 0 times in the assertion
+  program"), which is red against the ABSENT FEATURE. That is not good enough on
+  its own and I did not stop there.
+- Against a harness whose comparator alone is reverted, the test is RED on the
+  members, with the message quoted above.
+- Against the shipped harness it is GREEN, in 883ms.
+- The test carries the isolation permanently: each family runs a DEFANGED
+  CONTROL inside the test, asserting that with its check neutered the member
+  REACHES the success line. A future edit that makes one of these checks
+  non-load-bearing reddens the suite rather than passing quietly.
+
+**Two structurally different members per family, and more.** The derivation
+family has eight, four of which no earlier instrument or reviewer named. The
+consumption family has two: a TRUNCATING iterator and a SUBSTITUTING one. The
+second is deliberately the multiplicity-preserving shape, which is the same
+mechanism one level up from the derivation: the set is correct, sealed, and
+simply consumed wrong.
+
+### FR5.6 Disposition of DV4-2, DV4-3 and DV4-4
+
+**DV4-2 (LOW), FIXED, and a second member found.** The verifier reported one
+prototype-level iterator override and declined to call it a class. It is one: I
+built a second, structurally different member (substituting rather than
+truncating) and both defeat the pre-fix program. The freeze does not help against
+either, and that is measured rather than reasoned: the pre-fix program at 392f97f
+already carries the freeze, and the two rows `iter-truncate-last` and
+`iter-substitute-last` in FR5.5's first capture both reach the success line on it.
+The reason it does not help is that the override is on the shared prototype and
+not on the frozen instance.
+
+The fix is not an indexed loop. An indexed loop would make the shipped `for ...
+of` immune and produce no witness, and it would close the spelling rather than
+the mechanism. scripts/m2-exit-test.sh:710 records every id the loop actually
+handled and scripts/m2-exit-test.sh:773 compares that recording against the
+derived set positionally. The check does not care HOW the consumption was
+curtailed: an overridden iterator, a substituting one, an injected `break` or a
+`continue` before the first statement all present the same way.
+
+One measured detail that changed a second line. Under the TRUNCATING override the
+program exited 1 correctly and printed `FAIL with 1 finding(s):` followed by
+NOTHING, because the findings-printing loop is itself iterator-mediated and a
+one-element array truncates to zero. The run that caught the override could not
+say what it had caught. scripts/m2-exit-test.sh:921 is now an index walk, so the
+count and the listing come from the same reads. I am naming this as one line
+changed for a measured reason rather than a general conversion: the other
+`for ... of` loops in the program (over `rows`, over `expect.absent`, over
+`Object.keys(recomputed)`) are NOT converted, and an override would still remove
+those checks. That residue is real and I am stating it rather than leaving it.
+What the coverage check does cover is the one place where a curtailed consumption
+becomes a FALSE GREEN rather than a lost check.
+
+**DV4-3 (LOW), CORRECTED, and the output pasted.** The round-four not-covered
+section said it read the unfiltered `$(` output "and found no such case". That is
+false. The correction is written in place at the original sentence rather than
+edited over it. Here is what I looked at, with the command:
+
+```
+$ grep -n '\$(' scripts/m2-exit-test.sh \
+    | grep -E '\$\((date|printf|cd |git |basename|dirname|node -e|wc |sed |grep |cat |mktemp|pwd|jq)' \
+    | grep -vE '^[0-9]+: *(local [a-z_]+; )?[a-z_]+=\$\('
+397:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+418:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+970:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1224:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1251:    "$(wc -c <"${TIPHYS}" | tr -d ' ') bytes at ${TIPHYS}"
+1279:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1338:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1467:    at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+1468:    >"${evidence}/records/$(printf '%03d' $((record_seq + 1))).json"
+--- count ---
+9
+```
+
+Nine sites, each invoking a filtered name in ARGUMENT position, each discarding
+the exit status of what it ran. A tenth is arguable: scripts/m2-exit-test.sh:84's
+`script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)` has an inner
+substitution in argument position inside an outer assignment, and my
+argument-position filter excludes it because the outer form is an assignment.
+DV4-3 reports eight; I measure nine by the command above, ten if the nested one
+counts. I am reporting my measurement and the command rather than reconciling to
+the verifier's number.
+
+What these nine are is a bounded thing and I want to be precise rather than
+alarming: they are all in evidence-RECORDING paths, so a failing `date` or `wc`
+writes an empty field into a record instead of changing a verdict. That is an
+assessment of consequence. It is not a reason the round-four sentence was true,
+and it does not make the sites absent. I did not fix them: they are the DV3-F2
+mechanism, not this round's, and touching seven `json_object` call sites is not a
+change to make inside a round whose subject is one comparison.
+
+**DV4-4 (LOW, observation), RECORDED, NOT CHANGED.** The two derivations share
+their legs (`manifestLeg`, `rowsLeg`, `tableLeg`) and their filters (`usableId`,
+`absentIds.has`), so a defect in a filter is agreed by both computations and the
+check stays silent. That is true of my version as it was of round four's, and
+making the two derivations share nothing would mean writing the filters twice,
+which trades one silent-agreement risk for a drift risk between two copies of the
+same predicate. I am not making that trade inside this round.
+
+Two things bound it, and neither is a claim that it cannot bite:
+
+- The success line names the ids asserted and the ids asserted absent, so a
+  filter that swallowed an id leaves the id missing from a line a reader can
+  compare against the manifest.
+- test/m2-exit-test.test.ts:1731 pins the union's LEGS by source text, which is
+  the half no run-time check can see. It does not pin the filters.
+
+The uncovered part, stated plainly: a change to `usableId` or to `absentIds` that
+removes an id from BOTH the derivation and the reference sequence produces two
+computations that agree and a program that asserts on fewer gates than the
+manifest declares. Nothing in this round detects that. It is the same residue
+round four recorded and I am not claiming to have closed it.
+
+### FR5.7 The suite, on every arm I ran
+
+Toolchain: node v26.6.0 from the scratch prefix, npm 11.18.0, verified with
+`node --version` in the shell that ran each command. Build state: `dist/` built
+(`npm run build` exit 0, `git status` clean afterwards apart from the tracked
+edits of this round). Head: the round-five commits on branch `fr5-round5` off
+392f97f.
+
+| invocation | tests | pass | fail | SKIPPED | exit |
+|---|---|---|---|---|---|
+| `npm ci` | n/a | n/a | n/a | n/a | 0, no EBADENGINE line |
+| `npm run build` | n/a | n/a | n/a | n/a | 0, `git status` clean |
+| `npm test` | 599 | 599 | 0 | **0** | 0 |
+| bare `node --test` from the repository root | 601 | 601 | 0 | **0** | 0 |
+
+Round four measured 598 for `npm test` and 600 for bare `node --test` at 392f97f.
+This round adds exactly one test, so 599 and 601 are the expected values and are
+what was measured. The two-test gap between the invocations is the tracked
+`sandbox/test/greet.test.js` fixture that `package.json`'s `test` script pattern
+excludes, per CLAUDE.md:760.
+
+The `# skipped` lines in the run output are vendored JSON-Schema-suite subtests
+declining fixtures outside the declared vocabulary. They are counted by neither
+the `skipped` summary line nor the `tests` line, and they are present identically
+on both arms and at the base head. They are not a skip in the sense CLAUDE.md:725
+means.
+
+**test/watcher.test.ts flake: NOT OBSERVED in this round.** Both full suite runs
+show `fail 0` and `skipped 0`. Load averages, from `uptime` captured either side
+of each run: the `npm test` run started at 4.41 and ended at 3.68; the bare
+`node --test` run started at 1.15 and ended at **9.94**, which is the highest
+load either run saw and it is the one that would have been most likely to trip
+the flake. It did not trip on either. I am reporting the loads because the brief
+asked for them and because another agent is looping that test on this machine.
+I have no flake instance to report, and "I did not see it" is not the same
+sentence as "it does not happen": the brief puts it at roughly one run in five
+and I ran the full suite twice.
+
+### FR5.8 The claim grep
+
+Run over this round's section, at the head this file is committed at:
+
+```
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' \
+    delivery/work-history/exit-test-assertion-direction.md
+```
+
+One hit falls inside FR5, and it carries the command that settles it in the
+paragraph immediately below it: "that shape is multiplicity-SENSITIVE anyway",
+answered by the two-line `node -e` capture in FR5.4 item 2. Three hits that were
+present in an earlier draft of this section were restated rather than left:
+
+| was | is now |
+|---|---|
+| "an instrument that cannot have this shape at all" | "chosen so that this shape has nowhere to hide in it", with the ATTR-A run beside it, and "I did not find a way to construct a member that ..." |
+| "cannot have this defect" | "do not decide an equality between two collections at all" |
+| "the freeze cannot help against either" | "does not help, and that is measured", with the two capture rows named |
+
+**THE ALTERNATION HAS A HOLE AND I CHECKED IT BY EYE.** It carries `cannot be`
+and no other `cannot X` form, so `cannot fire`, `cannot reach` and `cannot
+happen` pass untouched. The eye-check command and its full output:
+
+```
+$ grep -nEi 'cannot [a-z]+' <this section>
+543:Two things bound it, and neither is a claim that it cannot bite:
+```
+
+That one is a disclaimer of a claim rather than a claim, which is the direction
+the rule wants. I also swept four universals the alternation does not carry
+(`every one/case/shape/spelling`, `exhaust`, `guarantee`, `nothing can`, `all
+possible`) and the single hit is "I am NOT claiming that these three shapes
+exhaust the ways of writing the mechanism", which is again a disclaimer.
+
+### FR5.9 Handover
+
+- **Scope touched**: scripts/m2-exit-test.sh:1, test/m2-exit-test.test.ts:1,
+  test/behaviors.json:604 and this work history. Nothing else. Verified with
+  `git diff --stat` against 392f97f, reproduced in the report.
+- **test/behaviors.json gains ONE row and changes none**, which is the
+  append-only form CLAUDE.md:201 requires. Nothing in this round asserts a count
+  over it, and the new test asserts by name.
+- **scripts/render-agent-rules-gates.mjs is NOT touched**, although
+  delivery/verification/render-agent-rules-gates-duplicate-row.md:44 confirms it
+  carries the same mechanism at its lines 196 and 197 (`const wantSet = new
+  Set(want); const haveSet = new Set(have);`). It is outside the scope I was
+  given and is separately tracked. It is named here, in the test's comment at
+  test/m2-exit-test.test.ts:2272, and in FR5.1, so that a reader of any of the
+  three finds it.
+- **Sites the derivation found that are outside this round's scope**, enumerated
+  rather than edited: the nine argument-position command substitutions listed in
+  FR5.6 (the DV3-F2 mechanism, not this one), and `process.argv.indexOf` at
+  scripts/m2-exit-test.sh:445, scripts/m2-exit-test.sh:1012 and
+  scripts/m2-exit-test.sh:1374, where a repeated flag silently takes the first.
+- **Not pushed.** Committing and pushing are separate decisions; the push is the
+  orchestrator's, so an in-flight `gates` run is not cancelled.
+- **Every `path:line` in this section was resolved against THIS worktree**, by
+  extracting the citation tokens outside code fences and printing the line each
+  one lands on. Six were wrong on the first pass and are corrected: five
+  `CLAUDE.md` citations and one into the test file. The `CLAUDE.md` five are worth
+  a warning to the next agent: the copy at the repository root is on a different
+  branch from this one and its line numbers differ by dozens, so a citation
+  carried over from a briefing or from another worktree lands in the wrong
+  section while still looking plausible. Resolve against the tree you are
+  committing to.
+- **The `citations` gate does NOT cover this file**, so none of the above was
+  machine-checked. Measured at this head:
+  `node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only
+  citations --evidence <dir> --base origin/main --head HEAD` exits 0 with
+  `declared 1 applicable 0 not-applicable 1`, and the record's own reason is
+  "no changed path under delivery/plan/, delivery/verification/,
+  delivery/decisions/, delivery/tuition/, delivery/requirements/,
+  delivery/STATE.md". `delivery/work-history/` is not on that list, which is the
+  gap delivery/verification/citations-gate-does-not-see-reviews-or-work-histories.md:1
+  already records. A green citations gate on this branch would say nothing about
+  this file, and it did not run at all.
+- **No `gates` run exists for this head and none was created by me.** Every
+  measurement in this section is local, on node v26.6.0, and CI on Node 26
+  remains the authority (CLAUDE.md:644). "Green" here is scoped to the runs that
+  produced it (CLAUDE.md:489), and those runs are named with their invocation,
+  toolchain and build state in FR5.7.
