@@ -1,0 +1,52 @@
+# T-004: verification lenses sharing one worktree can manufacture a phantom
+# defect. Promoted from the delivering project's own log by M3-P8.
+kind: tuition
+version: 1
+id: T-004
+project: tiphys-kernel
+date: 2026-08-04
+stage: M1-P3 verification and the investigation that followed it
+kernel-relevant: true
+what-happened: >-
+  Two verification lenses ran against the same worktree. One was running a
+  disciplined sabotage window (copy, mutate, measure, restore) while the other
+  ran tests. The second lens observed a failure that came from the first lens's
+  mutation and reported it as a defect. By the time anyone inspected the tree it
+  was byte-clean, so the evidence of contamination was gone while the finding
+  survived, and closing it took two multi-hour investigations.
+lesson:
+  - >-
+      Shared mutable ground turns one lens's experiment into another lens's
+      discovery, and the contamination erases itself while the finding remains.
+  - >-
+      The dispatch instruction was the defect. The briefs PERMITTED isolation
+      rather than REQUIRING it, and permitting is not requiring.
+  - >-
+      A test run is only evidence if you can prove what it ran. A run that
+      cannot name what it executed is an anecdote.
+mechanisms:
+  - mechanism: Shared worktree
+    rule: >-
+      A verification lens works in its OWN clone, never in a tree another agent
+      is editing, and a run that cannot pin the source it ran against is not
+      evidence and must label itself so.
+    siblings:
+      - src/pool.ts
+    evidence:
+      - delivery/verification/u2-race-flake-investigation.md, the U-2 phantom and the four hypotheses each run in a private clone
+      - delivery/review/verification-m1-p3-fix-round.md, the round whose lenses shared a tree
+structural-consequence:
+  - target: schemas/report.schema.json
+    status: applied
+    change: >-
+      A report declares the source it ran against, so a finding produced by a
+      run that cannot pin its source is labelled unpinned rather than inherited
+      as fact.
+  - target: roles/investigator.md
+    status: applied
+    change: >-
+      The investigator brief requires a private clone and a reproduction, so
+      isolation is a role obligation rather than a dispatch-time permission.
+evidence:
+  - delivery/verification/u2-race-flake-investigation.md, the whole investigation
+  - delivery/review/verification-m1-p3-fix-round.md, the run that produced the phantom

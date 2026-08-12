@@ -9,6 +9,7 @@ import { cmdPool } from "./commands/pool.ts";
 import { cmdSpawn } from "./commands/spawn.ts";
 import { cmdStatus } from "./commands/status.ts";
 import { cmdTeardown } from "./commands/teardown.ts";
+import { cmdTuition } from "./commands/tuition.ts";
 import { cmdValidate } from "./commands/validate.ts";
 import { cmdWatch } from "./commands/watch.ts";
 import { printVersion } from "./version.ts";
@@ -34,6 +35,7 @@ const commands = new Map<string, CommandHandler>([
   ["spawn", cmdSpawn],
   ["status", cmdStatus],
   ["teardown", cmdTeardown],
+  ["tuition", cmdTuition],
   ["validate", cmdValidate],
   ["watch", cmdWatch],
 ]);

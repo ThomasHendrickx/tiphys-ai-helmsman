@@ -899,9 +899,22 @@ test("the destructive-authority clause names all three conjuncts and the manifes
 });
 
 test("the seed mechanism index validates, and its mechanism keys are a superset of the interim index's, naming any that is missing", () => {
+  /* `--context` ADDED BY M3-P8, which registers a derived check for this type
+     (`mechanism-rule-evidence-resolves`) that resolves each rule's citations
+     against the tree. A context-requiring check with no context SKIPS and
+     exits nonzero rather than passing silently, which is M3-P1's rule and not
+     a regression; the subject of this test, that the index validates and its
+     keys are a superset of the interim file's, is unchanged. */
   const validated = run(
     cliEntry,
-    ["validate", "--type", "mechanism-index", "tuition/mechanism-index.yaml"],
+    [
+      "validate",
+      "--type",
+      "mechanism-index",
+      "--context",
+      repoRoot,
+      "tuition/mechanism-index.yaml",
+    ],
     repoRoot,
   );
   assert.equal(validated.status, 0, `${validated.stdout}${validated.stderr}`);
@@ -909,8 +922,19 @@ test("the seed mechanism index validates, and its mechanism keys are a superset 
   /* THE EXPECTED SET IS DERIVED FROM THE INTERIM FILE, NEVER WRITTEN HERE. A
      list of twelve names in this file would be a third source, and the property
      under test is precisely that the seed did not silently drop a row of the
-     SECOND one. The derivation is the interim table's own first column. */
-  const interim = readFileSync(join(repoRoot, "MECHANISMS.md"), "utf8");
+     SECOND one. The derivation is the interim table's own first column.
+
+     REPOINTED BY M3-P8, which DELETES the interim file (its step 2b) and
+     checks in the verbatim capture this now reads (its criterion 4c). The
+     capture is `037477e`, and its mechanism-name column was compared against
+     the deleted file's before the swap and found identical, so this test's
+     subject is unchanged. A test whose input the next phase deletes stops
+     meaning anything the moment it is needed, which is why the criterion
+     required the capture rather than the live file. */
+  const interim = readFileSync(
+    join(repoRoot, "test", "fixtures", "mechanisms-interim.md"),
+    "utf8",
+  );
   const interimNames = interim
     .split("\n")
     .filter((line) => line.startsWith("| ") && !line.startsWith("|---") && !line.startsWith("| Mechanism"))

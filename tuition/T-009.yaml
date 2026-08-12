@@ -1,0 +1,50 @@
+# T-009: main was red for four hours and twenty-one minutes while every pull
+# request check was green. Promoted by M3-P8.
+kind: tuition
+version: 1
+id: T-009
+project: tiphys-kernel
+date: 2026-08-07
+stage: M2 tail
+kernel-relevant: true
+what-happened: >-
+  The CI workflow fires on two events and they run different bundles: the pull
+  request event runs the strong bundle with a phase id derived from the head
+  ref, and a push to the default branch runs a main bundle with no phase. A
+  defect on the arm only one event takes was invisible to the other, so the
+  default branch stayed red across five consecutive push runs while every pull
+  request check was green, and four more merges landed on it. The owner
+  surfaced it, not the process.
+lesson:
+  - >-
+      A gate result is evidence only for the configuration it ran under. "CI is
+      green" is never a complete sentence: the complete sentence names the event
+      and the head sha.
+  - >-
+      A merge is not complete until the post-merge run on the new head is
+      observed to completion. Not the check on the branch: the run whose head
+      sha is the new tip.
+  - >-
+      Where behaviour forks on the CI event, BOTH arms need a witness. One
+      witnessed arm and one unwitnessed arm is the exact shape that broke here,
+      and the unwitnessed one is the one that broke.
+structural-consequence:
+  - target: schemas/report.schema.json
+    status: applied
+    change: >-
+      A reported gate result carries the event and the head it ran under, so a
+      green cannot be quoted outside the configuration that produced it.
+  - target: gate-registry.yaml
+    status: applied
+    change: >-
+      Every gate declares the CI events it runs on, so the two arms are data a
+      reader can compare rather than a property of a workflow file.
+  - target: AGENTS.md
+    status: ticketed
+    change: >-
+      The orchestrator's merge duty includes observing the post-merge run on the
+      new head before the phase is closed.
+    record: delivery/plan/kernel-plan-m3.md, M3-P9
+evidence:
+  - delivery/tuition/T-009-green-on-the-wrong-event.md, the five red push runs and the four merges
+  - delivery/work-history/m2-p9.md, the exit-test harness the incident ran through

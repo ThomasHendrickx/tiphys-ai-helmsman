@@ -34,8 +34,8 @@
  * value. A decode failure and a validation failure are distinguishable in the
  * diagnostic and neither produces a stack trace on any stream.
  *
- * PATHS THIS MODULE READS ARE NOT ITS OWN (D-M3-27, MECHANISMS.md row
- * "reading a path whose type is not established"). Every read goes through
+ * PATHS THIS MODULE READS ARE NOT ITS OWN (D-M3-27, and the mechanism index's
+ * row `reading-a-path-whose-type-is-not-established`). Every read goes through
  * `classifyEntry`, so a named pipe handed to `tiphys validate` is refused
  * with the observed entry type instead of blocking the command forever.
  */

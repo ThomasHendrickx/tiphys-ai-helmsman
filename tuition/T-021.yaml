@@ -1,0 +1,40 @@
+# T-021: MIGRATION TICKET, not an incident. Plan v1 section 11 item 7 parked
+# two L1 enforcement items for the tuition flow to carry; this is the first.
+# Recorded here at M3-P8 and executed post-M3.
+kind: tuition
+version: 1
+id: T-021
+project: tiphys-kernel
+date: 2026-08-12
+stage: M3-P8, recorded as a migration ticket
+kernel-relevant: true
+what-happened: >-
+  Plan v1 decision D-9 places "a review is never skipped" in Layer 1, meaning
+  enforced by the substrate rather than by an agent obeying a brief. The
+  substrate half is branch protection whose required checks depend on the
+  delivery mode: full mode requires the review gates, local-only mode cannot
+  require a pull request at all. None of it is built. Today the rule lives in
+  the orchestrator's brief and in the gate registry's applicability, which is
+  Layer 2: it holds while every agent obeys, and it has no floor under it if one
+  does not. This entry exists so the gap is a tracked artifact rather than a
+  sentence in a plan nobody re-reads.
+lesson:
+  - >-
+      A rule enforced only by a brief is enforced by whoever is reading the
+      brief. Recording the intended enforcement layer next to the rule is what
+      makes the gap visible.
+  - >-
+      Mode-awareness is the hard half. A protection rule that assumes a pull
+      request breaks local-only mode, so the enforcement has to be derived from
+      the charter's delivery mode rather than fixed.
+structural-consequence:
+  - target: gate-registry.yaml
+    status: ticketed
+    change: >-
+      Mode-aware branch-protection enforcement of the never-skipped review, so
+      the rule has a Layer 1 floor rather than living only in a brief. Executed
+      post-M3, per plan v1 section 11 item 7.
+    record: delivery/plan/kernel-plan-v1.md section 11 item 7 (D-9)
+evidence:
+  - delivery/plan/kernel-plan-v1.md, section 11 item 7, which parks both L1 items for the tuition flow to carry
+  - delivery/decisions/DR-0012-delegated-merge-authority.md, the delegation this rule protects

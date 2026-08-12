@@ -1,0 +1,48 @@
+# T-001: cross-model review caught findings that survived three same-model
+# rounds. Promoted from the delivering project's own log by M3-P8; the
+# long-form account stays there.
+kind: tuition
+version: 1
+id: T-001
+project: tiphys-kernel
+date: 2026-08-04
+stage: planning, before any implementation dispatch
+kernel-relevant: true
+what-happened: >-
+  The kernel plan went through three adversarial review rounds plus one
+  targeted verification, all by the same model family, producing 28 applied
+  findings. An external review by a different model family then found two
+  genuine defects that had survived every internal round: lease renewal was
+  never required to fail after expiry, so an expired-but-alive holder racing a
+  legitimate takeover could produce dual mutation; and fleet initialization
+  assumed a configured git identity, which a clean cloud environment does not
+  have. A second data point arrived the same day, with decorrelation in place:
+  two clean-room reviews of one head, given deliberately different starting
+  questions, found different defects, and the hazard-framed one surfaced two
+  highs the criteria walk did not raise at all.
+lesson:
+  - >-
+      Same-family reviewers share blind spots, and the deterministic verifier
+      layer does not cover design-level races or environment assumptions at
+      planning time.
+  - >-
+      The narrower lesson is not "use two models". It is that two reviews with
+      different STARTING QUESTIONS find different things, and model diversity
+      makes that difference harder to collapse.
+structural-consequence:
+  - target: role-model-config.yaml
+    status: applied
+    change: >-
+      The role-to-model binding carries a review-model-family field, so which
+      family produced a review is configuration rather than a dispatch habit.
+  - target: checklists/clean-room.yaml
+    status: ticketed
+    change: >-
+      The review checklists must vary the ENTRY POINT rather than only the
+      reviewer, so the two contracts of a dual review start from different
+      questions by construction.
+    record: delivery/plan/kernel-plan-m3.md, M3-P7 step 3
+evidence:
+  - delivery/review/plan-review-r4-external.md, the external review with its verdict and findings
+  - delivery/review/plan-review-r1.md, delivery/review/plan-review-r2.md and delivery/review/plan-review-r3.md, the internal rounds that missed both defects
+  - delivery/review/clean-room-m1-p4.md and delivery/review/clean-room-m1-p4-second.md, the first dual review with two framings

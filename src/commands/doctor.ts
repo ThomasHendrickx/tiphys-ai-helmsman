@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
 import { readRegularFileIfPresent } from "../task.ts";
+import { decodeDocument } from "../validate.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -42,7 +43,11 @@ export const PROFILES: Record<string, readonly string[]> = {
   generic: [],
   "local-only": [],
   "direct-pr": ["gh-missing"],
-  full: ["gh-missing", "remote-missing"],
+  /* M3-P8 step 7 (R-098): `retention-undeclared` is promoted here, so a fleet
+     whose charter declares no retention paths is not ready for full mode. The
+     generic profile leaves it a WARN, which is the state a fleet legitimately
+     sits in before its charter is written. */
+  full: ["gh-missing", "remote-missing", "retention-undeclared"],
   watch: ["beacon-absent", "beacon-stale"],
 };
 
@@ -341,6 +346,146 @@ function checkIdentity(root: string): CheckResult {
   };
 }
 
+/**
+ * THE RETENTION CHECK (M3-P8 step 7, R-098).
+ *
+ * A charter declares `retention` paths for its work histories, its evidence
+ * and its tuition. This check reads them and FAILs when a declared path is
+ * absent, or is git-ignored in the repository it lives in, because evidence
+ * that is ignored is evidence that does not survive the next clone. That is
+ * the duty made checkable rather than stated.
+ *
+ * A CHARTER THAT DECLARES NOTHING IS NOT A PASS. It is a WARN carrying the
+ * condition `retention-undeclared`, promoted to FAIL under the `full` profile.
+ * A check that is vacuously satisfied by an absent declaration is the SC-011
+ * shape this milestone exists to police, so the two states a reader might
+ * confuse (nothing declared, everything declared and present) never print the
+ * same word.
+ *
+ * TWO ROOTS, because a retention path is written from the PROJECT's point of
+ * view. `delivery/work-history/` lives in the project repository, and the
+ * charter that names it lives in the fleet home, so each path is resolved
+ * against the fleet root and against `projects/<identity name>` when that
+ * clone is present. A path found unignored under either is satisfied.
+ */
+function checkRetention(root: string): CheckResult {
+  const charterDir = join(root, "charter");
+  let names: string[];
+  try {
+    names = readdirSync(charterDir).sort();
+  } catch {
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: "no charter/ directory, so no retention paths are declared",
+      condition: "retention-undeclared",
+    };
+  }
+  const declarations: { charter: string; paths: string[]; projectRoot?: string }[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+      continue;
+    }
+    const path = join(charterDir, name);
+    const read = readRegularFileIfPresent(path);
+    if (read.kind === "refused") {
+      return { name: "retention", status: "FAIL", detail: read.reason };
+    }
+    if (read.kind === "absent") {
+      continue;
+    }
+    let document: Record<string, unknown>;
+    try {
+      const decoded = decodeDocument(read.body, path);
+      if (!decoded.ok) {
+        return { name: "retention", status: "FAIL", detail: decoded.reason };
+      }
+      document = (decoded.value ?? {}) as Record<string, unknown>;
+    } catch (error) {
+      return {
+        name: "retention",
+        status: "FAIL",
+        detail: `${path} could not be decoded: ${String(error)}`,
+      };
+    }
+    if (document["kind"] !== "charter") {
+      continue;
+    }
+    const retention = document["retention"];
+    if (typeof retention !== "object" || retention === null) {
+      return {
+        name: "retention",
+        status: "WARN",
+        detail: `${path} declares no retention paths`,
+        condition: "retention-undeclared",
+      };
+    }
+    const paths = Object.values(retention as Record<string, unknown>).filter(
+      (value): value is string => typeof value === "string" && value !== "",
+    );
+    const identity = document["identity"];
+    const projectName =
+      typeof identity === "object" && identity !== null
+        ? (identity as Record<string, unknown>)["name"]
+        : undefined;
+    const projectRoot =
+      typeof projectName === "string"
+        ? join(root, "projects", projectName)
+        : undefined;
+    declarations.push(
+      projectRoot !== undefined && existsSync(projectRoot)
+        ? { charter: path, paths, projectRoot }
+        : { charter: path, paths },
+    );
+  }
+  if (declarations.length === 0) {
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: `no charter in ${charterDir} declares retention paths`,
+      condition: "retention-undeclared",
+    };
+  }
+  let checked = 0;
+  for (const declaration of declarations) {
+    const roots = [root, ...(declaration.projectRoot === undefined ? [] : [declaration.projectRoot])];
+    for (const relative of declaration.paths) {
+      checked += 1;
+      const present = roots.filter((base) => existsSync(join(base, relative)));
+      if (present.length === 0) {
+        return {
+          name: "retention",
+          status: "FAIL",
+          detail: `${declaration.charter} declares retention path ${relative}, which does not exist`,
+        };
+      }
+      const kept = present.filter((base) => !isGitIgnored(base, relative));
+      if (kept.length === 0) {
+        return {
+          name: "retention",
+          status: "FAIL",
+          detail: `${declaration.charter} declares retention path ${relative}, which is git-ignored and will not survive a clone`,
+        };
+      }
+    }
+  }
+  return {
+    name: "retention",
+    status: "PASS",
+    detail: `${String(checked)} declared retention path(s) present and tracked`,
+  };
+}
+
+/** True when git reports the path ignored in that repository. */
+function isGitIgnored(repository: string, relative: string): boolean {
+  const result = spawnSync(
+    "git",
+    ["-C", repository, "check-ignore", "-q", "--", relative],
+    { encoding: "utf8" },
+  );
+  return result.error === undefined && result.status === 0;
+}
+
 export function runChecks(root: string): CheckResult[] {
   return [
     checkNode(),
@@ -351,6 +496,7 @@ export function runChecks(root: string): CheckResult[] {
     checkLock(root),
     checkBeacon(root),
     checkIdentity(root),
+    checkRetention(root),
   ];
 }
 

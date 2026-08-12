@@ -1,7 +1,9 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   rmSync,
   symlinkSync,
@@ -50,6 +52,10 @@ const CHECK_NAMES = [
   "lock",
   "beacon",
   "identity",
+  /* M3-P8 step 7 (R-098). Appended, and the list is compared for EQUALITY
+     rather than containment, so a check silently dropped is as red as one
+     silently added. */
+  "retention",
 ];
 
 function runCli(
@@ -256,4 +262,87 @@ test("doctor --for with an unknown profile exits 64", (t) => {
   const result = runCli(["doctor", "--for", "no-such-profile"], { cwd: fleet });
   assert.equal(result.status, 64);
   assert.match(result.stderr, /unknown profile/);
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P8 criterion 8: the retention check (R-098)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Write a charter into the fleet declaring three retention paths, and create
+ * them. The paths are the ones an ordinary project declares: where its work
+ * histories, its evidence and its tuition live.
+ */
+function charterWithRetention(fleet: string): string[] {
+  const paths = ["notes/work-history", "notes/evidence", "notes/tuition"];
+  for (const path of paths) {
+    mkdirSync(join(fleet, path), { recursive: true });
+    writeFileSync(join(fleet, path, "keep.md"), "# kept\n");
+  }
+  writeFileSync(
+    join(fleet, "charter", "charter.yaml"),
+    [
+      "kind: charter",
+      "identity:",
+      "  name: example-service",
+      "retention:",
+      ...paths.map((path, index) => `  ${["work-history", "evidence", "tuition"][index] as string}: ${path}`),
+      "",
+    ].join("\n"),
+  );
+  return paths;
+}
+
+test("doctor reports CHECK retention PASS for declared paths that exist and are not ignored, and FAIL naming the path once it is git-ignored", (t) => {
+  const fleet = initFleet(t);
+  const paths = charterWithRetention(fleet);
+
+  const passing = runCli(["doctor"], { cwd: fleet });
+  const green = /^CHECK retention (\S+) (.+)$/m.exec(passing.stdout);
+  assert.ok(green !== null, `no retention line: ${passing.stdout}`);
+  assert.equal(green[1], "PASS", green[2]);
+  assert.match(green[2] as string, new RegExp(`${String(paths.length)} declared retention path`));
+
+  /* THE DANGEROUS STATE: the path still EXISTS, so an existence-only check
+     would stay green, and it is git-ignored, so it does not survive a clone.
+     That is exactly the loss R-098 exists to prevent. */
+  appendFileSync(join(fleet, ".gitignore"), `${paths[1] as string}/\n`);
+  const failing = runCli(["doctor"], { cwd: fleet });
+  const red = /^CHECK retention (\S+) (.+)$/m.exec(failing.stdout);
+  assert.ok(red !== null, failing.stdout);
+  assert.equal(red[1], "FAIL", red[2]);
+  assert.match(red[2] as string, new RegExp(paths[1] as string));
+  assert.equal(failing.status, 1);
+
+  /* BOTH DIRECTIONS: removing the ignore returns the check to PASS and the
+     command to its previous exit code. */
+  writeFileSync(
+    join(fleet, ".gitignore"),
+    ["state/", "worktrees/", "projects/", ""].join("\n"),
+  );
+  const restored = runCli(["doctor"], { cwd: fleet });
+  assert.match(restored.stdout, /^CHECK retention PASS /m);
+  assert.equal(restored.status, nodeFloorMet ? 0 : 1);
+});
+
+test("doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL", (t) => {
+  const fleet = initFleet(t);
+  charterWithRetention(fleet);
+  rmSync(join(fleet, "notes", "tuition"), { recursive: true, force: true });
+  const absent = runCli(["doctor"], { cwd: fleet });
+  assert.match(absent.stdout, /^CHECK retention FAIL .*notes\/tuition.*does not exist$/m);
+  assert.equal(absent.status, 1);
+
+  /* THE VACUOUS PASS THIS CHECK MUST NOT HAVE (SC-011): a fleet whose charter
+     declares NO retention is a WARN under the generic profile, never a silent
+     PASS, and `--for full` promotes it. A check satisfied by an absent
+     declaration is the shape this milestone exists to police. */
+  const bare = initFleet(t);
+  const generic = runCli(["doctor"], { cwd: bare });
+  assert.match(generic.stdout, /^CHECK retention WARN /m);
+  assert.equal(generic.status, nodeFloorMet ? 0 : 1);
+
+  const full = runCli(["doctor", "--for", "full"], { cwd: bare });
+  assert.match(full.stdout, /^CHECK retention FAIL .*required for profile full/m);
+  assert.equal(full.status, 1);
 });

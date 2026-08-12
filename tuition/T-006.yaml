@@ -1,0 +1,81 @@
+# T-006: claimed impossibilities and claimed safety nets, written without
+# execution. Promoted from the delivering project's own log by M3-P8.
+kind: tuition
+version: 1
+id: T-006
+project: tiphys-kernel
+date: 2026-08-05
+stage: M1-P5 (watcher and liveness guard), across its fix rounds
+kernel-relevant: true
+what-happened: >-
+  Three times in one phase, a work history stated something about the world
+  that had never been executed: an arm that "cannot be forced", a case another
+  guard "already catches", a path that "recovers anyway". Each was written by an
+  implementer who had done real work, and each survived into a document a
+  reviewer was expected to trust. The orchestrator then did the same thing the
+  same day, reporting a remote as unreachable on the strength of a read
+  operation that says nothing about write access.
+lesson:
+  - >-
+      An impossibility claim, a coverage claim or a remedy claim must carry the
+      executed construction, or be restated as an open question.
+  - >-
+      The honest restatement costs nothing and is more useful: "I did not find a
+      way to force this arm" is true and invites the next reader to try, where
+      "this arm cannot be forced here" is false and closes the question.
+  - >-
+      A reminder does not survive a busy session. The mechanism is a grep over
+      the work history before it is submitted.
+mechanisms:
+  - mechanism: Reading a path whose type is not established
+    rule: >-
+      lstat the link, stat what it resolves to, open ONLY a regular file. A
+      block is not an exception, so try/catch does not touch it.
+    siblings:
+      - src/task.ts
+      - src/lock.ts
+      - src/pool.ts
+      - src/brief.ts
+      - src/hooks.ts
+    evidence:
+      - CR-520 and the four M1-P5 rounds
+      - delivery/verification/cr-520-orchestrator-reproduction.md
+  - mechanism: Atomic file replacement
+    rule: >-
+      Stage under a name no other pass can collide with. A fixed
+      `${path}.stage` lets two concurrent passes share one temporary; the loser
+      dies on ENOENT after advancing its seen state, dropping a signal in a
+      protocol whose rule is duplicate-rather-than-drop.
+    siblings:
+      - src/lock.ts
+      - src/watch.ts
+    evidence:
+      - M1-P5 round 4, verified pre-existing against a pristine build
+  - mechanism: Verifying access to a remote
+    rule: >-
+      `git push --dry-run` authenticates against receive-pack and updates no
+      ref. `clone` and `ls-remote` are READ operations and witness nothing
+      about write access.
+    evidence:
+      - delivery/tuition/T-006-unexecuted-claims-about-the-world.md, the orchestrator's own instance
+structural-consequence:
+  - target: schemas/work-history.schema.json
+    status: applied
+    change: >-
+      The shared claims[] section requires an executed construction beside any
+      impossibility, coverage or remedy claim, so the claim and its settlement
+      travel together.
+  - target: schemas/report.schema.json
+    status: applied
+    change: >-
+      The same claims[] definition is shared by the report contract, so a
+      review making an unexecuted claim is subject to the same rule as the work
+      it reviews.
+  - target: roles/implementer.md
+    status: applied
+    change: >-
+      The claim-grep clause carries the grep command verbatim, so hunting these
+      claims is a command rather than a habit.
+evidence:
+  - delivery/work-history/m1-p5.md, the three claims and their fix rounds
+  - delivery/review/clean-room-m1-p5-round4-hazard.md, the review that named the pattern

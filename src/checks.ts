@@ -30,6 +30,11 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
+/* M3-P8. The two tuition checks resolve operator-supplied paths against the
+   tree, so they classify an entry before deciding anything about it rather
+   than opening it (D-M3-27, the mechanism index's row
+   `reading-a-path-whose-type-is-not-established`). */
+import { classifyEntry } from "./task.ts";
 
 /** What one derived check produced. */
 export interface CheckOutcome {
@@ -1928,6 +1933,198 @@ export const reportNoFindingsStatement: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* tuition-target-exists (M3-P8 criterion 3a)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A `structural-consequence` marked `applied` names a target path that EXISTS.
+ *
+ * KIND B BY NECESSITY: it resolves a string against the filesystem, which no
+ * keyword under any DR-0013 option reaches. `requiresContext` is TRUE, so
+ * running the validator without `--context` prints `SKIPPED
+ * tuition-target-exists no context` and exits nonzero rather than passing by
+ * not running.
+ *
+ * ONLY `applied` IS CHECKED, and that is the point rather than a limitation.
+ * `proposed` names a change nobody has made and `ticketed` names one carried
+ * by a record, so neither claims anything about the tree; `applied` claims the
+ * change is IN the tree, and T-003 is the entry recording that a document can
+ * carry exactly that claim falsely.
+ *
+ * WHAT IT DOES NOT REACH, named here because criterion 3 reads at a glance as
+ * though it covered the whole hazard: whether the file CONTAINS the change
+ * claimed. That is a semantic relation between a prose sentence and a file,
+ * and the plan's own hazard table assigns it to review rather than to a check
+ * (section 2.6 reason 1). The two halves are exactly what this project has
+ * repeatedly found to differ, so the check states which half it is.
+ */
+export const tuitionTargetExists: DerivedCheck = {
+  id: "tuition-target-exists",
+  type: "tuition",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
+         than trusting a caller that reaches the check directly. */
+      return {
+        violations: [
+          {
+            pointer: "#/structural-consequence",
+            message: "no context directory was supplied",
+          },
+        ],
+        reports: [],
+      };
+    }
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const consequences = asArray(record["structural-consequence"]);
+    for (let index = 0; index < consequences.length; index += 1) {
+      const consequence = asRecord(consequences[index]);
+      if (consequence === undefined || consequence["status"] !== "applied") {
+        continue;
+      }
+      const target = consequence["target"];
+      if (typeof target !== "string") {
+        continue;
+      }
+      if (classifyEntry(join(contextDirectory, target)).kind === "absent") {
+        violations.push({
+          pointer: `#/structural-consequence/${String(index)}/target`,
+          message: `structural consequence is marked applied and its target ${target} does not exist`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* mechanism-rule-evidence-resolves (M3-P8 criteria 3b and 4b)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A PATH REFERENCE inside a `mechanisms[]` entry resolves against the tree,
+ * and a `machine-readable-form` resolves to a real document AND a real key
+ * inside it.
+ *
+ * T-005's checkability rule has two halves and they need two instruments. The
+ * SCHEMA half is `evidence` with `minItems: 1`: a rule with no citation is not
+ * a rule. THIS half is that a citation naming a file which does not exist is
+ * not a citation, which is a filesystem question and therefore Kind B.
+ *
+ * WHAT COUNTS AS A PATH REFERENCE, stated mechanically because a checker whose
+ * subject is vague cannot be falsified: a whitespace-delimited token holding at
+ * least one `/` and ending in a short extension, with surrounding backticks,
+ * brackets and trailing punctuation stripped. Real evidence in this feed reads
+ * `delivery/review/verification-m1-p3-fix-round.md V-1 and V-3`, so the
+ * reference is a token inside a sentence rather than the whole string.
+ *
+ * WHAT IT DOES NOT REACH, and this is a real hole rather than a tidy one:
+ * PROSE-ONLY evidence. `M1-P5 round 4, verified pre-existing against a pristine
+ * build` names no path, so nothing about it is resolvable and this check says
+ * nothing about it. Requiring every citation to be a path would redden entries
+ * whose evidence is a measurement rather than a document, which is a real form
+ * of evidence this project uses. The residue is therefore deliberate: the check
+ * establishes that the paths cited EXIST, never that a rule is supported.
+ *
+ * REGISTERED FOR BOTH TYPES. `mechanisms[]` appears in a tuition entry (where
+ * a rule is authored) and in the mechanism index (where it is projected). A
+ * check registered only for the first would leave the shipped index unchecked,
+ * which is the shared-definition asymmetry `alsoTypes` exists for.
+ */
+export const mechanismRuleEvidenceResolves: DerivedCheck = {
+  id: "mechanism-rule-evidence-resolves",
+  type: "tuition",
+  alsoTypes: ["mechanism-index"],
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/mechanisms", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const record = asRecord(instance);
+    if (record === undefined) {
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+    const mechanisms = asArray(record["mechanisms"]);
+    for (let index = 0; index < mechanisms.length; index += 1) {
+      const mechanism = asRecord(mechanisms[index]);
+      if (mechanism === undefined) {
+        continue;
+      }
+      const evidence = asArray(mechanism["evidence"]);
+      for (let position = 0; position < evidence.length; position += 1) {
+        const reference = evidence[position];
+        if (typeof reference !== "string") {
+          continue;
+        }
+        for (const path of pathReferencesIn(reference)) {
+          if (classifyEntry(join(contextDirectory, path)).kind === "absent") {
+            violations.push({
+              pointer: `#/mechanisms/${String(index)}/evidence/${String(position)}`,
+              message: `evidence names ${path}, which does not exist`,
+            });
+          }
+        }
+      }
+      const machine = asRecord(mechanism["machine-readable-form"]);
+      if (machine === undefined) {
+        continue;
+      }
+      const pointer = `#/mechanisms/${String(index)}/machine-readable-form`;
+      const path = machine["path"];
+      const key = machine["key"];
+      if (typeof path !== "string" || typeof key !== "string") {
+        continue;
+      }
+      const document = readContextDocument(contextDirectory, path);
+      if (!document.ok) {
+        violations.push({
+          pointer: `${pointer}/path`,
+          message: `machine-readable form names ${path}, which could not be read: ${document.reason}`,
+        });
+        continue;
+      }
+      /* THE KEY IS RESOLVED, NOT THE PATH ALONE (D-M3-26, criterion 4b). A
+         document that still exists under a key M2 renamed is exactly the drift
+         this coupling exists to catch, and a path-only check would call it
+         green. */
+      if (asRecord(document.value)?.[key] === undefined) {
+        violations.push({
+          pointer: `${pointer}/key`,
+          message: `machine-readable form names key ${key}, which ${path} does not carry`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/**
+ * Every path-like token in one prose reference. See the check's header for the
+ * definition and for what it deliberately does not treat as a path.
+ */
+export function pathReferencesIn(reference: string): string[] {
+  const found: string[] = [];
+  for (const raw of reference.split(/\s+/)) {
+    const token = raw.replace(/^[`("'[]+/, "").replace(/[`)"'\].,;:]+$/, "");
+    if (token.includes("/") && /\.[A-Za-z0-9]{1,6}$/.test(token) && !token.startsWith("/")) {
+      found.push(token);
+    }
+  }
+  return found;
+}
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -1945,6 +2142,11 @@ const registry: DerivedCheck[] = [
   reportNoFindingsStatement,
   reportParityArithmetic,
   roleIdsAreUnique,
+  /* M3-P8 step 8. Appended rather than inserted: `checksFor` filters by
+     declared type and sorts by id, so this array's order carries no meaning
+     any check reads. */
+  tuitionTargetExists,
+  mechanismRuleEvidenceResolves,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

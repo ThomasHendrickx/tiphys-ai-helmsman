@@ -1,0 +1,46 @@
+# T-017: the beacon instruction asks for a habit, and habits do not survive a
+# working agent. Promoted by M3-P8.
+kind: tuition
+version: 1
+id: T-017
+project: tiphys-kernel
+date: 2026-08-12
+stage: dispatch contract, four instances in one session
+kernel-relevant: true
+what-happened: >-
+  The dispatch contract tells every agent to create its work history early and
+  append as it works, because the file's mtime is the beacon its supervisor
+  watches. Four times in one session an agent working hard went quiet for long
+  enough to read as possibly dead, twice with the same number of minutes, because
+  "append as you work" names no moment at which to append. A second, sharper
+  instance came from fusing two acts in one instruction: an agent told to commit
+  and push on every append pushed six times, cancelling five in-flight CI runs
+  and leaving the critical-path branch with no completed evidence for two hours.
+lesson:
+  - >-
+      An instruction that asks for a habit names no moment. A per-action trigger
+      ("append after each command whose output you will cite, before running the
+      next one") names one, which is a fact about the two texts rather than a
+      prediction that rewording will hold.
+  - >-
+      Committing locally satisfies durability; pushing is a separate act that
+      cancels in-flight CI, and fusing them into one instruction is how an
+      obedient agent destroys its own evidence.
+  - >-
+      The watcher should be able to distinguish "alive and not appending" from
+      "possibly dead", which is a distinction that belongs in the guard rather
+      than in one session's scripts.
+structural-consequence:
+  - target: roles/implementer.md
+    status: applied
+    change: >-
+      The incremental-output clause carries the per-action trigger rather than
+      the habit, so the brief names a moment at which to append.
+  - target: src/watcher.ts
+    status: proposed
+    change: >-
+      The guard cannot today tell "alive and not appending" from "possibly
+      dead"; carrying the agent's own liveness signal rather than only mtimes is
+      what would separate them.
+evidence:
+  - delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md, the four instances and the postscript on the fused instruction

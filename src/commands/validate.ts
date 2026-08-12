@@ -92,6 +92,12 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      replaces the seed's contents with the generated projection, and neither of
      those acts touches this row. */
   ["mechanism-index", "mechanism-index.schema.json"],
+  /* M3-P8 step 8. A tuition entry carries its own `kind`, so this row extends
+     `--type` and `resolveAutoType` in one act (M3R-001). It is also what makes
+     this phase's two derived checks reachable: `tuition-target-exists` and
+     `mechanism-rule-evidence-resolves` are registered for type `tuition` and
+     nothing runs them until the type resolves. */
+  ["tuition", "tuition.schema.json"],
 ]);
 
 /**

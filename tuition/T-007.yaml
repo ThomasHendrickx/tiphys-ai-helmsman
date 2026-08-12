@@ -1,0 +1,56 @@
+# T-007: a phase met fifteen of fifteen executed acceptance criteria and still
+# live-locked every supervision command. Promoted by M3-P8.
+kind: tuition
+version: 1
+id: T-007
+project: tiphys-kernel
+date: 2026-08-05
+stage: M1-P5 (watcher and liveness guard), third dual review
+kernel-relevant: true
+what-happened: >-
+  Every one of a phase's fifteen acceptance criteria was walked and met, and the
+  delivered component still blocked forever on a named pipe at a path it read,
+  taking every supervision command with it. Two reviews ran on one head: the
+  criteria walk approved, and the hazard-framed review, given the question "what
+  can block, what can be lost, what can never exit", found the defect. The two
+  agreed on every mechanical fact; they disagreed on the verdict because they
+  were asking different questions.
+lesson:
+  - >-
+      Acceptance criteria inherit the blind spots of whoever wrote them, so a
+      criteria walk cannot find a defect the criteria could not express. "All
+      criteria met" is one input, never a terminal green.
+  - >-
+      A code phase needs two review CONTRACTS, not two reviewers, and the second
+      one must be a declared artifact rather than something the dispatch prompt
+      is trusted to remember.
+  - >-
+      The hazard question is derivable from the component's nature, which means
+      it belongs in the plan rather than in a prompt.
+structural-consequence:
+  - target: schemas/plan.schema.json
+    status: applied
+    change: >-
+      A phase declares its hazard-classes[] beside its acceptance criteria, so
+      the second review contract is derived from the plan rather than improvised
+      per dispatch.
+  - target: assurance-modes.yaml
+    status: applied
+    change: >-
+      review-contracts[] are declared per mode, so a mode says how many
+      contracts a review round carries and what each one asks.
+  - target: roles/clean-room-reviewer.md
+    status: applied
+    change: >-
+      The brief carries a review-contract field, so a reviewer knows which
+      contract it is executing and a hazard contract cannot be silently
+      dropped.
+  - target: checklists/hazard-review.yaml
+    status: ticketed
+    change: >-
+      The hazard contract gets its own checklist, so the second contract has
+      probes rather than only a framing.
+    record: delivery/plan/kernel-plan-m3.md, M3-P7
+evidence:
+  - delivery/review/clean-room-m1-p5-third-hazard.md and delivery/review/clean-room-m1-p5-third-criteria.md, the two verdicts on one head
+  - delivery/review/arbitration-m1-p5-third-round.md, the arbitration

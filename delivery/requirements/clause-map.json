@@ -233,5 +233,20 @@
     "phase": "M3-P6",
     "artifact": "roles/implementer.md",
     "clause": "R-087"
+  },
+  "R-070": {
+    "phase": "M3-P8",
+    "artifact": "tuition/README.md",
+    "clause": "R-070"
+  },
+  "R-091": {
+    "phase": "M3-P8",
+    "artifact": "schemas/tuition.schema.json",
+    "clause": "R-091"
+  },
+  "R-098": {
+    "phase": "M3-P8",
+    "artifact": "src/commands/doctor.ts",
+    "clause": "R-098"
   }
 }

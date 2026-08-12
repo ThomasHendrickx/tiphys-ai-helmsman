@@ -1,0 +1,51 @@
+# T-002: agent death mid fix round, and salvage exercised for real. Promoted
+# from the delivering project's own log by M3-P8.
+kind: tuition
+version: 1
+id: T-002
+project: tiphys-kernel
+date: 2026-08-04
+stage: M1-P3 fix round (session lock and worktree pool)
+kernel-relevant: true
+what-happened: >-
+  An implementer hit a provider usage limit part way through a fix round and
+  stopped, leaving uncommitted work in its worktree and no turn-end record.
+  The stop was clean and quiet: nothing crashed, nothing timed out, and no exit
+  code said anything had gone wrong. The work was salvaged by hand into a
+  commit marked WIP-UNREVIEWED, which is the discipline the process document
+  mandates and which nothing in the system detects or performs.
+lesson:
+  - >-
+      Agent death from a provider limit is a distinct failure class from a crash
+      or a timeout, and it looks exactly like an ordinary completion to anything
+      keyed on process exit.
+  - >-
+      A missing turn-end record must never be read as success. Task open, no
+      turn-end, worktree dirty is the abandoned-task state and deserves its own
+      wake reason rather than being discovered later.
+  - >-
+      Salvage is currently manual. Detection belongs with the watcher and the
+      liveness guard, because a rule that depends on somebody noticing is the
+      thing that failed here.
+structural-consequence:
+  - target: src/teardown.ts
+    status: applied
+    change: >-
+      teardown --salvage commits a dirty worktree under a fixed
+      WIP-UNREVIEWED prefix, so the audit trail of a salvage is uniform rather
+      than per-incident.
+  - target: src/watcher.ts
+    status: applied
+    change: >-
+      The watcher treats an open task with no turn-end record as a wake
+      condition with its own reason line, so the human is told rather than
+      finding out afterwards.
+  - target: roles/implementer.md
+    status: applied
+    change: >-
+      The R-081b clause makes incremental, committed output an obligation of
+      the dispatched agent, so a death leaves a partial result rather than
+      nothing.
+evidence:
+  - delivery/work-history/m1-p3.md, fix-round section, with the measured salvage state
+  - delivery/intake/orchestrated-delivery-process.md section 6, the salvage discipline

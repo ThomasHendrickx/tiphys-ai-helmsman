@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/tuition.schema.json",
+  "title": "Tiphys tuition entry",
+  "$comment": "Kernel plan M3, M3-P8 step 1 (R-091). ONE FAILURE MODE PER DOCUMENT, in the form a project that was not there can act on. THE LOAD-BEARING CONSTRAINT IS THE CONDITIONAL ONE: an entry with `kernel-relevant: true` must carry at least one `structural-consequence`, because an entry that claims kernel relevance and proposes no change to any kernel artifact is not tuition, it is an anecdote. The second is `mechanisms[].evidence`, minItems 1, which is T-005's checkability rule expressed as a validation failure rather than as advice: a rule with no citation to an investigation, review or tuition entry is not a rule. WHAT THIS SCHEMA CANNOT DO, stated so nobody reads a green as more than it is. It cannot tell a lesson from a platitude; every prose field is a non-empty string and whether its text changes what a reader does is judgment. It cannot tell whether a `structural-consequence` marked `applied` actually landed: the derived check `tuition-target-exists` resolves the target PATH against the tree, and whether that file contains the change claimed is a semantic relation no keyword and no check reaches (the plan's hazard table says so in the same words). And it cannot see an id collision with the delivery-side `T-nnn` space, which is `test/tuition.test.ts`'s registered duplicate-id scan.",
+  "description": "One failure mode this project paid for, with the mechanism it established and the change to a kernel artifact it forces. The tuition feed is the archive layer; tuition/mechanism-index.yaml is the dense READ layer projected out of the mechanisms[] field of every entry here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "version",
+    "id",
+    "project",
+    "date",
+    "stage",
+    "kernel-relevant",
+    "what-happened",
+    "lesson",
+    "evidence"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "tuition"
+    },
+    "version": {
+      "$comment": "Document format version, not a project version. A closed set rather than a minimum, for the reason schemas/mechanism-index.schema.json already records: the authoring vocabulary has no `minimum` keyword, so a bare `type: integer` would admit 0 and negatives.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "id": {
+      "$comment": "ONE `T-nnn` SPACE, SHARED WITH THE DELIVERING PROJECT'S OWN LOG, never renumbered and never reused after retirement (CLAUDE.md's identifier-schemes rule). The pattern fixes the shape; the uniqueness of an id ACROSS the two directories is not a property of one document and is checked by a registered test instead (M3R-011).",
+      "type": "string",
+      "pattern": "^T-[0-9]{3}$"
+    },
+    "project": {
+      "$comment": "Which delivery paid for this. A kernel-relevant entry travels upstream out of the project that learned it, so the entry has to say where it came from once it is no longer beside its own repository.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "stage": {
+      "$comment": "Where in the pipeline it happened: a phase id, a review round, an exit test, the planning stage. Free text rather than an enum, because the stage vocabulary belongs to the delivery mode and a closed list here would reject a project running a pipeline this kernel does not define.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "kernel-relevant": {
+      "$comment": "TRUE means this entry constrains the kernel itself and ships upstream as a kernel pull request (R-091). It is a boolean rather than a prose field because it is the selector `tiphys tuition list --kernel-relevant` filters on and the condition the structural-consequence requirement below triggers off.",
+      "type": "boolean"
+    },
+    "what-happened": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "lesson": {
+      "$comment": "What a reader should DO differently, one item per lesson. minItems 1: an entry with no lesson is an incident report.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "mechanisms": {
+      "$comment": "T-005's field, and the SOURCE of tuition/mechanism-index.yaml. The index is a PROJECTION of these entries rather than a second thing to maintain, so a mechanism is recorded here once and read from the index everywhere. Optional and possibly empty: many entries teach something about the process without constraining a mechanism, and an empty list says exactly that.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["mechanism", "rule", "evidence"],
+        "properties": {
+          "mechanism": {
+            "$comment": "The mechanism in the words a reader would search for. The index's `key` is DERIVED from this string (lowercase, runs outside [a-z0-9] collapsed to one hyphen, ends trimmed) and is never authored, so a key cannot drift from the mechanism it names.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "rule": {
+            "$comment": "What this project learned, stated as something to DO or NOT DO. An implementer who reads the row and changes nothing has read a description, and the row has failed.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "siblings": {
+            "$comment": "The other implementations that share this mechanism, by path. Projected into the index unchanged. An EMPTY list is meaningful: it says the mechanism has exactly one implementation today.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "machine-readable-form": {
+            "$comment": "Where the SAME rule exists as data (D-M3-26). The `destructive-git-operation` row is the worked example: its prose rule and `gates.manifest.json`'s `destructiveCommands` list are two views of one thing, and this field is what stops them drifting apart silently. The derived check mechanism-rule-evidence-resolves resolves both the path and the key against the real document, so a key M2 renames reddens here. Dependency direction is M3 reads M2, never the reverse.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "key"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          },
+          "evidence": {
+            "$comment": "THE T-005 CHECKABILITY RULE, as a constraint rather than as advice: a rule with no citation to an investigation, review or tuition entry is not a rule. minItems 1 is what makes an unsupported mechanism a validation failure.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        }
+      }
+    },
+    "structural-consequence": {
+      "$comment": "The change to a kernel artifact this entry forces. REQUIRED AND NON-EMPTY when `kernel-relevant` is true, by the if/then below. `status` is the honest part: `applied` claims the change is in the tree and is checked against it by tuition-target-exists, `ticketed` names the record that carries it, and `proposed` claims nothing yet.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "status", "change"],
+        "properties": {
+          "target": {
+            "$comment": "A kernel artifact path. Resolved against the repository by tuition-target-exists when `status` is `applied`.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["proposed", "applied", "ticketed"]
+          },
+          "change": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "record": {
+            "$comment": "The decision record, plan section or ticket that carries a `ticketed` consequence. Optional in the keyword sense and expected in practice for that status; a `ticketed` consequence with no record is the shape a reader cannot follow, and it is left to review rather than encoded, because the record for a ticket raised in another project is not a path this schema can constrain.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "$comment": "What establishes that the entry is true: reviews, verifications, work histories, captured runs, pull requests. minItems 1 for the same reason the mechanism's own evidence is required.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    }
+  },
+  "if": {
+    "type": "object",
+    "required": ["kernel-relevant"],
+    "properties": {
+      "kernel-relevant": { "const": true }
+    }
+  },
+  "then": {
+    "type": "object",
+    "required": ["structural-consequence"],
+    "properties": {
+      "structural-consequence": {
+        "type": "array",
+        "minItems": 1
+      }
+    }
+  }
+}
