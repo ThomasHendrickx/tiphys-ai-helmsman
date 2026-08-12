@@ -27,6 +27,37 @@ import { fileURLToPath } from "node:url";
  * (a barrier file for the concurrency witness, a pre-dated deadline for
  * the stale witness, a pre-dated beacon for the guard).
  *
+ * WHAT A BUDGET COSTS HERE (standalone fix round, 2026-08-12, and the
+ * rule this file now follows). A REAL-CLOCK BUDGET is a duration written
+ * in this source that an assertion's OUTCOME turns on: a sampling window
+ * that must contain N events, a sleep that must contain a tick, an
+ * interval that a later spawn must still be inside. Every such budget is
+ * silently spent by things this file does not measure: the spawn and
+ * module load of a child CLI, the watcher's own poll granularity, and
+ * whatever else the machine is doing. When the remainder goes negative
+ * the assertion reddens without any behavior having changed, and the
+ * `suite` gate is a REQUIRED gate, so that is a nondeterministic gate.
+ *
+ * Three rules, applied to every timing assertion in this file:
+ *
+ *   1. START A WINDOW AT AN OBSERVED EVENT, never at a call to spawn. A
+ *      window opened before the child exists pays for the child's
+ *      startup out of the events' budget.
+ *   2. WAIT FOR THE FACT, do not sleep for it. Where a test needs "a
+ *      heartbeat has ticked", it polls the fleet's own cadence file with
+ *      a generous bound, so the bound is an upper bound on a hang rather
+ *      than the thing the assertion depends on.
+ *   3. WHERE A BUDGET CANNOT BE REMOVED, make it large against what it
+ *      must contain, and assert the property DIRECTLY as well, so the
+ *      widening does not also widen the defect's escape route. Staging
+ *      elapsed time on disk (a pre-dated cadence file) is how a schedule
+ *      test buys sixty seconds of margin instead of eight hundred
+ *      milliseconds.
+ *
+ * Measured on this box at the head this round branched from: a
+ * `tiphys watch --once` spawn costs a median 51ms (min 44, max 68) on an
+ * idle machine, and the failing site had 700ms of total slack.
+ *
  * WHY THIS FILE STOPS A PROCESS. The T-002 witness has to produce the
  * state "task open, no turn-end, worktree dirty", and M1-P4 established
  * that in M1 it can arise in exactly one way: the spawn process itself
@@ -232,15 +263,98 @@ function writeTurnEnd(fleet: string, taskId: string, exitCode = 0): void {
   );
 }
 
-function beaconStampMs(fleet: string): number | undefined {
+/**
+ * A beacon as this file reads it: the stamp AND the schedule the watcher
+ * DECLARED when it wrote it. The declared half is what lets a cadence
+ * assertion compare an observed gap against the interval the watcher
+ * committed to, rather than against a ratio chosen in this source (see
+ * WHAT A BUDGET COSTS HERE, above).
+ */
+interface BeaconSample {
+  stampMs: number;
+  backoffStreak: number;
+  intervalMs: number;
+}
+
+function beaconSample(fleet: string): BeaconSample | undefined {
+  let parsed: { writtenAt?: unknown; backoffStreak?: unknown; intervalMs?: unknown };
   try {
-    const parsed = JSON.parse(
+    parsed = JSON.parse(
       readFileSync(join(fleet, "state", "watcher.beacon"), "utf8"),
-    ) as { writtenAt?: string };
-    return parsed.writtenAt === undefined ? undefined : Date.parse(parsed.writtenAt);
+    ) as { writtenAt?: unknown; backoffStreak?: unknown; intervalMs?: unknown };
   } catch {
     return undefined;
   }
+  if (
+    typeof parsed.writtenAt !== "string" ||
+    typeof parsed.backoffStreak !== "number" ||
+    typeof parsed.intervalMs !== "number"
+  ) {
+    return undefined;
+  }
+  const stampMs = Date.parse(parsed.writtenAt);
+  return Number.isNaN(stampMs)
+    ? undefined
+    : {
+        stampMs,
+        backoffStreak: parsed.backoffStreak,
+        intervalMs: parsed.intervalMs,
+      };
+}
+
+function beaconStampMs(fleet: string): number | undefined {
+  return beaconSample(fleet)?.stampMs;
+}
+
+/** The fleet's on-disk heartbeat streak, the schedule's own record. */
+function cadenceStreak(fleet: string): number | undefined {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(fleet, "state", "watcher.cadence.json"), "utf8"),
+    ) as { backoffStreak?: unknown };
+    return typeof parsed.backoffStreak === "number" ? parsed.backoffStreak : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Wait until the fleet's schedule records at least `wanted` heartbeats.
+ * This is a bounded wait for an OBSERVED FACT, which is what replaced
+ * "sleep long enough that a tick has surely happened": the bound is an
+ * upper bound on a hang and is never the thing an assertion turns on.
+ */
+async function waitForCadenceStreak(
+  fleet: string,
+  wanted: number,
+  limitMs: number,
+  running?: RunningCli,
+): Promise<number> {
+  const deadline = Date.now() + limitMs;
+  let last: number | undefined;
+  while (Date.now() < deadline) {
+    last = cadenceStreak(fleet);
+    if (last !== undefined && last >= wanted) {
+      return last;
+    }
+    // A watcher that EXITED will never reach the streak, and waiting the
+    // full bound to say so would report a timeout for what is really a
+    // watcher that broke its silence. Measured: with the unbounded-run
+    // guard defanged, this arm is what names the defect.
+    if (running !== undefined && running.exitCode() !== null) {
+      throw new Error(
+        `the watcher exited (code ${String(running.exitCode())}) after ` +
+          `${String(last)} heartbeats instead of staying silent through ` +
+          `${String(wanted)}: stdout ${JSON.stringify(running.stdout())} ` +
+          `stderr ${JSON.stringify(running.stderr())}`,
+      );
+    }
+    await sleep(10);
+  }
+  throw new Error(
+    `the fleet's backoff streak was ${String(last)} and never reached ` +
+      `${String(wanted)} within ${String(limitMs)}ms`,
+  );
 }
 
 async function waitForBeacon(fleet: string, limitMs: number): Promise<number> {
@@ -267,54 +381,113 @@ async function waitForFile(path: string, limitMs: number): Promise<void> {
 }
 
 test("a resident watcher keeps running and backs off with growing beacon gaps", async (t) => {
-  // Criterion 1. Real-clock wait, bounded: base 0.5s doubling to a 10s
-  // cap, sampled for 4.2s, which is the shortest run that yields three
-  // successive gaps (0.5, 1.0, 2.0).
+  // Criterion 1. Real-clock wait, bounded: base 0.3s doubling to a 10s
+  // cap, so heartbeats fall due 300ms, 900ms and 2100ms after the watcher
+  // arms itself, and the window is 4000ms.
+  //
+  // THE WINDOW STARTS AT THE ARMING BEACON (rules 1 and 3 above). The old
+  // form opened a 4200ms window BEFORE calling spawn and needed four
+  // beacon writes inside it, the last due 3500ms into the watcher's own
+  // life; the spawn, the module load and the startup evaluation were all
+  // spent out of the 700ms that left. It reddened as "expected at least 4
+  // beacon writes, saw 3" (measured: 1 run in 30 on this box, and 5 in 15
+  // when three copies of this file ran at once). Starting the window at
+  // the beacon the watcher itself wrote removes the child's startup from
+  // the budget entirely, and the third heartbeat then has 1900ms of slack.
+  //
+  // THE CADENCE IS ASSERTED AGAINST THE WATCHER'S OWN DECLARATION. Each
+  // beacon carries the interval in force when it was written, so an
+  // observed gap is compared with the interval the PREVIOUS beacon
+  // declared. A heartbeat is noticed at the loop's next poll, so it can be
+  // LATE and can never be EARLY: "gap >= the declared interval" is exact
+  // in the only direction that can be violated. The old "gap >= 1.5x the
+  // previous gap" was a ratio picked in this source, and its margin was
+  // thinnest on the FIRST heartbeat, where one poll interval of lateness
+  // is a fifth of the interval being measured.
   const fleet = initFleet(t);
   openTask(fleet, "t1");
+  const baseMs = 300;
+  const capMs = 10_000;
   const watcher = startCli(
     t,
-    ["watch", "--interval", "0.5", "--poll", "0.1", "--backoff-cap", "10"],
+    ["watch", "--interval", "0.3", "--poll", "0.1", "--backoff-cap", "10"],
     { cwd: fleet },
   );
 
-  const stamps: number[] = [];
-  const deadline = Date.now() + 4200;
+  const samples: BeaconSample[] = [];
+  const armDeadline = Date.now() + 30_000;
+  for (;;) {
+    const armed = beaconSample(fleet);
+    if (armed !== undefined) {
+      samples.push(armed);
+      break;
+    }
+    assert.ok(
+      Date.now() < armDeadline,
+      `the watcher wrote no beacon within 30000ms: ${watcher.stderr()}`,
+    );
+    await sleep(10);
+  }
+
+  const deadline = Date.now() + 4000;
   while (Date.now() < deadline) {
-    const stamp = beaconStampMs(fleet);
-    if (stamp !== undefined && !stamps.includes(stamp)) {
-      stamps.push(stamp);
+    const sample = beaconSample(fleet);
+    if (sample !== undefined && !samples.some((s) => s.stampMs === sample.stampMs)) {
+      samples.push(sample);
     }
     await sleep(20);
   }
 
   assert.equal(watcher.exitCode(), null, `watcher exited: ${watcher.stderr()}`);
   assert.equal(watcher.stdout(), "", "an idle watcher printed something");
-  assert.ok(
-    stamps.length >= 4,
-    `expected at least 4 beacon writes, saw ${String(stamps.length)}`,
-  );
-  const gaps: number[] = [];
-  for (let i = 1; i < stamps.length; i += 1) {
+  for (let i = 1; i < samples.length; i += 1) {
     assert.ok(
-      (stamps[i] as number) > (stamps[i - 1] as number),
-      "beacon timestamps are not strictly increasing",
+      (samples[i] as BeaconSample).stampMs > (samples[i - 1] as BeaconSample).stampMs,
+      `beacon timestamps are not strictly increasing: ${JSON.stringify(samples)}`,
     );
-    gaps.push((stamps[i] as number) - (stamps[i - 1] as number));
   }
-  for (let i = 1; i < gaps.length; i += 1) {
-    const previous = gaps[i - 1] as number;
-    const current = gaps[i] as number;
-    assert.ok(
-      current >= previous,
-      `beacon gap shrank: ${gaps.join(",")}`,
+
+  // The arming beacon carries streak 0; every later write is a heartbeat.
+  const heartbeats = samples.filter((s) => s.backoffStreak >= 1);
+  assert.ok(
+    heartbeats.length >= 3,
+    `expected at least 3 heartbeat beacons within 4000ms of arming, saw ` +
+      `${String(heartbeats.length)}: ${JSON.stringify(samples)}`,
+  );
+  const firstStreak = (heartbeats[0] as BeaconSample).backoffStreak;
+  for (let i = 0; i < heartbeats.length; i += 1) {
+    const beat = heartbeats[i] as BeaconSample;
+    // Consecutive AMONG THE OBSERVED ONES rather than "the first is 1":
+    // whether the sampler catches the arming beacon before the first
+    // heartbeat overwrites it is itself a race, and the ordinal's absolute
+    // value is asserted deterministically by the two single-pass tests
+    // below ("heartbeat 1" on a staged fleet, and the exact continued
+    // ordinal in the silence test).
+    assert.equal(
+      beat.backoffStreak,
+      firstStreak + i,
+      `the heartbeat streak skipped or repeated: ${JSON.stringify(samples)}`,
     );
-    // The criterion's letter is ">= the previous gap"; the doubling is
-    // what makes it a backoff rather than a flat cadence, so the
-    // measurement asserts the shape too.
+    // The schedule each beacon DECLARES doubles from the base, capped.
+    assert.equal(
+      beat.intervalMs,
+      Math.min(baseMs * 2 ** beat.backoffStreak, capMs),
+      `heartbeat ${String(beat.backoffStreak)} declared ${String(beat.intervalMs)}ms, ` +
+        `which is not the doubled interval for that streak: ${JSON.stringify(samples)}`,
+    );
+  }
+  for (let i = 1; i < heartbeats.length; i += 1) {
+    const previous = heartbeats[i - 1] as BeaconSample;
+    const current = heartbeats[i] as BeaconSample;
+    const gap = current.stampMs - previous.stampMs;
+    // This is the backoff, observed: with the declared intervals doubling
+    // above, the gaps are at least 600ms then 1200ms then 2400ms in turn,
+    // so they grow geometrically and cannot be a flat cadence.
     assert.ok(
-      current >= previous * 1.5,
-      `beacon gaps are not doubling: ${gaps.join(",")}`,
+      gap >= previous.intervalMs,
+      `heartbeat ${String(current.backoffStreak)} arrived ${String(gap)}ms after the ` +
+        `one before it, EARLIER than the ${String(previous.intervalMs)}ms that one ` +
+        `declared: ${JSON.stringify(samples)}`,
     );
   }
   watcher.stop();
@@ -330,28 +503,41 @@ test("a resident watcher wakes on a turn-end file with one signal line", async (
     ["watch", "--interval", "30", "--poll", "0.1", "--backoff-cap", "60"],
     { cwd: fleet },
   );
-  await waitForBeacon(fleet, 5000);
+  await waitForBeacon(fleet, 30_000);
 
   writeTurnEnd(fleet, "t1");
-  const code = await watcher.waitForExit(5000);
+  const code = await watcher.waitForExit(30_000);
   assert.equal(code, 0, `watcher did not exit 0: ${watcher.stderr()}`);
   assert.equal(watcher.stdout(), "signal t1 turn-end\n");
   assert.equal(watcher.stderr(), "");
 });
 
 test("a resident watcher is silent on heartbeats unless bounded", async (t) => {
-  // Criterion 3. Real-clock wait, bounded: three 0.4s base intervals
-  // with doubling is 2.8s, sampled to 3.0s.
+  // Criterion 3. Three 0.4s base intervals with doubling is 2.8s, and the
+  // old form slept a flat 3000ms and then required the ordinal to have
+  // moved past 1. That is a wall-clock budget standing in for a fact the
+  // fleet records on disk, and the 200ms it had left over had to cover the
+  // watcher's spawn (rule 2 above). It now WAITS FOR THE FACT: three
+  // heartbeats have ticked, bounded at 30s, and the watcher stayed silent
+  // across all three. The wait is also the stronger statement, because the
+  // old form never asserted that any heartbeat had happened at all.
   const fleet = initFleet(t);
   const idle = startCli(
     t,
     ["watch", "--interval", "0.4", "--poll", "0.1", "--backoff-cap", "10"],
     { cwd: fleet },
   );
-  await sleep(3000);
+  const ticked = await waitForCadenceStreak(fleet, 3, 30_000, idle);
+  assert.ok(ticked >= 3, `the idle watcher ticked only ${String(ticked)} times`);
   assert.equal(idle.exitCode(), null, `watcher exited: ${idle.stderr()}`);
   assert.equal(idle.stdout(), "", "an unbounded watcher exited on a heartbeat");
   idle.stop();
+  // Wait for it to be GONE before reading the schedule it left behind: two
+  // watchers on one fleet would make the ordinal below a race, and kill(2)
+  // returning is not the process having exited.
+  await idle.waitForExit(20_000);
+  const streakAfterIdle = cadenceStreak(fleet);
+  assert.notEqual(streakAfterIdle, undefined, "the idle watcher left no cadence file");
 
   // The bound is on THIS RUN, and the schedule it reports is the fleet's
   // on-disk one: this second run continues the streak the idle run left
@@ -371,11 +557,14 @@ test("a resident watcher is silent on heartbeats unless bounded", async (t) => {
     ],
     { cwd: fleet },
   );
-  const continuedCode = await continued.waitForExit(20_000);
+  const continuedCode = await continued.waitForExit(30_000);
   assert.equal(continuedCode, 0, `bounded watcher did not exit 0: ${continued.stderr()}`);
-  assert.match(
+  // EXACT, not "some number above one": the streak this run continues from
+  // was read off the fleet a moment ago, with the previous watcher already
+  // dead, so the ordinal it must print is known rather than bounded.
+  assert.equal(
     continued.stdout(),
-    /^heartbeat ([2-9]|\d\d+)\n$/,
+    `heartbeat ${String((streakAfterIdle as number) + 1)}\n`,
     "the heartbeat ordinal restarted instead of continuing the fleet's schedule",
   );
 
@@ -395,7 +584,7 @@ test("a resident watcher is silent on heartbeats unless bounded", async (t) => {
     ],
     { cwd: virgin },
   );
-  const code = await bounded.waitForExit(8000);
+  const code = await bounded.waitForExit(30_000);
   assert.equal(code, 0, `bounded watcher did not exit 0: ${bounded.stderr()}`);
   assert.equal(bounded.stdout(), "heartbeat 2\n");
 });
@@ -416,28 +605,62 @@ test("watch --once on a virgin fleet is silent and single-pass parity holds", (t
   assert.equal(pending.stdout, "signal t1 turn-end\n");
 });
 
-test("the heartbeat schedule is on disk and shared by single passes", async (t) => {
-  // Criterion 5. Real-clock wait, bounded at 0.5s: the schedule is what
-  // is under test, so the interval has to actually elapse.
+test("the heartbeat schedule is on disk and shared by single passes", (t) => {
+  // Criterion 5. NO REAL-CLOCK WAIT (rule 3 above), and removing it is
+  // most of the point of this round. The old form slept 500ms past a 400ms
+  // base interval and then required the pass AFTER the heartbeat to still
+  // be inside an 800ms window that contained a whole CLI spawn, an exit
+  // and another CLI spawn. Nothing measured that cost; when it exceeded
+  // 800ms the third pass surfaced "heartbeat 2" and the assertion read
+  // `actual: 0`.
+  //
+  // The elapsed time is STAGED ON DISK instead of waited for, which
+  // exercises the same comparison (nextHeartbeatDueMs parses
+  // lastHeartbeatAt out of the cadence file and adds the interval), and
+  // the base interval is 30 seconds, so the not-due pass carries about
+  // sixty seconds of margin instead of eight hundred milliseconds.
+  //
+  // WIDENING THE BUDGET WOULD ALSO WIDEN THE DEFECT'S ESCAPE, so the
+  // property the not-due pass was standing in for is asserted directly at
+  // the end: the heartbeat MOVED lastHeartbeatAt off the staged timestamp.
+  // A heartbeat that left the schedule where it found it reddens there
+  // with 240 seconds of margin, and reddens the not-due pass too.
   const fleet = initFleet(t);
-  const init = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
-  assert.equal(init.status, 3, init.stderr);
+  const cadenceFile = join(fleet, "state", "watcher.cadence.json");
 
-  await sleep(500);
-  const due = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  // A virgin fleet initializes the schedule and is not immediately due.
+  // Both halves are decided inside one process against one `now`, so this
+  // pass carries no clock budget at all.
+  const init = runCli(["watch", "--once", "--interval", "30"], { cwd: fleet });
+  assert.equal(init.status, 3, init.stderr);
+  assert.equal(init.stdout, "");
+  const initialised = JSON.parse(readFileSync(cadenceFile, "utf8")) as CadenceSnapshot;
+  assert.equal(initialised.backoffStreak, 0);
+
+  // Five minutes of elapsed time, staged rather than waited for.
+  const stagedAt = new Date(Date.now() - 300_000).toISOString();
+  writeFileSync(
+    cadenceFile,
+    `${JSON.stringify({ lastHeartbeatAt: stagedAt, backoffStreak: 0 }, null, 2)}\n`,
+  );
+
+  const due = runCli(["watch", "--once", "--interval", "30"], { cwd: fleet });
   assert.equal(due.status, 0, due.stderr);
   assert.equal(due.stdout, "heartbeat 1\n");
 
-  const immediate = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  const immediate = runCli(["watch", "--once", "--interval", "30"], { cwd: fleet });
   assert.equal(immediate.status, 3, immediate.stderr);
   assert.equal(immediate.stdout, "");
 
   // The schedule survived three separate processes, so it is not in
   // process memory (FM-006, FM-045).
-  const cadence = JSON.parse(
-    readFileSync(join(fleet, "state", "watcher.cadence.json"), "utf8"),
-  ) as { backoffStreak: number };
+  const cadence = JSON.parse(readFileSync(cadenceFile, "utf8")) as CadenceSnapshot;
   assert.equal(cadence.backoffStreak, 1);
+  assert.ok(
+    Date.parse(cadence.lastHeartbeatAt) > Date.parse(stagedAt) + 240_000,
+    `the heartbeat did not advance lastHeartbeatAt off the staged ${stagedAt}: ` +
+      `${cadence.lastHeartbeatAt}`,
+  );
 });
 
 test("a surfaced turn-end is not surfaced again by the next pass", (t) => {
@@ -530,11 +753,20 @@ test("a resident watcher and a concurrent single pass never drop a wake", async 
       ["watch", "--interval", "30", "--poll", "0.05", "--backoff-cap", "60"],
       { cwd: fleet },
     );
-    await waitForBeacon(fleet, 5000);
+    await waitForBeacon(fleet, 30_000);
 
     writeTurnEnd(fleet, "t1");
     const once = runCli(["watch", "--once"], { cwd: fleet });
-    const residentCode = await watcher.waitForExit(3000);
+    let residentCode = await watcher.waitForExit(3000);
+    if (once.status === 3 && watcher.stdout() === "") {
+      // --once ceded, so the resident is the only channel left and it must
+      // be about to surface. Reading an empty stdout here merely because a
+      // 3000ms budget expired would report a DROP that did not happen, so
+      // the wait gets a real bound in exactly the case that needs one.
+      // When --once WON, the resident never exits at all and the short
+      // budget is what keeps this test's five rounds cheap.
+      residentCode = await watcher.waitForExit(30_000);
+    }
     const residentLine = watcher.stdout();
     watcher.stop();
 

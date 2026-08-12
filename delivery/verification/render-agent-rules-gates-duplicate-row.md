@@ -1,0 +1,229 @@
+# `render-agent-rules-gates.mjs` prints a false diagnosis for a duplicated row
+
+- date: 2026-08-12
+- author: orchestrator
+- subject: the carried-forward report that `scripts/render-agent-rules-gates.mjs`
+  shares the generate-and-compare defect class found in its sibling, and
+  "prints an actively FALSE sentence under defang". That report came from the
+  M3-P6 implementer, was out of that phase's scope, and had never been checked.
+- verdict: **TWO symptoms in one function, both CONFIRMED by construction with
+  control arms. Severity MEDIUM overall**, raised from LOW after the second was
+  found. The duplicate-row symptom is LOW: the exit code is correct and only the
+  diagnostic is false. The collapse symptom, added lower down, is the MEDIUM: a
+  green sentence every clause of which is false, at exit 0. The filename says
+  "duplicate-row" because that is what was found first; it is kept so existing
+  citations keep resolving, and it now understates the contents.
+- measured at: `origin/main` c75152b for the duplicate-row symptom, and the
+  M3-P6 branch at `4619bf8` for the collapse symptom. Both node v26.6.0.
+
+## Why this was checked now rather than carried further
+
+T-009's corollary is that where behaviour forks, both arms need a witness, and
+that one witnessed arm beside one unwitnessed arm is the shape that has already
+cost this project a second pull request (PR #27 fixed one arm, PR #30 paid for
+the sibling twelve lines away). A carried-forward report naming a sibling
+script is that shape exactly, and it was sitting unowned.
+
+The claim was also a CLAIM, in the sense the claim grep exists to catch. "It
+prints an actively false sentence" is a statement about the world that had
+never been executed. It is now.
+
+## The mechanism
+
+The function under discussion is defined at
+scripts/render-agent-rules-gates.mjs:193 and the fallthrough branch that
+carries the false sentence is scripts/render-agent-rules-gates.mjs:207.
+
+`describeDrift` compares two blocks by building a `Set` of each block's lines
+and reporting lines present in one set and absent from the other. When the two
+sets are equal but the texts differ, it falls through to a single hard-coded
+sentence:
+
+    the two blocks differ only in blank-line placement or line order
+
+**A `Set` cannot see a DUPLICATE.** Duplicating a line leaves both sets
+unchanged, so the set difference is empty, the fallthrough fires, and the
+program asserts a cause that is not the cause. The difference is neither
+blank-line placement nor line order.
+
+The general shape: **a fallthrough branch that names a specific cause is a
+claim, and it is only true if the branches above it are exhaustive.** Here they
+are not, because a set difference does not partition the ways two line
+sequences can differ. It misses duplication and it misses multiplicity
+generally.
+
+## The probe, with its control arm
+
+The mutation duplicates one existing gate row, byte for byte, inside the
+generated block of a COPY of `CLAUDE.md`. Nothing in the repository was
+modified; `--agent-rules <path>` points the checker at the copy.
+
+```
+duplicating line 256: | `manifest-self-check` | script | required | full, direct-p
+=== CONTROL (unmutated copy) ===
+agent-rules-drift: green (17 rendered gate rows compared)
+../probe-render/control.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 14 gate(s))
+CONTROL_EXIT=0
+=== MUTANT (one gate row duplicated) ===
+agent-rules-drift: red (17 rendered gate rows compared)
+../probe-render/dup.md's gate block has drifted from gate-registry.yaml: the two blocks differ only in blank-line placement or line order. Re-render with node scripts/render-agent-rules-gates.mjs --write
+MUTANT_EXIT=1
+```
+
+The control arm is what makes the mutant arm mean anything: an unmutated copy
+is green at exit 0, so the red is attributable to the duplication and not to
+the copying, the path, or the toolchain.
+
+## What is and is not wrong here
+
+**The gate is NOT broken.** It goes red, at exit 1, on a block that has drifted.
+Whatever a reader does next, they will re-render and the drift will go away.
+That is why this is LOW and not higher.
+
+**The diagnosis is false.** A maintainer told the blocks "differ only in
+blank-line placement or line order" will look for whitespace and ordering, and
+will not find them, because the cause is a repeated row. The cost is a confused
+reader, not a missed defect.
+
+This is the same family as the M3-P6 finding F-B3 against the sibling script,
+which was tracked with the same reasoning: exit code correct, message wrong.
+Two live instances of one mechanism is what makes it a mechanism rather than a
+typo.
+
+## The derivation, and what it did NOT cover
+
+The enumeration was run over the whole tree at both refs, not over a directory
+chosen by reasoning:
+
+```
+git grep -n 'function describeDrift' origin/main -- .
+  delivery/work-history/m3-p3.md:3340
+  scripts/render-agent-rules-gates.mjs:193
+
+git grep -n 'function describeDrift' origin/claude/m3-p6-delivery-role-briefs -- .
+  delivery/work-history/m3-p3.md:3340
+  delivery/work-history/m3-p6.md:1752
+  scripts/check-brief-drift.mjs:155
+  scripts/render-agent-rules-gates.mjs:193
+```
+
+So there are **two live implementations**, one on `main` and a second arriving
+with M3-P6. The other hits are prose inside work histories and are not
+executable.
+
+Not covered, stated rather than left to be assumed:
+
+- **The first attempt at the second live instance measured NOTHING, and the
+  re-run is below.** `scripts/check-brief-drift.mjs` was first copied out of the
+  branch to a scratch directory and run there; it failed with
+  `ERR_MODULE_NOT_FOUND` on BOTH the control and the mutant arm, because
+  copying it away from the tree broke its relative imports. Two arms failing
+  identically for a reason unrelated to the mutation is a measurement of
+  nothing, and it is kept here rather than deleted, because a reader who saw
+  only "both arms exit 1" could mistake it for a result. **The control arm is
+  the only reason it was not mistaken for one**, which is the argument for
+  always running one.
+- **No other multiplicity case was probed.** Duplication is one way for two
+  line sequences to have equal sets and unequal text; a line appearing three
+  times against two, or two different lines swapping counts, are others. Only
+  the single duplicate was constructed.
+- **WHETHER THE SUITE CATCHES THE COLLAPSE WAS NOT MEASURED BY ME.** The
+  implementer states "suite green" under that mutation, and that claim is
+  PLAUSIBLE and UNVERIFIED here: the `npm test` arm of the probe was killed by
+  a seven-minute command timeout before it produced a number, and it was not
+  re-run. So this document establishes the FALSE GREEN and does not establish
+  that the mutation is unwitnessed. Those are two claims and only one of them
+  has evidence attached.
+- **The copied-script trap bit this probe a SECOND time and is recorded again
+  because the first record did not stop it.** The collapse was first applied to
+  a copy of the script placed in a scratch directory; it crashed with a module
+  resolution failure on BOTH arms at exit 1, which is a measurement of nothing.
+  The control arm exposed it, exactly as it had an hour earlier for the sibling
+  script. Two identical failures of the same kind in one session says the
+  lesson is not "remember this" but "mutate in place, always".
+- **Exit codes must not be read through a pipe.** An earlier attempt captured
+  `$?` after piping the program into `tail`, which reports TAIL's status, and
+  printed `MUTANT_EXIT=0` for a run that had actually exited 1. Every exit code
+  in the table above was captured either without a pipe or via `PIPESTATUS[0]`.
+- **Nothing here is a fix, and no fix is proposed.** The remedy is a change to
+  a script on `main`, which is a change like any other and owes its own branch,
+  witness and review. It is NOT folded into M3-P6, whose scope does not include
+  it.
+
+## The re-run, IN PLACE: the sibling shares the defect
+
+The failed probe was repeated correctly, in a detached worktree of the M3-P6
+branch at `4619bf8` with `npm ci` run, so the script's relative imports
+resolve. Same mutation: one gate row duplicated byte for byte in a COPY of the
+shipped `roles/implementer.md`.
+
+```
+duplicating line 381: | `manifest-self-check` | script | required | sche
+=== CONTROL (unmutated copy of the shipped brief) ===
+brief-drift: green (15 generated brief gate rows compared)
+.../probe2/control.md's full gate block matches gate-registry.yaml row for row (15 row(s) compared)
+CONTROL_EXIT=0
+=== MUTANT (one gate row duplicated) ===
+brief-drift: red (15 generated brief gate rows compared)
+.../probe2/dup.md's full gate block has drifted from gate-registry.yaml: the two blocks differ only in blank-line placement or line order. Re-render with node scripts/check-brief-drift.mjs --write
+MUTANT_EXIT=1
+```
+
+**CONFIRMED, and the message is the same false sentence.** So BOTH live
+implementations carry it, the class has exactly two members, and both are now
+measured rather than one measured and one assumed. The derivation is complete.
+
+This corroborates the M3-P6 review's F-B3 with a concrete witness rather than
+an argument, and it does NOT change F-B3's disposition: the exit code is
+correct in both members, so it stays LOW and stays tracked. It is not a new
+blocker for M3-P6.
+
+The near-duplicate functions are the reason both carry it. **A defect copied
+with the code it lives in is one mechanism with two instances, not two
+findings**, and the fix for either is the fix for both.
+
+## A WORSE SYMPTOM IN THE SAME FILE, reproduced independently
+
+The M3-P6 round-2 implementer reported, out of its scope, that this script
+"reports 15 gate(s) over a 13-row CLAUDE.md block, suite green" (its entry
+R2-6). That was reproduced here rather than repeated, and it is a different and
+more serious defect than the duplicate-row message above.
+
+Measured on the M3-P6 branch at `4619bf8`, node v26.6.0, mutation applied IN
+PLACE in the worktree (a copied script fails for the wrong reason; see the
+not-covered section), original bytes saved and restored afterwards:
+
+| arm | block | exit | says |
+|---|---|---|---|
+| pristine | full 15 rows | **0** | matches row for row (15 gate(s)) |
+| pristine | 13 rows, two deleted | **1** | names BOTH missing rows correctly |
+| `describeDrift` collapsed to `[]` | full 15 rows | 0 | matches row for row (15 gate(s)) |
+| `describeDrift` collapsed to `[]` | **13 rows** | **0** | **"matches gate-registry.yaml row for row (3 preflight step(s), 15 gate(s))"** |
+
+The last row is the finding. **Under the collapse mutation the script emits a
+GREEN sentence asserting the block matches row for row, and reports 15 gates,
+over a block containing 13.** Every clause of that sentence is false, and it
+exits 0.
+
+The pristine-versus-13-row pair is the control that makes this mean something:
+the unmutated script exits 1 on the same input and names both missing rows. So
+the mutation is what turns a correct red into a false green, and this is a
+proper red-witness pair rather than an assertion.
+
+**Why the count is 15 and not 13**: the number is taken from the REGISTRY, not
+from the observed block. So it describes what should be there. In the red
+message that is harmless because the message also names the drift; in the green
+message it becomes a positive false claim about a file the reader has not
+opened.
+
+**This is the same defect class the M3-P6 round removed from the sibling**: an
+arm whose collapse no test observes. The duplicate-row message above is a
+cosmetic instance of the same function's weakness; this is the load-bearing
+one, and it raises the file's severity from LOW to MEDIUM.
+
+## Disposition
+
+Recorded as a finding against `main`, unowned, LOW. It does not block M3-P6 and
+it does not block the exit-test harness fix. It is written down so the
+carried-forward note stops being a claim nobody has executed, which is the
+state it was in when this check started.

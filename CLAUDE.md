@@ -180,6 +180,38 @@ artifact behind it is treated as unknown.
    on an unmerged branch. Use it deliberately, and know that it buys you nothing
    toward the substantive-citation floor.
 
+   **THAT LAST CASE IS NOT HYPOTHETICAL AND IT COLLIDES WITH T-019.** An
+   evidence document ABOUT an unmerged branch (a clean-room review, a delta
+   verification) is caught between two rules that are each right:
+
+   - T-019 says cut the evidence branch from `main`, never from the branch under
+     review, or landing the evidence lands its subject.
+   - This gate requires a `path:line` to resolve IN THE TREE BEING LINTED, and
+     on `main` the branch's version of a changed file does not exist.
+
+   So a delta verification citing `test/foo.test.ts:1911` reddens on `main`
+   because that file is shorter there. Measured 2026-08-12, run 31628258664
+   step 8. **Quote every citation into a file the reviewed branch CHANGES**, and
+   leave resolving only those into files that are byte-identical on both sides,
+   which is a fact to CHECK rather than assume:
+
+   ```
+   git diff --name-only origin/main...<branch>    # these must be quoted
+   ```
+
+   **The citation that reddens is not the dangerous one.** Out-of-range reddens
+   loudly. A branch-line citation that happens to be IN range on `main` resolves
+   SILENTLY, against the old version, pointing at a line that is not the line
+   under discussion. In the measured case one of fifteen was out of range and
+   fourteen resolved silently.
+
+   Two further traps from the same incident, both cheap to avoid:
+
+   - **The gate lints at HEAD, not the working tree.** Staging a fix and
+     re-running gives the OLD verdict. Commit, then re-run.
+   - **A rule number is not a line number.** `CLAUDE.md:3b` is rejected as
+     malformed; the rule at 3b lives at CLAUDE.md:155.
+
    Verify before pushing rather than after a red gate:
 
    ```
@@ -403,7 +435,7 @@ A stated stall rule is not sufficient. It addresses attention, and attention is
 what a busy session does not have. This project has recorded twice that a rule
 depending on memory does not survive; the answer both times was a mechanism.
 
-**Two rules, both mechanical, binding on every dispatch:**
+**THREE rules, all mechanical, binding on every dispatch:**
 
 1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
    artifact within the first minutes and appends as it works. The file's mtime
@@ -413,6 +445,28 @@ depending on memory does not survive; the answer both times was a mechanism.
    watches the newest mtime under the agent's working directory and reports
    stale after a threshold. It must test FRESHNESS, never existence and never
    completion.
+3. **THE WATCHDOG ITSELF EXPIRES, AND RE-ARMING IT IS PART OF THE RULE.**
+   Measured 2026-08-12: a monitor requested with `persistent: true` and a
+   3600000ms timeout was created with a **1800000ms** timeout regardless, and
+   died at thirty minutes while its agent was still running. The tool reports
+   the timeout it actually used in its own start message, and it is not always
+   the one asked for; read that number rather than the one you passed.
+   A watchdog that has expired cannot go red, which is the same failure as one
+   watching the wrong place, and it is silent in the same way. Treat the
+   "[Monitor timed out]" notice as a REQUIRED ACTION, not an FYI, and re-arm in
+   the turn it arrives. This is the third variant of "cannot go red" this
+   project has hit, after including the orchestrator's own worktrees in the
+   watch set and after excluding the agent's.
+   **AND THE NOTICE DOES NOT ALWAYS ARRIVE, WHICH THIS RULE AS FIRST WRITTEN DID
+   NOT COVER.** Measured the same day, a few hours after the sentence above was
+   committed: a CI-completion monitor expired and produced NO timeout notice at
+   all. It was noticed only because its stream of events had stopped, which is
+   the weakest detection available, because **an expired monitor is
+   indistinguishable from one watching a quiet system.** Reacting to a notice is
+   therefore not sufficient; monitor LIFETIME has to be tracked. The cheap form
+   is to treat any monitor older than its reported timeout as expired by default
+   and re-arm it without waiting for evidence, since re-arming a live monitor
+   costs one restart and trusting a dead one costs the thing it was watching.
 
 The second rule has its own recorded failure: the first watchdog written after
 this incident tested whether the report file EXISTED, so it fired two minutes
@@ -431,9 +485,26 @@ killed it three-quarters through its work.
 
 Answer these three IN WRITING in the dispatch turn, before arming anything:
 
-1. **Where does THIS agent write?** Not the last one. Read its brief: if it runs
-   gates it writes evidence outside the tree; if it clones it writes nowhere
-   until the clone lands. Enumerate the paths and watch ALL of them.
+1. **Where does THIS agent write? MEASURE IT, DO NOT PREDICT IT.** An earlier
+   version of this line said "read its brief", and that is structurally
+   unreliable: agents create working directories that no brief names, because
+   the directories did not exist when the brief was written. Measured
+   2026-08-12, BOTH watchdogs armed that afternoon watched a subset, and both
+   read a busy agent as possibly dead, one for twenty-three minutes. The better
+   the agent behaves the surer this is: a delta verifier built its own mutation
+   lab precisely so it would not touch the tree under review, which is correct
+   practice and invisible to any prediction.
+
+   ```
+   find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
+   ```
+
+   Every directory the agent has made for itself appears at the top by recency.
+   Run it BEFORE arming and AGAIN at every stale reading, because an agent
+   starting a new kind of work has just made a new place to write. Watch the
+   UNION of what appears, plus `/tmp` scratch used by gate runs, which still do
+   write evidence outside the tree. A watchdog pointed at one of an agent's
+   several paths is not weak, it is FALSE: it reports quiet at full speed.
 2. **What is the baseline before its first write?** DISPATCH TIME, never the
    inherited mtime of whatever the previous agent left, or the watchdog fires
    instantly on a healthy agent. On a RE-ARM the baseline is the newest existing
@@ -479,6 +550,48 @@ harness code IS a fix round and owes the full fix-round contract above. PR #27
 fixed one arm of "the harness assumes a run has a phase" and left the sibling
 arm twelve lines away, because it was treated as too small to open the contract
 for. PR #30 is what that exemption cost.
+
+### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
+
+One level down from the rule above, and the reading procedure is written out
+because the obvious method does not exist. **The `gates` workflow uploads no
+evidence artifact**, so `summary.json`, which is the only place carrying per-gate
+`units`, `applicable` and `vacuous`, never leaves the runner. That last word is a
+universal, so here is what settles it rather than a reader having to trust it:
+
+```
+grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits
+```
+
+Re-run it before relying on this; the day a workflow gains an upload step, the
+procedure below is superseded by just reading `summary.json`. A reviewer asking
+"did gate X actually assert something on this head" has the JOB LOG and nothing
+else, and the log prints bundle-level counts, not per-gate rows.
+
+So quoting `declared N applicable N verdict N green N` as evidence about one
+gate is a bundle-level green being passed off as a gate-level one. That is the
+same substitution T-009 names, one scope smaller.
+
+Four printed facts settle it, and all four are needed:
+
+1. the gate id is in the `gates.manifest.json` **on that branch** (the harness
+   runs `--manifest`, not `--registry`, so registry membership is not enough);
+2. the bundle's `declared` count equals that manifest's gate count;
+3. the `required gate(s) not applicable:` line does NOT name the gate (a
+   required gate that was skipped is named there, which is what makes its
+   absence informative);
+4. the assertion line reports `zero error; zero vacuous`.
+
+Worked example, `brief-drift` at head `077f339`, run 31610473840: manifest 12
+ids against `main`'s 11, `declared 12`, not-applicable named only `citations`,
+`12 gate record(s) match section 1.4 ... zero error; zero vacuous`.
+
+**Say which half is observed and which is deduced.** In that example the units
+and the green came DIRECTLY from a separate workflow step; that the gate sat
+among the green inside the ASSERTED BUNDLE is a deduction from the four facts,
+because no per-gate line names it. Both are sound. Reporting the second as
+though it were the first is how a bundle-level green becomes a gate-level claim
+in the next document that cites it.
 
 ## Branch names are load-bearing, not labels (binding)
 
@@ -666,6 +779,18 @@ Each of these bit someone once. Forward them to every implementer.
    copy out of tree first; there is no safe narrow form.
 9. `git remote set-url` resolves relative paths against the repository, not
    the current working directory. Use absolute paths in test staging.
+   **SAME TRAP, ONE COMMAND ALONG, AND IT IS NOT A TEST-ONLY CONCERN:
+   `git -C <repo> worktree add <relative-path>` ALSO resolves against the
+   repository.** Measured 2026-08-12: `cd $SCRATCH && git -C /home/user/... \
+   worktree add --detach ppass origin/main` created the worktree at the
+   REPOSITORY ROOT, not under `$SCRATCH`, and the following `cd ppass` failed
+   with "No such file or directory" from a shell that was standing in the wrong
+   place to see it. The failure surfaced later as an untracked directory in
+   `git status` on the repository, which is the shape most likely to get a
+   scratch worktree committed by accident. `git worktree remove --force` is the
+   cleanup; `git worktree list` is how you find one. The general rule for this
+   family: **`-C` changes where git resolves, not where your shell is**, so
+   every path handed to a `-C` invocation should be absolute.
 10. Concurrent git operations against one clone contend on ref locks, and
     the real transient message names a ref, not a lock file. Never derive a
     retry signature from hand-written examples; capture real stderr under
@@ -733,6 +858,29 @@ Each of these bit someone once. Forward them to every implementer.
     repository has now paid three times for an unexplained suite-count
     difference, and the third time the reviewer refused to average a two-test gap
     and found the cause instead.
+13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
+    fallen behind it reads as though the branch DELETES things.** Measured
+    2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported
+    `CLAUDE.md | +2 -35`, showing the branch removing a whole binding rule
+    (T-008's third) and a standing-warning extension, both of which had been
+    added to `main` after the branch was cut. Nothing was being deleted. A
+    two-dot diff compares two TREES, so anything `main` gained and the branch
+    never saw appears as a deletion by the branch.
+    The alarming reading nearly bought a wrong action, which would have been to
+    "restore" those lines onto the branch and thereby create the conflict that
+    did not exist. **Ask git for the MERGE RESULT instead, and inspect it:**
+
+    ```
+    T=$(git merge-tree --write-tree origin/main origin/<branch>)
+    git cat-file -p "$T:CLAUDE.md" | grep -c '<the text you fear losing>'
+    ```
+
+    That produced a merged `CLAUDE.md` carrying BOTH sides: the branch's new
+    gate row and every rule `main` had gained meanwhile. `merge-tree` exit 0
+    already said the merge was clean; the diff was the misleading artefact, and
+    the fix was to read the thing that answers the question rather than the
+    thing that was easy to run. Use `git diff main...branch`, three dots, when
+    you want the branch's own changes since the merge base.
 
 ## The orchestrator does not decide when it is finished (binding)
 
