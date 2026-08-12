@@ -5,7 +5,51 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12, LATEST BULLET BLOCK. Everything below this block is OLDER;
+- as of: 2026-08-12 late afternoon, NEWEST BLOCK. Everything below is OLDER.
+- **WHERE M3 STANDS: 5 of 10 merged, and M3-P6 is blocked on ONE THING.** The
+  exit-test harness fix must merge first (DR-0012 condition 2), and its own
+  delta verification is in flight. Nothing else stands in M3-P6's way: its
+  round-2 delta verification is **VERIFIED** with two LOW findings, its scope
+  audit is clean at 24 of 24 files, and it is green by step on `077f339`.
+- **`main` MOVED TWICE and BOTH push arms were verified BY STEP.** `6fd5b22`
+  (PR #112, the T-018 batch and three gate-coverage findings) push arm green,
+  step 8 skipped and step 9 `M2 exit test (push)` success, which is the arm
+  T-009 exists for. Then `d6dc868` (PR #113, the contention and claim-grep
+  findings), whose push run was still in flight at the time of writing; its
+  macOS smoke arm was green. **If you are reading this after a restart, the
+  `d6dc868` push run is the first thing to check.**
+- **THE HARNESS FIX ROUND IS COMPLETE AND ITS REVIEWS' PREMISE IS VOID, which
+  is why a delta verification runs instead of a merge.** Round 2 closed all four
+  findings (CR-V-1 MEDIUM, CR-V-2 LOW, CR-FR-1 LOW, CR-FR-2 LOW) and is green by
+  step on `8db93b2` and `16a3ec6`, byte-identical code, `tests 596 pass 596
+  skipped 0`. But **both clean-room reviews verified the harness sha256 as
+  `9f53425f` and reasoned from "no production code changed"; it is `4b607dd9`
+  now**, 22 lines of new production code from the CR-V-2 fix. The round flagged
+  that itself rather than letting it pass.
+  Two further reasons the verification is not ceremony: **`red-witness` never
+  ran on that pull request** (precondition `diff-touches src/ bin/`, and the
+  diff is `scripts/`, `test/`, `.github/`, `delivery/`), so no gate evaluated
+  whether the new witnesses can fail; and this program asserts every other gate,
+  which is the one place under-review compounds.
+- **The round's mechanism, worth carrying forward**: the witness family's
+  admission test was keyed on a message only SOME branches emit, so a union
+  member whose only rejecter never emits it is not merely unwitnessed but
+  UNWITNESSABLE, because the same key is the over-determination filter and
+  rejects any probe written for that member. Derivation: 24 rejection branches,
+  3 reference the reason variable, **0 of 24** can carry the key for an explicit
+  member.
+- **M3-P7 AND M3-P8 ARE READY TO DISPATCH THE MOMENT M3-P6 MERGES**, and the
+  orchestrator's half of both briefs is already written at
+  delivery/plan/m3-p7-p8-dispatch-addenda.md:1, with the concurrency check at
+  delivery/plan/m3-p7-p8-concurrency-pre-pass.md:1. Both carry a RE-DERIVE note:
+  the M3-P7 registry probe was measured at `bb8f656` and M3-P6 CHANGES the
+  clause map, so it is stale on the merged head.
+- **A merge-order fact, measured with THREE-DOT diffs after a two-dot diff gave
+  a false answer**: the harness branch and M3-P6 genuinely overlap on TWO files,
+  `.github/workflows/gates.yml` and `test/behaviors.json`. A two-dot diff
+  reported twenty-three, because it shows everything `main` gained that the
+  branch never saw. That trap is now standing warning 13.
+- as of: 2026-08-12, earlier block. Everything below this block is OLDER;
   where they disagree, this block is later.
 - **A BINDING PROCEDURE CHANGED: the dispatch skill's push rule now carries its
   mechanism, at .claude/skills/phase-delivery/SKILL.md:98.** Orchestrator briefs
