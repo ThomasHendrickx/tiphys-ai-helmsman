@@ -7,6 +7,31 @@ is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-12, and the bullets below this one are OLDER. Where they
   disagree with this one, this one is later.
+- **M3-P5 IS MERGED at `086b8df` (PR #96). FIVE OF TEN M3 PHASES ARE ON `main`,
+  AND M3-P6 IS DISPATCHED.** Two fix rounds after the first dual review, which is
+  the DR-0012 limit and not past it. Both findings were closed at the MECHANISM:
+  the HIGH became a validator refusal, so a brief declaring an output whose
+  registered schema is absent from its mandated reading is invalid and M3-P6's
+  two briefs are covered the day they land; the MEDIUM became a run-time derived
+  role list carrying its own test against an INDEPENDENT ORACLE, so an empty or
+  over-broad derivation reddens rather than passing vacuously.
+  The evidence chain is all on `main`: delivery/review/arbitration-m3-p5.md:1,
+  delivery/review/verification-m3-p5-fix-round.md:1 and
+  delivery/review/verification-m3-p5-fix-round-2.md:1.
+  **Three low findings were merged with, each tracked with a reason** per
+  condition 2, and two of them name live defects in files this phase could not
+  touch; both are in the carried-forward register below with the mechanism
+  stated rather than the instance.
+  **A merge attempt was REFUSED and the refusal was right.** Branch protection
+  requires the `gates` check on a head UP TO DATE with the base, and `main` moved
+  four commits during the second verification, so the by-step green at `944086b`
+  no longer satisfied the rule. `main` was merged in, producing `1ea1f58`, and
+  that head was re-verified by step on both workflows before the merge. The
+  earlier green was superseded rather than carried, which is the same principle
+  T-009 states from the other direction.
+  **Push runs discharged this session, each verified BY STEP on both workflows
+  rather than in aggregate**: `fccf4d4`, `1a81a20`, `d56e3a4`. `086b8df`'s run
+  was still in flight when this bullet was written and is NOT claimed here.
 - **M3-P4 IS MERGED. THE STOP RECORDED FURTHER DOWN THIS FILE IS DISCHARGED,
   NOT LIFTED.** It merged as `a7b7b07` (PR #81) after five rounds and three
   distinct review contracts, which is what DR-0016 requires in place of waiting
@@ -464,10 +489,14 @@ modelled and bound five phases to.
 | M3-P4 round-4 dual review, arbitration, M3-P5 held | MERGED #93 at `ff89e02` |
 | M3 cross-phase dependency screen | MERGED #94 at `7d55392` |
 | M3-P4 closeout evidence and the M3-P5 declaration amendment | MERGED #95 at `52fe657` |
-| M3-P5 authoring role briefs | **DOES NOT MERGE**, fix round 1 in flight; PR #96 open at `48829d9` |
+| M3-P5 authoring role briefs | **MERGED #96** at `086b8df`, after two fix rounds and two delta verifications |
+| M3-P5 dual review and arbitration | MERGED #98 at `6ac2abc` |
+| M3-P5 fix round 1 delta verification | MERGED #100 at `1a81a20` |
+| M3-P5 fix round 2 delta verification | MERGED #101 at `d56e3a4` |
 | M3-P5 dual review and arbitration | MERGED #98 at `6ac2abc` |
 | M3-P6 and M3-P7 pre-dispatch criterion reads, and this STATE pass | PR #99 open |
-| M3-P6 to M3-P10 | not dispatched |
+| M3-P6 delivery role briefs | DISPATCHED off `086b8df`, implementer running, watchdog armed |
+| M3-P7 to M3-P10 | not dispatched; all four pre-read, see the plan directory |
 
 ### M3-P3 status, 2026-08-09
 
@@ -623,6 +652,44 @@ Supervision is beacon/transcript freshness, not completion notifications.
 
 Items discovered during M1 that belong to a later milestone and have no owner
 yet. Recorded here so they are not rediscovered the expensive way.
+
+- **TWO LIVE INSTANCES OF MECHANISMS M3-P5 CLOSED IN ITS OWN FILES, both found
+  by that phase's derivations, both correctly left unfixed as out of scope, and
+  both CONFIRMED by the orchestrator rather than relayed.** The mechanism travels
+  here, not the instance, because the instance is the thing that gets fixed and
+  forgotten.
+  1. `test/deploy-gate.test.ts:667` reads `for (const gate of ["deploy",
+     "migrations"])`. That is a hand-written copy, inside the test, of
+     membership that lives in `gate-registry.yaml` and GROWS: the registry
+     declares five conditional gates today (`credential-token`, `deploy`,
+     `migrations`, `unit-tests-for-changed-service-methods`,
+     `fixtures-for-changed-component-states`). A sixth is covered by nobody and
+     nothing reddens. The mechanism: **a test asserting over a set whose
+     membership lives outside the test file and grows, using a copy of that
+     membership written inside the test.** Owner: whoever next touches the
+     deploy gate.
+  2. `src/witness/run.ts:1258` compares an authored path RAW against a
+     git-canonical diff while `join` resolves it, so two spellings of the same
+     path disagree. Confirmed live by the round-2 delta verifier: re-spelling a
+     witness spec to `./test/roles.test.ts` reddens the gate with `rule (d):
+     declared dangerous state does not intersect the phase diff`. The mechanism
+     is the one M3-P5 fixed in its own two sites by exporting a single
+     canonicaliser. Owner: whoever next touches the witness runner.
+- **A durable red witness that M3-P5 fix round 2 called NOT EXPRESSIBLE is
+  expressible**, and the round-2 verification demonstrated a form: a patch
+  touching both `roles/implementer.md` and `test/roles.test.ts` satisfies the
+  non-empty-intersection rule, and reverting the derived list IS the dangerous
+  state. Left as a low rather than built, because adding a witness is a
+  behaviour change beyond a low-severity fix. Owner: whoever next touches that
+  guard.
+- **The `citations` gate's `documents` globs cover neither `delivery/review/`
+  nor `delivery/work-history/`.** So a pull request carrying only review
+  documents, and a phase bundle whose only changed paths are a work history,
+  both come back `not-applicable` with an evaluated precondition. That is honest
+  and is not a false green, but it leaves the documents that cite most heavily
+  without a citation gate. Observed on PR #98, PR #100, PR #101 and inside
+  M3-P5's own fix-round bundles. Not repaired on a paperwork branch because
+  `gate-registry.yaml` is a phase's artifact.
 
 - **Uncaught `RangeError` in `collectUnits` under deep nested quote markers.
   THE THRESHOLD IS A FUNCTION OF AVAILABLE STACK, NOT A CONSTANT, and this
@@ -1058,6 +1125,29 @@ fact rather than a memory.
 
 ## Standing reminders
 
+- **DR-0012 CONDITION 1 IS APPLIED THROUGH A READING, AND THE READING MUST BE
+  STATED IN EVERY MERGE COMMIT THAT USES IT.** The condition requires "two
+  independent clean-room reviews for the CURRENT HEAD". Read literally, no phase
+  that runs a fix round can ever satisfy it, because every fix moves the head.
+  The reading this project uses, and has used since M3-P4 merged at `a7b7b07`:
+  **the dual review covers the head's SUBSTANCE, and a structural delta
+  verification covers everything that changed since.** M3-P5 merged on the same
+  basis at `086b8df`, naming the dual pair at `48829d9` plus two delta
+  verifications.
+  The reading is precedented and defensible. It is ALSO a softening if it is
+  never said aloud, and DR-0012's own heading says its terms are defined "so it
+  cannot be softened later". So: name both halves in the merge commit, or do not
+  rely on it. Do not reopen the decision record; this is how it is applied.
+- **The documentation-only carve-out enumerates PATHS, and root-level artifacts
+  are outside them.** The carve-out (one review rather than two) names
+  `delivery/**`, `CLAUDE.md` and `.claude/**`. `assurance-modes.yaml`,
+  `gate-registry.yaml` and `gates.manifest.json` are at the repository root and
+  are in none of them, so a paperwork pull request touching one is not
+  documentation-only by the text. When the change really is inert, SHOW it
+  rather than asserting it: PR #99 repointed one citation inside a `#` comment
+  and demonstrated the parsed document was deep-equal at both heads before
+  relying on the carve-out. Dropping the file to make the boundary clean is the
+  worse option when it means knowingly shipping a rotted citation.
 - Parallelism is on under DR-0011, but MERGE order is still dependency order:
   work may be concurrent, landing may not. A parallel phase's PR never merges
   before the phases its grounding names.

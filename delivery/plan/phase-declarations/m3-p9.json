@@ -10,6 +10,7 @@
     "src/checks.ts",
     ".github/workflows/gates.yml",
     "gate-registry.yaml",
+    "CLAUDE.md",
     "package.json",
     "src/commands/validate.ts",
     "witness/",
