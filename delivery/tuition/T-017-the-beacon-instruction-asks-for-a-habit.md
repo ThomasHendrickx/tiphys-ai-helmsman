@@ -10,7 +10,7 @@
   `git log --all --oneline -S'T-017'` both empty, so T-017 has never been
   allocated or retired.
 
-## What happened, three times, with the same number
+## What happened, four times, twice with the same number
 
 T-008 makes it binding that every dispatched agent writes its output
 INCREMENTALLY, creating its artifact within the first minutes and appending as
@@ -25,6 +25,7 @@ All three agents dispatched today obeyed the first half and not the second:
 | clean-room contract B | yes, early | **23 lines** | ~25 minutes | 482 lines |
 | exit-test harness implementer | yes, early | **23 lines** | ~11 minutes | 493 lines |
 | M3-P6 implementer (earlier, the one that died) | yes, early | 262 lines | until death | n/a, it died |
+| M3-P6 fix round 1 | yes, early | 999 lines | ~16 minutes | 1269 lines |
 
 Twenty-three lines, twice, independently. That is the header an agent writes
 when it creates the file, and then nothing until it has something it considers
@@ -90,11 +91,19 @@ they were not, the same three agents would have batched.
 - **It does not claim the instruction was ignored.** All three agents created
   the artifact early, which is the half with a trigger. The half without one is
   the half that did not happen, and that is the finding.
-- **It does not claim three is enough to predict the fourth.** Three is what
-  this project's own convention calls a mechanism rather than three anecdotes,
-  and that convention is being applied here rather than a new one invented, but
-  all three were dispatched by the same orchestrator with near-identical briefs,
-  so the sample is not independent in the way the count suggests.
+- **It did not claim three was enough to predict the fourth, and the fourth
+  then happened.** ADDED AFTER THE FACT, which is the only reason it is worth
+  anything: the M3-P6 fix-round implementer batched from 999 lines for about
+  sixteen minutes and resumed to 1269 within one tool round of the nudge. That
+  is four for four on the pattern and four for four on the nudge. The
+  reservation below still stands and is NOT withdrawn: all four were dispatched
+  by the same orchestrator with near-identical briefs, so the sample is not
+  independent in the way the count suggests, and a fifth from a different brief
+  would be worth more than these four.
+- **It does not claim the per-action wording is what fixed the fourth.** The
+  fourth nudge USED the per-action wording and the first three did not, so the
+  nudge and the wording are confounded in that instance. What is measured is
+  that a nudge works, not which nudge.
 - **It does not measure what would have been lost.** No agent died during a
   batching window today, so the cost of the pattern is inferred from
   delivery/tuition/T-002-agent-death-mid-fix-round.md:1 and
