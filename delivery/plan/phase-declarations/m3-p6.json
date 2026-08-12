@@ -20,7 +20,8 @@
     "package.json",
     "src/commands/validate.ts",
     "witness/",
-    "delivery/requirements/clause-map.json"
+    "delivery/requirements/clause-map.json",
+    "test/m2-exit-test.test.ts"
   ],
   "declaredExtras": [],
   "citations": [

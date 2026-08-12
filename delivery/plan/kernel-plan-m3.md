@@ -3413,7 +3413,27 @@ hazard it is matched to.
   visible; if this phase finds it needs to CHANGE the shared text, that is an
   escalation, because changing it changes three merged briefs),
   `package.json` (edit, files entry: `tuition` enters the published set here
-  rather than at M3-P8, because the stub ships with this phase).
+  rather than at M3-P8, because the stub ships with this phase),
+  `test/m2-exit-test.test.ts` (edit, ADDED at revision 4 for a reason discovered
+  by MEASUREMENT rather than anticipated: this phase takes
+  `gates.manifest.json` from eleven gates to twelve, and that suite's
+  healthy-bundle CONTROL builds records for a PINNED gate set rather than
+  deriving one from the manifest, so the twelfth gate makes the control
+  unhealthy and the harness correctly rejects it. This is the append-only
+  antipattern CLAUDE.md:201 already names, and the same passage settles the
+  ownership: a phase that extends a registry may have to edit the TEST that
+  over-asserts on it, so that test belongs on the phase's declaration.
+  **`scripts/m2-exit-test.sh` is deliberately NOT added**: the remedy may lie
+  entirely in the fixture, and granting the harness script pre-emptively would
+  be a wider grant than the discovered need justifies. If the fix genuinely
+  requires an expectations row in that script, that is a further amendment with
+  its own reason, not a licence already held. Full measurement at
+  delivery/verification/m3-p6-and-the-harness-only-fail-together.md:1).
+  **Merge order consequence:** the exit-test harness branch edits both
+  `test/m2-exit-test.test.ts` and `scripts/m2-exit-test.sh`, so it lands BEFORE
+  this phase's fix round rather than after, which is the first time in this
+  milestone that merge order is constrained by a measured file collision rather
+  than by dependency habit.
   **Standing constraint on the `.github/workflows/gates.yml` edit (DR-0017,
   DR-0004):** one job named `gates`, no matrix, no second job. See section 1.1.
 - acceptance criteria:
