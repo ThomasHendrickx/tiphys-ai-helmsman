@@ -180,6 +180,38 @@ artifact behind it is treated as unknown.
    on an unmerged branch. Use it deliberately, and know that it buys you nothing
    toward the substantive-citation floor.
 
+   **THAT LAST CASE IS NOT HYPOTHETICAL AND IT COLLIDES WITH T-019.** An
+   evidence document ABOUT an unmerged branch (a clean-room review, a delta
+   verification) is caught between two rules that are each right:
+
+   - T-019 says cut the evidence branch from `main`, never from the branch under
+     review, or landing the evidence lands its subject.
+   - This gate requires a `path:line` to resolve IN THE TREE BEING LINTED, and
+     on `main` the branch's version of a changed file does not exist.
+
+   So a delta verification citing `test/foo.test.ts:1911` reddens on `main`
+   because that file is shorter there. Measured 2026-08-12, run 31628258664
+   step 8. **Quote every citation into a file the reviewed branch CHANGES**, and
+   leave resolving only those into files that are byte-identical on both sides,
+   which is a fact to CHECK rather than assume:
+
+   ```
+   git diff --name-only origin/main...<branch>    # these must be quoted
+   ```
+
+   **The citation that reddens is not the dangerous one.** Out-of-range reddens
+   loudly. A branch-line citation that happens to be IN range on `main` resolves
+   SILENTLY, against the old version, pointing at a line that is not the line
+   under discussion. In the measured case one of fifteen was out of range and
+   fourteen resolved silently.
+
+   Two further traps from the same incident, both cheap to avoid:
+
+   - **The gate lints at HEAD, not the working tree.** Staging a fix and
+     re-running gives the OLD verdict. Commit, then re-run.
+   - **A rule number is not a line number.** `CLAUDE.md:3b` is rejected as
+     malformed; the rule at 3b lives at CLAUDE.md:155.
+
    Verify before pushing rather than after a red gate:
 
    ```
