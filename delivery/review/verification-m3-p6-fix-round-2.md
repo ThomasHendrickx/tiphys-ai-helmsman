@@ -93,8 +93,10 @@ all, because of its final clause at scripts/check-brief-drift.mjs:167:
 
 So B empty implies `located.block === rendered.text` as STRINGS, and therefore
 `gateBlockFindings(located.block, ...)` and `gateBlockFindings(rendered.text, ...)`
-are calls with identical arguments. R empty follows from A empty. R cannot fire
-where A and B are both silent. The argument does not depend on judgment about
+are calls with identical arguments. R empty follows from A empty. So R cannot
+fire where A and B are both silent, GIVEN that both of them run: that is a
+deduction from scripts/check-brief-drift.mjs:167 and from A's presence, not an
+observation, and it is exactly as durable as those two facts. The argument does not depend on judgment about
 what the two functions "mean"; it depends on string equality and on A and B
 being present, both of which are in the tree.
 
@@ -135,10 +137,15 @@ PROBE1_EXIT=0
 the pristine tree, so a probe in which every case exits nonzero for a staging
 reason unrelated to the mutation is excluded. Six of the fourteen inputs are
 cases where R DID fire first in LAB, which is the second control: the lab arm is
-not inert, it is catching things, and HEAD catches every one of them too.
+not inert, it is catching things, and HEAD catches every one of those fourteen
+too.
 
-**VERDICT ON TASK 1: I could not falsify it. No coverage was lost.** The removal
-is sound and the structural argument behind it is correct as written.
+**VERDICT ON TASK 1: I COULD NOT FALSIFY IT.** No input I was able to construct
+lost coverage, and the string-equality argument in 2a says none exists SO LONG AS
+both A and B run. Those are two different strengths of statement and I am not
+merging them: the second is a deduction from two lines of source, and it stops
+being true the moment either of those lines moves. The removal is sound as the
+tree stands.
 
 ### 2c. What this probe did NOT reach, stated before anyone asks
 
@@ -670,3 +677,87 @@ DR-0012 neither is an unresolved high or medium.
 Merge is not blocked by this report. The post-merge `push` run on the new `main`
 head remains unobserved and is the orchestrator's under T-009 rule 1; CI step 10
 is `skipped` on both pull-request runs, so nothing here is evidence about it.
+
+## 11. The claim grep on THIS report, both forms
+
+Binding at CLAUDE.md:333. Run over this document after the findings were
+written, and it changed three sentences.
+
+```
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' \
+    delivery/review/verification-m3-p6-fix-round-2.md
+70:  ... could never fire on an input the surviving checks accept
+85:  ... whenever its two arguments differ           (false positive: "whenever")
+138: ... HEAD catches every one of them too          (RESTATED)
+234: ... an input exists that only A catches
+236: ... an input exists that only B catches
+557: ... and the new check now catches that scenario (a QUOTATION of the stale comment)
+599: ... and never names the third
+FORM1_EXIT=0
+
+$ tr '\n' ' ' < <this file> | grep -oEi '<same alternation>' | sort | uniq -c | sort -rn
+      4 catches
+      3 never
+FORM2_EXIT=0
+```
+
+Settled, hit by hit:
+
+| line | verdict |
+|---|---|
+| 70 | Not my claim. It is the round's argument, stated so I can attack it, and section 2 is the attack. |
+| 85 | False positive, "whenever". |
+| 138 | RESTATED to "every one of those fourteen", because "every one of them" reads as a claim about all inputs. |
+| 234, 236 | Each settled by the mutation table immediately above it: M3 and M2 are the captured commands. |
+| 557 | A verbatim quotation of the comment DV2-A is about. |
+| 599 | Settled adjacently by `grep -c ... = 0`, exit 1. |
+
+**THE GREP'S VOCABULARY DID NOT CATCH MY STRONGEST CLAIM, and I am recording
+that rather than benefiting from it.** The alternation has `cannot be` and not
+`cannot fire`, so section 2a's "R cannot fire where A and B are both silent"
+passed through untouched. It is a genuine universal. I have restated it in place
+as a DEDUCTION from scripts/check-brief-drift.mjs:167 plus A's presence, valid
+exactly as long as those two facts hold, rather than as an observation about the
+world. Section 2b's verdict was likewise weakened from "No coverage was lost" to
+"no input I was able to construct lost coverage", with the deduction stated
+separately. A grep is mechanical and its alternation is not exhaustive; this is
+one more term the next author might add.
+
+## 12. Authored bytes
+
+Run in this worktree with the report STAGED, because the script exits 2 WITHOUT
+CHECKING when the working tree differs from the index, and a 2 read as a pass is
+a green that never ran.
+
+```
+$ git add -A && node scripts/check-authored-bytes.mjs
+BYTES_EXIT=0
+```
+
+The exit above was produced with the FINAL bytes of this file staged, so it
+covers what is committed rather than an earlier draft. Zero tracked authored
+files carry non-ASCII or control characters. Every node-reporter glyph in every
+capture above was transliterated and declared in section 5.
+
+## 13. Where to find my working artifacts
+
+This report is on branch `claude/verify-m3-p6-round2`, which deliberately does
+NOT match `^claude/m[0-9]+-p[0-9]+-`; a non-phase branch carrying a phase id in
+that position is an automatic red `scope` gate (CLAUDE.md:450).
+
+```
+$ node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' claude/verify-m3-p6-round2
+false
+```
+
+Three directories were used and none of them is the tree under review:
+
+- the reviewed tree, a fresh detached worktree at `4619bf8` with its own `npm ci`
+- a MUTATION LAB, a second detached worktree at `4619bf8`, so that probe 2 never
+  wrote into the reviewed tree
+- a CONTROL worktree at `2a89757` for the pre-delta arm
+- this report's own worktree, branched from `origin/main`
+
+The two probe scripts (`dvr2-probe1.mjs`, `dvr2-probe2.mjs`) are in the
+scratchpad and are not committed; both are reproduced in enough detail above
+that a reader can rebuild them, and both print their own control arm first.
