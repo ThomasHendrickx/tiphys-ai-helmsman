@@ -64,9 +64,20 @@ synthetic bundles differing only in a red `brief-drift` row. BOTH EXITED 0.
 
 The orchestrator confirmed it independently before acting:
 
-- 12 gates in `gates.manifest.json`; exactly one, `brief-drift`, is absent from
-  `PR_EXPECT_JSON`, derived by differencing the id sets in BOTH directions
-  (`manifest not in table: ["brief-drift"]`, `table not in manifest: []`).
+- **CORRECTED 2026-08-12, and the correction is left visible rather than
+  silently edited.** This bullet originally read "12 gates in
+  `gates.manifest.json`; exactly one, `brief-drift`, is absent from
+  `PR_EXPECT_JSON`". **That is FALSE of `main` and true only of the M3-P6
+  branch.** The orchestrator ran the derivation in a worktree it had earlier
+  detached onto that branch and reported the result as a fact about `main`. The
+  implementer of the harness fix caught it by verifying rather than trusting the
+  brief. Measured on `origin/main`: **ELEVEN** manifest gates, and the
+  expectation gap there is **ZERO** on both arms; `brief-drift` is the twelfth
+  and arrives only with M3-P6.
+  **The finding is unaffected and arguably sharper.** The defect is that
+  NOTHING WOULD NOTICE a red row the table does not name, not that something is
+  missing today. A gap of zero is exactly the state in which an unasserted row
+  is invisible, which is why the fix is preventive rather than corrective.
 - The expectation loop is `for (const spec of expect.gates ?? [])`.
 - The only global loops over rows are the not-applicable justification loop,
   which `continue`s on anything not `not-applicable`, plus zero-error and

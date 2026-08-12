@@ -43,9 +43,15 @@ is wrong: verify against git and the PR list before trusting it.
   **The medium is NOT downgraded, and the reason is recorded rather than
   assumed.** `scripts/m2-exit-test.sh`'s assertion program iterates the
   hand-written expectation and keys into the bundle's rows, so a row the table
-  does not name is never asserted on: 12 manifest gates, exactly one
-  (`brief-drift`) absent from the table, no rows-to-expectation direction and no
-  global zero-red. The reviewer proved it by running the extracted program
+  does not name is never asserted on. **A COUNT IN THE ORIGINAL OF THIS BULLET
+  WAS WRONG AND IS CORRECTED HERE:** it said 12 manifest gates with one absent,
+  which is true of the M3-P6 BRANCH and false of `main`. `main` has ELEVEN and
+  its gap is ZERO on both arms. The orchestrator measured in a worktree detached
+  onto the branch and reported it as a fact about `main`; the harness
+  implementer caught it by verifying the brief rather than trusting it. The
+  finding stands and sharpens: the defect is that NOTHING WOULD NOTICE, not that
+  something is missing now. No rows-to-expectation direction and no global
+  zero-red. The reviewer proved it by running the extracted program
   against two bundles differing only in a red row; both exited 0. The
   orchestrator confirmed all of it independently before acting. Reclassifying a
   reviewer's severity to ease the orchestrator's own merge is what condition 6
