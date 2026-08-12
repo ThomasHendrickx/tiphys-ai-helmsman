@@ -3251,3 +3251,70 @@ manifest gate, so a green run is evidence that the tests and both local bundles
 pass, never that the derivation discriminates. FR2.4 to FR2.7 are the evidence
 for the discrimination, and they are lab work by necessity.
 
+## FR2.17 The `red-witness` gate DID NOT RUN on this pull request, and that is structural
+
+Surfaced by the orchestrator after the run completed, verified by me here rather
+than taken on report. The gate whose entire job is to catch a witness that cannot
+fail does not run on the directory this fix lives in.
+
+From the registry:
+
+```
+$ grep -n -A 10 'id: red-witness' gate-registry.yaml
+170:  - id: red-witness
+171-    command: [node, src/gates/red-witness.ts]
+...
+178-    precondition:
+179:      id: red-witness-diff
+180-      kind: diff-touches
+181-      paths:
+182-        - src/
+183-        - bin/
+```
+
+From my own diff:
+
+```
+$ git diff --name-only origin/main...HEAD | sed 's#/.*##' | sort -u
+.github
+delivery
+scripts
+test
+$ git diff --name-only origin/main...HEAD -- src/ bin/
+(empty: the diff touches NEITHER)
+```
+
+And from the run's own output, which is why the gate reported not-applicable
+rather than silently not existing:
+
+```
+gates: required gate(s) not applicable: citations, scope, red-witness
+```
+
+The assertion program lives in `scripts/m2-exit-test.sh` and its tests in
+`test/`. Neither is under `src/` or `bin/`. So the precondition is legitimately
+unmet and the gate is legitimately N/A: this is the gate working as declared, not
+a defect on this branch. What it MEANS for my evidence is the part worth stating
+plainly:
+
+**No gate on this pull request evaluated whether my new witnesses can fail.**
+`probe-4-explicit-table-leg`, the union-source guard and the two self-vacuity
+checks are exercised by `npm test` (step 6), which proves they PASS, and by the
+defangs in FR2.4 to FR2.7, which prove they can FAIL. The second half is lab
+work I performed and published; it is not a gate result and no gate blessed it. A
+reader who takes "CI green, and a fix round about red witnesses" to mean "the
+red-witness gate checked these witnesses" would be wrong.
+
+**This is also the structural reason both CR-V01 and CR-V-1 had to be found by
+human reviewers rather than by CI.** The vacuity in the previous round's main-arm
+members, and the unwitnessed explicit leg in this one, are exactly the class
+`red-witness` exists to catch, and it has never been able to see this file. Round
+1 stated a narrower version of this bound (no CI bundle contains an unlisted
+manifest gate, so CI cannot exercise the case the fix exists for); this is the
+same shape one level up and it is broader.
+
+The orchestrator has recorded it as a MEDIUM against `main` in its own
+verification note rather than as a finding on this branch, which is the right
+place for it: closing it means changing what `red-witness` is preconditioned on,
+which is not this branch's business and would widen it well past a fix round.
+
