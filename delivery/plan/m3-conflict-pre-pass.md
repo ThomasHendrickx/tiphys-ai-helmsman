@@ -174,15 +174,57 @@ of this result and is why it is stated separately from the intersection.
 M3-P6's `package.json` change is two entries added to the `files` array
 (`gates.manifest.json` and `tuition`) and touches no script and no dependency.
 
-### RULING
+### RULING: conflict-disjoint, and STILL NOT DISPATCHABLE
 
-**M3-P7 may be dispatched CONCURRENTLY with M3-P6's review.** Their intersection
-under M3-P6's declaration, which bounds anything a fix round can still do to it,
-is four non-serialising registries and a `TYPE_TABLE` append.
+**M3-P6 and M3-P7 are conflict-disjoint.** Their intersection under M3-P6's
+declaration, which bounds anything a fix round can still do to it, is four
+non-serialising registries and a `TYPE_TABLE` append. Nothing in the two file
+sets would collide.
 
-**MERGE ORDER IS STILL DEPENDENCY ORDER: M3-P6 merges FIRST**, and M3-P7 rebases
-onto the merged head and resolves the `TYPE_TABLE` union there. DR-0011 makes
-work order concurrent, never merge order.
+**AND M3-P7 STILL MAY NOT START UNTIL M3-P6 MERGES**, because a conflict
+pre-pass does not answer that question. This addendum was drafted with the
+opposite conclusion and is corrected here rather than quietly rewritten, because
+the confusion is the point of the entry.
+
+Two different questions get conflated by a document called a conflict pre-pass:
+
+| question | answered by | for this pair |
+|---|---|---|
+| would these two collide in the tree? | this pre-pass | NO, they are disjoint |
+| may this phase START yet? | the plan's `grounding` and `blocked-by` | NO, P7 is blocked |
+
+M3-P7's own fields settle the second one, and they name a M3-P6 ARTIFACT rather
+than merely asserting an order:
+
+```
+- grounding: M3-P6 merged (both review-side briefs exist and reference a verdict
+  type). ...
+- blocked-by: M3-P6 merged; M2-P2 merged (named dependency).
+```
+
+The two review-side briefs are `roles/implementer.md` and
+`roles/clean-room-reviewer.md`, which are M3-P6's deliverables, and M3-P7's
+verdict schema is written against the type they reference. That is a real
+consumption. It is exactly the test revision 3 of the M3 plan applied to M3-P8,
+where the stated grounding named NO artifact of the phase it claimed to depend
+on and was corrected to point at M3-P6 instead. Run against M3-P7 the same test
+gives the opposite answer: the artifact is named, so the dependency stands.
+
+**Consequence: M3-P7 is dispatched when M3-P6 merges, not before.** The
+disjointness above is not wasted, it is what will be needed if a later phase pair
+is BOTH disjoint and unblocked, and it removes the file-conflict objection from
+this pair permanently. It is simply not sufficient on its own.
+
+**MERGE ORDER, unchanged and never at issue: M3-P6 merges FIRST.** DR-0011 makes
+work order concurrent where both tests pass, never merge order.
+
+**The lesson, recorded because it is the orchestrator's own.** M2's pre-pass
+found seven mutually disjoint phases and unlocked real parallelism, and that
+success makes it easy to read a disjointness result as a green light. The plan
+warns against exactly this at delivery/plan/kernel-plan-m3.md:1110, where it says
+the dispatch-time check "still cancels a parallel start on any overlap it finds":
+the dispatch check can only make a start MORE constrained, never less. A
+pre-pass is a veto, not a permit.
 
 ### What this addendum does NOT cover
 
