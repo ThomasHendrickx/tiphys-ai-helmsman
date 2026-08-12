@@ -1343,6 +1343,72 @@ test("a RED gate is rejected on BOTH bundles under three structurally different 
         `[${arm}] the rejection did not come from the global zero-red check, so that check is not ` +
           "the thing being witnessed here",
       );
+
+      // MEMBERS 4 and 5 ISOLATE THE DERIVATION FROM THE ZERO-RED BACKSTOP, and
+      // they exist because a mutation test found the gap. Collapsing the derived
+      // expected set back to the hand-written table alone left members 1 to 3
+      // GREEN: every one of them carries a RED row, so the global zero-red check
+      // satisfied them on its own and the derivation was guarded by nothing.
+      //
+      // These two carry NO red row. They are only ever rejected by the
+      // derivation, so each is red against exactly the mechanism it names, and
+      // the assertions below refuse a rejection that came from zero-red instead.
+      const withoutUnlisted = healthy.filter((r) => r.id !== UNLISTED);
+      const derivationOnly: { name: string; rows: { id: string; status: string }[]; why: string }[] =
+        runsUnlisted
+          ? [
+              {
+                name: "member-4",
+                rows: [...withoutUnlisted, { id: UNLISTED, status: "not-applicable" }],
+                why:
+                  "a manifest gate with no table row reporting not-applicable must be REJECTED: " +
+                  "it is asserted under the default required-green, and accepting it is how a " +
+                  "silently skipped gate reads as legitimately N/A",
+              },
+              {
+                name: "member-5",
+                rows: withoutUnlisted,
+                why:
+                  "a manifest gate with no table row and NO RECORD AT ALL must be REJECTED: a " +
+                  "declared gate that produced no record is a gate that did not run",
+              },
+            ]
+          : [
+              {
+                name: "member-4",
+                rows: [...withoutUnlisted, { id: UNLISTED, status: "not-applicable" }],
+                why:
+                  "a gate the derived absent list covers must not carry a record on this bundle; " +
+                  "a not-applicable record for it means it ran when this bundle does not run it",
+              },
+              {
+                name: "member-5",
+                rows: [...withoutUnlisted, { id: UNLISTED, status: "green" }],
+                why:
+                  "a GREEN record for a gate the derived absent list covers must still be " +
+                  "REJECTED: the two bundles stay distinguishable only if what one does not run " +
+                  "is asserted to have produced nothing",
+              },
+            ];
+      for (const probe of derivationOnly) {
+        const dir = join(root, `${arm}-${probe.name}`);
+        writeBundle(dir, probe.rows);
+        const result = runAssert(dir, table, `${arm}-${probe.name}`);
+        const output = result.stdout + result.stderr;
+        assert.notEqual(result.status, 0, `[${arm}] ${probe.why}: ${output}`);
+        assert.doesNotMatch(
+          output,
+          /reported RED/,
+          `[${arm}] ${probe.name} was rejected by the global zero-red check, so it does not ` +
+            "isolate the derived expected set. This probe carries no red row and must fail " +
+            "BECAUSE of the derivation.",
+        );
+        assert.match(
+          output,
+          new RegExp(UNLISTED),
+          `[${arm}] ${probe.name} did not name the gate it rejected`,
+        );
+      }
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
