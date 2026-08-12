@@ -615,5 +615,6 @@
   "brief-gate-block-mode-narrowing-refused": "narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green",
   "brief-gate-block-units-are-the-rows-compared": "the rendering counts the gate rows it produced, so a registry declaring no gate for the brief's mode makes the drift check a vacuous error and never a green over an empty table",
   "brief-gate-rows-match-registry-without-the-renderer": "the shipped brief's gate rows are exactly the gates the pinned mode selects, each carrying its registry fields, derived without the renderer",
-  "brief-gate-block-renderer-narrowing-refused": "a narrowing inside the renderer is caught by the drift check in --check and refused in --write, under both a dropped row set and a dropped column"
+  "brief-gate-block-renderer-narrowing-refused": "a narrowing inside the renderer is caught by the drift check in --check and refused in --write, under both a dropped row set and a dropped column",
+  "brief-gate-block-non-row-drift-caught": "drift in the block's non-row lines is caught and named, under both a preflight step and the table header, which the row-and-field check cannot see"
 }

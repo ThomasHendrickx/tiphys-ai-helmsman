@@ -527,6 +527,95 @@ test("a narrowing inside the renderer is caught by the drift check in --check an
   }
 });
 
+/**
+ * THE ARM THE ROW-AND-FIELD CHECK CANNOT SEE, AND WHY THIS TEST EXISTS AT ALL
+ * (M3-P6 fix round 2, second half).
+ *
+ * `describeDrift` compares the WHOLE block, and `gateBlockFindings` compares
+ * only the GATE ROWS against the registry. So the block's other lines, the
+ * preflight steps, the mode sentence and the table header, are covered by
+ * `describeDrift` ALONE.
+ *
+ * That distinction became load-bearing when this round added the row-and-field
+ * check AHEAD of `describeDrift` in `--check`. The pre-existing named test
+ * ("adding a gate to the registry without re-rendering ...") reddens on a
+ * registry/brief row disagreement, and the new check now catches that scenario
+ * FIRST. So mutating `describeDrift` stopped changing anything that test could
+ * observe, the test stayed green, and the registered witness
+ * `implementer-brief-gate-list-drift` went red with "no named test reaches this
+ * arm". A guard that was covering a real arm before this round was made vacuous
+ * BY this round, which is the same shape the round was closing one level up.
+ *
+ * This test reaches that arm on purpose, through drift the row-and-field check
+ * is blind to by construction. It asserts the DETAIL TEXT, not just a nonzero
+ * exit, because the two checks both exit nonzero and only the message
+ * distinguishes which one fired; asserting the exit code alone would pass even
+ * if the row check had caught it, and would not reach the arm at all.
+ *
+ * TWO STRUCTURALLY DIFFERENT MEMBERS, both invisible to `gateBlockFindings`
+ * for the same structural reason (its row regex requires a backticked gate id
+ * in the first cell) but different in what they corrupt: a PREFLIGHT STEP,
+ * which is content above the table, and the TABLE HEADER, which is the row that
+ * gives every cell below it its meaning.
+ */
+test("drift in the block's non-row lines is caught and named, under both a preflight step and the table header, which the row-and-field check cannot see", () => {
+  const dir = stageKernel("tiphys-impl-prose-");
+  try {
+    const path = briefAt(dir);
+    const script = join(dir, "scripts", "check-brief-drift.mjs");
+    const pristine = readFileSync(path, "utf8");
+
+    const green = run(script, ["--check"], dir);
+    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+
+    const members: [string, string, string][] = [
+      [
+        "a preflight step",
+        "1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)",
+        "1. `npm ci` (install the dependencies)",
+      ],
+      [
+        "the table header",
+        "| Gate | Verified by | Applicability | One unit is |",
+        "| Gate | Verified by | Applicability |",
+      ],
+    ];
+
+    for (const [label, find, replace] of members) {
+      assert.ok(pristine.includes(find), `the shipped block has no ${label} line to corrupt`);
+      writeFileSync(path, pristine.replace(find, replace));
+
+      const drifted = run(script, ["--check"], dir);
+      assert.notEqual(
+        drifted.status,
+        0,
+        `--check missed drift in ${label}: ${drifted.stdout}${drifted.stderr}`,
+      );
+      const said = `${drifted.stdout}${drifted.stderr}`;
+
+      /* IT MUST BE `describeDrift` THAT FIRED, not the row-and-field check.
+         The two carry different sentences, and this is the assertion that makes
+         the test reach the arm rather than merely exit nonzero. */
+      assert.match(
+        said,
+        /gate block has drifted from/,
+        `drift in ${label} was caught by the row-and-field check, not by the whole-block compare, so this test does not reach that arm`,
+      );
+      assert.doesNotMatch(
+        said,
+        /gate block does not match/,
+        `drift in ${label} reddened the row-and-field check, so it is not a member the whole-block compare alone covers`,
+      );
+
+      writeFileSync(path, pristine);
+      const restored = run(script, ["--check"], dir);
+      assert.equal(restored.status, 0, `${restored.stdout}${restored.stderr}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green", () => {
   const dir = stageKernel("tiphys-impl-mode-");
   try {
