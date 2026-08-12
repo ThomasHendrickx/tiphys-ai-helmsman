@@ -143,6 +143,47 @@ same text against TWO MORE composed briefs, so the shared block's wording is loa
 bearing for a phase that has not started. The constraint was sent to the fix round
 in the same turn this was measured, stated as additive: add, do not reword.
 
+## ADDENDUM: the declaration completeness pre-check, five probes, all clean
+
+Written after the sections above, in the same session. The read above asks what
+M3-P6's criteria must READ; this asks whether its `filesToTouch` covers
+everything its STEPS must WRITE. The point of doing it now is the merge-base
+trap: the scope auditor reads the declaration from the merge base, so a
+declaration amendment discovered mid-phase has to land on `main` before the
+phase's next push (delivery/plan/m3-p5-criterion-6-gap.md:74). Discovering the
+need before dispatch costs nothing; discovering it at the first red scope gate
+costs a round trip.
+
+The candidates were chosen as the places where a phase EXTENDS something shared,
+which is where CLAUDE.md:207 says a phase may have to edit the test that
+over-asserts on it. Each was measured against the M3-P5 branch, which carries
+the most recent form of every file involved.
+
+| probe | why it was a candidate | measured | verdict |
+|---|---|---|---|
+| `src/cli.ts` | criterion 10 adds a `--review-contract` flag, and M3-P5's declaration carries `src/cli.ts` | `parseArgs` for `brief compose` lives in `src/commands/brief.ts`, QUOTED rather than cited because that file is on the unmerged M3-P5 branch and does not exist at this head; and `src/cli.ts` is a dispatch table of top-level commands in which `brief` and `validate` are already rows | NOT NEEDED |
+| `src/validate.ts` | criterion 8 needs `validate --type mechanism-index`, a new type | the `--type` table starts at src/commands/validate.ts:52 and every row is there; `src/validate.ts` is the engine and carries no type rows | NOT NEEDED |
+| `test/schemas.test.ts` | the phase adds a thirteenth schema, and a test that pinned a count would redden for every later phase | it derives the list with `readdirSync` at `test/schemas.test.ts:40` | NOT NEEDED |
+| `src/gates/manifest.ts` | the `manifest-self-check` gate's unit is "schema documents validated", which is an inventory | derived with `readdirSync` at `src/gates/manifest.ts:144`, which is the M2-P1 fix-round repair | NOT NEEDED |
+| `scripts/check-clause-map.mjs` | it carries a hand-written `PHASE_ANCHORS` map, one artifact per phase, and hand-written maps are the shape that goes stale | the map already contains `["M3-P6", "roles/implementer.md"]`, which is a file this phase creates | NOT NEEDED |
+
+**So M3-P6 can be dispatched against its declaration as it stands.** No
+amendment, and therefore no merge-base ordering problem.
+
+`schemas/README.md` was checked in passing and enumerates no schema file, so a
+thirteenth schema does not oblige an edit to it either.
+
+**What this pre-check did NOT cover, and it is the honest limit.** It probed
+five named places chosen by reasoning about which shared artifacts the phase
+extends. It did not enumerate every file in the repository that mentions a
+phase id, a schema path or a role name, so a sixth site of the same shape would
+not appear here. The one class it deliberately did not search is tests that
+assert over `test/behaviors.json`, `gates.manifest.json` or the clause map by
+COUNT rather than by name, because those are found by running the suite after
+the phase's rows are appended and not by reading beforehand; M3-P1's
+`test/checks.test.ts` is the recorded instance and CLAUDE.md:207 records that a
+fourth site of it was found only by execution.
+
 ## What this document does NOT establish
 
 - **It says nothing about M3-P7 to M3-P10.** The screen's rows for those phases
