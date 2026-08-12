@@ -5,6 +5,44 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-12, AFTER A THREE-AGENT DEATH. The bullets below this one are
+  OLDER; where they disagree, this one is later.
+- **THREE AGENTS DIED SIMULTANEOUSLY around 12:35, together with the in-memory
+  kick.** Two harness clean-room reviewers and the M3-P6 fix-round-2
+  implementer. Three failures in one minute is ONE SESSION-LEVEL EVENT, not
+  three independent deaths, and no cause was established.
+  **NOTHING WAS LOST, and only one half of that was luck.** The two reviewers'
+  reports were UNTRACKED FILES in scratch worktrees, recoverable only because
+  the container had not been reclaimed; they are now committed as
+  WIP-UNREVIEWED on `claude/reviews-harness-salvage` (PR #111) carrying NO
+  verdict. The implementer had COMMITTED but not pushed, and its two commits
+  were pushed for it. The instruction that made the second case cheap is the
+  one every brief now carries.
+- **CR-V01, FOUND BY A REVIEWER THAT DIED FOUR LINES INTO WRITING IT UP.** The
+  exit-test harness fix's MAIN-ARM WITNESS IS VACUOUS: all five main-arm witness
+  members return exit 1 both against the pristine program and with the
+  derivation collapsed, so that half of the test cannot see the change
+  disappear. Cause: every member carries a RED ROW, and the pre-existing
+  zero-red check catches a red row on its own, so none of them ever reaches the
+  new derivation. **A witness whose bundle contains a red row cannot witness a
+  check that only matters when there is no red row.**
+  This is T-009's shape exactly, the unwitnessed arm, in the change built to
+  stop unasserted rows. The reviewer also CONSTRUCTED the repair before dying
+  (Probe X: a gate declared in neither manifest nor table, `not-applicable` with
+  a valid precondition, so no red row exists anywhere; pristine exit 1,
+  collapsed exit 0).
+- **TWO FIX ROUNDS ARE LIVE AND THE ORDER IS UNCHANGED.** The harness fix round
+  closes CR-V01 plus three low findings from the other salvaged review; M3-P6
+  fix round 2 resumes from its dead predecessor's leavings under the
+  VERIFY-OR-REWRITE rule, because those leavings are 117 lines of committed
+  ANALYSIS and NO CODE, reasoning that has been through no review.
+  M3-P6 still cannot merge until the harness fix does (DR-0012 condition 2), and
+  the harness fix cannot merge until CR-V01 is closed.
+- **Merged since the previous bullet, each push run verified BY STEP on both
+  workflows**: `b18246d` (PR #97, the macOS pilot closeout reconciliation, open
+  and unnoticed for eight hours until open PRs were ENUMERATED rather than
+  assumed known) and `06a8e7a` (PR #110, the manifest-count correction, T-014's
+  third postscript, and the M3-P6 fix-round-1 delta verification).
 - as of: 2026-08-12 later in the day, and the bullets below this one are OLDER.
   Where they disagree with this one, this one is later.
 - **A MERGE PRECONDITION FOR M3-P6 THAT A GREEN CI RUN WILL NOT SATISFY, written
