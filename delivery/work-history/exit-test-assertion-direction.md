@@ -484,7 +484,130 @@ The reviewer's FIRST check (CLAUDE.md:326).
 
 ## 6. Red witnesses
 
-To be filled in.
+The rule (CLAUDE.md:284): a test counts only if demonstrated RED without the
+behaviour and GREEN with it, red against the DANGEROUS state rather than merely
+against the absent feature; and a witness for a CLASS must redden under at least
+TWO structurally different members of it (CLAUDE.md:348).
+
+### The lab, and why it is shaped this way
+
+The assertion program is written by the harness to `<evidence>/m2-assert.mjs`
+before any mode branch, so a `--self-test` run leaves it on disk whatever the
+outcome. Both the PRE-fix program (extracted from `origin/main`'s harness,
+verbatim) and the POST-fix program (from this branch) are extracted that way and
+driven over the SAME crafted bundles.
+
+Each program is driven against ITS OWN arm's expectation document, which is the
+honest comparison: the harness as it was against the harness as it is. My first
+attempt fed the pre-fix program my NEW derived table, which made the pre-fix
+main arm look like it already caught the defect; the correction is `probe2`,
+and it changed the main-arm pre-fix result from exit 1 to exit 0. Recording that
+because the wrong version was momentarily convincing.
+
+The manifest under test is M3-P6's twelve-gate one (`brief-drift` included),
+read from `origin/claude/m3-p6-delivery-role-briefs`, because that is the live
+case: the gate that arrives at PR #105.
+
+### CONTROL FIRST, and it caught a lab bug
+
+The control ran before any dangerous state, and it failed for a reason that had
+nothing to do with the subject: `run.sh` derived its own directory from `$0`,
+which under `source` is the shell, so every path resolved under `/bin` and BOTH
+programs exited 1. That is precisely the wrong-scope trap CLAUDE.md:316 records,
+and without the control it would have read as "the pre-fix program already
+rejects this". Recorded rather than quietly fixed.
+
+Corrected, the controls are green on both arms and on both programs, so nothing
+below is an always-red assertion:
+
+```
+control-pr-briefdrift-GREEN                    arm=pr    PRE-FIX exit=0   POST-FIX exit=0
+   post: m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; 12 gate(s) asserted (11 from an explicit table row, 1 under the default required-green: brief-drift); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+control-main-12gate-fair                       arm=main  PRE-FIX exit=0   POST-FIX exit=0
+   post: m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 6 asserted absent: credential-token, citations, scope, clause-map, red-witness, brief-drift; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+```
+
+The second line is also the M3-P6 ordering evidence: with the twelve-gate
+manifest, `brief-drift` defaults to required-green on the PR arm and is derived
+into the main arm's absent list, with no edit to M3-P6 and no edit to any table.
+
+### The three members, both arms, captured exit codes
+
+| member | what makes it structurally different | caught by |
+|---|---|---|
+| 1 | declared in `gates.manifest.json`, no table row | the MANIFEST leg of the union, and zero-red |
+| 2 | in NEITHER manifest nor table, present only as a bundle row | the ROWS leg of the union, and zero-red |
+| 3 | NAMED in the table, `required: false`, alternates admit red | zero-red ALONE |
+
+Member 3 is the one that isolates zero-red: neither leg of the union helps,
+because the gate has an explicit spec that permits its status. Post-fix it
+produces exactly ONE finding, which is that check and nothing else.
+
+```
+m1-pr-briefdrift-RED                           arm=pr    PRE-FIX exit=0   POST-FIX exit=1
+m1-main-briefdrift-RED-fair                    arm=main  PRE-FIX exit=0   POST-FIX exit=1
+m2-pr-undeclared-row-RED                       arm=pr    PRE-FIX exit=0   POST-FIX exit=1
+m2-main-undeclared-row-RED                     arm=main  PRE-FIX exit=0   POST-FIX exit=1
+m3-pr-optional-gate-admits-RED                 arm=pr    PRE-FIX exit=0   POST-FIX exit=1
+m3-main-optional-gate-admits-RED               arm=main  PRE-FIX exit=0   POST-FIX exit=1
+```
+
+Six probes, six times pre-fix exit 0 against a bundle carrying a RED gate. That
+is the defect, measured, on both arms.
+
+Full captured output of four of them:
+
+```
+########## m1-pr-briefdrift-RED
+--- PRE-FIX ---
+m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+--- POST-FIX ---
+m2-assert (PR bundle): FAIL with 3 finding(s):
+  - [brief-drift] expected status green, observed red This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+  - [brief-drift] is a REQUIRED gate but its status is red, not green This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+  - 1 gate(s) reported RED: brief-drift. No expectation in section 1.4 permits a red gate, on either bundle.
+
+########## m1-main-briefdrift-RED-fair
+--- PRE-FIX ---
+m2-assert (main bundle): OK. 7 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+--- POST-FIX ---
+m2-assert (main bundle): FAIL with 3 finding(s):
+  - 1 gate(s) reported RED: brief-drift. No expectation in section 1.4 permits a red gate, on either bundle.
+  - [brief-drift] expected to be ABSENT from this bundle (not run) but has a summary record
+  - [brief-drift] expected to be ABSENT from this bundle (not run) but has a result.json on disk
+
+########## m2-pr-undeclared-row-RED
+--- PRE-FIX ---
+m2-assert (PR bundle): OK. 13 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+--- POST-FIX ---
+m2-assert (PR bundle): FAIL with 3 finding(s):
+  - [totally-undeclared-gate] expected status green, observed red This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+  - [totally-undeclared-gate] is a REQUIRED gate but its status is red, not green This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+  - 1 gate(s) reported RED: totally-undeclared-gate. No expectation in section 1.4 permits a red gate, on either bundle.
+
+########## m3-pr-optional-gate-admits-RED
+--- PRE-FIX ---
+m2-assert (PR bundle (deploy required:false, alternates admit red)): OK. 12 gate record(s) match section 1.4; counts re-derived and equal to summary.json; zero error; zero vacuous.
+--- POST-FIX ---
+m2-assert (PR bundle (deploy required:false, alternates admit red)): FAIL with 1 finding(s):
+  - 1 gate(s) reported RED: deploy. No expectation in section 1.4 permits a red gate, on either bundle.
+```
+
+### A member that did NOT redden, recorded because a null result is evidence
+
+My first attempt at member 3 widened the alternates of `coverage`, which is
+`required: true`. Both programs rejected it (exit 1 both sides), because the
+pre-existing required-green rule at scripts/m2-exit-test.sh:396 catches it
+regardless of the alternates. So the hole for a NAMED gate is specifically the
+`required: false` one, and `deploy`, `migrations` and `credential-token` are the
+three rows that carry `required: false` today. That is why member 3 uses
+`deploy` and not `coverage`, and it is a narrower claim than "a named gate can
+hide a red".
+
+```
+m2-pr-named-alternates-admit-red               arm=pr    PRE-FIX exit=1   POST-FIX exit=1
+   pre : m2-assert (...): FAIL with 1 finding(s):   - [coverage] is a REQUIRED gate but its status is red, not green
+```
 
 ## 7. Suite
 
