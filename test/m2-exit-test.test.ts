@@ -1479,3 +1479,78 @@ test("no expectations row admits a lax status the gate it names can never legiti
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("the zero-red check reads the bundle's ROWS, not the summary's own red count, so a summary under-reporting its reds cannot pass", () => {
+  // PRE-EMPTING THE OBVIOUS QUESTION ABOUT THIS FIX: does the check I added
+  // actually read the rows, or can it pass when it should fail?
+  //
+  // The question is not rhetorical, because the defect this whole change is
+  // about had a NEAR-MISS sitting beside it. scripts/m2-exit-test.sh:459 already
+  // computed `red: rows.filter(r => r.status === "red").length` and compared it
+  // with `summary.counts.red`. That LOOKS like a zero-red check and is not: it
+  // only asserts the summary is self-consistent, so a bundle honestly reporting
+  // three reds passes it. A guard whose condition does not test the property
+  // that matters is green and worthless (CLAUDE.md, T-008's postscript).
+  //
+  // So the new check must key off the ROWS. The dangerous state that separates
+  // the two readings is a summary whose counts claim zero red while a row says
+  // red: a count-reading check passes it, a row-reading check cannot. The
+  // assertion is on WHICH finding is produced, because a counts/rows mismatch
+  // also trips the recount check, and passing for the right reason is the point.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const dir = join(root, "lying-summary");
+    mkdirSync(join(dir, "suite"), { recursive: true });
+    // counts say zero red; the row says red. Only a row reader sees it.
+    writeFileSync(
+      join(dir, "summary.json"),
+      JSON.stringify({
+        gates: [{ id: "suite", status: "red", applicable: true, vacuous: false, units: 2 }],
+        counts: {
+          declared: 1, applicable: 1, verdict: 1, green: 1, red: 0,
+          "not-applicable": 0, error: 0, vacuous: 0,
+        },
+      }),
+    );
+    writeFileSync(
+      join(dir, "suite", "result.json"),
+      JSON.stringify({ gate: "suite", status: "red", units: 2, detail: "a real failure" }),
+    );
+    const expectPath = join(root, "expect-lying.json");
+    writeFileSync(
+      expectPath,
+      JSON.stringify({
+        label: "counts under-report the reds",
+        // The row's gate is NAMED and its alternates ADMIT red, so neither the
+        // derived expected set nor the required-green rule can be what rejects
+        // this. Only the row-driven zero-red check is left.
+        gates: [{ id: "suite", expect: "green|red", required: false }],
+        absent: [],
+      }),
+    );
+    const harnessEvidence = join(root, "harness-evidence");
+    run("bash", [harness, "--self-test", harnessEvidence], { cwd: root, env });
+    const assertProg = join(harnessEvidence, "m2-assert.mjs");
+    assert.ok(existsSync(assertProg), "the harness did not emit m2-assert.mjs");
+
+    const result = run(
+      process.execPath,
+      [assertProg, "--summary", join(dir, "summary.json"), "--evidence", dir,
+        "--expect", expectPath, "--manifest", manifestFor(root, ["suite"])],
+      { cwd: root, env },
+    );
+    const output = result.stdout + result.stderr;
+    assert.notEqual(result.status, 0, `a bundle carrying a red row must be REJECTED: ${output}`);
+    assert.match(
+      output,
+      /1 gate\(s\) reported RED: suite/,
+      "the rejection did not come from a check that READ THE ROW. A summary claiming red:0 " +
+        "while a row says red is exactly the state a count-reading check passes, and " +
+        "scripts/m2-exit-test.sh:459's recount is a count-reading check that already existed " +
+        `and is not sufficient. Output was: ${output}`,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

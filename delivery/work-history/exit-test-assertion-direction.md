@@ -727,6 +727,12 @@ count anywhere asserting over the registry (CLAUDE.md:201):
 
 - `m2-exit-main-absent-list-derived-from-manifest`
 - `m2-exit-red-gate-rejected-on-both-bundles`
+- `m2-exit-expect-row-admits-only-reachable-statuses`
+- `m2-exit-zero-red-reads-rows-not-counts`
+
+Each entry's description is the test's name VERBATIM, which is what "resolves by
+name" means to the `suite` gate; writing a prose summary instead is what reddened
+it once (section 8).
 
 ## 8. Gate runs after merging origin/main at bb8f656
 
@@ -1004,6 +1010,102 @@ Its fix is one line of intent-preserving change, red-witnessed: renaming
 m2-exit-test.sh no longer declares MAIN_ONLY_GATES", rather than silently
 deriving an empty set. Verified: 13 tests, 13 pass with the declaration present;
 the named test red without it.
+
+## 9b. A TRUNCATING EDIT ON THIS FILE, and its blast radius
+
+Recorded as an event rather than left in a commit subject.
+
+WHAT HAPPENED. Writing the closing sections, I replaced the tail of this file
+with a python `s[s.index("## 8. Suite"):]` slice. Sections 8 onward were the
+target, but two later sections had been APPENDED after section 8 in earlier
+commits (the post-merge gate runs, and the end-to-end harness runs). The slice
+took them too. About 276 lines went in one edit.
+
+HOW I NOTICED. Not by reading. The line count went from 973 to 819 across an
+edit that only added material, and I checked `grep -n '^## '` because the
+arithmetic was wrong. Recovered whole from `git show HEAD~1:<file>` and spliced
+back with the two headings renumbered, which is only possible because the
+sections had been COMMITTED as they were written. That is the beacon rule paying
+for itself in the most literal way available: the durability discipline the
+orchestrator pressed me on twice is what made a self-inflicted truncation a
+five-minute repair instead of a rewrite from memory.
+
+COULD IT HAVE HIT ANYTHING ELSE? Checked rather than assumed, because a
+truncating edit that could hit several files is worth a check.
+
+```
+$ git log --format='%h %s' origin/main..HEAD --name-only
+```
+
+The replace-to-end pattern was used on ONE path, this work history, in five
+commits. Every edit to a CODE file went through exact-string replacement or a
+bounded python replace carrying an `assert old in s` guard, which fails loudly
+rather than truncating. Positively verified rather than argued:
+
+```
+$ git diff --numstat origin/main...HEAD
+1096  0  delivery/work-history/exit-test-assertion-direction.md
+264  92  scripts/m2-exit-test.sh
+4     1  test/behaviors.json
+20    9  test/gate-registry.test.ts
+458   3  test/m2-exit-test.test.ts
+```
+
+The deletion counts are the tell, and they are small and accounted for: 92 in
+the harness is the two expectation blocks moved above argument parsing plus the
+rewritten loop, 9 in gate-registry is the replaced `--only` scraper, 3 in the
+exit-test tests is the three `manifest = fileURLToPath(...)` lines. No file shows
+a deletion count consistent with a lost tail. Tails intact
+(`scripts/m2-exit-test.sh` still ends `exit 0`, both test files end `});`,
+`test/behaviors.json` parses, `bash -n` exit 0), and the full suite is green,
+which a truncated source would not be.
+
+## 9c. PRE-EMPTING THE SECOND REVIEW CONTRACT: does the check I ADDED read the rows?
+
+The orchestrator flagged that a second reviewer will ask one question about this
+fix: does the check I added actually read the rows, or can it pass when it should
+fail. That is my own finding turned on my own work, it is the right question, and
+it deserves an answer with a witness rather than a reassurance.
+
+**The question is sharper than it looks, because a near-miss was already sitting
+in the file.** scripts/m2-exit-test.sh:459 computes
+`red: rows.filter(r => r.status === "red").length` and compares it with
+`summary.counts.red`. That LOOKS like a zero-red check and is not: it asserts
+only that the summary is self-consistent, so a bundle honestly reporting three
+reds passes it. A guard whose condition does not test the property that matters
+is green and worthless, and this one had been in place the whole time the defect
+was live.
+
+So the state that separates a row-reading check from a count-reading one is a
+summary whose `counts.red` is 0 while a row says `red`. A count reader passes it;
+a row reader cannot. That is now a committed test,
+`m2-exit-zero-red-reads-rows-not-counts`, and it asserts on WHICH finding is
+produced (`1 gate(s) reported RED: suite`), because a counts/rows mismatch also
+trips the recount check and passing for the right reason is the whole point. Its
+expectation names the gate and admits red, so neither the derived expected set
+nor the required-green rule can be what rejects it.
+
+Red-witnessed against the near-miss shape itself, by rewriting the check to read
+the count instead of the rows:
+
+```
+### green as written
+(*) the zero-red check reads the bundle's ROWS, not the summary's own red count ... (599.052114ms)
+### DEFANG: make zero-red read the COUNT instead of the rows (the near-miss shape)
+(x) the zero-red check reads the bundle's ROWS, not the summary's own red count ... (667.373322ms)
+```
+
+Every check this change adds now has a defang that reddens it, and they are
+listed together so a reviewer can re-run them rather than take my word:
+
+| check added | defang that reddens it | witnessed by |
+|---|---|---|
+| derived expected set (manifest leg) | collapse the union to the explicit table | member 4 (no red row involved) |
+| derived expected set (rows leg) | same | member 2 |
+| global zero-red | `redRows = []` | member 3 |
+| global zero-red reads ROWS not counts | `redRows` built from `summary.counts.red` | the test above |
+| derived main-arm absent list | hand-write the old five-id list | both arms of the absent guard |
+| no row admits an unreachable status | widen `clause-map` to admit N/A; widen `suite` to admit red | two members |
 
 ## 10. The complete suite sentence
 
