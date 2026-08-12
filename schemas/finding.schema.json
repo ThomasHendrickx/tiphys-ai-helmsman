@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/finding.schema.json",
+  "title": "Tiphys finding set",
+  "$comment": "R-029. Kernel plan M3, M3-P5 step 5. THE OUTPUT OF A REVIEW: a verdict, the model family that produced it, and a severity-ranked list of findings each of which names the plan edit it demands. THE HAZARD THIS DOCUMENT EXISTS AGAINST is the one the phase's hazard-class table names: a schema that admits an EMPTY review as a thorough one. A review that found nothing and a review that looked at nothing produce the same JSON unless the empty case is made to say so, and `no-findings-statement` plus the `oneOf` below is what makes them different documents. WHAT THIS SCHEMA CANNOT DO. (1) It cannot tell a real `concrete-edit` from a restatement of the finding; that is M3-P7's probe territory, and what is bought here is that the field cannot be absent or blank. (2) It cannot tell a real `produced-by` from a guess; T-001's ask was that the family be RECORDED, and recorded is what `required` buys. (3) It cannot rank severities: `enum` is an unordered set and the rank is stated in this comment, low < medium < high < critical, the same four names schemas/plan.schema.json uses so the two documents do not carry two vocabularies. (4) It cannot see whether the same finding id appears twice; comparing array elements to each other is Kind B and this phase adds no Kind B row (criterion 5).",
+  "description": "A finding set: the artifact an adversarial plan review or a clean-room review outputs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "verdict", "produced-by", "findings"],
+  "properties": {
+    "kind": {
+      "$comment": "R-016's discriminator, so `tiphys validate --type auto` resolves this document without being told, and M3R-001's rule that a type is registered with the validator in the same step that ships its schema is satisfied in both halves rather than one. A finding set is a YAML or JSON document, so unlike a role brief it CAN carry a kind.",
+      "type": "string",
+      "const": "finding"
+    },
+    "verdict": {
+      "$comment": "R-029's `verdict`, required. A NON-EMPTY STRING rather than an enum, deliberately: M3-P7 ships the verdict contract and its closed vocabulary, and inventing a second one here would be the two-vocabularies failure this file's kind field exists to avoid. `pattern: \\S` because `required` alone is satisfied by the empty string.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "produced-by": {
+      "$comment": "T-001's second ask, recorded in delivery/tuition/T-001-cross-model-review-catches.md: record in the review header which family produced it. DR-0012 condition 1 then makes the two clean-room reviews of one head differ in this field, and that comparison is between two DOCUMENTS and is therefore not reachable from inside either of them. What is reachable is that the field cannot be absent, which is what this is.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "no-findings-statement": {
+      "$comment": "The empty review's own sentence: what was looked at, and why nothing was found. Required exactly when `findings` is empty, by the `oneOf` below.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    }
+  },
+  "oneOf": [
+    {
+      "$comment": "Branch A: the set carries at least one finding. `type: array` is RESTATED here and that is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `minItems` inside a subschema whose type is declared only at the outer level is refused with `schema uses keyword minItems without declaring type array`.",
+      "properties": {
+        "findings": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "$comment": "Branch B: the set carries no finding and therefore must say what was looked at. `no-findings-statement` is RESTATED in a sibling `properties` here and that is not redundancy either: measured against the same engine, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired with `strict mode: required property \"no-findings-statement\" is not defined`. WHY `oneOf` AND NOT THE `if`/`then` THE PLAN'S PARENTHETICAL NAMES. The obligation is `findings` EMPTY implies a sibling required, so the `if` would have to match emptiness. The closed authoring vocabulary (schemas/README.md) has no `not` and no `maxItems`; `minItems: 1` and `contains` both match the NON-empty case, which is the wrong polarity, and `then` cannot remove an obligation. `oneOf` is in the vocabulary and does express it. The declared deviation and its captured probe output are in delivery/work-history/m3-p5.md. ONE CONSEQUENCE BEYOND WHAT CRITERION 5(b) ASKED FOR, recorded rather than discovered: a set carrying BOTH findings and a no-findings statement matches both branches and is therefore invalid too. That is the same both-directions property M3-P4's report contract reaches with a derived check.",
+      "required": ["no-findings-statement"],
+      "properties": {
+        "no-findings-statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "finding": {
+      "$comment": "R-029's severity-ranked findings with concrete plan edits.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "evidence", "concrete-edit"],
+      "properties": {
+        "id": {
+          "$comment": "The stable id the arbitration and the fix round cite. The identifier schemes are CLAUDE.md's; this schema does not pick one, because CR-nnn, PR-nnn and EXT-F-nn are all real and all cited.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "severity": {
+          "$comment": "Ranked low < medium < high < critical. Same four names as schemas/plan.schema.json's phase severity.",
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "evidence": {
+          "$comment": "Evidence beats assertion: exit codes, counts, file paths with line numbers, captured output, URLs. `minItems: 1` is the whole point, because a finding with no evidence is an opinion and this repository treats an agent's claim with no verifiable artifact behind it as unknown.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "concrete-edit": {
+          "$comment": "R-029's `concrete plan edits`. The edit the finding DEMANDS, not a description of the problem. Required on EVERY finding regardless of severity, which is strictly stronger than criterion 5(a)'s dangerous instance (a `severity: high` finding with no `concrete-edit`) and is stronger on purpose: a low finding with no proposed edit is a remark, and a review made of remarks is the empty review with extra steps.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "analysis": {
+          "$comment": "Section 1.5's finding-set row: what is not enumerable is the ARGUMENT behind one finding, which is why it lives inside a field rather than becoming structure. Optional, and non-empty when present.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    }
+  }
+}
