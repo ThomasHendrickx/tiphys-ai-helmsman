@@ -5,7 +5,62 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12 late afternoon, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-12 evening, NEWEST BLOCK. Everything below is OLDER.
+- **THE BLOCKER IS SINGULAR AND HAS NOT MOVED: M3-P6 is finished and
+  merge-ready, and it waits on the exit-test harness clearing FIX ROUND 3.**
+  `main` is at `3d0fa5a`. M3 is 5 of 10 merged. If you read one line of this
+  file, read this one: nothing else is in M3-P6's way, and dispatching more
+  work does not shorten this path.
+- **THE HARNESS MERGE IS BLOCKED ON TWO MEDIUM FINDINGS THAT ROUND 2 ITSELF
+  INTRODUCED**, found by the independent delta verification and arbitrated at
+  delivery/review/arbitration-harness-round2-and-delta.md:7. DV-3 is the serious
+  one: a manifest with `gates: []` empties the manifest leg silently and neither
+  new check fires, so the program certifies a bundle containing a red gate,
+  `EXIT=0, "10 gate(s) asserted, zero red"`
+  (delivery/review/arbitration-harness-round2-and-delta.md:80). **That is the
+  original assertion-direction defect restored in full, inside the fix built to
+  remove it.** DV-4 makes a registered behaviour false as written: the
+  fourth-leg guard's regex misses this codebase's own spread-expression idiom
+  (delivery/review/arbitration-harness-round2-and-delta.md:109).
+- **ROUND 3 IS A FRESH IMPLEMENTER, AND THAT IS THE RULE, NOT A PREFERENCE.**
+  This is the third fix round on one branch, which trips the stop rule at
+  delivery/decisions/DR-0012-delegated-merge-authority.md:34; DR-0016 changes
+  what stopping MEANS, so the work does not wait for the owner. It is in flight
+  with a 4807-line work history, beacon fresh, and it has NOT pushed, which is
+  correct under the corrected push rule and must not be read as a stall.
+- **HOW DV-3 WAS FOUND IS THE TRANSFERABLE PART.** The verification fed the
+  check a REAL manifest with one gate omitted; round 2 fed it hand-built
+  degenerate fixtures. A check exercised only against inputs its author
+  constructs is exercised against the author's MODEL of what can go wrong, and
+  DV-3 sits outside that model: an ordinary manifest with an ordinary empty
+  list, which no degenerate fixture happened to represent.
+- **PR #116 (the M3-P6 delta verification) IS A MERGE PRECONDITION FOR #105 AND
+  HAS NOW BEEN UPDATED ONTO `main` TWICE**, head `2af6c81`, CI in flight. The
+  first update was invalidated when #117 merged and moved `main` underneath it.
+  **The general fact, worth pre-computing before the M3-P6 sequence: branch
+  protection requires an up-to-date head, so sequential merges each invalidate
+  the next PR's status and a queue of ready PRs costs ONE CI CYCLE APIECE.**
+  Budget for it; do not read it as a failure.
+- **M3-P7 AND M3-P8 ARE DELIBERATELY NOT DISPATCHED YET, AND THE REASON IS LOAD,
+  NOT READINESS.** Both briefs are written and both are ready
+  (delivery/plan/m3-p7-p8-dispatch-addenda.md:1). This box has 4 cores; this
+  afternoon the orchestrator's own optional `npm test` took the load to 13.00
+  and injected wall-clock flakes into two agents' measurements, which they then
+  had to attribute without being able to see the cause
+  (delivery/verification/orchestrator-load-and-the-claim-grep-hole.md:26). Round
+  3 is on the critical path and runs suites. Adding two implementers beside it
+  buys nothing and degrades the measurement that everything is waiting on.
+- **A CORRECTION IS OWED TO A BINDING FILE.** Standing warning 12 at
+  CLAUDE.md:725 records that the no-dist arm skips NINE tests. Measured at the
+  harness head it is TEN, the extra being a fifth dist-gated test that does not
+  exist on `origin/main`. Round 3 was told it may correct the warning, after
+  RE-MEASURING rather than trusting either figure.
+- **STILL UNOWNED ON `main`**: the `render-agent-rules-gates.mjs` duplicate-row
+  MEDIUM at delivery/verification/render-agent-rules-gates-duplicate-row.md:1,
+  and the `red-witness` gate not running on `scripts/` diffs at
+  delivery/verification/red-witness-does-not-run-on-scripts.md:1. Neither blocks
+  M3-P6. Both need a phase or a decision to own them, and neither has one.
+- as of: 2026-08-12 late afternoon, older block. Everything below is OLDER.
 - **WHERE M3 STANDS: 5 of 10 merged, and M3-P6 is blocked on ONE THING.** The
   exit-test harness fix must merge first (DR-0012 condition 2), and its own
   delta verification is in flight. Nothing else stands in M3-P6's way: its
