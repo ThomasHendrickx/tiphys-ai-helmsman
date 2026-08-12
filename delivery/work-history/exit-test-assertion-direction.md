@@ -2542,3 +2542,106 @@ Four things this table establishes, in the order they matter:
    probe can only witness a leg that exists when it is written. That is what the
    union-source guard is for, and FR2.5 reddens it.
 
+## FR2.5 Red witness 2: the union-source guard, and it reddens in BOTH directions
+
+`node --test --test-name-pattern 'every source spread into the derived expected
+set' test/m2-exit-test.test.ts`, one run per harness variant, full output:
+
+```
+legguard:harness                   EXIT=0
+legguard:h-fourthleg               EXIT=1  the derived expected set draws from a set of sources that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and probe-3-manif
+legguard:h-noexplicit              EXIT=1  the derived expected set draws from a set of sources that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and probe-3-manif
+legguard:h-norows                  EXIT=1  the derived expected set draws from a set of sources that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and probe-3-manif
+legguard:h-nomanifest              EXIT=1  the derived expected set draws from a set of sources that this suite does not probe one-for-one. probe-1-rows-leg witnesses `rows`, probe-2-manifest-leg and probe-3-manif
+```
+
+Green on the shipped harness, red on an ADDED source, red on each of the three
+REMOVED sources. The two directions are structurally different members of the
+class "the union's source set changed and nothing said so" (CLAUDE.md:380), and
+the addition is the one no probe can reach: `h-fourthleg` leaves the probe test
+EXIT=0 on both arms (FR2.4) and reddens only here.
+
+**No count is pinned.** The assertion is `deepEqual` over a sorted array of
+IDENTIFIER NAMES read out of the harness source. CLAUDE.md:201 forbids pinning a
+count over an APPEND-ONLY REGISTRY, on the stated grounds that growth there is
+routine and legitimate so the assertion produces a false red; the union's source
+list is not a registry, growth in it is not routine, and being told about it is
+the entire purpose. The form CLAUDE.md:201 prescribes, BY NAME, is the form used.
+I verified the no-count claim mechanically rather than by inspection:
+
+```
+$ grep -nE 'sources\.length|\.length\s*(===|==|>=|<=|>|<)\s*[0-9]' test/m2-exit-test.test.ts | grep -i -A0 'source'
+(no output, exit 1)
+```
+
+This closes CR-FR-2 and the open item at
+delivery/work-history/exit-test-assertion-direction.md:2050, and it corrects that
+item's TENSE as CR-V-1 requires: the item said a third spread "would be"
+unwitnessed; there were three spreads and the third WAS unwitnessed. Both are now
+probed and the arrival of a fourth is guarded.
+
+The guard is deliberately NOT behind the `dist/` skip that the probe test uses.
+It reads one source file, so it runs under `npm test` and under a bare
+`node --test` alike, on the `pull_request` arm and the `push` arm alike. A guard
+present on one arm and absent from the other is the shape T-009 records
+(CLAUDE.md:418), and it would have been easy to inherit here by copying the
+neighbouring test's skip.
+
+## FR2.6 Red witness 3: the two self-vacuity checks, each witnessed ALONE
+
+`node --test --test-name-pattern 'applies M2-C-2 to ITSELF'
+test/m2-exit-test.test.ts`, full output:
+
+```
+selfvac:harness                    EXIT=0
+selfvac:h-noshape                  EXIT=1  a manifest whose `gates` key is not an array silently empties the manifest leg of the derived expected set, and must be REJECTED rather than read as a manif
+selfvac:h-noemptyset               EXIT=1  a run that asserted on ZERO gates must be REJECTED: exiting 0 there certifies a bundle having examined nothing, which is exactly what M2-C-2 forbids: m2-assert
+```
+
+Two members, and they are structurally different rather than two spellings of
+one: member 1 carries a NON-empty expected set so only the manifest-shape check
+can fire, member 2 carries a well-formed empty manifest so only the
+empty-expected-set check can fire. The test asserts `doesNotMatch` on the other
+check's message in each case, so a future edit that collapses the two into one
+reddens rather than quietly halving the coverage. `harness` (pristine, with the
+checks present) is EXIT=0, so neither assertion is always-red.
+
+These two shapes are H-B's cases E6 and E2, which it measured as exit 0 at
+`fdb3120`, printing `OK. 0 gate record(s) ...; 0 gate(s) asserted`. They now exit
+1. CR-V-2 closed.
+
+## FR2.7 The guard on the SECOND key
+
+The uniqueness filter is only as good as the string it keys on, so the new key
+gets the same two witnesses the first one has:
+
+```
+key:h-reworded                     EXIT=0
+key:h-underivable                  EXIT=1  could not derive the explicit-spec rejection message from the harness; the uniqueness check for the explicit leg would be vacuous without it, so this is a hard failure r
+
+$ node --test --test-name-pattern 'a RED gate is rejected on BOTH bundles' test/m2-exit-test.test.ts   # with h-underivable
+  AssertionError [ERR_ASSERTION]: could not derive the explicit-spec rejection message from the harness; the uniqueness check for the explicit leg would be vacuous without it, so this is a hard failure rather than a fallback
+      at TestContext.<anonymous> (file:///.../hfix3/test/m2-exit-test.test.ts:1268:12)
+```
+
+`h-reworded` replaces the whole explicit-branch message with a sentinel sharing
+no word with the original, and the test stays GREEN: the key TRACKED the reword,
+which is what a derived value does and what a hard-coded literal could not. The
+`--test-name-pattern` shape here matters and is easy to get wrong: CLAUDE.md:625
+records that the pattern must precede the positional path or it is silently
+ignored, and every invocation above puts it there.
+
+`h-underivable` breaks only the shape the regex looks for (`explicit` becomes
+`Boolean(explicit)`, the message untouched), and the test HARD-FAILS rather than
+falling back to a default. So the explicit leg cannot become vacuously witnessed
+by a rename.
+
+One thing this pair does NOT establish, stated because H-B raised the identical
+limitation as O-1 about the first key: these witnesses show the key is DERIVABLE
+and LIVE, not that it DISCRIMINATES. A perverse reword to a string common to
+other findings would absorb them. The test now asserts
+`assert.notEqual(explicitSpecReason, defaultSpecReason, ...)`, which rules out
+the one collision that would silently merge the two probe families, and nothing
+more. I did not find a non-perverse edit that defeats it, and I am not claiming
+none exists.
+
