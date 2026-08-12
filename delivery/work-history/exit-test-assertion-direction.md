@@ -3368,3 +3368,25 @@ pull request can discharge: the post-merge `push` run on the new `main` head,
 which is the first time step 9 will actually execute rather than skip. That run
 belongs to whoever merges, and this round does not merge.
 
+
+## FR3.0 Round 3: a fresh implementer, and what this round has to close
+
+This round is written by a FRESH implementer. Rounds 1 and 2 were the same
+agent; this is the third, which trips DR-0012's stop rule, and DR-0016 records
+that the half of that rule which measurably works is a fresh implementer rather
+than an owner decision. Nothing below inherits a conclusion from rounds 1 or 2:
+every claim this round makes is re-measured here, including the ones the delta
+verification upheld.
+
+Starting head: 9b7752d, confirmed by `git log -1` in a worktree of my own with
+its own `npm ci` (exit 0, node v26.6.0 from the scratch prefix, `npm` 11.18.0).
+
+The input is the independent delta verification of round 2, on branch
+`claude/verify-harness-round2`. It raised two MEDIUM findings (DV-3, DV-4), one
+LOW (DV-1) and one observation (DV-2). Both MEDIUMs are in code round 2 ADDED,
+which is the T-003 shape CLAUDE.md:299 measures at twelve of thirteen
+re-reviewed fix rounds.
+
+This section is written before any file is touched. It is the beacon; every
+section below is appended after the command it cites has run, and committed
+locally at once.
