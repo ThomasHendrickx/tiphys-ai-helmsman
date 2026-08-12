@@ -4504,3 +4504,119 @@ is the fabrication CLAUDE.md:140 forbids outright. So the captures above are
 transliterated and the substitution is declared: U+2714 rendered `+` (2
 occurrences), U+2139 rendered `i` (8), U+2716 rendered `x` (2), U+FE63
 rendered `-` (10). Nothing else in any captured output was changed.
+
+## FR3.9 A residual found by probing my own exclusion, and closed
+
+I did not write "a two-line write would probably escape the pin" into the
+not-covered section. I ran it.
+
+```
+=== A. the same mechanism in src/ and bin/: a leg that degrades to [] on a TYPE test ===
+scripts/m2-exit-test.sh:470:const rows = Array.isArray(summary.gates) ? summary.gates : [];
+scripts/m2-exit-test.sh:502:const manifestIds = Array.isArray(manifestGates)
+scripts/m2-exit-test.sh:551:  const observed = !Array.isArray(manifestGates)
+src/checks.ts:98:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/checks.ts:104:  return Array.isArray(value) ? value : [];
+src/commands/brief.ts:77:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/commands/brief.ts:83:  return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+src/commands/brief.ts:142:  const phases = Array.isArray(plan?.["phases"]) ? (plan["phases"] as unknown[]) : [];
+src/commands/validate.ts:271:  const clauses = Array.isArray(frontmatter["clauses"])
+src/commands/validate.ts:291:      Array.isArray(frontmatter["outputs"])
+src/commands/validate.ts:294:      Array.isArray(frontmatter["mandated-reading"])
+src/modes.ts:86:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/modes.ts:93:  return Array.isArray(value)
+src/plan.ts:121:  return typeof value === "object" && value !== null && !Array.isArray(value)
+src/plan.ts:127:  return Array.isArray(value)
+src/plan.ts:148:  const phases = Array.isArray(document["phases"]) ? document["phases"] : [];
+grep exit=0
+
+=== B. does the expectedIds writes pin survive a write split across two lines? ===
+mutated scripts/m2-exit-test.sh: 1 occurrence replaced
+guard EXIT=0 against a two-line write
+restored: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+```
+
+Part B is the finding: the first version of the `expectedIds` writes pin was
+LINE-BASED, and a write split as `expectedIds` on one line and `.push(...)` on
+the next walked straight past it, guard EXIT=0. A guard that a newline defeats
+is the mechanism of this whole round one level up, in code I had just written.
+
+It is closed rather than declared. The pin now classifies every occurrence of
+the identifier by the operation that FOLLOWS it, skipping whitespace AND
+comments, so the form of the write cannot hide it: test/m2-exit-test.test.ts:1866.
+
+Part A is the same mechanism looked for in `src/` and `bin/`. Twelve sites
+degrade a value to `[]` on a type test. None of them is this defect: they are
+input coercions in `plan.ts`, `modes.ts`, `checks.ts`, `brief.ts` and
+`validate.ts`, feeding validators that report on what they find, not guards
+whose message quantifies over a class the coercion silently empties. The two
+inside `scripts/m2-exit-test.sh` are the rows leg (measured LOUD in FR3.3b) and
+the manifest leg (fixed here). I am reporting the enumeration and my reading of
+it; I did not construct a degenerate input for each of the twelve, so this is a
+survey, not twelve measurements.
+
+## FR3.10 Every red witness RE-RUN against the files that SHIP
+
+The matrix in FR3.5a was measured before the writes pin was rewritten, so it
+describes a file that is no longer the one being submitted. It is re-run here in
+full against the final bytes, with both files' sha256 printed so the two runs
+cannot be confused, rather than left to a reader to assume nothing moved.
+
+FULL OUTPUT:
+
+```
+harness sha256 under test: 5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc
+test    sha256 under test: 787b62e2a3f2942eb50ea3d8a3b3c046aa3435cbf3338b5a9753bccad4c3711a
+
+=== NEGATIVE CONTROL for the mutator ===
+ANCHOR NOT UNIQUE (0 occurrences), aborting: this anchor does not occur anywhere at all
+mutator EXIT=2
+
+PRISTINE-control                         guard=OLD  EXIT=0
+PRISTINE-control                         guard=NEW  EXIT=0
+ADD-paren-expression                     guard=OLD  EXIT=0
+ADD-paren-expression                     guard=NEW  EXIT=1
+ADD-array-literal                        guard=OLD  EXIT=0
+ADD-array-literal                        guard=NEW  EXIT=1
+ADD-bare-identifier                      guard=OLD  EXIT=1
+ADD-bare-identifier                      guard=NEW  EXIT=1
+ADD-non-spread-element                   guard=OLD  EXIT=0
+ADD-non-spread-element                   guard=NEW  EXIT=1
+REMOVE-manifest-leg                      guard=OLD  EXIT=1
+REMOVE-manifest-leg                      guard=NEW  EXIT=1
+REMOVE-rows-leg                          guard=OLD  EXIT=1
+REMOVE-rows-leg                          guard=NEW  EXIT=1
+REMOVE-explicit-leg                      guard=OLD  EXIT=1
+REMOVE-explicit-leg                      guard=NEW  EXIT=1
+WRITE-extra-push-one-line                guard=OLD  EXIT=0
+WRITE-extra-push-one-line                guard=NEW  EXIT=1
+WRITE-extra-push-SPLIT-two-lines         guard=OLD  EXIT=0
+WRITE-extra-push-SPLIT-two-lines         guard=NEW  EXIT=1
+WRITE-splice-SPLIT-two-lines             guard=OLD  EXIT=0
+WRITE-splice-SPLIT-two-lines             guard=NEW  EXIT=1
+READ-added-must-stay-GREEN               guard=OLD  EXIT=0
+READ-added-must-stay-GREEN               guard=NEW  EXIT=0
+
+restored sha256:
+5791db626d2ff26864354ad07c747fc1a1d0739d200baef80b3fe9a9bf313dfc  scripts/m2-exit-test.sh
+787b62e2a3f2942eb50ea3d8a3b3c046aa3435cbf3338b5a9753bccad4c3711a  test/m2-exit-test.test.ts
+```
+
+| variant | OLD guard | NEW guard |
+|---|---|---|
+| PRISTINE control | 0 | **0** |
+| ADD a parenthesised expression leg | **0 BLIND** | 1 |
+| ADD an array-literal leg | **0 BLIND** | 1 |
+| ADD a bare-identifier leg | 1 | 1 |
+| ADD a non-spread element | **0 BLIND** | 1 |
+| REMOVE the manifest leg | 1 | 1 |
+| REMOVE the rows leg | 1 | 1 |
+| REMOVE the explicit leg | 1 | 1 |
+| WRITE an extra push, one line | **0 BLIND** | 1 |
+| WRITE an extra push, split across two lines | **0 BLIND** | 1 |
+| WRITE a splice, split across two lines | **0 BLIND** | 1 |
+| a READ added, which must NOT redden | 0 | **0** |
+
+Twelve variants. Six were invisible to the guard that shipped at 9b7752d. The
+last row is the control that matters for the new pin: it is not a blanket trip
+on the identifier appearing, it fires on WRITES.

@@ -1868,15 +1868,47 @@ test("every source spread into the derived expected set is named by this suite, 
   // arrive as a separate write to `expectedIds` somewhere else in the program,
   // and no enumeration of that one literal would ever notice. So every
   // statement that WRITES the binding is pinned too, by its own text.
-  const writes = source
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /(^|[^.\w$])expectedIds\s*(=[^=]|\.push\(|\.splice\(|\.unshift\(|\.pop\(|\.shift\()/.test(line))
-    .sort();
+  //
+  // THE SCAN IS WHITESPACE-INSENSITIVE ON PURPOSE. A line-based version of this
+  // assertion was written first and measured: a write split across two lines
+  // (`expectedIds` on one, `.push(...)` on the next) walked straight past it and
+  // the guard exited 0. A guard that a newline defeats is the same defect one
+  // level up, so every occurrence of the identifier is classified by the
+  // operation that FOLLOWS it, with whitespace and comments skipped.
+  const MUTATORS = ["push", "splice", "unshift", "pop", "shift", "sort", "reverse", "fill", "copyWithin"];
+  const writes: string[] = [];
+  for (const match of source.matchAll(/(^|[^.\w$])expectedIds\b/g)) {
+    let index = (match.index ?? 0) + match[0].length;
+    // skip whitespace and comments before reading the operation
+    for (;;) {
+      const rest = source.slice(index);
+      const ws = /^\s+/.exec(rest);
+      if (ws) {
+        index += ws[0].length;
+        continue;
+      }
+      if (rest.startsWith("//")) {
+        index += rest.indexOf("\n") + 1;
+        continue;
+      }
+      if (rest.startsWith("/*")) {
+        index += rest.indexOf("*/") + 2;
+        continue;
+      }
+      break;
+    }
+    const rest = source.slice(index);
+    const member = /^\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
+    if (member && MUTATORS.includes(member[1] as string)) {
+      writes.push(`.${member[1] as string}`);
+    } else if (/^(\+\+|--)/.test(rest) || /^=[^=]/.test(rest)) {
+      writes.push("=");
+    }
+  }
   assert.deepEqual(
     writes,
-    ["const expectedIds = [];", "expectedIds.push(id);"],
-    "the derived expected set is written by a statement this suite does not know about. A leg " +
+    ["=", ".push"],
+    "the derived expected set is written by an operation this suite does not know about. A leg " +
       "does not have to arrive inside the union's array literal: a second push, a splice or a " +
       "reassignment adds ids that the leg enumeration above cannot see, and the probes above " +
       `would not cover it. Derived from the harness: ${JSON.stringify(writes)}`,
