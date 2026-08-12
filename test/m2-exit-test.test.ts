@@ -2035,13 +2035,19 @@ test("every occurrence of the derived expected set's binding that this suite can
   }
   assert.deepEqual(
     occurrences,
-    ["=", ")"],
+    ["=", ",", ")", ")", ")"],
     `the binding ${BINDING} is used in the harness by an operation this suite cannot prove is a ` +
-      "read. The two pinned occurrences are its DECLARATION (`=`) and one pass as an ARGUMENT to " +
-      "JSON.stringify in a failure message (`)`). Anything else here is a use nobody has looked " +
-      "at: if it writes the set, the derivation's legs no longer justify what is asserted and the " +
-      "probes above do not cover it; if it is a read, add its form to PROVEN_READS above and say " +
-      `in the work history why it is one. Derived from the harness: ${JSON.stringify(occurrences)}`,
+      "read. The five pinned occurrences, in source order, are its DECLARATION (`=`); its pass as " +
+      "the FIRST argument to sameSequence in the leg-union check (`,`); a pass to JSON.stringify " +
+      "in that check's failure message (`)`); its pass as the SECOND argument to sameSequence in " +
+      "the consumption-coverage check (`)`); and a pass to JSON.stringify in THAT check's failure " +
+      "message (`)`). The four argument passes are in fact reads, and they stay pinned rather than " +
+      "allowlisted because an identifier passed as an argument is indistinguishable here from one " +
+      "passed to something that mutates it, and over-strict is the safe direction. Anything else " +
+      "here is a use nobody has looked at: if it writes the set, the derivation's legs no longer " +
+      "justify what is asserted and the probes above do not cover it; if it is a read, add its " +
+      "form to PROVEN_READS above and say in the work history why it is one. Derived from the " +
+      `harness: ${JSON.stringify(occurrences)}`,
   );
 });
 
@@ -2245,6 +2251,243 @@ test("a write that adds an id to the derived expected set is refused at RUN TIME
             `names the failure: ${output}`,
         );
       }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a change to the derived expected set that preserves its value-set is refused, in the derivation and in the loop that consumes it", () => {
+  // THE MECHANISM: A SET-BASED COMPARISON IS BLIND TO MULTIPLICITY. Putting
+  // values in a Set, or comparing a length against a Set's size, discards how
+  // many times each value occurs, so any defect that preserves the value-set
+  // while changing multiplicity is invisible to it. The check this test guards
+  // used to be exactly that shape: `expectedIds.length !== legContributed.size
+  // || expectedIds.some((id) => !legContributed.has(id))`. A write substituting
+  // a DUPLICATE for a dropped id cancels out in both halves ([A, A] has length
+  // two, {A, B} has size two, and both elements are members), so the check
+  // passed while B was never asserted on.
+  //
+  // The mechanism is not confined to this file: `describeDrift` in
+  // scripts/render-agent-rules-gates.mjs:196 compares two blocks by building a
+  // Set of each block's lines, so a DUPLICATED line leaves both sets unchanged.
+  // That is recorded at delivery/verification/render-agent-rules-gates-duplicate-row.md:44
+  // and is tracked separately; it is deliberately not touched here.
+  //
+  // THE FIXTURE IS THE DANGEROUS STATE, not the absent feature. The manifest
+  // declares TWO gates and the bundle carries a record for ONE. GATE_B is
+  // therefore a declared gate that did not run, and the shipped program REJECTS
+  // this bundle, naming it. Every member below makes the program ACCEPT it. The
+  // control's direction is thus reject-to-accept rather than the reverse, which
+  // is what makes "exits 0" here mean "certified a bundle in which a
+  // manifest-declared gate produced no record".
+  //
+  // TWO FAMILIES, TWO CHECKS, ATTRIBUTED SEPARATELY. A nonzero exit is not
+  // enough: the shipped program already exits nonzero on this fixture, for the
+  // honest reason, so exit code alone cannot tell a caught member from an
+  // uncaught one. Each member therefore asserts (a) the program did NOT reach
+  // the success line, (b) the failure names the check that is supposed to catch
+  // it, and (c) the honest finding about GATE_B is ABSENT, which is what says
+  // the member really did stop the gate being asserted on rather than being
+  // caught incidentally by the pre-existing check.
+  //
+  // AND EACH FAMILY CARRIES A DEFANGED CONTROL, run inside this test rather than
+  // asserted in prose: the same member against a program whose new check has
+  // been neutered must reach the success line. Without that row, a member could
+  // be being caught by something else entirely and this test would not know.
+  const root = scratch();
+  const env = cleanEnv(root);
+  try {
+    const progMatch =
+      /cat >"\$\{ASSERT\}" <<'ASSERT_EOF'\n([\s\S]*?)\nASSERT_EOF/.exec(readFileSync(harness, "utf8"));
+    assert.ok(
+      progMatch,
+      "could not extract the assertion program from the harness heredoc; every assertion below " +
+        "would be about nothing, so this is a hard failure rather than a fallback",
+    );
+    const pristine = progMatch[1] as string;
+
+    const GATE_A = "fixture-recorded-gate";
+    const GATE_B = "fixture-declared-but-never-ran";
+    const dir = join(root, "bundle");
+    writeBundle(dir, [{ id: GATE_A, status: "green" }]);
+    const expectPath = join(root, "expect.json");
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(expectPath, JSON.stringify({ label: "multiplicity", gates: [], absent: [] }));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: 1, gates: [{ id: GATE_A }, { id: GATE_B }] }),
+    );
+    const runProgram = (programPath: string): RunResult =>
+      run(
+        process.execPath,
+        [programPath, "--summary", join(dir, "summary.json"), "--evidence", dir,
+          "--expect", expectPath, "--manifest", manifestPath],
+        { cwd: root, env },
+      );
+    // A finding attributed to a gate is printed as "[<id>] ...". The BARE id is
+    // not attribution: it also appears in the success line and in any stack
+    // trace an injected throw produces.
+    const attributed = (output: string): boolean => output.includes(`[${GATE_B}]`);
+
+    const pristinePath = join(root, "m2-assert-pristine.mjs");
+    writeFileSync(pristinePath, pristine);
+    const control = runProgram(pristinePath);
+    const controlOut = control.stdout + control.stderr;
+    assert.notEqual(
+      control.status,
+      0,
+      `the shipped program must REJECT a bundle whose manifest declares ${GATE_B} and which ` +
+        `carries no record for it. If it accepts, this fixture is not the dangerous state and ` +
+        `every member below measures nothing: ${controlOut}`,
+    );
+    assert.ok(
+      attributed(controlOut),
+      `the shipped program's rejection must be ATTRIBUTED to ${GATE_B}, or the fixture is being ` +
+        `rejected for some unrelated reason and no member below is isolating anything: ${controlOut}`,
+    );
+
+    const INSIDE = "  return out;";
+    const LEG_CHECK = "if (!sameSequence(expectedIds, legExpected)) {";
+    const COVERAGE_CHECK = "if (!sameSequence(assertedIds, expectedIds)) {";
+    const AFTER_DERIVATION = "const derivedIds = expectedIds.filter((id) => !explicitById.has(id));";
+    // A truncating and a SUBSTITUTING iterator: structurally different members
+    // of the consumption family, the second being the multiplicity-preserving
+    // one, which is the same shape one level up from the derivation family.
+    const TRUNCATING_ITERATOR =
+      "Array.prototype[Symbol.iterator] = function () { let i = 0; const self = this; " +
+      "return { next: () => (i < self.length - 1 ? { value: self[i++], done: false } : " +
+      "{ value: undefined, done: true }), [Symbol.iterator]() { return this; } }; };";
+    const SUBSTITUTING_ITERATOR =
+      "Array.prototype[Symbol.iterator] = function () { let i = 0; const self = this; " +
+      "return { next: () => (i < self.length ? { value: (i === self.length - 1 ? self[0] : self[i]), " +
+      "done: (i++, false) } : { value: undefined, done: true }), [Symbol.iterator]() { return this; } }; };";
+
+    const families = [
+      {
+        // The set is DERIVED wrong. Caught before the per-gate loop runs.
+        family: "derivation",
+        anchor: INSIDE,
+        // The check whose neutering must let a member through, and what to
+        // neuter it to. Both are exact source, so a check that moved or was
+        // reworded aborts this test rather than silently skipping its control.
+        check: LEG_CHECK,
+        defanged: "if (false && !sameSequence(expectedIds, legExpected)) {",
+        names: /derived expected set is NOT the union of the declared legs/,
+        members: [
+          // The four the delta verification constructed.
+          { name: "closure-pop-then-push-first", inject: "  out.pop(); out.push(out[0]);" },
+          { name: "closure-index-substitute", inject: "  out[1] = out[0];" },
+          { name: "closure-splice-substitute", inject: "  out.splice(1, 1, out[0]);" },
+          { name: "closure-fill", inject: "  out.fill(out[0]);" },
+          // Four it did not, so the fix is measured to generalise beyond the
+          // reported list rather than to handle it. copyWithin and Object.assign
+          // in particular name no mutator this or any earlier instrument listed.
+          { name: "closure-copy-within", inject: "  out.copyWithin(1, 0);" },
+          { name: "closure-unshift-then-pop", inject: "  out.unshift(out[0]); out.pop();" },
+          { name: "closure-object-assign", inject: "  Object.assign(out, [out[0], out[0]]);" },
+          { name: "closure-truncate-then-regrow", inject: "  out.length = 1; out.push(out[0]);" },
+        ],
+      },
+      {
+        // The set is derived RIGHT and then not consumed. The freeze cannot
+        // reach this: the override is on the shared prototype, not on the
+        // frozen instance.
+        family: "consumption",
+        anchor: AFTER_DERIVATION,
+        check: COVERAGE_CHECK,
+        defanged: "if (false && !sameSequence(assertedIds, expectedIds)) {",
+        names: /asserted on a SEQUENCE that is not the derived expected set/,
+        members: [
+          { name: "iterator-drops-last", inject: TRUNCATING_ITERATOR },
+          { name: "iterator-substitutes-last", inject: SUBSTITUTING_ITERATOR },
+        ],
+      },
+    ];
+
+    for (const fam of families) {
+      // THE MUTATOR'S OWN NEGATIVE CONTROLS, both fatal. An anchor or a check
+      // that has moved or been duplicated would produce an unmutated program or
+      // an un-neutered one, and both run green while measuring nothing.
+      const anchorCount = pristine.split(fam.anchor).length - 1;
+      assert.equal(
+        anchorCount,
+        1,
+        `the injection anchor ${JSON.stringify(fam.anchor)} occurs ${String(anchorCount)} times ` +
+          `in the assertion program, not once, so the ${fam.family} members would run an ` +
+          "unmutated program and pass while measuring nothing",
+      );
+      const checkCount = pristine.split(fam.check).length - 1;
+      assert.equal(
+        checkCount,
+        1,
+        `the check ${JSON.stringify(fam.check)} occurs ${String(checkCount)} times in the ` +
+          `assertion program, not once, so the ${fam.family} family's defanged control would ` +
+          "not actually defang anything and would prove the check load-bearing when it is not",
+      );
+
+      for (const member of fam.members) {
+        const mutated = pristine.replace(fam.anchor, `${member.inject}\n${fam.anchor}`);
+        assert.notEqual(
+          mutated,
+          pristine,
+          `member ${member.name} did not change the program, so it measures nothing`,
+        );
+        const programPath = join(root, `m2-assert-${member.name}.mjs`);
+        writeFileSync(programPath, mutated);
+        const result = runProgram(programPath);
+        const output = result.stdout + result.stderr;
+
+        assert.doesNotMatch(
+          output,
+          /: OK\./,
+          `${member.name} reached the success line, so the program CERTIFIED a bundle in which ` +
+            `${GATE_B} is declared by the manifest and produced no record: ${output}`,
+        );
+        assert.notEqual(
+          result.status,
+          0,
+          `${member.name} exited 0 on a bundle the shipped program rejects: ${output}`,
+        );
+        assert.match(
+          output,
+          fam.names,
+          `${member.name} was refused, but not by the ${fam.family} check that is supposed to ` +
+            "catch it. A member caught for the wrong reason is a member this suite is not " +
+            `measuring: ${output}`,
+        );
+        assert.ok(
+          !attributed(output),
+          `${member.name} produced a finding attributed to ${GATE_B}, which means the gate WAS ` +
+            "asserted on after all, so this member never reached the state it exists to " +
+            `witness and its refusal above is the control's refusal, not a new one: ${output}`,
+        );
+      }
+
+      // THE DEFANGED CONTROL. One member of the family against a program whose
+      // new check has been neutered and nothing else changed. It must reach the
+      // success line, which is what attributes every refusal above to that check
+      // rather than to anything else the program does.
+      const first = fam.members[0] as { name: string; inject: string };
+      const neutered = pristine
+        .replace(fam.check, fam.defanged)
+        .replace(fam.anchor, `${first.inject}\n${fam.anchor}`);
+      const neuteredPath = join(root, `m2-assert-defanged-${fam.family}.mjs`);
+      writeFileSync(neuteredPath, neutered);
+      const defangedResult = runProgram(neuteredPath);
+      const defangedOut = defangedResult.stdout + defangedResult.stderr;
+      assert.match(
+        defangedOut,
+        /: OK\./,
+        `with the ${fam.family} check neutered, member ${first.name} did NOT reach the success ` +
+          "line, so something other than that check is refusing it and the assertions above " +
+          `attribute the catch to the wrong place: ${defangedOut}`,
+      );
+      assert.equal(
+        defangedResult.status,
+        0,
+        `with the ${fam.family} check neutered, member ${first.name} still exited nonzero: ${defangedOut}`,
+      );
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

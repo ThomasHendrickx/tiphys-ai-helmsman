@@ -572,16 +572,47 @@ const expectedIds = Object.freeze((() => {
 //        cannot refuse one INSIDE the closure, where the accumulator is still
 //        extensible. This check covers that region and does not care how the
 //        write is spelled either: it recomputes the set from the same three
-//        legs with a Set rather than the loop, and requires the two to agree.
-//        An id that no leg contributed, an id the table declared absent, a
-//        duplicate, or a dropped id all break the equality. What it CANNOT see
-//        is a change to the LEGS themselves: a fourth leg added to the union
-//        enters both computations and they agree. That is the element pin's
-//        job, in test/m2-exit-test.test.ts, and the two are complementary
-//        rather than redundant.
-const legContributed = new Set(
-  [...manifestLeg, ...rowsLeg, ...tableLeg].filter((id) => usableId(id) && !absentIds.has(id)),
-);
+//        legs a different way and requires the two to agree, ELEMENT BY
+//        ELEMENT. An id that no leg contributed, an id the table declared
+//        absent, a duplicate, a substitution, a reordering or a dropped id all
+//        break the equality. What it CANNOT see is a change to the LEGS
+//        themselves: a fourth leg added to the union enters both computations
+//        and they agree. That is the element pin's job, in
+//        test/m2-exit-test.test.ts, and the two are complementary rather than
+//        redundant.
+//
+//        AN EQUALITY OVER A SEQUENCE IS POSITIONAL, NEVER SET MEMBERSHIP, AND
+//        THAT IS THE WHOLE OF THIS ROUND. The previous version of this check
+//        compared `expectedIds.length` against a Set's `.size` and then asked
+//        whether every element was a MEMBER of that Set. A Set discards
+//        multiplicity, so a write that substitutes a DUPLICATE for a dropped id
+//        cancels out exactly: [A, A] has length 2, the set {A, B} has size 2,
+//        and both elements are members, so the check passed while B was never
+//        asserted on. Eight such writes were measured on the previous program
+//        exiting 0 and certifying a bundle in which a manifest-declared gate
+//        produced NO RECORD, which is this branch's entire subject. The
+//        mechanism generalises past this file: a Set, a `.size`, or a length
+//        plus a membership test is blind to how many times each value occurs,
+//        so any defect that preserves the value-set while changing multiplicity
+//        is invisible to it.
+//
+//        sameSequence is therefore positional. It uses `.length` and indexing
+//        and nothing else: no `.every`, no iteration, so no prototype method
+//        stands between the check and the two arrays it compares.
+const sameSequence = (a, b) => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+const legExpected = [...manifestLeg, ...rowsLeg, ...tableLeg]
+  .filter((id) => usableId(id) && !absentIds.has(id))
+  .filter((id, at, all) => all.indexOf(id) === at);
 //
 //        IT IS TERMINAL, and that is deliberate rather than stylistic. Every
 //        other check here records a finding and carries on, because each one is
@@ -593,11 +624,13 @@ const legContributed = new Set(
 //        round is about; the program stops instead. Nothing has recorded a
 //        finding at this point, so nothing is lost by exiting here, exactly as
 //        the manifest and expectations read failures above do.
-if (expectedIds.length !== legContributed.size || expectedIds.some((id) => !legContributed.has(id))) {
+if (!sameSequence(expectedIds, legExpected)) {
   console.error(`m2-assert (${label}): FAIL: the derived expected set is NOT the union of the ` +
-    "declared legs minus the ids the table declares absent. Something added to it or removed " +
-    "from it, so the set this run would assert on is not the set its legs justify. " +
-    `derived=${JSON.stringify(expectedIds)} legs=${JSON.stringify([...legContributed])}`);
+    "declared legs minus the ids the table declares absent. Something added to it, removed from " +
+    "it, duplicated one of its ids over another or reordered it, so the set this run would " +
+    "assert on is not the set its legs justify. The comparison is element by element, so a " +
+    "substitution that keeps the count and the value-set unchanged is caught here too. " +
+    `derived=${JSON.stringify(expectedIds)} legs=${JSON.stringify(legExpected)}`);
   process.exit(1);
 }
 const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
@@ -659,7 +692,24 @@ function allowed(spec) {
 }
 
 // -- 1, 2, 3. One record per expected gate, the expected status, required green.
+//
+//       WHAT THE LOOP ACTUALLY CONSUMED IS RECORDED AND CHECKED BELOW. Sealing
+//       the set says what it CONTAINS; it says nothing about what this loop
+//       READS out of it. `for ... of` goes through Array.prototype[Symbol.iterator],
+//       which is a shared, writable prototype slot, and an override there was
+//       measured making this program exit 0 while a manifest-declared gate with
+//       no record was never asserted on: the set was correct, sealed, and simply
+//       not consumed. The freeze cannot help, because the override is on the
+//       PROTOTYPE and not on the frozen instance.
+//
+//       So every id the loop actually handled is appended here and compared with
+//       the derived set afterwards, positionally. The check does not care HOW the
+//       consumption was curtailed: an overridden iterator, a substituting one, an
+//       injected `break`, a `continue` before the first statement all show up the
+//       same way, as a run whose asserted sequence is not the sequence it derived.
+const assertedIds = [];
 for (const id of expectedIds) {
+  assertedIds.push(id);
   const explicit = explicitById.get(id);
   const spec = explicit ?? { id, expect: "green", required: true };
   const why = explicit ? "" : DEFAULT_SPEC_WHY;
@@ -715,6 +765,18 @@ for (const id of expectedIds) {
   if (row.status === "green" && !(Number(row.units) > 0)) {
     fail(spec.id, `is green with units ${String(row.units)}; a green with no units examined is vacuous (M2-C-2)`);
   }
+}
+// -- 3b. THE LOOP ABOVE CONSUMED THE WHOLE DERIVED SET, IN ORDER. Same
+//        comparator as the leg check, for the same reason: a count plus a
+//        membership test would accept a consumption that visited one id twice
+//        and another never.
+if (!sameSequence(assertedIds, expectedIds)) {
+  fail(null, "this run asserted on a SEQUENCE that is not the derived expected set. Every id the " +
+    "per-gate loop handled was recorded as it went, and the recording does not match what the " +
+    "derivation produced, so at least one gate in the derived set was never asserted on or was " +
+    "asserted on in place of another. A gate that is declared, derived, and then not consumed is " +
+    "as unasserted as one that was never derived at all. " +
+    `asserted=${JSON.stringify(assertedIds)} derived=${JSON.stringify(expectedIds)}`);
 }
 
 // -- 4. Every not-applicable record names its reason AND the evidence of its
@@ -850,8 +912,14 @@ if (typeof summary.manifestSha256 === "string" && summary.manifestSha256 !== "")
 
 if (failures.length > 0) {
   console.error(`m2-assert (${label}): FAIL with ${failures.length} finding(s):`);
-  for (const f of failures) {
-    console.error(`  - ${f}`);
+  // INDEXED, NOT ITERATED, and measured rather than stylistic. This is the one
+  // loop whose curtailment turns a CORRECT rejection into an unexplained one:
+  // under a truncating Array.prototype[Symbol.iterator] the program printed
+  // "FAIL with 1 finding(s):" and then listed none, so the run that caught the
+  // override could not say what it had caught. The count and the listing now
+  // come from the same reads.
+  for (let i = 0; i < failures.length; i += 1) {
+    console.error(`  - ${failures[i]}`);
   }
   process.exit(1);
 }
