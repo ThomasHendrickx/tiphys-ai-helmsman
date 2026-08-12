@@ -1,0 +1,24 @@
+{
+  "id": "role-brief-set-derived-not-listed",
+  "behavior": "role-brief-set-derived-not-listed",
+  "tests": [
+    "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "test/roles.test.ts",
+      "find": "  .filter((name) => name.endsWith(\".md\"))",
+      "replace": "  .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/roles.test.ts",
+      "find": "  .filter((name) => readFileSync(join(rolesDir, name), \"utf8\").split(\"\\n\")[0]?.trim() === \"---\")",
+      "replace": "  .filter(() => true)"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

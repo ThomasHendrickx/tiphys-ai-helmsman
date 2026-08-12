@@ -1,0 +1,24 @@
+{
+  "id": "role-brief-reading-entry-one-canonical-form",
+  "behavior": "role-brief-reading-entry-one-canonical-form",
+  "tests": [
+    "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "new Set(reading.map(canonicalReadingEntry))",
+      "replace": "new Set(reading)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (!declared.has(wanted)) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

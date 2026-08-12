@@ -590,5 +590,7 @@
   "finding-required-strings-are-not-empty": "a finding set whose required strings are present and empty is rejected, because required alone is satisfied by the empty string",
   "investigator-report-requires-repro": "an investigator report with a verdict is rejected without a repro and with a hollow one, and accepted with a real one",
   "role-brief-output-contract-declared": "every authoring brief puts the schema of every output type it declares on its mandated-reading list",
-  "role-brief-output-contract-refused": "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes"
+  "role-brief-output-contract-refused": "validate --type role-brief refuses a brief that does not read the schema of an output it declares, in two structurally different shapes",
+  "role-brief-set-derived-not-listed": "the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does",
+  "role-brief-reading-entry-one-canonical-form": "validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it"
 }

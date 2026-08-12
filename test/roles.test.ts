@@ -15,7 +15,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -45,8 +52,28 @@ const validateModule = (await import(
   new URL("../src/commands/validate.ts", import.meta.url).href
 )) as { TYPE_TABLE: ReadonlyMap<string, string> };
 
-/** The three briefs this phase ships. */
-const AUTHORING_ROLES = ["investigator", "plan-writer", "adversarial-plan-reviewer"];
+/**
+ * THE BRIEF SET, READ OUT OF `roles/` AT RUN TIME (fix round 2, D-1).
+ *
+ * It was a three-element literal until a delta verifier falsified the comment
+ * that stood here: a fourth brief carrying exactly the output-contract defect
+ * was refused by `tiphys validate` with exit 1 while this suite stayed green,
+ * because every assertion below iterated a list this file wrote down. A brief
+ * added later was NOT covered, whatever the comment said.
+ *
+ * A file in `roles/` is a brief when it OPENS with a `---` frontmatter fence,
+ * which is the same rule src/roles.ts:91 applies and the rule that correctly
+ * excludes `README.md` and `_shared-dispatch-contract.md`. The test applies it
+ * with its own two lines rather than by calling `splitFrontmatter`: if the
+ * function under test were broken, deriving the input set from it would empty
+ * the set, and every loop below would pass vacuously. The guard against that
+ * emptiness is a test of its own, immediately after this.
+ */
+const AUTHORING_ROLES = readdirSync(rolesDir)
+  .filter((name) => name.endsWith(".md"))
+  .filter((name) => readFileSync(join(rolesDir, name), "utf8").split("\n")[0]?.trim() === "---")
+  .map((name) => name.slice(0, -".md".length))
+  .sort();
 
 /**
  * The reviewer's settled visibility, SC-001 and plan v1 D-14. One string,
@@ -93,6 +120,47 @@ function frontmatterOf(text: string): Record<string, unknown> {
 /* ------------------------------------------------------------------ */
 /* Criterion 1: the frontmatter contract                                */
 /* ------------------------------------------------------------------ */
+
+/**
+ * THE GUARD ON THE DERIVATION ITSELF (fix round 2, D-1).
+ *
+ * Deriving the brief set from disk fixes the silent-miss defect and buys a new
+ * one if it is left unguarded: a filter that matched nothing would make every
+ * loop in this file iterate zero times, and a suite of vacuous loops is green.
+ * That is the red-witness rule one level up, the same shape CLAUDE.md records
+ * for the watchdog that tested existence instead of freshness.
+ *
+ * So the partition is asserted against an INDEPENDENT oracle, the shipped
+ * validator: every file this test calls a brief validates, and every file it
+ * excludes is refused by `tiphys validate --type role-brief` naming the
+ * frontmatter fence. A brief silently dropped from the derived set reddens
+ * here, because the validator would accept it.
+ */
+test("the brief set every assertion in this file runs over is derived from roles/, is not empty, and partitions the directory the way the shipped validator does", () => {
+  assert.ok(
+    AUTHORING_ROLES.length > 0,
+    "the derived brief set is empty, so every assertion over it would be vacuous",
+  );
+  for (const role of AUTHORING_ROLES) {
+    assert.ok(
+      rolesModule.ROLE_IDS.includes(role),
+      `roles/${role}.md was derived as a brief and ${role} is not a role id`,
+    );
+  }
+
+  const excluded = readdirSync(rolesDir)
+    .filter((name) => name.endsWith(".md"))
+    .filter((name) => !AUTHORING_ROLES.includes(name.slice(0, -".md".length)));
+  for (const name of excluded) {
+    const refused = runCli(["validate", "--type", "role-brief", join(rolesDir, name)]);
+    assert.notEqual(
+      refused.status,
+      0,
+      `roles/${name} is excluded from the derived brief set and the validator accepts it as a brief`,
+    );
+    assert.match(refused.stdout + refused.stderr, /frontmatter fence/);
+  }
+});
 
 test("tiphys validate --type role-brief exits 0 for every shipped authoring brief and nonzero when a required frontmatter field is removed", () => {
   for (const role of AUTHORING_ROLES) {
@@ -152,11 +220,18 @@ test("every shipped authoring brief declares the model tier its role-model-confi
 /* ------------------------------------------------------------------ */
 
 /**
- * DERIVED AT RUN TIME FROM `TYPE_TABLE` AND FROM EACH BRIEF, never from a
- * list written here. A brief added later, or an output type registered later,
- * is covered by this assertion without it being edited, which is what the
+ * DERIVED AT RUN TIME ON BOTH AXES: the brief set comes from `roles/` and the
+ * type-to-schema map is `TYPE_TABLE` imported from the validator. Neither is a
+ * list written here.
+ *
+ * THE COMMENT THAT STOOD HERE CLAIMED THIS AND WAS FALSE ON THE FIRST AXIS,
+ * and it was falsified by execution rather than by reading: the assertion
+ * iterated three role names this file had written down, so a fourth brief
+ * carrying exactly this defect was refused by `tiphys validate` with exit 1
+ * while the suite stayed green. Both axes are derived now, which is what the
  * append-only-registry discipline requires of a test over a growing set: it
- * asserts BY NAME and never by count, and it names nothing this file chose.
+ * asserts BY NAME and never by count. The claim is worth no more than the
+ * derivation behind it, so the derivation is guarded by its own test above.
  */
 test("every authoring brief puts the schema of every output type it declares on its mandated-reading list", () => {
   for (const role of AUTHORING_ROLES) {
@@ -211,6 +286,50 @@ test("validate --type role-brief refuses a brief that does not read the schema o
     assert.match(partial.stdout, /schemas\/finding\.schema\.json/);
 
     /* RESTORED, and green in both directions. */
+    writeFileSync(path, original);
+    assert.equal(runCli(["validate", "--type", "role-brief", path]).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * FIX ROUND 2, D-3: the two commands hold ONE opinion about one entry.
+ *
+ * `validate --type role-brief` compared reading entries as raw strings while
+ * `brief compose` resolved them with `join`, so `./schemas/report.schema.json`
+ * composed and was refused. Both arms are needed and they redden under
+ * different mutations: the first fails if the canonical form is dropped, the
+ * second fails if the check is defanged into always-true, which is the lazy
+ * way to make the first arm pass.
+ */
+test("validate --type role-brief accepts an equivalent spelling of the schema its output is governed by, and still refuses a brief that omits it", () => {
+  const dir = stageRoles();
+  try {
+    const path = join(dir, "roles", "investigator.md");
+    const original = readFileSync(path, "utf8");
+
+    for (const spelling of [
+      "./schemas/report.schema.json",
+      "schemas/../schemas/report.schema.json",
+      "/schemas/report.schema.json",
+    ]) {
+      writeFileSync(path, original.replace("  - schemas/report.schema.json\n", `  - ${spelling}\n`));
+      const green = runCli(["validate", "--type", "role-brief", path]);
+      assert.equal(green.status, 0, `${spelling}: ${green.stdout}${green.stderr}`);
+    }
+
+    /* THE OTHER ARM. Normalising must not become "any string will do": a
+       reading list naming a DIFFERENT schema, in the same equivalent spelling,
+       is still a brief that never tells its agent where its own contract is. */
+    writeFileSync(
+      path,
+      original.replace("  - schemas/report.schema.json\n", "  - ./schemas/finding.schema.json\n"),
+    );
+    const red = runCli(["validate", "--type", "role-brief", path]);
+    assert.notEqual(red.status, 0, "a brief reading another role's schema validated");
+    assert.match(red.stdout, /schemas\/report\.schema\.json/);
+
     writeFileSync(path, original);
     assert.equal(runCli(["validate", "--type", "role-brief", path]).status, 0);
   } finally {

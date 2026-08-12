@@ -41,7 +41,7 @@
 
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, posix as posixPath } from "node:path";
 import { classifyEntry, readRegularFileIfPresent } from "./task.ts";
 import type { Diagnostic } from "./validate.ts";
 
@@ -266,13 +266,40 @@ export function clauseRoundTripDiagnostics(
  * role NEEDS"); the output contract is the part of that which IS computable,
  * and the rest of the row stands.
  */
+/**
+ * THE ONE CANONICAL FORM OF A MANDATED-READING ENTRY (fix round 2, D-3).
+ *
+ * Entries are kernel-root-relative by definition
+ * (schemas/role-brief.schema.json:60 says resolution is "against the kernel
+ * root"), so `schemas/report.schema.json`, `./schemas/report.schema.json` and
+ * `schemas/../schemas/report.schema.json` are three spellings of one document.
+ *
+ * IT EXISTS BECAUSE TWO COMMANDS WERE COMPARING THE SAME ENTRY DIFFERENTLY.
+ * `outputContractDiagnostics` tested raw string membership while
+ * `resolveMandatedReading` resolved with `join`, which normalises; so a brief
+ * writing `./schemas/report.schema.json` COMPOSED cleanly and was REFUSED by
+ * `tiphys validate --type role-brief`. That divergence is fail-safe (the
+ * refusal is the strict side) and it is still the shape this round's own
+ * argument against injecting the entry rejected: two commands holding two
+ * opinions about one property. Both now ask this function.
+ *
+ * A LEADING `/` IS STRIPPED rather than treated as an absolute path, because
+ * `join(root, "/schemas/x")` already resolves to `<root>/schemas/x`: stripping
+ * makes the comparison agree with the resolution that was always happening,
+ * instead of introducing a form the two commands read differently. This
+ * function changes what is COMPARED; it changes nothing about what is OPENED.
+ */
+export function canonicalReadingEntry(entry: string): string {
+  return posixPath.normalize(entry).replace(/^\/+/, "");
+}
+
 export function outputContractDiagnostics(
   outputs: readonly string[],
   reading: readonly string[],
   schemaFileForType: (type: string) => string | undefined,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const declared = new Set(reading);
+  const declared = new Set(reading.map(canonicalReadingEntry));
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index] as string;
     const file = schemaFileForType(output);
@@ -343,7 +370,14 @@ export function resolveMandatedReading(
 ): ReadingResolution {
   const resolved: string[] = [];
   for (const declared of reading) {
-    const path = join(root, declared);
+    /* THE SAME CANONICAL FORM THE OUTPUT-CONTRACT CHECK COMPARES (D-3). It is
+       a no-op for resolution, because `join` already normalises and already
+       treats a leading `/` as root-relative; asking the shared function here
+       is what makes "one opinion, two commands" a property of the code rather
+       than a claim in a comment. The AUTHORED string is what is reported and
+       what `brief compose` renders, so the brief on disk stays readable as
+       written. */
+    const path = join(root, canonicalReadingEntry(declared));
     const entry = classifyEntry(path);
     if (entry.kind === "absent" || entry.kind === "dangling") {
       return {
