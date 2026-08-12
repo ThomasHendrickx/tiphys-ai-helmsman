@@ -665,6 +665,18 @@ Each of these bit someone once. Forward them to every implementer.
    copy out of tree first; there is no safe narrow form.
 9. `git remote set-url` resolves relative paths against the repository, not
    the current working directory. Use absolute paths in test staging.
+   **SAME TRAP, ONE COMMAND ALONG, AND IT IS NOT A TEST-ONLY CONCERN:
+   `git -C <repo> worktree add <relative-path>` ALSO resolves against the
+   repository.** Measured 2026-08-12: `cd $SCRATCH && git -C /home/user/... \
+   worktree add --detach ppass origin/main` created the worktree at the
+   REPOSITORY ROOT, not under `$SCRATCH`, and the following `cd ppass` failed
+   with "No such file or directory" from a shell that was standing in the wrong
+   place to see it. The failure surfaced later as an untracked directory in
+   `git status` on the repository, which is the shape most likely to get a
+   scratch worktree committed by accident. `git worktree remove --force` is the
+   cleanup; `git worktree list` is how you find one. The general rule for this
+   family: **`-C` changes where git resolves, not where your shell is**, so
+   every path handed to a `-C` invocation should be absolute.
 10. Concurrent git operations against one clone contend on ref locks, and
     the real transient message names a ref, not a lock file. Never derive a
     retry signature from hand-written examples; capture real stderr under
