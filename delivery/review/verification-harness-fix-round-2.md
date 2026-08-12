@@ -285,11 +285,33 @@ Two things sharpen this rather than soften it:
    and 'not reachable today' is not a property a later edit preserves". Case C
    has the same standing and is not covered.
 
-MITIGATION, stated so the severity is not overstated: through the SHIPPED
-harness an empty manifest yields a bundle with no rows, and then check B fires.
-The exposure is a bundle and a manifest that do not come from the same run, and
-any future consumer of the program. I did not construct an end-to-end shipped
-path that reaches case C, and I am not claiming one exists.
+I first wrote a MITIGATION here saying the shipped harness is protected because
+an empty manifest yields a bundle with no rows and then check B fires. **I then
+measured it and it is FALSE, so it is recorded as falsified rather than
+deleted.** Both shipped expectation tables are non-empty shell literals, so the
+expected set is non-empty whatever the manifest says, and check B can never
+fire on either bundle. Driving the SHIPPED harness's own `--print-expect`
+against a real `gates.manifest.json` and then against the same file with
+`gates` emptied, control first:
+
+```
+=== CONTROL: main table with the REAL manifest ===   EXIT=0
+gates: 6 absent: ["credential-token","citations","scope","clause-map","red-witness"]
+=== DEGRADED (gates:[]): main table ===              EXIT=0
+gates: 6 absent: []
+```
+
+The main bundle's DERIVED absent list collapses from five ids to ZERO, exit 0,
+no diagnostic. Section 8's five "expected to be ABSENT from this bundle"
+assertions disappear with it, and neither new check fires: the array is an
+array, and six explicit rows keep the expected set non-empty. This is the
+SHIPPED path, not a synthetic consumer, and it answers the round's own FR2.9
+item 6 ("witnessed against hand-built degenerate inputs, not against a real
+degraded manifest") in the direction the round did not test.
+
+It is NOT a regression: `fdb3120` behaves the same way. It is an incompleteness
+in the fix for CR-V-2, whose whole stated purpose is that the manifest leg must
+not empty silently.
 
 ### DV-4 (MEDIUM): the fourth-leg guard is blind to a leg spelled as an expression
 
