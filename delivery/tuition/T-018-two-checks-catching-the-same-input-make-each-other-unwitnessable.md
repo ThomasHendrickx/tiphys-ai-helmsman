@@ -2,13 +2,17 @@
 
 - date: 2026-08-12
 - author: orchestrator
-- discovered by: the M3-P6 fix round 2 implementer, while refusing the fix its
-  brief instructed
-- status: PROVISIONAL. This entry is written from evidence the orchestrator
-  holds directly, named below, because the durability rule says a failure mode
-  is recorded when discovered and not at the end. The implementer's work
-  history is the PRIMARY account and is not yet handed back. Where the two
-  disagree, the work history wins and this entry is corrected, not defended.
+- discovered by: the M3-P6 fix round 2 implementer, by ATTEMPTING the fix its
+  brief instructed, watching it stay red, and then reading the witness runner
+- status: CORRECTED 2026-08-12, after the implementer handed back. The first
+  version of this entry said the round "refused the fix it was instructed to
+  make". **That overstated the implementer and is wrong**, and the implementer
+  asked for the credit to be placed accurately rather than accept it. It tried
+  the instructed fix FIRST. The correction is applied below and the original
+  framing is described rather than deleted, because an entry that quietly
+  rewrites its own account is worth less than one that shows the change.
+  The remaining PROVISIONAL caveat: this is still the orchestrator's account,
+  and delivery/work-history/m3-p6.md is the primary one.
 
 ## The mechanism, stated first
 
@@ -49,8 +53,27 @@ m2-assert (PR bundle): FAIL with 1 finding(s):
     nonzero naming the gate, and --write returns it to 0))
 ```
 
-Read literally that says "write a test". Read for the mechanism it says
-something else. The witness member is a mutation collapsing `describeDrift`'s
+Read literally that says "write a test". **The round tried exactly that first,
+and it stayed red.** The failed attempt is in the work history at its entry
+R2-18, kept rather than tidied away, and it is what made the rest possible.
+
+**THE DECISIVE FACT, WHICH NO AMOUNT OF READING THE GATE MESSAGE WOULD GIVE
+YOU, is in the witness runner** at src/witness/run.ts:886:
+
+```
+red: exitCode !== 0 && failed.length === tests.length,
+```
+
+A witness member counts as red only when EVERY named test fails. The witness
+here names two tests. So adding a THIRD named test makes the member STRICTLY
+HARDER to redden, never easier: the new test would have to fail as well, on top
+of the one that was already stuck green. The orchestrator's instruction was
+therefore not merely aimed at the wrong thing, it was **counterproductive**, and
+following it to completion could never have produced a green gate.
+
+That is why the round's report of "no named test reaches this arm" has to be
+read as a statement about REACHABILITY and not about test COUNT. Read for the
+mechanism it says The witness member is a mutation collapsing `describeDrift`'s
 result to the empty list. Earlier in the same round a row-and-field check had
 been added in FRONT of that call as belt and braces. That check caught every
 input the drift comparison caught. So with the mutation applied, the earlier
@@ -143,7 +166,22 @@ The right brief would have been: "the witness reports this arm unreachable.
 Establish WHY it is unreachable before writing anything, and if the cause is
 that another check shadows it, the remedy is not a test."
 
-An implementer that follows a wrong instruction faithfully produces a
-plausible, green, useless change. This one did not, and said why. That is the
-outcome the process wants and it should be cheap to repeat, so it is recorded
-here as the expected behaviour rather than as an exception.
+**And the corrected account is BETTER for the process than the version it
+replaces, which is why the correction matters and is not pedantry.** The first
+version said the implementer refused a wrong instruction on insight. That is a
+story about an unusually good agent, and it is not reproducible. What actually
+happened is reproducible: it followed the instruction, the instruction did not
+work, and instead of trying harder at the instructed thing it went and read the
+code that decides what red means. The generalisable rule is the last step, and
+it is available to anyone.
+
+The failure mode being avoided is the one where an agent, told to make a gate
+green, keeps adding to the thing it was told to add to. Here that path was not
+merely unproductive, it was moving away: each additional named test raises the
+bar that `failed.length === tests.length` sets. **When two rounds of the
+obvious fix leave a gate red, the next move is to read the gate's own
+definition of its verdict, not to do more of the obvious fix.**
+
+Credit is placed as the implementer asked. It requested this correction itself,
+having been given the more flattering version, which is the behaviour a work
+history is supposed to have and is recorded here as such.

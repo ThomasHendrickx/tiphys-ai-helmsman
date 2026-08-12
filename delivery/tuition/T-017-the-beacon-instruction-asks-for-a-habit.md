@@ -110,3 +110,79 @@ they were not, the same four agents would have batched.
   from the M3-P6 death rather than observed here.
 - **It says nothing about why agents batch.** No cause was established. That
   writing up feels like a closing activity is a guess, not a finding.
+
+## POSTSCRIPT, 2026-08-12: the instruction told the agent to destroy evidence
+
+The entry above is about agents not following the beacon instruction. This
+postscript is the opposite and it is worse: **an agent followed it exactly, and
+following it exactly is what caused the harm.** The defect is in the
+instruction, which is the orchestrator's, not in the agent.
+
+The dispatch briefs this session carried both of these, as separate binding
+items:
+
+- "Append after each command whose output you will cite, BEFORE running the
+  next one." Then: "COMMIT AND PUSH as you go."
+- "PUSH, then LET the `gates` workflow COMPLETE before reporting."
+
+**A push cancels the in-flight run on the previous head.** So an agent obeying
+the first item on every cited command cancels CI on every cited command, and
+the second item becomes unsatisfiable. The two are in direct conflict and
+nothing in the brief says which wins.
+
+Measured on the M3-P6 fix round: SIX heads pushed in about two hours,
+`64e1ba8`, `6c1b010`, `5e33361`, `4dbf0c4`, `b4f0f08`, `4619bf8`. One completed
+run, a failure on the first. Then cancelled, cancelled, cancelled, cancelled.
+For two hours there was no completed gate evidence for the branch on the
+critical path of the milestone, and the orchestrator read the cancellations as
+the agent being careless rather than as the brief being contradictory.
+
+**The resolution, which the implementer found and stated better than the brief
+did: COMMITTING and PUSHING are separable, and only one of them is the beacon.**
+
+- Durability, which is what T-002 and the beacon rule are actually protecting,
+  is satisfied by a LOCAL COMMIT plus the file's mtime. A dead agent's worktree
+  is recoverable while the container lives, and a local commit survives
+  everything short of the reclaim.
+- PUSHING is a different act with a different cost. It publishes, and it
+  cancels CI.
+
+So the corrected instruction, and it is what future briefs must carry:
+
+> Append to your work history and COMMIT LOCALLY after each command whose
+> output you will cite. PUSH when a cancelled run would cost nothing: before
+> you have triggered a run, or after the in-flight one has already given you
+> its answer. Never push while a run you intend to rely on is in flight.
+
+**Why this is filed as tuition rather than fixed silently.** The general shape
+is one this project has now paid for repeatedly: two rules that are each
+correct in isolation, given together, with no statement of precedence, to
+someone who will be judged on both. The agent cannot resolve it and will guess.
+When it guesses wrong the orchestrator sees a compliance problem, which is the
+wrong diagnosis and produces a nagging message instead of a brief fix.
+
+The tell was available and was missed for two hours: the agent was doing
+EXACTLY what it had been told, promptly and visibly, and the outcome was still
+bad. When a diligent agent's diligence is producing the damage, suspect the
+instruction before the agent.
+
+### What this postscript does NOT cover
+
+- **It does not establish that the conflict caused the earlier quiet periods.**
+  The same round went sixteen minutes without appending at one point, and that
+  is the ORIGINAL T-017 failure, not this one. Two different defects in one
+  round; only the second is the instruction's fault.
+- **No brief has been rewritten at DISPATCH yet.** The corrected wording above
+  has not been carried by any dispatch from the start. The harness fix round in
+  flight was dispatched with the OLD wording; the correction was sent to it
+  mid-round as a superseding message, before it had triggered a run it would
+  need, so that round is covered but not from its brief. The place this has to
+  land permanently is the implementer role brief and the dispatch skill, and
+  neither has been changed. Until they are, this postscript is a description of
+  a defect and not a fix.
+- **It does not measure what the cancellations cost in wall clock.** Five
+  cancelled runs at roughly seven minutes each is an upper bound on CI time,
+  not on delivery time, since the agent worked throughout.
+- **The push-cancels-run behaviour was not verified from the workflow
+  configuration.** It is inferred from five observed cancellations coinciding
+  with five pushes. That inference is strong and it is still an inference.
