@@ -5,7 +5,47 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12
+- as of: 2026-08-12, and the bullets below this one are OLDER. Where they
+  disagree with this one, this one is later.
+- **M3-P4 IS MERGED. THE STOP RECORDED FURTHER DOWN THIS FILE IS DISCHARGED,
+  NOT LIFTED.** It merged as `a7b7b07` (PR #81) after five rounds and three
+  distinct review contracts, which is what DR-0016 requires in place of waiting
+  for the owner. Its closeout evidence is `52fe657` (PR #95), which is `main`
+  as this bullet is written. Both CI arms are success on that head, per workflow
+  rather than in aggregate: `gates` and `macOS smoke`. Every merge in this
+  session has had its post-merge push run verified BY STEP, so there is no
+  push-run debt outstanding under T-009.
+- **M3-P5 IS UNDER A DUAL REVIEW THAT DOES NOT MERGE IT.** PR #96 at `48829d9`.
+  Contract A (acceptance criteria, executed) returned APPROVE with 10 of 10
+  criteria met and zero findings. Contract B-prime (the brief-follower audit,
+  new to this phase) returned CHANGES REQUIRED with one HIGH and one MEDIUM.
+  The arbitration rules that they do NOT conflict, because contract A's boundary
+  section names the exact defect class contract B-prime found and records that it
+  did not attempt it. The HIGH is that the composed investigator brief is 251
+  lines and names `schemas/report.schema.json` zero times, which is the contract
+  its only declared output must satisfy; I verified that myself before ruling
+  rather than relaying it. DR-0012 condition 2 therefore forbids the merge.
+  Fix round 1 is in flight, briefed to repair the MECHANISM (whether the other
+  two briefs carry the same hole) rather than the named instance. The paperwork
+  is PR #98 and the ruling is `delivery/review/arbitration-m3-p5.md` on that
+  branch.
+- **M3-P6 IS PRE-READ BUT STILL BLOCKED.** delivery/plan/m3-p6-dispatch-read.md:1
+  discharges the criterion-level read in both directions. Read direction: no new
+  blocker, every cross-phase read is an M3-P5 deliverable already named in the
+  phase's `blocked-by`. Write direction: one candidate, refuted by measurement.
+  One thing no gate can catch travels with the dispatch instead: the shared
+  dispatch contract is on M3-P6's declaration and the plan says of the same file
+  that changing it is an escalation, so the declaration is the permissive one.
+- **A gap in the `citations` gate's applicability, measured and NOT repaired.**
+  Its `citationRequired` set covers `delivery/plan/`, `delivery/verification/`,
+  `delivery/decisions/`, `delivery/tuition/`, `delivery/requirements/` and
+  `delivery/STATE.md`, and NOT `delivery/review/`. A pull request carrying only
+  review documents therefore gets `not-applicable` with the precondition
+  `citations-diff-touches-documents evaluated and unmet`, which is honest and is
+  not a false green, but it means arbitrations and clean-room reports, the
+  documents that cite most heavily, have no citation gate. Observed on PR #98.
+  Recorded here rather than fixed because the registry is M3-P2's artifact and a
+  change to it belongs to a phase, not to a paperwork branch.
 - PR #89, the controlled macOS portability pilot, merged to main as
   `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
   commit each passed Linux `gates` and macOS smoke. The owner-authorized
@@ -370,9 +410,16 @@ modelled and bound five phases to.
 | Round-10 criteria review | MERGED #76 at `0c6ca35` |
 | M3-P3 merge arbitration | MERGED #78 at `80925bc` |
 | STATE currency, assurance-modes correction, M3-P5 pre-check | MERGED #79 at `ba9f35e` |
-| M3-P4 report and work-history contracts | ROUND 1 REVIEWED, both CHANGES REQUIRED; FIX ROUND 2 in flight; PR #81 open |
+| M3-P4 report and work-history contracts | **MERGED #81** at `a7b7b07`, after five rounds and three review contracts |
 | M3-P4 round-1 reviews and arbitration | MERGED #82 at `90ebedf` |
-| M3-P5 to M3-P10 | not dispatched |
+| M3-P4 round-3 verification, stop arbitration, M3 conflict pre-pass | MERGED #87 at `c8b742f` |
+| M3-P4 round-4 dual review, arbitration, M3-P5 held | MERGED #93 at `ff89e02` |
+| M3 cross-phase dependency screen | MERGED #94 at `7d55392` |
+| M3-P4 closeout evidence and the M3-P5 declaration amendment | MERGED #95 at `52fe657` |
+| M3-P5 authoring role briefs | **DOES NOT MERGE**, fix round 1 in flight; PR #96 open at `48829d9` |
+| M3-P5 dual review and arbitration | PR #98 open |
+| M3-P6 pre-dispatch criterion read | this branch, PR not yet opened |
+| M3-P6 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
 
