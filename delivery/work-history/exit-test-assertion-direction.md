@@ -4620,3 +4620,66 @@ restored sha256:
 Twelve variants. Six were invisible to the guard that shipped at 9b7752d. The
 last row is the control that matters for the new pin: it is not a blanket trip
 on the identifier appearing, it fires on WRITES.
+
+## FR3.11 What THIS round's derivation did NOT cover (fix-round contract item 3)
+
+This section is the reviewer's FIRST check (CLAUDE.md:326). A search whose scope
+is wrong returns an empty result that reads exactly like an absence of defects.
+
+1. **The enumeration is scoped to the files this branch changes.** FR3.2a takes
+   its file list from `git diff --name-only origin/main...HEAD` filtered to
+   `.sh`, `.ts` and `.yml`, which is four files. A member of the mechanism
+   living in a file this branch does not touch is outside it. FR3.9 part A is a
+   PARTIAL closure of that gap for `src/` and `bin/`, and it is a survey of
+   twelve sites read by eye, not twelve constructed inputs.
+2. **The leg scan reads ONE array literal, located by ONE anchor, in ONE file.**
+   A second union feeding a different binding in a different program would not
+   appear. The anchor assertion makes a MISSING anchor loud, not a SECOND union
+   elsewhere visible.
+3. **A leg that GROWS is not covered, only a leg that ARRIVES.** Writing
+   `const rows = [...summary.gates, ...somethingElse]` adds a source of expected
+   ids without changing the set of legs, and every probe and both new
+   assertions stay green. This is the closest uncovered neighbour of DV-4 and I
+   am naming it rather than leaving it to be found.
+4. **TRUNCATION is not covered, only EMPTINESS.** A manifest carrying three of
+   its eleven gates degrades the leg by eight ids and passes every check here.
+   No check inside this program can catch that, because the program holds no
+   independent record of what the manifest ought to contain. The per-leg
+   contribution now printed on the success line makes it VISIBLE to a reader of
+   the evidence; it does not make it fail.
+5. **No `gates` registry run of mine covers the whole registry.** I ran the
+   subset recorded in FR3.12 locally. Everything else on this head is CI's word,
+   not mine.
+6. **The `red-witness` gate DOES NOT RUN on this pull request.** Its
+   precondition is `diff-touches src/ bin/` and this diff is `scripts/`,
+   `test/` and `delivery/`. So no gate evaluates whether the witnesses above can
+   fail, and the evidence that they can is MY OWN LAB WORK in FR3.3, FR3.4,
+   FR3.6, FR3.7 and FR3.10, not a gate result. A green CI on this branch does
+   not mean the witnesses were checked.
+7. **The `push` arm has not run and cannot run on a pull request.** Both new
+   guards are dist-free and PASS in the no-dist arm (FR3.8b), which is the
+   strongest statement available before merge, and it is not the same as having
+   watched the post-merge run.
+8. **The probe and mutation matrices were run on node v26.6.0 only.** The suite
+   was run on both toolchains; the matrices were not.
+9. **I did not re-verify rounds 1 and 2 beyond what the delta verification
+   checked.** FR2.10 and FR2.13 to FR2.18 are unverified by me, as they were by
+   the verifier.
+10. **I did not construct a route by which a shipped `gates.manifest.json`
+    becomes degraded in production.** FR3.3 and FR3.4 measure the consequence if
+    it does. This is the same exclusion the delta verification declared at its
+    item 6 and I have not closed it either.
+11. **`.github/workflows/gates.yml` was not examined.** It is unchanged in this
+    round's delta.
+12. **The 3370 lines of this work history preceding FR3.0 are not re-verified.**
+    I read FR2.0 to FR2.9 and the delta verification in full; the rest I did not
+    re-measure.
+
+## FR3.12 Disposition of DV-1 to DV-4
+
+| id | severity | disposition |
+|---|---|---|
+| DV-3 | MEDIUM | **CLOSED.** The condition now tests the leg's contribution, not the type of its input. Two structurally different degenerate manifests that CERTIFIED a bundle with a declared gate that did not run are now rejected, on both arms (FR3.3, FR3.4a), and so is the derived-absent-list collapse through the harness's own pipeline (FR3.4b). Red-witnessed against the code as it shipped (FR3.6a). |
+| DV-4 | MEDIUM | **CLOSED, and widened.** The guard enumerates the union's top-level elements structurally, so all three spellings the old regex missed redden; and a SECOND assertion pins every write to `expectedIds`, which covers a leg arriving outside the array literal entirely. Six variants that the shipped guard passed now fail (FR3.10). The registered behaviour is left as written because it is now true of that union, with its bounds stated at FR3.11 items 2 and 3. |
+| DV-1 | LOW | **CLOSED by restatement, backed by my own measurement.** The guard's message no longer credits probe-3 with witnessing `manifestIds`. It says probe-2 is that leg's only witness and probe-3 witnesses the disjunction of the manifest and rows legs, which FR3.7's matrix establishes on both arms. |
+| DV-2 | observation | **Left alone deliberately.** Round 2's prose is looser than its evidence; the property that matters holds. FR3.7's matrix is the accurate statement, recorded rather than substituted for a previous round's account of itself. |
