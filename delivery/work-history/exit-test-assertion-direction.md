@@ -4688,3 +4688,120 @@ is wrong returns an empty result that reads exactly like an absence of defects.
 | DV-4 | MEDIUM | **CLOSED, and widened.** The guard enumerates the union's top-level elements structurally, so all three spellings the old regex missed redden; and a SECOND assertion pins every write to `expectedIds`, which covers a leg arriving outside the array literal entirely. Six variants that the shipped guard passed now fail (FR3.10). The registered behaviour is left as written because it is now true of that union, with its bounds stated at FR3.11 items 2 and 3. |
 | DV-1 | LOW | **CLOSED by restatement, backed by my own measurement.** The guard's message no longer credits probe-3 with witnessing `manifestIds`. It says probe-2 is that leg's only witness and probe-3 witnesses the disjunction of the manifest and rows legs, which FR3.7's matrix establishes on both arms. |
 | DV-2 | observation | **Left alone deliberately.** Round 2's prose is looser than its evidence; the property that matters holds. FR3.7's matrix is the accurate statement, recorded rather than substituted for a previous round's account of itself. |
+
+## FR3.13 The registry gates run locally, with one RED and one ERROR reported
+
+`node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
+--evidence <scratch> --base origin/main --head HEAD`, node v26.6.0:
+
+```
+gates: declared 12 applicable 6 verdict 6 green 5 red 1 not-applicable 5 error 1 vacuous 0
+gates: 1 gate(s) reported error: scope
+
+green                8 manifest-self-check
+green              115 coverage
+green                7 credential-scrub
+not-applicable       0 credential-token
+red                596 suite
+not-applicable       0 citations
+error                0 scope
+not-applicable       0 deploy
+not-applicable       0 migrations
+green               34 clause-map
+not-applicable       0 red-witness
+green               17 agent-rules-drift
+```
+
+The RED and the ERROR are both reported rather than re-run until they are
+convenient.
+
+**`suite` RED, and it is the real-clock flake.** The two findings were
+`a resident watcher keeps running and backs off with growing beacon gaps` and
+`a resident watcher is silent on heartbeats unless bounded`, both in
+`test/watcher.test.ts`, neither touched by this round. The run happened at load
+average 2.89 immediately after four full suites. Re-run alone:
+
+```
+suite gate EXIT=0
+status: green units: 596
+detail: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 596 test(s)
+from 36 file(s) (pass 596, fail 0, skipped 0, todo 0, did-not-run 0); discovered 36 file(s)
+walking test for .test.ts; 600 behavior(s) resolve; merge base bb8f6564cce6
+```
+
+600 behaviours resolve, which is the check that both registry rows below map to
+a reported test name. As with FR3.8c I am stating what I measured: two runs,
+one red under load and one green, with the failures in a real-clock test this
+round does not touch. I did not force the failure to recur, so the flake
+attribution is a reading, not a demonstration.
+
+**`scope` ERROR is the branch being a non-phase branch**, and it is correct
+behaviour. Without `--phase` it errors "gate scope requires --phase"; run the
+way the workflow runs it (.github/workflows/gates.yml:132) it is
+not-applicable with `branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$`.
+That is the naming rule CLAUDE.md:467 states: only a phase's own implementation
+branch may match that pattern, and this harness branch deliberately does not.
+
+**`red-witness` not-applicable, from the gate's own record rather than from
+the registry text:** `precondition red-witness-diff evaluated and unmet: no
+changed path under src/, bin/`. Confirmed independently of the brief.
+
+**`citations` not-applicable**, and the reason matters for this document:
+`no changed path under delivery/plan/, delivery/verification/,
+delivery/decisions/, delivery/tuition/, delivery/requirements/,
+delivery/STATE.md`. `delivery/work-history/` is NOT on that list, so **no gate
+checks the citations in this file**. Every one of the twenty `path:line` tokens
+in the FR3 sections was therefore opened by hand in this worktree and its target
+line printed; eleven of the twenty were wrong on the first pass, all for the
+reason CLAUDE.md records, reading line numbers out of a checkout on a different
+head. They were corrected in commit `09238b7` and re-verified.
+
+## FR3.14 The pre-submission checks
+
+**Authored bytes, with the tree STAGED** (the script exits 2 WITHOUT CHECKING if
+the tree differs from the index, which reads exactly like a pass):
+
+```
+$ git add -A && node scripts/check-authored-bytes.mjs
+EXIT=0
+```
+
+And a negative control, because an exit 0 from a check that inspected nothing is
+worthless:
+
+```
+$ printf 'x\xc3\xa9y\n' > delivery/work-history/FR3-nonascii-probe.md && git add ...
+delivery/work-history/FR3-nonascii-probe.md:1: non-ASCII byte 0xc3
+delivery/work-history/FR3-nonascii-probe.md:2: non-ASCII byte 0xa9
+rc-with-probe=1
+rc-after-removal=0
+```
+
+**The claim grep, both forms, over the FR3 sections.** The line-based form
+returned eight hits and the wrap-insensitive form (`tr '\n' ' '` first) returned
+the same eight, which is the point of running both: this prose is hard-wrapped
+and a phrase split across a line break is invisible to the first.
+
+The alternation carries `cannot be` but NOT `cannot fire`, `cannot reach`,
+`cannot see` or `can never`, so those were checked by eye with a third pattern.
+Twenty-two hits, of which nineteen are the shipped check's own message quoted
+inside captured output. That sentence, "a manifest that declares no gates cannot
+certify a bundle", was FALSE when the delta verification measured it and is now
+TRUE, which is what FR3.4a establishes; it is quoted, not asserted.
+
+The three that were mine:
+
+| hit | settled how |
+|---|---|
+| "the members the old guard could not see" | FR3.10's matrix, six variants |
+| "so a new leg cannot arrive unprobed" | the test's own title, quoted; bounds declared at FR3.11 items 2 and 3 |
+| "the form of the write cannot hide it" | **RESTATED.** Four write shapes are measured, which is not a proof over all forms, and the text now says so |
+
+One more was restated rather than defended: a sentence claiming a reader "needs
+a source of truth this program does not have" to catch manifest truncation. I
+did not settle whether these three inputs can distinguish truncation from a
+smaller manifest, so it is now written as the open question it is.
+
+**No `git checkout --` was run in this round at any point.** Every mutation was
+an anchored single replacement applied in place and restored from a saved
+pristine copy, with the restored sha256 printed in the same capture.
