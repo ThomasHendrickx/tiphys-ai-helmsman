@@ -220,6 +220,16 @@ gates:
       `if:`, because brief drift is a property of the default branch and not only
       of a pull request (T-009). Both arms have a witness; they are not the same
       witness, and that is recorded here rather than left to be discovered.
+      AND WHICH HALF IS THE TEETH, measured rather than assumed, because the
+      sentence above says the runner EXECUTES this as a gate and a reader could
+      take that to mean a red one fails the pull request. It does not on its own:
+      scripts/m2-exit-test.sh's PR expectation table lists eleven gate ids and
+      this is not one of them, and its assertion program compares only gates that
+      table names, plus global zero-error and zero-vacuous checks over every row
+      with no global zero-red. So an `error` here is caught by the harness and a
+      plain `red` is caught by the workflow step, which carries no `if:` and
+      therefore fails the job on either event. Adding a table row is an edit to
+      that harness, which is on no M3 phase's declaration.
     command: [node, scripts/check-brief-drift.mjs, --check]
     unitLabel: generated brief gate rows compared
     applicability: required

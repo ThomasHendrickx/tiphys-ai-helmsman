@@ -37,6 +37,16 @@
  * `if:`. Both arms have a witness, which is what T-009 requires; they do not
  * have the SAME witness, and that is why this paragraph exists.
  *
+ * AND WHICH HALF FAILS THE BUILD, because "the runner executes it as a gate"
+ * and "a red one fails the pull request" are two different claims and only the
+ * first is true of the harness. `scripts/m2-exit-test.sh`'s PR expectation table
+ * does not list this gate, and its assertion program compares only the gates
+ * that table names; its two GLOBAL checks are zero-error and zero-vacuous over
+ * every row, with no global zero-red. So an `error` from here is caught by the
+ * harness, and a plain `red` is caught by the workflow step, which carries no
+ * `if:` and fails the job on either event. Do not delete that step on the
+ * grounds that the gate covers it.
+ *
  * MODES
  *   (default)   print the rendered block to stdout
  *   --check     compare the block in the brief against the rendering; exit

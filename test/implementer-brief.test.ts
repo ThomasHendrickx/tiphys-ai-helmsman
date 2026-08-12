@@ -504,9 +504,19 @@ test("the seed mechanism index validates, and its mechanism keys are a superset 
  */
 test("the claim-grep clause carries the CLAUDE.md grep command verbatim, and a paraphrase reddens", () => {
   const rules = readFileSync(join(repoRoot, "CLAUDE.md"), "utf8");
-  const pattern = /grep -nEi '[^']+'/.exec(rules);
-  assert.ok(pattern !== null, "CLAUDE.md carries no claim grep to compare against");
-  const command = pattern[0];
+  /* EXACTLY ONE, asserted rather than assumed. Taking the FIRST match silently
+     picks a different command the day the agent-rules file grows a second
+     `-nEi` grep, and this assertion would then still pass while comparing the
+     clause against something else entirely: a check whose subject can change
+     under it without saying so. Measured at the time of writing: one. */
+  const matches = [...rules.matchAll(/grep -nEi '[^']+'/g)].map((match) => match[0]);
+  assert.equal(
+    matches.length,
+    1,
+    `CLAUDE.md carries ${String(matches.length)} -nEi grep command(s); this test compares the ` +
+      "claim-grep clause against THE claim grep, so a second one makes the subject ambiguous",
+  );
+  const command = matches[0] as string;
 
   const clause = clauseSection(readFileSync(briefPath, "utf8"), "claim-grep");
   assert.ok(
