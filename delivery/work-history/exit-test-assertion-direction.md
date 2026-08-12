@@ -4391,3 +4391,116 @@ prose ("each leg reddens a DIFFERENT named assertion") is looser than its
 evidence, and the property that matters holds. The matrix above is the accurate
 statement of what is true, and it is recorded here rather than by rewriting a
 previous round's prose to look better than it was.
+
+## FR3.8 The complete suite sentence: toolchain, build state, INVOCATION and skipped
+
+Four arms, all at the round-3 head with this file, all measured in the shell
+that ran the command with `node --version` checked there.
+
+| toolchain | build state | invocation | tests | pass | SKIPPED | exit |
+|---|---|---|---|---|---|---|
+| node v26.6.0 (scratch prefix) | `dist/` built | `npm test` | 596 | 596 | **0** | 0 |
+| node v26.6.0 | `dist/` built | bare `node --test` from the repository root | **598** | 598 | **0** | 0 |
+| node v26.6.0 | `dist/` REMOVED | `npm test` | 596 | 586 | **10** | 0 |
+| node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 596 | 594 | **2** | 0 |
+
+596 is what CI and the `suite` gate mean. The bare-invocation +2 are the tracked
+`sandbox/test/greet.test.js` fixture CLAUDE.md:728 records. The default
+toolchain's 2 are the floor-gated doctor tests, named rather than inferred:
+
+```
+ok 153 - doctor in a healthy fleet exits 0 # SKIP local Node v22.22.2 is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)
+ok 157 - doctor with gh absent exits 0 under the generic profile # SKIP local Node v22.22.2 is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)
+```
+
+### FR3.8a The no-dist arm skips TEN, and CLAUDE.md:646 still says nine
+
+All ten named from the run itself:
+
+```
+- the compiled entry resolves its schema documents and behaves identically to the source entry (0.348294ms)
+- npm pack output contains both schema documents (0.083687ms)
+- the workflow's gate bundle step runs the gate runner and is able to fail (0.183465ms)
+- a throw escaping the runner is error with a summary, never the red exit code (0.086071ms)
+- a run releases only the claim it holds, and writes nothing after releasing (0.183287ms)
+- --self-test rejects a vacuous-green fixture and a required-not-applicable fixture, naming each, and exits nonzero (0.50977ms)
+- the assertion code accepts a diff-scoped gate that is not-applicable with an evaluated precondition, and rejects one without (DR-0018) (0.386729ms)
+- the PR bundle requires scope green: the harness assertion code rejects a scope not-applicable and accepts a scope green (0.359169ms)
+- the PR bundle accepts a scope not-applicable on a non-phase run and resolves scope differently for phase vs non-phase runs (M2R-026) (1.466376ms)
+- a RED gate is rejected on BOTH bundles under three structurally different shapes, and the derived expected set is separately witnessed on BOTH bundles by probes it alone rejects (0.804933ms)
+```
+
+The tenth is `a RED gate is rejected on BOTH bundles ...`, a fifth dist-gated
+test in `test/m2-exit-test.test.ts` that does not exist on `origin/main`. That
+is the delta verification's correction, re-measured here rather than inherited.
+It is a consequence of this branch, not a defect in it, and warning 12 is worth
+an edit when the branch merges. I have NOT edited CLAUDE.md: it is outside this
+round's files and an edit to it here would be an unannounced scope widening.
+
+### FR3.8b BOTH new guards run on BOTH CI events
+
+Neither guard is dist-gated, so both PASS in the arm where the five dist-gated
+tests skip. That is the T-009 property (CLAUDE.md:440): a witness on one arm and
+nothing on the other is the exact shape that broke this repository before.
+
+```
++ the assertion program applies M2-C-2 to ITSELF and refuses to certify a bundle it asserted zero gates on, in structurally different degenerate shapes
++ every source spread into the derived expected set is named by this suite, so a new leg cannot arrive unprobed
+```
+
+### FR3.8c ONE failure, reported rather than averaged away
+
+The FIRST no-dist run exited 1 with one failure, and it is recorded here because
+a run that failed is evidence and deleting it would be the fabrication this
+project keeps paying for:
+
+```
+i tests 596
+i suites 0
+i pass 585
+i fail 1
+i cancelled 0
+i skipped 10
+i todo 0
+i duration_ms 221217.253961
+
+x failing tests:
+
+test at test/citation-gate.test.ts:596:1
+x citing a path that is a git TREE (directory), not a blob, at the reviewed revision is error naming the object type and returns (M2-C-6's mechanism restated for git objects) (20758.506297ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'SIGTERM' !== null
+  
+      at TestContext.<anonymous> (file:///tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/test/citation-gate.test.ts:612:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+```
+
+The failing test is `test/citation-gate.test.ts:596`, which this round does not
+touch: the diff is `scripts/m2-exit-test.sh`, `test/m2-exit-test.test.ts`,
+`test/behaviors.json` and this file. The signal is SIGTERM at 20.7 seconds
+against a 15 second CLI timeout declared at test/citation-gate.test.ts:219, and
+the machine's load average was 3.78 after two full suites back to back
+(`uptime` was read before and after each run rather than assumed). Re-run alone
+at load 1.92, that file reported 41 tests, 41 pass, 0 skipped, exit 0. The
+no-dist arm re-run whole then gave 596/586/10 skipped, exit 0, the row in the
+table above.
+
+That is consistent with the contention family this branch's round 2 recorded at
+FR2.15, and it is a statement about what I measured, not a diagnosis I proved: I
+did not force the failure to recur, so "contention" here is the best-supported
+reading of two runs and not a demonstrated cause.
+
+TRANSLITERATION NOTE. Node's test reporter prints non-ASCII glyphs that the
+repository's authored-bytes check forbids, and hand-writing the output instead
+is the fabrication CLAUDE.md:140 forbids outright. So the captures above are
+transliterated and the substitution is declared: U+2714 rendered `+` (2
+occurrences), U+2139 rendered `i` (8), U+2716 rendered `x` (2), U+FE63
+rendered `-` (10). Nothing else in any captured output was changed.
