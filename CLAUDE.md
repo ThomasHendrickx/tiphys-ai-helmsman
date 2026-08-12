@@ -402,7 +402,7 @@ A stated stall rule is not sufficient. It addresses attention, and attention is
 what a busy session does not have. This project has recorded twice that a rule
 depending on memory does not survive; the answer both times was a mechanism.
 
-**Two rules, both mechanical, binding on every dispatch:**
+**THREE rules, all mechanical, binding on every dispatch:**
 
 1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
    artifact within the first minutes and appends as it works. The file's mtime
@@ -412,6 +412,28 @@ depending on memory does not survive; the answer both times was a mechanism.
    watches the newest mtime under the agent's working directory and reports
    stale after a threshold. It must test FRESHNESS, never existence and never
    completion.
+3. **THE WATCHDOG ITSELF EXPIRES, AND RE-ARMING IT IS PART OF THE RULE.**
+   Measured 2026-08-12: a monitor requested with `persistent: true` and a
+   3600000ms timeout was created with a **1800000ms** timeout regardless, and
+   died at thirty minutes while its agent was still running. The tool reports
+   the timeout it actually used in its own start message, and it is not always
+   the one asked for; read that number rather than the one you passed.
+   A watchdog that has expired cannot go red, which is the same failure as one
+   watching the wrong place, and it is silent in the same way. Treat the
+   "[Monitor timed out]" notice as a REQUIRED ACTION, not an FYI, and re-arm in
+   the turn it arrives. This is the third variant of "cannot go red" this
+   project has hit, after including the orchestrator's own worktrees in the
+   watch set and after excluding the agent's.
+   **AND THE NOTICE DOES NOT ALWAYS ARRIVE, WHICH THIS RULE AS FIRST WRITTEN DID
+   NOT COVER.** Measured the same day, a few hours after the sentence above was
+   committed: a CI-completion monitor expired and produced NO timeout notice at
+   all. It was noticed only because its stream of events had stopped, which is
+   the weakest detection available, because **an expired monitor is
+   indistinguishable from one watching a quiet system.** Reacting to a notice is
+   therefore not sufficient; monitor LIFETIME has to be tracked. The cheap form
+   is to treat any monitor older than its reported timeout as expired by default
+   and re-arm it without waiting for evidence, since re-arming a live monitor
+   costs one restart and trusting a dead one costs the thing it was watching.
 
 The second rule has its own recorded failure: the first watchdog written after
 this incident tested whether the report file EXISTED, so it fired two minutes
@@ -430,9 +452,26 @@ killed it three-quarters through its work.
 
 Answer these three IN WRITING in the dispatch turn, before arming anything:
 
-1. **Where does THIS agent write?** Not the last one. Read its brief: if it runs
-   gates it writes evidence outside the tree; if it clones it writes nowhere
-   until the clone lands. Enumerate the paths and watch ALL of them.
+1. **Where does THIS agent write? MEASURE IT, DO NOT PREDICT IT.** An earlier
+   version of this line said "read its brief", and that is structurally
+   unreliable: agents create working directories that no brief names, because
+   the directories did not exist when the brief was written. Measured
+   2026-08-12, BOTH watchdogs armed that afternoon watched a subset, and both
+   read a busy agent as possibly dead, one for twenty-three minutes. The better
+   the agent behaves the surer this is: a delta verifier built its own mutation
+   lab precisely so it would not touch the tree under review, which is correct
+   practice and invisible to any prediction.
+
+   ```
+   find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
+   ```
+
+   Every directory the agent has made for itself appears at the top by recency.
+   Run it BEFORE arming and AGAIN at every stale reading, because an agent
+   starting a new kind of work has just made a new place to write. Watch the
+   UNION of what appears, plus `/tmp` scratch used by gate runs, which still do
+   write evidence outside the tree. A watchdog pointed at one of an agent's
+   several paths is not weak, it is FALSE: it reports quiet at full speed.
 2. **What is the baseline before its first write?** DISPATCH TIME, never the
    inherited mtime of whatever the previous agent left, or the watchdog fires
    instantly on a healthy agent. On a RE-ARM the baseline is the newest existing
@@ -744,6 +783,29 @@ Each of these bit someone once. Forward them to every implementer.
     repository has now paid three times for an unexplained suite-count
     difference, and the third time the reviewer refused to average a two-test gap
     and found the cause instead.
+13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
+    fallen behind it reads as though the branch DELETES things.** Measured
+    2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported
+    `CLAUDE.md | +2 -35`, showing the branch removing a whole binding rule
+    (T-008's third) and a standing-warning extension, both of which had been
+    added to `main` after the branch was cut. Nothing was being deleted. A
+    two-dot diff compares two TREES, so anything `main` gained and the branch
+    never saw appears as a deletion by the branch.
+    The alarming reading nearly bought a wrong action, which would have been to
+    "restore" those lines onto the branch and thereby create the conflict that
+    did not exist. **Ask git for the MERGE RESULT instead, and inspect it:**
+
+    ```
+    T=$(git merge-tree --write-tree origin/main origin/<branch>)
+    git cat-file -p "$T:CLAUDE.md" | grep -c '<the text you fear losing>'
+    ```
+
+    That produced a merged `CLAUDE.md` carrying BOTH sides: the branch's new
+    gate row and every rule `main` had gained meanwhile. `merge-tree` exit 0
+    already said the merge was clean; the diff was the misleading artefact, and
+    the fix was to read the thing that answers the question rather than the
+    thing that was easy to run. Use `git diff main...branch`, three dots, when
+    you want the branch's own changes since the merge base.
 
 ## The orchestrator does not decide when it is finished (binding)
 
