@@ -4972,3 +4972,41 @@ Until that is resolved, **no `pull_request` run can be created for any head of
 this branch**, which is why three pushes (`402c534`, `e5b7bfe`, `de2d806`)
 produced no run while the same workflow ran for two other branches in the same
 minutes.
+
+## FR4.0 Fix round 4: fresh implementer, the subset-condition mechanism
+
+I did not write rounds 1, 2 or 3. I was dispatched as a fresh implementer against
+head 6fd51cb (round 3's 0475d8b plus a merge of main), to close the round-3 delta
+verification findings in delivery/verification/harness-round3-delta.md:1 and, more
+importantly, to fix the MECHANISM those findings are three instances of rather
+than the three spellings the verifier happened to construct.
+
+This section is my beacon under the T-008 dispatch contract: it was created before
+I had any results and appended to as the round proceeded. Everything below it was
+written in the order the work happened.
+
+Toolchain for every measurement in this section unless a line says otherwise: node
+v26.6.0 from the scratch prefix, checked with node --version in the shell that ran
+the command.
+
+### FR4.1 The mechanism, named before anything is edited
+
+The fix-round contract (CLAUDE.md:301) requires the MECHANISM, not the finding.
+The mechanism here was named by round 3's own verifier and then instantiated by
+round 3's own new code:
+
+**A check's CONDITION recognises a syntactic or typed SUBSET of the class its
+MESSAGE quantifies over, so members outside that subset pass in silence.**
+
+Instances already paid for on this branch:
+
+| instance | message quantifies over | condition recognises | escaped |
+|---|---|---|---|
+| DV-4 | every element of the union | `...IDENTIFIER` spellings | spread of a call, split lines |
+| DV-3 | a manifest that declares no gates | `!Array.isArray(gates)` | empty array, idless entries |
+| DV3-F1 | every operation that WRITES the binding | a member-NAME allowlist | index write, alias, `.apply` |
+
+The third was introduced by the round that named the first two. That is the
+signature of a mechanism that is not being fixed: each round widens the subset by
+the members the last reviewer constructed, and the next reviewer constructs
+another. Work in progress below.
