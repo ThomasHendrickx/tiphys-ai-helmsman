@@ -197,3 +197,43 @@ and it is now supported by five failures instead of six instances of one.
   on a false signal. The cost was attention and one near miss.
 - **It does not establish that a generic guard is achievable**, only that five
   bespoke ones failed in five different ways in one day.
+
+## Third postscript: the class-4 rule was written and then broken within the hour
+
+The second postscript named class 4, a finished agent's watchdog silently
+re-targeting onto a DIFFERENT LIVE AGENT, and stated the remedy in its own
+words: **"Stop a watchdog when its agent completes."**
+
+That postscript was committed at roughly 11:15. At roughly 11:55 the harness
+implementer's watchdog, still running after its agent had completed, latched
+onto a reviewer's worktree and reported `wt=CRH-head` under the implementer's
+label. Same class, same session, same orchestrator, about forty minutes after
+writing the rule down.
+
+**Nothing about the rule was wrong. It simply has no trigger.** "Stop a watchdog
+when its agent completes" is a habit: it depends on the operator remembering, at
+the moment a completion notification arrives, that a background process
+elsewhere is now watching nothing. The completion notification says nothing
+about watchdogs, and the turn that handles it is busy doing the thing the
+completion unblocked.
+
+That is precisely the finding of
+delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:1, arriving
+from the other direction. T-017 is about an instruction given to agents; this is
+the same defect in an instruction the orchestrator wrote for itself, and it
+failed faster.
+
+**The per-action form, which is what T-017 says actually works:** the stop is not
+a thing to remember later, it is PART OF handling the completion. Concretely,
+when an agent-completion notification arrives, the same turn that reads the
+result stops that agent's watchdog, before dispatching whatever comes next. Not
+"remember to stop watchdogs"; "handling a completion includes stopping its
+watchdog".
+
+**What this postscript does NOT claim.** It does not claim the per-action form
+will hold either. T-017 says the same thing about its own rewording and declines
+to predict, and the honest position here is identical: this is a fact about
+which wording names a moment, not a prediction that naming a moment is enough.
+The only mechanical version is a guard whose lifetime is bound to its agent's,
+which is a property the kernel's watcher could have and a hand-written bash loop
+cannot.
