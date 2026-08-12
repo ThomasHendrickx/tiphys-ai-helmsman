@@ -6,11 +6,50 @@ runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
 - as of: 2026-08-12 evening, NEWEST BLOCK. Everything below is OLDER.
-- **THE BLOCKER IS SINGULAR AND HAS NOT MOVED: M3-P6 is finished and
-  merge-ready, and it waits on the exit-test harness clearing FIX ROUND 3.**
-  `main` is at `3d0fa5a`. M3 is 5 of 10 merged. If you read one line of this
-  file, read this one: nothing else is in M3-P6's way, and dispatching more
-  work does not shorten this path.
+- **READ THIS FIRST: THE BLOCKED HARNESS CODE IS ON `main`, AND THE
+  ORCHESTRATOR PUT IT THERE.** PR #117 was opened to land one verification
+  document. It carried the rounds 1-2 harness fix with it, because its branch was
+  cut from the harness branch rather than from `main`, and the merge commit I
+  wrote says "No source or test changes". That sentence is false. `main` and the
+  end of round 2 (`9b7752d`) are byte-identical across `scripts/m2-exit-test.sh`
+  (sha256 prefix `4b607dd9`), `test/m2-exit-test.test.ts`, `test/behaviors.json`,
+  `.github/workflows/gates.yml` and `test/gate-registry.test.ts`. **So DV-3 and
+  DV-4, the two MEDIUM findings that blocked the merge, are live on `main`.**
+  Recorded in full at
+  delivery/tuition/T-019-a-verification-branch-carried-the-code-it-was-verifying.md:1.
+  Both are LATENT rather than active, and the bound is stated as measured rather
+  than as a guarantee: DV-3 has TWO demonstrated members, an empty gate list and
+  entries carrying no usable id, both degenerate, while the shipped manifest
+  carries eleven ordinary gates; nobody has established that the class has only
+  those two. DV-4 falsifies a registered behaviour and miscompiles nothing.
+  `main` CI is green and genuinely asserting.
+- **NOTHING CAUGHT IT, WHICH IS THE PART THAT MATTERS.** The `scope` gate does
+  not apply to a non-phase branch, CI was green on both arms, and both post-merge
+  push runs were read BY STEP and were green. Every check this repository has was
+  satisfied by a merge that landed blocked code, because no check compares a pull
+  request's DESCRIPTION to its DIFF. The mechanical answer, before any merge:
+  `git diff --stat $(git merge-base origin/main FETCH_HEAD)..FETCH_HEAD`, and if
+  the file list does not match the stated subject, stop.
+- **CONSEQUENCE, AND IT CUTS THE OTHER WAY: M3-P6 WAS NOT BLOCKED ON THE HARNESS
+  AFTER THAT MERGE, AND THIS FILE KEPT SAYING IT WAS.** Measured against `main`
+  at `9781212`, M3-P6 has exactly ONE conflict, `test/behaviors.json`, which is
+  the append-only registry resolved as a union by the standing rule at
+  CLAUDE.md:198. M3 is 5 of 10 merged.
+- **PR #109 IS CONFLICTED AND THEREFORE GETS NO CI AT ALL.** `mergeable_state`
+  is `dirty`, and **GitHub creates no `pull_request` run for a conflicted pull
+  request**, so no `gates` run has ever completed on ANY round-3 head. Confirmed
+  by `total_count: 0` for the head sha on both the runs and check-runs endpoints,
+  while the same workflow ran normally for two other branches in the same
+  minutes. The pull request still displays the green from `9b7752d`, which is a
+  worse version of the T-009 shape: not a stale ARM, a stale HEAD with no run at
+  all. Round 3 diagnosed this independently and recorded it on the branch.
+- **ROUND 3 IS HANDED BACK at `0475d8b`**, 18 commits, closing DV-3 (widened: it
+  found a SECOND member, entries present but carrying no usable id, that the
+  round-2 verifier missed), DV-4 (widened: six variants were invisible to the
+  shipped guard), and DV-1 by restatement. Its delta verification is in flight
+  and has been re-targeted onto `0475d8b`. The resolution path for the conflict
+  is measured rather than proposed: `git diff 9b7752d..de2d806` over the four
+  files applies to current `main` with `git apply --check` exit 0.
 - **THE HARNESS MERGE IS BLOCKED ON TWO MEDIUM FINDINGS THAT ROUND 2 ITSELF
   INTRODUCED**, found by the independent delta verification and arbitrated at
   delivery/review/arbitration-harness-round2-and-delta.md:7. DV-3 is the serious
