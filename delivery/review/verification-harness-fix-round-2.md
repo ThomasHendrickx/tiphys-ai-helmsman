@@ -51,7 +51,7 @@ $ git show 9b7752d:scripts/m2-exit-test.sh | sha256sum
 My own working copy at HEAD hashes to `4b607dd9...` and the test file to
 `5bb732f77ce3e0a3a9665e59eec3f70be55e26eec9d093297e07d8c53ae2cb19`, which are
 the two pristine snapshot hashes the round records at
-delivery/work-history/exit-test-assertion-direction.md:2554. Independently
+delivery/work-history/exit-test-assertion-direction.md:2547. Independently
 reproduced, so the round's snapshots are the bytes on the branch.
 
 ## 4. CENTRAL CLAIM 1: does `probe-4-explicit-table-leg` discriminate?
@@ -235,7 +235,7 @@ witnesses when removing probe-2 would leave it with none. This is the
 
 Round 1 already labelled a similar mis-credit ("these are NOT witnesses for the
 derived expected set, and the assertion names the check they do witness so they
-cannot be miscredited again", test/m2-exit-test.test.ts:1530). The same
+cannot be miscredited again", test/m2-exit-test.test.ts:1531). The same
 discipline was not applied to probe-3.
 
 ### DV-2 (observation, not a defect): the round's FR2.4 claim 3 is looser than its evidence
@@ -456,10 +456,10 @@ exit 0 and `git status --porcelain` empty afterwards unless stated.
 | node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 596 | 594 | **2** | 0 |
 
 596 is the number CI and the `suite` gate mean. The bare-invocation `+2` is the
-tracked `sandbox/test/greet.js` fixture CLAUDE.md:684 records. The default
-toolchain's 2 skips are the floor-gated `doctor` tests, per CLAUDE.md:668.
+tracked `sandbox/test/greet.js` fixture CLAUDE.md:728 records. The default
+toolchain's 2 skips are the floor-gated `doctor` tests, per CLAUDE.md:712.
 
-The no-dist arm reports **10** skipped, not the **9** CLAUDE.md:653 records. The
+The no-dist arm reports **10** skipped, not the **9** CLAUDE.md:697 records. The
 extra one is named rather than inferred: `a RED gate is rejected on BOTH bundles
 under three structurally different shapes ...`, which is a fifth dist-gated test
 in `test/m2-exit-test.test.ts` and does not exist on `origin/main`
