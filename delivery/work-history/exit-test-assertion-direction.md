@@ -1054,7 +1054,19 @@ it is one that ran.
 
 The red is real, not injected: a scratch `git worktree` at the same HEAD, with ONE
 rendered row deleted from `CLAUDE.md`'s generated gate block, so the gate's own
-script fails on its own terms. My own tree was never modified.
+script fails on its own terms. My own tree was not modified, and that is a
+captured fact rather than an intention: the drift edit was applied to a path
+under the scratch worktree, and after removing both scratch worktrees
+`git status --porcelain` in my tree printed nothing.
+
+```
+$ git worktree remove --force <drifted> && git worktree remove --force <clean>
+scratch worktrees removed
+$ git status --porcelain
+(no output)
+```
+
+No `git checkout --` was used anywhere in this round (CLAUDE.md:627).
 
 ```
 CONTROL, undrifted scratch worktree, identical setup:
@@ -1206,9 +1218,9 @@ A bare "N pass, exit 0" is an incomplete sentence in this repository
 
 | toolchain | build state | invocation | tests | pass | fail | SKIPPED | exit |
 |---|---|---|---|---|---|---|---|
-| node v26.6.0 (fetched floor) | `dist/` built | `npm test` | 593 | 593 | 0 | **0** | 0 |
-| node v26.6.0 (fetched floor) | `dist/` built | bare `node --test` | 595 | 595 | 0 | **0** | 0 |
-| node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 593 | 591 | 0 | **2** | 0 |
+| node v26.6.0 (fetched floor) | `dist/` built | `npm test` | 594 | 594 | 0 | **0** | 0 |
+| node v26.6.0 (fetched floor) | `dist/` built | bare `node --test` | 596 | 596 | 0 | **0** | 0 |
+| node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 594 | 592 | 0 | **2** | 0 |
 
 The three numbers are consistent with the deltas CLAUDE.md:677 records and not
 averaged: the bare invocation adds the two `sandbox/test/greet.test.js` fixtures
@@ -1217,7 +1229,7 @@ two floor-gated `doctor` tests. Both deltas are 2, and they are different pairs.
 
 Baseline for comparison, measured on this branch before any change (node
 v26.6.0, `dist/` built, `npm test`): 590 tests, 590 pass, 0 skipped. The
-difference is exactly the three tests this change adds.
+difference is exactly the four tests this change adds.
 
 `npm ci` exit 0; `npm run build` exit 0 with `git status --porcelain` empty
 afterwards; `node scripts/check-authored-bytes.mjs` exit 0 (run with the tree
