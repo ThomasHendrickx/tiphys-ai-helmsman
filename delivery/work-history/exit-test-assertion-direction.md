@@ -2154,3 +2154,35 @@ recur in CI, or that no change of mine influenced scheduling. One red is reporte
 here in full so that a reviewer seeing it in CI recognises it rather than
 attributing it to this round, and so that it is not quietly dropped from the
 record if CI happens to be green.
+
+## FR1.15 The red witnesses RE-RUN against the final file
+
+The witness table in FR1.6 was taken against the test file as it stood BEFORE
+CR-H-2's fix (sha256 `b08a0838195a6dc4cff673b6465e773c1abdef9cb59041092c096c3b16225dd4`).
+CR-H-2 then edited a different `test()` block in the same file, so the file that
+ships is not byte-identical to the file those witnesses ran against. A witness
+that does not describe the shipped state is the shape this whole round is about,
+so it was re-run rather than argued about.
+
+Final file sha256 `45ac51ee6fba57c4d7d5e912542ec75dedebd07877dd889cf1d288746dc6080d`,
+restricted to the main arm by the same single anchored replacement:
+
+```
+FINAL test, main arm only, harness=pristine    EXIT=0
+FINAL test, main arm only, harness=tableonly   EXIT=1
+FINAL test, main arm only, harness=norows      EXIT=1
+FINAL test, main arm only, harness=nomanifest  EXIT=1
+```
+
+Identical to FR1.6 rows 3 to 6. Green control green, and the main arm reddens
+under the whole-union collapse and under each leg separately. Harness and test
+both restored from their pristine copies afterwards and sha256-verified:
+harness `9f53425fc0e119d3398722c50d025a45466cab3d31f2c232f9dc9f5f22da1138`, test
+`45ac51ee6fba57c4d7d5e912542ec75dedebd07877dd889cf1d288746dc6080d`, and
+`git status --short` empty.
+
+What this does NOT re-run: the U1 and U2 witnesses for the uniqueness assertion
+itself (FR1.6, red witness 2). Those were taken against the pre-CR-H-2 file. The
+uniqueness assertion's own code is byte-identical between the two files (CR-H-2
+touched only the expectations-row test, a different `test()` block), so the risk
+is bounded, but I did not re-run them and I am not claiming I did.
