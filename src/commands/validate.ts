@@ -27,6 +27,8 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
+import { outputContractDiagnostics, splitFrontmatter } from "../roles.ts";
+import { roleBriefBodyDiagnostics } from "./brief.ts";
 import {
   classifyContextDirectory,
   decodeDocument,
@@ -72,6 +74,17 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
   ["report", "report.schema.json"],
   ["final-report", "final-report.schema.json"],
   ["work-history", "work-history.schema.json"],
+  /* M3-P5 steps 1 and 5. `finding` carries its own `kind`, so its row extends
+     `--type` and `resolveAutoType` in one act (M3R-001). `role-brief` DOES
+     NOT and cannot: `--type auto` reads `kind` off the DECODED instance, and
+     decoding a role brief means knowing first that it is markdown with a
+     frontmatter fence rather than a YAML document, so the type has to be
+     named before the document can be decoded at all. The half of M3R-001
+     that the finding was actually about, a schema that ships without its
+     `--type` row and forces an implementer to edit an undeclared file, is
+     satisfied by this row. */
+  ["role-brief", "role-brief.schema.json"],
+  ["finding", "finding.schema.json"],
 ]);
 
 /**
@@ -223,6 +236,79 @@ function parseArgs(argv: string[]): { options?: Options; usageError?: string } {
   return { options };
 }
 
+/**
+ * Validate one role brief: frontmatter against `role-brief.schema.json`, then
+ * the clause round trip over the include-expanded body (M3-P5 criteria 1 and
+ * 6b). Kept as its own function rather than folded into `cmdValidate`'s main
+ * path, because a role brief is the one artifact type whose file is not a
+ * YAML document and conflating the two decode paths is how a horizontal rule
+ * becomes a contract.
+ */
+function validateRoleBrief(
+  file: string,
+  body: string,
+  context: string | undefined,
+): number {
+  const split = splitFrontmatter(body, file);
+  if (!split.ok) {
+    process.stderr.write(`tiphys validate: ${split.reason}\n`);
+    return 1;
+  }
+  const decoded = decodeDocument(split.frontmatter, `${file} frontmatter`);
+  if (!decoded.ok) {
+    process.stderr.write(`tiphys validate: ${decoded.reason}\n`);
+    return 1;
+  }
+  const schema = loadTypeSchema("role-brief");
+  const diagnostics = validateInstance(schema, decoded.value);
+  if (diagnostics.length > 0) {
+    for (const line of formatDiagnostics(diagnostics)) {
+      process.stdout.write(`${line}\n`);
+    }
+    return 1;
+  }
+  const frontmatter = decoded.value as Record<string, unknown>;
+  const clauses = Array.isArray(frontmatter["clauses"])
+    ? (frontmatter["clauses"] as unknown[]).map((entry) => String(entry))
+    : [];
+  const roundTrip = roleBriefBodyDiagnostics(file, split.body, clauses);
+  if (!roundTrip.ok) {
+    process.stderr.write(`tiphys validate: ${roundTrip.reason}\n`);
+    return 1;
+  }
+  for (const line of roundTrip.lines) {
+    process.stdout.write(`${line}\n`);
+  }
+  /* THE OUTPUT CONTRACT (M3-P5 fix round 1). Every declared output type whose
+     schema is registered must have that schema on mandated-reading. Wired
+     HERE, and the reason is that TYPE_TABLE is the map and it lives in this
+     module: passing the lookup in as a function keeps src/roles.ts free of an
+     import back into this command, so the two do not become a cycle. The
+     lookup is the SAME table `--type` resolves against, so the check cannot
+     drift from what the validator would actually compile. */
+  const outputContract = formatDiagnostics(
+    outputContractDiagnostics(
+      Array.isArray(frontmatter["outputs"])
+        ? (frontmatter["outputs"] as unknown[]).map((entry) => String(entry))
+        : [],
+      Array.isArray(frontmatter["mandated-reading"])
+        ? (frontmatter["mandated-reading"] as unknown[]).map((entry) => String(entry))
+        : [],
+      (type: string) => TYPE_TABLE.get(type),
+    ),
+  );
+  for (const line of outputContract) {
+    process.stdout.write(`${line}\n`);
+  }
+  const checks = runChecks("role-brief", decoded.value, context);
+  for (const line of checks.lines) {
+    process.stdout.write(`${line}\n`);
+  }
+  return roundTrip.lines.length > 0 || outputContract.length > 0 || checks.failed
+    ? 1
+    : 0;
+}
+
 export function cmdValidate(argv: string[]): number {
   const parsed = parseArgs(argv);
   if (parsed.options === undefined) {
@@ -244,6 +330,20 @@ export function cmdValidate(argv: string[]): number {
   if (!read.ok) {
     process.stderr.write(`tiphys validate: ${read.reason}\n`);
     return 1;
+  }
+
+  /* M3-P5 criteria 1 and 6b. A role brief is markdown with YAML frontmatter
+     (section 1.5's justified exception), so it is SPLIT before it is decoded
+     and the schema sees the frontmatter alone. The body is not schema-parsed,
+     which is criterion 1's parenthetical; what it IS subject to is the clause
+     round trip, because criterion 6b requires deleting a clause heading to
+     make THIS COMMAND exit nonzero naming the orphaned id. That check reads
+     the include-expanded body, which it must: the two dispatch-contract
+     clauses exist in exactly one file and are included by all five briefs,
+     so a round trip that did not expand the include would report every brief
+     as orphaning both of them. */
+  if (type === "role-brief") {
+    return validateRoleBrief(file as string, read.body, context);
   }
 
   const decoded = decodeDocument(read.body, file as string);

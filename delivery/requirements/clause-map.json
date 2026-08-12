@@ -133,5 +133,40 @@
     "phase": "M3-P4",
     "artifact": "schemas/final-report.schema.json",
     "clause": "R-089a"
+  },
+  "R-004": {
+    "phase": "M3-P5",
+    "artifact": "roles/investigator.md",
+    "clause": "R-004"
+  },
+  "R-005": {
+    "phase": "M3-P5",
+    "artifact": "roles/plan-writer.md",
+    "clause": "R-005"
+  },
+  "R-006": {
+    "phase": "M3-P5",
+    "artifact": "roles/adversarial-plan-reviewer.md",
+    "clause": "R-006"
+  },
+  "R-010a": {
+    "phase": "M3-P5",
+    "artifact": "roles/plan-writer.md",
+    "clause": "R-010a"
+  },
+  "R-015a": {
+    "phase": "M3-P5",
+    "artifact": "roles/investigator.md",
+    "clause": "R-015a"
+  },
+  "R-029": {
+    "phase": "M3-P5",
+    "artifact": "schemas/finding.schema.json",
+    "clause": "R-029"
+  },
+  "R-092": {
+    "phase": "M3-P5",
+    "artifact": "roles/investigator.md",
+    "clause": "R-092"
   }
 }

@@ -17,6 +17,7 @@
     "gate-registry.yaml",
     "assurance-modes.yaml",
     "role-model-config.yaml",
+    "roles",
     "schemas",
     "templates"
   ],

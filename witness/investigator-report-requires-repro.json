@@ -1,0 +1,24 @@
+{
+  "id": "investigator-report-requires-repro",
+  "behavior": "investigator-report-requires-repro",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "an investigator report with a verdict is rejected without a repro and with a hollow one, and accepted with a real one"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/report.schema.json",
+      "find": "    \"required\": [\"repro\"],\n",
+      "replace": "    \"required\": [],\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/report.schema.json",
+      "find": "          \"required\": [\"command\", \"exit-code\", \"red-against\", \"not-covered\"],\n",
+      "replace": "          \"required\": [\"command\"],\n"
+    }
+  ]
+}

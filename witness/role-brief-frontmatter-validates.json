@@ -1,0 +1,24 @@
+{
+  "id": "role-brief-frontmatter-validates",
+  "behavior": "role-brief-frontmatter-validates",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "tiphys validate --type role-brief exits 0 for every shipped authoring brief and nonzero when a required frontmatter field is removed"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  const schema = loadTypeSchema(\"role-brief\");\n  const diagnostics = validateInstance(schema, decoded.value);",
+      "replace": "  const schema = loadTypeSchema(\"role-brief\");\n  const diagnostics = validateInstance(schema, decoded.value).slice(0, 0);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"role-brief\", \"role-brief.schema.json\"],\n",
+      "replace": ""
+    }
+  ]
+}

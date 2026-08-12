@@ -345,6 +345,38 @@ invites the next reader to try. Tuition T-006 records seven instances of this
 across M1, one of them the orchestrator's own, and notes that the pattern
 survived being documented as a norm. A grep is mechanical; a reminder is not.
 
+**THE COMMAND ABOVE IS LINE-BASED AND THIS PROSE IS HARD-WRAPPED, so a hit
+phrase that straddles a wrap is INVISIBLE TO IT.** Found 2026-08-12 by the
+orchestrator, against its own document: the sentence "there is no way / to
+satisfy" wrapped between `way` and `to`, and the grep reported clean on the one
+over-claim in the file. The single-word alternatives (`never`, `always`,
+`impossible`) are effectively immune; the multi-word ones (`cannot be`,
+`no way to`, `needs a`, `is covered`, `would catch`) are the exposed set.
+
+Measured across three work histories and the document that found it, counting
+OCCURRENCES rather than matching lines, so the two numbers are comparable:
+
+| file | line-visible | total | missed by wrap |
+|---|---|---|---|
+| `delivery/work-history/m3-p3.md` | 223 | 223 | **0** |
+| `delivery/work-history/m3-p1.md` | 62 | 62 | **0** |
+| `delivery/work-history/m3-p4.md` | 182 | 184 | **2** |
+| the M3-P9 dispatch read | 2 | 3 | **1** |
+
+So the gap is REAL and SMALL, and it is stated that way rather than inflated:
+two misses in a 184-hit work history is not the shape of a broken guard, and one
+miss in a three-hit document is how it was noticed at all. Run the wrap-
+insensitive form as well when the document is prose you wrapped yourself:
+
+```
+tr '\n' ' ' < delivery/work-history/<phase>.md \
+  | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
+```
+
+It loses line numbers, which is why it supplements the binding command rather
+than replacing it: run the line-based one to locate hits, and this one to learn
+whether the first missed any.
+
 ### One witness is not a class
 
 A witness for a CLASS must redden under at least TWO structurally different
@@ -633,6 +665,18 @@ Each of these bit someone once. Forward them to every implementer.
    copy out of tree first; there is no safe narrow form.
 9. `git remote set-url` resolves relative paths against the repository, not
    the current working directory. Use absolute paths in test staging.
+   **SAME TRAP, ONE COMMAND ALONG, AND IT IS NOT A TEST-ONLY CONCERN:
+   `git -C <repo> worktree add <relative-path>` ALSO resolves against the
+   repository.** Measured 2026-08-12: `cd $SCRATCH && git -C /home/user/... \
+   worktree add --detach ppass origin/main` created the worktree at the
+   REPOSITORY ROOT, not under `$SCRATCH`, and the following `cd ppass` failed
+   with "No such file or directory" from a shell that was standing in the wrong
+   place to see it. The failure surfaced later as an untracked directory in
+   `git status` on the repository, which is the shape most likely to get a
+   scratch worktree committed by accident. `git worktree remove --force` is the
+   cleanup; `git worktree list` is how you find one. The general rule for this
+   family: **`-C` changes where git resolves, not where your shell is**, so
+   every path handed to a `-C` invocation should be absolute.
 10. Concurrent git operations against one clone contend on ref locks, and
     the real transient message names a ref, not a lock file. Never derive a
     retry signature from hand-written examples; capture real stderr under

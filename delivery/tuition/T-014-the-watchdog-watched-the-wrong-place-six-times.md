@@ -87,3 +87,53 @@ watchdog that cannot go red is worse than none, since it is trusted.**
   liveness guard (M1-P5). It was NOT audited for this. That is worth doing,
   because the kernel ships a liveness guard to consumers and this entry is about
   the orchestrator failing at the same task six times while building it.
+
+## Postscript, 2026-08-12: the seventh, and the first that would have acted
+
+Recorded under this id rather than a new one because it is the SAME mechanism.
+A fresh id for a repeat dilutes both entries.
+
+A watchdog armed in the same turn as the M3-P6 fix-round dispatch fired
+`TRANSITION: p6fix history crossed 900s STALE` about three minutes into a
+healthy round. Two defects in one script, and they compounded:
+
+1. **SELECTION WAS FIND ORDER, NOT RECENCY.** It resolved the agent's beacon
+   with `find ... | head -1`. `find` returns directory order, so it locked onto
+   `probe/wrepo`, a worktree seven hours stale, and reported that as the agent's
+   silence.
+2. **EXCLUSION BY GUESS.** It excluded the `m3p6` worktree on the ASSUMPTION
+   that this was the previous implementer's leavings. The agent was writing
+   there. Excluding the live directory is how a guard goes permanently blind,
+   and it is the mirror of the exclusion this entry already recommends: leaving
+   the orchestrator's worktrees IN keeps a watchdog green forever, and taking
+   the agent's OUT keeps it red forever.
+
+**This is the first instance in the series that would have produced a WRONG
+ACTION.** The body above notes that none of the six ever did, and that the cost
+was attention. That is no longer true. The correct response to a stale watchdog
+is salvage and re-dispatch, and acting on this one would have killed a round
+three minutes in.
+
+Two things held the cost to about four minutes, and both were deliberate rather
+than lucky:
+
+- The script LABELLED the suspect value `INHERITED(not yet appended)` instead of
+  printing a bare number, because the work history already existed in several
+  worktrees and existence proves nothing. The label is what made the diagnosis
+  immediate.
+- T-016's TRANSITION marker said this was a FIRST crossing rather than a repeat,
+  which is the difference between looking and clearing.
+
+**The corrected rule, stated so it is mechanical:** resolve a beacon by the
+NEWEST mtime among candidates, never by find order, and exclude only paths known
+BY IDENTITY (the orchestrator's own worktrees, and any OTHER live agent's),
+never by a guess about which directory the agent will choose. Separate "nothing
+written since dispatch" from "stale": they need different words because they
+need different responses.
+
+**What this postscript does NOT claim.** It does not claim the corrected rule is
+sufficient. Newest-by-mtime picks the wrong file if a stale candidate is touched
+by something else, and the exclusion list is still hand-written, so it is one
+mis-typed path from the same blindness. It also does not discharge the audit the
+section above says is worth doing on the kernel's own shipped watcher, which
+remains not done.

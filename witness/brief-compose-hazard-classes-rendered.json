@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-hazard-classes-rendered",
+  "behavior": "brief-compose-dropped-hazard-classes-detected",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose renders the named phase's hazard-classes array"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  \"hazard-classes\",\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "        for (const [key, nested] of entries.slice(1)) {",
+      "replace": "        for (const [key, nested] of []) {"
+    }
+  ]
+}

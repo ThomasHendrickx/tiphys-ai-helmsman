@@ -5,7 +5,184 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12
+- as of: 2026-08-12 later in the day, and the bullets below this one are OLDER.
+  Where they disagree with this one, this one is later.
+- **`main` IS `bb8f656`. M3 IS STILL 5/10: M3-P6 IS REVIEWED AND ARBITRATED BUT
+  NOT MERGED, AND IT IS BLOCKED ON ONE THING.** The blocker in a line: DR-0012
+  condition 2 requires the medium finding resolved, and an orchestrator-side fix
+  round is in flight to resolve it.
+  **Both clean-room reviews are done, on different model families, of the same
+  head `16bab6f`.** Contract A (criteria walk) APPROVE with three low; contract B
+  (the self-comparing-check audit) found the phase's own named hazard GENUINELY
+  ABSENT, with one medium and two low. Neither disagrees with the other on any
+  mechanical fact. Both reports and the arbitration are in PR #107.
+  **The pair's most valuable output is a CONVERGENCE, not a dispute.** Contract
+  A's finding 3 and contract B's F-B2 are the same defect reached from two
+  directions, and NEITHER CONTRACT WAS POINTED AT IT: the implementer brief
+  declares its own gate-list mode and nothing asserts it is `full`, so switching
+  it to `local-only` yields a GREEN drift check over a brief advertising 5 gates
+  instead of 15, and the vacuity guard cannot fire because `units` counts three
+  mode-independent preflight steps. That is T-007's claim about decorrelating the
+  QUESTION rather than the reviewer, and it is the strongest instance of it this
+  project has recorded. **Convergence is treated as evidence a defect is real and
+  reachable, never that its impact is larger**, so it stays low.
+  **The medium is NOT downgraded, and the reason is recorded rather than
+  assumed.** `scripts/m2-exit-test.sh`'s assertion program iterates the
+  hand-written expectation and keys into the bundle's rows, so a row the table
+  does not name is never asserted on: 12 manifest gates, exactly one
+  (`brief-drift`) absent from the table, no rows-to-expectation direction and no
+  global zero-red. The reviewer proved it by running the extracted program
+  against two bundles differing only in a red row; both exited 0. The
+  orchestrator confirmed all of it independently before acting. Reclassifying a
+  reviewer's severity to ease the orchestrator's own merge is what condition 6
+  forbids.
+  **The fix's ORDER was forced by a circularity worth not re-deriving.** The
+  naive rule ("every bundle row must be named by the table") would redden
+  M3-P6's OWN pull request once it adds `brief-drift` to the manifest, and
+  M3-P6 cannot fix that because the harness is on no M3 declaration; the mirror
+  order trips the existing "no record in the bundle for a gate the table lists".
+  The row and the gate would have to land together and cannot. The design put to
+  the implementer derives the expected set FROM the manifest with an unlisted
+  gate defaulting to REQUIRED-GREEN, which leaves `main` unchanged today and
+  needs no M3-P6 edit.
+  **TWO IMPLEMENTERS ARE LIVE, CONCURRENTLY, AND THEY ARE DISJOINT**: the
+  harness fix on `claude/exit-test-harness-assertion-direction`, and M3-P6 fix
+  round 1 on the phase branch. They share only `test/behaviors.json`, which is
+  append-only and resolved as a union. Each brief forbids the other's files by
+  name. M3-P6 has had ZERO prior fix rounds, so this is its first and DR-0012's
+  bound of two is not near.
+  **M3-P7 IS NOT DISPATCHABLE and the reason is not conflict.** The pair is
+  conflict-disjoint, measured at declaration level and against M3-P6's actual
+  diff. M3-P7's own grounding names both review-side briefs, which are M3-P6
+  deliverables, and its blocked-by reads "M3-P6 merged". A conflict pre-pass is
+  a VETO, NOT A PERMIT, and the orchestrator got this wrong once today and
+  corrected it in `delivery/plan/m3-conflict-pre-pass.md` rather than quietly.
+  **Merged this session, each with its post-merge push run verified BY STEP on
+  both workflows**: `3ff2023` (PR #104, T-016) and `bb8f656` (PR #106, the
+  generated-block enumeration plus the M3-P9 and M3-P10 declaration
+  amendments). `bb8f656`'s `gates` push run was still in flight when this bullet
+  was written and is NOT claimed here.
+  **A SECOND GENERATED-FILE COUPLING WAS FOUND BEFORE IT COST ANYTHING.**
+  Exactly two files carry a `BEGIN GENERATED` block and both render from
+  `gate-registry.yaml`: `CLAUDE.md`, and, arriving with M3-P6,
+  `roles/implementer.md`. M3-P9 and M3-P10 declared the source and not the
+  second generated file; both amended on `main` before either phase pushes,
+  because the scope auditor reads declarations from the MERGE BASE. The
+  enumeration is a grep over a marker both renderers must write, which is the
+  generalisable part: search over a property the artifact CANNOT AVOID HAVING,
+  never over a list of places that seem likely.
+- **M3-P5 IS MERGED at `086b8df` (PR #96). FIVE OF TEN M3 PHASES ARE ON `main`,
+  AND M3-P6 IS DISPATCHED.** Two fix rounds after the first dual review, which is
+  the DR-0012 limit and not past it. Both findings were closed at the MECHANISM:
+  the HIGH became a validator refusal, so a brief declaring an output whose
+  registered schema is absent from its mandated reading is invalid and M3-P6's
+  two briefs are covered the day they land; the MEDIUM became a run-time derived
+  role list carrying its own test against an INDEPENDENT ORACLE, so an empty or
+  over-broad derivation reddens rather than passing vacuously.
+  The evidence chain is all on `main`: delivery/review/arbitration-m3-p5.md:1,
+  delivery/review/verification-m3-p5-fix-round.md:1 and
+  delivery/review/verification-m3-p5-fix-round-2.md:1.
+  **Three low findings were merged with, each tracked with a reason** per
+  condition 2, and two of them name live defects in files this phase could not
+  touch; both are in the carried-forward register below with the mechanism
+  stated rather than the instance.
+  **A merge attempt was REFUSED and the refusal was right.** Branch protection
+  requires the `gates` check on a head UP TO DATE with the base, and `main` moved
+  four commits during the second verification, so the by-step green at `944086b`
+  no longer satisfied the rule. `main` was merged in, producing `1ea1f58`, and
+  that head was re-verified by step on both workflows before the merge. The
+  earlier green was superseded rather than carried, which is the same principle
+  T-009 states from the other direction.
+  **Push runs discharged this session, each verified BY STEP on both workflows
+  rather than in aggregate**: `fccf4d4`, `1a81a20`, `d56e3a4`. `086b8df`'s run
+  was still in flight when this bullet was written and is NOT claimed here.
+- **M3-P4 IS MERGED. THE STOP RECORDED FURTHER DOWN THIS FILE IS DISCHARGED,
+  NOT LIFTED.** It merged as `a7b7b07` (PR #81) after five rounds and three
+  distinct review contracts, which is what DR-0016 requires in place of waiting
+  for the owner. Its closeout evidence is `52fe657` (PR #95), which is `main`
+  as this bullet is written. Both CI arms are success on that head, per workflow
+  rather than in aggregate: `gates` and `macOS smoke`. Every merge in this
+  session has had its post-merge push run verified BY STEP, so there is no
+  push-run debt outstanding under T-009.
+- **M3-P5 IS UNDER A DUAL REVIEW THAT DOES NOT MERGE IT.** PR #96 at `48829d9`.
+  Contract A (acceptance criteria, executed) returned APPROVE with 10 of 10
+  criteria met and zero findings. Contract B-prime (the brief-follower audit,
+  new to this phase) returned CHANGES REQUIRED with one HIGH and one MEDIUM.
+  The arbitration rules that they do NOT conflict, because contract A's boundary
+  section names the exact defect class contract B-prime found and records that it
+  did not attempt it. The HIGH is that the composed investigator brief is 251
+  lines and names `schemas/report.schema.json` zero times, which is the contract
+  its only declared output must satisfy; I verified that myself before ruling
+  rather than relaying it. DR-0012 condition 2 therefore forbids the merge.
+  Fix round 1 is in flight, briefed to repair the MECHANISM (whether the other
+  two briefs carry the same hole) rather than the named instance. The paperwork
+  merged as `6ac2abc` (PR #98), so the ruling is on `main` at
+  delivery/review/arbitration-m3-p5.md:1 and no longer only on a branch.
+  **The post-merge push run on `6ac2abc` is COMPLETE and verified BY STEP on
+  both workflows.** `macOS smoke` success. `gates` run 31563009476 completed
+  success at 04:33:57Z with all fifteen steps accounted for: step 8
+  `M2 exit test (pull request)` correctly SKIPPED on this arm, step 9
+  `M2 exit test (push)` success, which is the push-only arm T-009 exists for,
+  step 10 the vacuous-bundle self-test guard success, and steps 11 and 12 the
+  M1 exit test and its falsifiability guard success. This bullet was first
+  written while steps 11 and 12 were still running and said so; it is now
+  updated from the finished run rather than from the earlier partial one.
+- **M3-P5 FIX ROUND 1 HANDED BACK AT `85f9fd6` AND IS UNDER DELTA VERIFICATION.**
+  It fixed the MECHANISM rather than the instance: `outputContractDiagnostics` in
+  `src/roles.ts`, wired into `validate --type role-brief`, so a brief declaring
+  an output whose registered schema is absent from its mandated reading is now
+  INVALID, which covers M3-P6's two briefs the day they land. Its derivation
+  imported the validator's own type table rather than restating it, and reached
+  the same result the orchestrator had derived independently and sealed in the
+  verification contract beforehand: the investigator was the ONLY member of the
+  class. It rejected two easier repairs with reasons (deriving mandated reading
+  by injection at compose time, and putting the fix in the shared dispatch
+  block), and on the MEDIUM it says in the SHIPPED clause, not only in its work
+  history, that the clause is an instruction with a trigger and a stated price
+  and is NOT a lock, assigning the closing mechanism to M3-P9. Nothing in it is
+  being taken on trust; the delta verification is dispatched and its contract
+  requires re-running the derivation, attacking the mechanism for what it does
+  not catch, and reproducing the defangs.
+- **A new tuition entry, T-015**, from four self-inflicted citation repoints in
+  one branch: delivery/tuition/T-015-a-citation-into-a-newest-at-top-file-rots-on-every-append.md:1.
+- **M3-P8 HAD THE M3-P5 GAP FOR REAL, AND IT IS ALREADY FIXED.**
+  delivery/plan/m3-p8-declaration-gap.md:1. Criterion 4c requires a verbatim
+  capture checked in as `test/fixtures/mechanisms-interim.md`, and criterion 4b
+  needs a fixture manifest, while `test/fixtures/` was absent from
+  delivery/plan/phase-declarations/m3-p8.json:1. Same shape as M3-P5's criterion
+  6, caught BEFORE dispatch this time instead of at an implementer's handback.
+  The declaration is amended in the same change, so nothing is left open and no
+  mid-phase merge-base amendment is needed. The four other M3 phases with no
+  `test/fixtures/` entry were checked and are NOT gaps: their plan sections
+  contain no occurrence of the word "fixture".
+- **M3-P7 IS PRE-READ TOO, AND ITS ONE DANGEROUS CANDIDATE IS REFUTED.**
+  delivery/plan/m3-p7-dispatch-read.md:1. M3-P7's criterion 3c needs a gate id
+  RENAMED and a gate entry DELETED as its two witnesses, against
+  `gate-registry.yaml`, which is a merged M3-P2 deliverable absent from M3-P7's
+  declaration. That is the M3-P5 criterion-6 shape. It does not bite: the checks
+  engine resolves that document relative to the `--context` directory
+  (src/checks.ts:640 reading through src/checks.ts:388), so the witness stages a
+  scratch context and the merged file is never touched. The dispatch must still
+  SAY so, because the obvious move is to edit the real file and put it back, and
+  `git checkout --` to put it back is destructive in a tree holding uncommitted
+  work.
+- **M3-P6 IS PRE-READ BUT STILL BLOCKED.** delivery/plan/m3-p6-dispatch-read.md:1
+  discharges the criterion-level read in both directions. Read direction: no new
+  blocker, every cross-phase read is an M3-P5 deliverable already named in the
+  phase's `blocked-by`. Write direction: one candidate, refuted by measurement.
+  One thing no gate can catch travels with the dispatch instead: the shared
+  dispatch contract is on M3-P6's declaration and the plan says of the same file
+  that changing it is an escalation, so the declaration is the permissive one.
+- **A gap in the `citations` gate's applicability, measured and NOT repaired.**
+  Its `citationRequired` set covers `delivery/plan/`, `delivery/verification/`,
+  `delivery/decisions/`, `delivery/tuition/`, `delivery/requirements/` and
+  `delivery/STATE.md`, and NOT `delivery/review/`. A pull request carrying only
+  review documents therefore gets `not-applicable` with the precondition
+  `citations-diff-touches-documents evaluated and unmet`, which is honest and is
+  not a false green, but it means arbitrations and clean-room reports, the
+  documents that cite most heavily, have no citation gate. Observed on PR #98.
+  Recorded here rather than fixed because the registry is M3-P2's artifact and a
+  change to it belongs to a phase, not to a paperwork branch.
 - PR #89, the controlled macOS portability pilot, merged to main as
   `1e020983d7f5de1bb212113f240a0982fd3ac83e`. Its exact PR head and merged
   commit each passed Linux `gates` and macOS smoke. The owner-authorized
@@ -375,9 +552,20 @@ modelled and bound five phases to.
 | Round-10 criteria review | MERGED #76 at `0c6ca35` |
 | M3-P3 merge arbitration | MERGED #78 at `80925bc` |
 | STATE currency, assurance-modes correction, M3-P5 pre-check | MERGED #79 at `ba9f35e` |
-| M3-P4 report and work-history contracts | ROUND 1 REVIEWED, both CHANGES REQUIRED; FIX ROUND 2 in flight; PR #81 open |
+| M3-P4 report and work-history contracts | **MERGED #81** at `a7b7b07`, after five rounds and three review contracts |
 | M3-P4 round-1 reviews and arbitration | MERGED #82 at `90ebedf` |
-| M3-P5 to M3-P10 | not dispatched |
+| M3-P4 round-3 verification, stop arbitration, M3 conflict pre-pass | MERGED #87 at `c8b742f` |
+| M3-P4 round-4 dual review, arbitration, M3-P5 held | MERGED #93 at `ff89e02` |
+| M3 cross-phase dependency screen | MERGED #94 at `7d55392` |
+| M3-P4 closeout evidence and the M3-P5 declaration amendment | MERGED #95 at `52fe657` |
+| M3-P5 authoring role briefs | **MERGED #96** at `086b8df`, after two fix rounds and two delta verifications |
+| M3-P5 dual review and arbitration | MERGED #98 at `6ac2abc` |
+| M3-P5 fix round 1 delta verification | MERGED #100 at `1a81a20` |
+| M3-P5 fix round 2 delta verification | MERGED #101 at `d56e3a4` |
+| M3-P5 dual review and arbitration | MERGED #98 at `6ac2abc` |
+| M3-P6 and M3-P7 pre-dispatch criterion reads, and this STATE pass | PR #99 open |
+| M3-P6 delivery role briefs | DISPATCHED off `086b8df`, implementer running, watchdog armed |
+| M3-P7 to M3-P10 | not dispatched; all four pre-read, see the plan directory |
 
 ### M3-P3 status, 2026-08-09
 
@@ -533,6 +721,44 @@ Supervision is beacon/transcript freshness, not completion notifications.
 
 Items discovered during M1 that belong to a later milestone and have no owner
 yet. Recorded here so they are not rediscovered the expensive way.
+
+- **TWO LIVE INSTANCES OF MECHANISMS M3-P5 CLOSED IN ITS OWN FILES, both found
+  by that phase's derivations, both correctly left unfixed as out of scope, and
+  both CONFIRMED by the orchestrator rather than relayed.** The mechanism travels
+  here, not the instance, because the instance is the thing that gets fixed and
+  forgotten.
+  1. `test/deploy-gate.test.ts:667` reads `for (const gate of ["deploy",
+     "migrations"])`. That is a hand-written copy, inside the test, of
+     membership that lives in `gate-registry.yaml` and GROWS: the registry
+     declares five conditional gates today (`credential-token`, `deploy`,
+     `migrations`, `unit-tests-for-changed-service-methods`,
+     `fixtures-for-changed-component-states`). A sixth is covered by nobody and
+     nothing reddens. The mechanism: **a test asserting over a set whose
+     membership lives outside the test file and grows, using a copy of that
+     membership written inside the test.** Owner: whoever next touches the
+     deploy gate.
+  2. `src/witness/run.ts:1258` compares an authored path RAW against a
+     git-canonical diff while `join` resolves it, so two spellings of the same
+     path disagree. Confirmed live by the round-2 delta verifier: re-spelling a
+     witness spec to `./test/roles.test.ts` reddens the gate with `rule (d):
+     declared dangerous state does not intersect the phase diff`. The mechanism
+     is the one M3-P5 fixed in its own two sites by exporting a single
+     canonicaliser. Owner: whoever next touches the witness runner.
+- **A durable red witness that M3-P5 fix round 2 called NOT EXPRESSIBLE is
+  expressible**, and the round-2 verification demonstrated a form: a patch
+  touching both `roles/implementer.md` and `test/roles.test.ts` satisfies the
+  non-empty-intersection rule, and reverting the derived list IS the dangerous
+  state. Left as a low rather than built, because adding a witness is a
+  behaviour change beyond a low-severity fix. Owner: whoever next touches that
+  guard.
+- **The `citations` gate's `documents` globs cover neither `delivery/review/`
+  nor `delivery/work-history/`.** So a pull request carrying only review
+  documents, and a phase bundle whose only changed paths are a work history,
+  both come back `not-applicable` with an evaluated precondition. That is honest
+  and is not a false green, but it leaves the documents that cite most heavily
+  without a citation gate. Observed on PR #98, PR #100, PR #101 and inside
+  M3-P5's own fix-round bundles. Not repaired on a paperwork branch because
+  `gate-registry.yaml` is a phase's artifact.
 
 - **Uncaught `RangeError` in `collectUnits` under deep nested quote markers.
   THE THRESHOLD IS A FUNCTION OF AVAILABLE STACK, NOT A CONSTANT, and this
@@ -968,6 +1194,29 @@ fact rather than a memory.
 
 ## Standing reminders
 
+- **DR-0012 CONDITION 1 IS APPLIED THROUGH A READING, AND THE READING MUST BE
+  STATED IN EVERY MERGE COMMIT THAT USES IT.** The condition requires "two
+  independent clean-room reviews for the CURRENT HEAD". Read literally, no phase
+  that runs a fix round can ever satisfy it, because every fix moves the head.
+  The reading this project uses, and has used since M3-P4 merged at `a7b7b07`:
+  **the dual review covers the head's SUBSTANCE, and a structural delta
+  verification covers everything that changed since.** M3-P5 merged on the same
+  basis at `086b8df`, naming the dual pair at `48829d9` plus two delta
+  verifications.
+  The reading is precedented and defensible. It is ALSO a softening if it is
+  never said aloud, and DR-0012's own heading says its terms are defined "so it
+  cannot be softened later". So: name both halves in the merge commit, or do not
+  rely on it. Do not reopen the decision record; this is how it is applied.
+- **The documentation-only carve-out enumerates PATHS, and root-level artifacts
+  are outside them.** The carve-out (one review rather than two) names
+  `delivery/**`, `CLAUDE.md` and `.claude/**`. `assurance-modes.yaml`,
+  `gate-registry.yaml` and `gates.manifest.json` are at the repository root and
+  are in none of them, so a paperwork pull request touching one is not
+  documentation-only by the text. When the change really is inert, SHOW it
+  rather than asserting it: PR #99 repointed one citation inside a `#` comment
+  and demonstrated the parsed document was deep-equal at both heads before
+  relying on the carve-out. Dropping the file to make the boundary clean is the
+  worse option when it means knowingly shipping a rotted citation.
 - Parallelism is on under DR-0011, but MERGE order is still dependency order:
   work may be concurrent, landing may not. A parallel phase's PR never merges
   before the phases its grounding names.

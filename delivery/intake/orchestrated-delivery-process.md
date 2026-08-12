@@ -17,13 +17,27 @@ the tests themselves all get that treatment.**
 | **Orchestrator** (the main chat) | Persistent across the whole run | Everything | Writes feature code itself (except infra hotfixes); lets a review skip |
 | **Investigator** | One mystery | The codebase + the symptom | Fixes anything — it produces a root-cause verdict with evidence |
 | **Plan writer** | One plan | The input report + the code | Decides product questions — it flags them |
-| **Adversarial plan reviewer** | One review | The plan + the code, nothing else | Edits anything |
+| **Adversarial plan reviewer** | One review | the input report, the plan, and the code [^sc-001] | Edits anything |
 | **Implementer** | One phase (+ its fix rounds, resumed with context intact) | Its phase text + mandated reading | Creates PRs; edits the plan; re-investigates settled questions |
 | **Clean-room reviewer** | One PR | The diff + the plan's acceptance criteria — explicitly NOT the implementation session | Edits anything; posts to the PR |
 
 The separation is the point. The clean-room reviewer catches what the implementer cannot see
 because the implementer knows what the code is *supposed* to do. Same fresh-eyes logic at every
 stage.
+
+[^sc-001]: ANNOTATION, NOT A REWRITE. This cell originally read "The plan + the
+code, nothing else". It is corrected here rather than in a new document because
+the kernel's `roles/adversarial-plan-reviewer.md` states the same visibility and
+two governing documents that disagree about a role's visibility is the defect
+being closed. Spec-coherence finding SC-001 recorded the contradiction: this
+document's own section 1d requires the same reviewer to check every input
+finding is fixed-or-parked, which cannot be done without the input report's
+finding list, and the blueprint (section 6) describes reading the input report
+as existing practice "kept because it costs nothing", which "nothing else"
+denies. Kernel plan v1 decision D-14 settled it in favour of the blueprint where
+the two deliberately differ. The original wording is preserved in this footnote
+so the provenance survives the correction, which is what makes this an
+annotation.
 
 ---
 

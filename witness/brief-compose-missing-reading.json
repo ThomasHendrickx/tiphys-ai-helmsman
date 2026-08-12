@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-missing-reading",
+  "behavior": "brief-compose-missing-reading-fails",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose exits nonzero naming a mandated-reading path that does not exist and exits 0 with the path present"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "    if (entry.kind === \"absent\" || entry.kind === \"dangling\") {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "        reason: `mandated-reading path ${declared} does not exist (looked for ${path})`,",
+      "replace": "        reason: \"a mandated-reading path did not resolve\","
+    }
+  ]
+}
