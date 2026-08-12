@@ -4805,3 +4805,47 @@ smaller manifest, so it is now written as the open question it is.
 **No `git checkout --` was run in this round at any point.** Every mutation was
 an anchored single replacement applied in place and restored from a saved
 pristine copy, with the restored sha256 printed in the same capture.
+
+## FR3.15 Files changed, and the position on scope
+
+```
+$ git diff --stat 9b7752d..HEAD
+ delivery/work-history/exit-test-assertion-direction.md | 1437 ++++++++++++++++
+ scripts/m2-exit-test.sh                                |   67 +-
+ test/behaviors.json                                    |    2 +-
+ test/m2-exit-test.test.ts                              |  336 ++++-
+ 4 files changed, 1752 insertions(+), 90 deletions(-)
+```
+
+Four files, all of them ones this branch already owns. `test/behaviors.json` and
+the phase work history are the two standing pre-authorized extras
+(CLAUDE.md:281). No file is reported as `Bin` by `git diff --stat`, which is the
+quick check CLAUDE.md:121 names for the control-character failure mode.
+
+Two things I did NOT change and could have been expected to:
+
+- **CLAUDE.md warning 12 still says nine dist-gated skips and the true number on
+  this branch is ten.** Re-measured here (FR3.8a) and named. Editing CLAUDE.md
+  from this round would be an unannounced scope widening onto a file this branch
+  does not touch, so it is reported for whoever merges rather than done.
+- **`delivery/STATE.md` is untouched.** This round changes no phase or decision
+  state; it is a fix round inside an open pull request.
+
+## FR3.16 What a reader should NOT conclude from a green CI on this head
+
+Stated plainly because the shape it guards against has cost this repository
+twice.
+
+1. **`red-witness` did not run** (FR3.13, from the gate's own result record). No
+   gate evaluated whether any witness in this round can fail. That evidence is
+   my own lab work and nothing else.
+2. **The `push` arm did not run.** Everything measured here is the
+   `pull_request` configuration. The post-merge run on the new `main` head is
+   the obligation CLAUDE.md:468 names and no pull-request run discharges it.
+3. **`citations` and `scope` are not-applicable on this diff**, for
+   preconditions quoted in FR3.13. A green bundle here is a green bundle with
+   those two not evaluated.
+4. **A green on an EARLIER head is not a green on this one.** The complete
+   sentence names the event and the head sha (CLAUDE.md:463), and the last
+   commit of this round is the one describing the run, which no run can have
+   observed.
