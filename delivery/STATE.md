@@ -418,7 +418,7 @@ modelled and bound five phases to.
 | M3-P4 closeout evidence and the M3-P5 declaration amendment | MERGED #95 at `52fe657` |
 | M3-P5 authoring role briefs | **DOES NOT MERGE**, fix round 1 in flight; PR #96 open at `48829d9` |
 | M3-P5 dual review and arbitration | PR #98 open |
-| M3-P6 pre-dispatch criterion read | this branch, PR not yet opened |
+| M3-P6 pre-dispatch criterion read, and this STATE pass | PR #99 open |
 | M3-P6 to M3-P10 | not dispatched |
 
 ### M3-P3 status, 2026-08-09
