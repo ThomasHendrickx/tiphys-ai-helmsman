@@ -11,16 +11,90 @@ Verifier worktree: a fresh detached worktree at 9b7752d with its own
 Toolchain: node v26.6.0 from the scratch prefix, checked in the shell that
 ran each command.
 
-Status: IN PROGRESS. This document is written incrementally and committed
-after each command whose output it cites.
+This document was written incrementally and committed after each command whose
+output it cites.
 
 ## 1. What this verification did NOT cover
 
-(to be completed; see final section)
+This section is FIRST because it is a reviewer's first check (CLAUDE.md:326),
+and because a search whose scope is wrong returns an empty result that reads
+exactly like an absence of defects.
+
+1. **No registry gate was run against this branch.** I ran the suite and my own
+   probes. `citations`, `scope`, `clause-map`, `coverage`, `credential-scrub`,
+   `manifest-self-check`, `agent-rules-drift` and the rest were NOT run by me on
+   this head. Anything I say about CI is inherited from the orchestrator's
+   report, not measured here.
+2. **Neither full bundle was run end to end.** FR2.8 records
+   `--bundle pr` and `--bundle main` runs against the modified harness. I drove
+   `--print-expect` and the extracted assertion program directly instead,
+   because a bundle run re-enters this repository's own suite. FR2.8's numbers
+   are therefore UNVERIFIED BY ME.
+3. **Most of the 1182-line work history is unreviewed.** I read and checked
+   FR2.0 to FR2.9, FR2.11 and FR2.12, plus the byte-identity of the FR2.2
+   capture. **FR2.10, FR2.13, FR2.14, FR2.15, FR2.16, FR2.17 and FR2.18 were
+   read but not independently verified**, except FR2.17's premise, which I did
+   check (section 15). The local gate runs with one RED and one ERROR, the
+   contention analysis of the intermittent failure, and the CI-by-step readings
+   are all outside what I measured.
+4. **The round's citation corrections were not re-verified beyond the six it
+   names.** I verified MY OWN citations by opening every line I cite, and found
+   and fixed five of my own that were wrong for the same reason the round's
+   were: I read line numbers out of the main checkout, which is on a different
+   head. I did not re-resolve the round's other citation tokens.
+5. **`delivery/**` prose was not searched** for stale claims about the union
+   having "two legs". This is the same exclusion the round declares at its
+   FR2.9 item 4, and I inherited it rather than closing it.
+6. **I did not construct a route by which a shipped `gates.manifest.json`
+   becomes `gates: []` in production.** DV-3 measures the consequence if it
+   does; it does not demonstrate the cause arising.
+7. **The mutation matrices were run on node v26.6.0 only.** The suite was run on
+   both toolchains, the probe matrices were not.
+8. **`.github/workflows/gates.yml` was not examined.** It is unchanged in
+   `fdb3120..9b7752d`; its earlier changes on this branch were in scope for the
+   two clean-room reviews, not for this delta.
+9. **My leg enumeration reads ONE union located by one regex**, the same bound
+   the round declares. A second union written differently elsewhere in the
+   assertion program would not appear in my section 6 either.
+10. **I did not attack the `explicitSpecReason` regex for shapes that preserve
+    its structure while changing the branch's meaning.** The round declares the
+    same gap at FR2.7 and I did not close it.
 
 ## 2. Verdict
 
-(pending)
+**The three central claims I was asked to falsify SURVIVED, and I found two new
+MEDIUM findings that no gate on this pull request could have caught.**
+
+| claim | verdict | evidence |
+|---|---|---|
+| CR-V-1: probe-4 discriminates for a genuinely different reason | **UPHELD** | section 4, complete 4x4x2 mutation matrix with a green control |
+| the round's mechanism: 24 branches, 3 reference the reason, 0 of 24 for an explicit member | **UPHELD**, re-derived independently | section 6, my own tokenizer, red-witnessed in section 14 |
+| CR-V-2: each new check reachable and witnessed alone | **UPHELD** | section 5, each check defanged separately with a control |
+| the fourth-leg guard is BY NAME, pins no count, reddens on an addition and on each removal | **UPHELD as stated**, incomplete as registered | section 7, plus DV-4 |
+| `test/behaviors.json`: FORCED or RELAXED per hunk | **all FORCED, none relaxed** | section 9 |
+| the byte-identity of the reverted capture | **UPHELD by re-execution** | section 10, `diff` exit 0 over 62 lines |
+
+New findings, none of them a regression against `fdb3120`:
+
+| id | severity | one line |
+|---|---|---|
+| DV-3 | **MEDIUM** | a well-formed `gates: []` manifest silently empties the manifest leg, neither new check fires, and a gate that did not run is certified |
+| DV-4 | **MEDIUM** | the fourth-leg guard is blind to a leg spelled as a parenthesised expression, so its registered behaviour's universal is false |
+| DV-1 | LOW | `probe-3` witnesses no leg on its own, and the guard's own message credits it with the manifest leg |
+| DV-2 | observation | FR2.4's "each leg reddens a DIFFERENT named assertion" is looser than what its evidence shows; the property that matters holds |
+
+DV-3 and DV-4 are the same shape as each other and as the branch's own subject:
+a guard whose CONDITION does not cover the property it names. Both are in code
+this round ADDED, which is the T-003 pattern this repository measures at twelve
+of thirteen re-reviewed fix rounds.
+
+Neither is a reason to revert anything on this branch. The branch is strictly
+better than `fdb3120` on every axis I measured, and both findings are gaps in
+new defensive code rather than breaks in existing behaviour. Whether they are
+closed on this branch or booked as a follow-up is the orchestrator's call, not
+mine; I note only that DV-4 falsifies a sentence currently registered in
+`test/behaviors.json` as a guarded behaviour, which is the kind of claim this
+repository has decided twice should not be left standing.
 
 ## 3. The delta, confirmed independently
 
@@ -557,3 +631,93 @@ failed to find.
 The remaining hits are quotations of the branch's own text (the shipped check-A
 message, the `behaviors.json` row, a test comment) or are settled by an adjacent
 measured command in the same section.
+
+## 15. FR2.17's premise, checked: `red-witness` genuinely did not run
+
+Read from the registry rather than from the round's report:
+
+```
+$ sed -n '170,184p' gate-registry.yaml
+  - id: red-witness
+    ...
+    precondition:
+      id: red-witness-diff
+      kind: diff-touches
+      paths:
+        - src/
+        - bin/
+
+$ git diff --name-only fdb3120 9b7752d | cut -d/ -f1 | sort -u
+delivery
+scripts
+test
+
+$ git diff --name-only origin/main 9b7752d | cut -d/ -f1 | sort -u
+.claude
+.github
+CLAUDE.md
+delivery
+scripts
+test
+```
+
+Neither `src/` nor `bin/` appears on either base. CONFIRMED: the `red-witness`
+gate's precondition is unmet on this pull request under both readings of the
+base, so **no gate has evaluated whether this round's new witnesses can fail.**
+Sections 4, 5, 7 and 14 of this document are that evaluation, done by hand.
+
+## 16. DV-1 completed: probe-3 measured under a DOUBLE deletion
+
+DV-1 asserted that probe-3 goes green only when BOTH the manifest and rows legs
+are removed. That was inference from its construction when I wrote it, so I
+measured it. A fourth harness variant leaving the EXPLICIT leg alone:
+
+```
+harness = [...explicitById.keys()] only
+HDVPROBE arm=pr   probe=probe-1-rows-leg                       status=0
+HDVPROBE arm=pr   probe=probe-2-manifest-leg                   status=0
+HDVPROBE arm=pr   probe=probe-3-manifest-gate-not-applicable   status=0
+HDVPROBE arm=pr   probe=probe-4-explicit-table-leg             status=1
+HDVPROBE arm=main probe=probe-1-rows-leg                       status=0
+HDVPROBE arm=main probe=probe-2-manifest-leg                   status=0
+HDVPROBE arm=main probe=probe-3-manifest-gate-not-applicable   status=0
+HDVPROBE arm=main probe=probe-4-explicit-table-leg             status=1
+```
+
+probe-3 is red in all four single-deletion columns and green here, so it is a
+witness for the DISJUNCTION of the manifest and rows legs and for neither one
+alone. probe-4 is red here as it is in every column but its own, which is a
+fifth independent check that its rejecter really is the explicit leg.
+
+## 17. Hygiene of this verification itself
+
+Both mutation worktrees were restored from saved pristine bytes after every run,
+never with `git checkout --` (CLAUDE.md:659). Verified at the end:
+
+```
+4b607dd9696485e5ef5e68838b99d596e532f516db2aa2012630873a14b9d452  scripts/m2-exit-test.sh
+5bb732f77ce3e0a3a9665e59eec3f70be55e26eec9d093297e07d8c53ae2cb19  test/m2-exit-test.test.ts
+```
+
+Both equal the branch's committed bytes.
+
+The authored-byte check was run with the tree STAGED, because it exits 2 without
+checking anything when the working tree differs from the index, which reads like
+a pass:
+
+```
+$ git status --porcelain
+(0 lines)
+$ node scripts/check-authored-bytes.mjs
+EXIT=0
+```
+
+No exit code in this document was read through a pipe. Where a pipeline was
+unavoidable the status was taken from `${PIPESTATUS[0]}`.
+
+The branch name was checked against the phase pattern before any push:
+
+```
+$ node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' claude/verify-harness-round2
+false
+```
