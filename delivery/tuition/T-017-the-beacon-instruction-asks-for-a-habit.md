@@ -154,6 +154,36 @@ So the corrected instruction, and it is what future briefs must carry:
 > you have triggered a run, or after the in-flight one has already given you
 > its answer. Never push while a run you intend to rely on is in flight.
 
+### The sharper version, found while trying to fix it
+
+The first draft of this postscript assumed the standing procedure was silent on
+pushing and that the fix was to add a rule. **It was not silent. The rule was
+already there and was already right**, at
+.claude/skills/phase-delivery/SKILL.md:98:
+
+    One push per fix round, not six. A fix round is 1 to 2 pushes.
+
+It says "not six". The round pushed exactly six.
+
+So the mechanism is not a missing rule. It is this: **a per-dispatch brief
+silently overrides a standing rule, because the brief is more recent, more
+specific, and addressed to the agent personally, and nothing compares the two.**
+The orchestrator wrote "COMMIT AND PUSH as you go" into a brief without ever
+opening the procedure that already said the opposite, and the agent reasonably
+followed the instruction written for it over the general one.
+
+That is worse than a gap and it is more general: every brief this orchestrator
+writes is an opportunity to overwrite a standing rule by accident, and the
+standing rules are exactly the ones that were written because something went
+wrong before. A rule that can be overridden by forgetting it is not much of a
+rule.
+
+The counterfactual is mechanical and cheap: **before writing a dispatch brief,
+re-read the standing procedure it is an instance of, and treat any divergence
+as a defect in the brief unless the brief says explicitly that it is
+overriding.** An intentional override is fine and sometimes necessary; a silent
+one is how a correct rule dies.
+
 **Why this is filed as tuition rather than fixed silently.** The general shape
 is one this project has now paid for repeatedly: two rules that are each
 correct in isolation, given together, with no statement of precedence, to

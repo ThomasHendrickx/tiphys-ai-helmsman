@@ -96,6 +96,26 @@ Findings go back to the SAME implementer, resumed. Rules:
 - Dispute is allowed with concrete evidence, surfaced for the orchestrator
   to arbitrate. Silent non-application is forbidden.
 - One push per fix round, not six. A fix round is 1 to 2 pushes.
+  **COMMITTING AND PUSHING ARE SEPARATE DECISIONS, and a brief that fuses them
+  breaks this rule while looking like it obeys the beacon rule.** Measured
+  2026-08-12: a brief said "commit and push as you go" beside "let the gates
+  workflow complete before reporting"; the agent obeyed both faithfully, pushed
+  six heads in two hours, and each push CANCELLED the in-flight run on the
+  previous head. Five cancellations, and for two hours there was no completed
+  gate evidence for the branch on the milestone's critical path. This line
+  already said "not six" and the brief overrode it, which is the actual defect:
+  a per-dispatch brief silently beats a standing rule because it is more recent
+  and addressed to the agent personally.
+  The wording to use:
+  > Append to your work history and COMMIT LOCALLY after each command whose
+  > output you will cite. PUSH when a cancelled run would cost nothing: before
+  > you have triggered a run, or after the in-flight one has already given you
+  > its answer. Never push while a run you intend to rely on is in flight.
+  Durability is satisfied by the LOCAL commit plus the file's mtime; pushing is
+  a different act with a different cost. Before writing any dispatch brief,
+  re-read this procedure and treat a divergence as a defect in the brief unless
+  the brief says explicitly that it is overriding. Full account in
+  delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:113.
 - Every new regression test must be red on the pre-fix code and green after.
 - Applying a fix must not break what already passed review; completeness
   invariants stated in the brief must be re-verified and reported.
