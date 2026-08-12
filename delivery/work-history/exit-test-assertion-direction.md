@@ -3192,3 +3192,62 @@ investigate. And that this round's own added load matters: it adds two tests, on
 of which spawns the assertion program three more times, which is negligible
 beside a concurrent full suite but is not zero and I did not measure it.
 
+## FR2.16 CI on the final head, read BY STEP
+
+`gates` run 31613587959, event `pull_request`, head
+`8db93b2dcadd2da6b86c1c274c15fe57ce460412`, **conclusion success**. Read by step
+rather than as one word, because CLAUDE.md:472 is the rule this branch is about:
+
+```
+JOB gates completed success
+STEP  1 completed success Set up job
+STEP  2 completed success Run actions/checkout@v4
+STEP  3 completed success Run actions/setup-node@v4
+STEP  4 completed success Run npm ci
+STEP  5 completed success Run npm run build
+STEP  6 completed success Run npm test
+STEP  7 completed success Agent-rules gate-list drift (gate-registry.yaml is the single source, R-094
+STEP  8 completed success M2 exit test (pull request)
+STEP  9 completed skipped M2 exit test (push)
+STEP 10 completed success M2 exit test self-test guard (the assertion code must reject a vacuous bund
+STEP 11 completed success M1 exit test (local mode)
+STEP 12 completed success M1 exit test falsifiability guard (the harness must be able to fail)
+STEP 23 completed success Post Run actions/setup-node@v4
+STEP 24 completed success Post Run actions/checkout@v4
+STEP 25 completed success Complete job
+```
+
+Four steps carry weight for this round specifically:
+
+- **STEP 6, `npm test`, success.** The suite is green in CI at 596 tests. The
+  contention failure of FR2.15 did not recur on a dedicated runner, which is
+  consistent with the load attribution and does not prove it.
+- **STEP 8, `M2 exit test (pull request)`, success.** This runs my MODIFIED
+  harness end to end on the pr bundle. Since round 1 could lean on the harness
+  bytes being unchanged and this round cannot, this step is the one that had to
+  be observed rather than inherited.
+- **STEP 10, the self-test guard, success.** The guard requires the assertion
+  code to REJECT two vacuous fixtures, so a success here means my two new
+  self-vacuity checks did not break the falsifiability guard, and did not fire on
+  fixtures they must not fire on. This is CR-FR-1's sixth call site passing in CI.
+- **STEP 9, `M2 exit test (push)`, SKIPPED, and it is not a pass.** The step is
+  conditioned on the CI event, and this run's event is `pull_request`. So the
+  PUSH arm of the exit-test harness DID NOT RUN on this head and this run is no
+  evidence about it. That is exactly the fork T-009 records, and the honest
+  sentence is that the push arm of the harness will first execute in CI on the
+  post-merge push to `main`, which is a run someone must watch to completion
+  before this phase is closed (CLAUDE.md:468).
+
+The push arm is not unwitnessed overall: FR2.8 ran `--bundle main` locally
+against the modified harness with the same OK line as round 1, and FR2.4 reddens
+the main arm under each leg separately. But LOCAL is not CI, and this run says
+nothing about the CI push arm. Both statements are true and only the pair is
+complete.
+
+**The standing bound, unchanged:** the `gates` workflow exercises
+`scripts/m2-exit-test.sh` through these exit-test steps and through
+`test/m2-exit-test.test.ts` under `npm test`; no CI bundle contains an unlisted
+manifest gate, so a green run is evidence that the tests and both local bundles
+pass, never that the derivation discriminates. FR2.4 to FR2.7 are the evidence
+for the discrimination, and they are lab work by necessity.
+
