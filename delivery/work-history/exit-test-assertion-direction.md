@@ -3642,7 +3642,7 @@ guard in FR3.4.
 ## FR3.3 The DANGEROUS state, measured BEFORE the fix, on BOTH arms
 
 The red-witness rule requires a witness to be red against the DANGEROUS state,
-not against an absent feature, and CLAUDE.md:348 requires a class witness to
+not against an absent feature, and CLAUDE.md:380 requires a class witness to
 redden under at least TWO structurally different members. So the dangerous
 state is constructed and measured here, against the PRE-FIX code at 9b7752d,
 before a line of it is changed.
@@ -3871,10 +3871,10 @@ The condition `!Array.isArray(manifestRead.value?.gates)` is replaced by
 `manifestIds.length === 0`, which is the property the message states. The
 observed shape (absent key, wrong type, empty array, entries without ids) is
 REPORTED in the message for diagnosis and is never the test. See
-scripts/m2-exit-test.sh:523 for the reasoning as shipped, and
-scripts/m2-exit-test.sh:545 for the condition.
+scripts/m2-exit-test.sh:529 for the reasoning as shipped, and
+scripts/m2-exit-test.sh:550 for the condition.
 
-A second, smaller change at scripts/m2-exit-test.sh:761: the success line now
+A second, smaller change at scripts/m2-exit-test.sh:782: the success line now
 reports what EACH LEG contributed. That is not decoration and it is not a
 check. It covers the failure mode no check inside this program can catch, a leg
 that has SHRUNK rather than emptied, because the program holds no independent
@@ -4048,7 +4048,7 @@ main/rows-not-an-array             EXIT=1
 | same, manifest `gates: {}`, both arms | EXIT=1 | EXIT=1 |
 
 Two structurally different members of the class, red on both arms, with a green
-control that stays green. That satisfies CLAUDE.md:348 by measurement rather
+control that stays green. That satisfies CLAUDE.md:380 by measurement rather
 than by assertion.
 
 ### FR3.4b The SECOND harm, through the harness's own pipeline
@@ -4143,12 +4143,12 @@ than an instance fix.
    literal into TOP-LEVEL ELEMENTS with a depth-aware scan that is string,
    template and comment aware, and compares their source text against a pinned
    list of three. A leg is then seen whatever it is spelled like, including one
-   that is not a spread at all. test/m2-exit-test.test.ts:1704 onward.
+   that is not a spread at all. test/m2-exit-test.test.ts:1745 onward.
 2. **A leg does not have to arrive inside that array literal.** It can arrive
    as a separate write to `expectedIds` twenty lines further down, and no
    enumeration of the literal would ever notice. So every statement that WRITES
    the binding is pinned too, by its own text:
-   test/m2-exit-test.test.ts:1817. This is the member of the class that the
+   test/m2-exit-test.test.ts:1866. This is the member of the class that the
    element-list fix alone does not cover, and it was not in the delta
    verification; it came out of asking what the class is.
 
@@ -4259,7 +4259,7 @@ had to be rebuilt to stay that way. Its old form was a manifest with `gates: []`
 which the new condition now rejects first, so the two checks would no longer
 have been separately witnessed. Its new form gives every leg something to
 contribute and empties the expected set through the ABSENT list instead:
-test/m2-exit-test.test.ts:1697. That is the only remaining route to "every leg
+test/m2-exit-test.test.ts:1692. That is the only remaining route to "every leg
 looks healthy and nothing at all is asserted".
 
 The title changed, so `test/behaviors.json` changed with it (the registry's
@@ -4384,7 +4384,7 @@ exactly ONE witness, probe-2. DV-1 is upheld by independent measurement.
 
 The guard's message now says exactly that, and says the consequence a
 maintainer needs: removing probe-2 would leave the manifest leg with no witness
-at all. test/m2-exit-test.test.ts:1800.
+at all. test/m2-exit-test.test.ts:1858.
 
 **DV-2 is left alone deliberately.** It is an observation that round 2's FR2.4
 prose ("each leg reddens a DIFFERENT named assertion") is looser than its
@@ -4405,7 +4405,7 @@ that ran the command with `node --version` checked there.
 | node v22.22.2 (default, `bash -lc`) | `dist/` built | `npm test` | 596 | 594 | **2** | 0 |
 
 596 is what CI and the `suite` gate mean. The bare-invocation +2 are the tracked
-`sandbox/test/greet.test.js` fixture CLAUDE.md:728 records. The default
+`sandbox/test/greet.test.js` fixture CLAUDE.md:732 records. The default
 toolchain's 2 are the floor-gated doctor tests, named rather than inferred:
 
 ```
@@ -4413,7 +4413,7 @@ ok 153 - doctor in a healthy fleet exits 0 # SKIP local Node v22.22.2 is below t
 ok 157 - doctor with gh absent exits 0 under the generic profile # SKIP local Node v22.22.2 is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)
 ```
 
-### FR3.8a The no-dist arm skips TEN, and CLAUDE.md:646 still says nine
+### FR3.8a The no-dist arm skips TEN, and CLAUDE.md:688 still says nine
 
 All ten named from the run itself:
 
@@ -4440,7 +4440,7 @@ round's files and an edit to it here would be an unannounced scope widening.
 ### FR3.8b BOTH new guards run on BOTH CI events
 
 Neither guard is dist-gated, so both PASS in the arm where the five dist-gated
-tests skip. That is the T-009 property (CLAUDE.md:440): a witness on one arm and
+tests skip. That is the T-009 property (CLAUDE.md:472): a witness on one arm and
 nothing on the other is the exact shape that broke this repository before.
 
 ```
