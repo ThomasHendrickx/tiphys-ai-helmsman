@@ -29,14 +29,15 @@ is wrong: verify against git and the PR list before trusting it.
   two briefs carry the same hole) rather than the named instance. The paperwork
   merged as `6ac2abc` (PR #98), so the ruling is on `main` at
   delivery/review/arbitration-m3-p5.md:1 and no longer only on a branch.
-  **The post-merge push run on `6ac2abc` is PARTIALLY observed as this is
-  written, and the incomplete state is recorded rather than rounded up.**
-  `macOS smoke` completed success. `gates` run 31563009476 is green through
-  step 10, INCLUDING step 9 `M2 exit test (push)`, which is the push-only arm
-  T-009 exists for, and step 8 correctly skipped. Steps 11 and 12, the M1 exit
-  test and its falsifiability guard, were still running. The phase closure this
-  head belongs to is not claimed until those two are seen; a run green through
-  ten of twelve steps is not a green run.
+  **The post-merge push run on `6ac2abc` is COMPLETE and verified BY STEP on
+  both workflows.** `macOS smoke` success. `gates` run 31563009476 completed
+  success at 04:33:57Z with all fifteen steps accounted for: step 8
+  `M2 exit test (pull request)` correctly SKIPPED on this arm, step 9
+  `M2 exit test (push)` success, which is the push-only arm T-009 exists for,
+  step 10 the vacuous-bundle self-test guard success, and steps 11 and 12 the
+  M1 exit test and its falsifiability guard success. This bullet was first
+  written while steps 11 and 12 were still running and said so; it is now
+  updated from the finished run rather than from the earlier partial one.
 - **M3-P7 IS PRE-READ TOO, AND ITS ONE DANGEROUS CANDIDATE IS REFUTED.**
   delivery/plan/m3-p7-dispatch-read.md:1. M3-P7's criterion 3c needs a gate id
   RENAMED and a gate entry DELETED as its two witnesses, against
