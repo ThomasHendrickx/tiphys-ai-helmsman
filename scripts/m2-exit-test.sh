@@ -498,8 +498,9 @@ if (!manifestRead.ok) {
   console.error(`m2-assert (${label}): FAIL: ${manifestRead.reason}`);
   process.exit(1);
 }
-const manifestIds = Array.isArray(manifestRead.value?.gates)
-  ? manifestRead.value.gates
+const manifestGates = manifestRead.value?.gates;
+const manifestIds = Array.isArray(manifestGates)
+  ? manifestGates
       .map((gate) => gate?.id)
       .filter((id) => typeof id === "string" && id !== "")
   : [];
@@ -522,20 +523,48 @@ const derivedIds = expectedIds.filter((id) => !explicitById.has(id));
 
 // -- 0. THIS PROGRAM IS NOT EXEMPT FROM ITS OWN RULE. It rejects any gate that
 //       reports green having examined zero units as vacuous (M2-C-2), and until
-//       these two checks existed it could itself exit 0 having asserted on zero
-//       gates, printing "0 gate(s) asserted" as a pass. Both inputs that produce
-//       that state degrade SILENTLY rather than erroring: a manifest that parses
-//       but whose `gates` key is not an array makes the manifest leg empty
-//       (the Array.isArray fallback above), and an expectations document with no
-//       gates makes the explicit leg empty. Neither is reachable through the
-//       shipped harness, whose two expectation tables are non-empty shell
-//       literals; both are reachable by anything else that runs this program,
-//       and "not reachable today" is not a property a later edit preserves.
-if (!Array.isArray(manifestRead.value?.gates)) {
-  fail(null, `the manifest ${manifestPath} parses but its "gates" key is not an array, so the ` +
-    "manifest leg of the derived expected set is silently EMPTY rather than an error; a manifest " +
-    "that declares no gates cannot certify a bundle");
+//       these checks existed it could itself exit 0 having asserted on zero
+//       gates, printing "0 gate(s) asserted" as a pass.
+//
+//       THE CONDITION IS THE PROPERTY, NOT A SHAPE THAT PRODUCES IT. The first
+//       version of this check tested `!Array.isArray(gates)`, which is one
+//       syntactic route into an empty manifest leg out of several, and its own
+//       message quantified over all of them ("a manifest that declares no gates
+//       cannot certify a bundle"). A well-formed `gates: []` and a non-empty
+//       array whose entries carry no usable id both empty the leg while passing
+//       an Array.isArray test, and both were measured CERTIFYING a bundle in
+//       which a manifest-declared gate produced no record at all. So the
+//       condition below is the contribution of the leg itself, which covers the
+//       wrong-type shape, the absent-key shape, the empty-array shape and the
+//       unusable-entries shape as one condition rather than four; the observed
+//       shape is reported in the message for diagnosis, never used as the test.
+//
+//       WHY ONLY THIS LEG. Measured, on both arms, against the shipped tables:
+//       emptying the ROWS leg is loud (every manifest and table id then has no
+//       record and each is rejected by name), and emptying the EXPLICIT leg
+//       makes the program stricter rather than weaker (every manifest id falls
+//       to the default required-green). The manifest leg is the only one of the
+//       three whose emptying is silent, because it is the sole source for the
+//       one thing the derivation exists to provide: a NEWLY DECLARED gate, which
+//       no table row names and which, having not run, no bundle row carries.
+if (manifestIds.length === 0) {
+  const observed = !Array.isArray(manifestGates)
+    ? (manifestGates === undefined
+        ? 'its "gates" key is absent'
+        : `its "gates" key is not an array (it is ${manifestGates === null ? "null" : typeof manifestGates})`)
+    : (manifestGates.length === 0
+        ? 'its "gates" key is an empty array'
+        : `its "gates" key is an array of ${manifestGates.length} entries and NONE carries a ` +
+          "non-empty string id");
+  fail(null, `the manifest ${manifestPath} parses but ${observed}, so the manifest leg of the ` +
+    "derived expected set is EMPTY. A gate that is declared but did not run is then invisible, " +
+    "which is the whole class this derivation exists to close; a manifest that declares no gates " +
+    "cannot certify a bundle");
 }
+//       The second check is the aggregate one and its condition already IS its
+//       property. It stays reachable on its own: the legs can each contribute
+//       and the expected set still be empty, when the table declares every
+//       contributed id absent from this bundle.
 if (expectedIds.length === 0) {
   fail(null, "the derived expected set is EMPTY, so this run would certify a bundle having " +
     "asserted on ZERO gates. A green that examined no units is vacuous (M2-C-2), and that rule " +
@@ -749,7 +778,15 @@ if (failures.length > 0) {
 // can see how many gates were asserted on, how many carried an explicit table
 // row, and which were asserted under the strict default. A run in which the
 // derived set is smaller than the manifest is visible here rather than silent.
+//
+// EACH LEG'S CONTRIBUTION IS REPORTED TOO, and that is not decoration. The
+// check above refuses an empty manifest leg; this line is what makes a leg that
+// has SHRUNK rather than emptied visible to a reader of the evidence, which is
+// the failure mode no check inside this program can catch, because the program
+// holds no independent record of what the manifest ought to contain.
 console.log(`m2-assert (${label}): OK. ${rows.length} gate record(s) match section 1.4; ` +
+  `derived from ${manifestIds.length} manifest id(s), ${rows.length} bundle row(s) and ` +
+  `${explicitById.size} table row(s); ` +
   `${expectedIds.length} gate(s) asserted (${expectedIds.length - derivedIds.length} from an ` +
   `explicit table row, ${derivedIds.length} under the default required-green` +
   `${derivedIds.length > 0 ? `: ${derivedIds.join(", ")}` : ""}); ` +

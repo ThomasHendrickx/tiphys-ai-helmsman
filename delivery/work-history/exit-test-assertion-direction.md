@@ -3864,3 +3864,272 @@ So the manifest leg is the only one of the three whose emptying is silent, and
 the fix is scoped to it on measured grounds rather than on the grounds that it
 is the one that was reported. A check on the other two would have no dangerous
 state to be red against, which is the T-003 shape in its own right.
+
+## FR3.4 The fix to the assertion program, and its red witnesses
+
+The condition `!Array.isArray(manifestRead.value?.gates)` is replaced by
+`manifestIds.length === 0`, which is the property the message states. The
+observed shape (absent key, wrong type, empty array, entries without ids) is
+REPORTED in the message for diagnosis and is never the test. See
+scripts/m2-exit-test.sh:523 for the reasoning as shipped, and
+scripts/m2-exit-test.sh:545 for the condition.
+
+A second, smaller change at scripts/m2-exit-test.sh:761: the success line now
+reports what EACH LEG contributed. That is not decoration and it is not a
+check. It covers the failure mode no check inside this program can catch, a leg
+that has SHRUNK rather than emptied, because the program holds no independent
+record of what the manifest ought to contain. Stating that bound here is the
+point; a reader who wants that caught needs a source of truth this program does
+not have.
+
+### FR3.4a The same lab, same fixtures, against the FIXED program
+
+Identical script, identical fixtures, only the program under test differs.
+
+FULL OUTPUT:
+
+```
+manifest gates: 11 | gate omitted per arm: {"pr":"red-witness","main":"coverage"}
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+
+=== ARM pr: shipped table has 11 explicit row(s), 0 declared absent ===
+--- [pr] GREEN-CONTROL-nothing-omitted
+m2-assert (PR bundle): OK. 11 gate record(s) match section 1.4; derived from 11 manifest id(s), 11 bundle row(s) and 11 table row(s); 11 gate(s) asserted (11 from an explicit table row, 0 under the default required-green); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [pr] CONTROL-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG1-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [red-witness] no record in the bundle for a gate the table lists (expected green|not-applicable)
+EXIT=1
+
+--- [pr] LEG3-table-names-no-gates
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [red-witness] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-real-manifest
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-empty-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] NEWGATE-manifest-entries-without-ids
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] NEWGATE-manifest-gates-not-an-array
+m2-assert (PR bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-pr-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+=== ARM main: shipped table has 6 explicit row(s), 5 declared absent ===
+--- [main] GREEN-CONTROL-nothing-omitted
+m2-assert (main bundle): OK. 6 gate record(s) match section 1.4; derived from 11 manifest id(s), 6 bundle row(s) and 6 table row(s); 6 gate(s) asserted (6 from an explicit table row, 0 under the default required-green); 5 asserted absent: credential-token, citations, scope, clause-map, red-witness; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+--- [main] CONTROL-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG1-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 2 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-LEG1-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+EXIT=1
+
+--- [main] LEG3-table-names-no-gates
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [coverage] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-real-manifest
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [fixture-newly-declared-gate] gates.manifest.json declares this gate and the bundle carries NO record for it, and the table does not list it as absent from this bundle; a declared gate that produced no record is a gate that did not run. This gate has NO row in the expectations table, so it was asserted under the default for a declared-but-unlisted gate, which is deliberately the STRICT one (required, green). If this gate is legitimately allowed another status, that is a row to add to the table in scripts/m2-exit-test.sh, not a default to loosen.
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-empty-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-gates-empty-array.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [main] NEWGATE-manifest-entries-without-ids
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-entries-without-ids.json parses but its "gates" key is an array of 3 entries and NONE carries a non-empty string id, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [main] NEWGATE-manifest-gates-not-an-array
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/fr3-lab-post-20072/manifest-main-NEWGATE-manifest-gates-not-an-array.json parses but its "gates" key is not an array (it is object), so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+
+--- [pr] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (PR bundle): FAIL with 19 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(20 output line(s) total)
+EXIT=1
+
+--- [main] LEG2-summary-gates-not-an-array (bundle rows leg emptied)
+m2-assert (main bundle): FAIL with 14 finding(s):
+  - [manifest-self-check] no record in the bundle for a gate the table lists (expected green)
+  - [coverage] no record in the bundle for a gate the table lists (expected green)
+  - [credential-scrub] no record in the bundle for a gate the table lists (expected green)
+(15 output line(s) total)
+EXIT=1
+
+=== SUMMARY: exit status per case (0 = CERTIFIED, 1 = rejected) ===
+pr/GREEN-CONTROL                   EXIT=0
+pr/control                         EXIT=1
+pr/manifest-empty-array            EXIT=1
+pr/manifest-no-usable-ids          EXIT=1
+pr/manifest-not-an-array           EXIT=1
+pr/explicit-empty                  EXIT=1
+pr/NEWGATE-real-manifest           EXIT=1
+pr/NEWGATE-manifest-empty-array    EXIT=1
+pr/NEWGATE-manifest-no-usable-ids  EXIT=1
+pr/NEWGATE-manifest-not-an-array   EXIT=1
+main/GREEN-CONTROL                 EXIT=0
+main/control                       EXIT=1
+main/manifest-empty-array          EXIT=1
+main/manifest-no-usable-ids        EXIT=1
+main/manifest-not-an-array         EXIT=1
+main/explicit-empty                EXIT=1
+main/NEWGATE-real-manifest         EXIT=1
+main/NEWGATE-manifest-empty-array  EXIT=1
+main/NEWGATE-manifest-no-usable-ids EXIT=1
+main/NEWGATE-manifest-not-an-array EXIT=1
+pr/rows-not-an-array               EXIT=1
+main/rows-not-an-array             EXIT=1
+```
+
+| case | pre-fix | post-fix |
+|---|---|---|
+| GREEN CONTROL, both arms | EXIT=0 | **EXIT=0** (still accepted) |
+| newly declared gate did not run, real manifest | EXIT=1 | EXIT=1 |
+| **same, manifest `gates: []`, both arms** | **EXIT=0 certified** | **EXIT=1 rejected** |
+| **same, manifest entries without ids, both arms** | **EXIT=0 certified** | **EXIT=1 rejected** |
+| same, manifest `gates: {}`, both arms | EXIT=1 | EXIT=1 |
+
+Two structurally different members of the class, red on both arms, with a green
+control that stays green. That satisfies CLAUDE.md:348 by measurement rather
+than by assertion.
+
+### FR3.4b The SECOND harm, through the harness's own pipeline
+
+The A/B above isolates the assertion program. It is not the whole of what an
+emptied manifest leg costs, because the harness DERIVES the main arm's absent
+list from the same file it then passes to the program
+(scripts/m2-exit-test.sh:225). So one degraded file degrades both halves, and
+the second harm is structurally different from the first: not a declared gate
+going unasserted, but the absent list collapsing so a STRAY record for a gate
+the main bundle must not run stops being rejected.
+
+Method: the manifest is degraded IN PLACE in the worktree, because
+`--print-expect` resolves it from the harness's own repository root and a copy
+of the harness outside its tree reads the wrong file. That is not hypothetical:
+the first attempt at this measurement did exactly that and both PRE arms died
+with ENOENT, which is why the run below swaps the harness file in place instead
+and prints each program's sha256 so the two arms cannot be confused.
+
+FULL OUTPUT:
+
+```
+########## manifest=REAL  program=PRE-FIX  (sha 4b607dd96964) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = ["credential-token","citations","scope","clause-map","red-witness"]
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [red-witness] expected to be ABSENT from this bundle (not run) but has a summary record
+EXIT=1
+
+########## manifest=REAL  program=POST-FIX  (sha 5791db626d2f) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = ["credential-token","citations","scope","clause-map","red-witness"]
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - [red-witness] expected to be ABSENT from this bundle (not run) but has a summary record
+EXIT=1
+
+########## manifest=DEGRADED-gates-empty-array  program=PRE-FIX  (sha 4b607dd96964) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = []
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): OK. 7 gate record(s) match section 1.4; 7 gate(s) asserted (6 from an explicit table row, 1 under the default required-green: red-witness); 0 asserted absent; counts re-derived and equal to summary.json; zero red; zero error; zero vacuous.
+EXIT=0
+
+########## manifest=DEGRADED-gates-empty-array  program=POST-FIX  (sha 5791db626d2f) ##########
+harness: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/scripts/m2-exit-test.sh
+manifest: /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json
+derived main table: 6 explicit row(s), absent = []
+bundle rows: 7 (including a STRAY record for red-witness, which the main bundle must not run)
+m2-assert (main bundle): FAIL with 1 finding(s):
+  - the manifest /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/hr3/gates.manifest.json parses but its "gates" key is an empty array, so the manifest leg of the derived expected set is EMPTY. A gate that is declared but did not run is then invisible, which is the whole class this derivation exists to close; a manifest that declares no gates cannot certify a bundle
+EXIT=1
+```
+
+The collapse itself, isolated, so it is not inferred from the run above:
+
+```
+=== CONTROL: real gates.manifest.json ===
+-- arm=pr
+gates: 11 absent: []
+-- arm=main
+gates: 6 absent: ["credential-token","citations","scope","clause-map","red-witness"]
+
+=== DEGRADED: same file with gates:[] ===
+-- arm=pr
+gates: 11 absent: []
+-- arm=main
+gates: 6 absent: []
+```
+
+| manifest | program | result |
+|---|---|---|
+| real | pre-fix | EXIT=1, the stray `red-witness` record is rejected |
+| real | post-fix | EXIT=1, same finding, same text |
+| **`gates: []`** | **pre-fix** | **EXIT=0, "7 gate(s) asserted ... zero red"** |
+| **`gates: []`** | **post-fix** | **EXIT=1, the manifest leg is named as empty** |
+
+Both files were restored from saved pristine bytes, never with `git checkout --`
+(CLAUDE.md:659), and `git status --porcelain` reported `gates.manifest.json`
+unmodified afterwards.
