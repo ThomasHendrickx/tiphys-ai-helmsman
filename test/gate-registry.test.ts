@@ -396,17 +396,28 @@ test("a registry entry with no events field is rejected, and every promoted entr
   assert.deepEqual(validateModule.validateToLines(defanged, instance), []);
   assert.ok(validateModule.validateToLines(readRegistrySchema(), instance).length > 0);
 
-  /* DERIVED, NOT ASSIGNED (step 5). The `push` arm's gate set is the
-     hard-coded `--only` list in scripts/m2-exit-test.sh; the `pull_request`
-     arm passes no `--only` and therefore runs every entry. Reading the arm
-     off the harness rather than off a memory of it is the whole point: an
-     `events[]` assigned by judgment is a claim nothing checks. */
+  /* DERIVED, NOT ASSIGNED (step 5). The `push` arm's gate set is the gate list
+     scripts/m2-exit-test.sh declares in MAIN_ONLY_GATES and turns into the
+     runner's repeated `--only` flags; the `pull_request` arm passes no `--only`
+     and therefore runs every entry. Reading the arm off the harness rather than
+     off a memory of it is the whole point: an `events[]` assigned by judgment
+     is a claim nothing checks.
+
+     This reader used to scrape the `--only` flags out of the runner invocation.
+     That worked while the six ids were written out literally there, and the
+     harness now declares them ONCE in MAIN_ONLY_GATES and builds both the flags
+     and the expectation's absent list from it, precisely so the set cannot exist
+     in two places that drift. Reading the single declaration is therefore
+     strictly closer to this test's own stated intent than scraping one of the
+     things generated from it. */
   const harness = readFileSync(harnessPath, "utf8");
-  const mainBundle = /--only manifest-self-check[\s\S]*?\) \\/.exec(harness);
-  assert.ok(mainBundle !== null, "the main bundle's --only list was not found in the harness");
-  const pushGates = new Set(
-    [...(mainBundle[0].matchAll(/--only ([a-z0-9-]+)/g))].map((match) => match[1] as string),
+  const mainBundle = /^MAIN_ONLY_GATES="([^"]+)"/m.exec(harness);
+  assert.ok(
+    mainBundle !== null,
+    "scripts/m2-exit-test.sh no longer declares MAIN_ONLY_GATES, so the push arm's gate set " +
+      "cannot be derived from the harness and this test would be asserting over a memory of it",
   );
+  const pushGates = new Set((mainBundle[1] as string).split(/\s+/).filter((id) => id !== ""));
   assert.ok(pushGates.size >= 6, `expected the six main-bundle gates, derived ${[...pushGates].join(", ")}`);
 
   const registry = readRegistry(registryPath);
