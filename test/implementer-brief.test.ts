@@ -725,23 +725,48 @@ test("the claim-grep clause carries the CLAUDE.md grep command verbatim, and a p
   );
 });
 
-test("the fix-round-mechanism clause names all three items and cites the M1 measurement, and dropping one item reddens", () => {
-  const clause = flatten(clauseSection(readFileSync(briefPath, "utf8"), "fix-round-mechanism"));
-  const items = [
-    "NAME THE MECHANISM, not the finding",
-    "PUBLISH THE DERIVATION",
-    "STATE WHAT THE DERIVATION DID NOT COVER",
-  ];
-  for (const item of items) {
-    assert.ok(clause.includes(item), `the fix-round clause does not carry: ${item}`);
+/**
+ * THE FIX-ROUND CLAUSE'S REQUIREMENTS, AS A PREDICATE THAT CAN BE RE-RUN.
+ *
+ * IT IS A FUNCTION AND NOT A RUN OF `assert` CALLS ON PURPOSE (M3-P6 fix round
+ * 1, finding A-1). The registered arm used to demonstrate its weakening arm IN
+ * MEMORY: it built the two-item text with `String.replace` and asserted that
+ * the result no longer CONTAINED item 3. That proves a weakening is
+ * CONSTRUCTIBLE, not that the check REDDENS against it, and it is the exact
+ * shape criterion 11 exists to prevent one file over. Shipping it in the phase
+ * that closes prove-in-memory elsewhere is incoherent, so the requirements are
+ * lifted into one predicate and the weakenings are written to a FILE, read back
+ * off disk, and put through the SAME predicate, whose findings are then
+ * observed.
+ *
+ * It returns the list of unmet requirements rather than throwing, because a
+ * weakening arm has to be able to look at what the check SAID, not only at
+ * whether it threw.
+ */
+const FIX_ROUND_ITEMS = [
+  "NAME THE MECHANISM, not the finding",
+  "PUBLISH THE DERIVATION",
+  "STATE WHAT THE DERIVATION DID NOT COVER",
+];
+
+function fixRoundClauseFindings(clauseText: string): string[] {
+  const clause = flatten(clauseText);
+  const findings: string[] = [];
+  const require = (held: boolean, finding: string): void => {
+    if (!held) {
+      findings.push(finding);
+    }
+  };
+  for (const item of FIX_ROUND_ITEMS) {
+    require(clause.includes(item), `the fix-round clause does not carry: ${item}`);
   }
   /* THE FULL OUTPUT, not a summary, is the half of item 2 that is routinely
-     softened away, so it is pinned separately from the item's heading. */
-  assert.ok(
+     softened away, so it is checked separately from the item's heading. */
+  require(
     clause.includes("together with its FULL output"),
     "the derivation item does not require the full output",
   );
-  assert.ok(
+  require(
     clause.includes("The reviewer's FIRST check is item 3"),
     "the clause does not carry the ordering requirement on the reviewer",
   );
@@ -749,18 +774,77 @@ test("the fix-round-mechanism clause names all three items and cites the M1 meas
      sixteen rounds, thirteen re-reviewed, twelve producing a new finding, and
      the counter-example of eleven call sites where a review had listed eight. */
   for (const figure of ["Sixteen", "thirteen", "TWELVE", "ELEVEN call sites", "listed eight"]) {
-    assert.ok(clause.includes(figure), `the clause does not cite the measurement: ${figure}`);
+    require(clause.includes(figure), `the clause does not cite the measurement: ${figure}`);
   }
+  return findings;
+}
 
-  const weakened = items
-    .slice(0, 2)
-    .every((item) => clause.replace(items[2] as string, "").includes(item));
-  assert.ok(weakened, "the two-item weakening could not be constructed");
-  assert.equal(
-    clause.replace(items[2] as string, "").includes(items[2] as string),
-    false,
-    "removing item 3 left item 3 in the text, so this arm proves nothing",
+test("the fix-round-mechanism clause names all three items and cites the M1 measurement, and every weakening of it reddens the same check when it is re-run over the weakened file", () => {
+  const shipped = clauseSection(readFileSync(briefPath, "utf8"), "fix-round-mechanism");
+  assert.deepEqual(
+    fixRoundClauseFindings(shipped),
+    [],
+    "the shipped fix-round clause does not satisfy its own check",
   );
+
+  /* FOUR WEAKENINGS, STRUCTURALLY DIFFERENT, because one witness is not a
+     class and the four requirements above fail independently: a dropped ITEM,
+     a softened item that keeps its heading, a dropped ORDERING sentence, and a
+     dropped MEASUREMENT figure. Each names what it expects the check to say,
+     so an arm that reddened for some other reason is caught. */
+  const weakenings: { name: string; weaken: (text: string) => string; expect: RegExp }[] = [
+    {
+      name: "item 3 deleted outright",
+      weaken: (text) => text.split(FIX_ROUND_ITEMS[2] as string).join(""),
+      expect: /does not carry: STATE WHAT THE DERIVATION DID NOT COVER/,
+    },
+    {
+      name: "item 2 softened to drop the full-output demand, heading intact",
+      weaken: (text) => text.split("together with its FULL output").join("with a summary of it"),
+      expect: /does not require the full output/,
+    },
+    {
+      name: "the reviewer ordering sentence removed",
+      weaken: (text) => text.split("The reviewer's FIRST check is item 3").join(""),
+      expect: /ordering requirement on the reviewer/,
+    },
+    {
+      name: "the counter-example figure removed from the measurement",
+      weaken: (text) => text.split("ELEVEN call sites").join("several call sites"),
+      expect: /does not cite the measurement: ELEVEN call sites/,
+    },
+  ];
+
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-impl-fixround-"));
+  try {
+    for (const arm of weakenings) {
+      const weakened = arm.weaken(shipped);
+      assert.notEqual(weakened, shipped, `the weakening "${arm.name}" changed nothing`);
+      /* THROUGH A FILE, so nothing here is a claim about a string this test
+         holds in memory: the weakened clause is written, read back, and the
+         same predicate is executed over what was read. */
+      const path = join(dir, "clause.md");
+      writeFileSync(path, weakened);
+      const findings = fixRoundClauseFindings(readFileSync(path, "utf8"));
+      assert.notEqual(
+        findings.length,
+        0,
+        `the weakening "${arm.name}" left the check with nothing to report`,
+      );
+      assert.ok(
+        findings.some((finding) => arm.expect.test(finding)),
+        `the weakening "${arm.name}" reddened for the wrong reason: ${findings.join("; ")}`,
+      );
+    }
+
+    /* AND BACK TO GREEN over the same path, so the arms above are not green
+       because the predicate reports findings for everything it is handed. */
+    const path = join(dir, "clause.md");
+    writeFileSync(path, shipped);
+    assert.deepEqual(fixRoundClauseFindings(readFileSync(path, "utf8")), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ------------------------------------------------------------------ */

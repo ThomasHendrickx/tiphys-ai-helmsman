@@ -17,6 +17,12 @@
       "file": ".github/workflows/gates.yml",
       "find": "      - name: Implementer brief gate-list drift (gate-registry.yaml is the single source, R-094)\n        run: node scripts/check-brief-drift.mjs --check\n",
       "replace": "      - name: Implementer brief gate-list drift (gate-registry.yaml is the single source, R-094)\n        if: github.event_name == 'pull_request'\n        run: node scripts/check-brief-drift.mjs --check\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/gates.yml",
+      "find": "        run: node scripts/check-brief-drift.mjs --check\n",
+      "replace": "        run: node scripts/check-brief-drift.mjs\n"
     }
   ],
   "deterministic": true,
