@@ -500,9 +500,9 @@ Result: **one instance of the dangerous polarity over a program's findings, and
 it is the site this round fixed.** The `assurance-modes` and `liveness` hits are
 POSITIVE filters that COUNT occurrences of one named check; a positive filter
 cannot silently reject a probe, it can only fail to find one, which is a
-different (and self-announcing) failure. `teardown.test.ts:78` strips an
+different (and self-announcing) failure. test/teardown.test.ts:78 strips an
 advisory line from a stream before other assertions, not an admission test.
-`brief-compose.test.ts:246` is over rendered fields, not findings.
+test/brief-compose.test.ts:246 is over rendered fields, not findings.
 
 I also looked for the OTHER half of the shape, a spread union whose legs decide
 what gets asserted on:
