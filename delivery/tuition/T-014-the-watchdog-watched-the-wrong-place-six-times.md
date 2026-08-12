@@ -237,3 +237,53 @@ which wording names a moment, not a prediction that naming a moment is enough.
 The only mechanical version is a guard whose lifetime is bound to its agent's,
 which is a property the kernel's watcher could have and a hand-written bash loop
 cannot.
+
+## POSTSCRIPT 4, 2026-08-12: the baseline was GUESSED, and guessing is permissive
+
+A seventh instance, and it is a new class: not the wrong PLACE, the wrong TIME.
+
+CLAUDE.md's dispatch contract asks three questions in writing before arming a
+watchdog, and the second is "What is the baseline before its first write?" It
+says the answer must be dispatch time rather than an inherited mtime. **It does
+not say the answer must be MEASURED, and on this occasion it was invented.**
+
+Arming a watchdog for a delta verifier, the orchestrator wrote a literal epoch
+constant, `BASELINE=1786547700`, intending "dispatch time". The real time was
+`1786546543`. The constant was **1157 seconds in the FUTURE**, so every `age`
+computation came out NEGATIVE and the monitor printed `-1184s since dispatch`.
+
+The direction is what makes this worth an entry. A baseline in the future makes
+every elapsed time smaller than the truth, so **every threshold fires LATER
+than intended, and a threshold that fires later is a watchdog that cannot go
+red when it should.** Had the agent died in its first twenty minutes, the
+monitor would have reported it healthy throughout. This is the T-008 postscript
+shape exactly, a guard whose condition does not test the property that matters,
+arrived at by arithmetic rather than by watching the wrong path.
+
+It was caught only because the printed number was NEGATIVE and therefore
+absurd. A guess that had been 1157 seconds in the PAST would have been
+permissive in the same way and would have looked entirely plausible. So the
+detection here was luck, not method.
+
+**The rule this adds, and it is mechanical:**
+
+> A watchdog's baseline is MEASURED, never written as a literal. Take it from
+> something the system itself recorded: `stat -c %Y` on the agent's worktree,
+> or `date +%s` evaluated INSIDE the monitor. If you find yourself typing an
+> epoch number, you are guessing, and a guessed baseline is wrong in the
+> permissive direction half the time and undetectable when it is.
+
+The corrected monitor recomputes `BASELINE=$(stat -c %Y "$WT")` on every
+iteration, so it is derived from the worktree the agent created rather than
+from anything the orchestrator believed about the clock.
+
+### What this postscript does NOT cover
+
+- **It does not audit the other watchdogs armed in this session for the same
+  defect.** Two others were armed with `$(date +%s)` evaluated inside the
+  monitor, which is correct by construction, and one was armed with a literal
+  taken from a `date` command that had actually been RUN, which is correct but
+  fragile for the same reason. None was re-checked against the clock.
+- **It does not establish why the constant was wrong.** No arithmetic was
+  reconstructed. The number was simply not measured, and where it came from is
+  not worth recovering.
