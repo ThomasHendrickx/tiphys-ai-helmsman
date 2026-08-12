@@ -3120,3 +3120,75 @@ whether the failing test is `the heartbeat schedule is on disk and shared by
 single passes` or another `test/watcher.test.ts` real-clock test, which FR2.13
 identifies as failing under load in a file this branch does not touch.
 
+## FR2.15 The intermittent failure is CONTENTION, and the machine was measured
+
+FR2.13 attributed the failure to a real-clock test failing under load and
+explicitly declined to say more. Two facts arrived afterwards that make a
+stronger, and narrower, statement supportable. Recorded here rather than by
+editing FR2.13, so the order in which it became knowable stays visible.
+
+**Fact 1: the machine was heavily oversubscribed, measured, four cores.** Load
+average reached 13.00 while this round and a delta verifier were both running
+suites and a third full `npm test` was running in another worktree. When that
+third run was killed the one-minute figure fell to 6.56 against a fifteen-minute
+figure of 10.43, so roughly HALF the load was one optional concurrent suite. Load
+at the time of writing, same box:
+
+```
+$ cat /proc/loadavg && nproc
+5.30 5.36 6.50 6/242 13971
+4
+```
+
+**Fact 2: a second agent independently hit the SAME TEST, at a different line.**
+It saw test/watcher.test.ts:432; I saw test/watcher.test.ts:424. Those are not
+two tests, they are two assertions in one:
+
+```
+$ sed -n '419,433p' test/watcher.test.ts
+test("the heartbeat schedule is on disk and shared by single passes", async (t) => {
+  // Criterion 5. Real-clock wait, bounded at 0.5s: the schedule is what
+  // is under test, so the interval has to actually elapse.
+  const fleet = initFleet(t);
+  const init = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(init.status, 3, init.stderr);
+
+  await sleep(500);
+  const due = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(due.status, 0, due.stderr);
+  assert.equal(due.stdout, "heartbeat 1\n");
+
+  const immediate = runCli(["watch", "--once", "--interval", "0.4"], { cwd: fleet });
+  assert.equal(immediate.status, 3, immediate.stderr);
+```
+
+**The mechanism, and it is one mechanism.** Both assertions expect status 3,
+"not due yet", and both observed 0, "due". Status 3 depends on LESS than 0.4s of
+wall clock having passed since the previous pass. Line 424 requires the gap
+between `initFleet` and the FIRST spawn to be under 0.4s; line 432 requires the
+gap between the `due` spawn and the `immediate` spawn to be under 0.4s. On a
+four-core box at load 13, a Node process spawn alone can exceed 0.4s. So the
+failing assertion is not testing the scheduler at that moment, it is testing
+whether the harness can spawn a process faster than the interval it chose. That
+is standing environment warning 11 exactly (CLAUDE.md:684): suite wall time grows
+with real-clock waits, and the budget is what gives.
+
+**What this corrects in my own record.** FR2.10's original text and FR2.13 are
+accurate as far as they go, but a reader could take "one bare run in three
+failed" as evidence that the suite is unstable. It is not the reading I intend
+and it is not what the evidence supports: the suite is stable and the BOX was
+saturated, by three concurrent full suites, at least one of them optional. The
+correct sentence is that a 0.4s wall-clock budget does not survive load average
+13 on four cores, in a file this branch does not touch.
+
+**What I still do NOT claim.** That contention is the cause of BOTH of my two
+observations rather than only the reproducible one; I captured a signature for
+the first and a named test for the second, and only the second is tied to a
+measured load figure. That the other agent's second failure
+(`test/coverage-gate.test.ts:189`) shares this mechanism: at my head that line is
+`assert.equal(coverageRow?.status, "green")`, which is not wall-clock shaped, so
+either its tree differs from mine or the mechanism differs, and I did not
+investigate. And that this round's own added load matters: it adds two tests, one
+of which spawns the assertion program three more times, which is negligible
+beside a concurrent full suite but is not zero and I did not measure it.
+
