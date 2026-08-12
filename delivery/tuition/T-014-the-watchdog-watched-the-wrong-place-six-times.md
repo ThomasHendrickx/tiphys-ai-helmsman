@@ -359,6 +359,32 @@ Both watchdogs were re-armed on the union. The delta verifier's union went to
 `0s` immediately, having read `1362s` a minute earlier against the same live
 agent.
 
+**AND THE FIX WAS STILL HALF A FIX, which is instance ten.** The re-armed
+watchdog measured ACTIVITY across the union and went on taking the REPORT'S
+PATH from the brief. It therefore reported "REPORT STILL ABSENT" for
+thirty-five minutes while a 254-line report sat, growing, at
+`scratchpad/dvr2-report/delivery/review/verification-m3-p6-fix-round-2.md`.
+The agent had made a THIRD directory, a separate worktree for the report
+branch, because the brief told it the report must go on a branch that does not
+match the phase pattern. It was following instructions exactly. Two nudges were
+sent accusing it of ignoring the beacon rule, and both were wrong.
+
+So the rule generalises past activity, and this is the form to keep:
+
+> **Measure the ARTIFACT too, not just the activity.** Locate the report by
+> NAME across the whole scratchpad, never by the path the brief specified:
+> ```
+> find "$SCRATCHPAD" -name '<artifact-name>*' -not -path '*/node_modules/*' -printf '%T@ %p\n' | sort -rn | head -1
+> ```
+> A watchdog that hardcodes the path it asked for will report an absence the
+> moment the agent does something reasonable that the brief did not foresee.
+
+The pattern across all ten instances is now one sentence: **every time this
+watchdog has been wrong, it was because a path was assumed instead of
+measured.** Wrong place, wrong time, wrong subset, wrong artifact. The fix has
+been the same `find` each time and it took ten instances to state it as one
+rule.
+
 ### THE THIRD READING OF A STALE BEACON: starved, by the orchestrator itself
 
 "Dead or in a long run" is not the full disjunction either. There is a third
