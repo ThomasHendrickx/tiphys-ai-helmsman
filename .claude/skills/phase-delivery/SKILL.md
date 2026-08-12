@@ -128,7 +128,7 @@ Findings go back to the SAME implementer, resumed. Rules:
   a different act with a different cost. Before writing any dispatch brief,
   re-read this procedure and treat a divergence as a defect in the brief unless
   the brief says explicitly that it is overriding. Full account in
-  delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:113.
+  delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:114.
 - Every new regression test must be red on the pre-fix code and green after.
 - Applying a fix must not break what already passed review; completeness
   invariants stated in the brief must be re-verified and reported.

@@ -17,7 +17,7 @@ is wrong: verify against git and the PR list before trusting it.
   the real defect: a per-dispatch brief silently beats a standing rule because it
   is more recent and addressed to the agent personally. Committing and pushing
   are separate decisions; durability is satisfied by the LOCAL commit. Recorded
-  as the postscript at delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:113.
+  as the postscript at delivery/tuition/T-017-the-beacon-instruction-asks-for-a-habit.md:114.
   **Still outstanding: this has NOT landed in `roles/implementer.md`**, which is
   an M3-P6 deliverable and not yet on main.
 - **T-018 WAS CORRECTED AT THE IMPLEMENTER'S REQUEST.** Its first version said
