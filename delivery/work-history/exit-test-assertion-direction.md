@@ -4739,7 +4739,7 @@ attribution is a reading, not a demonstration.
 behaviour. Without `--phase` it errors "gate scope requires --phase"; run the
 way the workflow runs it (.github/workflows/gates.yml:132) it is
 not-applicable with `branch HEAD does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$`.
-That is the naming rule CLAUDE.md:467 states: only a phase's own implementation
+That is the naming rule CLAUDE.md:499 states: only a phase's own implementation
 branch may match that pattern, and this harness branch deliberately does not.
 
 **`red-witness` not-applicable, from the gate's own record rather than from
