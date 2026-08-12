@@ -543,3 +543,130 @@ non-comment lines. The ONLY executable additions across the whole delta are the
 no executable DELETIONS other than the removed check itself, and no pre-existing
 arm changed. So the regression surface of this delta is exactly the pair
 analysed in sections 2 and 3.
+
+## 9. Findings
+
+Two, both LOW, neither blocking a merge. The central claim survived every attack
+I could construct, so there is no high or medium here.
+
+### DV2-A (LOW). A test's own comment describes a check that is not in the tree
+
+test/implementer-brief.test.ts:539 to :547 reads, in the present tense:
+
+> That distinction became load-bearing when this round added the row-and-field
+> check AHEAD of `describeDrift` in `--check`. ... and the new check now catches
+> that scenario FIRST.
+
+That check was added in `64e1ba8` and REMOVED in `6c1b010`, two commits later.
+The comment was written for the intermediate state and was not revisited when
+the state changed. A reader of the shipped tree is told to look for a check
+that is not there, and the two `assert` messages at
+test/implementer-brief.test.ts:601 and test/implementer-brief.test.ts:607 name
+"the row-and-field check" as a live alternative in the same way.
+
+This is EXACTLY the class the round itself flagged and corrected for the work
+history in R2-28, where R2-8 was found describing a call site that no longer
+exists. That audit walked `path:line` citations inside
+`delivery/work-history/m3-p6.md`; it did not reach in-code prose, so this
+instance survived it. The mechanism is one level up from both instances: **a
+narrative written about an intermediate state of a fix round goes stale when the
+round changes course, and the citation walk only finds the instances that happen
+to be citations.**
+
+Related and smaller, in the same test: at test/implementer-brief.test.ts:606,
+
+```
+      assert.doesNotMatch(
+        said,
+        /gate block does not match/,
+```
+
+No code in the tree emits that string. Verified:
+
+```
+$ grep -rn "gate block does not match" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist
+./test/implementer-brief.test.ts:606:        /gate block does not match/,
+```
+
+The assertion is therefore unfalsifiable at this head. It is not useless (it
+would fire if the removed check were reintroduced) but nothing says that is its
+job, and its failure message describes a state no input can produce.
+
+Suggested remedy, cheap: rewrite the paragraph in the past tense and add one
+sentence saying the `doesNotMatch` is a reintroduction guard. No code change, no
+re-run of anything.
+
+### DV2-B (LOW). `test/behaviors.json` gained THREE rows; the work history says two, and never names the third
+
+`test/behaviors.json` gains three keys across the delta, in two commits:
+
+```
+$ git show ca4107d -- test/behaviors.json    ->  brief-gate-rows-match-registry-without-the-renderer
+                                                 brief-gate-block-renderer-narrowing-refused
+$ git show 64e1ba8 -- test/behaviors.json    ->  brief-gate-block-non-row-drift-caught
+```
+
+delivery/work-history/m3-p6.md:2443 states:
+
+> **`test/behaviors.json`: two rows appended, BY NAME and with no count pinned.**
+
+and names the first two. The third, `brief-gate-block-non-row-drift-caught`,
+appears NOWHERE in the work history, at `4619bf8` or at the settled head
+`077f339`:
+
+```
+$ grep -c "brief-gate-block-non-row-drift-caught" <work history at 077f339>
+0        (grep exit 1)
+```
+
+The row itself is correct: it is the exact test name, it resolves by name, and
+the `suite` gate is green over it. What is wrong is the artifact a later
+reviewer trusts. R2-10 is a positive statement of the delta that is false at the
+shipped head, and it is false in the direction that hides work rather than
+inventing it. The irony is that the sentence is about not pinning counts.
+
+Suggested remedy: one line in the work history naming the third row, and
+correcting "two" to "three". This is the only edit I would ask for before
+merge, and I would not block on it.
+
+### Not findings, recorded so the next reader does not re-derive them
+
+- **The `describeDrift` narrative in `scripts/check-brief-drift.mjs`:400 to :431
+  is CORRECT and in the right tense.** It documents the removal as a removal.
+  Only the test file's copy of the story is stale.
+- **The witness `tests` coupling** (section 8a) is a maintenance hazard created
+  by this delta, discharged by measurement here. Not a defect.
+- **`scripts/render-agent-rules-gates.mjs` carrying the first-half mechanism
+  unfixed** is declared by the round at R2-6 and in the mechanism-index row. Out
+  of scope, correctly declared, and NOT verified by me.
+- **The three stale citations in R2-8** were found and corrected by the
+  implementer itself in R2-28 before I looked. I confirmed the correction is
+  accurate: `grep -n "gateBlockFindings" scripts/check-brief-drift.mjs` returns
+  exactly the two lines R2-28 quotes, 212 and 367.
+
+## 10. Verdict
+
+**VERIFIED.** The delta `2a89757..4619bf8` does what it says, and the argument
+it rests on is sound.
+
+- Task 1, the central claim: **could not falsify**. Fourteen constructed inputs,
+  a control arm, and a structural proof from `describeDrift`'s own final clause.
+  No coverage was lost by the removal. I state the class I could not reach in
+  section 2c.
+- Task 2, `describeDrift` witnessed: **yes, by mutation**, in my probe and in the
+  gate's own record, with control arms in both.
+- Task 3, the arithmetic: **re-derived and it holds**. Both named tests fail
+  under both dangerous states, twice each, `missing` empty in every run.
+- Task 4, one witness is not a class: **satisfied twice over**, at the witness
+  level (two structurally different mutation members) and inside the new tests
+  (two members each, shown independently to reach different arms).
+- Task 5, regressions: **none**. Both registry hunks are additive; the witness
+  hunk is a relaxation that is declared, understood and measured.
+- Task 6, registry over-assertion: **none found**.
+
+Two LOW findings, both documentation, neither touching code or gates. Under
+DR-0012 neither is an unresolved high or medium.
+
+Merge is not blocked by this report. The post-merge `push` run on the new `main`
+head remains unobserved and is the orchestrator's under T-009 rule 1; CI step 10
+is `skipped` on both pull-request runs, so nothing here is evidence about it.
