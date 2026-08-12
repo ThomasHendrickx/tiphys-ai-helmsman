@@ -15,11 +15,13 @@
     "dist",
     "!dist/node_modules",
     "gate-registry.yaml",
+    "gates.manifest.json",
     "assurance-modes.yaml",
     "role-model-config.yaml",
     "roles",
     "schemas",
-    "templates"
+    "templates",
+    "tuition"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.src.json tsconfig.test.json && npm run build:schemas && npm run build:runtime-deps",

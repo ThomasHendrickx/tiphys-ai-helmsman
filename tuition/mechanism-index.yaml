@@ -1,0 +1,234 @@
+# THE MECHANISM INDEX (kernel plan M3, M3-P6 criterion 8; T-005, D-M3-23).
+#
+# What this project has already learned about specific mechanisms, and where the
+# evidence is. READ THE ROW BEFORE YOU USE THE MECHANISM. Every rule here was
+# paid for with a defect, a fix round, or an investigation, which is why
+# `evidence` is a required field with at least one entry: a rule with no
+# citation is not a rule.
+#
+# WHY THIS FILE EXISTS AT ALL. T-005 records a rule M1-P3 paid for in a
+# multi-hour investigation that did not reach M1-P5, which reimplemented the
+# same claim-file mechanism silently and produced the most severe defect found
+# in that milestone. The implementer there had read the plan, the agent-rules
+# file, the constraint list, the accumulated environment warnings and three work
+# histories. None of them carried the rule, because a rule about a MECHANISM has
+# no home in a set of documents organised by phase. This is that home, and the
+# obligation to consult it is the `mechanism-lookup` clause in
+# roles/implementer.md.
+#
+# THIS IS THE SEED, AND IT IS A CONVERSION RATHER THAN AN INVENTION. Every row
+# below is one row of the interim index committed at the repository root on
+# 2026-08-05, carried across with its rule text and its "paid for by" column as
+# `evidence[]`. The interim file says of itself that it is intended to be
+# SUPERSEDED by M3-P8's generated projection of the tuition feed; M3-P8 replaces
+# the contents of this file with that projection, and its criterion 4c requires
+# the projection not to silently drop any row that is here. M3-P6's registered
+# test is the other end of the same coupling: it derives the interim file's
+# mechanism names from the interim file and fails naming any that this document
+# has lost.
+#
+# `key` IS DERIVED FROM `name`, NOT INVENTED: lowercase, every run of characters
+# outside [a-z0-9] collapsed to one hyphen, ends trimmed. A registered test
+# applies that derivation and compares, so a key cannot drift from the mechanism
+# it names.
+
+kind: mechanism-index
+version: 1
+
+supersedes: MECHANISMS.md
+
+mechanisms:
+  - key: claim-file-mutual-exclusion-by-o-excl
+    name: Claim file (mutual exclusion by O_EXCL)
+    rule: >-
+      A claim that cannot be taken must fail LOUDLY and name the stuck file. A
+      silent timeout is indistinguishable from an absence of contention. There
+      are now THREE claim-file users (the lock, the watcher seen-state, and
+      M2-P1's evidence-directory run claim); the next one reads `src/lock.ts`
+      first, and the M2-P1 instance is the worked example of doing that and
+      stating the one difference (no expiry, because an evidence directory must
+      not have a lease that lapses).
+    siblings:
+      - src/lock.ts
+      - src/watch.ts
+      - src/gates/run.ts
+    evidence:
+      - delivery/verification/u2-race-flake-investigation.md D-3
+      - delivery/tuition/T-005, the silent reimplementation two phases later that became M1's most severe defect
+
+  - key: lease-compare-and-swap
+    name: Lease compare-and-swap
+    rule: >-
+      Liveness is lease freshness, never pid, process probing or signals
+      (constraint C-2). Expiry does not block a release, but it DOES block a
+      renew and it DOES block teardown's holdership check, which fails closed.
+    siblings:
+      - src/lock.ts
+      - src/task.ts
+    evidence:
+      - src/lock.ts
+      - checkHoldership in src/task.ts
+      - CR-680 in delivery/review/clean-room-m1-p6-round3-hazard.md
+
+  - key: append-only-log
+    name: Append-only log
+    rule: >-
+      Never read current state from the tail of a log (constraint C-1). Currency
+      comes from `meta.json` and turn-end files only.
+    siblings:
+      - src/task.ts
+    evidence:
+      - plan v1 section 3, C-1 (FM-052)
+
+  - key: reading-a-path-whose-type-is-not-established
+    name: Reading a path whose type is not established
+    rule: >-
+      lstat the link, stat what it resolves to, open ONLY a regular file. A
+      block is not an exception, so try/catch does not touch it. Closed for the
+      guard, watcher and doctor; still OPEN in `src/lock.ts`, `src/pool.ts` and
+      `src/brief.ts`.
+    siblings:
+      - src/task.ts
+      - src/lock.ts
+      - src/pool.ts
+      - src/brief.ts
+      - src/hooks.ts
+    evidence:
+      - CR-520 and the four M1-P5 rounds
+      - delivery/verification/cr-520-orchestrator-reproduction.md
+
+  - key: atomic-file-replacement
+    name: Atomic file replacement
+    rule: >-
+      Stage under a name no other pass can collide with. A fixed
+      `${path}.stage` lets two concurrent passes share one temporary; the loser
+      dies on ENOENT after advancing its seen state, dropping a signal in a
+      protocol whose rule is duplicate-rather-than-drop.
+    siblings:
+      - src/lock.ts
+      - src/watch.ts
+    evidence:
+      - M1-P5 round 4, verified pre-existing against a pristine build
+
+  - key: worktree-removal-and-force-branch-delete
+    name: Worktree removal and force branch delete
+    rule: >-
+      Resolve, evaluate, then apply. No policy decision may be taken after a
+      destructive action has begun, and destructive authority is never inherited
+      from a component that does not exist yet.
+    siblings:
+      - src/pool.ts
+      - src/teardown.ts
+    evidence:
+      - delivery/review/verification-m1-p3-fix-round.md V-1, V-3
+
+  - key: classifying-another-program-s-errors
+    name: Classifying another program's errors
+    rule: >-
+      Derive the signature from REAL captured output under forced conditions,
+      never from hand-written examples chosen to match the implementation. 312
+      captured contention failures, every one of the dropped shape.
+    siblings:
+      - src/pool.ts
+    evidence:
+      - V-2 in delivery/review/verification-m1-p3-fix-round.md
+      - CLAUDE.md environment warning 10
+
+  - key: parsing-another-program-s-reporter-output
+    name: Parsing another program's reporter output
+    rule: >-
+      PIN the format as a controlled input rather than widening the parse. A
+      format-agnostic regex is a union of formats known on the day, and the
+      default already differs between the two toolchains this project runs.
+    siblings:
+      - src/gates/suite.ts
+    evidence:
+      - M1-P6 floor defect
+      - "`NODE_OPTIONS=--test-reporter=tap` scoped to the child"
+
+  - key: deciding-what-another-program-will-do-by-pattern-matching-the-text-of-a-file-it-consumes
+    name: Deciding what another program will do by pattern-matching the text of a file it consumes
+    rule: >-
+      A regex over a file and the consuming program's evaluation of that file
+      are DIFFERENT FUNCTIONS, so every finding is another input where they
+      differ, and rounds close instances forever. Three tiers instead, each
+      labelled by what enforces it: execute the extractable part against stubs;
+      PIN the accepted shapes and fail closed on anything else, never widen the
+      pattern; and where a denylist is unavoidable, DERIVE it by walking the
+      consuming program's closed documented vocabulary once, publishing the
+      walk. Name what remains unguarded rather than chasing it.
+    siblings:
+      - test/exit-test-local.test.ts
+      - test/m2-exit-test.test.ts
+    evidence:
+      - Four M1-P6 rounds, CR-640, CR-661, CR-681, CR-720 to CR-725
+      - the derived walk found two members no reviewer had named (`working-directory`, a custom `shell` template)
+      - "the widen-the-regex approach produced a guard that both missed real defangs and rejected `needs: [test, lint]`, an edit that STRENGTHENS the guarded property"
+
+  - key: asserting-a-ci-step-is-wired
+    name: Asserting a CI step is wired
+    rule: >-
+      Assert BEHAVIOUR, not text. A text assertion catches deletion and misses
+      defanging. Extract the step and execute it against stubs. A witness for a
+      class must redden under at least two structurally different members.
+    siblings:
+      - test/exit-test-local.test.ts
+      - test/m2-exit-test.test.ts
+      - test/implementer-brief.test.ts
+    evidence:
+      - CR-640, CR-661, CR-681
+      - delivery/verification/cr-661-orchestrator-reproduction.md
+
+  - key: verifying-access-to-a-remote
+    name: Verifying access to a remote
+    rule: >-
+      `git push --dry-run` authenticates against receive-pack and updates no
+      ref. `clone` and `ls-remote` are READ operations and witness nothing about
+      write access.
+    evidence:
+      - delivery/tuition/T-006, the orchestrator's own instance
+
+  - key: checking-a-generated-artifact-against-its-own-generator
+    name: Checking a generated artifact against its own generator
+    rule: >-
+      A check that renders an artifact and then compares the artifact to that
+      rendering can only see drift BETWEEN the two, so any narrowing INSIDE the
+      loop is a fixed point of it and is silent. Three seats can choose what gets
+      compared and all three have now been occupied by a real finding: the MODE,
+      when it is read out of the artifact being audited; the UNIT COUNT, when the
+      generator computes it; and the SELECTION, inside the generator itself. Two
+      rules follow. A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE READ FROM THE
+      ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT ARTIFACT, so
+      pin the subject OUTSIDE the artifact and refuse a disagreement in every
+      mode, `--write` included, because `--write` is the command that launders a
+      narrowing into the shipped bytes. And A UNIT COUNT THAT DOES NOT MEASURE
+      WHAT WAS COMPARED CANNOT MAKE THE VACUITY GUARD FIRE, so count the rows
+      actually compared and never add a mode-independent term, which gives the
+      count a floor it can never fall below and puts M2-C-2 out of reach.
+      Closing the third seat needs a SECOND, INDEPENDENT statement of what the
+      artifact must contain, derived from the AUTHORITY and never routed through
+      the generator; nothing that calls the generator can close it. Make that
+      statement SET EQUALITY AND FIELD PRESENCE, not containment: dropping rows
+      and dropping a column from rows that all survive are structurally different
+      members, and each is invisible to the assertion that catches the other.
+      State it in two places that fail independently, and derive per item at run
+      time rather than pinning a count, because these registries are append-only.
+    siblings:
+      - scripts/check-brief-drift.mjs
+      - scripts/render-agent-rules-gates.mjs
+      - src/roles.ts
+      - test/implementer-brief.test.ts
+    evidence:
+      - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
+      - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
+      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+
+  - key: a-guard-s-own-failure-path
+    name: A guard's own failure path
+    rule: >-
+      A guard whose correctness depends on a crash is not a guard. Make the
+      success path total, so removing the explicit failure is visible.
+    siblings:
+      - test/exit-test-local.test.ts
+    evidence:
+      - M1-P6 fix round 2, the D3 defang the implementer caught in its own fix

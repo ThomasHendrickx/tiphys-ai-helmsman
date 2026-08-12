@@ -397,6 +397,368 @@ export function resolveMandatedReading(
 }
 
 /* ------------------------------------------------------------------ */
+/* M3-P6: the six required sections of the implementer brief            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A body SECTION anchor: `## section <id>` with an optional `: title`.
+ *
+ * A SECOND MARKER RATHER THAN A REUSE OF THE CLAUSE ONE, and the separation is
+ * the point. A clause discharges a requirement row and round-trips against
+ * `clauses[]`; a section is a structural part of the brief that R-033a
+ * enumerates, and it has no frontmatter list to round-trip against. Marking
+ * both with `clause` would mean either declaring six section ids in `clauses[]`
+ * (where the clause map would then try to resolve them as rows) or exempting
+ * six anchors from the round trip, which is a hole in the check that exists to
+ * stop labels with nothing behind them.
+ */
+export const SECTION_ANCHOR_PATTERN =
+  /^#{1,6}[ \t]+section[ \t]+([A-Za-z][A-Za-z0-9-]*)[ \t]*(?::[^\n]*)?$/;
+
+/**
+ * The six sections R-033a enumerates, IN THE ORDER THE ROW GIVES THEM.
+ *
+ * HAND-WRITTEN, and there is nowhere to derive it from: R-033a is a row of a
+ * markdown table in a plan document, and parsing a requirement row's prose to
+ * recover six section names would be the "deciding what another program will
+ * do by pattern-matching the text of a file" mechanism, applied to a file that
+ * is not even machine-readable. The list is short, closed, and named in the
+ * plan; a phase that changes it changes this line and the criterion that
+ * witnesses it.
+ */
+export const R033A_SECTIONS: readonly string[] = [
+  "mandated-reading",
+  "phase-scope",
+  "push-protocol",
+  "gate-list",
+  "environment-warnings",
+  "reporting-contract",
+];
+
+/** Every section anchor in a body, in order, duplicates kept. */
+export function sectionAnchors(body: string): string[] {
+  const found: string[] = [];
+  for (const line of body.split("\n")) {
+    const match = SECTION_ANCHOR_PATTERN.exec(line);
+    if (match !== null) {
+      found.push(match[1] as string);
+    }
+  }
+  return found;
+}
+
+/**
+ * The text under one section anchor: everything from the line after the anchor
+ * up to the next heading of any level, or the end of the body.
+ */
+export function sectionBody(body: string, section: string): string | undefined {
+  const lines = body.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = SECTION_ANCHOR_PATTERN.exec(lines[index] as string);
+    if (match === null || match[1] !== section) {
+      continue;
+    }
+    const rest = lines.slice(index + 1);
+    const end = rest.findIndex((line) => /^#{1,6}[ \t]/.test(line));
+    return (end === -1 ? rest : rest.slice(0, end)).join("\n");
+  }
+  return undefined;
+}
+
+/**
+ * Why an include-expanded implementer body does not satisfy R-033a, or the
+ * empty list when it does.
+ *
+ * NON-EMPTY IS CHECKED, NOT ONLY PRESENT, and criterion 2 says so in as many
+ * words. A section reduced to its heading is the dangerous state here rather
+ * than a deleted one: the brief still has six anchors, still composes, still
+ * looks complete, and instructs nobody. A check that only counted anchors
+ * would be green against exactly that.
+ */
+export function missingRequiredSections(body: string): string[] {
+  const problems: string[] = [];
+  const seen = sectionAnchors(body);
+  for (const section of R033A_SECTIONS) {
+    if (!seen.includes(section)) {
+      problems.push(
+        `required section ${section} is missing from the brief body, and R-033a requires all six of ${R033A_SECTIONS.join(", ")}`,
+      );
+      continue;
+    }
+    if ((sectionBody(body, section) ?? "").trim() === "") {
+      problems.push(
+        `required section ${section} is present and empty, so the brief carries the heading and none of the instruction`,
+      );
+    }
+  }
+  return problems;
+}
+
+/* ------------------------------------------------------------------ */
+/* M3-P6: the generated gate-list block                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The markers delimiting the generated gate list inside a brief.
+ *
+ * THE MODE IS IN THE BEGIN MARKER, which is where the brief DECLARES which
+ * mode's gate set it carries. It cannot go in the frontmatter: the frontmatter
+ * schema is closed (`additionalProperties: false`) and belongs to M3-P5, and a
+ * phase that needed a new frontmatter key would be editing another phase's
+ * merged contract. The marker is body text, it is visible to a reader of the
+ * brief, and `scripts/check-brief-drift.mjs` reads the mode back out of it, so
+ * the declaration and the rendering cannot disagree about which mode was meant.
+ *
+ * HTML comments, so they are invisible in rendered markdown and unambiguous to
+ * a line scanner, and they name the producing script so the next person to edit
+ * the block by hand is told what to edit instead. The same shape M3-P2 used for
+ * CLAUDE.md, deliberately: two drift checks that look different are two things
+ * to learn.
+ */
+export function briefGateBlockBeginMarker(mode: string): string {
+  return (
+    `<!-- BEGIN GENERATED GATE LIST (mode: ${mode}): rendered from gate-registry.yaml ` +
+    "by scripts/check-brief-drift.mjs. Do not edit by hand; edit the registry. -->"
+  );
+}
+
+export const BRIEF_GATE_BLOCK_END_MARKER = "<!-- END GENERATED GATE LIST -->";
+
+/**
+ * THE MODE THE SHIPPED BRIEF'S GATE BLOCK MUST DECLARE, pinned HERE and not in
+ * the brief (M3-P6 fix round 1, CV-1).
+ *
+ * The mechanism this closes, stated as a mechanism rather than as the instance
+ * that exposed it: A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE READ FROM THE
+ * ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT ARTIFACT. The
+ * mode above is read out of the brief's own begin marker, deliberately, so that
+ * no CALLER can point the comparison at a mode the brief never claimed. That
+ * left the EDITOR of the brief holding the same power: switching the marker to
+ * a narrower mode and re-rendering produces a brief advertising five gates
+ * instead of fifteen with the drift check green, which is an instruction-surface
+ * defect every future implementer reads.
+ *
+ * Two clean-room contracts reached this from different directions on the same
+ * head, one by forcing the narrowing and one by deriving it from the unit
+ * arithmetic below, and neither was pointed at it.
+ *
+ * WHY IT IS A CONSTANT HERE AND NOT A REGISTRY KEY. `gate-registry.yaml` is
+ * closed (`additionalProperties: false`) and its schema belongs to M3-P2, so a
+ * registry key would be this phase editing another phase's merged contract, the
+ * same reasoning that put the mode in the marker rather than in the frontmatter.
+ * WHY `full` IS THE RIGHT VALUE is not asserted here as a bare literal: the
+ * registered test derives from the registry that this mode selects every gate
+ * any mode selects, so narrowing is the only direction the value can move.
+ */
+export const BRIEF_GATE_BLOCK_MODE = "full";
+
+/** The begin marker's shape, with the mode captured. */
+const BEGIN_MARKER_PATTERN =
+  /<!-- BEGIN GENERATED GATE LIST \(mode: ([a-z][a-z0-9-]*)\): rendered from gate-registry\.yaml by scripts\/check-brief-drift\.mjs\. Do not edit by hand; edit the registry\. -->/;
+
+export type GateBlockLocation =
+  | { ok: true; mode: string; block: string; begin: number; end: number }
+  | { ok: false; reason: string };
+
+/**
+ * Locate the generated block in a brief, or say why it cannot be located.
+ *
+ * A MISSING MARKER IS A REFUSAL AND NEVER A SILENT "NO DRIFT". A check that
+ * reports clean because it could not find the thing it compares is the
+ * guard-condition failure this repository has recorded twice: the watchdog that
+ * tested existence instead of freshness, and the byte check that could not see
+ * the one byte it existed to catch.
+ */
+export function locateGateBlock(text: string, path: string): GateBlockLocation {
+  const match = BEGIN_MARKER_PATTERN.exec(text);
+  if (match === null) {
+    return {
+      ok: false,
+      reason: `${path} carries no generated gate-list begin marker naming a mode`,
+    };
+  }
+  const mode = match[1] as string;
+  const begin = match.index;
+  if (BEGIN_MARKER_PATTERN.exec(text.slice(begin + 1)) !== null) {
+    return { ok: false, reason: `${path} carries more than one gate-list begin marker` };
+  }
+  const end = text.indexOf(BRIEF_GATE_BLOCK_END_MARKER, begin);
+  if (end === -1) {
+    return {
+      ok: false,
+      reason: `${path} carries a gate-list begin marker with no matching ${BRIEF_GATE_BLOCK_END_MARKER}`,
+    };
+  }
+  return {
+    ok: true,
+    mode,
+    block: text.slice(begin, end + BRIEF_GATE_BLOCK_END_MARKER.length),
+    begin,
+    end,
+  };
+}
+
+interface RegistryPreflightEntry {
+  command: string[];
+  note: string;
+}
+
+interface RegistryGateEntry {
+  id: string;
+  applicability: string;
+  unitLabel: string;
+  modes: string[];
+  "verified-by": string;
+  probe?: string;
+}
+
+export interface GateRegistryDocument {
+  preflight: RegistryPreflightEntry[];
+  gates: RegistryGateEntry[];
+}
+
+export interface GateBlockRendering {
+  text: string;
+  /**
+   * How many GATE ROWS the rendering produced. The gate's `units`, so M2-C-2
+   * bites, and it counts the thing the gate's `unitLabel` names.
+   *
+   * IT USED TO INCLUDE THE PREFLIGHT STEPS AND THAT MADE THE VACUITY GUARD
+   * UNREACHABLE (M3-P6 fix round 1, CV-1's second face). `preflight` is
+   * mode-independent and always non-empty, so `preflight.length + selected.length`
+   * had a floor it could never fall below: a rendering that selected ZERO gates
+   * still reported three units, and M2-C-2 rewrites green-with-zero-units and
+   * nothing else. The check could therefore report `green (3 generated brief
+   * gate rows compared)` over a gate table holding a header, a separator and
+   * NOTHING ELSE, and the header's promise that "a run that compared ZERO rows
+   * becomes error with vacuous: true" was true of the plumbing and false of the
+   * behaviour.
+   *
+   * The general shape is the one this repository keeps paying for: a count that
+   * does not measure what its label names cannot make a guard fire.
+   */
+  units: number;
+}
+
+/**
+ * Render the brief's gate-list block from the registry ALONE, for one mode.
+ *
+ * IT DERIVES, IT DOES NOT READ THE BLOCK. The hazard the plan names for this
+ * criterion by name is "a generated gate-list block whose drift check compares
+ * the block TO ITSELF rather than to the registry", and that check is green
+ * forever. This function takes the decoded registry and a mode string, and
+ * nothing else; the brief file is opened only to compare against or write into.
+ *
+ * ONE RENDERER, TWO CALLERS. `scripts/check-brief-drift.mjs` calls it to
+ * compare and to write, and the registered test calls it to assert the composed
+ * brief is byte-identical to the registry's rendering. A second copy of this
+ * table in the test would be the test asserting agreement with itself.
+ */
+export function renderBriefGateBlock(
+  registry: GateRegistryDocument,
+  mode: string,
+): GateBlockRendering {
+  const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));
+  const lines: string[] = [];
+  lines.push(briefGateBlockBeginMarker(mode));
+  lines.push("");
+  lines.push("Every change must pass these, in order:");
+  lines.push("");
+  let step = 0;
+  for (const entry of registry.preflight) {
+    step += 1;
+    lines.push(`${String(step)}. \`${entry.command.join(" ")}\` (${entry.note})`);
+  }
+  lines.push("");
+  lines.push(
+    `Then the gates \`${mode}\` mode selects, run by ` +
+      `\`tiphys gates run --registry gate-registry.yaml --mode ${mode}\`:`,
+  );
+  lines.push("");
+  lines.push("| Gate | Verified by | Applicability | One unit is |");
+  lines.push("|---|---|---|---|");
+  for (const gate of selected) {
+    lines.push(
+      `| \`${gate.id}\` | ${gate["verified-by"]}` +
+        `${gate.probe === undefined ? "" : ` (probe \`${gate.probe}\`)`}` +
+        ` | ${gate.applicability} | ${gate.unitLabel} |`,
+    );
+  }
+  lines.push("");
+  lines.push(BRIEF_GATE_BLOCK_END_MARKER);
+  return { text: lines.join("\n"), units: selected.length };
+}
+
+/* ------------------------------------------------------------------ */
+/* M3-P6: the clean-room reviewer's two review contracts (T-007)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two review contracts of `assurance-modes.yaml`'s `review-contracts`.
+ *
+ * TWO CONTRACTS, NOT TWO REVIEWERS, and the two are different axes that full
+ * mode requires both of. The measured evidence is that both reviews of one
+ * phase walked all fifteen acceptance criteria and agreed on every mechanical
+ * fact, and the one briefed on hazards found a high-severity defect the other's
+ * report does not name.
+ */
+export const REVIEW_CONTRACTS: readonly string[] = ["criteria", "hazard"];
+
+/** The clause id carrying one contract's instructions. */
+export function reviewContractClause(contract: string): string {
+  return `review-contract-${contract}`;
+}
+
+/**
+ * The role whose brief carries a contract per value. Named rather than assumed,
+ * because `--review-contract` on any other role is a usage error and the check
+ * that says so needs something to compare against.
+ */
+export const REVIEW_CONTRACT_ROLE = "clean-room-reviewer";
+
+export type ContractSelection = { ok: true; text: string } | { ok: false; reason: string };
+
+/**
+ * Keep the selected contract's clause block and DROP the others.
+ *
+ * The composed brief is what a dispatched reviewer reads, and a brief carrying
+ * both contracts has told the reviewer to start from the criteria and not to
+ * start from the criteria. Dropping happens at COMPOSE time and never in the
+ * file: the file declares both clause ids and carries both blocks, so the
+ * clause round trip still sees a complete brief and `tiphys validate` still
+ * checks both texts. A design that split the two into two files would have put
+ * the shared four-fifths of the brief in two places.
+ */
+export function selectReviewContract(body: string, contract: string): ContractSelection {
+  const keep = reviewContractClause(contract);
+  const anchors = clauseAnchors(body);
+  if (!anchors.includes(keep)) {
+    return {
+      ok: false,
+      reason: `review contract ${contract} selects clause ${keep}, which the brief body does not carry`,
+    };
+  }
+  const drop = new Set(
+    REVIEW_CONTRACTS.filter((other) => other !== contract).map(reviewContractClause),
+  );
+  const lines = body.split("\n");
+  const out: string[] = [];
+  let dropping = false;
+  for (const line of lines) {
+    const match = CLAUSE_ANCHOR_PATTERN.exec(line);
+    if (match !== null) {
+      dropping = drop.has(match[1] as string);
+    } else if (dropping && /^#{1,6}[ \t]/.test(line)) {
+      dropping = false;
+    }
+    if (!dropping) {
+      out.push(line);
+    }
+  }
+  return { ok: true, text: out.join("\n") };
+}
+
+/* ------------------------------------------------------------------ */
 /* The phase projection                                                 */
 /* ------------------------------------------------------------------ */
 

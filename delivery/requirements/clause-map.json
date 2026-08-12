@@ -168,5 +168,70 @@
     "phase": "M3-P5",
     "artifact": "roles/investigator.md",
     "clause": "R-092"
+  },
+  "R-007": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-007"
+  },
+  "R-009b": {
+    "phase": "M3-P6",
+    "artifact": "roles/clean-room-reviewer.md",
+    "clause": "R-009b"
+  },
+  "R-031": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-031"
+  },
+  "R-033a": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-033a"
+  },
+  "R-034": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-034"
+  },
+  "R-037a": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-037a"
+  },
+  "R-038": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-038"
+  },
+  "R-039": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-039"
+  },
+  "R-040": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-040"
+  },
+  "R-074": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-074"
+  },
+  "R-081b": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-081b"
+  },
+  "R-082a": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-082a"
+  },
+  "R-087": {
+    "phase": "M3-P6",
+    "artifact": "roles/implementer.md",
+    "clause": "R-087"
   }
 }

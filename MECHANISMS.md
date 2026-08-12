@@ -6,6 +6,17 @@ evidence is. Seeded 2026-08-05 from the M1 record, per tuition T-005's
 M3-P8 produces as a projection of the tuition feed. This is the interim, not
 the deliverable.
 
+**CONVERTED, AND THIS FILE IS NO LONGER THE ONE TO READ.** M3-P6 converted all
+twelve rows below into `tuition/mechanism-index.yaml`, which is the schema-
+validated form M3-P8's generated projection writes into and the path
+`roles/implementer.md` mandates. Read that. This file stays only until M3-P8
+deletes it, and it stays for one mechanical reason: a registered test derives
+the twelve mechanism names from the table below and fails naming any the seed
+index has lost, so the interim file is the independent source that makes
+"nothing was silently dropped" checkable rather than asserted. **Add new rows to
+the index, never here**; a row added below would be a thirteenth name the seed
+does not carry, which reddens that test, and that is the check working.
+
 **Read the row before you use the mechanism.** Every rule here was paid for
 with a defect, a fix round, or an investigation. A rule with no citation is not
 a rule; if you add a row, cite the artifact that established it.

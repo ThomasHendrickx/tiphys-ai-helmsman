@@ -1,0 +1,25 @@
+{
+  "id": "implementer-brief-gate-list-drift",
+  "behavior": "implementer-brief-gate-list-drift",
+  "tests": [
+    "adding a gate to the registry without re-rendering makes check-brief-drift --check exit nonzero naming the gate, and --write returns it to 0",
+    "drift in the block's non-row lines is caught and named, under both a preflight step and the table header, which the row-and-field check cannot see"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/roles.ts",
+      "find": "  const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));",
+      "replace": "  const selected = [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/check-brief-drift.mjs",
+      "find": "  const differences = describeDrift(rendered.text, located.block);",
+      "replace": "  const differences = [];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

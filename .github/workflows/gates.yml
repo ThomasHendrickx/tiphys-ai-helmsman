@@ -121,6 +121,31 @@ jobs:
       # still the literal string `gates`.
       - name: Agent-rules gate-list drift (gate-registry.yaml is the single source, R-094)
         run: node scripts/render-agent-rules-gates.mjs --check
+      # THE BRIEF GATE-LIST DRIFT CHECK (kernel plan M3, M3-P6 step 3 and
+      # criterion 3; R-094, D-M3-28, D-M3-34).
+      #
+      # roles/implementer.md's gate-list section is a GENERATED projection of
+      # gate-registry.yaml, exactly as CLAUDE.md's is. The check is DECLARED in
+      # gate-registry.yaml as `brief-drift` and is ALSO an entry in
+      # gates.manifest.json, so on a pull request the gate runner executes it as
+      # a real gate. This step is what covers the PUSH arm, which the runner
+      # cannot reach: scripts/m2-exit-test.sh runs the main bundle with a
+      # hard-coded `--only` list of six gate ids and that script is on no M3
+      # phase's declaration.
+      #
+      # NO `if:`, DELIBERATELY. Brief drift is a property of the default branch
+      # and not only of a pull request (T-009: a defect on the arm only one
+      # event takes is invisible to the other, and `main` was red for four hours
+      # and twenty-one minutes the last time that shape was left open). Adding
+      # an `if:` here would also be the kind of edit kernel plan M3 section 2.3
+      # rule 7 lists as a defang. The cost is that on a pull request the check
+      # runs twice, once as a gate and once here, which is a few seconds.
+      #
+      # DR-0017 and DR-0004: this is a STEP in the one job named `gates`. It
+      # adds no job and no matrix, so the published required status context is
+      # still the literal string `gates`.
+      - name: Implementer brief gate-list drift (gate-registry.yaml is the single source, R-094)
+        run: node scripts/check-brief-drift.mjs --check
       - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
         run: >
