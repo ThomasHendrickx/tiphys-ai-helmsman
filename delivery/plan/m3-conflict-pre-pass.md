@@ -118,3 +118,88 @@ disappointed, and that is the measurement rather than a preference.
 - No pair was tested by actually attempting a merge. This is a declaration-and-
   diff analysis; a clean intersection is evidence, not proof, and the first real
   conflict outranks this document.
+
+## ADDENDUM, 2026-08-12: M3-P7 may run concurrently with M3-P6
+
+- measured at: `origin/main` 307ed2f and `origin/claude/m3-p6-delivery-role-briefs`
+  16bab6f, which is the head M3-P6's dual clean-room review is running against.
+- **This pair is not in the table above at all.** The table lists the pairs the
+  original pass ruled serialising plus two it ruled union-shaped; P6 x P7 appears
+  in neither list. An absence there is an omission, not a ruling, and DR-0011
+  requires the ruling to be WRITTEN DOWN BEFORE DISPATCH rather than inferred
+  from a gap. This addendum is that writing.
+
+### The intersection, computed both ways
+
+The declaration bound, which is the one that matters because a phase cannot
+legally leave it:
+
+```
+$ node -e '<pairwise intersection of filesToTouch + declaredExtras, prefix-aware>'
+P6 x P7 -> ["package.json","src/commands/validate.ts","witness/",
+            "delivery/requirements/clause-map.json"]
+```
+
+Three of those four are the non-serialising registries this document already
+ruled on. The fourth, `src/commands/validate.ts`, is the `TYPE_TABLE` append
+this document also already ruled union-shaped: M3-P6 adds one row,
+`["mechanism-index", "mechanism-index.schema.json"]`, in a hunk whose header is
+`@@ -87,0 +88,7 @@ export const TYPE_TABLE`, and M3-P7 adds `checklist` and
+`verdict` to the same map. Keeping both rows is the whole resolution.
+
+**`test/behaviors.json` does not appear because M3-P7 does not declare it**, and
+it does not need to: it is a standing pre-authorized extra under binding
+convention 5, append-only, and asserted by name never by count.
+
+M3-P6's ACTUAL diff was measured too, not just its declaration, since unlike the
+P4 x P5 case its branch exists and its implementation is complete:
+
+```
+$ git diff --name-only origin/main...origin/claude/m3-p6-delivery-role-briefs
+.github/workflows/gates.yml       roles/clean-room-reviewer.md
+CLAUDE.md                         roles/implementer.md
+MECHANISMS.md                     schemas/mechanism-index.schema.json
+delivery/requirements/clause-map.json  scripts/check-brief-drift.mjs
+delivery/work-history/m3-p6.md    src/commands/brief.ts
+gate-registry.yaml                src/commands/validate.ts
+gates.manifest.json               src/roles.ts
+package.json                      test/behaviors.json
+tuition/mechanism-index.yaml      test/clean-room-brief.test.ts
+witness/ (5 files)                test/implementer-brief.test.ts
+```
+
+The three files M3-P7 does its real work in, `src/cli.ts`, `src/validate.ts` and
+`src/checks.ts`, are touched by M3-P6 **not at all**, which is the strongest part
+of this result and is why it is stated separately from the intersection.
+M3-P6's `package.json` change is two entries added to the `files` array
+(`gates.manifest.json` and `tuition`) and touches no script and no dependency.
+
+### RULING
+
+**M3-P7 may be dispatched CONCURRENTLY with M3-P6's review.** Their intersection
+under M3-P6's declaration, which bounds anything a fix round can still do to it,
+is four non-serialising registries and a `TYPE_TABLE` append.
+
+**MERGE ORDER IS STILL DEPENDENCY ORDER: M3-P6 merges FIRST**, and M3-P7 rebases
+onto the merged head and resolves the `TYPE_TABLE` union there. DR-0011 makes
+work order concurrent, never merge order.
+
+### What this addendum does NOT cover
+
+- **It does not rule on P7 x P8 or P7 x P9**, which stay unproven and therefore
+  serial. Their declaration intersections carry `src/checks.ts`, and P7 x P8 also
+  carries `src/cli.ts`, `src/validate.ts` and `test/fixtures/`. That is more than
+  a registry union and it needs the diff-level measurement done here for P6,
+  which cannot happen before M3-P7's branch exists.
+- **It does not revisit the P6 x P8 and P6 x P9 x P10 serialisations** ruled
+  above, both of which stand. P6 x P9's intersection has GROWN since that ruling,
+  because `CLAUDE.md` was added to M3-P9's declaration, and it grows again with
+  `roles/implementer.md` in this same change. That moves it further from
+  concurrent, never toward it.
+- **It assumes M3-P6's fix rounds stay inside its declaration.** They must, or
+  its own scope gate reddens, which is the property that makes a declaration
+  usable as a bound rather than as a hope. If M3-P6 is amended to reach
+  `src/cli.ts`, `src/validate.ts` or `src/checks.ts`, this ruling is stale and
+  must be recomputed before M3-P7 merges.
+- **No pair here was tested by attempting a merge**, exactly as the original
+  pass says of itself.
