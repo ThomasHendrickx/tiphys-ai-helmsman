@@ -1,0 +1,31 @@
+{
+  "id": "doctor-retention-absent-path-and-full-profile",
+  "behavior": "doctor-retention-absent-path-and-full-profile",
+  "tests": [
+    "doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      if (present.length === 0) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\"],",
+      "replace": "  full: [\"gh-missing\", \"remote-missing\"],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git check-ignore -q -- <path>",
+    "captures": [
+      "witness/captures/doctor-git-check-ignore-resolution.txt"
+    ],
+    "provenance": "The retention check this witness guards reaches its verdict through isGitIgnored in src/commands/doctor.ts, which spawns `git check-ignore -q -- <path>` and reads only its exit code, so red-witness rule (f) binds this witness too: its members mutate that same spawning file. The capture records the real contract (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13) and the sibling retention test in the same source file asserts a live scratch repository reproduces it. The two members here are the two arms this test owns and the sibling witness does not: a declared path that is ABSENT rather than ignored, and the `full` profile's promotion of `retention-undeclared` from WARN to FAIL. They are split from doctor-retention-check because the harness requires EVERY named test of a witness to redden under EVERY member, so a witness naming both tests can never be satisfied by members that each reach one arm."
+  }
+}
