@@ -59,6 +59,23 @@ const { loadFleet } = (await import(
   new URL("../src/fleet.ts", import.meta.url).href
 )) as { loadFleet: (dir: string) => FleetPaths };
 
+/**
+ * HOW MANY CHECK LINES A WHOLE DIAGNOSIS HAS, DERIVED RATHER THAN PINNED
+ * (M3-P8). The two assertions below exist to prove doctor printed its WHOLE
+ * diagnosis rather than dying half way, and the number was written as a
+ * literal 8. Doctor's check list is append-only across phases (M3-P8 adds
+ * `retention`, R-098), so a literal is a claim about every future phase and is
+ * false the moment the next one appends, which is CLAUDE.md convention 5's
+ * rule about registries applied to this one. The count now comes from the
+ * command's own list, so the property under test is unchanged and the number
+ * is not a second source.
+ */
+const DOCTOR_CHECK_COUNT = (
+  (await import(new URL("../src/commands/doctor.ts", import.meta.url).href)) as {
+    runChecks: (root: string) => unknown[];
+  }
+).runChecks(process.cwd()).length;
+
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
 const GIT_IDENTITY = {
@@ -907,7 +924,7 @@ test(
     assert.match(doctored.stdout, /^CHECK beacon FAIL /m, doctored.stdout);
     assert.equal(
       doctored.stdout.trim().split("\n").filter((line) => line.startsWith("CHECK ")).length,
-      8,
+      DOCTOR_CHECK_COUNT,
       `doctor did not print its whole diagnosis: ${doctored.stdout}`,
     );
     assert.equal(staleLines(doctored.stderr).length, 1, doctored.stderr);
@@ -1015,7 +1032,7 @@ test(
     );
     assert.equal(
       doctored.stdout.trim().split("\n").filter((line) => line.startsWith("CHECK ")).length,
-      8,
+      DOCTOR_CHECK_COUNT,
       `doctor did not print its whole diagnosis: ${doctored.stdout}`,
     );
     assert.match(doctored.stdout, /^CHECK lock FAIL /m, doctored.stdout);

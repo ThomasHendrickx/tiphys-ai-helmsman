@@ -1,0 +1,24 @@
+{
+  "id": "tuition-mechanism-evidence-required",
+  "behavior": "tuition-mechanism-rule-requires-evidence",
+  "tests": [
+    "a mechanism with a rule and no evidence is rejected naming the field whether the array is empty or the key is absent, and removing either guard accepts it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/tuition.schema.json",
+      "find": "            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"pattern\": \"\\\\S\"\n            }\n          }\n        }\n      }\n    },\n    \"structural-consequence\"",
+      "replace": "            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"pattern\": \"\\\\S\"\n            }\n          }\n        }\n      }\n    },\n    \"structural-consequence\""
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/tuition.schema.json",
+      "find": "        \"required\": [\"mechanism\", \"rule\", \"evidence\"],",
+      "replace": "        \"required\": [\"mechanism\", \"rule\"],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

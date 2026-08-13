@@ -59,6 +59,24 @@
               "pattern": "\\S"
             }
           },
+          "machine-readable-form": {
+            "$comment": "ADDED BY M3-P8 (D-M3-23's forward reference, step 2). Where the SAME rule exists as data: a path plus the key inside it. The `destructive-git-operation` row is the worked example and the reason the field exists: its prose rule and the `destructiveCommands` list in `gates.manifest.json` are two views of one thing (M2 plan section 2 item 10), and a citation is what stops them drifting apart silently. PROJECTED, NEVER AUTHORED HERE: this document is generated from the tuition feed's `mechanisms[]` by `tiphys tuition index`, so the field is written in the entry that established the rule. The derived check mechanism-rule-evidence-resolves resolves both halves against the real document, so a key M2 renames reddens rather than rotting. Optional: most rules exist only as prose, which is a fact about the rule and not a defect.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "key"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          },
           "evidence": {
             "$comment": "What paid for the rule: a defect, a fix round, an investigation, a review finding, a tuition entry. minItems 1 is the load-bearing constraint of this whole document. The interim index states it in prose ('a rule with no citation is not a rule'), and prose is what this project has recorded three times as not surviving; here it is a validation failure.",
             "type": "array",

@@ -1,0 +1,111 @@
+# T-008: the orchestrator supervised two agents with no beacon and no guard,
+# and lost nine hours. Promoted by M3-P8.
+kind: tuition
+version: 1
+id: T-008
+project: tiphys-kernel
+date: 2026-08-06
+stage: M1-P6, fifth review pass
+kernel-relevant: true
+what-happened: >-
+  Two review agents died within minutes of dispatch and the orchestrator did not
+  notice for nine hours and eleven minutes, while answering the owner and
+  dispatching other work throughout. Its supervision was "wait for a completion
+  notification", which is process liveness: a dead process sends no
+  notification, and no notification is indistinguishable from work in progress.
+  The first watchdog written after the incident then tested whether the report
+  file EXISTED, so it fired two minutes in, reported success, and said nothing.
+lesson:
+  - >-
+      Supervision is a freshness watchdog armed in the same turn as the
+      dispatch, never a wait for a completion notification.
+  - >-
+      Every dispatched agent writes its output incrementally, so its artifact's
+      mtime is a beacon and a death leaves a salvageable partial result.
+  - >-
+      A guard whose condition does not test the property that matters is green
+      and worthless, which is the red-witness rule one level up.
+mechanisms:
+  - mechanism: Supervising a dispatched agent
+    rule: >-
+      Supervision is a FRESHNESS watchdog armed in the same turn as the
+      dispatch, never a wait for a completion notification and never a probe of
+      process liveness (constraint C-2). The watchdog must test freshness, never
+      existence and never completion, must watch the union of the paths the
+      agent actually writes (measured, not predicted), and must exclude the
+      supervisor's own trees, because a watchdog that cannot go red is worse
+      than none.
+    siblings:
+      - src/watcher.ts
+      - src/liveness.ts
+    evidence:
+      - delivery/tuition/T-008-the-orchestrator-had-no-beacon.md, nine hours and eleven minutes measured
+      - delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md, six wrong applications of the same rule in one session
+  - mechanism: Parsing another program's reporter output
+    rule: >-
+      PIN the format as a controlled input rather than widening the parse. A
+      format-agnostic regex is a union of formats known on the day, and the
+      default already differs between the two toolchains this project runs.
+    siblings:
+      - src/gates/suite.ts
+    evidence:
+      - M1-P6 floor defect
+      - "`NODE_OPTIONS=--test-reporter=tap` scoped to the child"
+  - mechanism: Deciding what another program will do by pattern-matching the text of a file it consumes
+    rule: >-
+      A regex over a file and the consuming program's evaluation of that file
+      are DIFFERENT FUNCTIONS, so every finding is another input where they
+      differ, and rounds close instances forever. Three tiers instead, each
+      labelled by what enforces it: execute the extractable part against stubs;
+      PIN the accepted shapes and fail closed on anything else, never widen the
+      pattern; and where a denylist is unavoidable, DERIVE it by walking the
+      consuming program's closed documented vocabulary once, publishing the
+      walk. Name what remains unguarded rather than chasing it.
+    siblings:
+      - test/exit-test-local.test.ts
+      - test/m2-exit-test.test.ts
+    evidence:
+      - Four M1-P6 rounds, CR-640, CR-661, CR-681, CR-720 to CR-725
+      - the derived walk found two members no reviewer had named (`working-directory`, a custom `shell` template)
+      - "the widen-the-regex approach produced a guard that both missed real defangs and rejected `needs: [test, lint]`, an edit that STRENGTHENS the guarded property"
+  - mechanism: Asserting a CI step is wired
+    rule: >-
+      Assert BEHAVIOUR, not text. A text assertion catches deletion and misses
+      defanging. Extract the step and execute it against stubs. A witness for a
+      class must redden under at least two structurally different members.
+    siblings:
+      - test/exit-test-local.test.ts
+      - test/m2-exit-test.test.ts
+      - test/implementer-brief.test.ts
+    evidence:
+      - CR-640, CR-661, CR-681
+      - delivery/verification/cr-661-orchestrator-reproduction.md
+  - mechanism: A guard's own failure path
+    rule: >-
+      A guard whose correctness depends on a crash is not a guard. Make the
+      success path total, so removing the explicit failure is visible.
+    siblings:
+      - test/exit-test-local.test.ts
+    evidence:
+      - M1-P6 fix round 2, the D3 defang the implementer caught in its own fix
+structural-consequence:
+  - target: roles/implementer.md
+    status: applied
+    change: >-
+      The incremental-output and beacon-is-not-a-claim clauses make the beacon
+      an obligation of the dispatched agent and forbid reading its existence as
+      progress.
+  - target: roles/clean-room-reviewer.md
+    status: applied
+    change: >-
+      The same two clauses bind review agents, which is the half of the dispatch
+      contract this incident actually needed.
+  - target: AGENTS.md
+    status: ticketed
+    change: >-
+      The orchestrator's supervision section states the watchdog rule and the
+      three questions a dispatch turn answers in writing before arming one.
+    record: delivery/plan/kernel-plan-m3.md, M3-P9
+evidence:
+  - delivery/tuition/T-008-the-orchestrator-had-no-beacon.md, the measured nine hours and eleven minutes
+  - delivery/work-history/m1-p6.md, the phase running while the two agents were dead

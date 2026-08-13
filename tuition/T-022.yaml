@@ -1,0 +1,36 @@
+# T-022: MIGRATION TICKET, not an incident. The second of the two L1 items plan
+# v1 section 11 item 7 parked for this moment. Recorded at M3-P8, executed
+# post-M3.
+kind: tuition
+version: 1
+id: T-022
+project: tiphys-kernel
+date: 2026-08-12
+stage: M3-P8, recorded as a migration ticket
+kernel-relevant: true
+what-happened: >-
+  Plan v1 decision D-10 places "validate before you push" in Layer 1: a push
+  that has not been through the validator is refused by the substrate, not by
+  the agent remembering. Nothing enforces it today. The validator exists as of
+  M3-P1 and the gates run in CI, which means the failure is caught AFTER the
+  push rather than before it, and the cost of that ordering is a red run, a
+  cancelled bundle and a round trip for something a pre-push check would have
+  named in a second.
+lesson:
+  - >-
+      A check that runs after the act it was supposed to prevent is a report,
+      not an enforcement.
+  - >-
+      The pre-validation check must be derivable from the same registry CI uses,
+      or it becomes a second list that drifts from the first.
+structural-consequence:
+  - target: gate-registry.yaml
+    status: ticketed
+    change: >-
+      A pre-push validation check derived from the registry's local-only mode,
+      so the same declarations drive both the pre-push refusal and the CI
+      bundle. Executed post-M3, per plan v1 section 11 item 7.
+    record: delivery/plan/kernel-plan-v1.md section 11 item 7 (D-10)
+evidence:
+  - delivery/plan/kernel-plan-v1.md, section 11 item 7, which parks both L1 items for the tuition flow to carry
+  - delivery/work-history/m3-p1.md, the validator this check would call

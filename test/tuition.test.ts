@@ -1,0 +1,925 @@
+/**
+ * THE TUITION FLOW (kernel plan M3, M3-P8; R-091, R-098).
+ *
+ * Kind A witnesses remove and restore the guarding SCHEMA KEYWORD; Kind B
+ * witnesses deregister and restore the CHECK. Section 2.3 rule 3: a Kind B
+ * criterion offered a schema-keyword witness would have misclassified itself,
+ * and both kinds appear in this file, so each one says which it is.
+ *
+ * NOTHING HERE PINS A COUNT of the feed. `tuition/` and `delivery/tuition/`
+ * are append-only and every later phase may add to them, so a test asserting
+ * "fifteen entries" is a claim about the future that is false the moment the
+ * next entry lands (CLAUDE.md convention 5). Counts are DERIVED at run time
+ * and compared as relations.
+ */
+
+import { spawnSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const cliEntry = join(repoRoot, "bin", "tiphys.ts");
+const feedDir = join(repoRoot, "tuition");
+
+const yamlModule = (await import("yaml")) as unknown as {
+  parse: (text: string) => unknown;
+  stringify: (value: unknown) => string;
+};
+
+interface DerivedCheck {
+  id: string;
+  type: string;
+  requiresContext: boolean;
+  run: (
+    instance: unknown,
+    contextDirectory: string | undefined,
+  ) => { violations: { pointer: string; message: string }[]; reports: string[] };
+}
+
+const checksModule = (await import(
+  new URL("../src/checks.ts", import.meta.url).href
+)) as {
+  runChecks: (
+    type: string,
+    instance: unknown,
+    contextDirectory: string | undefined,
+  ) => { lines: string[]; failed: boolean };
+  registerCheck: (check: DerivedCheck) => void;
+  deregisterCheck: (id: string) => boolean;
+  tuitionTargetExists: DerivedCheck;
+  mechanismRuleEvidenceResolves: DerivedCheck;
+  pathReferencesIn: (reference: string) => string[];
+};
+
+const validateModule = (await import(
+  new URL("../src/validate.ts", import.meta.url).href
+)) as {
+  validateInstance: (
+    schema: Record<string, unknown>,
+    instance: unknown,
+  ) => { pointer: string; message: string }[];
+};
+
+function scratch(): string {
+  return mkdtempSync(join(tmpdir(), "tiphys-tuition-"));
+}
+
+function runCli(
+  args: string[],
+  cwd = repoRoot,
+): { status: number | null; stdout: string; stderr: string } {
+  const run = spawnSync(process.execPath, [cliEntry, ...args], {
+    encoding: "utf8",
+    cwd,
+  });
+  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
+}
+
+/** Every entry file in the shipped feed, derived rather than listed. */
+function entryFiles(): string[] {
+  return readdirSync(feedDir)
+    .filter((name) => name.endsWith(".yaml") && name !== "mechanism-index.yaml")
+    .sort();
+}
+
+function readEntry(name: string): Record<string, unknown> {
+  return yamlModule.parse(readFileSync(join(feedDir, name), "utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+function tuitionSchema(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(join(repoRoot, "schemas", "tuition.schema.json"), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Criterion 1: every shipped entry validates, and the feed is named not counted */
+/* ------------------------------------------------------------------ */
+
+test("every entry in the shipped feed validates, the migration tickets are present by id, and every kernel-relevant entry of the delivering log resolves in the feed", () => {
+  const files = entryFiles();
+  assert.ok(files.length > 0, "the shipped tuition feed is empty");
+  for (const name of files) {
+    const result = runCli([
+      "validate",
+      "--type",
+      "auto",
+      "--context",
+      repoRoot,
+      join("tuition", name),
+    ]);
+    assert.equal(result.status, 0, `${name}: ${result.stdout}${result.stderr}`);
+  }
+  const index = runCli([
+    "validate",
+    "--type",
+    "mechanism-index",
+    "--context",
+    repoRoot,
+    join("tuition", "mechanism-index.yaml"),
+  ]);
+  assert.equal(index.status, 0, `${index.stdout}${index.stderr}`);
+
+  /* BY NAME, NEVER BY COUNT. `tuition/` is append-only across every future
+     phase, so any number written here (a literal, or a relation between two
+     directory sizes) is a claim about phases that have not happened yet and is
+     false the moment the next one appends: CLAUDE.md convention 5, which was
+     written for test/behaviors.json and binds every append-only registry. The
+     earlier form of this test pinned `tickets.length === 2` and compared the
+     two directories' sizes; both are replaced by id resolution below, which is
+     also STRICTLY STRONGER, because a size comparison is satisfied by a feed
+     carrying the right NUMBER of entirely different entries. */
+  const shippedIds = new Set(files.map((name) => String(readEntry(name)["id"])));
+
+  /* The two entries this phase allocated as migration tickets, named because
+     the ticket is the artifact: T-021 carries the retention duty and T-022 the
+     collision risk between the two T-nnn spaces. A later phase adding a third
+     ticket appends to the feed and leaves this assertion true. */
+  for (const ticket of ["T-021", "T-022"]) {
+    assert.ok(shippedIds.has(ticket), `the feed does not carry ${ticket}`);
+    const staged = files.find((name) => String(readEntry(name)["id"]) === ticket);
+    assert.match(
+      String(readEntry(staged as string)["stage"]),
+      /migration ticket/,
+      `${ticket} is in the feed but its stage does not name it a migration ticket`,
+    );
+  }
+
+  /* R-091's duty, checked rather than asserted: kernel-relevant tuition ships
+     upstream. Every entry of the delivering project's own log that DECLARES
+     kernel relevance in its own header must resolve by id in the shipped feed.
+     The delivering log is the source, so this reddens when a future phase
+     records a kernel-relevant entry and does not promote it, which is the
+     obligation and not an accident of numbering. */
+  const unpromoted: string[] = [];
+  for (const name of readdirSync(join(repoRoot, "delivery", "tuition"))) {
+    const body = readFileSync(join(repoRoot, "delivery", "tuition", name), "utf8");
+    if (!/kernel-relevant:\s*yes/i.test(body)) {
+      continue;
+    }
+    const id = /^T-\d+/.exec(name)?.[0];
+    assert.ok(id !== undefined, `${name} does not begin with a T-nnn id`);
+    if (!shippedIds.has(id as string)) {
+      unpromoted.push(`${id as string} (${name})`);
+    }
+  }
+  assert.deepEqual(
+    unpromoted,
+    [],
+    `the delivering log declares these kernel-relevant entries and the shipped feed carries no entry with their id: ${unpromoted.join(", ")}`,
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 2a: KIND A, the conditional consequence requirement        */
+/* ------------------------------------------------------------------ */
+
+test("an entry claiming kernel relevance with an empty or an absent structural consequence is rejected naming the field, and removing each guarding keyword accepts it", () => {
+  const entry = readEntry("T-005.yaml");
+  entry["structural-consequence"] = [];
+
+  const schema = tuitionSchema();
+  const rejected = validateModule.validateInstance(schema, entry);
+  assert.ok(
+    rejected.some(
+      (diagnostic) => diagnostic.pointer === "#/structural-consequence",
+    ),
+    `expected a diagnostic naming the field, got ${JSON.stringify(rejected)}`,
+  );
+
+  /* THE OTHER DIRECTION, KIND A: the guarding keyword is removed from a COPY
+     of the schema and the same dangerous instance passes. `minItems` is the
+     keyword that catches an EMPTY array, and it is removed alone rather than
+     deleting `then` wholesale, because an `if` with no `then` is refused by
+     the validator's strict policy and would produce a red for the wrong
+     reason (measured: "schema is refused by this validator's strict policy").
+     A defang that changes WHY the document is rejected is not a defang. */
+  const defanged = tuitionSchema();
+  const thenConsequence = (
+    (defanged["then"] as Record<string, Record<string, unknown>>)[
+      "properties"
+    ] as Record<string, Record<string, unknown>>
+  )["structural-consequence"] as Record<string, unknown>;
+  delete thenConsequence["minItems"];
+  assert.deepEqual(validateModule.validateInstance(defanged, entry), []);
+
+  /* A SECOND, STRUCTURALLY DIFFERENT MEMBER of the same class: the field
+     ABSENT rather than empty. It is caught by a different keyword (`required`
+     inside the same `then`), so one witness would have left the other arm
+     unguarded, which is CLAUDE.md's "one witness is not a class". */
+  const absent = readEntry("T-005.yaml");
+  delete absent["structural-consequence"];
+  assert.ok(
+    validateModule
+      .validateInstance(tuitionSchema(), absent)
+      .some((diagnostic) => diagnostic.message.includes("structural-consequence")),
+    "an entry with no structural-consequence at all was accepted",
+  );
+  const defangedRequired = tuitionSchema();
+  delete (defangedRequired["then"] as Record<string, unknown>)["required"];
+  assert.deepEqual(validateModule.validateInstance(defangedRequired, absent), []);
+
+  /* RESTORED: the unmodified schema rejects it again, and the shipped entry
+     with its consequences intact passes, so the keyword is not rejecting
+     everything. */
+  assert.ok(validateModule.validateInstance(tuitionSchema(), entry).length > 0);
+  assert.deepEqual(
+    validateModule.validateInstance(tuitionSchema(), readEntry("T-005.yaml")),
+    [],
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 2b: KIND A, a rule with no citation is not a rule          */
+/* ------------------------------------------------------------------ */
+
+test("a mechanism with a rule and no evidence is rejected naming the field whether the array is empty or the key is absent, and removing either guard accepts it", () => {
+  const entry = readEntry("T-005.yaml");
+  const mechanisms = entry["mechanisms"] as Record<string, unknown>[];
+  mechanisms[0]!["evidence"] = [];
+
+  const rejected = validateModule.validateInstance(tuitionSchema(), entry);
+  assert.ok(
+    rejected.some(
+      (diagnostic) => diagnostic.pointer === "#/mechanisms/0/evidence",
+    ),
+    `expected a diagnostic naming the evidence array, got ${JSON.stringify(rejected)}`,
+  );
+
+  const defanged = tuitionSchema();
+  const evidenceSchema = (
+    (
+      (
+        (defanged["properties"] as Record<string, Record<string, unknown>>)[
+          "mechanisms"
+        ] as Record<string, Record<string, unknown>>
+      )["items"] as Record<string, Record<string, unknown>>
+    )["properties"] as Record<string, Record<string, unknown>>
+  )["evidence"] as Record<string, unknown>;
+  delete evidenceSchema["minItems"];
+  assert.deepEqual(validateModule.validateInstance(defanged, entry), []);
+
+  assert.ok(validateModule.validateInstance(tuitionSchema(), entry).length > 0);
+
+  /* THE SECOND GUARD, AND IT IS A DIFFERENT ONE. `minItems` catches an EMPTY
+     evidence array; `required` catches an ABSENT evidence key. Both spell the
+     same T-005 rule ("a rule with no citation is not a rule") and each is
+     witnessed separately, because a state only one of them refuses is the only
+     state that can tell them apart: two guards catching one input make each
+     other unwitnessable (T-018), which is the shape this phase already paid
+     for once in the add path. */
+  const missing = readEntry("T-005.yaml");
+  const missingMechanisms = missing["mechanisms"] as Record<string, unknown>[];
+  delete missingMechanisms[0]!["evidence"];
+  assert.ok(
+    validateModule
+      .validateInstance(tuitionSchema(), missing)
+      .some((diagnostic) => diagnostic.pointer === "#/mechanisms/0/evidence"),
+    `expected a diagnostic naming the absent evidence key, got ${JSON.stringify(
+      validateModule.validateInstance(tuitionSchema(), missing),
+    )}`,
+  );
+
+  const unrequired = tuitionSchema();
+  const mechanismItems = (
+    (unrequired["properties"] as Record<string, Record<string, unknown>>)[
+      "mechanisms"
+    ] as Record<string, Record<string, unknown>>
+  )["items"] as Record<string, unknown>;
+  mechanismItems["required"] = (mechanismItems["required"] as string[]).filter(
+    (name) => name !== "evidence",
+  );
+  assert.deepEqual(validateModule.validateInstance(unrequired, missing), []);
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 3a: KIND B, an applied consequence is checked against the tree */
+/* ------------------------------------------------------------------ */
+
+test("an applied structural consequence whose target does not exist is rejected naming the path and the check, and is accepted with the check deregistered", () => {
+  const dir = scratch();
+  try {
+    const entry = readEntry("T-005.yaml");
+    const consequences = entry["structural-consequence"] as Record<
+      string,
+      unknown
+    >[];
+    /* THE DANGEROUS INSTANCE: a document CLAIMING a fix landed, against a tree
+       where it did not. T-003 is the entry recording that a work history can
+       carry exactly that claim falsely. */
+    consequences[0]!["target"] = "roles/there-is-no-such-brief.md";
+    const file = join(dir, "T-005.yaml");
+    writeFileSync(file, yamlModule.stringify(entry));
+
+    const rejected = runCli([
+      "validate",
+      "--type",
+      "tuition",
+      "--context",
+      repoRoot,
+      file,
+    ]);
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(
+      rejected.stdout,
+      /^INVALID #\/structural-consequence\/0\/target .*roles\/there-is-no-such-brief\.md.*\(check: tuition-target-exists\)$/m,
+    );
+
+    /* KIND B, THE OTHER DIRECTION: the CHECK is removed, not a keyword. */
+    assert.equal(checksModule.deregisterCheck("tuition-target-exists"), true);
+    const without = checksModule.runChecks("tuition", entry, repoRoot);
+    assert.ok(
+      !without.lines.some((line) => line.includes("tuition-target-exists")),
+      without.lines.join("\n"),
+    );
+
+    checksModule.registerCheck(checksModule.tuitionTargetExists);
+    const restored = checksModule.runChecks("tuition", entry, repoRoot);
+    assert.equal(restored.failed, true);
+    assert.ok(
+      restored.lines.some((line) =>
+        line.includes("(check: tuition-target-exists)"),
+      ),
+      restored.lines.join("\n"),
+    );
+
+    /* CONTROL: the shipped entry, whose targets all exist, passes. Without it
+       this check could be rejecting every entry. */
+    assert.equal(
+      checksModule.runChecks("tuition", readEntry("T-005.yaml"), repoRoot).failed,
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 3b: KIND B, a mechanism's evidence resolves               */
+/* ------------------------------------------------------------------ */
+
+test("a mechanism whose evidence names a file that does not exist is rejected naming the reference and the check, and is accepted with the check deregistered", () => {
+  const dir = scratch();
+  try {
+    const entry = readEntry("T-005.yaml");
+    const mechanisms = entry["mechanisms"] as Record<string, unknown>[];
+    (mechanisms[0]!["evidence"] as string[])[0] =
+      "delivery/verification/no-such-investigation.md D-3";
+    const file = join(dir, "T-005.yaml");
+    writeFileSync(file, yamlModule.stringify(entry));
+
+    const rejected = runCli([
+      "validate",
+      "--type",
+      "tuition",
+      "--context",
+      repoRoot,
+      file,
+    ]);
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(
+      rejected.stdout,
+      /^INVALID #\/mechanisms\/0\/evidence\/0 .*no-such-investigation\.md.*\(check: mechanism-rule-evidence-resolves\)$/m,
+    );
+
+    assert.equal(
+      checksModule.deregisterCheck("mechanism-rule-evidence-resolves"),
+      true,
+    );
+    const without = checksModule.runChecks("tuition", entry, repoRoot);
+    assert.ok(
+      !without.lines.some((line) =>
+        line.includes("mechanism-rule-evidence-resolves"),
+      ),
+      without.lines.join("\n"),
+    );
+
+    checksModule.registerCheck(checksModule.mechanismRuleEvidenceResolves);
+    assert.equal(
+      checksModule.runChecks("tuition", entry, repoRoot).failed,
+      true,
+    );
+
+    /* THE RESIDUE, ASSERTED RATHER THAN DESCRIBED: prose evidence naming no
+       path resolves nothing and is not a violation. A reader who assumes this
+       check establishes that a rule is SUPPORTED is wrong, and the assertion
+       below is what makes the boundary visible instead of implied. */
+    assert.deepEqual(
+      checksModule.pathReferencesIn(
+        "M1-P5 round 4, verified pre-existing against a pristine build",
+      ),
+      [],
+    );
+    assert.deepEqual(
+      checksModule.pathReferencesIn(
+        "delivery/review/verification-m1-p3-fix-round.md V-1 and V-3",
+      ),
+      ["delivery/review/verification-m1-p3-fix-round.md"],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 4b: the machine-readable form resolves, path AND key       */
+/* ------------------------------------------------------------------ */
+
+test("a machine-readable form naming a renamed key is rejected naming the key, and restoring the key returns exit 0", () => {
+  const dir = scratch();
+  try {
+    /* A FIXTURE MANIFEST, so the real gates.manifest.json is never touched.
+       The rename is what M2 renaming the list would look like from here. */
+    const manifest = JSON.parse(
+      readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.ok(
+      Array.isArray(manifest["destructiveCommands"]),
+      "the real manifest no longer carries destructiveCommands, so this coupling has already drifted",
+    );
+    const renamed = { ...manifest };
+    delete renamed["destructiveCommands"];
+    renamed["destructiveCommandsRenamed"] = manifest["destructiveCommands"];
+    writeFileSync(
+      join(dir, "gates.manifest.json"),
+      `${JSON.stringify(renamed, null, 2)}\n`,
+    );
+
+    const entry = readEntry("T-003.yaml");
+    const withForm = (entry["mechanisms"] as Record<string, unknown>[]).findIndex(
+      (mechanism) => mechanism["machine-readable-form"] !== undefined,
+    );
+    assert.notEqual(withForm, -1, "T-003 no longer carries a machine-readable form");
+
+    const red = checksModule.runChecks("tuition", entry, dir);
+    assert.ok(
+      red.lines.some(
+        (line) =>
+          line.includes("destructiveCommands") &&
+          line.includes("(check: mechanism-rule-evidence-resolves)"),
+      ),
+      red.lines.join("\n"),
+    );
+
+    /* THE OTHER DIRECTION: restore the key in the fixture and the same check
+       is green about it. */
+    writeFileSync(
+      join(dir, "gates.manifest.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+    const green = checksModule.runChecks("tuition", entry, dir);
+    assert.ok(
+      !green.lines.some((line) => line.includes("destructiveCommands")),
+      green.lines.join("\n"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 7: list filters, and add refuses without writing           */
+/* ------------------------------------------------------------------ */
+
+test("tuition list --kernel-relevant prints exactly the kernel-relevant entries, one line each", () => {
+  /* THE FEED IS STAGED WITH A NON-KERNEL-RELEVANT ENTRY, and that is the whole
+     difference between a witness and a decoration. Every entry in the SHIPPED
+     feed is kernel-relevant, because promotion is what puts an entry there, so
+     a filter run against it prints the same lines whether it filters or not:
+     green, registered and worthless, which is T-003's rule about testing
+     against the dangerous state rather than against the absent feature. */
+  const staged = scratch();
+  const localOnly = readEntry("T-016.yaml");
+  localOnly["id"] = "T-900";
+  localOnly["kernel-relevant"] = false;
+  delete localOnly["structural-consequence"];
+  cpSync(feedDir, join(staged, "tuition"), { recursive: true });
+  writeFileSync(
+    join(staged, "tuition", "T-900.yaml"),
+    yamlModule.stringify(localOnly),
+  );
+  const stagedFeed = join(staged, "tuition");
+
+  const all = runCli(["tuition", "list", "--dir", stagedFeed]);
+  assert.equal(all.status, 0, all.stderr);
+  assert.match(all.stdout, /^T-900 /m);
+  const filtered = runCli([
+    "tuition",
+    "list",
+    "--kernel-relevant",
+    "--dir",
+    stagedFeed,
+  ]);
+  assert.equal(filtered.status, 0, filtered.stderr);
+
+  const expected = entryFiles().filter(
+    (name) => readEntry(name)["kernel-relevant"] === true,
+  );
+  assert.doesNotMatch(
+    filtered.stdout,
+    /^T-900 /m,
+    "the filter printed the entry whose kernel-relevant is false",
+  );
+  const printed = filtered.stdout.trim().split("\n").filter((line) => line !== "");
+  assert.equal(printed.length, expected.length, filtered.stdout);
+  for (const name of expected) {
+    const entry = readEntry(name);
+    assert.ok(
+      printed.some((line) => line.startsWith(`${String(entry["id"])} `)),
+      `${String(entry["id"])} is kernel-relevant and was not printed: ${filtered.stdout}`,
+    );
+  }
+  /* THE OTHER DIRECTION: every printed line names an entry whose flag is true,
+     so the filter cannot be a no-op that prints everything. */
+  const kernelIds = new Set(expected.map((name) => String(readEntry(name)["id"])));
+  for (const line of printed) {
+    assert.ok(
+      kernelIds.has(line.split(" ")[0] as string),
+      `${line} was printed by --kernel-relevant and is not kernel-relevant`,
+    );
+  }
+  assert.match(printed[0] as string, /^T-[0-9]{3} [0-9]{4}-[0-9]{2}-[0-9]{2} targets=[0-9]+$/);
+  assert.ok(
+    all.stdout.trim().split("\n").length > printed.length,
+    "the unfiltered list is not longer than the filtered one, so the filter removed nothing",
+  );
+  rmSync(staged, { recursive: true, force: true });
+});
+
+test("tuition add on an invalid entry exits nonzero and leaves the feed directory byte-identical", () => {
+  const dir = scratch();
+  try {
+    const feed = join(dir, "tuition");
+    mkdirSync(feed);
+    cpSync(join(feedDir, "T-005.yaml"), join(feed, "T-005.yaml"));
+    const before = readdirSync(feed).sort();
+
+    /* THE DANGEROUS INSTANCE: an entry that claims kernel relevance and
+       proposes no change. If `add` wrote first and validated afterwards, the
+       feed would carry it. */
+    const invalid = readEntry("T-005.yaml");
+    invalid["structural-consequence"] = [];
+    invalid["id"] = "T-999";
+    const candidate = join(dir, "candidate.yaml");
+    writeFileSync(candidate, yamlModule.stringify(invalid));
+
+    const refused = runCli(["tuition", "add", "--file", candidate, "--into", feed]);
+    assert.notEqual(refused.status, 0);
+    /* THE REASON IS ASSERTED, not only the exit code. A command that CRASHES
+       on an invalid entry also exits nonzero and also writes nothing, so an
+       exit-code-only assertion cannot tell a refusal from a stack trace, and
+       the property under test is that `add` VALIDATES FIRST. */
+    assert.match(refused.stderr, /is not a valid tuition entry/);
+    assert.match(refused.stdout, /^INVALID #\/structural-consequence /m);
+    assert.deepEqual(readdirSync(feed).sort(), before);
+
+    /* THE OTHER DIRECTION: the same entry with a consequence is accepted and
+       appears, so the refusal is about the document and not about `add`. */
+    invalid["structural-consequence"] = [
+      { target: "roles/implementer.md", status: "applied", change: "witness" },
+    ];
+    writeFileSync(candidate, yamlModule.stringify(invalid));
+    const accepted = runCli(["tuition", "add", "--file", candidate, "--into", feed]);
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.deepEqual(readdirSync(feed).sort(), [...before, "T-999.yaml"].sort());
+
+    /* AND AN ID IS NEVER REUSED: a second add of the same id is refused and
+       leaves the first file untouched. */
+    const first = readFileSync(join(feed, "T-999.yaml"), "utf8");
+    const duplicate = runCli(["tuition", "add", "--file", candidate, "--into", feed]);
+    assert.notEqual(duplicate.status, 0);
+    assert.equal(readFileSync(join(feed, "T-999.yaml"), "utf8"), first);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tuition add refuses an entry path that is not a regular file and writes nothing", () => {
+  const dir = scratch();
+  try {
+    const feed = join(dir, "tuition");
+    mkdirSync(feed);
+    const before = readdirSync(feed).sort();
+    const fifo = join(dir, "entry.yaml");
+    const made = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+    if (made.status !== 0) {
+      /* No mkfifo here: the property is still asserted against a DIRECTORY,
+         which is also not a regular file, rather than skipping. */
+      mkdirSync(fifo);
+    }
+    const refused = runCli(["tuition", "add", "--file", fifo, "--into", feed]);
+    assert.notEqual(refused.status, 0);
+    /* THE REFUSAL NAMES THE OBSERVED ENTRY TYPE, and asserting that rather than
+       only the exit code is what makes this witnessable. Measured: with the
+       type guard removed, the command STILL exits 1 and STILL names the path,
+       because the decode of an undefined body fails right behind it
+       ("could not be decoded: Cannot read properties of undefined"). Two
+       guards catching one input make each other unwitnessable (T-018), and the
+       property that actually matters here is that the path was CLASSIFIED
+       rather than opened, so the message is the thing to assert. */
+    assert.match(
+      refused.stderr,
+      /entry\.yaml is a (named pipe|directory), not a regular file, so it was not opened/,
+    );
+    assert.deepEqual(readdirSync(feed).sort(), before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Criterion 9: the two T-nnn spaces are one space                      */
+/* ------------------------------------------------------------------ */
+
+test("no tuition id is claimed by both the shipped feed and the delivering project's log", () => {
+  const shipped = new Map<string, string>();
+  for (const name of entryFiles()) {
+    const id = String(readEntry(name)["id"]);
+    const previous = shipped.get(id);
+    assert.equal(previous, undefined, `${id} is declared by both ${String(previous)} and ${name}`);
+    shipped.set(id, name);
+  }
+  const delivery = new Map<string, string>();
+  const deliveryDir = join(repoRoot, "delivery", "tuition");
+  for (const name of readdirSync(deliveryDir).sort()) {
+    const match = /^(T-[0-9]{3})-/.exec(name);
+    if (match === null) {
+      continue;
+    }
+    delivery.set(match[1] as string, name);
+  }
+  assert.ok(delivery.size > 0, "the delivering project's tuition log parsed to nothing");
+
+  /* THE COLLISION IS THE FAULT, and it is checked in the direction that grows:
+     an id in BOTH directories names two different documents under one
+     identifier, which CLAUDE.md's identifier rule forbids. The shipped feed's
+     entries are PROMOTIONS of the log's, so a shared id must name the same
+     incident; the assertion is therefore that a shipped id either matches its
+     promoted source by number or is one this feed allocated (the migration
+     tickets), never a number the log gave to something else. */
+  for (const [id, name] of shipped) {
+    const source = delivery.get(id);
+    if (source === undefined) {
+      continue;
+    }
+    const shippedEntry = readEntry(name);
+    const sourceText = readFileSync(join(deliveryDir, source), "utf8");
+    assert.ok(
+      sourceText.includes(`- id: ${id}`) || sourceText.includes(`# ${id}:`),
+      `${id} is claimed by ${name} and by ${source}, which is a different document`,
+    );
+    assert.equal(String(shippedEntry["id"]), id);
+  }
+  for (const id of ["T-021", "T-022"]) {
+    assert.ok(shipped.has(id), `${id} is a migration ticket and is missing from the feed`);
+    assert.equal(
+      delivery.has(id),
+      false,
+      `${id} was allocated by the tuition feed and the delivering log now claims it too`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* HRB-1: the citation form this project mandates is a path reference   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `path.ext:LINE` IS THE CITATION FORM (CLAUDE.md:155, and the grammar
+ * src/gates/citations.ts:453 enforces). The check's token test asked for the
+ * extension at end-of-string, and a line number sits after it, so every
+ * citation written the way this repository REQUIRES resolved to nothing.
+ *
+ * The witness is the pair, not the single case: an entry whose paths are ALL
+ * fabricated, and the byte-identical entry with the `:LINE` suffixes removed.
+ * Before the fix the first exited 0 with no output and the second exited 1,
+ * which is the whole finding in two commands. A test that only asserted the
+ * suffixed form now resolves would stay green under a fix that broke the bare
+ * form, so both are asserted, plus the forms that must NOT be stripped.
+ */
+test("a fabricated citation is rejected whether or not it carries a :LINE suffix, and the two forms yield the same path", () => {
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md:2626 the binding rule"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+  assert.deepEqual(
+    checksModule.pathReferencesIn("src/gates/citations.ts:41-88 the grammar"),
+    ["src/gates/citations.ts"],
+  );
+  assert.deepEqual(
+    checksModule.pathReferencesIn(
+      "src/gates/citations.ts:41-88@sha256:abc123 the pinned grammar",
+    ),
+    ["src/gates/citations.ts"],
+  );
+  /* THE BARE FORM IS UNCHANGED, so a fix cannot trade one form for the other. */
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md alone"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+  /* NOT A LINE SUFFIX, so the colon stays and the token is judged as before.
+     Stripping unconditionally at the last colon would swallow these. */
+  assert.deepEqual(checksModule.pathReferencesIn("a/b.md:notaline"), []);
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md: the plan"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+
+  /* END TO END, through the real CLI, against trees this repository HAS, so
+     the citations are judged rather than excused as unresolvable (see the
+     sibling test below for that boundary). */
+  const dir = scratch();
+  try {
+    const entry = {
+      kind: "tuition",
+      version: 1,
+      id: "T-900",
+      project: "probe",
+      date: "2026-08-13",
+      stage: "implementation",
+      "kernel-relevant": false,
+      "what-happened": "A probe whose citations are fabricated.",
+      lesson: ["The check must see the form the rules require."],
+      mechanisms: [
+        {
+          mechanism: "Probe mechanism",
+          rule: "Do the thing the probe exists to check.",
+          evidence: [
+            "delivery/review/invented-nonexistent.md:2626 names nothing",
+            "src/invented-nonexistent.ts:41-88 also names nothing",
+          ],
+        },
+      ],
+      evidence: ["Constructed by hand for M3-P8 fix round 3."],
+    };
+    const suffixed = join(dir, "T-900.yaml");
+    writeFileSync(suffixed, yamlModule.stringify(entry));
+
+    const bare = join(dir, "T-901.yaml");
+    writeFileSync(
+      bare,
+      yamlModule.stringify(entry).replace(":2626", "").replace(":41-88", ""),
+    );
+
+    for (const [label, path] of [["suffixed", suffixed], ["bare", bare]] as const) {
+      const run = runCli(["validate", "--type", "tuition", "--context", repoRoot, path]);
+      assert.equal(run.status, 1, `${label} entry was accepted: ${run.stdout}`);
+      assert.match(
+        run.stdout,
+        /INVALID #\/mechanisms\/0\/evidence\/0 evidence names delivery\/review\/invented-nonexistent\.md, which does not exist \(check: mechanism-rule-evidence-resolves\)/,
+        `${label}: ${run.stdout}`,
+      );
+      assert.match(
+        run.stdout,
+        /INVALID #\/mechanisms\/0\/evidence\/1 evidence names src\/invented-nonexistent\.ts, which does not exist/,
+        `${label}: ${run.stdout}`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* HRB-8: the shipped feed is valid in the tree a consumer actually has */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A CITATION IS RELATIVE TO THE REPOSITORY THAT AUTHORED IT, and both derived
+ * checks resolved it against whatever context they were handed. The feed and
+ * its index SHIP; `delivery/`, `src/`, `scripts/` and `test/` do not. Measured
+ * at 26ee653 from a pristine `npm pack` extraction, the shipped index produced
+ * 16 INVALID lines and eight of the fifteen shipped entries produced more.
+ *
+ * THIS TEST STAGES THE CONSUMER TREE RATHER THAN PACKING, deliberately. `npm
+ * pack` in a test would make the suite depend on a network-capable npm and on
+ * tarball timing; what the finding is about is the SET OF TREES PRESENT, so the
+ * fixture copies the shipped feed into a directory holding only the trees
+ * `package.json`'s `files` ships. That set is DERIVED from `files` at run time,
+ * not listed here, so a future phase that starts shipping `delivery/` changes
+ * this fixture automatically instead of leaving it asserting a stale world.
+ *
+ * BOTH DIRECTIONS, because excusing everything would satisfy the first alone:
+ * every shipped document is valid in the consumer tree, AND every citation in
+ * every shipped document RESOLVES in this repository, where the trees are all
+ * present. The second is what keeps a fabricated citation catchable at
+ * authoring time, and it is asserted through the report line rather than only
+ * through the exit code, since "nothing was checked" and "everything checked
+ * and fine" are both exit 0.
+ */
+test("every shipped tuition document is valid in a consumer tree, and every citation resolves in this repository", () => {
+  const shippedTrees = (
+    JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+      files: string[];
+    }
+  ).files.filter((entry) => !entry.startsWith("!") && !entry.includes("/"));
+  assert.ok(shippedTrees.includes("tuition"), shippedTrees.join(", "));
+
+  const consumer = scratch();
+  try {
+    for (const entry of shippedTrees) {
+      const from = join(repoRoot, entry);
+      if (!existsSync(from)) {
+        continue;
+      }
+      cpSync(from, join(consumer, entry), { recursive: true });
+    }
+    /* The trees the citations name must be ABSENT here, or this fixture is not
+       the consumer view and the test proves nothing. */
+    for (const absent of ["delivery", "src", "scripts", "test"]) {
+      assert.equal(
+        existsSync(join(consumer, absent)),
+        false,
+        `${absent}/ is present in the consumer fixture, which is not a consumer tree`,
+      );
+    }
+
+    const documents = [...entryFiles(), "mechanism-index.yaml"];
+    for (const name of documents) {
+      const type = name === "mechanism-index.yaml" ? "mechanism-index" : "tuition";
+      const run = runCli([
+        "validate",
+        "--type",
+        type,
+        "--context",
+        consumer,
+        join(consumer, "tuition", name),
+      ]);
+      assert.equal(
+        run.status,
+        0,
+        `${name} is invalid in a consumer tree:\n${run.stdout}${run.stderr}`,
+      );
+      assert.doesNotMatch(run.stdout, /^INVALID /m, `${name}: ${run.stdout}`);
+    }
+
+    /* THE OTHER DIRECTION. In THIS repository every tree is present, so nothing
+       may be excused: no citation may be reported unresolvable, and the feed
+       must still be valid. A fabricated citation reddens here. */
+    for (const name of documents) {
+      const type = name === "mechanism-index.yaml" ? "mechanism-index" : "tuition";
+      const run = runCli([
+        "validate",
+        "--type",
+        type,
+        "--context",
+        repoRoot,
+        join(feedDir, name),
+      ]);
+      assert.equal(run.status, 0, `${name} is invalid in this repository:\n${run.stdout}`);
+      assert.doesNotMatch(
+        run.stdout,
+        /not resolvable in this context/,
+        `${name} has a citation this repository cannot resolve: ${run.stdout}`,
+      );
+    }
+
+    /* THE REPORT IS THE INSTRUMENT, so assert it exists and carries a count
+       rather than trusting a silent exit 0. The index is the document the
+       finding was raised against and the one roles/implementer.md mandates. */
+    const indexInConsumer = runCli([
+      "validate",
+      "--type",
+      "mechanism-index",
+      "--context",
+      consumer,
+      join(consumer, "tuition", "mechanism-index.yaml"),
+    ]);
+    assert.match(
+      indexInConsumer.stdout,
+      /^REPORT mechanism-rule-evidence-resolves \d+ citation\(s\) not resolvable in this context: no .*delivery\/.* tree here/m,
+      indexInConsumer.stdout,
+    );
+    const indexInRepo = runCli([
+      "validate",
+      "--type",
+      "mechanism-index",
+      "--context",
+      repoRoot,
+      join(feedDir, "mechanism-index.yaml"),
+    ]);
+    assert.match(
+      indexInRepo.stdout,
+      /^REPORT mechanism-rule-evidence-resolves \d+ citation\(s\) resolved$/m,
+      indexInRepo.stdout,
+    );
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
+  }
+});

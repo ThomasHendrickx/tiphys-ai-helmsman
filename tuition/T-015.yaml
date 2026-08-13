@@ -1,0 +1,36 @@
+# T-015: a citation into a newest-at-top file rots on every append. Promoted
+# by M3-P8.
+kind: tuition
+version: 1
+id: T-015
+project: tiphys-kernel
+date: 2026-08-12
+stage: orchestrator paperwork, across one branch
+kernel-relevant: true
+what-happened: >-
+  A document that grows at the TOP moves every line below the insertion point.
+  A citation of the form path:line into such a file is therefore correct when
+  written and wrong after the next append, and it fails silently: the line still
+  exists, so the citation resolves, and it now points at something else. Four
+  instances were found in one branch, every one of them by re-running the check
+  after the final edit rather than by reading.
+lesson:
+  - >-
+      A positional citation into an append-at-top document decays on every
+      append, and the decayed form RESOLVES, so nothing reddens.
+  - >-
+      Prefer citing something that does not move, and where the positional
+      citation is the right one anyway, resolve it after the final edit and not
+      before.
+  - >-
+      The check that catches this is a re-run, not a reading.
+structural-consequence:
+  - target: gate-registry.yaml
+    status: proposed
+    change: >-
+      The citations gate's document globs reach only the delivery tree today.
+      Extending them to root-level authored files would put this region under
+      the same check as everything else; the change belongs to the phase that
+      owns the registry rather than to this record.
+evidence:
+  - delivery/tuition/T-015-a-citation-into-a-newest-at-top-file-rots-on-every-append.md, the four instances and the measurement

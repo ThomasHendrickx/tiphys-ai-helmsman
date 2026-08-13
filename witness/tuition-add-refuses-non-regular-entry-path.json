@@ -1,0 +1,24 @@
+{
+  "id": "tuition-add-refuses-non-regular-entry-path",
+  "behavior": "tuition-add-refuses-non-regular-entry-path",
+  "tests": [
+    "tuition add refuses an entry path that is not a regular file and writes nothing"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "  const read = readOperatorPath(path);\n  if (!read.ok) {\n    return { ok: false, reason: read.reason, diagnostics: [] };\n  }",
+      "replace": "  const read = readOperatorPath(path);\n  if (false && !read.ok) {\n    return { ok: false, reason: read.reason, diagnostics: [] };\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "    return { ok: false, reason: read.reason, diagnostics: [] };",
+      "replace": "    return { ok: false, reason: `${path} could not be used`, diagnostics: [] };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

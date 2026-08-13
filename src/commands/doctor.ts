@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
 import { readRegularFileIfPresent } from "../task.ts";
+import { decodeDocument } from "../validate.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -42,7 +43,14 @@ export const PROFILES: Record<string, readonly string[]> = {
   generic: [],
   "local-only": [],
   "direct-pr": ["gh-missing"],
-  full: ["gh-missing", "remote-missing"],
+  /* M3-P8 step 7 (R-098): `retention-undeclared` is promoted here, so a fleet
+     whose charter declares no retention paths is not ready for full mode. The
+     generic profile leaves it a WARN, which is the state a fleet legitimately
+     sits in before its charter is written.
+     NOT promoted, and deliberately: `retention-not-applicable`, the state of a
+     fleet that has no charter document at all. See checkRetention's header for
+     why the two are separate conditions rather than one. */
+  full: ["gh-missing", "remote-missing", "retention-undeclared"],
   watch: ["beacon-absent", "beacon-stale"],
 };
 
@@ -341,6 +349,247 @@ function checkIdentity(root: string): CheckResult {
   };
 }
 
+/**
+ * THE RETENTION CHECK (M3-P8 step 7, R-098).
+ *
+ * A charter declares `retention` paths for its work histories, its evidence
+ * and its tuition. This check reads them and FAILs when a declared path is
+ * absent, or is git-ignored in the repository it lives in, because evidence
+ * that is ignored is evidence that does not survive the next clone. That is
+ * the duty made checkable rather than stated.
+ *
+ * A CHARTER THAT DECLARES NOTHING IS NOT A PASS. It is a WARN carrying the
+ * condition `retention-undeclared`, promoted to FAIL under the `full` profile.
+ * A check that is vacuously satisfied by an absent declaration is the SC-011
+ * shape this milestone exists to police, so the two states a reader might
+ * confuse (nothing declared, everything declared and present) never print the
+ * same word.
+ *
+ * "DECLARES NOTHING" IS DECIDED BY THE COUNT OF PATHS, NOT BY THE TYPE OF THE
+ * FIELD (CR-1 and HRB-6, fix round 3). Until then the sentence above was a
+ * promise the code did not keep: the guard tested `typeof retention !==
+ * "object"`, and `{}` and `[]` are objects, so both printed `PASS 0 declared
+ * retention path(s) present and tracked` under BOTH profiles. Round 2 recorded
+ * `{}` as an open item; measured on a real `tiphys init` fleet it is a family of
+ * five, `{}`, `[]`, nested-map values, empty-string values and non-string
+ * values, and an ABSENT key correctly FAILs, so two characters defeated the
+ * promotion. Two arms now close it and they close different halves: a value that
+ * is not a non-empty string is its own FAIL naming the key, and a charter that
+ * yields zero paths by any route takes `retention-undeclared`.
+ *
+ * THIS CHECK DOES NOT VALIDATE THE CHARTER AGAINST ITS SCHEMA, and that is why
+ * the above is reachable by a real user rather than only by a fixture.
+ * `schemas/charter.schema.json` does forbid every shape above, but nothing makes
+ * anyone run `tiphys validate --type charter` before `tiphys doctor --for full`,
+ * and charters are owner-authored by design, so a hand-written charter that does
+ * not match its schema is the ordinary case. Wiring schema validation in here is
+ * a larger change than this round is scoped for; the two arms make doctor's own
+ * verdict correct without it.
+ *
+ * TWO ROOTS, because a retention path is written from the PROJECT's point of
+ * view. `delivery/work-history/` lives in the project repository, and the
+ * charter that names it lives in the fleet home, so each path is resolved
+ * against the fleet root and against `projects/<identity name>` when that
+ * clone is present. A path found unignored under either is satisfied.
+ *
+ * NO CHARTER AT ALL IS A THIRD STATE, AND IT IS NOT THE ONE ABOVE (fix round
+ * 2). `tiphys init` writes `charter/.gitkeep` and no charter document, because
+ * the charter is owner-authored (delivery/intake/orchestrated-delivery-v1.md:224
+ * lists charter authorship among the owner's standing duties) and its required
+ * fields are project facts init does not hold. Folding that state into
+ * `retention-undeclared` made `tiphys doctor --for full` exit nonzero on every
+ * freshly initialized fleet, which is the first thing a new user does. So it
+ * gets its own condition, `retention-not-applicable`, which the `full` profile
+ * does NOT promote. It is still a WARN and still names its reason, so it never
+ * prints the same word as "declared, present and tracked": the plan's hazard
+ * row for this check permits exactly "FAIL or not-applicable-with-a-reason,
+ * never a silent pass". The SC-011 arm the row is aimed at, a charter that
+ * EXISTS and declares no retention paths, keeps `retention-undeclared` and
+ * keeps its promotion.
+ */
+function checkRetention(root: string): CheckResult {
+  const charterDir = join(root, "charter");
+  let names: string[];
+  try {
+    names = readdirSync(charterDir).sort();
+  } catch {
+    /* The `layout` check owns a missing charter/ and FAILs on it (FLEET_DIRS in
+       src/fleet.ts), so this arm never has to carry that verdict itself. */
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: `no charter/ directory under ${root}, so retention is not applicable; the layout check owns that condition`,
+      condition: "retention-not-applicable",
+    };
+  }
+  const declarations: { charter: string; paths: string[]; projectRoot?: string }[] = [];
+  let candidates = 0;
+  for (const name of names) {
+    if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+      continue;
+    }
+    candidates += 1;
+    const path = join(charterDir, name);
+    const read = readRegularFileIfPresent(path);
+    if (read.kind === "refused") {
+      return { name: "retention", status: "FAIL", detail: read.reason };
+    }
+    if (read.kind === "absent") {
+      continue;
+    }
+    let document: Record<string, unknown>;
+    try {
+      const decoded = decodeDocument(read.body, path);
+      if (!decoded.ok) {
+        return { name: "retention", status: "FAIL", detail: decoded.reason };
+      }
+      document = (decoded.value ?? {}) as Record<string, unknown>;
+    } catch (error) {
+      return {
+        name: "retention",
+        status: "FAIL",
+        detail: `${path} could not be decoded: ${String(error)}`,
+      };
+    }
+    if (document["kind"] !== "charter") {
+      continue;
+    }
+    const retention = document["retention"];
+    if (typeof retention !== "object" || retention === null) {
+      return {
+        name: "retention",
+        status: "WARN",
+        detail: `${path} declares no retention paths`,
+        condition: "retention-undeclared",
+      };
+    }
+    /* A NON-STRING VALUE IS ITS OWN FAIL, NEVER A SILENT DROP (CR-1, HRB-6, fix
+       round 3). The earlier form filtered them away, so a charter declaring
+       three retention paths with the wrong types reported the same green as one
+       declaring none. Naming the key is what makes the verdict actionable. */
+    const paths: string[] = [];
+    for (const [key, value] of Object.entries(retention as Record<string, unknown>)) {
+      if (typeof value === "string" && value !== "") {
+        paths.push(value);
+        continue;
+      }
+      return {
+        name: "retention",
+        status: "FAIL",
+        detail:
+          `${path} declares retention key ${key} as ` +
+          `${value === "" ? "an empty string" : describeRetentionValue(value)}, ` +
+          `which names no path`,
+      };
+    }
+    const identity = document["identity"];
+    const projectName =
+      typeof identity === "object" && identity !== null
+        ? (identity as Record<string, unknown>)["name"]
+        : undefined;
+    const projectRoot =
+      typeof projectName === "string"
+        ? join(root, "projects", projectName)
+        : undefined;
+    declarations.push(
+      projectRoot !== undefined && existsSync(projectRoot)
+        ? { charter: path, paths, projectRoot }
+        : { charter: path, paths },
+    );
+  }
+  if (declarations.length === 0) {
+    /* NOT APPLICABLE versus UNDECLARED, and the difference is whether anyone
+       has written a charter yet. An empty charter/ is a fleet before
+       realization; YAML that is present but carries no `kind: charter` is a
+       fleet someone has configured wrongly, which stays the promoted
+       condition. */
+    if (candidates === 0) {
+      return {
+        name: "retention",
+        status: "WARN",
+        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,
+        condition: "retention-not-applicable",
+      };
+    }
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,
+      condition: "retention-undeclared",
+    };
+  }
+  /* THE VERDICT COMES FROM THE COUNT, NOT FROM THE TYPE (CR-1, HRB-6, fix
+     round 3). The type test above decides PRESENCE OF AN OBJECT, and `{}` and
+     `[]` are both objects, so two characters in a charter defeated the promoted
+     `retention-undeclared` condition and printed `PASS 0 declared retention
+     path(s) present and tracked`: the same word as a charter with three paths
+     present and tracked, which is the exact thing this check's header forbids
+     and the plan's hazard row at delivery/plan/kernel-plan-m3.md:4042 polices.
+     Whatever shape `retention` had, a charter that yields NO path has declared
+     nothing, and that is one condition rather than a family of them. */
+  const empty = declarations.filter((declaration) => declaration.paths.length === 0);
+  if (empty.length > 0) {
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: `${(empty[0] as { charter: string }).charter} declares no retention paths`,
+      condition: "retention-undeclared",
+    };
+  }
+  let checked = 0;
+  for (const declaration of declarations) {
+    const roots = [root, ...(declaration.projectRoot === undefined ? [] : [declaration.projectRoot])];
+    for (const relative of declaration.paths) {
+      checked += 1;
+      const present = roots.filter((base) => existsSync(join(base, relative)));
+      if (present.length === 0) {
+        return {
+          name: "retention",
+          status: "FAIL",
+          detail: `${declaration.charter} declares retention path ${relative}, which does not exist`,
+        };
+      }
+      const kept = present.filter((base) => !isGitIgnored(base, relative));
+      if (kept.length === 0) {
+        return {
+          name: "retention",
+          status: "FAIL",
+          detail: `${declaration.charter} declares retention path ${relative}, which is git-ignored and will not survive a clone`,
+        };
+      }
+    }
+  }
+  return {
+    name: "retention",
+    status: "PASS",
+    detail: `${String(checked)} declared retention path(s) present and tracked`,
+  };
+}
+
+/** Name a non-string retention value in a diagnostic, without printing it. */
+function describeRetentionValue(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "a list";
+  }
+  if (typeof value === "object") {
+    return "a map";
+  }
+  return `a ${typeof value}`;
+}
+
+/** True when git reports the path ignored in that repository. */
+function isGitIgnored(repository: string, relative: string): boolean {
+  const result = spawnSync(
+    "git",
+    ["-C", repository, "check-ignore", "-q", "--", relative],
+    { encoding: "utf8" },
+  );
+  return result.error === undefined && result.status === 0;
+}
+
 export function runChecks(root: string): CheckResult[] {
   return [
     checkNode(),
@@ -351,6 +600,7 @@ export function runChecks(root: string): CheckResult[] {
     checkLock(root),
     checkBeacon(root),
     checkIdentity(root),
+    checkRetention(root),
   ];
 }
 

@@ -1,0 +1,39 @@
+Real `git check-ignore -q -- <path>` output: the exact external-program
+contract src/commands/doctor.ts consumes to decide the retention check.
+
+`isGitIgnored` in src/commands/doctor.ts spawns this command and reads ONLY
+its EXIT CODE (status === 0 means ignored). With `-q` there is no stdout to
+parse, so the exit code IS the whole contract, and that is what makes a
+hand-written expectation here indistinguishable from a fabricated one: the
+three codes below are the only signal the check has.
+
+Captured 2026-08-13, git version 2.43.0, in a scratch repository whose
+.gitignore holds a single line `notes/evidence/`, with notes/evidence/keep.md
+and notes/tuition/keep.md both present on disk. The path spellings vary per
+fleet, so the STABLE contract is recorded here rather than any one path; the
+witness test asserts a live scratch repository reproduces it.
+
+ignored-path: git check-ignore -q -- notes/evidence
+  exit 0
+  stdout: (empty, suppressed by -q)
+
+unignored-path: git check-ignore -q -- notes/tuition
+  exit 1
+  stdout: (empty)
+
+not-a-repository: git -C /tmp check-ignore -q -- foo
+  exit 128
+  stderr: fatal: not a git repository (or any of the parent directories): .git
+
+WHY EXIT 1 AND EXIT 128 MUST NOT BE CONFLATED. Both are nonzero and the check
+treats both as "not ignored", which is correct for exit 1 and merely lucky for
+exit 128: a retention path in a directory that is not a repository at all is
+reported as tracked. That residue is named in the work history rather than
+left for a reader to discover, because the capture is what makes it visible.
+
+For reference, the same command WITHOUT -q prints the matching pathname on
+stdout and returns the same codes:
+
+  git check-ignore -- notes/evidence
+    exit 0
+    stdout: notes/evidence

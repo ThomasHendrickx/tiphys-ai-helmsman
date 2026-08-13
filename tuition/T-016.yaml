@@ -1,0 +1,36 @@
+# T-016: an acknowledged alarm says nothing new when the state actually
+# changes. Promoted by M3-P8.
+kind: tuition
+version: 1
+id: T-016
+project: tiphys-kernel
+date: 2026-08-12
+stage: orchestrator supervision, one session
+kernel-relevant: true
+what-happened: >-
+  A staleness alarm fired, was checked, and was correctly judged a false
+  positive against a live agent. The alarm kept reporting the same condition in
+  the same words afterwards, so when the underlying state actually changed there
+  was nothing new to notice: the message for "still quiet and known healthy" and
+  the message for "was alive when last checked, is not now" were identical. An
+  acknowledged alarm that repeats itself is a silence with extra steps.
+lesson:
+  - >-
+      A guard should report a TRANSITION, not a level. Only the transition is
+      worth waking someone for.
+  - >-
+      An acknowledged alarm should be latched with the state it was acknowledged
+      AT, and re-fire when the state CHANGES from that, in different words.
+  - >-
+      The liveness signal has to be part of the guard rather than a separate
+      manual step, because a guard that cannot see what the operator saw cannot
+      tell the two states apart.
+structural-consequence:
+  - target: src/liveness.ts
+    status: proposed
+    change: >-
+      The guard's verdict should carry the transition rather than the level, and
+      an acknowledged verdict should be latched at the state it was acknowledged
+      at, so the next report differs when the state does.
+evidence:
+  - delivery/tuition/T-016-an-acknowledged-alarm-says-nothing-new-when-the-state-changes.md, the session it was measured in

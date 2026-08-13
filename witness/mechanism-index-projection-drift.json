@@ -1,0 +1,24 @@
+{
+  "id": "mechanism-index-projection-drift",
+  "behavior": "mechanism-index-projection-drift",
+  "tests": [
+    "adding a mechanism to a tuition entry without regenerating makes tuition index --check exit nonzero naming the mechanism and the entry, and regenerating returns exit 0"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "    if (found === undefined) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/tuition.ts",
+      "find": "    if (!projected.has(key)) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

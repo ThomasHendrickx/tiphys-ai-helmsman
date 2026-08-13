@@ -1,0 +1,37 @@
+{
+  "id": "doctor-retention-not-applicable-without-a-charter",
+  "behavior": "doctor-retention-not-applicable-without-a-charter",
+  "tests": [
+    "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "        condition: \"retention-not-applicable\",",
+      "replace": "        condition: \"retention-undeclared\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\"],",
+      "replace": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\", \"retention-not-applicable\"],"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "        status: \"WARN\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,",
+      "replace": "        status: \"PASS\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git check-ignore -q -- <path>",
+    "captures": [
+      "witness/captures/doctor-git-check-ignore-resolution.txt"
+    ],
+    "provenance": "Rule (f) is derived per FILE: this witness mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms this test guards return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the test asserts that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per way the fix can be undone: folding the new condition id back into the promoted one (the original defect), promoting the new condition in the profile table instead (same outcome, different file region), and turning the not-applicable verdict into a silent PASS (the SC-011 shape the split must not reintroduce)."
+  }
+}

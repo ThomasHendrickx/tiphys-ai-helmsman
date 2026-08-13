@@ -1,0 +1,100 @@
+# T-003: a fix round for low-severity findings introduced two high-severity
+# defects. Promoted from the delivering project's own log by M3-P8.
+kind: tuition
+version: 1
+id: T-003
+project: tiphys-kernel
+date: 2026-08-04
+stage: M1-P3 (session lock and worktree pool), after clean-room APPROVE
+kernel-relevant: true
+what-happened: >-
+  A fix round addressing four LOW findings introduced two HIGH defects. One
+  gave a worktree destroy the authority to force-delete a branch, justified by
+  a component scheduled for a later phase that would refuse first. The other
+  narrowed a git contention matcher using hand-written example strings chosen
+  to match the new pattern, so real racing-git messages fell outside it. The
+  round's own tests were green and worthless for both: the destroy test
+  destroyed a branch still at its base commit, so no data could be lost, and
+  the concurrency test never advanced the upstream, so no ref transaction was
+  ever opened. The work history then stated as measured fact a universal claim
+  that concealed the second defect from the next reader.
+lesson:
+  - >-
+      A fix round is not lower risk than the work it fixes, and it receives less
+      scrutiny. The severity of the findings being fixed says nothing about the
+      severity of the defects the fixes can introduce.
+  - >-
+      Tests written alongside a fix test the fix, not the behaviour the fix
+      endangers. A test must be red against the DANGEROUS state, not merely
+      against the absence of the feature.
+  - >-
+      An unfalsified universal claim in a work history is worse than no claim:
+      the document whose purpose is to let a reviewer trust the round is what
+      hid the defect.
+mechanisms:
+  - mechanism: Lease compare-and-swap
+    rule: >-
+      Liveness is lease freshness, never pid, process probing or signals
+      (constraint C-2). Expiry does not block a release, but it DOES block a
+      renew and it DOES block teardown's holdership check, which fails closed.
+    siblings:
+      - src/lock.ts
+      - src/task.ts
+    evidence:
+      - src/lock.ts
+      - checkHoldership in src/task.ts
+      - CR-680 in delivery/review/clean-room-m1-p6-round3-hazard.md
+  - mechanism: Append-only log
+    rule: >-
+      Never read current state from the tail of a log (constraint C-1).
+      Currency comes from `meta.json` and turn-end files only.
+    siblings:
+      - src/task.ts
+    evidence:
+      - plan v1 section 3, C-1 (FM-052)
+  - mechanism: Worktree removal and force branch delete
+    rule: >-
+      Resolve, evaluate, then apply. No policy decision may be taken after a
+      destructive action has begun, and destructive authority is never
+      inherited from a component that does not exist yet.
+    siblings:
+      - src/pool.ts
+      - src/teardown.ts
+    machine-readable-form:
+      path: gates.manifest.json
+      key: destructiveCommands
+    evidence:
+      - delivery/review/verification-m1-p3-fix-round.md V-1 and V-3
+  - mechanism: Classifying another program's errors
+    rule: >-
+      Derive the signature from REAL captured output under forced conditions,
+      never from hand-written examples chosen to match the implementation. 312
+      captured contention failures, every one of the dropped shape.
+    siblings:
+      - src/pool.ts
+    evidence:
+      - V-2 in delivery/review/verification-m1-p3-fix-round.md
+      - CLAUDE.md environment warning 10
+structural-consequence:
+  - target: assurance-modes.yaml
+    status: applied
+    change: >-
+      Full mode carries a fix-round-verification stage, so an independent
+      verification of a fix round is a declared pipeline stage rather than
+      orchestrator discretion.
+  - target: schemas/report.schema.json
+    status: applied
+    change: >-
+      The shared claims[] contract makes a universal claim carry the executed
+      construction that could have falsified it, or be restated as an open
+      question.
+  - target: gates.manifest.json
+    status: applied
+    change: >-
+      The destructiveCommands list names every command that can destroy work,
+      which is the machine-readable view of this entry's destructive-operation
+      rule and the list the derived-class rule consumes.
+evidence:
+  - delivery/review/verification-m1-p3-fix-round.md, findings V-1 and V-2 with the unrefuted candidates
+  - delivery/review/clean-room-m1-p3.md, the APPROVE and the four LOW findings that triggered the round
+  - delivery/work-history/m1-p3.md, the round's own record including the claim named above

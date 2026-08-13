@@ -1,0 +1,24 @@
+{
+  "id": "mechanism-machine-readable-form-resolves",
+  "behavior": "mechanism-machine-readable-form-resolves",
+  "tests": [
+    "a machine-readable form naming a renamed key is rejected naming the key, and restoring the key returns exit 0"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (asRecord(document.value)?.[key] === undefined) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      const machine = asRecord(mechanism[\"machine-readable-form\"]);\n      if (machine === undefined) {",
+      "replace": "      const machine = asRecord(mechanism[\"machine-readable-form\"]);\n      if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

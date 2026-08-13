@@ -1,0 +1,24 @@
+{
+  "id": "tuition-entry-validates",
+  "behavior": "tuition-entry-validates",
+  "tests": [
+    "every entry in the shipped feed validates, the migration tickets are present by id, and every kernel-relevant entry of the delivering log resolves in the feed"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"tuition\", \"tuition.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/tuition.schema.json",
+      "find": "      \"const\": \"tuition\"",
+      "replace": "      \"const\": \"tuition-entry\""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

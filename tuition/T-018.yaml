@@ -1,0 +1,84 @@
+# T-018: two checks that catch the same input make each other unwitnessable.
+# Promoted by M3-P8, which also carries this entry's mechanism into the index.
+kind: tuition
+version: 1
+id: T-018
+project: tiphys-kernel
+date: 2026-08-12
+stage: M3-P6 fix round 2 (the brief drift check)
+kernel-relevant: true
+what-happened: >-
+  A red-witness member mutated one of two checks that reject the same input.
+  Neither check is individually necessary, so the mutation left the other one
+  covering the arm and no named test could reach the mutated line. The harness
+  correctly reported that nothing reddened, and the instruction derived from
+  reading that message literally ("write a test that reaches this line") was
+  impossible to satisfy. The round tried the instructed fix first, watched it
+  stay red, and then read the runner. The same phase's reviews found the wider
+  version of the same shape: a check that renders an artifact and compares the
+  artifact to that rendering can only see drift BETWEEN the two, so a narrowing
+  INSIDE the loop is a fixed point of it and is silent.
+lesson:
+  - >-
+      Redundancy that cannot be observed is indistinguishable from dead code. A
+      line can be un-reddenable not because no test exercises the feature, but
+      because a second line in front of it rejects every input that would reach
+      it.
+  - >-
+      Reordering does not dissolve it; it only changes which of the two is
+      shadowed.
+  - >-
+      A gate message that names a line is naming a symptom. The reading is the
+      part that has to be earned, and the wrong reading was tried first here.
+mechanisms:
+  - mechanism: Checking a generated artifact against its own generator
+    rule: >-
+      A check that renders an artifact and then compares the artifact to that
+      rendering can only see drift BETWEEN the two, so any narrowing INSIDE the
+      loop is a fixed point of it and is silent. Three seats can choose what
+      gets compared and all three have now been occupied by a real finding: the
+      MODE, when it is read out of the artifact being audited; the UNIT COUNT,
+      when the generator computes it; and the SELECTION, inside the generator
+      itself. Two rules follow. A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE
+      READ FROM THE ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT
+      ARTIFACT, so pin the subject OUTSIDE the artifact and refuse a
+      disagreement in every mode, `--write` included, because `--write` is the
+      command that launders a narrowing into the shipped bytes. And A UNIT COUNT
+      THAT DOES NOT MEASURE WHAT WAS COMPARED CANNOT MAKE THE VACUITY GUARD
+      FIRE, so count the rows actually compared and never add a mode-independent
+      term, which gives the count a floor it can never fall below. Closing the
+      third seat needs a SECOND, INDEPENDENT statement of what the artifact must
+      contain, derived from the AUTHORITY and never routed through the
+      generator; nothing that calls the generator can close it. Make that
+      statement SET EQUALITY AND FIELD PRESENCE, not containment: dropping rows
+      and dropping a column from rows that all survive are structurally
+      different members, and each is invisible to the assertion that catches the
+      other. State it in two places that fail independently, and derive per item
+      at run time rather than pinning a count, because these registries are
+      append-only.
+    siblings:
+      - scripts/check-brief-drift.mjs
+      - scripts/render-agent-rules-gates.mjs
+      - src/roles.ts
+      - test/implementer-brief.test.ts
+    evidence:
+      - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
+      - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
+      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+structural-consequence:
+  - target: scripts/check-brief-drift.mjs
+    status: applied
+    change: >-
+      The drift check pins its subject outside the artifact it audits and counts
+      the rows actually compared, so a narrowing inside the loop cannot be
+      silent.
+  - target: test/implementer-brief.test.ts
+    status: applied
+    change: >-
+      A second, independent statement of what the brief must contain is derived
+      from the authority rather than from the generator, and it asserts set
+      equality and field presence rather than containment.
+evidence:
+  - delivery/tuition/T-018-two-checks-catching-the-same-input-make-each-other-unwitnessable.md, the round's account and the correction
+  - delivery/review/verification-m3-p6-fix-round.md, the delta verification that found the selection seat
+  - delivery/work-history/m3-p6.md, the round that tried the instructed fix first
