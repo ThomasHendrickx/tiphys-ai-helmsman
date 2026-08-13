@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  return { kind: \"established\", value: canonical.value };",
-      "replace": "  return { kind: \"established\", value: raw };"
+      "find": "    return { kind: \"uncanonical\", found: canonical.found };",
+      "replace": "    return { kind: \"established\", value: raw };"
     }
   ]
 }
