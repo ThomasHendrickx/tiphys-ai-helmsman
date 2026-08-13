@@ -17,7 +17,9 @@
     "witness/",
     "delivery/requirements/clause-map.json"
   ],
-  "declaredExtras": [],
+  "declaredExtras": [
+    "test/gate-registry.test.ts"
+  ],
   "citations": [
     "R-001b",
     "R-002",

@@ -75,6 +75,23 @@ It is weaker than the three that were fixed: it needs an uncommitted directory.
 The implementer's counter, also recorded, is that an uncommitted directory is
 the ordinary state right after authoring, which is when a user runs doctor.
 
+## Found during M3-P9, granted around rather than fixed
+
+| what | where |
+|---|---|
+| a `deepEqual` over the KEY SET of the registry's script gates absent from the manifest. A set equality against an APPEND-ONLY registry is a claim about every future phase, so it reddens for whichever phase appends next. M3-P9 hit it; M3-P10 will hit it the same way | `test/gate-registry.test.ts` |
+
+This one is recorded with its cost already paid once. It was granted around
+with a `declaredExtras` amendment rather than fixed, because rewriting the
+assertion to work by name is not M3-P9's job and doing it inside M3-P9 would
+widen a phase that is already carrying two new gates. **The grant fixes the
+instance and leaves the mechanism**, which is the shape T-020 records four
+consecutive times, so it is written down rather than left to be rediscovered by
+M3-P10.
+
+It is the same family as `describeDrift` below and as HRB-4 above: a comparison
+whose equivalence class is not the one its message quantifies over.
+
 ## Carried from before DR-0027
 
 These predate the decision and were already unowned. They are listed so that
