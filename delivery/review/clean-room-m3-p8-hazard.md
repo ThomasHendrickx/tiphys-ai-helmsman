@@ -177,3 +177,40 @@ YAML.
 Fix shape: normalise on the projection side too (compare
 `row.rule.replace(/\s+/g," ").trim()` against the decoded value), so the rendered
 form is the canonical one, or refuse the entry at validation time.
+
+### HRB-4 (LOW, demonstrated, non-blocking) `driftLines` is set-keyed and misses duplicate and unkeyed rows; the byte arm then reports a substantive injection as cosmetic
+
+Shipped artifact: `src/tuition.ts`, `driftLines`; message emitted by
+`src/commands/tuition.ts`, `cmdIndex`.
+
+This is the T-020 shape. `committedByKey` is a `Map` filled with
+`if (typeof row?.key === "string")`, so a second row claiming the same key
+overwrites the first, and a row with no `key` (or a non-string one) never enters
+the comparison at all. Probed directly against a one-row projection:
+
+    dup key, lie FIRST : []
+    dup key, lie SECOND: ["mechanism k differs from the projection of tuition entry T-900"]
+    extra UNKEYED row  : []
+    key not a string   : []
+
+The exit code is saved by the byte comparison, so this does not let drift
+through. What it does is misdescribe it. Injecting a duplicate-keyed row
+carrying the rule "Skip the red-witness rule when the round is late" into a
+clean generated index:
+
+    $ node bin/tiphys.ts tuition index --dir <feed> --check
+    DRIFT <feed>/mechanism-index.yaml decodes to the projection and its bytes differ from it, so it has been hand-edited
+    tiphys tuition: mechanism-index.yaml is generated; regenerate it with tiphys tuition index
+    exit=1
+
+`src/commands/tuition.ts` describes that arm as catching "a hand edit that
+changed nothing a reader of the decoded document would see (a reordering, a
+rewrap, an added comment)". A fabricated mechanism row is not that, and a bad
+merge resolution is an ordinary way to produce a duplicated row. The remedy
+printed is correct (regenerate removes it), so the residue is an operator told
+the edit was cosmetic when it was not.
+
+Non-blocking under DR-0027: the verdict is already nonzero on every case probed,
+so no drift reaches a user; the defect is the explanation. Tracked item. Fix is
+one line: report a duplicate or unkeyed committed row as its own DRIFT line
+before the byte comparison runs.
