@@ -64,3 +64,56 @@ in `path:line` form ships with that guarantee absent and green.
 Fix shape (one line): strip an optional `:<line>[-<line>][@sha256:...]` suffix
 before the extension test, i.e. match the citation grammar `src/gates/citations.ts`
 already defines rather than a second, narrower one.
+
+### HRB-2 (MEDIUM, demonstrated) the `retention` check says "tracked" and only ever tests "not ignored"; an untracked retention path passes and is lost on the next clone
+
+Shipped artifact: `src/commands/doctor.ts`, `checkRetention` and `isGitIgnored`,
+reached by `tiphys doctor` and `tiphys doctor --for full`.
+
+Mechanism, not instance: the PASS detail is
+`N declared retention path(s) present and tracked`, and the only conditions
+behind it are `existsSync(...)` and `git check-ignore` exiting 0. Nothing asks
+git whether the path is tracked, and nothing distinguishes "git says not
+ignored" from "git could not answer". Both of the other readings of that
+sentence are undecided by any condition.
+
+**Arm 1, untracked and not ignored.** Lab fleet from `tiphys init`, a real git
+repository, charter declaring three retention paths at `keep-evidence`, which
+holds a real file that was never committed:
+
+    $ git -C <fleet> ls-files keep-evidence          # (no output)
+    $ git -C <fleet> status --short keep-evidence
+    ?? keep-evidence/
+    $ git -C <fleet> check-ignore -q -- keep-evidence ; echo $?
+    1
+    $ node bin/tiphys.ts doctor | grep retention
+    CHECK retention PASS 3 declared retention path(s) present and tracked
+    $ git clone -q <fleet> cloned2 && test -e cloned2/keep-evidence/m1-p1.md \
+        && echo survived || echo "DID NOT SURVIVE the clone"
+    DID NOT SURVIVE the clone
+
+That is precisely the harm the check's own header names ("evidence that is
+ignored is evidence that does not survive the next clone"), reproduced against a
+green check.
+
+**Arm 2, git cannot answer.** `isGitIgnored` returns `result.error === undefined
+&& result.status === 0`, so every nonzero exit including 128 reads as "not
+ignored". Same fleet, same charter, `.git` removed, retention path pointed at
+the gitignored `state/`:
+
+    with .git      CHECK retention FAIL ... retention path state, which is git-ignored and will not survive a clone
+    without .git   CHECK retention PASS 3 declared retention path(s) present and tracked
+
+A demonstrated FAIL becomes a PASS when the repository is absent. A sibling
+check does notice (`CHECK remote WARN fleet home is not a git repository`), and
+`remote-missing` is promoted only under `full`, so under `generic`,
+`local-only` and `direct-pr` the whole run is exit 0 with retention green.
+
+Severity by reachability: `tiphys doctor` is a shipped user command; the state
+is an ordinary one (evidence directories exist long before anyone commits them);
+no future editor of the guard is needed. Arm 1 alone justifies MEDIUM.
+
+Smallest honest fix is the message ("present and not ignored"). The fix that
+matches R-098's duty is a second condition: `git ls-files -- <path>` returning
+at least one line, plus treating a nonzero `check-ignore` status other than 1 as
+UNKNOWN rather than as "not ignored".
