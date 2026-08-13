@@ -34,9 +34,25 @@ is wrong: verify against git and the PR list before trusting it.
   the moment M3-P8 merges; its criterion read is already written at
   delivery/plan/m3-p9-dispatch-read.md:1 and its one design constraint is that
   `scripts/check-agents-references.mjs` must take a context argument.
-- **M3-P10 IS BLOCKED ON THE OWNER, ACTION A-7**, the npm publish credential.
-  That is the intended end state for this stretch of work and it is not a
-  process failure.
+- **A-7 IS NOT A CREDENTIAL, AND THE ORDER OF THE DEPENDENCY IS THE OPPOSITE OF
+  WHAT THIS BLOCK USED TO SAY.** The previous wording, "M3-P10 is blocked on the
+  owner, action A-7, the npm publish credential", was wrong in two ways and
+  contradicted this file's own "Owner action items" register, item 6, further
+  down this same document. The orchestrator repeated it to the owner several
+  times on 2026-08-13 before reading that register rather than recalling it.
+  (The register is named rather than cited by line, because this edit shifts
+  every line below it and a line citation into the file being edited resolves
+  against the wrong version. That is the same trap this entry is about: a
+  confident reference that was true once.)
+  Part 1 of A-7, claiming the `@tiphys` scope on npmjs, is **DONE** (owner,
+  2026-08-10). Part 2 is **not a credential at all**: DR-0024 decides that
+  publishing authenticates by OIDC trusted publishing, so there is no secret to
+  create, transport, store or rotate. What remains is a CONFIGURATION in the npm
+  UI linking `@tiphys/kernel` to this repository and the release workflow, **and
+  it cannot be performed until M3-P10 exists to name the workflow file.**
+  So M3-P10 is not waiting on the owner. The owner's step waits on M3-P10, and
+  then publication waits on the owner. Stating it the other way round sends the
+  owner to do something they cannot yet do.
 - **READ THIS FIRST: THE BLOCKED HARNESS CODE IS ON `main`, AND THE
   ORCHESTRATOR PUT IT THERE.** PR #117 was opened to land one verification
   document. It carried the rounds 1-2 harness fix with it, because its branch was
