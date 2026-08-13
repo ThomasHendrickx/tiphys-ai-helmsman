@@ -46,7 +46,10 @@ export const PROFILES: Record<string, readonly string[]> = {
   /* M3-P8 step 7 (R-098): `retention-undeclared` is promoted here, so a fleet
      whose charter declares no retention paths is not ready for full mode. The
      generic profile leaves it a WARN, which is the state a fleet legitimately
-     sits in before its charter is written. */
+     sits in before its charter is written.
+     NOT promoted, and deliberately: `retention-not-applicable`, the state of a
+     fleet that has no charter document at all. See checkRetention's header for
+     why the two are separate conditions rather than one. */
   full: ["gh-missing", "remote-missing", "retention-undeclared"],
   watch: ["beacon-absent", "beacon-stale"],
 };
@@ -367,6 +370,21 @@ function checkIdentity(root: string): CheckResult {
  * charter that names it lives in the fleet home, so each path is resolved
  * against the fleet root and against `projects/<identity name>` when that
  * clone is present. A path found unignored under either is satisfied.
+ *
+ * NO CHARTER AT ALL IS A THIRD STATE, AND IT IS NOT THE ONE ABOVE (fix round
+ * 2). `tiphys init` writes `charter/.gitkeep` and no charter document, because
+ * the charter is owner-authored (delivery/intake/orchestrated-delivery-v1.md:224
+ * lists charter authorship among the owner's standing duties) and its required
+ * fields are project facts init does not hold. Folding that state into
+ * `retention-undeclared` made `tiphys doctor --for full` exit nonzero on every
+ * freshly initialized fleet, which is the first thing a new user does. So it
+ * gets its own condition, `retention-not-applicable`, which the `full` profile
+ * does NOT promote. It is still a WARN and still names its reason, so it never
+ * prints the same word as "declared, present and tracked": the plan's hazard
+ * row for this check permits exactly "FAIL or not-applicable-with-a-reason,
+ * never a silent pass". The SC-011 arm the row is aimed at, a charter that
+ * EXISTS and declares no retention paths, keeps `retention-undeclared` and
+ * keeps its promotion.
  */
 function checkRetention(root: string): CheckResult {
   const charterDir = join(root, "charter");
@@ -374,18 +392,22 @@ function checkRetention(root: string): CheckResult {
   try {
     names = readdirSync(charterDir).sort();
   } catch {
+    /* The `layout` check owns a missing charter/ and FAILs on it (FLEET_DIRS in
+       src/fleet.ts), so this arm never has to carry that verdict itself. */
     return {
       name: "retention",
       status: "WARN",
-      detail: "no charter/ directory, so no retention paths are declared",
-      condition: "retention-undeclared",
+      detail: `no charter/ directory under ${root}, so retention is not applicable; the layout check owns that condition`,
+      condition: "retention-not-applicable",
     };
   }
   const declarations: { charter: string; paths: string[]; projectRoot?: string }[] = [];
+  let candidates = 0;
   for (const name of names) {
     if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
       continue;
     }
+    candidates += 1;
     const path = join(charterDir, name);
     const read = readRegularFileIfPresent(path);
     if (read.kind === "refused") {
@@ -439,10 +461,23 @@ function checkRetention(root: string): CheckResult {
     );
   }
   if (declarations.length === 0) {
+    /* NOT APPLICABLE versus UNDECLARED, and the difference is whether anyone
+       has written a charter yet. An empty charter/ is a fleet before
+       realization; YAML that is present but carries no `kind: charter` is a
+       fleet someone has configured wrongly, which stays the promoted
+       condition. */
+    if (candidates === 0) {
+      return {
+        name: "retention",
+        status: "WARN",
+        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,
+        condition: "retention-not-applicable",
+      };
+    }
     return {
       name: "retention",
       status: "WARN",
-      detail: `no charter in ${charterDir} declares retention paths`,
+      detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,
       condition: "retention-undeclared",
     };
   }

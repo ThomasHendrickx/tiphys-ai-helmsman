@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -380,16 +381,98 @@ test("doctor FAILs naming a declared retention path that does not exist, and --f
   assert.match(absent.stdout, /^CHECK retention FAIL .*notes\/tuition.*does not exist$/m);
   assert.equal(absent.status, 1);
 
-  /* THE VACUOUS PASS THIS CHECK MUST NOT HAVE (SC-011): a fleet whose charter
-     declares NO retention is a WARN under the generic profile, never a silent
-     PASS, and `--for full` promotes it. A check satisfied by an absent
-     declaration is the shape this milestone exists to police. */
-  const bare = initFleet(t);
-  const generic = runCli(["doctor"], { cwd: bare });
-  assert.match(generic.stdout, /^CHECK retention WARN /m);
+  /* THE VACUOUS PASS THIS CHECK MUST NOT HAVE (SC-011), AND THE STATE THE
+     PLAN'S HAZARD ROW NAMES VERBATIM: "a charter with NO `retention` path".
+     The charter EXISTS here, so someone has realized a project and omitted the
+     duty. That is a WARN under the generic profile, never a silent PASS, and
+     `--for full` promotes it.
+     Fix round 2 changed this fixture. It used to be a BARE fleet with no
+     charter at all, which is a different state (nothing authored yet, nothing
+     to retain) and is now `retention-not-applicable`; the sibling test below
+     owns it. A charter that exists and omits retention is the stronger witness
+     of the hazard, because it is the one an omission can actually reach. */
+  const omitted = initFleet(t);
+  writeFileSync(
+    join(omitted, "charter", "charter.yaml"),
+    ["kind: charter", "identity:", "  name: example-service", ""].join("\n"),
+  );
+  const generic = runCli(["doctor"], { cwd: omitted });
+  assert.match(generic.stdout, /^CHECK retention WARN .*declares no retention paths$/m);
   assert.equal(generic.status, nodeFloorMet ? 0 : 1);
 
-  const full = runCli(["doctor", "--for", "full"], { cwd: bare });
+  const full = runCli(["doctor", "--for", "full"], { cwd: omitted });
   assert.match(full.stdout, /^CHECK retention FAIL .*required for profile full/m);
   assert.equal(full.status, 1);
+});
+
+test("doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created", (t) => {
+  /* THE REAL USER PATH, and the one fix round 1 broke: install the kernel,
+     `tiphys init`, `tiphys doctor --for full`. init writes charter/.gitkeep and
+     no charter document, because charter authorship is an owner duty
+     (delivery/intake/orchestrated-delivery-v1.md:224), so folding "no charter"
+     into `retention-undeclared` made the promoted condition fire on every fresh
+     fleet. Measured: it failed step A2 of scripts/m1-exit-test.sh.
+     BOTH HALVES ARE ASSERTED, because a fix that only silences the FAIL would
+     reintroduce the SC-011 vacuity one door along: the line must NOT be FAIL
+     under `full`, and it must NOT be PASS under any profile. */
+  /* WHY THIS CAPTURE IS CITED HERE (red-witness rule (f)). The harness derives
+     the capture obligation per FILE: this witness mutates
+     src/commands/doctor.ts, and that file spawns `git check-ignore -q` to
+     reach its other retention verdicts. The arms THIS test guards must return
+     BEFORE that spawn, and the captured contract is what makes that a checkable
+     statement rather than an assumption: the three verdicts downstream of it
+     ("git-ignored", "does not exist", "present and tracked") are asserted
+     absent below, and the capture is where a reader learns those are the
+     verdicts the git-consulting loop produces. */
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", "doctor-git-check-ignore-resolution.txt"),
+    "utf8",
+  );
+  assert.match(captured, /unignored-path: git check-ignore -q -- \S+\n\s*exit 1/);
+  assert.match(captured, /ignored-path: git check-ignore -q -- \S+\n\s*exit 0/);
+
+  const fresh = initFleet(t);
+  assert.ok(
+    existsSync(join(fresh, "charter", ".gitkeep")),
+    "init is expected to leave charter/ holding only a keep file",
+  );
+  assert.deepEqual(
+    readdirSync(join(fresh, "charter")).sort(),
+    [".gitkeep"],
+    "init is expected to write no charter document",
+  );
+
+  const generic = runCli(["doctor"], { cwd: fresh });
+  const genericLine = /^CHECK retention (\S+) (.+)$/m.exec(generic.stdout);
+  assert.ok(genericLine !== null, generic.stdout);
+  assert.equal(genericLine[1], "WARN", genericLine[2]);
+  assert.match(genericLine[2] as string, /no charter document in .*retention is not applicable$/);
+
+  const full = runCli(["doctor", "--for", "full"], { cwd: fresh });
+  const fullLine = /^CHECK retention (\S+) (.+)$/m.exec(full.stdout);
+  assert.ok(fullLine !== null, full.stdout);
+  assert.equal(fullLine[1], "WARN", `--for full promoted a not-applicable retention: ${fullLine[2] as string}`);
+  assert.doesNotMatch(fullLine[2] as string, /required for profile full/);
+
+  /* THE CHECK RETURNED BEFORE THE GIT-CONSULTING LOOP: none of the three
+     verdicts that loop can produce appears, so nothing was reported about
+     paths nobody declared. */
+  for (const line of [genericLine[2] as string, fullLine[2] as string]) {
+    assert.doesNotMatch(line, /git-ignored|does not exist|present and tracked/);
+  }
+
+  /* THE OTHER ABSENT STATE STAYS PROMOTED, asserted here rather than only in
+     the sibling test, so this test cannot be satisfied by deleting the
+     promotion outright: YAML in charter/ that carries no `kind: charter` is a
+     misconfigured fleet, not an unrealized one. */
+  writeFileSync(
+    join(fresh, "charter", "notes.yaml"),
+    ["kind: decision-record", ""].join("\n"),
+  );
+  const misconfigured = runCli(["doctor", "--for", "full"], { cwd: fresh });
+  assert.match(
+    misconfigured.stdout,
+    /^CHECK retention FAIL .*none with kind: charter.*required for profile full/m,
+  );
+  assert.equal(misconfigured.status, 1);
 });

@@ -642,5 +642,6 @@
   "tuition-add-refuses-non-regular-entry-path": "tuition add refuses an entry path that is not a regular file and writes nothing",
   "tuition-ids-unique-across-directories": "no tuition id is claimed by both the shipped feed and the delivering project's log",
   "doctor-retention-check": "doctor reports CHECK retention PASS for declared paths that exist and are not ignored, and FAIL naming the path once it is git-ignored",
-  "doctor-retention-absent-path-and-full-profile": "doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL"
+  "doctor-retention-absent-path-and-full-profile": "doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL",
+  "doctor-retention-not-applicable-without-a-charter": "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created"
 }
