@@ -3,7 +3,9 @@
   "branch": "claude/m3-p11-precondition-crash-verdict",
   "filesToTouch": [
     "src/gates/run.ts",
+    "src/gates/scope.ts",
     "test/gates.test.ts",
+    "test/scope-gate.test.ts",
     "witness/",
     "delivery/requirements/clause-map.json"
   ],
@@ -11,6 +13,7 @@
   "citations": [
     "SC-011",
     "DR-0029",
+    "DR-0031",
     "T-008"
   ]
 }
