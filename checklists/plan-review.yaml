@@ -1,0 +1,103 @@
+# THE ADVERSARIAL PLAN-REVIEW CHECKLIST (kernel plan M3, M3-P7 step 2).
+#
+# Run against a PLAN, before any of it is dispatched. The three canonical
+# probes are R-026b, R-027 and R-028a, and each one is written to be
+# unanswerable without opening something: R-027 carries the process document's
+# own zero-amount-rows illustration, and R-028a names the artifact that counts
+# as proof so a testability claim cannot be admired instead of tested.
+kind: checklist
+id: plan-review
+applies-to: >-
+  a plan document before dispatch, read adversarially: the reviewer is looking
+  for the phase that cannot be built as written, not for reasons to approve.
+
+probes:
+  # R-026b. Hidden dependencies and semantic coupling ABOVE the file-overlap
+  # floor. File overlap is what the M5 pre-pass computes mechanically; this
+  # probe is the part no pre-pass reaches.
+  - id: hidden-dependency-above-file-overlap
+    probe: >-
+      Which phases share MEANING rather than files? Two phases with disjoint
+      file lists still collide when one renames a key the other reads, changes
+      a value's vocabulary, moves an ordering another relies on, or changes
+      what a shared registry row means. The file-overlap pre-pass computes the
+      floor and cannot see any of those. Name each pair you found, the shared
+      concept, and the phase whose assumption breaks; then name the pairs you
+      examined and cleared, because a list of collisions with no stated scope
+      is indistinguishable from a search that looked in the wrong place.
+    applies-to: plan-structure
+    evidence-required: true
+
+  - id: grounding-names-a-real-artifact
+    probe: >-
+      Does each phase's `grounding` name artifacts that will EXIST when it
+      starts, and does its `blocked-by` follow from that rather than from
+      habit? A `blocked-by` naming a phase whose artifacts the grounding never
+      mentions is an ordering habit serialising work that could run in
+      parallel; the reverse, a grounding consuming a phase the `blocked-by`
+      does not name, is a phase that will be dispatched before its inputs
+      exist. Check both directions per phase and say which you found.
+    applies-to: plan-structure
+    evidence-required: true
+
+  # R-027. Probe every fix shape for THE STATE THAT CAN NO LONGER EXIT, with
+  # the process document's own illustration carried in the probe text so the
+  # question cannot be answered from the phrase alone.
+  - id: fix-shape-state-that-cannot-exit
+    probe: >-
+      For every fix this plan proposes, what state does it create that can no
+      longer be exited? The process document's own illustration: a repair that
+      writes rows with a ZERO amount leaves records that are structurally
+      valid, that every later query counts, and that no reconciliation can
+      distinguish from real ones, so the system can enter that state and never
+      leave it. Walk each fix and name the state, the transition INTO it, and
+      the transition OUT of it. A fix with no stated exit is the finding.
+    applies-to: fix-shapes
+    evidence-required: true
+
+  - id: fix-shape-partial-application
+    probe: >-
+      What does each fix leave behind if it is interrupted halfway? Name the
+      point of no return in each one, and whether re-running it from the start
+      is safe. A fix that is only correct when it completes is a fix that has
+      not been designed for the case it exists to handle.
+    applies-to: fix-shapes
+    evidence-required: true
+
+  # R-028a. TEST THE TESTABILITY CLAIMS. The accepted evidence is the M2-P2
+  # red-witness harness's own evidence file, not the plan's assertion that
+  # something is testable.
+  - id: testability-claim-tested
+    probe: >-
+      For every claim in this plan that something is testable, guarded or
+      witnessed, what is the accepted proof? The harness's captured evidence
+      file (`witness-records.json`, whose per-member `runs[].exitCode` and
+      `failedNamedTests` record what actually ran) is the proof; the plan's
+      own sentence is not. Where no such file can exist yet because the
+      behaviour is not built, say so in those words and mark the claim as
+      owed, rather than letting an untested assertion pass as a tested one.
+    applies-to: testability
+    evidence-required: true
+
+  - id: acceptance-criterion-is-falsifiable
+    probe: >-
+      Is each acceptance criterion FALSIFIABLE? "Works correctly" is banned;
+      the register is a command, its exit code and a count ("node --test exits
+      0 and reports N tests, N greater than zero"). Quote every criterion that
+      names no command, no observable output and no count, and propose the
+      falsifiable form. A criterion nobody can fail is a criterion nobody has
+      to meet.
+    applies-to: testability
+    evidence-required: true
+
+  - id: hazard-class-is-not-the-criteria-reworded
+    probe: >-
+      Does each phase's declared hazard class name something its own
+      acceptance criteria CANNOT reach? T-007 records a phase meeting fifteen
+      of fifteen executed criteria while live-locking every supervision
+      command. A hazard class that is the criteria list reworded reproduces
+      that failure while appearing to fix it. For each class, name the
+      criterion that reaches it or state that none does and name the
+      instrument that does.
+    applies-to: plan-structure
+    evidence-required: true

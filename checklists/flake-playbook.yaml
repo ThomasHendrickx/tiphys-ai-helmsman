@@ -1,0 +1,68 @@
+# THE FLAKE PLAYBOOK (kernel plan M3, M3-P7 step 4, R-066).
+#
+# Run when CI goes red and the first instinct is to re-kick it. The ordering
+# is the content: EXTRACT before you JUDGE, and judge before you re-kick,
+# because a real bug looks identical to a flake until you read the log.
+#
+# The three-consecutive-reds threshold named in `flake-three-consecutive-reds`
+# is R-067's policy clause, which M3-P9 states in `AGENTS.md`. It is repeated
+# in the probe text rather than referenced, because a threshold a reader has to
+# go and look up is a threshold that gets rounded to "a few".
+kind: checklist
+id: flake-playbook
+applies-to: >-
+  a red CI run that the orchestrator suspects is a flake rather than a defect,
+  read before any re-kick.
+
+probes:
+  - id: flake-failure-extracted
+    probe: >-
+      Extract the actual failure from the log: the failing test name, the
+      assertion text, the exit code, and the step that produced it. Paste
+      them. "The suite went red" is not an extraction, and a re-kick decided
+      from it is a coin toss with a plausible story attached.
+    applies-to: extract
+    evidence-required: true
+
+  - id: flake-pattern-judged-against-local-run
+    probe: >-
+      Run the same test locally and compare the FAIL PATTERN, not the fact of
+      failing. Does it fail locally, does it fail on the same assertion, does
+      it fail at the same rate? A test that is green locally and red in CI is
+      an environment difference to name, never a flake to assume. Record the
+      local invocation, its exit code, and the pass and SKIPPED counts, since
+      a skipped test is not a passing test.
+    applies-to: judge
+    evidence-required: true
+
+  - id: flake-signature-known-or-unknown
+    probe: >-
+      Is this failure's SIGNATURE known? A known signature is one already
+      recorded with its assertion text and its measured rate, and a known
+      signature is the only thing that licenses a re-kick. An UNKNOWN
+      signature means investigate first: a real bug looks identical to a flake
+      until you read the log, which is the whole reason this list is ordered
+      this way. Say which of the two this is and cite the record if known.
+    applies-to: judge
+    evidence-required: true
+
+  - id: flake-three-consecutive-reds
+    probe: >-
+      How many consecutive reds has this same signature produced? At THREE
+      CONSECUTIVE REDS from the same flake, stop re-kicking: fix the flake
+      first and promote its fix to next in the queue (R-067). Count them and
+      state the count. A counter kept in a reviewer's head resets every time
+      the reviewer changes, which is why the number is asked for here rather
+      than assumed to be remembered.
+    applies-to: judge
+    evidence-required: true
+
+  - id: flake-recorded-with-its-rate
+    probe: >-
+      If this is a flake, is its measured RATE recorded, in the form "about 1
+      run in N", together with the test name and the assertion? An unrecorded
+      flake is one every later agent re-investigates from nothing, and the
+      rate is what makes the next reader able to tell a worsening flake from
+      the same one.
+    applies-to: record
+    evidence-required: true

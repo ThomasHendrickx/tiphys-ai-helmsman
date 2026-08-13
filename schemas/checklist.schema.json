@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/checklist.schema.json",
+  "title": "Tiphys review checklist",
+  "$comment": "R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a, R-057b, R-059, R-066, R-093. Kernel plan M3, M3-P7 steps 1 and 5. A CHECKLIST IS A PROBE LIST WITH DECLARED ENTRY POINTS. THE HAZARD THIS DOCUMENT EXISTS AGAINST is the phase's own: a checklist whose probes are present, unique, resolvable and USELESS. This schema reaches four of the seven ways that happens and reaches none of the other three, which is stated here rather than left for a reader to assume. WHAT IT REACHES: a probe with no question, no scope or no evidence policy (required plus minLength); an `applies-to` token that is prose rather than a scope a resolver can group by (pattern); a framing with no entry point or that orders nothing (required plus minItems); a `verifies-gate` that is blank. WHAT IT CANNOT REACH, each with the instrument that does. (1) Whether a probe's TEXT is specific enough to need opening a file: that is a property of prose, it is criterion 3b's registered tests for the five probe sets the plan names, and for the rest it is risk 2 and the suggested-tier note. (2) Whether two probes share an `id`: `uniqueItems` compares WHOLE array items, so two probes differing in any other field are already unique to it; that is the Kind B check `checklist-probe-ids-unique`. (2a) THE SAME THING ONE ARRAY ALONG, missed until fix round 2 because the keyword limitation was recorded for probes and not generalised: two FRAMINGS sharing an id, which is the check `checklist-framing-ids-unique`. (3) Whether a `verifies-gate` names a gate that exists, or whether a probe named by the registry carries the back-reference at all: both are cross-document and are the Kind B check `gate-probes-resolve`, running in both directions.",
+  "description": "A review checklist: a list of probes a reviewer answers, plus the framings that decide which probe they answer first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "id", "applies-to", "probes"],
+  "properties": {
+    "kind": {
+      "$comment": "R-016's discriminator, so `tiphys validate --type auto` resolves this document without being told, and M3R-001's rule that a type is registered with the validator in the same step that ships its schema is satisfied in both halves. A per-phase extra probe file (R-054, `checklist resolve --extra`) is ALSO a checklist document and carries this same kind, which is what makes an extra probe set independently validatable instead of a fragment only one command can read.",
+      "type": "string",
+      "const": "checklist"
+    },
+    "id": {
+      "$comment": "The name `tiphys checklist resolve --checklist <id>` takes, and the basename of the shipped file. A TOKEN rather than free prose, because the resolver looks it up.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "applies-to": {
+      "$comment": "What kind of review this whole list is for, in one sentence. Prose, deliberately: this one is read by a human deciding which checklist to run and is never grouped on.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "probes": {
+      "$comment": "`uniqueItems` is here and it is NOT the id-uniqueness rule. It compares whole items, so it catches a probe pasted twice verbatim and nothing else. Two probes sharing an id and differing in their question are unique to this keyword and are exactly the dangerous instance, which is why criterion 1's rejection is the derived check and not this line.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/probe"
+      }
+    },
+    "framings": {
+      "$comment": "T-001's second data point (M3R-004): the M1-P4 dual review found different defects because the two reviewers were given different STARTING QUESTIONS, and T-001's own words are that the checklists should vary the entry point rather than only the reviewer. A framing is therefore data in the artifact rather than a sentence in a dispatch prompt. Optional, because `checklists/flake-playbook.yaml` and `checklists/env-failure-diagnosis.yaml` are single-entry-point procedures and inventing framings for them would be ceremony. `uniqueItems` is here and, exactly as on `probes` above, it is NOT the id-uniqueness rule: it compares whole items, so two framings sharing an id and differing in their entry point are unique to it and are the dangerous instance, since `resolveChecklist` looks a framing up by id and first match wins. That is the derived check `checklist-framing-ids-unique`, added in fix round 2.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/framing"
+      }
+    }
+  },
+  "$defs": {
+    "probe": {
+      "$comment": "One question, its scope, and whether an answer must cite something.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "probe", "applies-to", "evidence-required"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "probe": {
+          "$comment": "THE QUESTION. Prose, and the one field this schema can say least about: `minLength` stops it being empty and nothing here stops it being generic. That gap is the phase's whole hazard class and the instrument is criterion 3b.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "applies-to": {
+          "$comment": "THE SCOPE TOKEN, and it is a token rather than prose because the resolver GROUPS ON IT. A framing's `orders-probes` names scopes, so this field is what makes `--framing` reorder the list rather than decorate it. A probe whose scope does not apply is still answerable ('not applicable, no destructive command in the diff'), so this is a grouping key and never a filter that silently drops a probe.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "evidence-required": {
+          "$comment": "R-054's second failure mode: an extra probe merged in without this field. A boolean rather than an optional flag, so a probe cannot be silently opinion-only. True means the answer must cite a path, a line, a captured command or an exit code.",
+          "type": "boolean"
+        },
+        "verifies-gate": {
+          "$comment": "NEW at revision 3, criterion 3c. The id of the `gate-registry.yaml` entry whose `verified-by: clean-room-checklist` names this probe. OPTIONAL because most probes verify no gate, and it is what makes the checklist-to-registry direction computable at all: without a back-reference there is nothing to resolve and an orphaned probe stays invisible by construction. That every registry-named probe MUST carry it is an `if`/`then` across two documents, which no keyword here reaches; it is enforced by `gate-probes-resolve`.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "framing": {
+      "$comment": "One declared entry point into the same probe list.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "entry-point", "orders-probes"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "entry-point": {
+          "$comment": "The starting question this framing hands the reviewer, printed at the head of the resolved list. T-001's two real examples are walking the acceptance criteria as a contract, and starting from where this can destroy something or claim a guarantee it does not have.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "orders-probes": {
+          "$comment": "The probe SCOPES, in the order this framing wants them, each naming an `applies-to` token. Probes in a named scope lead, scope by scope, and inside one scope the FILE ORDER decides; every probe in no named scope follows in file order. Ordering by scope rather than by probe id is what makes criterion 4d falsifiable: `CLAUDE.md` says the reviewer's FIRST check is item 3, and with a scope list the first resolved probe is the first `fix-round` probe IN THE FILE, so moving it later changes the answer. A framing that listed probe ids instead would pin the head no matter where the probe sat, which is the hazard class's 'ordering expressed as a comment rather than as position' wearing a schema's clothes.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      }
+    }
+  }
+}

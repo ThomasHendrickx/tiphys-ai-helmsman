@@ -1,0 +1,25 @@
+{
+  "id": "verdict-type-registered",
+  "behavior": "verdict-records-review-contract",
+  "tests": [
+    "a complete hazard verdict validates through the CLI, and --type auto resolves it",
+    "verdict is registered in the validator type table and its schema declares the dialect"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"verdict\", \"verdict.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"verdict\", \"verdict.schema.json\"],",
+      "replace": "  [\"verdict\", \"finding.schema.json\"],"
+    }
+  ]
+}

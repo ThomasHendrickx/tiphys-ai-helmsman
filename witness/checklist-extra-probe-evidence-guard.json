@@ -1,0 +1,24 @@
+{
+  "id": "checklist-extra-probe-evidence-guard",
+  "behavior": "checklist-extra-probe-evidence-required",
+  "tests": [
+    "an extra probe that requires no evidence is refused, whether the field is absent or false"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "    if (!probe.evidenceRequired) {",
+      "replace": "    if (!probe.evidenceRequired && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/checklist.schema.json",
+      "find": "      \"required\": [\"id\", \"probe\", \"applies-to\", \"evidence-required\"],",
+      "replace": "      \"required\": [\"id\", \"probe\", \"applies-to\"],"
+    }
+  ]
+}

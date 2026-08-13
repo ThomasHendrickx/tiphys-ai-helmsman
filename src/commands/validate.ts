@@ -92,6 +92,14 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      replaces the seed's contents with the generated projection, and neither of
      those acts touches this row. */
   ["mechanism-index", "mechanism-index.schema.json"],
+  /* M3-P7 step 6b. Both documents carry their own `kind`, so each row extends
+     `--type` and `resolveAutoType` in one act (M3R-001). The `checklist` row
+     is also what makes this phase's derived checks reachable: three of the
+     five are registered for type `checklist` or `verdict` and nothing runs
+     them until the type resolves, which is the same coupling the
+     assurance-modes row records above. */
+  ["checklist", "checklist.schema.json"],
+  ["verdict", "verdict.schema.json"],
   /* M3-P8 step 8. A tuition entry carries its own `kind`, so this row extends
      `--type` and `resolveAutoType` in one act (M3R-001). It is also what makes
      this phase's two derived checks reachable: `tuition-target-exists` and

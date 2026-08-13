@@ -1,4 +1,5 @@
 import { cmdBrief } from "./commands/brief.ts";
+import { cmdChecklist } from "./commands/checklist.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdGates } from "./commands/gates.ts";
 import { cmdInit } from "./commands/init.ts";
@@ -25,6 +26,7 @@ type CommandHandler = (args: string[]) => Promise<number> | number;
 const commands = new Map<string, CommandHandler>([
   ["version", printVersion],
   ["brief", cmdBrief],
+  ["checklist", cmdChecklist],
   ["init", cmdInit],
   ["doctor", cmdDoctor],
   ["gates", cmdGates],

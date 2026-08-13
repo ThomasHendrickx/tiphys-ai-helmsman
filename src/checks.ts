@@ -1933,6 +1933,625 @@ export const reportNoFindingsStatement: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* checklist-probe-ids-unique (M3-P7 step 6b, criterion 1)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * No two probes in one checklist share an `id`.
+ *
+ * KIND B, AND THE REASON IS A KEYWORD'S SEMANTICS RATHER THAN A DOCUMENT
+ * BOUNDARY. `uniqueItems` compares WHOLE array items, so two probes sharing
+ * an id and differing in any other field are already unique to it, and the
+ * pair that shares an id is exactly the dangerous instance: `checklist
+ * resolve` looks a probe up by id, so a duplicate makes the resolved list
+ * depend on which one the lookup reached. Uniqueness of a NESTED PROPERTY
+ * across array items is not a keyword property under any DR-0013 option,
+ * which is why the review did not name it and why it lands here.
+ *
+ * `requiresContext` is FALSE: the whole comparison is inside one document.
+ */
+export const checklistProbeIdsUnique: DerivedCheck = {
+  id: "checklist-probe-ids-unique",
+  type: "checklist",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const probes = asArray(asRecord(instance)?.["probes"]);
+    const firstIndexById = new Map<string, number>();
+    const violations: Diagnostic[] = [];
+    for (let index = 0; index < probes.length; index += 1) {
+      const id = asRecord(probes[index])?.["id"];
+      if (typeof id !== "string") {
+        continue;
+      }
+      const first = firstIndexById.get(id);
+      if (first === undefined) {
+        firstIndexById.set(id, index);
+        continue;
+      }
+      /* NAMES BOTH POSITIONS. An author told only that an id is duplicated
+         has to find the other one; the two pointers are what make the
+         message a diagnosis. */
+      violations.push({
+        pointer: `#/probes/${String(index)}/id`,
+        message: `probe id ${id} is already declared at #/probes/${String(first)}/id, and checklist resolve looks probes up by id`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* checklist-framing-ids-unique (M3-P7 fix round 2, H-2 member 1)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * No two framings in one checklist share an `id`.
+ *
+ * THE SAME SHAPE AND THE SAME KEYWORD LIMITATION AS THE PROBE CHECK ABOVE,
+ * one array along. `uniqueItems` on `framings` compares WHOLE items, so two
+ * framings sharing an id and differing in their entry point or their scope
+ * order are already unique to it, and that pair is exactly the dangerous
+ * instance: `resolveChecklist` looks a framing up with `.find()`, first match
+ * wins, so which of two declared entry points a reviewer is handed depends on
+ * FILE POSITION and nothing says so.
+ *
+ * WHY IT MATTERS MORE HERE THAN THE PROBE CASE LOOKS LIKE IT WOULD. A
+ * framing IS the entry point, and T-001's lesson that decorrelation comes
+ * from the starting question is the whole reason `--framing` exists. A
+ * duplicate id means the reviewer's starting question is decided by which
+ * copy sat first in the file, which is the phase's own hazard class ("a
+ * framing that reorders the list without changing the entry point") reached
+ * from the other side.
+ *
+ * `requiresContext` is FALSE: the whole comparison is inside one document.
+ */
+export const checklistFramingIdsUnique: DerivedCheck = {
+  id: "checklist-framing-ids-unique",
+  type: "checklist",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const framings = asArray(asRecord(instance)?.["framings"]);
+    const firstIndexById = new Map<string, number>();
+    const violations: Diagnostic[] = [];
+    for (let index = 0; index < framings.length; index += 1) {
+      const id = asRecord(framings[index])?.["id"];
+      if (typeof id !== "string") {
+        continue;
+      }
+      const first = firstIndexById.get(id);
+      if (first === undefined) {
+        firstIndexById.set(id, index);
+        continue;
+      }
+      /* NAMES BOTH POSITIONS, for the reason the probe check records. */
+      violations.push({
+        pointer: `#/framings/${String(index)}/id`,
+        message: `framing id ${id} is already declared at #/framings/${String(first)}/id, and checklist resolve looks framings up by id`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* gate-probes-resolve (M3-P7 step 6b, criteria 3 and 3c)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The join M3-P2 deliberately left open, closed in BOTH DIRECTIONS.
+ *
+ * `gate-registry.yaml` carries entries whose `verified-by` is
+ * `clean-room-checklist` and whose `probe` names a probe id this phase
+ * supplies. Nothing on the registry side can check that the probe exists,
+ * because the checklist did not exist when the registry shipped.
+ *
+ * DIRECTION 1, REGISTRY TO CHECKLIST (criterion 3). Every registry entry
+ * verified by a checklist names a probe that RESOLVES in that checklist, and
+ * that probe carries the `verifies-gate` back-reference to the entry. WHICH
+ * checklist is derived from the registry's own vocabulary rather than
+ * hardcoded: `verified-by: clean-room-checklist` names the checklist whose id
+ * is `clean-room`, so an entry is only asserted against the document it
+ * actually names, and running this check on `plan-review.yaml` does not
+ * demand the clean-room probes there.
+ *
+ * DIRECTION 2, CHECKLIST TO REGISTRY (criterion 3c). Every probe carrying
+ * `verifies-gate` names a gate id present in the registry. THE ASYMMETRY IS
+ * THE WHOLE POINT: direction 1 starts from the registry and therefore cannot
+ * see a probe pointing at a gate that no longer exists, which is what the
+ * phase's own hazard class calls an orphan invisible by construction. The two
+ * ways a registry edit orphans a probe fail through DIFFERENT lookups: a gate
+ * id RENAMED leaves the probe pointing at a name that never existed, and a
+ * gate entry DELETED leaves it pointing at a name that used to. Both land
+ * here; neither is reachable from direction 1.
+ *
+ * `requiresContext` is TRUE, so invoking the validator without `--context`
+ * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
+ * cross-document rule must never be able to pass BY NOT RUNNING.
+ */
+export const gateProbesResolve: DerivedCheck = {
+  id: "gate-probes-resolve",
+  type: "checklist",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Kept fail-closed
+         rather than trusting a caller that reaches the check directly. */
+      return {
+        violations: [
+          { pointer: "#/probes", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const registryDocument = readContextDocument(contextDirectory, "gate-registry.yaml");
+    if (!registryDocument.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/probes",
+            message: `the gate registry could not be read, so no probe reference could be resolved in either direction: ${registryDocument.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const document = asRecord(instance);
+    const checklistId = typeof document?.["id"] === "string" ? document["id"] : "";
+    const probes = asArray(document?.["probes"]);
+    const probeIndexById = new Map<string, number>();
+    const verifiesGateByProbe = new Map<string, string>();
+    for (let index = 0; index < probes.length; index += 1) {
+      const probe = asRecord(probes[index]);
+      const id = probe?.["id"];
+      if (typeof id !== "string") {
+        continue;
+      }
+      if (!probeIndexById.has(id)) {
+        probeIndexById.set(id, index);
+      }
+      if (typeof probe?.["verifies-gate"] === "string") {
+        verifiesGateByProbe.set(id, probe["verifies-gate"]);
+      }
+    }
+
+    const gateIds = new Set<string>();
+    const registryEntries: { id: string; probe: string; checklist: string }[] = [];
+    for (const gate of asArray(asRecord(registryDocument.value)?.["gates"])) {
+      const record = asRecord(gate);
+      const id = record?.["id"];
+      if (record === undefined || typeof id !== "string") {
+        continue;
+      }
+      gateIds.add(id);
+      const verifiedBy = record["verified-by"];
+      const probe = record["probe"];
+      if (
+        typeof verifiedBy === "string" &&
+        verifiedBy.endsWith("-checklist") &&
+        typeof probe === "string"
+      ) {
+        registryEntries.push({
+          id,
+          probe,
+          checklist: verifiedBy.slice(0, -"-checklist".length),
+        });
+      }
+    }
+
+    const violations: Diagnostic[] = [];
+    /* DIRECTION 1. */
+    for (const entry of registryEntries) {
+      if (entry.checklist !== checklistId) {
+        continue;
+      }
+      const index = probeIndexById.get(entry.probe);
+      if (index === undefined) {
+        violations.push({
+          pointer: "#/probes",
+          message: `gate ${entry.id} in ${registryDocument.path} names probe ${entry.probe}, which no probe in this checklist declares`,
+        });
+        continue;
+      }
+      const backReference = verifiesGateByProbe.get(entry.probe);
+      if (backReference !== entry.id) {
+        violations.push({
+          pointer: `#/probes/${String(index)}/verifies-gate`,
+          message:
+            backReference === undefined
+              ? `probe ${entry.probe} is named by gate ${entry.id} in ${registryDocument.path} and carries no verifies-gate, so the checklist-to-registry direction cannot see it`
+              : `probe ${entry.probe} is named by gate ${entry.id} in ${registryDocument.path} and its verifies-gate says ${backReference}`,
+        });
+      }
+    }
+    /* DIRECTION 2. */
+    for (const [probeId, gateId] of verifiesGateByProbe) {
+      if (gateIds.has(gateId)) {
+        continue;
+      }
+      const index = probeIndexById.get(probeId) ?? 0;
+      violations.push({
+        pointer: `#/probes/${String(index)}/verifies-gate`,
+        message: `probe ${probeId} verifies gate ${gateId}, which ${registryDocument.path} does not declare`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* The verdict's three cross-document completeness checks               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read the plan phase a verdict names, or say why not.
+ *
+ * THE JOIN KEY IS THE VERDICT'S `phase`, and the plan is read from a FIXED
+ * relative path in the context directory, which is the shape
+ * `mode-gate-sets-resolve` already uses for `gate-registry.yaml`. Fail closed
+ * at every step: an unreadable plan, a plan declaring no such phase and a
+ * plan whose phases are not a list are all violations, never silent passes,
+ * because a completeness rule that cannot find its other document has not
+ * been satisfied, it has not run.
+ */
+function readVerdictPlanPhase(
+  instance: unknown,
+  contextDirectory: string,
+  pointer: string,
+):
+  | { ok: true; phase: Record<string, unknown>; path: string }
+  | { ok: false; violation: Diagnostic } {
+  const verdict = asRecord(instance);
+  const phaseId = verdict?.["phase"];
+  if (typeof phaseId !== "string") {
+    return {
+      ok: false,
+      violation: {
+        pointer: "#/phase",
+        message: "the verdict names no phase, so no plan phase can be resolved",
+      },
+    };
+  }
+  const planDocument = readContextDocument(contextDirectory, "plan.yaml");
+  if (!planDocument.ok) {
+    return {
+      ok: false,
+      violation: {
+        pointer,
+        message: `the plan could not be read, so completeness against phase ${phaseId} could not be checked: ${planDocument.reason}`,
+      },
+    };
+  }
+  for (const candidate of asArray(asRecord(planDocument.value)?.["phases"])) {
+    const record = asRecord(candidate);
+    if (record?.["id"] === phaseId) {
+      return { ok: true, phase: record, path: planDocument.path };
+    }
+  }
+  return {
+    ok: false,
+    violation: {
+      pointer: "#/phase",
+      message: `${planDocument.path} declares no phase ${phaseId}, so this verdict reviews a phase the plan does not have`,
+    },
+  };
+}
+
+/** The `id` of every element of one array-of-objects field, in order. */
+function idsOf(record: Record<string, unknown> | undefined, key: string, idKey: string): string[] {
+  const ids: string[] = [];
+  for (const entry of asArray(record?.[key])) {
+    const value = asRecord(entry)?.[idKey];
+    if (typeof value === "string") {
+      ids.push(value);
+    }
+  }
+  return ids;
+}
+
+/* ------------------------------------------------------------------ */
+/* verdict-criteria-complete (M3-P7 step 6b, criterion 4b(a))           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A verdict's `criteria[]` carries one entry per acceptance criterion of the
+ * plan phase it reviews.
+ *
+ * THE DANGEROUS INSTANCE is a review that quietly skipped a criterion: every
+ * entry present is well formed, the schema is satisfied, and the one
+ * criterion nobody walked is invisible. R-053 says each criterion is quoted
+ * with evidence and a verdict, and "each" is a comparison against a DIFFERENT
+ * document, which no keyword reaches.
+ *
+ * BOTH DIRECTIONS, because they are different mistakes. A criterion the
+ * verdict omits is an unwalked criterion; a verdict entry naming a criterion
+ * the phase does not declare is a review walking something that is not in the
+ * contract, usually a criterion id left behind by a plan revision.
+ */
+export const verdictCriteriaComplete: DerivedCheck = {
+  id: "verdict-criteria-complete",
+  type: "verdict",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/criteria", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const resolved = readVerdictPlanPhase(instance, contextDirectory, "#/criteria");
+    if (!resolved.ok) {
+      return { violations: [resolved.violation], reports: [] };
+    }
+    const declared = idsOf(resolved.phase, "acceptance", "id");
+    const walked = new Set(idsOf(asRecord(instance), "criteria", "id"));
+    const violations: Diagnostic[] = [];
+    for (const id of declared) {
+      if (!walked.has(id)) {
+        violations.push({
+          pointer: "#/criteria",
+          message: `acceptance criterion ${id} of phase ${String(asRecord(instance)?.["phase"])} in ${resolved.path} has no entry, so this review did not walk it`,
+        });
+      }
+    }
+    const declaredSet = new Set(declared);
+    const walkedIds = idsOf(asRecord(instance), "criteria", "id");
+    for (let index = 0; index < walkedIds.length; index += 1) {
+      const id = walkedIds[index] as string;
+      if (!declaredSet.has(id)) {
+        violations.push({
+          pointer: `#/criteria/${String(index)}/id`,
+          message: `criterion ${id} is walked here and ${resolved.path} declares no such acceptance criterion on this phase`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* verdict-deviations-judged (M3-P7 step 6b, criterion 4b(b), M3R-005)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A verdict's `deviations-judged[]` carries one entry per deviation declared
+ * in the phase's work history.
+ *
+ * M3R-005 IS WHY THIS IS A CHECK AND NOT A PROBE. R-057b's "judged, never
+ * assumed by the implementer" has exactly the same completeness shape as
+ * criteria coverage, and revision 0 had left it as a bare probe question for
+ * no stated reason, so a reviewer could silently skip judging one of three
+ * declared deviations and every criterion still passed.
+ *
+ * THE OTHER DOCUMENT IS `work-history.yaml` in the context directory, and it
+ * must be the work history OF THE PHASE THIS VERDICT NAMES: a work history
+ * for another phase would let the check pass by comparing against the wrong
+ * deviation list, which is a vacuous pass wearing a cross-document check's
+ * clothes.
+ */
+export const verdictDeviationsJudged: DerivedCheck = {
+  id: "verdict-deviations-judged",
+  type: "verdict",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          { pointer: "#/deviations-judged", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const verdict = asRecord(instance);
+    const phaseId = verdict?.["phase"];
+    if (typeof phaseId !== "string") {
+      return {
+        violations: [
+          {
+            pointer: "#/phase",
+            message: "the verdict names no phase, so no work history can be resolved",
+          },
+        ],
+        reports: [],
+      };
+    }
+    const history = readContextDocument(contextDirectory, "work-history.yaml");
+    if (!history.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/deviations-judged",
+            message: `the work history could not be read, so the declared deviations could not be compared: ${history.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const historyRecord = asRecord(history.value);
+    if (historyRecord?.["phase"] !== phaseId) {
+      return {
+        violations: [
+          {
+            pointer: "#/deviations-judged",
+            message: `${history.path} is the work history of phase ${String(historyRecord?.["phase"])} and this verdict reviews ${phaseId}, so the deviations compared would be the wrong ones`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const declared = idsOf(historyRecord, "deviations", "plan-clause");
+    const judged = idsOf(verdict, "deviations-judged", "deviation");
+    const judgedSet = new Set(judged);
+    const violations: Diagnostic[] = [];
+    for (const clause of declared) {
+      if (!judgedSet.has(clause)) {
+        violations.push({
+          pointer: "#/deviations-judged",
+          message: `deviation ${clause} is declared in ${history.path} and this review did not judge it`,
+        });
+      }
+    }
+    const declaredSet = new Set(declared);
+    for (let index = 0; index < judged.length; index += 1) {
+      const clause = judged[index] as string;
+      if (!declaredSet.has(clause)) {
+        violations.push({
+          pointer: `#/deviations-judged/${String(index)}/deviation`,
+          message: `deviation ${clause} is judged here and ${history.path} declares no such deviation`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* verdict-hazard-classes-addressed (M3-P7 step 6b, criterion 4e)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A HAZARD verdict's `hazard-classes-addressed[]` carries one entry per
+ * hazard class declared by the plan phase it reviews.
+ *
+ * T-007 IS THE INPUT AND M3R-005 IS THE SHAPE. This has exactly the shape
+ * `verdict-criteria-complete` has for criteria, one field along, and for
+ * exactly the same reason: a reviewer could otherwise silently skip one of
+ * three declared hazard classes while every other criterion still passed.
+ * T-007's measured case is a phase meeting fifteen of fifteen executed
+ * criteria while live-locking every supervision command.
+ *
+ * IT APPLIES EXACTLY WHERE THE CONTRACT APPLIES. A verdict whose
+ * `review-contract` is `criteria` is not asserted against, because the
+ * criteria contract is not the one that owes hazard statements, and a check
+ * that reddened on it would push reviewers to fill the array with nothing.
+ * That the criteria arm is unaffected is asserted by a test rather than left
+ * as an implication.
+ */
+export const verdictHazardClassesAddressed: DerivedCheck = {
+  id: "verdict-hazard-classes-addressed",
+  type: "verdict",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      return {
+        violations: [
+          {
+            pointer: "#/hazard-classes-addressed",
+            message: "no context directory was supplied",
+          },
+        ],
+        reports: [],
+      };
+    }
+    const verdict = asRecord(instance);
+    if (verdict?.["review-contract"] !== "hazard") {
+      return EMPTY;
+    }
+    const resolved = readVerdictPlanPhase(
+      instance,
+      contextDirectory,
+      "#/hazard-classes-addressed",
+    );
+    if (!resolved.ok) {
+      return { violations: [resolved.violation], reports: [] };
+    }
+    const declared = idsOf(resolved.phase, "hazard-classes", "id");
+    const addressed = idsOf(verdict, "hazard-classes-addressed", "class-id");
+    const addressedSet = new Set(addressed);
+    const violations: Diagnostic[] = [];
+    for (const id of declared) {
+      if (!addressedSet.has(id)) {
+        violations.push({
+          pointer: "#/hazard-classes-addressed",
+          message: `hazard class ${id} of phase ${String(verdict["phase"])} in ${resolved.path} has no entry, so this hazard review did not address it`,
+        });
+      }
+    }
+    const declaredSet = new Set(declared);
+    for (let index = 0; index < addressed.length; index += 1) {
+      const id = addressed[index] as string;
+      if (!declaredSet.has(id)) {
+        violations.push({
+          pointer: `#/hazard-classes-addressed/${String(index)}/class-id`,
+          message: `hazard class ${id} is addressed here and ${resolved.path} declares no such class on this phase`,
+        });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* verdict-finding-references-resolve (M3-P7 fix round 2, H-1)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every `hazard-classes-addressed[].finding` names a `findings[].id` that
+ * exists in the SAME verdict.
+ *
+ * KIND B FOR THE SAME REASON `checklist-probe-ids-unique` IS, AND IT IS THE
+ * ONLY INTRA-DOCUMENT ID REFERENCE THE SHIPPED SCHEMAS DECLARE. The
+ * verdict schema's own `$comment` on `finding` calls it "the `findings[].id`
+ * this class produced", so the join is DECLARED; nothing resolved it, so it
+ * was a bare string with `minLength: 1`. Resolving one array's entry against
+ * another array's ids is not a keyword property under any DR-0013 option,
+ * which is why it lands here and not in the schema.
+ *
+ * WHAT IT PROTECTS, and it is not merely tidiness. The verdict schema ships
+ * exactly ONE rule that can force a verdict off APPROVE: a `findings[]` set
+ * containing a `high` or `critical` entry must carry FIX-ROUND-NEEDED. That
+ * rule reads `findings[]` and nothing else. So a hazard reviewer who records
+ * a class as having produced a finding, and leaves that finding out of
+ * `findings[]`, gets a schema-valid APPROVE with an empty findings array and
+ * the escalation rule never sees the finding it would have fired on. Measured
+ * at 4bfa790 before this check: such a document validated at exit 0, and the
+ * same document with the finding moved into `findings[]` at `severity: high`
+ * exited 1.
+ *
+ * A DANGLING REFERENCE IS ITSELF THE ERROR, not only one that lets the
+ * escalation be evaded, and the reason is that the narrower rule is not
+ * computable. A finding absent from `findings[]` has NO severity, so nothing
+ * can decide whether it would have escalated; the narrower reading would have
+ * to guess, and would clear exactly the document that withheld the most.
+ * Requiring the reference to resolve is decidable, and it puts the severity
+ * back under the escalation rule where the reader can see it.
+ *
+ * `requiresContext` is FALSE: the whole comparison is inside one document.
+ */
+export const verdictFindingReferencesResolve: DerivedCheck = {
+  id: "verdict-finding-references-resolve",
+  type: "verdict",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const verdict = asRecord(instance);
+    const findingIds = new Set<string>();
+    for (const entry of asArray(verdict?.["findings"])) {
+      const id = asRecord(entry)?.["id"];
+      if (typeof id === "string") {
+        findingIds.add(id);
+      }
+    }
+    const addressed = asArray(verdict?.["hazard-classes-addressed"]);
+    const violations: Diagnostic[] = [];
+    for (let index = 0; index < addressed.length; index += 1) {
+      const reference = asRecord(addressed[index])?.["finding"];
+      if (typeof reference !== "string" || findingIds.has(reference)) {
+        continue;
+      }
+      /* NAMES THE CONSEQUENCE, not just the dangling id. An author told only
+         that a reference does not resolve reads it as a typo; the sentence
+         that matters is that the escalation rule reads `findings[]` alone. */
+      violations.push({
+        pointer: `#/hazard-classes-addressed/${String(index)}/finding`,
+        message: `finding ${reference} is named by hazard class ${String(asRecord(addressed[index])?.["class-id"] ?? "(unnamed)")} and no findings[] entry declares that id, so the verdict's escalation rule cannot see it`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* tuition-target-exists (M3-P8 criterion 3a)                           */
 /* ------------------------------------------------------------------ */
 
@@ -2142,6 +2761,20 @@ const registry: DerivedCheck[] = [
   reportNoFindingsStatement,
   reportParityArithmetic,
   roleIdsAreUnique,
+  /* M3-P7 step 6b. Appended, never inserted: `checksFor` filters by declared
+     type and sorts by id, and `registeredChecks` returns a copy, so the
+     array's position carries no meaning any check reads. That is the property
+     the M3-P7 beside M3-P8 pre-pass asks whoever resolves a both-sides-add
+     conflict at this tail to confirm before keeping both entries. */
+  checklistProbeIdsUnique,
+  gateProbesResolve,
+  verdictCriteriaComplete,
+  verdictDeviationsJudged,
+  verdictHazardClassesAddressed,
+  /* M3-P7 FIX ROUND 2. Appended for the reason recorded above the M3-P7
+     block: position carries no meaning any check reads. */
+  checklistFramingIdsUnique,
+  verdictFindingReferencesResolve,
   /* M3-P8 step 8. Appended rather than inserted: `checksFor` filters by
      declared type and sorts by id, so this array's order carries no meaning
      any check reads. */
