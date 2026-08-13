@@ -2601,6 +2601,9 @@ export const tuitionTargetExists: DerivedCheck = {
     }
     const violations: Diagnostic[] = [];
     const consequences = asArray(record["structural-consequence"]);
+    let resolved = 0;
+    let unresolvable = 0;
+    const trees = new Set<string>();
     for (let index = 0; index < consequences.length; index += 1) {
       const consequence = asRecord(consequences[index]);
       if (consequence === undefined || consequence["status"] !== "applied") {
@@ -2610,6 +2613,17 @@ export const tuitionTargetExists: DerivedCheck = {
       if (typeof target !== "string") {
         continue;
       }
+      /* HRB-8's mechanism reaches THIS check too, and neither review named it.
+         A target is a kernel-artifact path relative to the repository the entry
+         came from; four of them name `src/` and one names `test/`, neither of
+         which ships. See unresolvableCitationTree. */
+      const absentTree = unresolvableCitationTree(contextDirectory, target);
+      if (absentTree !== undefined) {
+        unresolvable += 1;
+        trees.add(`${absentTree}/`);
+        continue;
+      }
+      resolved += 1;
       if (classifyEntry(join(contextDirectory, target)).kind === "absent") {
         violations.push({
           pointer: `#/structural-consequence/${String(index)}/target`,
@@ -2617,7 +2631,15 @@ export const tuitionTargetExists: DerivedCheck = {
         });
       }
     }
-    return { violations, reports: [] };
+    return {
+      violations,
+      reports: [
+        ...(resolved === 0
+          ? []
+          : [`REPORT tuition-target-exists ${String(resolved)} applied target(s) resolved`]),
+        ...unresolvedTreeReport("tuition-target-exists", unresolvable, trees),
+      ],
+    };
   },
 };
 
@@ -2642,13 +2664,25 @@ export const tuitionTargetExists: DerivedCheck = {
  * `delivery/review/verification-m1-p3-fix-round.md V-1 and V-3`, so the
  * reference is a token inside a sentence rather than the whole string.
  *
- * WHAT IT DOES NOT REACH, and this is a real hole rather than a tidy one:
+ * A `path.ext:LINE` CITATION IS A PATH REFERENCE (HRB-1, fix round 3). It is the
+ * form CLAUDE.md:155 mandates, and the earlier token test silently dropped every
+ * one of them; see `pathReferencesIn` for the measurement and the grammar.
+ *
+ * WHAT IT DOES NOT REACH, and these are real holes rather than tidy ones.
+ *
  * PROSE-ONLY evidence. `M1-P5 round 4, verified pre-existing against a pristine
  * build` names no path, so nothing about it is resolvable and this check says
  * nothing about it. Requiring every citation to be a path would redden entries
  * whose evidence is a measurement rather than a document, which is a real form
  * of evidence this project uses. The residue is therefore deliberate: the check
  * establishes that the paths cited EXIST, never that a rule is supported.
+ *
+ * A CITATION INTO A TREE THIS CONTEXT DOES NOT HAVE (HRB-8, fix round 3). The
+ * feed ships and `delivery/` does not, so in a consumer's install most citations
+ * name a repository that is not there. Those are REPORTED, with their count and
+ * the trees involved, and never counted as violations; see
+ * `unresolvableCitationTree` for why that is the correct answer rather than a
+ * softening, and for the reason it is not a silent pass.
  *
  * REGISTERED FOR BOTH TYPES. `mechanisms[]` appears in a tuition entry (where
  * a rule is authored) and in the mechanism index (where it is projected). A
@@ -2675,6 +2709,9 @@ export const mechanismRuleEvidenceResolves: DerivedCheck = {
     }
     const violations: Diagnostic[] = [];
     const mechanisms = asArray(record["mechanisms"]);
+    let resolved = 0;
+    let unresolvable = 0;
+    const trees = new Set<string>();
     for (let index = 0; index < mechanisms.length; index += 1) {
       const mechanism = asRecord(mechanisms[index]);
       if (mechanism === undefined) {
@@ -2687,6 +2724,13 @@ export const mechanismRuleEvidenceResolves: DerivedCheck = {
           continue;
         }
         for (const path of pathReferencesIn(reference)) {
+          const absentTree = unresolvableCitationTree(contextDirectory, path);
+          if (absentTree !== undefined) {
+            unresolvable += 1;
+            trees.add(`${absentTree}/`);
+            continue;
+          }
+          resolved += 1;
           if (classifyEntry(join(contextDirectory, path)).kind === "absent") {
             violations.push({
               pointer: `#/mechanisms/${String(index)}/evidence/${String(position)}`,
@@ -2705,6 +2749,17 @@ export const mechanismRuleEvidenceResolves: DerivedCheck = {
       if (typeof path !== "string" || typeof key !== "string") {
         continue;
       }
+      /* The same predicate on the third site the derivation found. The one real
+         `machine-readable-form` names `gates.manifest.json`, which SHIPS and
+         still resolves; a future one naming a non-shipping tree would otherwise
+         redden every consumer's install for a fact they cannot check. */
+      const absentTree = unresolvableCitationTree(contextDirectory, path);
+      if (absentTree !== undefined) {
+        unresolvable += 1;
+        trees.add(`${absentTree}/`);
+        continue;
+      }
+      resolved += 1;
       const document = readContextDocument(contextDirectory, path);
       if (!document.ok) {
         violations.push({
@@ -2724,23 +2779,110 @@ export const mechanismRuleEvidenceResolves: DerivedCheck = {
         });
       }
     }
-    return { violations, reports: [] };
+    return {
+      violations,
+      reports: [
+        ...(resolved === 0
+          ? []
+          : [
+              `REPORT mechanism-rule-evidence-resolves ${String(resolved)} citation(s) resolved`,
+            ]),
+        ...unresolvedTreeReport("mechanism-rule-evidence-resolves", unresolvable, trees),
+      ],
+    };
   },
 };
 
 /**
  * Every path-like token in one prose reference. See the check's header for the
  * definition and for what it deliberately does not treat as a path.
+ *
+ * THE `:LINE` SUFFIX IS STRIPPED BEFORE THE EXTENSION TEST (HRB-1, M3-P8 fix
+ * round 3). CLAUDE.md:155 makes `path.ext:LINE` THE citation form in this
+ * project ("a bare path is not a citation at all") and src/gates/citations.ts
+ * is the gate that enforces it. The earlier form tested the extension at
+ * end-of-string, and a line number sits after it, so every citation written the
+ * way this repository REQUIRES resolved to nothing: an entry whose paths were
+ * entirely fabricated validated at exit 0, and the byte-identical entry with
+ * the suffixes removed went red. A check that passes exactly the mandated form
+ * is not a check.
+ *
+ * The suffix grammar is the citations gate's own, narrowed to what a suffix can
+ * be rather than re-derived: `:<line>`, an optional `-<line>` range, and an
+ * optional `@sha256:<hex>` content pin (src/gates/citations.ts:453). Stripping
+ * is deliberately conservative: a token that does not match keeps its colon and
+ * is then judged by the extension test as before, so `http://x/y.md` and
+ * `a/b.md:notaline` are unchanged.
  */
 export function pathReferencesIn(reference: string): string[] {
   const found: string[] = [];
   for (const raw of reference.split(/\s+/)) {
-    const token = raw.replace(/^[`("'[]+/, "").replace(/[`)"'\].,;:]+$/, "");
+    const trimmed = raw.replace(/^[`("'[]+/, "").replace(/[`)"'\].,;]+$/, "");
+    const token = trimmed
+      .replace(/:\d+(?:-\d+)?(?:@sha256:[0-9a-zA-Z]+)?$/, "")
+      .replace(/[`)"'\].,;:]+$/, "");
     if (token.includes("/") && /\.[A-Za-z0-9]{1,6}$/.test(token) && !token.startsWith("/")) {
       found.push(token);
     }
   }
   return found;
+}
+
+/**
+ * THE TREE A CITATION IS ROOTED IN, when this context does not contain it.
+ * Returns that top-level name, or undefined when the citation IS resolvable
+ * here and absence would therefore be a real defect.
+ *
+ * WHY (HRB-8, M3-P8 fix round 3). A citation is relative to the repository that
+ * AUTHORED it. The tuition feed and its index ship in the npm package;
+ * `delivery/`, `src/`, `scripts/` and `test/` do not (package.json's `files`).
+ * So the checks that resolve a document-supplied path were asking a consumer's
+ * install a question only the kernel repository can answer, and answering it
+ * INVALID. Measured at 26ee653: the shipped index produced 16 INVALID lines
+ * from a pristine `npm pack` extraction, and eight of the fifteen shipped
+ * entries produced more. CI never saw it because this repository has
+ * `delivery/`, which is T-009's shape one scope out.
+ *
+ * schemas/mechanism-index.schema.json:5 already stated the governing fact
+ * before this round: resolution "is not computable from an installed package".
+ * This is that sentence made operative rather than decorative.
+ *
+ * THE PREDICATE IS THE TOP-LEVEL SEGMENT, and it is the coarsest one that still
+ * catches everything the kernel repository could catch before. A citation into a
+ * tree that IS present must still resolve, so a fabricated
+ * `delivery/review/invented.md` is as red here as it ever was; only a citation
+ * into a tree that is wholly absent is excused. A path with no directory
+ * component is NEVER excused, because the context root always exists: measured
+ * against the real feed, every `applied` root-level target ships, and the one
+ * root-level absentee (`AGENTS.md`) is `ticketed`, which the check does not read.
+ *
+ * THIS IS NOT A LICENCE TO GO QUIET. Every caller REPORTS what it declined to
+ * resolve and why. "Nothing to check here" and "everything checked and fine"
+ * must never print the same line, which is the SC-011 shape the plan's hazard
+ * row at delivery/plan/kernel-plan-m3.md:4042 polices.
+ */
+export function unresolvableCitationTree(
+  contextDirectory: string,
+  path: string,
+): string | undefined {
+  const slash = path.indexOf("/");
+  if (slash <= 0) {
+    return undefined;
+  }
+  const tree = path.slice(0, slash);
+  return classifyEntry(join(contextDirectory, tree)).kind === "absent" ? tree : undefined;
+}
+
+/** One report line naming the trees a check declined to resolve into. */
+function unresolvedTreeReport(check: string, count: number, trees: Set<string>): string[] {
+  if (count === 0) {
+    return [];
+  }
+  const named = [...trees].sort().join(", ");
+  return [
+    `REPORT ${check} ${String(count)} citation(s) not resolvable in this context: ` +
+      `no ${named} tree here, so they name a repository this is not`,
+  ];
 }
 
 /* ------------------------------------------------------------------ */

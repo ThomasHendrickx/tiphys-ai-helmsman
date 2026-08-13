@@ -365,6 +365,27 @@ function checkIdentity(root: string): CheckResult {
  * confuse (nothing declared, everything declared and present) never print the
  * same word.
  *
+ * "DECLARES NOTHING" IS DECIDED BY THE COUNT OF PATHS, NOT BY THE TYPE OF THE
+ * FIELD (CR-1 and HRB-6, fix round 3). Until then the sentence above was a
+ * promise the code did not keep: the guard tested `typeof retention !==
+ * "object"`, and `{}` and `[]` are objects, so both printed `PASS 0 declared
+ * retention path(s) present and tracked` under BOTH profiles. Round 2 recorded
+ * `{}` as an open item; measured on a real `tiphys init` fleet it is a family of
+ * five, `{}`, `[]`, nested-map values, empty-string values and non-string
+ * values, and an ABSENT key correctly FAILs, so two characters defeated the
+ * promotion. Two arms now close it and they close different halves: a value that
+ * is not a non-empty string is its own FAIL naming the key, and a charter that
+ * yields zero paths by any route takes `retention-undeclared`.
+ *
+ * THIS CHECK DOES NOT VALIDATE THE CHARTER AGAINST ITS SCHEMA, and that is why
+ * the above is reachable by a real user rather than only by a fixture.
+ * `schemas/charter.schema.json` does forbid every shape above, but nothing makes
+ * anyone run `tiphys validate --type charter` before `tiphys doctor --for full`,
+ * and charters are owner-authored by design, so a hand-written charter that does
+ * not match its schema is the ordinary case. Wiring schema validation in here is
+ * a larger change than this round is scoped for; the two arms make doctor's own
+ * verdict correct without it.
+ *
  * TWO ROOTS, because a retention path is written from the PROJECT's point of
  * view. `delivery/work-history/` lives in the project repository, and the
  * charter that names it lives in the fleet home, so each path is resolved
@@ -442,9 +463,25 @@ function checkRetention(root: string): CheckResult {
         condition: "retention-undeclared",
       };
     }
-    const paths = Object.values(retention as Record<string, unknown>).filter(
-      (value): value is string => typeof value === "string" && value !== "",
-    );
+    /* A NON-STRING VALUE IS ITS OWN FAIL, NEVER A SILENT DROP (CR-1, HRB-6, fix
+       round 3). The earlier form filtered them away, so a charter declaring
+       three retention paths with the wrong types reported the same green as one
+       declaring none. Naming the key is what makes the verdict actionable. */
+    const paths: string[] = [];
+    for (const [key, value] of Object.entries(retention as Record<string, unknown>)) {
+      if (typeof value === "string" && value !== "") {
+        paths.push(value);
+        continue;
+      }
+      return {
+        name: "retention",
+        status: "FAIL",
+        detail:
+          `${path} declares retention key ${key} as ` +
+          `${value === "" ? "an empty string" : describeRetentionValue(value)}, ` +
+          `which names no path`,
+      };
+    }
     const identity = document["identity"];
     const projectName =
       typeof identity === "object" && identity !== null
@@ -481,6 +518,24 @@ function checkRetention(root: string): CheckResult {
       condition: "retention-undeclared",
     };
   }
+  /* THE VERDICT COMES FROM THE COUNT, NOT FROM THE TYPE (CR-1, HRB-6, fix
+     round 3). The type test above decides PRESENCE OF AN OBJECT, and `{}` and
+     `[]` are both objects, so two characters in a charter defeated the promoted
+     `retention-undeclared` condition and printed `PASS 0 declared retention
+     path(s) present and tracked`: the same word as a charter with three paths
+     present and tracked, which is the exact thing this check's header forbids
+     and the plan's hazard row at delivery/plan/kernel-plan-m3.md:4042 polices.
+     Whatever shape `retention` had, a charter that yields NO path has declared
+     nothing, and that is one condition rather than a family of them. */
+  const empty = declarations.filter((declaration) => declaration.paths.length === 0);
+  if (empty.length > 0) {
+    return {
+      name: "retention",
+      status: "WARN",
+      detail: `${(empty[0] as { charter: string }).charter} declares no retention paths`,
+      condition: "retention-undeclared",
+    };
+  }
   let checked = 0;
   for (const declaration of declarations) {
     const roots = [root, ...(declaration.projectRoot === undefined ? [] : [declaration.projectRoot])];
@@ -509,6 +564,20 @@ function checkRetention(root: string): CheckResult {
     status: "PASS",
     detail: `${String(checked)} declared retention path(s) present and tracked`,
   };
+}
+
+/** Name a non-string retention value in a diagnostic, without printing it. */
+function describeRetentionValue(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "a list";
+  }
+  if (typeof value === "object") {
+    return "a map";
+  }
+  return `a ${typeof value}`;
 }
 
 /** True when git reports the path ignored in that repository. */
