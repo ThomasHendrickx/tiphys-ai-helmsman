@@ -9,9 +9,58 @@ reviewer died, not that the review passed.
 Toolchain for every command below unless stated otherwise: node v26.6.0 from the
 scratch prefix, confirmed by `node --version`.
 
-## STATUS: IN PROGRESS
+## VERDICT: REQUEST CHANGES
 
-(sections appended as work proceeds)
+One HIGH (CR-001, the decorrelation check reports "distinct" on a dimension one
+verdict does not carry and exits green on the merge-authority path) and one
+MEDIUM (CR-002, `AGENTS.md` ships instructing the reader to run two files the
+package does not contain). Reasoning at the foot of this document.
+
+## WHAT I DID NOT COVER
+
+Read this before any finding below.
+
+1. **The hazard lens.** A second reviewer holds it concurrently. I did not
+   attempt destructive-path, concurrency, symlink, named-pipe or
+   resource-exhaustion probes against anything in this phase.
+2. **CI.** I read no workflow run, no check conclusion and no job log. `gh` is
+   unusable in this container and `GH_TOKEN` returns 401 against REST, so
+   anything I wrote that polled GitHub would have failed silently. Every result
+   in this document is a local execution. Nothing here discharges T-009's
+   requirement that the post-merge `push` run on the new tip be observed to
+   completion; that is the orchestrator's.
+3. **`scripts/`, `test/`, `.github/`, the gate registry, and `delivery/`, as
+   subjects.** Per DR-0027 I did not review these for their own sake. I read
+   into them only where a shipped artifact's correctness depended on it: the
+   registry entries because `roles/implementer.md`'s rendered rows must match
+   them, the two scripts because they are the runners around the shipped check,
+   and the tests because the criteria name them as the guards. I did not audit
+   `.github/workflows/gates.yml`'s 47 added lines at all.
+4. **The work history.** I read `delivery/work-history/m3-p9.md` only for the
+   four claims I was pointed at, and I re-derived each rather than accepting it.
+   I did not run the claim grep over it, did not check its citations, and did
+   not verify its 1192 lines against anything else. It is out of the shipped
+   surface and it is not evidence I relied on anywhere.
+5. **The scope audit and the phase declaration.** I did not check whether every
+   changed path is on `delivery/plan/phase-declarations/m3-p9.json`, nor whether
+   the two `declaredExtras` grants the head's merge commit mentions are correct.
+   That is the orchestrator's gate, not a criteria question.
+6. **Wider sweeps I identified but did not run.** CR-001's mechanism is a
+   present-versus-absent collapse in a document-loading shape that
+   `src/checks.ts` uses in more places than this check. I did not enumerate the
+   other users of that shape. This is named in CR-001's not-covered paragraph
+   with the specific variants I skipped.
+7. **The M3-P7 verdict tests, individually.** Attack point 1 claims the first
+   version of this check reddened eight of them. I did not reconstruct that
+   first version or re-run those eight in isolation. What I DID do is verify the
+   present state: the whole suite is green at this head with zero skipped, and I
+   independently re-derived that the fail-closed property those eight were in
+   tension with is genuinely preserved on the merge path, under three different
+   broken-regime states.
+8. **`tiphys init` and the consumer bootstrap.** CR-001's user path assumes a
+   consumer with `charter.yaml` and `assurance-modes.yaml` at the directory the
+   gate is pointed at, which is what the gate's own `command` implies. I did not
+   verify that `tiphys init` produces that layout.
 
 ## Environment established
 
@@ -500,3 +549,70 @@ A future round with uncommitted edits to a target would test HEAD's target
 against the working tree's document. Harness-only, no shipped artifact,
 therefore tracked and not a blocker.
 
+---
+
+# CRITERIA LEDGER
+
+| criterion | executed or read | verdict |
+|---|---|---|
+| 1 validate role-brief | EXECUTED | MET |
+| 2 references resolve, both directions | EXECUTED on my own staging | MET as implemented; see CR-002 for the gap between the criterion's words and the implementation |
+| 2b anchor resolution, two members, both directions | EXECUTED, both members | MET |
+| 3 anti-duplication, three detectors, both directions | EXECUTED, all three | MET |
+| 4 clause map and clause round trip | EXECUTED | MET |
+| 5 no liveness vocabulary, both directions | EXECUTED with a broader grep than the phase's | MET |
+| 5b merge-completion clause, four elements, two members | EXECUTED by really weakening the document | MET; test construction filed CR-004 |
+| 6 four plan-assigned duties with citations | EXECUTED, clause-scoped | MET |
+| 7 dual-review, five directions | EXECUTED, all five | MET for the fixtures the criterion names; **CR-001 is a sixth direction the criterion does not name and the check answers wrongly** |
+| 7b contract distinctness, both directions | EXECUTED | MET, with the same CR-001 caveat |
+| 7c supervision clauses, both directions | EXECUTED | MET |
+| 8 six ids in their owning clauses | EXECUTED | MET |
+| 9 suite exits 0, nothing unaccounted | EXECUTED, both invocations | MET |
+
+Criterion 7's last direction, the Kind B witness by deregistration, I did not
+run as a separate experiment; it is a registered test in `test/dual-review.test.ts`
+and the whole suite is green. I state that as READ rather than executed. What I
+did execute independently is the underlying property, by mutating the check's
+comparison arms directly and watching the named tests turn red.
+
+# VERDICT: REQUEST CHANGES
+
+**This is a good phase and the verdict is not close.** Twelve of thirteen
+criteria are MET and I executed rather than read every one of them. The
+fail-closed repair the implementer flagged is genuine and I re-derived it under
+three broken-regime states. The witness contract repair is correct and I
+re-derived all four members by hand. The document is internally consistent, its
+anti-duplication guard works in all three detectors, and its anchor checking
+works in both structurally different members. The suite is 761/761 with zero
+skipped and zero failing, and I quoted the toolchain, the build state and the
+invocation for both numbers.
+
+**What blocks it is CR-001, and it blocks on its own merits rather than on
+ceremony.** The one thing this phase ships that a consumer RUNS gives a WRONG
+ANSWER on a reachable input: a pair of verdicts where one omits a decorrelation
+dimension is reported GREEN with the sentence "distinct on produced-by, framing,
+review-contract". It fails open, it is on the merge-authority path, and it
+states as a fact something it did not establish. I demonstrated it on all three
+dimensions, so it is a class and not an instance, and I reproduced it through
+the shipped CLI as well as through the gate's own runner. The division of labour
+the code's comment relies on (the schema forbids absence, this check decides
+difference) is asserted in prose and composed nowhere: I enumerated all twenty
+`command:` entries in the registry and none validates the verdict siblings.
+
+CR-002 is a MEDIUM I would not block on alone, and I want that separation on the
+record: it is an instance of a package-completeness class that already exists on
+`main` and that M3-P10 owns. It is reported here because the derivation that
+found it also found that the reference checker's blind spot coincides exactly
+with it, and closing them together is one edit.
+
+CR-003, CR-004 and CR-005 are LOW or TRACKED and none should hold a merge.
+
+**What a fix round owes, given the fix-round contract:** name the mechanism
+(a value read with `?? ""` and compared for distinctness without establishing
+presence), publish the derivation that enumerates every site of it, and state
+what the derivation did not cover. CR-001's not-covered paragraph lists four
+things I could not reach, and the third of them, whether the same
+present-versus-absent collapse exists in the other users of the
+`readOperatorPath` plus `decodeDocument` plus `asRecord` loading shape in
+`src/checks.ts`, is the one I would most want the fix round to settle rather
+than repair one field at a time.
