@@ -771,7 +771,15 @@ const checkerModule = (await import(
     document: unknown,
     pointer: string,
   ) => { found: boolean; at?: string };
-  collectReferences: (text: string) => { path: string; anchor: string; token: string }[];
+  /* `anchor` IS OPTIONAL AND THE TYPE SAYS SO. An anchorless reference reports
+     `anchor: undefined`, and a declaration promising `string` here would be
+     exactly the mistake this round is about one level out: a shape asserting a
+     value cannot be absent when it can. This is a hand-written `as` cast over a
+     dynamic import, so the compiler believes whatever it is told and nothing but
+     accuracy keeps it true. */
+  collectReferences: (
+    text: string,
+  ) => { path: string; anchor: string | undefined; token: string }[];
   documentBody: (text: string) => string;
 };
 
