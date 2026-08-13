@@ -429,7 +429,22 @@ test("deleting a declared file is green and deleting an undeclared file is red n
 /* the head, so widening it on the audited branch changes nothing.      */
 /* ------------------------------------------------------------------ */
 
-test("a declaration widened on the head branch to add an undeclared touch does not change the verdict, and the record's declaration sha256 equals the merge-base blob", () => {
+test("a declaration widened on the head branch is NAMED rather than silently accepted, the declaration file's own change still needs authorizing, and the record's declaration sha256 remains the merge-base blob", () => {
+  // THIS TEST USED TO ASSERT THE OPPOSITE VERDICT, and saying so is part of
+  // the change (M3-P11 change B, DR-0031, delivery/plan/m3-p11-phase-spec.md:156).
+  // Until this phase it read "a declaration widened on the head branch to add
+  // an undeclared touch does not change the verdict", and it was M2-P4's own
+  // criterion 5 witness. From this phase on an ADDITION at the head is
+  // ALLOWED, and the protection against it is that the gate PRINTS it by
+  // name for a reviewer to sign off.
+  //
+  // It is restated rather than deleted, and it is restated rather than left
+  // to pass by accident: with change B in place the original assertions all
+  // still held, for a DIFFERENT reason (the branch's change to the
+  // declaration file itself was the violation, and `src/c.ts` appeared in
+  // the detail only through the new amendment note). A test that passes for
+  // a reason other than the one it names is exactly the shape this
+  // repository keeps paying for, so both reasons are separated below.
   const { dir, outside } = initRepo();
   try {
     const declDir = join(dir, "delivery/plan/phase-declarations");
@@ -442,10 +457,9 @@ test("a declaration widened on the head branch to add an undeclared touch does n
     git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
     const expectedSha256 = createHash("sha256").update(Buffer.from(baseDeclarationBody, "utf8")).digest("hex");
 
-    // On the audited branch: touch an undeclared path C, AND widen the
-    // declaration itself to list C, the exact dangerous state named by
-    // criterion 5 and this phase's hazard class ("a declaration widened on
-    // the branch being audited").
+    // ARM 1. Touch an undeclared path C, AND widen the declaration itself to
+    // list C, without authorizing the declaration FILE. Still red, and the
+    // reason is now precise: the violation is the declaration file, not C.
     writeFileSync(join(dir, "src", "c.ts"), "1\n");
     writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts", "src/c.ts"] });
     git(dir, ["add", "-A"]);
@@ -453,9 +467,17 @@ test("a declaration widened on the head branch to add an undeclared touch does n
     const head = git(dir, ["rev-parse", "HEAD"]);
 
     const r = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
-    assert.notEqual(r.run.status, 0, "widening the declaration on the audited branch must not turn the verdict green");
+    assert.notEqual(r.run.status, 0);
     assert.equal(r.record?.status, "red");
-    assert.match(r.record?.detail ?? "", /src\/c\.ts/);
+    assert.match(
+      r.record?.detail ?? "",
+      /outside the declared scope: delivery\/plan\/phase-declarations\/m2-p4\.json/,
+    );
+    // C is NOT a violation any more; it appears only in the named amendment.
+    assert.match(r.record?.detail ?? "", /DECLARATION AMENDED AT HEAD/);
+    assert.match(r.record?.detail ?? "", /filesToTouch src\/c\.ts/);
+    // The merge-base blob is still what the record pins. Change B reads the
+    // head as well; it does not move the yardstick.
     assert.match(r.record?.detail ?? "", new RegExp(expectedSha256));
 
     const evidence = JSON.parse(
@@ -463,6 +485,24 @@ test("a declaration widened on the head branch to add an undeclared touch does n
     ) as { declarationSha256: string; mergeBase: string };
     assert.equal(evidence.declarationSha256, expectedSha256);
     assert.equal(evidence.mergeBase, base);
+
+    // ARM 2. The same widening, with the declaration file authorized by the
+    // head declaration itself. Green, and the addition is PRINTED.
+    writeDeclaration(declDir, "m2-p4", {
+      filesToTouch: ["src/a.ts", "src/c.ts", "delivery/plan/phase-declarations/m2-p4.json"],
+    });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-am", "authorize the declaration file itself"]);
+    const head2 = git(dir, ["rev-parse", "HEAD"]);
+    const r2 = runScope(dir, outside, ["--base", base, "--head", head2, "--phase", "m2-p4"]);
+    assert.equal(r2.run.status, 0, r2.run.stdout + r2.run.stderr);
+    assert.equal(r2.record?.status, "green");
+    assert.match(r2.run.stdout, /DECLARATION AMENDED AT HEAD/);
+    assert.match(r2.run.stdout, /filesToTouch src\/c\.ts/);
+    const evidence2 = JSON.parse(
+      readFileSync(join(r2.evidenceDir, "scope-audit.json"), "utf8"),
+    ) as { declarationSha256: string };
+    assert.equal(evidence2.declarationSha256, expectedSha256);
   } finally {
     cleanup(dir, outside);
   }
@@ -1206,5 +1246,211 @@ test("a missing schema, a schema outside the closed keyword set, or a named pipe
     } finally {
       cleanup(dir, outside);
     }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P11 change A: a phase's OWN evidence is a standing extra.         */
+/*                                                                      */
+/* Both arms are witnessed, because one arm is not a witness: the       */
+/* phase's own evidence must pass undeclared, and ANOTHER phase's       */
+/* evidence must still redden. The third arm is the prefix-boundary     */
+/* trap, which is not decoration: `m3-p1` is a proper string prefix of  */
+/* `m3-p11`, so a `startsWith` with no boundary silently hands every    */
+/* M3-P11 review document to the M3-P1 branch.                          */
+/*                                                                      */
+/* The witness runner's child-output contract for these tests is        */
+/* anchored by node-test-tap-real.txt, as the other scope witnesses in  */
+/* this file are, and the shape of the git output every audited path is */
+/* derived from is anchored by git-name-status-real.txt.                */
+/* ------------------------------------------------------------------ */
+
+test("a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one", () => {
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    mkdirSync(join(dir, "delivery/review"), { recursive: true });
+    mkdirSync(join(dir, "delivery/verification"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    writeDeclaration(declDir, "m3-p1", { filesToTouch: ["src/a.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m3-p1")]);
+
+    // ARM 1: the phase's OWN evidence, in all four covered shapes, none of
+    // them on the declaration.
+    writeFileSync(join(dir, "src", "a.ts"), "2\n");
+    writeFileSync(join(dir, "delivery/review/clean-room-m3-p1-hazard.md"), "own hazard review\n");
+    writeFileSync(join(dir, "delivery/review/arbitration-m3-p1.md"), "own arbitration\n");
+    writeFileSync(join(dir, "delivery/review/verification-m3-p1-fix-round.md"), "own verification\n");
+    writeFileSync(join(dir, "delivery/verification/m3-p1-delta.md"), "own delta\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "own evidence"]);
+    const head1 = git(dir, ["rev-parse", "HEAD"]);
+    const r1 = runScope(dir, outside, ["--base", base, "--head", head1, "--phase", "m3-p1"]);
+    assert.equal(r1.run.status, 0, r1.run.stdout + r1.run.stderr);
+    assert.equal(r1.record?.status, "green");
+    assert.equal(r1.record?.units, 5);
+
+    // ARM 2: ANOTHER phase's clean-room review still reddens, naming it.
+    writeFileSync(join(dir, "delivery/review/clean-room-m3-p9-hazard.md"), "somebody else's review\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "another phase's evidence"]);
+    const head2 = git(dir, ["rev-parse", "HEAD"]);
+    const r2 = runScope(dir, outside, ["--base", base, "--head", head2, "--phase", "m3-p1"]);
+    assert.notEqual(r2.run.status, 0);
+    assert.equal(r2.record?.status, "red");
+    assert.match(r2.record?.detail ?? "", /delivery\/review\/clean-room-m3-p9-hazard\.md/);
+
+    // ARM 3: the boundary. `m3-p11` starts with `m3-p1` as a string, and it
+    // is a DIFFERENT phase, so it must redden on the m3-p1 branch.
+    git(dir, ["rm", "-q", join(dir, "delivery/review/clean-room-m3-p9-hazard.md")]);
+    writeFileSync(join(dir, "delivery/review/clean-room-m3-p11-criteria.md"), "a longer phase id\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "a longer phase id"]);
+    const head3 = git(dir, ["rev-parse", "HEAD"]);
+    const r3 = runScope(dir, outside, ["--base", base, "--head", head3, "--phase", "m3-p1"]);
+    assert.notEqual(r3.run.status, 0);
+    assert.equal(r3.record?.status, "red");
+    assert.match(r3.record?.detail ?? "", /clean-room-m3-p11-criteria\.md/);
+
+    // ARM 4: and a path one level DEEPER under delivery/review/ is not
+    // swept in by the directory prefix, whatever its basename says.
+    git(dir, ["rm", "-q", join(dir, "delivery/review/clean-room-m3-p11-criteria.md")]);
+    mkdirSync(join(dir, "delivery/review/evidence"), { recursive: true });
+    writeFileSync(join(dir, "delivery/review/evidence/clean-room-m3-p1-hazard.md"), "nested\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "nested evidence"]);
+    const head4 = git(dir, ["rev-parse", "HEAD"]);
+    const r4 = runScope(dir, outside, ["--base", base, "--head", head4, "--phase", "m3-p1"]);
+    assert.notEqual(r4.run.status, 0);
+    assert.equal(r4.record?.status, "red");
+    assert.match(r4.record?.detail ?? "", /delivery\/review\/evidence\/clean-room-m3-p1-hazard\.md/);
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P11 change B: the declaration is read from BOTH sides.            */
+/*                                                                      */
+/* Criteria 9, 10 and 11 are one test on purpose: criterion 11 asks for */
+/* the addition and the removal to be demonstrated on the SAME          */
+/* declaration, differing only in the DIRECTION of the change, and two  */
+/* tests over two fixtures could not establish that.                    */
+/* ------------------------------------------------------------------ */
+
+test("a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it", () => {
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    writeFileSync(join(dir, "src", "kept.ts"), "1\n");
+    // THE merge-base declaration. Both arms below start from this one file.
+    writeDeclaration(declDir, "m2-p4", {
+      filesToTouch: ["src/a.ts", "src/kept.ts"],
+      declaredExtras: [],
+    });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+    // DIRECTION 1, ADDITION (criterion 9). The head declaration adds
+    // `src/added.ts` AND its own path, which is what a real phase amending
+    // its own declaration must do: the declaration file is itself a changed
+    // path, and only the addition rule can authorize it.
+    writeDeclaration(declDir, "m2-p4", {
+      filesToTouch: [
+        "src/a.ts",
+        "src/kept.ts",
+        "src/added.ts",
+        "delivery/plan/phase-declarations/m2-p4.json",
+      ],
+      declaredExtras: ["docs/added-extra.md"],
+    });
+    writeFileSync(join(dir, "src", "a.ts"), "2\n");
+    writeFileSync(join(dir, "src", "added.ts"), "new file the merge base never authorized\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "amend the declaration and use the new entry"]);
+    const headAdd = git(dir, ["rev-parse", "HEAD"]);
+    const added = runScope(dir, outside, ["--base", base, "--head", headAdd, "--phase", "m2-p4"]);
+    assert.equal(added.run.status, 0, added.run.stdout + added.run.stderr);
+    assert.equal(added.record?.status, "green");
+    // THE PRINTED LINE IS THE ASSERTION, not the exit code. A silent pass is
+    // the failure this change would otherwise introduce (criterion 9).
+    assert.match(added.run.stdout, /DECLARATION AMENDED AT HEAD/);
+    assert.match(added.run.stdout, /filesToTouch src\/added\.ts/);
+    assert.match(added.run.stdout, /declaredExtras docs\/added-extra\.md/);
+    assert.match(added.run.stdout, /filesToTouch delivery\/plan\/phase-declarations\/m2-p4\.json/);
+    assert.match(added.record?.detail ?? "", /filesToTouch src\/added\.ts/);
+    const auditAdd = JSON.parse(
+      readFileSync(join(added.evidenceDir, "scope-audit.json"), "utf8"),
+    ) as { declarationDelta: { added: string[]; removed: string[] } };
+    assert.ok(auditAdd.declarationDelta.added.includes("filesToTouch src/added.ts"));
+    assert.deepEqual(auditAdd.declarationDelta.removed, []);
+
+    // DIRECTION 2, REMOVAL (criterion 10), on THE SAME declaration, changed
+    // only in direction: `src/kept.ts` is present at the merge base and is
+    // taken away at the head.
+    // The declaration's own `branch` field names `claude/m2-p4-fixture`, and
+    // the gate cross-checks the checked-out branch against it, so the removal
+    // arm must stand on a branch of that name too: the addition branch is
+    // renamed out of the way and a fresh one is cut from the same base.
+    git(dir, ["branch", "-q", "-m", `${fixtureBranch("m2-p4")}-addition`]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4"), base]);
+    writeDeclaration(declDir, "m2-p4", {
+      filesToTouch: ["src/a.ts", "delivery/plan/phase-declarations/m2-p4.json"],
+      declaredExtras: [],
+    });
+    writeFileSync(join(dir, "src", "a.ts"), "3\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "narrow the declaration"]);
+    const headRemove = git(dir, ["rev-parse", "HEAD"]);
+    const removed = runScope(dir, outside, [
+      "--base",
+      base,
+      "--head",
+      headRemove,
+      "--phase",
+      "m2-p4",
+    ]);
+    assert.notEqual(removed.run.status, 0);
+    assert.equal(removed.record?.status, "red");
+    assert.match(removed.record?.detail ?? "", /REMOVES/);
+    assert.match(removed.record?.detail ?? "", /filesToTouch src\/kept\.ts/);
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+test("a head that deletes the phase declaration outright reddens rather than falling back to the merge base", () => {
+  // The largest possible removal. Without this arm, "a removal is hard"
+  // would be true for every entry and false for the whole file.
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "a.ts"), "1\n");
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+    git(dir, ["rm", "-q", join(declDir, "m2-p4.json")]);
+    writeFileSync(join(dir, "src", "a.ts"), "2\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "delete the declaration"]);
+    const head = git(dir, ["rev-parse", "HEAD"]);
+    const run = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
+    assert.notEqual(run.run.status, 0);
+    assert.equal(run.record?.status, "red");
+    assert.match(run.record?.detail ?? "", /not at head/);
+  } finally {
+    cleanup(dir, outside);
   }
 });

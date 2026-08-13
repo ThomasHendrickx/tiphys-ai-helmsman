@@ -302,7 +302,7 @@
   "scope-standing-extras-and-other-phase-history": "touching the two standing extras without declaring them is green, and touching another phase's work history is red naming it",
   "scope-rename-declared-and-undeclared": "renaming a declared file to an undeclared path is red naming the new path, and renaming to another declared path is green",
   "scope-delete-declared-and-undeclared": "deleting a declared file is green and deleting an undeclared file is red naming it",
-  "scope-anti-widening-merge-base-pinned": "a declaration widened on the head branch to add an undeclared touch does not change the verdict, and the record's declaration sha256 equals the merge-base blob",
+  "scope-anti-widening-merge-base-pinned": "a declaration widened on the head branch is NAMED rather than silently accepted, the declaration file's own change still needs authorizing, and the record's declaration sha256 remains the merge-base blob",
   "scope-branch-pattern-three-directions": "a branch matching the phase pattern with no merge-base declaration is red naming the branch, a non-matching branch is not-applicable, and a matching branch without --phase is error",
   "scope-usage-errors": "scope without --declarations, --base, or --phase exits 64 with usage",
   "scope-unresolvable-ref-is-error": "an unresolvable base or head ref is error, never a guessed red or green",
@@ -704,5 +704,13 @@
   "dual-review-lookalike-is-not-distinctness": "a lookalike or invisible character in produced-by does not make a shared model family distinct",
   "dual-review-compatibility-variant-folds": "a compatibility variant of a model family is folded onto it rather than refused",
   "dual-review-merge-authority-lookalike": "a lookalike character in merge-authority does not turn a delegated grant into no grant",
-  "dual-review-kind-case-still-counts": "a verdict whose kind is written in another case still counts toward the group it correlates with"
+  "dual-review-kind-case-still-counts": "a verdict whose kind is written in another case still counts toward the group it correlates with",
+  "gate-precondition-crash-and-skip-distinguishable": "the same gate id is not-applicable when its precondition script exists and exits 1, and error naming the script when only that script is absent",
+  "gate-precondition-unrunnable-operand-is-error": "a precondition command whose path operand is a directory, and one whose operand is a dangling symlink, are both error and neither is not-applicable",
+  "gate-command-unrunnable-names-the-missing-path": "a gate whose command names a missing path, one whose launcher is not executable, and one whose interpreter line is bad are all error, and the missing path is the path named",
+  "gate-registry-consumer-tree-crash-is-not-a-skip": "the shipped registry run against a consumer package tree with no scripts directory reports error for the conditional gate, never not-applicable",
+  "gate-precondition-inline-option-value-not-probed": "the path-operand rule leaves an option's inline value alone, which is what keeps a real declared precondition working",
+  "scope-phase-own-evidence-standing-extra": "a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one",
+  "scope-declaration-addition-named-removal-red": "a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it",
+  "scope-declaration-deleted-at-head-red": "a head that deletes the phase declaration outright reddens rather than falling back to the merge base"
 }
