@@ -459,16 +459,20 @@ DR-0012's condition checks the MODEL and T-007's condition checks the QUESTION,
 and this project has a recorded pair of verdicts that satisfied the first and
 failed the second while agreeing on every mechanical fact.
 
-THE VERIFICATION IS A COMMAND, not a habit: `tiphys validate --type verdict
---context <project> <verdict>` runs the `dual-review-decorrelation` check over
-the verdict files committed beside it and exits nonzero naming the duplicated
-value, or naming the file and the dimension when a verdict states no value to
-compare. That command is the CLI this package installs, so it is a command you
-have; the `check-dual-review` gate in `gate-registry.yaml#gates` is the same
-check wired to run in a pipeline. A kernel
-that can REPRESENT this regime but cannot DETECT a run that quietly used one
-model family twice reproduces the exact failure class T-001 exists to prevent,
-this time invisible because the kernel's own artifacts never looked.
+THE VERIFICATION IS A COMMAND, not a habit. Point the CLI this package installs
+at a project and it runs the `dual-review-decorrelation` check over the verdict
+files committed beside the one you name:
+
+    tiphys validate --type verdict --context <project> <verdict>
+
+It exits nonzero naming the duplicated value, or naming the file and the
+dimension when a verdict states no value to compare on, because a dimension that
+was never stated is not a dimension the two reviews were shown to differ on. The
+`check-dual-review` gate in `gate-registry.yaml#gates` is the same check wired to
+run in a pipeline rather than by hand. A kernel that can REPRESENT this regime
+but cannot DETECT a run that quietly used one model family twice reproduces the
+exact failure class T-001 exists to prevent, this time invisible because the
+kernel's own artifacts never looked.
 
 The stop-rather-than-grind bound that goes with this grant is
 `stalled-phase-response` above, which cites the numbers by path rather than
