@@ -237,6 +237,61 @@ gates:
     modes: [full, direct-pr, local-only]
     events: [pull_request]
 
+  # NEW IN M3-P9, entry one of two (D-M3-34, section 2.2a).
+  - id: check-agents-references
+    $comment: >-
+      M3-P9 step 5. Every path `AGENTS.md` references exists AND the ANCHOR it
+      names occurs inside that path (criterion 2b), and `AGENTS.md` carries no
+      gate id list, no mode table and no model-tier table (criterion 3), because
+      section 1.5's anti-duplication rule is what stops the orchestrator brief
+      drifting away from the registry it summarizes. WHY BOTH EVENTS: a broken
+      reference on `main` is the state that matters, not only one proposed in a
+      pull request, which is T-009's rule that where behaviour forks on the CI
+      event both arms need a witness. WHAT EXECUTES IT IN CI, stated rather than
+      implied: `scripts/m2-exit-test.sh` invokes the runner with `--manifest
+      gates.manifest.json` on both arms and that file is on no M3 phase's
+      declaration, so a registry-only gate does not run through the runner.
+      A step in `.github/workflows/gates.yml` carrying no `if:` is what runs it,
+      exactly as for `agent-rules-drift`, and `test/gate-registry.test.ts`
+      records the divergence with its reason so the gap is declared rather than
+      discovered.
+    command: [node, scripts/check-agents-references.mjs]
+    unitLabel: references resolved
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  # NEW IN M3-P9, entry two of two (M3R-004, DR-0012, T-001, T-007, D-M3-34).
+  - id: check-dual-review
+    $comment: >-
+      M3-P9 step 3b. The `decorrelated-review` duty made into a command with an
+      exit code: two verdicts for one head, distinct `produced-by` model
+      families (DR-0012 condition 1), distinct `framing` values (T-001), and
+      distinct `review-contract` values (T-007). The comparison itself is the
+      Kind B derived check `dual-review-decorrelation` in `src/checks.ts`; this
+      script is the runner around it, so deregistering the check is a real
+      witness rather than a simulated one (section 2.3 rule 3).
+      `events: [pull_request]` ALONE, and the reason is the plan's own: a merged
+      head has no pair of verdicts to compare. The PRECONDITION is what keeps
+      that from becoming a vacuous green: a gate that cannot reach a verdict
+      reports not-applicable with a reason, never green, which is M2-C-3 and
+      SC-011 applied to M3's own check. It probes with the script's own
+      `--precondition` arm rather than a `file-exists` path, because the
+      question is whether any verdict DOCUMENT exists under `delivery/review/`
+      and not whether that directory does; this repository has the directory and
+      has never had a verdict document in it.
+    command: [node, scripts/check-dual-review.mjs, .]
+    unitLabel: review verdicts examined for decorrelation
+    applicability: conditional
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    precondition:
+      id: dual-review-verdicts-present
+      kind: command-exit-zero
+      command: [node, scripts/check-dual-review.mjs, --precondition, .]
+
   # NEW IN M3-P2, entry two of three (R-043, D-11).
   - id: unit-tests-for-changed-service-methods
     $comment: >-
