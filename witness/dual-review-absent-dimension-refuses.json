@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-absent-dimension-refuses",
+  "behavior": "dual-review-absent-dimension-refuses",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a verdict that states no produced-by is refused rather than read as distinct from the other"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        const reading = establishField(candidate.record, dimension);",
+      "replace": "        const reading = { kind: \"established\" as const, value: String(candidate.record[dimension] ?? \"\") };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    return { kind: \"absent\" };",
+      "replace": "    return { kind: \"established\", value: \"\" };"
+    }
+  ]
+}

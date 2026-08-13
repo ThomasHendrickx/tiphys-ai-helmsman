@@ -313,5 +313,60 @@
     "phase": "M3-P8",
     "artifact": "src/commands/doctor.ts",
     "clause": "R-098"
+  },
+  "R-001b": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-001b"
+  },
+  "R-002": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-002"
+  },
+  "R-013": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-013"
+  },
+  "R-030": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-030"
+  },
+  "R-061": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-061"
+  },
+  "R-062": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-062"
+  },
+  "R-065b": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-065b"
+  },
+  "R-067": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-067"
+  },
+  "R-073": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-073"
+  },
+  "R-076": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-076"
+  },
+  "R-077": {
+    "phase": "M3-P9",
+    "artifact": "AGENTS.md",
+    "clause": "R-077"
   }
 }

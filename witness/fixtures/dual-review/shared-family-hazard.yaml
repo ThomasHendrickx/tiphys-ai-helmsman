@@ -1,0 +1,26 @@
+# DANGEROUS INSTANCE, DR-0012 condition 1: the second review differs in its
+# entry point and its contract, and was produced on the SAME model family.
+kind: verdict
+phase: M3-P9
+verdict: APPROVE
+produced-by: family-a
+framing: destructive-paths
+review-contract: hazard
+findings: []
+criteria:
+  - id: "1"
+    quote: >-
+      tiphys validate --type role-brief AGENTS.md exits 0 with role:
+      orchestrator.
+    evidence:
+      - "node bin/tiphys.ts validate --type role-brief AGENTS.md exited 0"
+    met: true
+deviations-judged: []
+hazard-classes-addressed:
+  - class-id: clause-reads-as-satisfied-while-the-property-is-absent
+    probed: >-
+      Deleted the supervision clause text and confirmed the registered grep
+      test went red naming the clause.
+    cleared-because: >-
+      The clause text carries FRESHNESS and the newest mtime and carries
+      neither of the two words the criterion forbids.

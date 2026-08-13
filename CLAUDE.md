@@ -298,6 +298,8 @@ Then the registry's gates, run by `tiphys gates run --registry gate-registry.yam
 | `red-witness` | script | required | full, direct-pr | pull_request | witnesses evaluated |
 | `agent-rules-drift` | script | required | full, direct-pr, local-only | pull_request, push | rendered gate rows compared |
 | `brief-drift` | script | required | full, direct-pr, local-only | pull_request | generated brief gate rows compared |
+| `check-agents-references` | script | required | full, direct-pr, local-only | pull_request, push | references resolved |
+| `check-dual-review` | script | conditional | full, direct-pr | pull_request | review verdicts examined for decorrelation |
 | `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | full, direct-pr | pull_request | changed service methods checked |
 | `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | full, direct-pr | pull_request | changed component states checked |
 

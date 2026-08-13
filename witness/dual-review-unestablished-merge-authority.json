@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-unestablished-merge-authority",
+  "behavior": "dual-review-unestablished-merge-authority",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a mode that states no merge-authority is refused rather than reported as not a delegated grant"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    const authorityReading = establishField(mode.mode, \"merge-authority\");",
+      "replace": "    const authorityReading = { kind: \"established\" as const, value: String(mode.mode[\"merge-authority\"] ?? \"\") };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (authorityReading.kind !== \"established\") {",
+      "replace": "    if (authorityReading.kind === \"established\") {"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-lookalike-is-not-distinctness",
+  "behavior": "dual-review-lookalike-is-not-distinctness",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a lookalike or invisible character in produced-by does not make a shared model family distinct"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (code < CANONICAL_MIN_CODE || code > CANONICAL_MAX_CODE) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    return { kind: \"uncanonical\", found: canonical.found };",
+      "replace": "    return { kind: \"established\", value: raw };"
+    }
+  ]
+}

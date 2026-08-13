@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-distinct-model-families",
+  "behavior": "dual-review-distinct-model-families",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "two verdicts sharing a produced-by model family exit nonzero naming the duplicated value"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        if (paths.length < 2) {",
+      "replace": "        if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (authority !== DELEGATED_MERGE_AUTHORITY) {",
+      "replace": "    if (true) {"
+    }
+  ]
+}

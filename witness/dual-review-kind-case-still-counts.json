@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-kind-case-still-counts",
+  "behavior": "dual-review-kind-case-still-counts",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a verdict whose kind is written in another case still counts toward the group it correlates with"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (kindReading.kind !== \"established\" || kindReading.value !== \"verdict\") {",
+      "replace": "    if (record[\"kind\"] !== \"verdict\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  return { ok: true, value: collapsed.toLowerCase() };",
+      "replace": "  return { ok: true, value: collapsed };"
+    }
+  ]
+}

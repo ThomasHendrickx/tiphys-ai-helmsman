@@ -1,0 +1,27 @@
+# DANGEROUS INSTANCE, T-001's second lesson: two model families, two contracts,
+# and the SAME starting question. Two reviews that begin in the same place find
+# the same things whoever produced them.
+kind: verdict
+phase: M3-P9
+verdict: APPROVE
+produced-by: family-b
+framing: criteria-contract
+review-contract: hazard
+findings: []
+criteria:
+  - id: "1"
+    quote: >-
+      tiphys validate --type role-brief AGENTS.md exits 0 with role:
+      orchestrator.
+    evidence:
+      - "node bin/tiphys.ts validate --type role-brief AGENTS.md exited 0"
+    met: true
+deviations-judged: []
+hazard-classes-addressed:
+  - class-id: clause-reads-as-satisfied-while-the-property-is-absent
+    probed: >-
+      Deleted the supervision clause text and confirmed the registered grep
+      test went red naming the clause.
+    cleared-because: >-
+      The clause text carries FRESHNESS and the newest mtime and carries
+      neither of the two words the criterion forbids.
