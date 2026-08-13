@@ -117,3 +117,63 @@ Smallest honest fix is the message ("present and not ignored"). The fix that
 matches R-098's duty is a second condition: `git ls-files -- <path>` returning
 at least one line, plus treating a nonzero `check-ignore` status other than 1 as
 UNKNOWN rather than as "not ignored".
+
+### HRB-3 (MEDIUM, demonstrated) the generator does not round-trip its own output: a schema-valid entry can make `tuition index --check` permanently red, blaming the entry with no hint of the cause
+
+Shipped artifacts: `src/tuition.ts` (`foldedBlock`, `renderIndex`, `driftLines`)
+and `src/commands/tuition.ts` (`cmdIndex`).
+
+Mechanism: `foldedBlock` splits the rule on `/\s+/`, so rendering NORMALISES
+whitespace, and `driftLines` compares the DECODED committed rule against the
+entry's ORIGINAL rule. Any rule whose whitespace is not already single-spaced
+therefore differs from its own rendering, forever.
+
+Demonstrated with the shipped CLI, feed of one entry, `tiphys validate --type
+tuition` exit 0 on that entry:
+
+    $ node bin/tiphys.ts tuition index --dir <feed>
+    wrote 1 mechanism(s) from 1 entr(ies) to <feed>/mechanism-index.yaml
+    exit=0
+    $ node bin/tiphys.ts tuition index --dir <feed> --check
+    DRIFT mechanism a-probe-mechanism differs from the projection of tuition entry T-900
+    tiphys tuition: mechanism-index.yaml is not the projection of the feed in <feed>
+    exit=1
+    # regenerate, then check again: identical bytes, identical red
+    exit=1
+    $ cmp <feed>/mechanism-index.yaml <regenerated>   # IDENTICAL
+
+The entry's rule there was a YAML literal block (`rule: |-`, two lines). A
+second, more ordinary trigger reproduces the same red: two spaces after a full
+stop inside a quoted scalar.
+
+    rule: "Do not read a path whose type is not established.  Classify it first."
+    DRIFT mechanism a-probe-mechanism differs from the projection of tuition entry T-900
+    exit=1
+
+Unit-level enumeration of the trigger class, `renderIndex` then `decodeDocument`
+then `driftLines` on one row:
+
+    double space in rule     SELF-DRIFT
+    newline in rule          SELF-DRIFT
+    tab in rule              SELF-DRIFT
+    trailing space           SELF-DRIFT
+    colon-space in rule      round trips
+    hash in rule             round trips
+    very long token          round trips
+    leading dash             round trips
+
+Why it hurts a user rather than being cosmetic. The DRIFT line names the entry,
+which is the file the operator is told to go to, and the entry is not wrong. The
+documented remedy (`regenerate it with tiphys tuition index`) provably does not
+clear it, and the byte arm is not what fires, so the "it has been hand-edited"
+message never appears to redirect the reader. The stuck state is a drift check
+that is red for a reason it does not state, which is the condition under which
+operators start ignoring drift output.
+
+Note the schema deliberately permits this: `rule` is `type: string, pattern: \S`,
+and a literal block scalar is a normal way to author a multi-sentence rule in
+YAML.
+
+Fix shape: normalise on the projection side too (compare
+`row.rule.replace(/\s+/g," ").trim()` against the decoded value), so the rendered
+form is the canonical one, or refuse the entry at validation time.
