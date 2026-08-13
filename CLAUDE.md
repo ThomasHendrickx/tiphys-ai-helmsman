@@ -714,6 +714,59 @@ everything else, batched rather than one PR per file. Do not let evidence
 accumulate only on a long-lived side branch: if that branch is lost, the
 code survives and its proof does not.
 
+## A commit, a pull request and a CI run are three different things (DR-0031, binding)
+
+Owner decision, 2026-08-13, after one day produced **ten pull requests for two
+phases**. Each CI cycle is about sixteen minutes and branch protection
+SERIALISES them, so eight auxiliary pull requests cost eight sequential cycles.
+
+1. **A commit is a unit of work.**
+2. **A pull request is a unit of SELF-CONTAINED VALUE and carries ALL its
+   evidence.** For a phase that is the code, the work history, both clean-room
+   reviews, the arbitration, any verification, and the record of what it merges
+   carrying. Splitting a phase's evidence into its own pull request is the
+   pattern this rule exists to stop.
+3. **CI enforces that `main` stays green. It is NOT how you find out whether you
+   are green.** Establish that locally first.
+
+**`main` is the record of work actually DONE.** Evidence about an abandoned
+phase belongs with the abandoned branch, not on `main`. Work that never reaches
+`main` is a normal and wanted outcome, more so with more than one contributor.
+So "the evidence would be lost if the phase dies" is not an argument for a
+separate evidence pull request; it is the correct behaviour.
+
+### The mirror of T-019, and neither the gate nor any review caught it
+
+Measured on `main` at `bdec27d` while M3-P9 was still open: the two clean-room
+reviews and the delta verification for M3-P9 were PRESENT, while `AGENTS.md` and
+`scripts/check-dual-review.mjs` were ABSENT. **`main` asserted review evidence
+for code it did not contain.**
+
+T-019 was a paperwork pull request carrying code that should not land. This is
+paperwork pull requests carrying evidence about code that has not landed. One
+defect: **the pull request's contents do not match the unit of value it claims to
+deliver.** Check both directions before opening one.
+
+### Local green before opening, and it is STRONGER than the CI run
+
+The `pull_request` run tests the union with the base AS OF THAT RUN. Merging
+`main` in locally and running the union is not a weaker substitute: it is what
+found two failures in M3-P6 that neither branch's CI could see.
+
+**If CI tells you something you did not already know locally, that is a defect in
+the local procedure, not a normal outcome.** Fix the procedure rather than
+pushing again.
+
+Genuinely CI-only, measured, and it is a short list: the macOS smoke job
+(different operating system), and the M1 exit test in FULL mode (`gh` is unusable
+here, standing warning 6). Everything else in the bundle runs locally on the
+floor-satisfying toolchain.
+
+**Not yet fully available, stated so nobody reports the rule as met.** Scope
+declaration grants still need their own pull request until M3-P11 ships the
+both-declarations read, because the scope gate reads the declaration from the
+MERGE BASE only. Three of the day's ten pull requests existed for nothing else.
+
 ## Standing environment warnings
 
 Each of these bit someone once. Forward them to every implementer.

@@ -126,3 +126,92 @@ owner assigned the finding to M3-P11 and did not specify the order.
   orchestrator's reading of the reviewer's root-cause, not a measurement by
   someone who has attempted it. The merge-order argument above depends on that
   assumption and should be revisited if it proves false.
+
+## AMENDMENT, 2026-08-13: two more gate changes, from DR-0031
+
+The owner recorded `delivery/decisions/DR-0031-commit-pr-and-ci-are-three-different-things.md`
+after asking why one day produced ten pull requests for two phases. Two of its
+consequences are code changes in `src/gates/`, which is this phase's territory,
+so they land here rather than in a phase of their own. Both are the same shape as
+the phase's original intent: **stop the gate forcing a dishonest shape.**
+
+The declaration is widened to add `src/gates/scope.ts` and
+`test/scope-gate.test.ts`. The path was verified against `main` rather than
+guessed; the first attempt named `test/scope.test.ts`, which does not exist.
+
+### Change A: a phase's own evidence is a standing extra
+
+`src/gates/scope.ts` hard-codes the standing pre-authorized extras as
+`test/behaviors.json` and the phase work history. Add
+`delivery/review/<phase>*`, `delivery/review/arbitration-<phase>*` and
+`delivery/verification/<phase>*`.
+
+**Why it matters, measured rather than argued.** On `main` at `bdec27d`, while
+M3-P9 was still open, the two clean-room reviews and the delta verification for
+M3-P9 were PRESENT and `AGENTS.md` was ABSENT. `main` asserted review evidence
+for code it did not contain. Today the only way to land a review without
+reddening the scope gate is a separate pull request, which is what produced that
+state.
+
+### Change B: the declaration is read from BOTH sides
+
+`src/gates/scope.ts` reads the phase declaration from the MERGE BASE. That is
+deliberate and the reason is sound: reading it from the head would let a phase
+grant itself scope, removing the only check on scope there is.
+
+But it also means a declaration amendment can never ride with the phase that
+needs it, and three of the day's ten pull requests existed for nothing else.
+
+**Read both, and report an ADDITION as a loud named diff that the reviewer signs
+off, rather than as a hard red.** Same visibility, no separate pull request. A
+REMOVAL from the declaration is a different matter and should stay hard.
+
+### Additional acceptance criteria
+
+8. A phase branch that adds `delivery/review/clean-room-<phase>-*.md` and
+   `delivery/verification/<phase>-*.md` passes the scope gate with no
+   declaration entry for them, and a branch adding
+   `delivery/review/clean-room-<other-phase>-*.md` still REDDENS. Both arms
+   witnessed; one arm is not a witness.
+9. A branch whose head declaration ADDS a `declaredExtras` entry absent from the
+   merge-base declaration passes, and the gate PRINTS the added entry by name.
+   The printed line is asserted, not just the exit code, because a silent pass
+   is the failure this change exists to avoid.
+10. A branch whose head declaration REMOVES an entry present at the merge base
+    still reddens.
+11. Criteria 9 and 10 are demonstrated on the same declaration, differing only
+    in the direction of the change.
+
+### What the amendment does NOT do
+
+- **It does not change what a scope violation means.** A changed path outside
+  both declarations is still red.
+- **It does not address serialisation.** Branch protection still forces one CI
+  cycle per merge; this reduces the number of merges, not the cost of each.
+- **The four-fewer-pull-requests-per-phase figure is arithmetic from one day's
+  breakdown**, not a measurement across phases.
+
+### The merge-order argument is RE-DECIDED, not silently carried
+
+The section above says the before-M3-P10 ordering rests on the fix being small,
+one condition in one evaluator, and that the right move if it stops being small
+is to say so and re-open the ordering rather than grind. **This amendment makes
+it not small: three changes across two files.** So the condition fired and the
+ordering is re-decided here rather than inherited.
+
+**It stays before M3-P10, and now for two reasons instead of one.**
+
+1. The original reason is unchanged. M3-P10 publishes v0.1.0, and a guard that
+   cannot go red should not be in the first published version.
+2. A new reason the amendment creates: changes A and B make every LATER phase
+   cheaper, and M3-P10 is a later phase. It will have a work history, reviews,
+   possibly a declaration amendment of its own. Landing the pull-request-shape
+   changes first means the release phase pays the new, lower cost rather than the
+   old one.
+
+The counter-argument is unchanged and is now stronger, because the phase is
+bigger: this delays the release further. Recorded rather than resolved away. If
+the phase proves larger again, splitting change A and B out to run AFTER M3-P10
+is the escape, since they are delivery-process changes rather than shipped-
+correctness ones, and only the crash-verdict fix genuinely needs to precede a
+release.
