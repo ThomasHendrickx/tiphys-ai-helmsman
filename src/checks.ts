@@ -1976,6 +1976,59 @@ export const checklistProbeIdsUnique: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* checklist-framing-ids-unique (M3-P7 fix round 2, H-2 member 1)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * No two framings in one checklist share an `id`.
+ *
+ * THE SAME SHAPE AND THE SAME KEYWORD LIMITATION AS THE PROBE CHECK ABOVE,
+ * one array along. `uniqueItems` on `framings` compares WHOLE items, so two
+ * framings sharing an id and differing in their entry point or their scope
+ * order are already unique to it, and that pair is exactly the dangerous
+ * instance: `resolveChecklist` looks a framing up with `.find()`, first match
+ * wins, so which of two declared entry points a reviewer is handed depends on
+ * FILE POSITION and nothing says so.
+ *
+ * WHY IT MATTERS MORE HERE THAN THE PROBE CASE LOOKS LIKE IT WOULD. A
+ * framing IS the entry point, and T-001's lesson that decorrelation comes
+ * from the starting question is the whole reason `--framing` exists. A
+ * duplicate id means the reviewer's starting question is decided by which
+ * copy sat first in the file, which is the phase's own hazard class ("a
+ * framing that reorders the list without changing the entry point") reached
+ * from the other side.
+ *
+ * `requiresContext` is FALSE: the whole comparison is inside one document.
+ */
+export const checklistFramingIdsUnique: DerivedCheck = {
+  id: "checklist-framing-ids-unique",
+  type: "checklist",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const framings = asArray(asRecord(instance)?.["framings"]);
+    const firstIndexById = new Map<string, number>();
+    const violations: Diagnostic[] = [];
+    for (let index = 0; index < framings.length; index += 1) {
+      const id = asRecord(framings[index])?.["id"];
+      if (typeof id !== "string") {
+        continue;
+      }
+      const first = firstIndexById.get(id);
+      if (first === undefined) {
+        firstIndexById.set(id, index);
+        continue;
+      }
+      /* NAMES BOTH POSITIONS, for the reason the probe check records. */
+      violations.push({
+        pointer: `#/framings/${String(index)}/id`,
+        message: `framing id ${id} is already declared at #/framings/${String(first)}/id, and checklist resolve looks framings up by id`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* gate-probes-resolve (M3-P7 step 6b, criteria 3 and 3c)               */
 /* ------------------------------------------------------------------ */
 
@@ -2425,6 +2478,75 @@ export const verdictHazardClassesAddressed: DerivedCheck = {
 };
 
 /* ------------------------------------------------------------------ */
+/* verdict-finding-references-resolve (M3-P7 fix round 2, H-1)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every `hazard-classes-addressed[].finding` names a `findings[].id` that
+ * exists in the SAME verdict.
+ *
+ * KIND B FOR THE SAME REASON `checklist-probe-ids-unique` IS, AND IT IS THE
+ * ONLY INTRA-DOCUMENT ID REFERENCE THE SHIPPED SCHEMAS DECLARE. The
+ * verdict schema's own `$comment` on `finding` calls it "the `findings[].id`
+ * this class produced", so the join is DECLARED; nothing resolved it, so it
+ * was a bare string with `minLength: 1`. Resolving one array's entry against
+ * another array's ids is not a keyword property under any DR-0013 option,
+ * which is why it lands here and not in the schema.
+ *
+ * WHAT IT PROTECTS, and it is not merely tidiness. The verdict schema ships
+ * exactly ONE rule that can force a verdict off APPROVE: a `findings[]` set
+ * containing a `high` or `critical` entry must carry FIX-ROUND-NEEDED. That
+ * rule reads `findings[]` and nothing else. So a hazard reviewer who records
+ * a class as having produced a finding, and leaves that finding out of
+ * `findings[]`, gets a schema-valid APPROVE with an empty findings array and
+ * the escalation rule never sees the finding it would have fired on. Measured
+ * at 4bfa790 before this check: such a document validated at exit 0, and the
+ * same document with the finding moved into `findings[]` at `severity: high`
+ * exited 1.
+ *
+ * A DANGLING REFERENCE IS ITSELF THE ERROR, not only one that lets the
+ * escalation be evaded, and the reason is that the narrower rule is not
+ * computable. A finding absent from `findings[]` has NO severity, so nothing
+ * can decide whether it would have escalated; the narrower reading would have
+ * to guess, and would clear exactly the document that withheld the most.
+ * Requiring the reference to resolve is decidable, and it puts the severity
+ * back under the escalation rule where the reader can see it.
+ *
+ * `requiresContext` is FALSE: the whole comparison is inside one document.
+ */
+export const verdictFindingReferencesResolve: DerivedCheck = {
+  id: "verdict-finding-references-resolve",
+  type: "verdict",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const verdict = asRecord(instance);
+    const findingIds = new Set<string>();
+    for (const entry of asArray(verdict?.["findings"])) {
+      const id = asRecord(entry)?.["id"];
+      if (typeof id === "string") {
+        findingIds.add(id);
+      }
+    }
+    const addressed = asArray(verdict?.["hazard-classes-addressed"]);
+    const violations: Diagnostic[] = [];
+    for (let index = 0; index < addressed.length; index += 1) {
+      const reference = asRecord(addressed[index])?.["finding"];
+      if (typeof reference !== "string" || findingIds.has(reference)) {
+        continue;
+      }
+      /* NAMES THE CONSEQUENCE, not just the dangling id. An author told only
+         that a reference does not resolve reads it as a typo; the sentence
+         that matters is that the escalation rule reads `findings[]` alone. */
+      violations.push({
+        pointer: `#/hazard-classes-addressed/${String(index)}/finding`,
+        message: `finding ${reference} is named by hazard class ${String(asRecord(addressed[index])?.["class-id"] ?? "(unnamed)")} and no findings[] entry declares that id, so the verdict's escalation rule cannot see it`,
+      });
+    }
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -2452,6 +2574,10 @@ const registry: DerivedCheck[] = [
   verdictCriteriaComplete,
   verdictDeviationsJudged,
   verdictHazardClassesAddressed,
+  /* M3-P7 FIX ROUND 2. Appended for the reason recorded above the M3-P7
+     block: position carries no meaning any check reads. */
+  checklistFramingIdsUnique,
+  verdictFindingReferencesResolve,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

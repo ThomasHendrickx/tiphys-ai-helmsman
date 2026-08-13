@@ -15,13 +15,16 @@
  * serves (`src/commands/checklist.ts`), which is where the M3-P3 fix round put
  * that duty after shipping a reader that printed without checking.
  *
- * THE TWO MERGE FAILURES R-054 NAMES ARE FAILURES HERE AND NOT WARNINGS.
- * An extra file reusing a canonical probe id is a COLLISION and names both
- * sources; an extra probe missing `evidence-required` is a refusal. Last-wins
- * would be the dangerous state: the phase's own hazard class names "an
+ * THE MERGE FAILURES ARE FAILURES HERE AND NOT WARNINGS. An extra file
+ * reusing a canonical probe id is a COLLISION and names both sources; an
+ * extra probe missing `evidence-required` is a refusal; and, added in fix
+ * round 2, an extra file DECLARING A FRAMING is a refusal, because framings
+ * are read from the canonical checklist only and the entry point was
+ * previously dropped without a word. Last-wins and silent-drop are the same
+ * dangerous state seen from two sides: the phase's own hazard class names "an
  * extra-probe merge that silently overrides a canonical probe instead of
- * colliding", and a silent override is how a per-phase file quietly weakens
- * the standing checklist.
+ * colliding", and a silent anything is how a per-phase file quietly diverges
+ * from the standing checklist.
  *
  * ORDERING IS BY SCOPE AND FILE POSITION, NEVER BY PROBE ID. A framing names
  * `applies-to` scopes; probes in a named scope lead, scope by scope, and
@@ -254,6 +257,39 @@ export function mergeExtraProbes(
 }
 
 /**
+ * An extra file may not declare a framing, and saying so is a REFUSAL.
+ *
+ * M3-P7 FIX ROUND 2, H-2 MEMBER 2. `resolveChecklist` reads
+ * `request.checklist.framings` and only that, so a framing declared in an
+ * `--extra` file was neither merged nor mentioned: the run exited 0 with an
+ * empty stderr and the author's entry point was gone. That is a SILENT NO-OP
+ * on R-054's own use case, and the extra file validates as a full checklist
+ * document, so declaring a framing in one is the natural thing to try.
+ *
+ * BOTH SHAPES ARE REFUSED, colliding and not, because the mechanism is the
+ * same one: the extra document's framings are never read. Refusing only the
+ * COLLIDING one would fix the instance the review constructed and leave the
+ * mechanism, which is exactly the fix-round failure CLAUDE.md's contract
+ * exists against. The two get different messages because the consequences
+ * differ: a collision is also the shape that would let a per-phase file
+ * shadow a standing entry point if the merge were ever added, and the
+ * message says which document wins today.
+ *
+ * IT IS A REFUSAL RATHER THAN A MERGE. Merging extra framings would be a new
+ * capability, and nothing asks for one; what was wrong was the silence.
+ * Nothing depends on the old behaviour: `framings` is not in the checklist
+ * schema's `required`, so an extra file that declares none is unaffected.
+ */
+export function extraFramingRefusals(canonical: Checklist, extra: Checklist): string[] {
+  const canonicalIds = new Set(canonical.framings.map((framing) => framing.id));
+  return extra.framings.map((framing) =>
+    canonicalIds.has(framing.id)
+      ? `framing id ${framing.id} is declared in ${canonical.path} and again in ${extra.path}; an extra file cannot declare a framing, and the canonical entry point is the one checklist resolve serves`
+      : `framing id ${framing.id} is declared in ${extra.path}; an extra file cannot declare a framing, because checklist resolve reads framings from the canonical checklist only`,
+  );
+}
+
+/**
  * Order probes under a framing.
  *
  * Probes whose `applies-to` scope is named by the framing come first, scope
@@ -302,8 +338,15 @@ export function resolveChecklist(request: ResolveRequest): ResolveOutcome {
   let probes = request.checklist.probes;
   if (request.extra !== undefined) {
     const merged = mergeExtraProbes(request.checklist, request.extra);
-    if (merged.problems.length > 0) {
-      return { ok: false, reasons: merged.problems.map((problem) => problem.reason) };
+    /* COLLECTED TOGETHER, not reported one class per invocation, for the
+       reason `mergeExtraProbes` records: an author fixing an extra file sees
+       every problem in one run. */
+    const reasons = [
+      ...merged.problems.map((problem) => problem.reason),
+      ...extraFramingRefusals(request.checklist, request.extra),
+    ];
+    if (reasons.length > 0) {
+      return { ok: false, reasons };
     }
     probes = merged.probes;
   }
