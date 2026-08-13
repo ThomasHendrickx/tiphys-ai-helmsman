@@ -273,7 +273,17 @@ duty, so every charter in existence is hand-written. `schemas/charter.schema.jso
 does forbid all three shapes (three required string properties,
 `additionalProperties: false`), so `tiphys validate --type charter` catches
 them, but nothing makes a user run it before `tiphys doctor --for full`, and
-doctor is the command criterion 8 points at.
+doctor is the command criterion 8 points at. That "catches" is measured, not
+assumed, because it is the sentence the claim grep flags in this document:
+
+```
+node bin/tiphys.ts validate --type charter --context <fleet> <fleet>/charter/charter.yaml | grep -i retention
+retention: {}      INVALID #/retention/{work-history,evidence,tuition} required property ... is missing
+nested maps        INVALID #/retention/{...} expected type string but found object
+empty strings      INVALID #/retention/{...} value "" is shorter than the required minimum length 1
+the real charter   (no retention diagnostic)
+```
+
 
 **Bounding what is and is not covered.** The implementer named the first of the
 three shapes in the round-2 not-covered section and left it; the other two were
