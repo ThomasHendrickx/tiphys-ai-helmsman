@@ -1,0 +1,20 @@
+# DANGEROUS INSTANCE, T-007 (criterion 7b): produced-by AND framing both
+# differ, and both reviews ran the CRITERIA contract. This is the exact shape
+# T-007 records, where DR-0012's condition was satisfied and the defect was
+# still missed, so it is witnessed separately from the other two dimensions.
+kind: verdict
+phase: M3-P9
+verdict: APPROVE
+produced-by: family-b
+framing: destructive-paths
+review-contract: criteria
+findings: []
+criteria:
+  - id: "1"
+    quote: >-
+      tiphys validate --type role-brief AGENTS.md exits 0 with role:
+      orchestrator.
+    evidence:
+      - "node bin/tiphys.ts validate --type role-brief AGENTS.md exited 0"
+    met: true
+deviations-judged: []

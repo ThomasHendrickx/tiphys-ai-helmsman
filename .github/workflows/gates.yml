@@ -146,6 +146,53 @@ jobs:
       # still the literal string `gates`.
       - name: Implementer brief gate-list drift (gate-registry.yaml is the single source, R-094)
         run: node scripts/check-brief-drift.mjs --check
+      # THE AGENTS.md REFERENCE AND ANTI-DUPLICATION CHECK (kernel plan M3,
+      # M3-P9 step 5; criteria 2, 2b and 3; D-M3-34).
+      #
+      # DECLARED in gate-registry.yaml as `check-agents-references` with
+      # `events: [pull_request, push]`, which is where D-M3-34 requires every M3
+      # check to live. It ALSO runs here, for the reason `agent-rules-drift`
+      # runs here: scripts/m2-exit-test.sh invokes the runner with
+      # `--manifest gates.manifest.json` on both arms, that file is on no M3
+      # phase's declaration, and a registry-only gate therefore never reaches
+      # the runner. This step is what executes it.
+      #
+      # NO `if:`, DELIBERATELY. A dangling reference or a pasted gate table on
+      # `main` is the state that matters, not only one proposed in a pull
+      # request; T-009's rule is that where behaviour forks on the CI event both
+      # arms need a witness, and an added `if:` here is the defang shape kernel
+      # plan M3 section 2.3 rule 7 lists.
+      #
+      # DR-0017 and DR-0004: a STEP in the one job named `gates`. No job, no
+      # matrix, so the published required status context is still `gates`.
+      - name: AGENTS.md references resolve and carry no duplicated policy data (M3-P9)
+        run: node scripts/check-agents-references.mjs
+      # THE DUAL-REVIEW DECORRELATION CHECK (kernel plan M3, M3-P9 step 3b;
+      # criteria 7 and 7b; M3R-004, DR-0012, T-001, T-007, D-M3-34).
+      #
+      # DECLARED in gate-registry.yaml as `check-dual-review` with
+      # `events: [pull_request]` and a `command-exit-zero` precondition. This
+      # step is the same shape, written out rather than hidden, because the
+      # runner never reaches a registry-only gate.
+      #
+      # THE `if:` HERE IS NOT A DEFANG AND THE DIFFERENCE IS WRITTEN DOWN. The
+      # gate's own `events` declares one arm, and the reason is the plan's:
+      # a merged head has no pair of verdicts to compare. Restricting the step
+      # to the arm the gate declares is agreement with the registry, where an
+      # `if:` on the two checks above would CONTRADICT their declared events.
+      #
+      # THE PRECONDITION IS EVALUATED, NEVER ASSUMED. A run with no verdict
+      # document reports not-applicable WITH A REASON rather than green, which
+      # is M2-C-3 and SC-011. `set -e` is on by default in a `run:` block, so
+      # the second invocation's nonzero exit fails the job.
+      - name: Dual-review decorrelation (M3-P9)
+        if: github.event_name == 'pull_request'
+        run: |
+          if node scripts/check-dual-review.mjs --precondition .; then
+            node scripts/check-dual-review.mjs .
+          else
+            echo "check-dual-review: not applicable, no verdict document under delivery/review, so there is no pair of reviews to compare"
+          fi
       - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
         run: >

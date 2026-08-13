@@ -2886,6 +2886,283 @@ function unresolvedTreeReport(check: string, count: number, trees: Set<string>):
 }
 
 /* ------------------------------------------------------------------ */
+/* dual-review-decorrelation (M3-P9 step 3b, criteria 7 and 7b)         */
+/* ------------------------------------------------------------------ */
+
+/** Where a project's committed review verdicts live (DR-0012 condition 1). */
+const REVIEW_DIRECTORY = join("delivery", "review");
+
+/** The three dimensions two verdicts of one head must differ on. */
+export const DECORRELATION_DIMENSIONS: readonly string[] = [
+  "produced-by",
+  "framing",
+  "review-contract",
+];
+
+/** The merge-authority value that makes decorrelation a precondition of merge. */
+export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
+
+interface LoadedVerdict {
+  path: string;
+  record: Record<string, unknown>;
+}
+
+/**
+ * Every verdict document committed under `<context>/delivery/review/`.
+ *
+ * A file that is not a regular file, does not decode, or does not carry
+ * `kind: verdict` is SKIPPED rather than reported, because that directory also
+ * holds this project's prose reviews and a check that reddened on a markdown
+ * file would be unusable. What is NOT skipped is the directory being
+ * unreadable, which the caller turns into a violation: "nothing to compare" and
+ * "could not look" are different facts.
+ */
+function loadCommittedVerdicts(
+  contextDirectory: string,
+): { ok: true; verdicts: LoadedVerdict[] } | { ok: false; reason: string } {
+  const directory = join(contextDirectory, REVIEW_DIRECTORY);
+  /* `classifyEntry` HAS NO `directory` KIND: a directory lands in `irregular`,
+     which is the kind that means "present and not safe to OPEN AS A FILE". So
+     the shape here is the one `listWitnessSpecFiles` already uses: classify to
+     rule out absent and unexaminable, then LIST, and read the classification
+     again only to explain a listing failure. Testing for a kind that does not
+     exist would have been dead code that always took the error arm. */
+  const entry = classifyEntry(directory);
+  if (entry.kind === "absent" || entry.kind === "dangling") {
+    return { ok: true, verdicts: [] };
+  }
+  if (entry.kind === "unexaminable") {
+    return { ok: false, reason: entry.reason };
+  }
+  let names: string[];
+  try {
+    names = readdirSync(directory);
+  } catch (error) {
+    if (entry.kind === "regular") {
+      return {
+        ok: false,
+        reason: `${directory} is a regular file, not a directory, so the committed verdicts cannot be enumerated`,
+      };
+    }
+    return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
+  }
+  const verdicts: LoadedVerdict[] = [];
+  for (const name of names.sort()) {
+    if (!/\.(ya?ml|json)$/i.test(name)) {
+      continue;
+    }
+    const path = join(directory, name);
+    const read = readOperatorPath(path);
+    if (!read.ok) {
+      continue;
+    }
+    const decoded = decodeDocument(read.body, path);
+    if (!decoded.ok) {
+      continue;
+    }
+    const record = asRecord(decoded.value);
+    if (record?.["kind"] !== "verdict") {
+      continue;
+    }
+    verdicts.push({ path, record });
+  }
+  return { ok: true, verdicts };
+}
+
+/** The triple that identifies one review's decorrelation position. */
+function decorrelationTriple(record: Record<string, unknown> | undefined): string {
+  return DECORRELATION_DIMENSIONS.map((dimension) =>
+    String(record?.[dimension] ?? ""),
+  ).join(" | ");
+}
+
+/**
+ * DR-0012's merge precondition, made into a comparison a command can make
+ * against the verdict FILES rather than against a session's memory (M3R-004).
+ *
+ * WHY THIS IS KIND B AND COULD NOT BE A KEYWORD. Every dimension it compares
+ * lives in a DIFFERENT DOCUMENT from the instance: distinctness is a property
+ * of a PAIR of verdicts, and no keyword under any DR-0013 option can see the
+ * sibling. The verdict schema's own `$comment` says exactly this and stops
+ * where a schema must stop: what it buys is that `produced-by`, `framing` and
+ * `review-contract` cannot be ABSENT. That they DIFFER is here.
+ *
+ * IT APPLIES EXACTLY WHERE THE GRANT APPLIES. The regime is read from the
+ * declared mode, not assumed: `charter.yaml` names the delivery mode and
+ * `assurance-modes.yaml` says what that mode's `merge-authority` is. A mode
+ * whose authority is not a delegated grant has no decorrelation precondition to
+ * satisfy, and this check REPORTS that rather than passing silently, because
+ * "nothing to check here" and "everything checked and fine" must never print
+ * the same line (SC-011).
+ *
+ * FIVE DIMENSIONS, AND (e) IS NOT A REFINEMENT OF (b). T-007's whole finding is
+ * that model decorrelation and CONTRACT decorrelation are different properties
+ * and this project had the second by accident: two reviewers on different model
+ * families walked all fifteen criteria of one phase, agreed on every mechanical
+ * fact, and one missed a high-severity defect because both had been given the
+ * criteria contract. So `review-contract` is compared separately and is
+ * witnessed separately (criterion 7b).
+ *
+ * WHAT IT DOES NOT REACH, named rather than left to be found. Condition (d) of
+ * step 3b, that neither verdict carries an unresolved high or medium finding,
+ * is NOT checked here: the verdict schema's own root `if`/`then` already
+ * forbids APPROVE beside a high or critical finding, and "unresolved" is a
+ * state of the review thread rather than of the document. Nothing here decides
+ * whether the two verdicts describe the same HEAD either: the verdict schema
+ * carries no head field, so `phase` is the join key and the DIRECTORY is what
+ * scopes a set of verdicts to one head. Both are stated in
+ * delivery/work-history/m3-p9.md as declared readings rather than absorbed.
+ */
+export const dualReviewDecorrelation: DerivedCheck = {
+  id: "dual-review-decorrelation",
+  type: "verdict",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
+         than trusting a caller that reaches the check directly. */
+      return {
+        violations: [
+          { pointer: "#/produced-by", message: "no context directory was supplied" },
+        ],
+        reports: [],
+      };
+    }
+    const verdict = asRecord(instance);
+    const phase = verdict?.["phase"];
+    if (typeof phase !== "string") {
+      return {
+        violations: [
+          {
+            pointer: "#/phase",
+            message:
+              "the verdict names no phase, so the other reviews of the same work cannot be selected",
+          },
+        ],
+        reports: [],
+      };
+    }
+
+    /* THE REGIME, READ RATHER THAN ASSUMED. Both documents fail closed: a
+       missing charter or a missing mode document means the applicability of
+       this rule is unknown, and an unknown applicability must never resolve to
+       "does not apply". */
+    const charter = readContextDocument(contextDirectory, "charter.yaml");
+    if (!charter.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/produced-by",
+            message: `the charter could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const modeId = asRecord(charter.value)?.["delivery-mode"];
+    const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
+    if (!modesDocument.ok) {
+      return {
+        violations: [
+          {
+            pointer: "#/produced-by",
+            message: `${MODES_DOCUMENT} could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const mode = eachMode(modesDocument.value).find((row) => row.id === modeId);
+    if (mode === undefined) {
+      return {
+        violations: [
+          {
+            pointer: "#/produced-by",
+            message: `${charter.path} declares delivery mode ${String(modeId)}, which ${modesDocument.path} does not define, so its merge-authority is unknown`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const authority = String(mode.mode["merge-authority"] ?? "");
+    if (authority !== DELEGATED_MERGE_AUTHORITY) {
+      return {
+        violations: [],
+        reports: [
+          `REPORT dual-review-decorrelation mode ${String(modeId)} declares merge-authority ${authority}, ` +
+            `which is not a delegated grant, so no decorrelation is required of the reviews of phase ${phase}`,
+        ],
+      };
+    }
+
+    const committed = loadCommittedVerdicts(contextDirectory);
+    if (!committed.ok) {
+      return {
+        violations: [{ pointer: "#/produced-by", message: committed.reason }],
+        reports: [],
+      };
+    }
+    const group = committed.verdicts.filter(
+      (candidate) => candidate.record["phase"] === phase,
+    );
+
+    /* MEMBERSHIP FIRST. DR-0012 condition 1 says the two reviews are WRITTEN TO
+       `delivery/review/` AND COMMITTED, so a verdict that is not among them is
+       not a review this rule can be satisfied by, however well decorrelated the
+       committed pair happens to be. Without this the check would pass on a
+       document that had nothing to do with the directory it was given. */
+    const wanted = decorrelationTriple(verdict);
+    if (!group.some((candidate) => decorrelationTriple(candidate.record) === wanted)) {
+      return {
+        violations: [
+          {
+            pointer: "#/phase",
+            message: `this verdict is not among the ${String(group.length)} verdict document(s) committed under ${REVIEW_DIRECTORY} for phase ${phase}, so it is not a review the delegated grant can be satisfied by`,
+          },
+        ],
+        reports: [],
+      };
+    }
+
+    const violations: Diagnostic[] = [];
+    if (group.length < 2) {
+      violations.push({
+        pointer: "#/phase",
+        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase}, and a delegated grant requires two independent clean-room reviews of the exact head`,
+      });
+    }
+
+    for (const dimension of DECORRELATION_DIMENSIONS) {
+      const counts = new Map<string, string[]>();
+      for (const candidate of group) {
+        const value = String(candidate.record[dimension] ?? "");
+        counts.set(value, [...(counts.get(value) ?? []), candidate.path]);
+      }
+      for (const value of [...counts.keys()].sort()) {
+        const paths = counts.get(value) as string[];
+        if (paths.length < 2) {
+          continue;
+        }
+        violations.push({
+          pointer: `#/${dimension}`,
+          message: `${dimension} value ${value} occurs in ${String(paths.length)} of the ${String(group.length)} verdicts for phase ${phase} (${paths.sort().join(", ")}), so the reviews are not decorrelated on ${dimension}`,
+        });
+      }
+    }
+
+    return {
+      violations,
+      reports:
+        violations.length > 0
+          ? []
+          : [
+              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} are distinct on ${DECORRELATION_DIMENSIONS.join(", ")}`,
+            ],
+    };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -2922,6 +3199,11 @@ const registry: DerivedCheck[] = [
      any check reads. */
   tuitionTargetExists,
   mechanismRuleEvidenceResolves,
+  /* M3-P9 step 3b. Appended rather than inserted, for the reason recorded on
+     the M3-P7 block above: `checksFor` filters by declared type and sorts by
+     id, and `registeredChecks` returns a copy, so this array's position carries
+     no meaning any check reads. */
+  dualReviewDecorrelation,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

@@ -1022,19 +1022,62 @@ test("a gate declaring only another mode is EXCLUDED from the run, with no row, 
  * here is a deliberate act with a written reason, and a registry-only gate
  * added WITHOUT one reddens the test below.
  */
-const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<string, string> = new Map([
+const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
+  string,
+  { reason: string; coveredBy: RegExp }
+> = new Map([
   [
     "agent-rules-drift",
-    "M3-P2 declares it per D-M3-34, but CI invokes the runner with --manifest, " +
-      "so what executes it in CI is a step in .github/workflows/gates.yml. " +
-      "Promoting it to gates.manifest.json no longer requires an expectation row " +
-      "in scripts/m2-exit-test.sh: that script derives its expected gate set " +
-      "from the manifest, and a declared gate with no table row is asserted " +
-      "required-green, which is the correct expectation for this one. What is " +
-      "left is a scope decision about what CI runs, tracked with the " +
-      "orchestrator as the open half of R-094, not a blocker in the harness.",
+    {
+      reason:
+        "M3-P2 declares it per D-M3-34, but CI invokes the runner with --manifest, " +
+        "so what executes it in CI is a step in .github/workflows/gates.yml. " +
+        "Promoting it to gates.manifest.json no longer requires an expectation row " +
+        "in scripts/m2-exit-test.sh: that script derives its expected gate set " +
+        "from the manifest, and a declared gate with no table row is asserted " +
+        "required-green, which is the correct expectation for this one. What is " +
+        "left is a scope decision about what CI runs, tracked with the " +
+        "orchestrator as the open half of R-094, not a blocker in the harness.",
+      coveredBy: /render-agent-rules-gates\.mjs --check/,
+    },
+  ],
+  /* NEW IN M3-P9. Both entries are here for the SAME structural reason as the
+     one above and not for a new one: CI runs `--manifest gates.manifest.json`
+     on both arms, `scripts/m2-exit-test.sh` and `gates.manifest.json` are on no
+     M3 phase's declaration, and a gate declared only in the registry therefore
+     never reaches the runner. */
+  [
+    "check-agents-references",
+    {
+      reason:
+        "M3-P9 step 5 declares it per D-M3-34. It is executed by a step in " +
+        ".github/workflows/gates.yml carrying no `if:`, so both CI events run " +
+        "it: a dangling reference or a pasted gate table on `main` is the state " +
+        "that matters, not only one proposed in a pull request (T-009).",
+      coveredBy: /check-agents-references\.mjs/,
+    },
+  ],
+  [
+    "check-dual-review",
+    {
+      reason:
+        "M3-P9 step 3b declares it per D-M3-34, with `events: [pull_request]` " +
+        "and a command-exit-zero precondition, because a merged head has no " +
+        "pair of verdicts to compare. It is executed by a step in " +
+        ".github/workflows/gates.yml whose `if:` matches those declared events " +
+        "and which evaluates the same precondition the registry entry names.",
+      coveredBy: /check-dual-review\.mjs/,
+    },
   ],
 ]);
+
+/** Every `run:` step of the gates workflow, across all jobs, in order. */
+function workflowRunSteps(workflowText: string): WorkflowStep[] {
+  const document = yamlModule.parse(workflowText) as {
+    jobs: Record<string, { steps: WorkflowStep[] }>;
+  };
+  return Object.values(document.jobs).flatMap((job) => job.steps ?? []);
+}
 
 test("every registry gate CI does not run is a declared divergence, and the workflow step that covers the one instance is present on both arms", () => {
   /* THE REVERSE DIRECTION. The parity assertion in criterion 1 is manifest
@@ -1076,7 +1119,50 @@ test("every registry gate CI does not run is a declared divergence, and the work
   );
   assert.ok(harness.includes("--manifest \"${MANIFEST}\""), "the harness no longer passes --manifest");
 
-  /* And the one divergence is covered on BOTH arms by a step with no `if:`. */
+  /* EVERY DIVERGENCE IS COVERED BY A STEP, and this leg is what M3-P9 added.
+     Before it, the test hard-coded ONE lookup for the single instance, so a
+     future registry-only gate that carried a written reason and had NOTHING
+     running it would have been accepted: the reason would be present, the map
+     would match, and the gate would never execute anywhere. A declared
+     divergence with no covering step is a gate that cannot go red, which is
+     worse than none because the registry says it exists. */
+  const steps = workflowRunSteps(workflow);
+  for (const [id, entry] of REGISTRY_ONLY_SCRIPT_GATES) {
+    const covering = steps.filter((step) =>
+      entry.coveredBy.test(typeof step.run === "string" ? step.run : ""),
+    );
+    assert.equal(
+      covering.length >= 1,
+      true,
+      `registry-only gate ${id} has a recorded reason and no workflow step runs it`,
+    );
+  }
+
+  /* AND THE EVENT ARMS AGREE WITH THE REGISTRY. A step whose `if:` narrows to
+     one event while its gate declares both is the defang shape section 2.3
+     rule 7 lists; a step with no `if:` while its gate declares one event would
+     be the mirror error, running a gate on an arm it says it does not apply
+     to. Derived from the registry rather than written out here. */
+  const registryById = new Map(registry.gates.map((gate) => [gate.id, gate]));
+  for (const [id, entry] of REGISTRY_ONLY_SCRIPT_GATES) {
+    const declared = registryById.get(id);
+    assert.ok(declared !== undefined, `${id} is no longer in the registry`);
+    const covering = steps.filter((step) =>
+      entry.coveredBy.test(typeof step.run === "string" ? step.run : ""),
+    );
+    const bothArms = (declared.events ?? []).includes("push");
+    for (const step of covering) {
+      assert.equal(
+        step.if === undefined,
+        bothArms,
+        `${id} declares events ${(declared.events ?? []).join(",")} and its ` +
+          `workflow step ${step.if === undefined ? "carries no `if:`" : `carries if: ${String(step.if)}`}`,
+      );
+    }
+  }
+
+  /* The original instance, kept as its own assertion because it is the one
+     T-009 is actually about: agent-rules drift is a property of `main`. */
   const { step } = findDriftStep(workflow);
   assert.equal(step.if, undefined);
   assert.match(step.run as string, /render-agent-rules-gates\.mjs --check/);

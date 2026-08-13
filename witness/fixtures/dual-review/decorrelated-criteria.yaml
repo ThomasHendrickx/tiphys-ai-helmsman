@@ -1,0 +1,17 @@
+# The CRITERIA-contract half of a properly decorrelated pair.
+kind: verdict
+phase: M3-P9
+verdict: APPROVE
+produced-by: family-a
+framing: criteria-contract
+review-contract: criteria
+findings: []
+criteria:
+  - id: "1"
+    quote: >-
+      tiphys validate --type role-brief AGENTS.md exits 0 with role:
+      orchestrator.
+    evidence:
+      - "node bin/tiphys.ts validate --type role-brief AGENTS.md exited 0"
+    met: true
+deviations-judged: []
