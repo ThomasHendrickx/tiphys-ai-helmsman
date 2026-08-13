@@ -353,3 +353,48 @@ Arm 1 is not disclosed anywhere. Measured over the work history:
 
 So HRB-1, HRB-3, HRB-4, HRB-5, HRB-7 and arm 1 of HRB-2 are new, and the
 non-string arm of HRB-6 is new. HRB-6's `{}` arm is round 2's named open item.
+
+### HRB-8 (MEDIUM, demonstrated) the shipped tuition feed cites 16 paths and the npm package contains none of them; the shipped index fails this phase's own check against a pristine install
+
+Shipped artifacts: `tuition/` (17 files in the tarball, including
+`tuition/mechanism-index.yaml`) and `src/checks.ts`,
+`mechanismRuleEvidenceResolves`, which is registered for `mechanism-index`
+precisely so, in its own words, the shipped index is not "left unchecked".
+
+`package.json` ships `["dist", ..., "roles", "schemas", "templates", "tuition"]`.
+`delivery/`, `src/` and `scripts/` do not ship. Classifying every resolvable path
+token in the shipped index against the `npm pack --dry-run` file list:
+
+    resolvable path tokens: 16 | under delivery/ (never shipped): 13
+                              | present in the tarball: 0 | other non-shipping: 3
+
+The three non-`delivery/` ones are `scripts/render-agent-rules-gates.mjs`,
+`src/lock.ts` and `src/task.ts`.
+
+Packed, extracted, and validated as a consumer would have it:
+
+    $ npm pack --pack-destination <dir> && tar -xzf <dir>/*.tgz -C <dir>
+    $ node bin/tiphys.ts validate --type mechanism-index \
+        --context <dir>/package <dir>/package/tuition/mechanism-index.yaml
+    INVALID #/mechanisms/10/evidence/1 evidence names delivery/verification/cr-520-orchestrator-reproduction.md, which does not exist (check: mechanism-rule-evidence-resolves)
+    ... 16 INVALID lines in total
+
+Two distinct harms. The narrow one: the shipped index is invalid under the
+check this phase registered for it, in the only tree a package consumer has.
+The broad one is the reason the field exists at all. The index header says
+"READ THE ROW BEFORE YOU USE THE MECHANISM ... a rule with no citation is not a
+rule", and for every consumer of the package every citation but one is
+unfollowable. `roles/implementer.md` mandates reading this file, so this is the
+normal path, not a corner.
+
+The one that does resolve is the `machine-readable-form` of the
+`destructive-git-operation` row (`gates.manifest.json` / `destructiveCommands`),
+which ships and resolves correctly. That is the shape that works.
+
+Why CI is green on it: the kernel repository has `delivery/`, so the check
+passes there. This is T-009's shape one scope out, a green scoped to the tree
+that produced it.
+
+Not prescribing the fix, since more than one is defensible (ship an evidence
+subset, rewrite citations to durable public URLs, or scope the check's context
+to the repository it was authored in and say so). Naming it is the finding.
