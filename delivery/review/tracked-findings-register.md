@@ -75,6 +75,66 @@ It is weaker than the three that were fixed: it needs an uncommitted directory.
 The implementer's counter, also recorded, is that an uncommitted directory is
 the ordinary state right after authoring, which is when a user runs doctor.
 
+## M3-P9 round 2: what the branch merges carrying, and why there is no round 3
+
+M3-P9 hit DR-0027's hard cap of two fix rounds. It merges with these open, and
+the reasoning for merging rather than abandoning is stated below rather than
+implied by the merge.
+
+| # | open item | why it is not a blocker |
+|---|---|---|
+| 1 | `citations` is REQUIRED and NOT-APPLICABLE on the round's own work history, because `delivery/work-history/` is not in the gate's precondition paths. So that document's citations are not machine-checked | pre-existing and identical in round 1; the implementer verified all four by hand and they resolve. It is a gap in the GATE's coverage, not a wrong artifact |
+| 2 | **187 stage-3 sites outside `dual-review-decorrelation` are unexamined by execution.** "The class is closed" applies to that one check and to nothing else | the class was closed where it was known to bite. The remaining sites are candidates, not findings; nobody has shown one is wrong |
+| 3 | Two DECLARED behaviour changes: a trailing byte-order mark was silently trimmed and is now REFUSED, and a legitimately non-ASCII `produced-by` is now REFUSED | both are the fail-closed direction for this check, and both are declared rather than discovered. A user with a non-ASCII model-family name is refused rather than mis-passed |
+| 4 | `src/checklists.ts`, `src/commands/brief.ts`, `src/gates/run.ts`, the eleven gates naming unshipped paths, and `test/gate-registry.test.ts` | all deliberately out of scope and each owned elsewhere; the implementer did not self-grant |
+
+### Why merge rather than abandon, stated as an argument
+
+The cap forces a choice and this is the reasoning for the one taken.
+
+1. **Round 2's fix is structurally different from round 1's.** It restricts the
+   input alphabet rather than enumerating attacks. Measured in the round: NFKC
+   folds only 3 of 9 attack characters, and no normalisation form folds a
+   cross-script homoglyph, so a confusables table would have been a list that
+   goes stale. A character-set restriction closes members nobody has thought of
+   yet, which is what closing a class means.
+2. **It refused rather than repaired.** An invisible character is rejected, not
+   stripped. Silently repairing a document built to deceive its reader and
+   handing back a green is the worse failure.
+3. **The residual risk is LATENT, not active.** `check-dual-review` is
+   not-applicable on every head this repository has ever had, established by the
+   M3-P9 criteria reviewer by enumeration: 176 markdown documents, zero verdict
+   documents, none in history. The check ships but has never fired here.
+   **M4's pilot is the first time it decides anything real**, which is the right
+   moment for a fresh look at it rather than a third round now.
+4. **The cap exists to stop exactly this loop**, and a third round would be the
+   loop. Round 1 was verified and produced a HIGH; round 2 closed it, found a
+   fifth member the verification missed, and found a WORSE site the verification
+   had not attacked. That is a healthy round, not evidence that a fourth pass is
+   owed.
+
+**No delta verification was run on round 2, and that is a decision rather than an
+omission.** A verification cannot lead to a fix here, because the cap is spent;
+it could only produce a finding to record. The trade was judged not worth it
+against the four points above. If that judgement is wrong, the cost is a finding
+discovered at M4 instead of now, on a check that does not fire until then.
+
+### The lesson that is worth more than the finding: an inherited citation nobody checked
+
+Round 1 declined to fold case, citing a reviewer finding (CR-003) as naming
+case-insensitive comparison a WEAKENING. Round 2 checked that citation and **it
+was wrong**: CR-003 is a LOW about witness-spec construction, and its
+case-insensitivity remark is a suggested MUTATION, not a design ruling.
+
+So a design decision in shipped code rested on a misread citation, and the misread
+propagated because the next reader inherited it instead of opening it. It was
+caught only because the round-2 brief said to check it rather than inherit it.
+
+**Generalise: a citation used to justify NOT doing something deserves the same
+scrutiny as one used to justify doing it.** This repository already requires
+evidence for claims; this is the same rule applied to a claim of the form "a
+reviewer said we should not".
+
 ## UNOWNED AND SERIOUS: the gate runner reports a crash as a skip
 
 Found by the M3-P9 hazard reviewer while root-causing something else, and it is
