@@ -5,9 +5,26 @@ Reviewer: clean-room A (criteria lens). Head under review:
 Started 2026-08-13. This file is written incrementally; it is the liveness
 beacon for this round.
 
+Lens: THE ELEVEN ACCEPTANCE CRITERIA AS A CONTRACT. A second reviewer
+covered the hazard lens; its report is quoted as
+`delivery/review/clean-room-m3-p11-hazard.md` (a file this branch does not
+carry). This review was formed before that report was opened, and the two
+findings it recorded (H-1, the readability gap in the runnability probe, and
+M-1, the directory-prefix addition) are NOT re-derived here.
+
+The spec under contract is delivery/plan/m3-p11-phase-spec.md:112 (criteria
+1 to 7) and delivery/plan/m3-p11-phase-spec.md:186 (the amendment, criteria
+8 to 11).
+
 ## NOT COVERED (read this first)
 
-In progress. Final list at the end of the round.
+In progress. Final list before the verdict.
+
+## Environment, stated with all three axes
+
+- toolchain: node v26.6.0 (scratch prefix on PATH), npm 11.x
+- worktrees: three, all under an absolute scratch path, cut with
+  `git worktree add`. The primary repository was never mutated.
 
 ## Findings
 
