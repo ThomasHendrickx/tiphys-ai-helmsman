@@ -583,6 +583,46 @@ test("a lookalike character in merge-authority does not turn a delegated grant i
   }
 });
 
+test("a verdict whose kind is written in another case still counts toward the group it correlates with", () => {
+  /* THE THIRD SITE OF THE SAME MECHANISM, AND IT IS THE SUBTLEST, because it
+     does not produce a wrong comparison: it silently removes a document from
+     the set being compared. `kind` decides whether a file is loaded as a
+     verdict at all, so a lookalike or case variant there makes the check look
+     at LESS rather than compare wrongly, and the printed sentence is a
+     perfectly ordinary green.
+
+     THE PAIR CANNOT SHOW THIS, WHICH IS WHY THIS TEST STAGES THREE. With two
+     verdicts, dropping one leaves one, and "a delegated grant requires two"
+     reddens anyway, so the defect is masked by a different guard. With three,
+     two of them sharing a family, dropping one of the correlated pair leaves a
+     genuinely distinct pair behind and the run exits 0. That is the whole
+     reason this is a separate fixture set rather than another row in the
+     lookalike test above. */
+  const THREE = [
+    "decorrelated-criteria.yaml" /* family-a */,
+    "decorrelated-hazard.yaml" /* family-b */,
+    "shared-family-hazard.yaml" /* family-a, the correlated sibling */,
+  ];
+  const dir = stageContext("full", THREE);
+  try {
+    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
+    const before = readFileSync(path, "utf8");
+    assert.match(before, /^kind: verdict$/m);
+    const after = before.replace(/^kind: verdict$/m, "kind: Verdict");
+    assert.notEqual(after, before, "kind line not rewritten");
+    writeFileSync(path, after);
+    const run = runScript(dir);
+    /* THE CORRELATION MUST STILL BE FOUND. A green here is the fail-open
+       outcome: two reviews from one model family authorising a merge because
+       one of them spelled `kind` with a capital letter. */
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /produced-by value family-a occurs in 2 of the 3 verdicts/);
+    assert.doesNotMatch(run.output, /are distinct on produced-by/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
   /* THE SAME MECHANISM AT A STRUCTURALLY DIFFERENT SITE, and the consequence
      is larger: this one does not weaken one dimension, it turns the whole

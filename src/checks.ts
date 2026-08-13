@@ -2961,7 +2961,24 @@ function loadCommittedVerdicts(
       continue;
     }
     const record = asRecord(decoded.value);
-    if (record?.["kind"] !== "verdict") {
+    /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
+       `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
+       over, so a lookalike character in `kind` does not produce a wrong
+       comparison, it silently removes a document from the comparison. With
+       three verdicts, two of them sharing a model family, dropping one of the
+       correlated pair leaves two distinct ones and a green run. That is the
+       same fail-open outcome as the reported finding, reached by making the
+       check look at less rather than by making it compare wrongly.
+
+       Canonicalising ADMITS more documents, which is the fail-closed direction
+       here: more verdicts in the group means more chances to find a shared
+       value, never fewer. A file that is not a verdict at all still fails this
+       test, because no canonical form turns a prose review into `verdict`. */
+    if (record === undefined) {
+      continue;
+    }
+    const kindReading = establishField(record, "kind");
+    if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
       continue;
     }
     verdicts.push({ path, record });
