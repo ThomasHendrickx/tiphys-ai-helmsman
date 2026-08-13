@@ -18,7 +18,8 @@
     "delivery/requirements/clause-map.json"
   ],
   "declaredExtras": [
-    "test/gate-registry.test.ts"
+    "test/gate-registry.test.ts",
+    "test/checks.test.ts"
   ],
   "citations": [
     "R-001b",
