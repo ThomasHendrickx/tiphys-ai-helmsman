@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  const folded = raw.normalize(\"NFKC\");",
-      "replace": "  const folded = raw.normalize(\"NFC\");"
+      "find": "  for (const character of folded) {",
+      "replace": "  for (const character of raw) {"
     }
   ]
 }
