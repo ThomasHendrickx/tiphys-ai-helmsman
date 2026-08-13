@@ -229,3 +229,265 @@ easy-to-miss), and the round's own reasoning for not touching case
 extend to homoglyphs or invisible characters, which carry no legitimate
 information in a model-family id either and were not discussed.
 
+## FINDING 2 (LOW, documentation accuracy, not a code defect): the
+derivation's summary table does not match its own appended output
+
+The fix-round contract requires the derivation's full output, not a summary
+of it, precisely so a reader is not asked to trust a number. The work history
+follows that: it appends the enumerator script and its complete stdout. But
+the SUMMARY TABLE stated earlier in the same section, before the appendix,
+reads:
+
+| stage | count claimed in the summary table |
+|---|---|
+| 1, every `??` site in `src/` and `bin/` | 198 |
+| 2, defaulted value read from an external indexed record | **37** |
+| 3, stage 2 whose value flows into a comparison (10-line window, later discarded) | **6** |
+
+I extracted the exact enumerator script verbatim from the work history's own
+fenced code block and ran it, unmodified, against `verify-wt` at head
+`0cf4676`:
+
+```
+$ node derivation-verify.mjs all 2>&1 | tail -3
+counts: stage1=198 stage2=35 stage3=4
+```
+
+This is not a re-derivation with different rules: it is the identical script,
+run against the identical head, and it reproduces the stage-1 count (198)
+exactly while stage 2 and stage 3 come out as 35 and 4, matching the
+`STAGE 2` and `STAGE 3` headers PRINTED IN THE WORK HISTORY'S OWN APPENDIX
+("STAGE 2, defaulted value read out of an EXTERNAL indexed record: 35
+site(s)", "STAGE 3, ... : 4 site(s)", and the appendix's own trailing line
+"counts: stage1=198 stage2=35 stage3=4"). So the discrepancy is entirely
+internal to the document: the prose summary near the top says 37 and 6, the
+appendix it points to (and my independent re-run of that same appendix's
+script) says 35 and 4.
+
+I checked for the innocent explanation first, because a similar-looking
+number mismatch elsewhere in this same document (the gate bundle's `red-witness`
+row, discussed below) turned out to be exactly that: an intermediate commit's
+run, honestly labeled with its own head sha, differing from the final one. That
+explanation does not hold here. The appendix containing the correct 35/4 count
+is presented as the CURRENT, final derivation (it includes source lines that
+only exist after the fix, such as `establishField`'s own doc comment), and
+nothing in the document flags the summary table as stale or attributes it to
+an earlier run.
+
+**This does not change any conclusion the round drew.** The classified-sites
+table ("33 sites outside `dualReviewDecorrelation`") and the two candidates it
+raises are drawn from the appendix, not from the summary table, and the
+appendix is the one that matches my re-run. Nobody's classification of a real
+site is wrong because of this; what is wrong is a headline number a reader
+would quote without opening the appendix, which is exactly the situation the
+"publish the full output, not a summary" rule exists to prevent. Filed LOW
+because nothing shipped is affected and the correct number is available two
+sections later in the same file.
+
+## CONFIRMED: the four red witnesses are honest, including the "weakest pair"
+self-assessment
+
+Reproduced independently, in a THIRD worktree (`mutate-wt`) so the mutation
+and revert never touched the tree used for anything else, applying each
+`dangerousStates` member from the four new `witness/*.json` specs by exact
+string replacement (refusing, as the round's own script does, if the find
+text is not present), running `node --test --test-name-pattern <name>
+<file>` with the pattern BEFORE the positional path (CLAUDE.md standing
+warning 7), and reverting with the original file content held in memory,
+never `git checkout --` (standing warning 8):
+
+| spec | member | exit | tests | pass | fail |
+|---|---|---|---|---|---|
+| `dual-review-absent-dimension-refuses` | 1 (call-site bypass) | 1 | 1 | 0 | 1 |
+| `dual-review-absent-dimension-refuses` | 2 (helper corruption) | 1 | 1 | 0 | 1 |
+| `dual-review-unestablished-merge-authority` | 1 (read reverts) | 1 | 1 | 0 | 1 |
+| `dual-review-unestablished-merge-authority` | 2 (guard inverted) | 1 | 1 | 0 | 1 |
+| `dual-review-whitespace-is-not-distinctness` | 1 (trim reverts) | 1 | 1 | 0 | 1 |
+| `dual-review-whitespace-is-not-distinctness` | 2 (comparison bypasses reading) | 1 | 1 | 0 | 1 |
+| `agents-references-refuse-unshipped-path` | 1 (predicate defanged) | 1 | 1 | 0 | 1 |
+| `agents-references-refuse-unshipped-path` | 2 (anchor required again) | 1 | 1 | 0 | 1 |
+
+All 8 members: exactly one test ran (the harness's own
+`failed.length === tests.length` rule, confirmed by reading
+`src/witness/run.ts` on this branch, requires this), and it failed for the
+stated reason, confirmed by reading the full assertion output for the first
+member (`0 !== 1` against the count of violations, printed alongside the
+exact false-green sentence CR-001 names: `REPORT dual-review-decorrelation 2
+verdict(s) for phase M3-P9 are distinct on produced-by, framing,
+review-contract`). At head, unmutated, all four specs' tests pass (confirmed
+by the full `test/dual-review.test.ts` and `test/agents-policy.test.ts` runs
+below). Green at head, red under every declared mutation: the red-witness
+rule is satisfied for all four.
+
+**The "weakest pair is A and B" self-assessment holds up.** Reading the two
+members of `dual-review-absent-dimension-refuses`: member A bypasses
+`establishField` only at the per-dimension call site (the loop reverts to
+`String(candidate.record[dimension] ?? "")` locally); member B corrupts the
+function itself so every caller sees the corruption. Both ultimately make
+"absence" and "a real value" compare equal, which is the SAME collapse at two
+levels of the same call graph rather than two different collapses, exactly as
+the round states. The other three pairs (C/D: breaks-the-read vs
+breaks-the-consequence-of-a-correct-read; G/H: same split one property along;
+E/F: kills-the-predicate vs kills-the-predicate's-visibility) are genuinely
+structurally different by the same reading.
+
+## CONFIRMED: CR-002's fix functions end to end, not merely at the unit level
+
+Staged a fresh directory with the real `assurance-modes.yaml`, the real
+charter template (`delivery-mode: full`), and the SHARED-FAMILY fixture pair,
+then ran the exact command AGENTS.md's revised text now recommends:
+
+```
+$ node bin/tiphys.ts validate --type verdict --context <dir> <dir>/delivery/review/shared-family-hazard.yaml
+...
+INVALID #/produced-by produced-by value family-a occurs in 2 of the 2 verdicts
+  for phase M3-P9 (...), so the reviews are not decorrelated on produced-by
+  (check: dual-review-decorrelation)
+exit 1
+```
+
+This is the CLI path a real consumer of the published package would run (not
+the internal `scripts/check-dual-review.mjs`, which does not ship), and it
+produces the exact behavior AGENTS.md now promises. Also confirmed:
+`node scripts/check-agents-references.mjs --root .` against the actual
+`AGENTS.md` on this branch reports `check-agents-references: green (21
+references resolved)`, matching the round's own claimed count exactly.
+
+## CONFIRMED: the absence-versus-not-applicable line does not misfire on a
+legitimate configuration
+
+Attacked from the other side (task item 2): looking for a genuinely valid
+context that the "absence is a FAIL under a grant" policy wrongly refuses.
+
+- An absent `charter.yaml`, and a charter present but declaring no
+  `delivery-mode`, both still REPORT (not-applicable with a reason), never
+  fail: confirmed by the existing test suite (`the check REPORTS rather than
+  fails when a context declares no delivery mode, and says so in a line a
+  green run cannot be confused with`, passing) and independently by direct
+  script runs.
+- A mode with `merge-authority: owner` (not the delegated one) still REPORTS,
+  never fails, on the exact pair that reddens under a delegated grant:
+  confirmed by the existing passing test of the same name.
+- `eachMode`'s own id-defaulting (`String(mode["id"] ?? "")`, explicitly NOT
+  changed by this round) cannot be exploited to make an id-less mode row
+  match a real charter's delivery-mode, because the charter's `delivery-mode`
+  is now established as a non-empty string before the mode lookup runs; an
+  empty mode id can never equal it. Confirmed by reading the lookup
+  (`` `const mode = eachMode(modesDocument.value).find((row) => row.id === modeId);` ``,
+  quoted rather than cited per the branch-diff rule above) rather than by a
+  new fixture, since the reasoning is a closed case (empty string can never
+  equal an established non-empty string).
+- The one edge case I could construct where "absence is a FAIL" refuses
+  something a document author might have intended as legitimate: a
+  `produced-by` value that is a bare YAML scalar coinciding with a YAML
+  keyword or a number (e.g. an unquoted family name that happens to look
+  numeric) decodes to a non-string and is refused as "unusable." This is
+  consistent with, not contrary to, the round's own probe table
+  (`produced-by: 7` before: fail-open GREEN; after: correctly refused as "a
+  number") and is a quoting-discipline requirement rather than a new false
+  refusal of a working configuration. Filed as a TRACKED observation, not a
+  finding: no real model-family id in this repository's fixtures or
+  documentation is a bare number or YAML keyword.
+
+No wrongful refusal of a legitimate configuration was found.
+
+## Two candidate sites the round named but did not fix
+
+Both were explicitly raised by the round for the orchestrator rather than
+improvised, and both are outside this phase's `filesToTouch`. Verified rather
+than re-argued:
+
+**`src/checklists.ts`, the id-less `--extra` probe.** The round classified
+this by READING, not execution. I ran it:
+
+```
+projected extra1 probes: [{ "id": "", "probe": "sneaky probe, no id", ... }]
+merge1 problems: []
+merge1 probe ids: [ '"p1"', '"p2"', '""' ]
+```
+
+Confirmed exactly as claimed: a single id-less probe in a user-supplied
+`--extra` checklist merges with ZERO problems reported, becoming a live probe
+carrying `id: ""` in the resolved checklist. It is the SAME mechanism as
+CR-001 (a default read from an external record, `String(probe["id"] ?? "")`,
+masking absence as a real value) applied to a different field. **It IS
+reachable by a consumer**: `tiphys checklist resolve --checklist <id> --extra
+<file>` is a real, documented, shipped CLI command (`` `src/commands/checklist.ts` ``),
+not an internal-only code path. Two id-less probes in the SAME extra file DO
+collide with each other correctly (`merge2 problems: [...]`), so the gap is
+narrower than "any id-less probe is silent": it is specifically "exactly one
+id-less probe per extra file passes with no diagnostic." Severity: this is
+governance-checklist integrity, not the merge-authorization decision itself,
+so it does not carry CR-001's stakes; it is correctly out of this round's
+scope and correctly flagged rather than improvised.
+
+**`src/commands/brief.ts`, the role-less frontmatter display.** Verified by
+reading rather than by driving the full CLI (see not-covered section): the
+displayed `role:` line falls back to `options.roleId`, the SAME id the
+caller used to locate the role file on disk (the rolePath is built as
+`join(rolesDirectory, options.roleId + ".md")`). Since a role file is always looked up by the
+exact id being requested, a role file that omits `role:` from its frontmatter
+would still render the CORRECT id, just not one confirmed by the document's
+own declaration. All five shipped `roles/*.md` files declare `role:`
+explicitly (`grep -l '^role:' roles/*.md` returns 5 of 5), so this is
+currently dormant in the shipped repository. Confirmed LOW as claimed, on
+different grounds than "read, not run" but the same conclusion.
+
+## The gate bundle, independently re-run in full
+
+Ran to completion (`` `node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --phase m3-p9 --evidence <dir> --base origin/main --head HEAD` ``,
+from `verify-wt` at `0cf4676`, node v26.6.0, `dist/` built, `npm run build`
+exit 0 and `git status --short` empty afterward):
+
+```
+gates: declared 15 applicable 9 verdict 9 green 9 red 0 not-applicable 6 error 0 vacuous 0
+```
+
+Per gate, read from each `result.json` rather than retyped from the bundle
+line (T-009's "a green bundle is not a green gate" rule):
+
+| gate | status | units |
+|---|---|---|
+| `agent-rules-drift` | green | 20 |
+| `brief-drift` | green | 17 |
+| `check-agents-references` | green | 21 |
+| `check-dual-review` | not-applicable | 0 |
+| `citations` | not-applicable | 0 |
+| `clause-map` | green | 74 |
+| `coverage` | green | 115 |
+| `credential-scrub` | green | 7 |
+| `credential-token` | not-applicable | 0 |
+| `deploy` | not-applicable | 0 |
+| `manifest-self-check` | green | 8 |
+| `migrations` | not-applicable | 0 |
+| `red-witness` | green | **37** |
+| `scope` | not-applicable | 0 |
+| `suite` | green | 765 |
+
+Every green count matches the round's own reported numbers exactly (20, 17,
+21, 74, 115, 7, 8, 37, 765). `scope` and `citations` came back not-applicable
+in MY run, not green: my `verify-wt` was checked out `--detach` (this
+verification's own environment, per T-019, is never on the phase branch
+name), so `git rev-parse --abbrev-ref HEAD` reports the literal string
+`HEAD`, which does not match the phase-branch regex, so `scope`'s own
+precondition (branch name matches `^claude/m[0-9]+-p[0-9]+-`) is correctly
+unmet. This is an artifact of running from a detached worktree, not a defect
+either in the round or in the gate; the round ran on the real branch and
+reported `scope: green (28 changed paths audited)`, which I did not
+independently re-derive because reproducing it needs a checkout on the actual
+branch name, which risks exactly the T-019 shape this verification's own
+branch was built to avoid.
+
+**`red-witness: green, 37`** matches the round's own final per-gate table
+exactly, including the count. The round's WORK HISTORY also quotes a raw
+detail line reading "36 witness(es) evaluated (5 own, 31 stored
+re-evaluated)" immediately above that table; my fresh run's detail line reads
+"37 witness(es) evaluated (6 own, 31 stored re-evaluated in 287973ms)". These
+are NOT inconsistent: the round explicitly labels that intermediate run as
+taken "at head `c7f3d13`", one commit earlier than the branch's final head
+`0cf4676`, and the round's own final table (captioned "at the head being
+handed back") already carries 37, not 36. A commit between those two heads
+added the fourth new witness spec. Checked rather than assumed, so this is
+recorded as a confirmation, not left as a loose thread.
+
+
