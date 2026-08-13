@@ -29,3 +29,14 @@ In progress. Final list before the verdict.
 ## Findings
 
 In progress.
+
+### Progress log (appended as the round runs)
+
+- Build and suite measured at head (criterion 7): `npm ci` exit 0,
+  `npm run build` exit 0, `git status` clean afterwards.
+- `spawnSync` premise re-derived independently: the implementer's four-row
+  table reproduces exactly.
+- Criteria 1, 2, 3 executed on a purpose-built one-gate manifest through the
+  real CLI, with a `main` control.
+- Criterion 5 executed against a packed tree from `npm pack`, with a `main`
+  control.
