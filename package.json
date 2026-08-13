@@ -14,6 +14,7 @@
   "files": [
     "dist",
     "!dist/node_modules",
+    "AGENTS.md",
     "gate-registry.yaml",
     "gates.manifest.json",
     "assurance-modes.yaml",
