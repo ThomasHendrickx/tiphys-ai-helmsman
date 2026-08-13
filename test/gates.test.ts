@@ -3524,6 +3524,12 @@ test("a gate whose command names a missing path, one whose launcher is not execu
       ) as { status: string; detail: string };
       assert.equal(record.status, "error", `${name} reported ${record.status}`);
       assert.match(record.detail, pattern);
+      // CRITERION 1, THE STDOUT HALF. The criterion says STDOUT names the
+      // missing path, and a record on disk the operator has to go and open is
+      // not that. Asserted on the stream, not on the record, and asserted to
+      // be STDOUT specifically rather than "somewhere in the output".
+      assert.match(run.stdout, pattern);
+      assert.match(run.stdout, new RegExp(`^gates: p11-cmd-${name}: error: `, "m"));
       // The missing path, not the RECORD path, is what the operator is told
       // about. Before this phase the detail read "gate X exited 1 without
       // writing a result record at <the record path>", which names the one
@@ -3644,6 +3650,54 @@ test("the path-operand rule leaves an option's inline value alone, which is what
     assert.equal(record.status, "not-applicable");
     assert.match(record.detail, /evaluated and unmet/);
     assert.doesNotMatch(record.detail, /could not be run/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a not-applicable gate's reason reaches stdout too, so a skip and a crash are distinguishable from the terminal alone", () => {
+  // The other half of criterion 1's stream requirement. Printing only the
+  // errors would leave `not-applicable` exactly as unreadable from the
+  // terminal as it was before this phase, which is the defect, not the fix.
+  // The two-arm capture gate-precondition-crash-vs-skip.txt is what fixed the
+  // wording of these two lines.
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence-na-stdout");
+    const manifest = writeManifest(dir, [
+      {
+        id: "p11-green",
+        command: writeGate(dir, "na-green", {
+          record: gateRecord("p11-green", "green", 3),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+      {
+        id: "p11-skipped",
+        command: writeGate(dir, "na-skipped", {
+          record: gateRecord("p11-skipped", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "conditional",
+        precondition: {
+          id: "p11-absent-config",
+          kind: "file-exists",
+          path: join(dir, "absent-config.json"),
+        },
+      },
+    ]);
+    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.match(run.stdout, /^gates: p11-skipped: not-applicable: /m);
+    assert.match(run.stdout, /p11-absent-config/);
+    assert.match(run.stdout, /absent-config\.json/);
+    // A green gate's detail is a count the summary line already carries, so it
+    // is NOT printed; without this arm the assertion above would be satisfied
+    // by a change that prints every row indiscriminately.
+    assert.doesNotMatch(run.stdout, /^gates: p11-green: green: /m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

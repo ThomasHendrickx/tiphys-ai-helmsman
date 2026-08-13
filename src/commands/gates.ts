@@ -191,6 +191,31 @@ function cmdRun(args: string[]): number {
       `not-applicable ${String(counts["not-applicable"])} error ${String(counts.error)} ` +
       `vacuous ${String(counts.vacuous)}\n`,
   );
+  // M3-P11 criterion 1: STDOUT NAMES THE PATH.
+  //
+  // The runner separates "the command could not run" from "the precondition
+  // is unmet" and puts the reason in each gate's `detail`, but until this
+  // change `detail` never left the evidence directory: this function printed
+  // bundle counts and one aggregate reason naming gate IDS, so an operator
+  // reading the terminal saw `1 gate(s) reported error: manifest-self-check`
+  // and had to open `summary.json` to learn that the cause was a missing
+  // `bin/tiphys.ts`. A verdict a reader has to go and look up is one step
+  // better than the skip-that-was-a-crash, not two.
+  //
+  // EVERY NON-GREEN ROW, not only the errors. Distinguishing a skip from a
+  // crash is the whole phase, and both are non-green; printing only the
+  // errors would leave the `not-applicable` reason exactly as unreadable as
+  // it was. Green rows are omitted because their detail is a count the line
+  // above already summarises.
+  //
+  // Bounded by the gate count, and `singleLine` is applied so one gate's
+  // multi-line detail cannot forge additional `gates:` lines in this stream.
+  for (const row of outcome.summary.gates) {
+    if (row.status === "green") {
+      continue;
+    }
+    process.stdout.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\n`);
+  }
   const stream = outcome.exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`gates: ${outcome.reason ?? ""}\n`);
   return outcome.exitCode;

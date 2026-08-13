@@ -4,10 +4,12 @@
   "filesToTouch": [
     "src/gates/run.ts",
     "src/gates/scope.ts",
+    "src/commands/gates.ts",
     "test/gates.test.ts",
     "test/scope-gate.test.ts",
     "witness/",
-    "delivery/requirements/clause-map.json"
+    "delivery/requirements/clause-map.json",
+    "delivery/plan/phase-declarations/m3-p11.json"
   ],
   "declaredExtras": [],
   "citations": [

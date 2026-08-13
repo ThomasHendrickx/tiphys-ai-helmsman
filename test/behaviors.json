@@ -712,5 +712,6 @@
   "gate-precondition-inline-option-value-not-probed": "the path-operand rule leaves an option's inline value alone, which is what keeps a real declared precondition working",
   "scope-phase-own-evidence-standing-extra": "a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one",
   "scope-declaration-addition-named-removal-red": "a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it",
-  "scope-declaration-deleted-at-head-red": "a head that deletes the phase declaration outright reddens rather than falling back to the merge base"
+  "scope-declaration-deleted-at-head-red": "a head that deletes the phase declaration outright reddens rather than falling back to the merge base",
+  "gates-command-prints-nongreen-detail-to-stdout": "a not-applicable gate's reason reaches stdout too, so a skip and a crash are distinguishable from the terminal alone"
 }

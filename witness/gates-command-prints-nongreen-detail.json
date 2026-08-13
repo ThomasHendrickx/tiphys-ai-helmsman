@@ -1,0 +1,24 @@
+{
+  "id": "gates-command-prints-nongreen-detail",
+  "behavior": "gates-command-prints-nongreen-detail-to-stdout",
+  "tests": [
+    "a not-applicable gate's reason reaches stdout too, so a skip and a crash are distinguishable from the terminal alone"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "    if (row.status === \"green\") {\n      continue;\n    }",
+      "replace": "    if (row.status !== \"green\") {\n      continue;\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "    process.stdout.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\\n`);",
+      "replace": "    process.stderr.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\\n`);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
