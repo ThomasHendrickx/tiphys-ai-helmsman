@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-whitespace-is-not-distinctness",
+  "behavior": "dual-review-whitespace-is-not-distinctness",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "two verdicts whose produced-by differs only by surrounding whitespace are not distinct"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  return { kind: \"established\", value: raw.trim() };",
+      "replace": "  return { kind: \"established\", value: raw };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        counts.set(reading.value, [...(counts.get(reading.value) ?? []), candidate.path]);",
+      "replace": "        counts.set(String(candidate.record[dimension]), [...(counts.get(String(candidate.record[dimension])) ?? []), candidate.path]);"
+    }
+  ]
+}

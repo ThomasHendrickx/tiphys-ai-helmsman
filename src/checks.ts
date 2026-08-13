@@ -3032,7 +3032,22 @@ function establishField(
   if (raw.trim() === "") {
     return { kind: "unusable", found: raw === "" ? "an empty string" : "only whitespace" };
   }
-  return { kind: "established", value: raw };
+  /* TRIMMED, AND THAT IS A SECOND FAIL-OPEN CLOSED RATHER THAN TIDYING. An
+     established value is what the document MEANS, and surrounding whitespace is
+     not part of a model family's name. Without this, `produced-by: "family-a "`
+     and `produced-by: family-a` are two different strings, "different" is what
+     this check reads as decorrelated, and one quoted space turns a correlated
+     pair green. Measured before this line existed, on a pair sharing one family:
+     a trailing space and a leading space each exited 0.
+
+     CASE IS DELIBERATELY NOT FOLDED. `Family-A` and `family-a` still compare as
+     distinct, and that is left alone on purpose rather than missed: the review
+     that found CR-001 names case-insensitive comparison as an example of a
+     WEAKENING of this check, so folding it here would be adopting the thing that
+     review treats as the defect. Whitespace has no such reading; it carries no
+     information in a scalar id, which is why the two are treated differently.
+     The residue is recorded in delivery/work-history/m3-p9.md. */
+  return { kind: "established", value: raw.trim() };
 }
 
 /**

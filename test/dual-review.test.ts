@@ -421,6 +421,39 @@ test("a verdict that states no produced-by is refused rather than read as distin
   });
 });
 
+test("two verdicts whose produced-by differs only by surrounding whitespace are not distinct", () => {
+  /* THE NEAR MISS OF THE SAME CHECK, and it was found by attacking the repair
+     rather than by the review. Establishing presence is not enough on its own:
+     once `produced-by` is present on both sides, `"family-a "` and `family-a`
+     are two different strings, "different" is what this check reads as
+     decorrelated, and ONE QUOTED SPACE turns a correlated pair green. Measured
+     before the trim existed: a trailing space and a leading space each exited 0
+     on the shared-family pair.
+
+     The value is trimmed for the comparison AND for the message, so the
+     diagnostic names the family rather than the padding. */
+  const dir = stageContext("full", SHARED_FAMILY);
+  try {
+    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
+    const before = readFileSync(path, "utf8");
+    assert.match(before, /^produced-by: family-a$/m);
+    writeFileSync(path, before.replace(/^produced-by: family-a$/m, 'produced-by: "  family-a  "'));
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(
+      run.output,
+      /produced-by value family-a occurs in 2 of the 2 verdicts for phase M3-P9/,
+    );
+    assert.match(run.output, /not decorrelated on produced-by/);
+    /* AND THE MESSAGE CARRIES THE FAMILY, NOT THE PADDING. A diagnostic quoting
+       `  family-a  ` would send a reader looking for a value that is not the
+       one the check compared. */
+    assert.doesNotMatch(run.output, /produced-by value {2}family-a/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
   /* THE SAME MECHANISM AT A STRUCTURALLY DIFFERENT SITE, and the consequence
      is larger: this one does not weaken one dimension, it turns the whole

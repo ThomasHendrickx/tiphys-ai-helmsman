@@ -699,5 +699,6 @@
   "dual-review-fails-closed-without-a-declared-mode": "the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent",
   "dual-review-absent-dimension-refuses": "a verdict that states no produced-by is refused rather than read as distinct from the other",
   "dual-review-unestablished-merge-authority": "a mode that states no merge-authority is refused rather than reported as not a delegated grant",
-  "agents-references-refuse-unshipped-path": "a reference to a path the package does not publish is refused even though the file exists"
+  "agents-references-refuse-unshipped-path": "a reference to a path the package does not publish is refused even though the file exists",
+  "dual-review-whitespace-is-not-distinctness": "two verdicts whose produced-by differs only by surrounding whitespace are not distinct"
 }
