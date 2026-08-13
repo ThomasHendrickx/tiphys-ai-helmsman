@@ -26,7 +26,10 @@
     "witness/",
     "delivery/requirements/clause-map.json"
   ],
-  "declaredExtras": [],
+  "declaredExtras": [
+    "test/liveness.test.ts",
+    "test/implementer-brief.test.ts"
+  ],
   "citations": [
     "R-070",
     "R-091",
