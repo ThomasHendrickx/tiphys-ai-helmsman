@@ -75,6 +75,43 @@ It is weaker than the three that were fixed: it needs an uncommitted directory.
 The implementer's counter, also recorded, is that an uncommitted directory is
 the ordinary state right after authoring, which is when a user runs doctor.
 
+## UNOWNED AND SERIOUS: the gate runner reports a crash as a skip
+
+Found by the M3-P9 hazard reviewer while root-causing something else, and it is
+larger than the finding it was attached to. It is listed FIRST because it is the
+only entry in this register that makes other evidence untrustworthy.
+
+**A gate command that FAILS TO EXIST is reported as `not-applicable`**,
+indistinguishable in the printed line from a legitimate "precondition unmet"
+skip. The precondition evaluator treats a command as "could not run" only when
+the LAUNCHER fails to spawn, not when the script it launches is missing and
+exits 1. Root-caused to the gate runner (`src/gates/run.ts`, shipped as
+`dist/src/gates/run.js`) with the code path quoted in the hazard review.
+
+**A crash that prints as a skip is a guard that cannot go red.** This repository
+has paid for that shape at least four times: a watchdog that tested existence
+rather than freshness, a control-character check blind to NUL, a watchdog
+pointed at a subset of an agent's paths, and an expired monitor that could not
+fire. Every one was green and worthless.
+
+Why it is not merely tracked-and-forgotten:
+
+- It is in SHIPPED code, and a consumer running a conditional gate gets
+  `not-applicable` when the gate actually crashed.
+- It degrades this build's own evidence. Every `not-applicable` this process has
+  quoted for a conditional gate is, strictly, either a skip or a crash, and the
+  printed line does not say which. That includes lines quoted in merged work
+  histories.
+
+It is NOT M3-P9's (M2-P1 era) and was deliberately excluded from that phase's
+fix round so the round did not sprawl. **It needs an owner.** The orchestrator's
+position is that it belongs with M3-P10 or its own small phase, and it is being
+reported to the owner rather than filed quietly.
+
+Reachability, stated plainly because DR-0027 makes reachability the test: a
+consumer sees a false `not-applicable`, so it reaches a real user path and would
+block a merge if it belonged to the phase in front of it.
+
 ## Found during M3-P9, granted around rather than fixed
 
 | what | where |
