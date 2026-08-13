@@ -8,6 +8,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -3332,4 +3333,318 @@ test("a non-enumerable NaN green passes both count screens and is still refused"
   assert.notEqual(decided.exitCode, 0, "green NaN certified the run");
   assert.match(decided.reason, /zero\s+green gates/);
   assert.doesNotMatch(decided.reason, /every applicable gate is green/);
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P11: A CRASH IS NOT A SKIP.                                       */
+/*                                                                      */
+/* The dangerous state staged below is the dangerous state, not the     */
+/* absent feature: every "could not run" arm is a REAL unrunnable       */
+/* command (a script genuinely deleted, a real directory where a script */
+/* should be, a real dangling symlink, a real mode-644 launcher, a real */
+/* `#!` line naming an interpreter that is not installed), and every    */
+/* "unmet" arm is a REAL script that exists and exits 1 on purpose.     */
+/*                                                                      */
+/* The runner's child-output contract for these arms is anchored by the */
+/* verbatim two-arm capture gate-precondition-crash-vs-skip.txt, taken  */
+/* against origin/main at 755a9ff and against this branch, in a         */
+/* consumer package tree carrying gate-registry.yaml and nothing else.  */
+/* ------------------------------------------------------------------ */
+
+/** Write a precondition probe script that exists and exits with `code`. */
+function writeProbeScript(dir: string, name: string, code: number): string {
+  const path = join(dir, `${name}.mjs`);
+  writeFileSync(path, `process.exit(${String(code)});\n`);
+  return path;
+}
+
+test("the same gate id is not-applicable when its precondition script exists and exits 1, and error naming the script when only that script is absent", () => {
+  // Criteria 1, 2 and 3. ONE gate id, ONE manifest shape, TWO runs that
+  // differ in exactly one byte-level fact: whether probe.mjs is on disk.
+  // Criterion 3 asks for the two verdicts to be shown DISTINGUISHABLE, which
+  // is why the final assertion compares them to each other rather than
+  // checking each in isolation.
+  const dir = scratch();
+  try {
+    const probe = writeProbeScript(dir, "probe", 1);
+    const manifestGates = [
+      {
+        id: "p11-same-id",
+        command: writeGate(dir, "same-id-gate", {
+          record: gateRecord("p11-same-id", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "conditional",
+        precondition: {
+          id: "p11-probe",
+          kind: "command-exit-zero",
+          command: ["node", probe],
+        },
+      },
+    ];
+
+    // ARM A: the script EXISTS and exits 1. That is a real, evaluated,
+    // genuinely unmet precondition and it must stay not-applicable.
+    const evidenceA = join(dir, "evidence-present");
+    const manifestA = writeManifest(dir, manifestGates, "manifest-present.json");
+    runCli(["gates", "run", "--manifest", manifestA, "--evidence", evidenceA]);
+    const recordA = JSON.parse(
+      readFileSync(join(evidenceA, "p11-same-id", "result.json"), "utf8"),
+    ) as { status: string; detail: string; precondition?: { id: string; met: boolean; reason: string } };
+    assert.equal(recordA.status, "not-applicable");
+    assert.equal(recordA.precondition?.id, "p11-probe");
+    assert.equal(recordA.precondition?.met, false);
+    assert.match(recordA.detail, /evaluated and unmet/);
+
+    // ARM B: the SAME gate id, the SAME manifest content, the script gone.
+    rmSync(probe);
+    const evidenceB = join(dir, "evidence-absent");
+    const manifestB = writeManifest(dir, manifestGates, "manifest-absent.json");
+    const runB = runCli(["gates", "run", "--manifest", manifestB, "--evidence", evidenceB]);
+    assert.notEqual(runB.status, 0);
+    const recordB = JSON.parse(
+      readFileSync(join(evidenceB, "p11-same-id", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(recordB.status, "error");
+    assert.notEqual(recordB.status, "not-applicable");
+    assert.match(recordB.detail, /could not be run/);
+    assert.match(recordB.detail, /probe\.mjs/);
+
+    // Criterion 3 proper: the two are DISTINGUISHABLE, not merely both
+    // reachable. Asserted on the verdict AND on the printed detail, because
+    // the defect this phase exists for was two situations printing one line.
+    assert.notEqual(recordA.status, recordB.status);
+    assert.notEqual(recordA.detail, recordB.detail);
+
+    const summaryA = readSummary(evidenceA);
+    const summaryB = readSummary(evidenceB);
+    assert.equal(summaryA.counts["not-applicable"], 1);
+    assert.equal(summaryA.counts.error, 0);
+    assert.equal(summaryB.counts["not-applicable"], 0);
+    assert.equal(summaryB.counts.error, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a precondition command whose path operand is a directory, and one whose operand is a dangling symlink, are both error and neither is not-applicable", () => {
+  // The could-not-run CLASS, two structurally different members that were
+  // BOTH not-applicable before this phase: `node <a real directory>` and
+  // `node <a symlink to nothing>` each exit 1 with spawnSync's `error`
+  // unset, exactly as `node <missing file>` does. One member is not a class.
+  const dir = scratch();
+  try {
+    const asDirectory = join(dir, "operand-is-a-directory");
+    mkdirSync(asDirectory, { recursive: true });
+    const dangling = join(dir, "operand-dangles.mjs");
+    symlinkSync(join(dir, "no-such-target.mjs"), dangling);
+
+    for (const [name, operand, pattern] of [
+      ["directory", asDirectory, /not a regular file/],
+      ["dangling", dangling, /symbolic link whose target does not exist/],
+    ] as [string, string, RegExp][]) {
+      const evidence = join(dir, `evidence-${name}`);
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: `p11-${name}`,
+            command: writeGate(dir, `gate-${name}`, {
+              record: gateRecord(`p11-${name}`, "green", 1),
+              exit: 0,
+            }),
+            unitLabel: "fixture units",
+            applicability: "conditional",
+            precondition: {
+              id: `p11-${name}-probe`,
+              kind: "command-exit-zero",
+              command: ["node", operand],
+            },
+          },
+        ],
+        `manifest-${name}.json`,
+      );
+      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
+      const record = JSON.parse(
+        readFileSync(join(evidence, `p11-${name}`, "result.json"), "utf8"),
+      ) as { status: string; detail: string };
+      assert.equal(record.status, "error", `${name} reported ${record.status}`);
+      assert.notEqual(record.status, "not-applicable");
+      assert.match(record.detail, pattern);
+      assert.equal(readSummary(evidence).counts["not-applicable"], 0);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a gate whose command names a missing path, one whose launcher is not executable, and one whose interpreter line is bad are all error, and the missing path is the path named", () => {
+  // Criteria 1 and 4. The three members are structurally different: the
+  // first is an operand that does not exist (the launcher spawns fine), the
+  // second is a launcher that exists and carries no execute bit, the third
+  // is a launcher that exists, is executable, and names an interpreter that
+  // is not installed. Measured on this machine, spawnSync reports the first
+  // as status 1 with `error` unset and the other two as status null with
+  // `error` set, which is why they need separate arms rather than one.
+  const dir = scratch();
+  try {
+    const notExecutable = join(dir, "not-executable.sh");
+    writeFileSync(notExecutable, "#!/bin/sh\nexit 0\n", { mode: 0o644 });
+    const badInterpreter = join(dir, "bad-interpreter.sh");
+    writeFileSync(
+      badInterpreter,
+      "#!/tiphys-no-such-interpreter-4b7c\nexit 0\n",
+      { mode: 0o755 },
+    );
+
+    for (const [name, command, pattern] of [
+      ["missing-operand", ["node", join(dir, "probe-absent.mjs")], /probe-absent\.mjs/],
+      ["not-executable", [notExecutable], /not executable/],
+      ["bad-interpreter", [badInterpreter], /could not be run/],
+    ] as [string, string[], RegExp][]) {
+      const evidence = join(dir, `evidence-cmd-${name}`);
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: `p11-cmd-${name}`,
+            command,
+            unitLabel: "fixture units",
+            applicability: "required",
+          },
+        ],
+        `manifest-cmd-${name}.json`,
+      );
+      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
+      const record = JSON.parse(
+        readFileSync(join(evidence, `p11-cmd-${name}`, "result.json"), "utf8"),
+      ) as { status: string; detail: string };
+      assert.equal(record.status, "error", `${name} reported ${record.status}`);
+      assert.match(record.detail, pattern);
+      // The missing path, not the RECORD path, is what the operator is told
+      // about. Before this phase the detail read "gate X exited 1 without
+      // writing a result record at <the record path>", which names the one
+      // path in the sentence that is not the problem.
+      if (name === "missing-operand") {
+        assert.doesNotMatch(record.detail, /without writing a result record/);
+      }
+      const row = readSummary(evidence).gates.find((entry) => entry.id === `p11-cmd-${name}`);
+      assert.match(row?.detail ?? "", pattern);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the shipped registry run against a consumer package tree with no scripts directory reports error for the conditional gate, never not-applicable", () => {
+  // Criterion 5, and it is the phase's real-world witness rather than a
+  // fixture: the registry is this repository's own `gate-registry.yaml`,
+  // the gate is the one the M3-P9 hazard review measured, and the tree is
+  // the shape an installed package has (no `scripts/`, no `src/`, no
+  // `bin/`). The verbatim two-arm capture is
+  // witness/captures/gate-precondition-crash-vs-skip.txt.
+  const dir = scratch();
+  try {
+    cpSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+    assert.equal(existsSync(join(dir, "scripts")), false, "the fixture tree must have no scripts/");
+
+    // The CONDITIONAL gate with a precondition: this is the one that printed
+    // `not-applicable` for a crash, and it is the whole reason for the phase.
+    const evidence = join(dir, "evidence-dual-review");
+    const run = runCli(
+      [
+        "gates",
+        "run",
+        "--registry",
+        "gate-registry.yaml",
+        "--mode",
+        "full",
+        "--only",
+        "check-dual-review",
+        "--evidence",
+        evidence,
+      ],
+      dir,
+    );
+    assert.notEqual(run.status, 0);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "check-dual-review", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "error");
+    assert.notEqual(record.status, "not-applicable");
+    assert.match(record.detail, /scripts\/check-dual-review\.mjs/);
+    assert.match(record.detail, /could not be run/);
+    assert.equal(readSummary(evidence).counts["not-applicable"], 0);
+
+    // And the REQUIRED gate the hazard review also named. Its status was
+    // already `error` before this phase (the child exited 1 without writing
+    // a record); what changed is WHICH path the detail names.
+    const evidenceSelfCheck = join(dir, "evidence-self-check");
+    const selfCheck = runCli(
+      [
+        "gates",
+        "run",
+        "--registry",
+        "gate-registry.yaml",
+        "--mode",
+        "full",
+        "--only",
+        "manifest-self-check",
+        "--evidence",
+        evidenceSelfCheck,
+      ],
+      dir,
+    );
+    assert.notEqual(selfCheck.status, 0);
+    const selfCheckRecord = JSON.parse(
+      readFileSync(join(evidenceSelfCheck, "manifest-self-check", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(selfCheckRecord.status, "error");
+    assert.match(selfCheckRecord.detail, /bin\/tiphys\.ts/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the path-operand rule leaves an option's inline value alone, which is what keeps a real declared precondition working", () => {
+  // `credential-token`'s precondition in gates.manifest.json is
+  // ["node", "-e", "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"],
+  // and it is REQUIRED to keep reporting not-applicable when the token is
+  // absent: that is a legitimate skip, not a crash. This arm exists because
+  // a probe rule that swept inline code into its path set would convert
+  // every such skip into an error, which is this change's own failure mode
+  // in the opposite direction.
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence-inline");
+    const manifest = writeManifest(dir, [
+      {
+        id: "p11-inline-code",
+        command: writeGate(dir, "inline-gate", {
+          record: gateRecord("p11-inline-code", "green", 1),
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "conditional",
+        precondition: {
+          id: "p11-inline-probe",
+          // The inline code contains a slash on purpose.
+          kind: "command-exit-zero",
+          command: ["node", "-e", "process.exit('a/b'.length === 3 ? 1 : 0)"],
+        },
+      },
+    ]);
+    runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    const record = JSON.parse(
+      readFileSync(join(evidence, "p11-inline-code", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(record.status, "not-applicable");
+    assert.match(record.detail, /evaluated and unmet/);
+    assert.doesNotMatch(record.detail, /could not be run/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
