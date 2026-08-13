@@ -78,3 +78,72 @@ version does not. Measured before writing this, not assumed.
   recorded rather than scheduled. That path is quoted rather than cited because
   this branch CHANGES that file, and a citation resolves against the tree being
   linted.
+
+## Second grant: `test/checks.test.ts`, and this one is TERMINAL
+
+- date: 2026-08-13, added after the implementer handed back
+- grants: `test/checks.test.ts` as a second `declaredExtras` entry on M3-P9
+
+The first grant above says "any further out-of-declaration file needs its own
+grant with its own measurement". This is that grant, and the measurement is
+below rather than referenced.
+
+### Why it is not the same finding twice
+
+The `gate-registry.test.ts` instance is a set equality that reddens for
+WHICHEVER phase appends next. This one is different in a way that matters: it
+reddens from M3-P9 ONWARDS, permanently, and no future phase can make it pass
+again.
+
+`test/checks.test.ts` has a test named for a row whose phase is not yet in
+force being reported pending. It read whatever the REAL tree happened to have
+pending. "Some row is pending" is true only while some phase owns inventory
+rows and has not yet created its anchor artifact.
+
+**M3-P9 is the phase that exhausts the inventory.** Measured at its head by the
+orchestrator, independently of the implementer's own count, by grouping
+`delivery/requirements/clause-map.json` by phase:
+
+| phase | rows |
+|---|---|
+| M3-P1 | 12 |
+| M3-P2 | 3 |
+| M3-P3 | 3 |
+| M3-P4 | 9 |
+| M3-P5 | 7 |
+| M3-P6 | 13 |
+| M3-P7 | 13 |
+| M3-P8 | 3 |
+| M3-P9 | 11 |
+| **M3-P10** | **0** |
+
+74 rows over nine phases. M3-P10 owns none. So from the moment `AGENTS.md`
+exists the real tree reports zero pending, at this head and at every head after
+it. The assertion was not red FOR M3-P9; it was red FROM M3-P9 onwards.
+
+### Why the repair is accepted rather than merely permitted
+
+The implementer did not pin a new expectation. It CONSTRUCTS the pending state
+in a staged copy: it removes one phase's rows and that phase's anchor artifact,
+reproducing the tree shape that exists before a phase lands, and it DERIVES
+which phase to suppress (one whose rows all discharge into a single artifact)
+rather than naming one. Naming a phase would have reintroduced the pin the
+repair exists to remove. Nothing in the working tree is touched.
+
+That is strictly stronger than what was there, and it is the by-name discipline
+at CLAUDE.md:233 applied rather than quoted.
+
+### What this second grant does NOT do
+
+- **It is not a general grant.** A third out-of-declaration file still needs a
+  third grant.
+- **It does not verify the repair.** The reviewer audits what was written; this
+  records why the file could be touched at all.
+- **The row counts are from the M3-P9 BRANCH head, not from `main`.** M3-P9's
+  own eleven rows do not exist on `main` yet. Re-running the grouping against
+  `main` gives 63 rows over eight phases, M3-P1 through M3-P8, with M3-P10 at
+  zero. That second number was MEASURED against `main` rather than obtained by
+  subtracting eleven from seventy-four, because an arithmetic identity and a
+  fact about a file are different claims and only one of them survives a row
+  being added somewhere unexpected. The conclusion is unchanged on both sides:
+  M3-P10 owns no clause-map rows.
