@@ -182,7 +182,36 @@ export function committedVerdictPaths(directory) {
  * again IN PROCESS, which is criterion 7's Kind B witness. A witness that
  * re-implemented the loop in the test would be asserting about a copy.
  */
+/**
+ * The documents that say WHICH merge-authority regime is in force, and which
+ * this caller therefore cannot proceed without.
+ *
+ * THIS IS WHERE THE FAIL-CLOSED TEETH LIVE, and it is a deliberate move rather
+ * than the original design. The derived check treats an ABSENT charter as
+ * "this context declares no delivery mode" and reports it, because it runs on
+ * any verdict with any context and a verdict fixture directory is not a project
+ * workspace. THIS caller is different: it is the command DR-0012's grant runs
+ * through, and a merge check that cannot determine the regime must never report
+ * green. So the refusal is here, where the merge decision is made, and not in a
+ * check that has to be usable somewhere else.
+ */
+const REGIME_DOCUMENTS = ["charter.yaml", "assurance-modes.yaml"];
+
 export function evaluate(directory) {
+  for (const document of REGIME_DOCUMENTS) {
+    if (classifyEntry(join(directory, document)).kind === "absent") {
+      return {
+        status: "error",
+        units: 0,
+        checksRun: 0,
+        lines: [
+          `${join(directory, document)} does not exist, so the declared mode's merge-authority ` +
+            `is unknown and no decorrelation verdict can be reached; a merge check that cannot ` +
+            `determine the regime reports error, never green`,
+        ],
+      };
+    }
+  }
   const found = committedVerdictPaths(directory);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };

@@ -3043,17 +3043,49 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
 
-    /* THE REGIME, READ RATHER THAN ASSUMED. Both documents fail closed: a
-       missing charter or a missing mode document means the applicability of
-       this rule is unknown, and an unknown applicability must never resolve to
-       "does not apply". */
+    /* THE REGIME IS READ, NEVER ASSUMED, AND "ABSENT" IS NOT THE SAME FACT AS
+       "PRESENT AND BROKEN". This distinction was NOT in the first version of
+       this check and it cost eight red tests belonging to M3-P7, one of them
+       that phase's own acceptance criterion.
+
+       The mechanism behind those eight, stated at the field rather than at the
+       failure: an applicability determination that needs a PROJECT WORKSPACE
+       was being made inside a check that runs on ANY verdict with ANY context,
+       and a verdict context built to exercise criteria completeness carries a
+       plan and a work history and no charter, because a charter is not what
+       those rules are about.
+
+       So: a charter that is ABSENT means this context declares no delivery
+       mode, which is REPORTED rather than failed. A charter that is THERE and
+       unreadable, or that names a mode nothing defines, or a mode document
+       absent while a charter names a mode, is a VIOLATION, because a document
+       that exists and is wrong is a different fact from one that does not.
+
+       THE FAIL-CLOSED TEETH DID NOT DISAPPEAR, THEY MOVED TO THE CALLER THAT
+       MAKES THE MERGE DECISION. `scripts/check-dual-review.mjs` refuses a
+       directory carrying no charter or no mode document, with gate status
+       `error`. That is the path DR-0012's grant runs through, and it must never
+       report green without knowing the regime. Imposing the same refusal here
+       imposed it on a path the grant has nothing to do with. */
+    const charterPresent =
+      classifyEntry(join(contextDirectory, "charter.yaml")).kind !== "absent";
+    if (!charterPresent) {
+      return {
+        violations: [],
+        reports: [
+          `REPORT dual-review-decorrelation ${contextDirectory} declares no delivery mode ` +
+            `(no charter.yaml), so the verdicts for phase ${phase} were NOT evaluated against a ` +
+            `merge-authority regime; scripts/check-dual-review.mjs refuses such a directory outright`,
+        ],
+      };
+    }
     const charter = readContextDocument(contextDirectory, "charter.yaml");
     if (!charter.ok) {
       return {
         violations: [
           {
             pointer: "#/produced-by",
-            message: `the charter could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
+            message: `the charter is present and could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
           },
         ],
         reports: [],
@@ -3066,7 +3098,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
         violations: [
           {
             pointer: "#/produced-by",
-            message: `${MODES_DOCUMENT} could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
+            message: `${charter.path} declares delivery mode ${String(modeId)} and ${MODES_DOCUMENT} could not be read, so that mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
           },
         ],
         reports: [],

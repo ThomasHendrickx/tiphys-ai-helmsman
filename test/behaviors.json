@@ -696,5 +696,5 @@
   "dual-review-requires-two-verdicts": "one verdict for a head exits nonzero because a delegated grant requires two independent reviews",
   "dual-review-inapplicable-under-owner-authority": "a mode whose merge-authority is owner exits 0 on the pair that reddens under a delegated grant",
   "dual-review-check-registered": "dual-review-decorrelation is registered for the verdict type and requires a context",
-  "dual-review-fails-closed-without-a-declared-mode": "an unreadable charter or mode document is a violation rather than an absent grant"
+  "dual-review-fails-closed-without-a-declared-mode": "the merge-path caller refuses a directory declaring no regime, while the check reports rather than fails on one"
 }

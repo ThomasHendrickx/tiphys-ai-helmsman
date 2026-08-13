@@ -526,8 +526,61 @@ test("a map entry naming a row absent from the inventory makes the check red nam
 test("a row whose phase is not yet in force is reported pending and does not fail the check", () => {
   const dir = stageClauseMap();
   try {
+    /* THE PENDING STATE IS NOW CONSTRUCTED, NOT FOUND (M3-P9).
+       WHY IT HAD TO CHANGE, measured rather than asserted: this test read
+       whatever the REAL tree happened to have pending, and "some row is
+       pending" was true only while some phase owned inventory rows and had not
+       yet created its anchor artifact. M3-P9 is the phase that EXHAUSTS the
+       inventory. Appendix A has 74 rows across nine phases and M3-P10 owns
+       ZERO, so from the moment `AGENTS.md` exists the real tree reports
+       `0 pending` at this head and at every head after it. The assertion was
+       not red FOR M3-P9; it was red from M3-P9 onwards, permanently.
+
+       This is the same mechanism CLAUDE.md:233 names, one file along from the
+       `test/gate-registry.test.ts` instance in the same phase: a test asserting
+       on a TRANSIENT state of an append-only registry.
+
+       The repair FORCES the state instead of hoping for it, which is strictly
+       stronger than what was here: it removes one phase's anchor artifact AND
+       that phase's rows from the STAGED COPY, reproducing exactly the tree
+       shape that exists before a phase lands. Nothing in the working tree is
+       touched. The phase to suppress is DERIVED, not named: it is a phase all
+       of whose clause-map rows discharge into ONE artifact, so deleting that
+       artifact takes the phase out of force. Naming a phase here would have
+       reintroduced the pin this comment exists to remove. */
+    const mapPath = join(dir, "delivery", "requirements", "clause-map.json");
+    const map = JSON.parse(readFileSync(mapPath, "utf8")) as Record<
+      string,
+      { phase: string; artifact: string }
+    >;
+    const byPhase = new Map<string, { id: string; artifact: string }[]>();
+    for (const [id, entry] of Object.entries(map)) {
+      byPhase.set(entry.phase, [
+        ...(byPhase.get(entry.phase) ?? []),
+        { id, artifact: entry.artifact },
+      ]);
+    }
+    const suppressible = [...byPhase.entries()]
+      .filter(([, rows]) => new Set(rows.map((row) => row.artifact)).size === 1)
+      .sort(([left], [right]) => (left < right ? -1 : 1));
+    assert.ok(
+      suppressible.length > 0,
+      "no phase discharges all of its clause-map rows into one artifact, so the " +
+        "pending state cannot be constructed this way any more",
+    );
+    const [suppressedPhase, suppressedRows] = suppressible[0] as [
+      string,
+      { id: string; artifact: string }[],
+    ];
+    const anchor = (suppressedRows[0] as { artifact: string }).artifact;
+    for (const row of suppressedRows) {
+      delete map[row.id];
+    }
+    writeFileSync(mapPath, JSON.stringify(map, undefined, 2));
+    rmSync(join(dir, anchor), { recursive: true, force: true });
+
     const run = runClauseMap(dir);
-    assert.equal(run.status, 0);
+    assert.equal(run.status, 0, run.stdout);
     /* DERIVED, NOT PINNED (M3-P2, same mechanism as above). This used to name
        R-094 and M3-P2 specifically, and R-094 stopped being pending on the
        day M3-P2 created gate-registry.yaml, which is its anchor. The property
@@ -536,6 +589,12 @@ test("a row whose phase is not yet in force is reported pending and does not fai
        report complete: every inventory row is either checked or pending. */
     const pending = [...run.stdout.matchAll(/^(R-[0-9]+[a-z]?) pending (M3-P[0-9]+)$/gm)];
     assert.ok(pending.length > 0, `no row was reported pending:\n${run.stdout}`);
+    /* AND THE PENDING ROWS ARE THE SUPPRESSED PHASE'S, so the construction is
+       shown to be what produced them rather than some unrelated tree state. */
+    assert.deepEqual(
+      [...new Set(pending.map((match) => match[2]))],
+      [suppressedPhase],
+    );
     const totals = /([0-9]+) rows checked, ([0-9]+) pending a phase not yet in force/.exec(
       run.stdout,
     );

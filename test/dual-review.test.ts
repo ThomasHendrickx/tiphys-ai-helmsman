@@ -403,24 +403,38 @@ test("the precondition arm answers only whether a verdict document exists, and i
   assert.match(here.stdout, /0 verdict document\(s\)/);
 });
 
-test("the check fails closed when the charter or the mode document cannot be read, rather than treating the grant as absent", () => {
-  /* AN UNKNOWN APPLICABILITY MUST NEVER RESOLVE TO "does not apply". This is
-     the arm that would turn the whole rule off silently: a context with no
-     charter reads, to a careless implementation, exactly like a context whose
-     mode does not delegate. */
-  withContext("full", SHARED_FAMILY, (dir) => {
-    rmSync(join(dir, "charter.yaml"));
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /the charter could not be read/);
-    assert.match(run.output, /decorrelation could not be evaluated/);
-  });
-  withContext("full", SHARED_FAMILY, (dir) => {
-    rmSync(join(dir, "assurance-modes.yaml"));
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /assurance-modes\.yaml could not be read/);
-  });
+test("the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent", () => {
+  /* AN UNKNOWN APPLICABILITY MUST NEVER RESOLVE TO "does not apply", and this
+     is the arm that would turn the whole rule off silently: a directory with no
+     charter reads, to a careless implementation, exactly like one whose mode
+     does not delegate.
+
+     THE REFUSAL IS AT THIS CALLER AND NOT INSIDE THE CHECK, which is a design
+     decision with a measured price behind it. The check runs on ANY verdict
+     with ANY context, and M3-P7's verdict contexts carry a plan and a work
+     history and no charter; a check that reddened on an absent charter reddened
+     eight of that phase's tests, one of them its own acceptance criterion. So
+     the check REPORTS an absent charter and this command, which is the one
+     DR-0012's grant runs through, refuses outright. Exit 21 is `error` in the
+     gate exit-code table: not green, and not a red that could be read as "the
+     reviews are correlated". */
+  for (const document of ["charter.yaml", "assurance-modes.yaml"]) {
+    withContext("full", SHARED_FAMILY, (dir) => {
+      rmSync(join(dir, document));
+      const run = runScript(dir);
+      assert.equal(run.status, 21, `${document}: ${run.output}`);
+      assert.match(run.output, /check-dual-review: error/);
+      assert.match(run.output, new RegExp(`${document} does not exist`));
+      assert.match(run.output, /reports error, never green/);
+    });
+  }
+});
+
+test("a charter that is PRESENT and wrong is a violation, which an absent one deliberately is not", () => {
+  /* THE OTHER HALF of the distinction above, and it is what stops the report
+     arm from being a hole: a document that EXISTS and is wrong is a different
+     fact from one that does not exist, and only the first is something this
+     project can be said to have got wrong. */
   withContext("full", SHARED_FAMILY, (dir) => {
     const charter = readFileSync(join(dir, "charter.yaml"), "utf8");
     writeFileSync(
@@ -430,6 +444,40 @@ test("the check fails closed when the charter or the mode document cannot be rea
     const run = runScript(dir);
     assert.equal(run.status, 1, run.output);
     assert.match(run.output, /declares delivery mode invented, which .* does not define/);
+  });
+  withContext("full", SHARED_FAMILY, (dir) => {
+    writeFileSync(join(dir, "charter.yaml"), "delivery-mode: [unclosed\n");
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /the charter is present and could not be read/);
+  });
+});
+
+test("the check REPORTS rather than fails when a context declares no delivery mode, and says so in a line a green run cannot be confused with", () => {
+  /* THE ARM THAT KEEPS M3-P7's CONTEXTS WORKING. A verdict validated against a
+     context that is not a project workspace is not evaluated against a
+     merge-authority regime, and the run says which of those two happened.
+     SC-011: "nothing to check here" and "everything checked and fine" must
+     never print the same line. */
+  withContext("full", SHARED_FAMILY, (dir) => {
+    rmSync(join(dir, "charter.yaml"));
+    const run = spawnSync(
+      process.execPath,
+      [
+        cliEntry,
+        "validate",
+        "--type",
+        "verdict",
+        "--context",
+        dir,
+        join(dir, "delivery", "review", "decorrelated-criteria.yaml"),
+      ],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    const output = `${run.stdout}${run.stderr}`;
+    assert.doesNotMatch(output, /INVALID .*dual-review-decorrelation/, output);
+    assert.match(output, /REPORT dual-review-decorrelation .* declares no delivery mode/);
+    assert.match(output, /were NOT evaluated against a\s+merge-authority regime|were NOT evaluated against a merge-authority regime/);
   });
 });
 
