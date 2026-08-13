@@ -454,3 +454,72 @@ Fix shape: reject an option the chosen subcommand does not read, the way
   `^T-[0-9]{3}$`, so no path element from the entry reaches the write. A
   filename whose stem disagrees with the id inside is accepted on read, but the
   suite's duplicate-id scan reads ids from content, so a real collision reddens.
+
+## What this review did NOT cover
+
+Named so the next reader knows where an empty result here means "not looked at"
+rather than "clean".
+
+1. **The acceptance criteria.** By contract. Reviewer A walks them. Nothing in
+   this document should be read as a criteria verdict, including where a finding
+   happens to touch a criterion.
+2. **The sixteen witness specs as a class.** I read two
+   (`witness/tuition-mechanism-evidence-required.json`,
+   `witness/doctor-retention-check.json`) and used the second's provenance note
+   to separate disclosed residues from new findings. I did NOT run the
+   red-witness gate, did not check that each spec's two members are structurally
+   different, and did not verify that any mutation reddens the tests it names.
+   "One witness is not a class" is therefore UNTESTED by me.
+3. **The full test suite.** Started under node v26.6.0 with `dist/` present via
+   `npm test`; it had not finished when this review closed, so I quote no suite
+   numbers at all. CI on the head is the authority.
+4. **The gate bundle.** I ran no `tiphys gates run`. Every green I cite is a
+   single command I ran myself, never a bundle verdict.
+5. **`test/liveness.test.ts`, `test/doctor.test.ts` and
+   `test/implementer-brief.test.ts` changes**, and the interim-index removal
+   (`test/fixtures/mechanisms-interim.md`, the `MECHANISMS.md` redirect). I read
+   the work history's residue about fifteen remaining references and did not
+   verify it.
+6. **`delivery/requirements/clause-map.json`** and the work history's own
+   citations, gates and claim greps.
+7. **Concurrency.** No probe of two `tuition add` or `tuition index` runs
+   racing on one feed. `add` uses `wx`, `index` uses a plain `writeFileSync`
+   with no temp-and-rename, so a torn index under concurrent writers is a
+   question I raise and did not test.
+8. **Non-ASCII and control-byte content inside a tuition entry**, and how
+   `yamlScalar` and `foldedBlock` render it. My round-trip fuzz covered
+   whitespace and YAML indicator characters only.
+9. **Everything about M3-P8 that is not in the diff of the branch against
+   `origin/main`**, taken from
+   `git diff --name-only origin/main...claude/m3-p8-tuition-flow` (54 files).
+
+## Verdict
+
+**Not an approval.** Eight findings, of which four are MEDIUM and reach a
+shipped artifact or a real user path under DR-0027:
+
+| id | severity | what it threatens |
+|---|---|---|
+| HRB-1 | MEDIUM | `mechanism-rule-evidence-resolves` resolves nothing for citations in `path.ext:LINE` form, this project's own binding citation grammar |
+| HRB-2 | MEDIUM | `retention` says "tracked" and tests only "not ignored"; demonstrated untracked path lost on a real clone |
+| HRB-3 | MEDIUM | a schema-valid entry makes `tuition index --check` permanently red on the file `tuition index` just wrote |
+| HRB-5 | MEDIUM | a valid `.yml` entry is dropped from the feed silently, every command green |
+| HRB-6 | MEDIUM | the retention vacuous pass is a family (`{}`, `[]`, non-string values), each defeating the `full` promotion |
+| HRB-8 | MEDIUM | the shipped index cites 16 paths, 0 of which the npm package contains; it fails this phase's own check against a pristine install |
+| HRB-4 | LOW | drift comparison blind to duplicate and unkeyed rows; a substantive injection is reported as cosmetic |
+| HRB-7 | LOW | `tuition-target-exists` resolves outside the tree and accepts a dangling symlink |
+| HRB-9 | LOW | options accepted by subcommands that ignore them; `tuition add --dir` files an entry into the wrong tree |
+
+The LOWs are tracked items, not blockers: each exits nonzero or is visible in
+output, and none lets a wrong verdict through.
+
+Two of the MEDIUMs are the same mechanism at two scopes and should be fixed as
+one: **a message word that no condition decides** (HRB-2's "tracked", HRB-4's
+"decodes to the projection", HRB-6's PASS). HRB-1 and HRB-5 are also one
+mechanism: **membership decided by a string-shape test that a valid input can
+fail silently** (the extension suffix in `pathReferencesIn`, the extension
+suffix in `listEntryFiles`).
+
+HRB-8 is the one I would raise first if only one can be taken, because it is
+about the artifact the package actually delivers to a user rather than about a
+guard.
