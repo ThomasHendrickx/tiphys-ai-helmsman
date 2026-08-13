@@ -16,6 +16,7 @@
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -692,5 +693,233 @@ test("no tuition id is claimed by both the shipped feed and the delivering proje
       false,
       `${id} was allocated by the tuition feed and the delivering log now claims it too`,
     );
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* HRB-1: the citation form this project mandates is a path reference   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `path.ext:LINE` IS THE CITATION FORM (CLAUDE.md:155, and the grammar
+ * src/gates/citations.ts:453 enforces). The check's token test asked for the
+ * extension at end-of-string, and a line number sits after it, so every
+ * citation written the way this repository REQUIRES resolved to nothing.
+ *
+ * The witness is the pair, not the single case: an entry whose paths are ALL
+ * fabricated, and the byte-identical entry with the `:LINE` suffixes removed.
+ * Before the fix the first exited 0 with no output and the second exited 1,
+ * which is the whole finding in two commands. A test that only asserted the
+ * suffixed form now resolves would stay green under a fix that broke the bare
+ * form, so both are asserted, plus the forms that must NOT be stripped.
+ */
+test("a fabricated citation is rejected whether or not it carries a :LINE suffix, and the two forms yield the same path", () => {
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md:2626 the binding rule"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+  assert.deepEqual(
+    checksModule.pathReferencesIn("src/gates/citations.ts:41-88 the grammar"),
+    ["src/gates/citations.ts"],
+  );
+  assert.deepEqual(
+    checksModule.pathReferencesIn(
+      "src/gates/citations.ts:41-88@sha256:abc123 the pinned grammar",
+    ),
+    ["src/gates/citations.ts"],
+  );
+  /* THE BARE FORM IS UNCHANGED, so a fix cannot trade one form for the other. */
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md alone"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+  /* NOT A LINE SUFFIX, so the colon stays and the token is judged as before.
+     Stripping unconditionally at the last colon would swallow these. */
+  assert.deepEqual(checksModule.pathReferencesIn("a/b.md:notaline"), []);
+  assert.deepEqual(
+    checksModule.pathReferencesIn("delivery/plan/kernel-plan-v1.md: the plan"),
+    ["delivery/plan/kernel-plan-v1.md"],
+  );
+
+  /* END TO END, through the real CLI, against trees this repository HAS, so
+     the citations are judged rather than excused as unresolvable (see the
+     sibling test below for that boundary). */
+  const dir = scratch();
+  try {
+    const entry = {
+      kind: "tuition",
+      version: 1,
+      id: "T-900",
+      project: "probe",
+      date: "2026-08-13",
+      stage: "implementation",
+      "kernel-relevant": false,
+      "what-happened": "A probe whose citations are fabricated.",
+      lesson: ["The check must see the form the rules require."],
+      mechanisms: [
+        {
+          mechanism: "Probe mechanism",
+          rule: "Do the thing the probe exists to check.",
+          evidence: [
+            "delivery/review/invented-nonexistent.md:2626 names nothing",
+            "src/invented-nonexistent.ts:41-88 also names nothing",
+          ],
+        },
+      ],
+      evidence: ["Constructed by hand for M3-P8 fix round 3."],
+    };
+    const suffixed = join(dir, "T-900.yaml");
+    writeFileSync(suffixed, yamlModule.stringify(entry));
+
+    const bare = join(dir, "T-901.yaml");
+    writeFileSync(
+      bare,
+      yamlModule.stringify(entry).replace(":2626", "").replace(":41-88", ""),
+    );
+
+    for (const [label, path] of [["suffixed", suffixed], ["bare", bare]] as const) {
+      const run = runCli(["validate", "--type", "tuition", "--context", repoRoot, path]);
+      assert.equal(run.status, 1, `${label} entry was accepted: ${run.stdout}`);
+      assert.match(
+        run.stdout,
+        /INVALID #\/mechanisms\/0\/evidence\/0 evidence names delivery\/review\/invented-nonexistent\.md, which does not exist \(check: mechanism-rule-evidence-resolves\)/,
+        `${label}: ${run.stdout}`,
+      );
+      assert.match(
+        run.stdout,
+        /INVALID #\/mechanisms\/0\/evidence\/1 evidence names src\/invented-nonexistent\.ts, which does not exist/,
+        `${label}: ${run.stdout}`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* HRB-8: the shipped feed is valid in the tree a consumer actually has */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A CITATION IS RELATIVE TO THE REPOSITORY THAT AUTHORED IT, and both derived
+ * checks resolved it against whatever context they were handed. The feed and
+ * its index SHIP; `delivery/`, `src/`, `scripts/` and `test/` do not. Measured
+ * at 26ee653 from a pristine `npm pack` extraction, the shipped index produced
+ * 16 INVALID lines and eight of the fifteen shipped entries produced more.
+ *
+ * THIS TEST STAGES THE CONSUMER TREE RATHER THAN PACKING, deliberately. `npm
+ * pack` in a test would make the suite depend on a network-capable npm and on
+ * tarball timing; what the finding is about is the SET OF TREES PRESENT, so the
+ * fixture copies the shipped feed into a directory holding only the trees
+ * `package.json`'s `files` ships. That set is DERIVED from `files` at run time,
+ * not listed here, so a future phase that starts shipping `delivery/` changes
+ * this fixture automatically instead of leaving it asserting a stale world.
+ *
+ * BOTH DIRECTIONS, because excusing everything would satisfy the first alone:
+ * every shipped document is valid in the consumer tree, AND every citation in
+ * every shipped document RESOLVES in this repository, where the trees are all
+ * present. The second is what keeps a fabricated citation catchable at
+ * authoring time, and it is asserted through the report line rather than only
+ * through the exit code, since "nothing was checked" and "everything checked
+ * and fine" are both exit 0.
+ */
+test("every shipped tuition document is valid in a consumer tree, and every citation resolves in this repository", () => {
+  const shippedTrees = (
+    JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+      files: string[];
+    }
+  ).files.filter((entry) => !entry.startsWith("!") && !entry.includes("/"));
+  assert.ok(shippedTrees.includes("tuition"), shippedTrees.join(", "));
+
+  const consumer = scratch();
+  try {
+    for (const entry of shippedTrees) {
+      const from = join(repoRoot, entry);
+      if (!existsSync(from)) {
+        continue;
+      }
+      cpSync(from, join(consumer, entry), { recursive: true });
+    }
+    /* The trees the citations name must be ABSENT here, or this fixture is not
+       the consumer view and the test proves nothing. */
+    for (const absent of ["delivery", "src", "scripts", "test"]) {
+      assert.equal(
+        existsSync(join(consumer, absent)),
+        false,
+        `${absent}/ is present in the consumer fixture, which is not a consumer tree`,
+      );
+    }
+
+    const documents = [...entryFiles(), "mechanism-index.yaml"];
+    for (const name of documents) {
+      const type = name === "mechanism-index.yaml" ? "mechanism-index" : "tuition";
+      const run = runCli([
+        "validate",
+        "--type",
+        type,
+        "--context",
+        consumer,
+        join(consumer, "tuition", name),
+      ]);
+      assert.equal(
+        run.status,
+        0,
+        `${name} is invalid in a consumer tree:\n${run.stdout}${run.stderr}`,
+      );
+      assert.doesNotMatch(run.stdout, /^INVALID /m, `${name}: ${run.stdout}`);
+    }
+
+    /* THE OTHER DIRECTION. In THIS repository every tree is present, so nothing
+       may be excused: no citation may be reported unresolvable, and the feed
+       must still be valid. A fabricated citation reddens here. */
+    for (const name of documents) {
+      const type = name === "mechanism-index.yaml" ? "mechanism-index" : "tuition";
+      const run = runCli([
+        "validate",
+        "--type",
+        type,
+        "--context",
+        repoRoot,
+        join(feedDir, name),
+      ]);
+      assert.equal(run.status, 0, `${name} is invalid in this repository:\n${run.stdout}`);
+      assert.doesNotMatch(
+        run.stdout,
+        /not resolvable in this context/,
+        `${name} has a citation this repository cannot resolve: ${run.stdout}`,
+      );
+    }
+
+    /* THE REPORT IS THE INSTRUMENT, so assert it exists and carries a count
+       rather than trusting a silent exit 0. The index is the document the
+       finding was raised against and the one roles/implementer.md mandates. */
+    const indexInConsumer = runCli([
+      "validate",
+      "--type",
+      "mechanism-index",
+      "--context",
+      consumer,
+      join(consumer, "tuition", "mechanism-index.yaml"),
+    ]);
+    assert.match(
+      indexInConsumer.stdout,
+      /^REPORT mechanism-rule-evidence-resolves \d+ citation\(s\) not resolvable in this context: no .*delivery\/.* tree here/m,
+      indexInConsumer.stdout,
+    );
+    const indexInRepo = runCli([
+      "validate",
+      "--type",
+      "mechanism-index",
+      "--context",
+      repoRoot,
+      join(feedDir, "mechanism-index.yaml"),
+    ]);
+    assert.match(
+      indexInRepo.stdout,
+      /^REPORT mechanism-rule-evidence-resolves \d+ citation\(s\) resolved$/m,
+      indexInRepo.stdout,
+    );
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
   }
 });

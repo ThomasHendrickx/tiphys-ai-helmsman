@@ -671,5 +671,8 @@
   "tuition-ids-unique-across-directories": "no tuition id is claimed by both the shipped feed and the delivering project's log",
   "doctor-retention-check": "doctor reports CHECK retention PASS for declared paths that exist and are not ignored, and FAIL naming the path once it is git-ignored",
   "doctor-retention-absent-path-and-full-profile": "doctor FAILs naming a declared retention path that does not exist, and --for full promotes an undeclared retention to FAIL",
-  "doctor-retention-not-applicable-without-a-charter": "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created"
+  "doctor-retention-not-applicable-without-a-charter": "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created",
+  "mechanism-evidence-resolves-path-line-citation": "a fabricated citation is rejected whether or not it carries a :LINE suffix, and the two forms yield the same path",
+  "tuition-feed-valid-in-a-consumer-tree": "every shipped tuition document is valid in a consumer tree, and every citation resolves in this repository",
+  "doctor-retention-no-usable-path-family": "doctor never prints PASS for a charter whose retention declares no usable path, under either profile, for any of five shapes"
 }
