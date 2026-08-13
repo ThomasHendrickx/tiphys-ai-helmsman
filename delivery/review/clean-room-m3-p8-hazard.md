@@ -7,11 +7,11 @@ protect them?
 
 Toolchain: node v26.6.0 unless stated. Started 2026-08-13.
 
-Status: IN PROGRESS. Findings appended as they are confirmed.
+Status: COMPLETE. Findings HRB-1 to HRB-9 below.
 
 ## Findings
 
-(none yet)
+See the nine numbered sections below.
 
 ### HRB-1 (MEDIUM, demonstrated) `mechanism-rule-evidence-resolves` is blind to `path.ext:LINE`, this project's own binding citation form
 
@@ -537,3 +537,24 @@ suffix in `listEntryFiles`).
 HRB-8 is the one I would raise first if only one can be taken, because it is
 about the artifact the package actually delivers to a user rather than about a
 guard.
+
+## Note on the citations in this document
+
+Three tokens here are written as resolving citations rather than quoted:
+tuition/README.md:22, test/mechanism-index.test.ts:393 and test/tuition.test.ts:9.
+All three name files that `git diff --name-only origin/main...claude/m3-p8-tuition-flow`
+lists as CHANGED by the branch, so they resolve against the BRANCH and not
+against this report's own base. That is stated rather than hidden because
+CLAUDE.md rule 3b's collision with T-019 makes the distinction load-bearing.
+
+The `citations` gate does not lint this file: its precondition is
+`citations-diff-touches-documents` and it reported
+`not-applicable ... no changed path under delivery/plan/, delivery/verification/,
+delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md`
+for a diff whose only entry is this review. Measured, evidence run
+26f8f3d06eb6c6dc8c34b8ce, `declared 1 applicable 0 not-applicable 1 error 0`.
+
+Every other path-like token in this document sits inside a probe block or names
+a lab fixture I created; none is offered as a citation.
+
+Status: COMPLETE.
