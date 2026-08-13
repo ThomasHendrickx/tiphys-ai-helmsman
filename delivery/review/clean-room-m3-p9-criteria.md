@@ -285,3 +285,218 @@ root, same toolchain and build state: **763** tests, 763 pass, 0 skipped,
 exit 0. The two-test gap is the tracked `sandbox/test/greet.test.js` pair that
 `package.json`'s test glob excludes, which is the known and explained
 difference, not a new discrepancy.
+
+## Attack point 3: is `check-dual-review` unwitnessed on every real head?
+
+MEASURED, and the implementer's account is accurate.
+
+- `node scripts/check-dual-review.mjs --precondition .` at this head prints
+  `check-dual-review: 0 verdict document(s) under delivery/review` and exits 1,
+  so the gate is NOT-APPLICABLE.
+- `delivery/review/` at this head holds 176 `.md` files and one subdirectory.
+  Zero structured verdict documents.
+- `git log --all --diff-filter=A` over `delivery/review/*.{yaml,yml,json}`
+  returns only files under `delivery/review/evidence/`, and the loader reads
+  `delivery/review` NON-recursively, so even those were never candidates. No
+  `kind: verdict` document has ever existed in this repository.
+
+WHAT THAT MEANS, and the two halves are different. The GATE contributes nothing
+on any head this repository has ever had, and will not until a phase starts
+committing structured verdicts. That is DECLARED in the registry entry's own
+comment and is the correct design: `applicability: conditional` plus a
+precondition, so it reports not-applicable-with-a-reason rather than a vacuous
+green, which is the M2-C-3 shape.
+
+The CHECK, however, is NOT unwitnessed. I exercised it directly over six
+fixtures and three broken-regime states and it answered correctly in every case
+I gave it except the one filed as CR-001 below. And a package consumer can reach
+it without `scripts/` at all: `tiphys validate --type verdict --context <dir>
+<verdict>` runs it out of the shipped `dist/`, which I confirmed by running that
+exact command and watching it name the duplicated `produced-by`.
+
+So its PASS does mean something to a consumer. What its NOT-APPLICABLE means in
+this repository is "no verdict documents exist here", which the command says in
+those words.
+
+---
+
+# FINDINGS
+
+## CR-001 (HIGH): the decorrelation check reports "distinct" on a dimension one verdict does not carry, and exits GREEN on the merge-authority path
+
+**Shipped artifact reached:** `src/checks.ts`, shipped as `dist/src/checks.js`
+in the npm tarball, the Kind B derived check `dual-review-decorrelation`.
+**User path reached:** a consumer under a mode whose `merge-authority` is
+`delegated-under-conditions` runs either the shipped `check-dual-review` gate
+from `gate-registry.yaml` or `tiphys validate --type verdict --context <dir>`
+from the shipped CLI, and is told the two reviews are decorrelated when one of
+them declares no model family, no framing, or no review contract at all.
+
+**THE MECHANISM, not the instance.** A dimension value is read off a
+sibling document with `?? ""` and compared for distinctness WITHOUT first
+establishing that the value was PRESENT. "Absent" and "a value that differs"
+therefore collapse into the same comparison, and absent silently satisfies
+distinctness. The two lines are in `src/checks.ts` (quoted, not cited, because
+the branch changes that file): the value read at the line
+`const value = String(candidate.record[dimension] ?? "");` and the grouping test
+`if (paths.length < 2) { continue; }` immediately below it.
+
+**THE DERIVATION.** The comparison is ONE loop over the exported constant
+`DECORRELATION_DIMENSIONS`, whose members are `produced-by`, `framing` and
+`review-contract`. So the mechanism reaches all three by construction, and I
+demonstrated all three rather than arguing it:
+
+| pair staged (mode `full`, `delegated-under-conditions`) | expected | MEASURED |
+|---|---|---|
+| shared `produced-by`, one side's `produced-by` REMOVED | red | **exit 0, green**, "distinct on produced-by, framing, review-contract" |
+| shared `review-contract`, one side's `review-contract` REMOVED | red | **exit 0, green**, same false line |
+| shared `framing`, one side's `framing` REMOVED | red | **exit 0, green**, same false line |
+| control: BOTH sides omit `produced-by` | red | exit 1, red (both empty, so they collide) |
+
+Three structurally different members, so this is a CLASS and not one instance.
+The control shows precisely where the hole is: symmetric absence collides and
+reddens, ASYMMETRIC absence passes. Each of the first three pairs is the exact
+fixture that reddens correctly when the field is present, so the ONLY delta is
+the missing field.
+
+**Reproduced through the shipped CLI**, which is the purest consumer path:
+`tiphys validate --type verdict --context <dir> <well-formed-verdict>` prints
+`REPORT dual-review-decorrelation 2 verdict(s) for phase M3-P9 are distinct on
+produced-by, framing, review-contract` while the sibling in that directory has
+no `produced-by` line.
+
+**THE DIVISION OF LABOUR THE SOURCE RELIES ON IS NEVER COMPOSED.** The comment
+above the check argues that the schema buys absence-freedom and that this check
+only has to decide difference. The schema really does refuse it: validating the
+malformed sibling directly prints `INVALID #/produced-by required property
+produced-by is missing`, and `produced-by`, `framing` and `review-contract` are
+all in the schema's `required` list at schemas/verdict.schema.json:13. But
+NOTHING ON THE SHIPPED PATH EVER RUNS THAT VALIDATION OVER THE SIBLINGS. The
+loader skips a file only when it fails to decode or when `kind !== "verdict"`;
+a document with `kind: verdict` and a missing required field is loaded and
+compared. I enumerated every `command:` in `gate-registry.yaml` (20 of them) and
+none validates documents under `delivery/review/`, and no module outside
+`src/checks.ts` references that directory. So the composition is asserted in a
+comment and implemented nowhere.
+
+**WHY THIS IS HIGH RATHER THAN MEDIUM.** It fails OPEN, on the merge-authority
+path, and it prints a positively FALSE sentence rather than a hedge. This is the
+project's own SC-011 rule ("could not look" must never print as "looked and
+fine") violated in the one check written to enforce decorrelation, and the
+implementer applied that exact rule to the CHARTER case in the same function
+while leaving it unapplied one field along. It is also the failure class the
+check's own header names: a run that cannot be shown to have used two families
+is reported as one that did.
+
+**WHAT MY DERIVATION DID NOT COVER.** (a) I did not test a dimension present but
+set to YAML `null` or to an empty string on one side only; by inspection both
+render as `""` through the same `?? ""` and would behave as the symmetric case
+against another empty, but I did not run it. (b) I did not test a dimension
+whose value is a non-string (a list, a map); `String()` would stringify it and I
+do not know what that yields for distinctness. (c) I did not audit the M3-P7
+checks that share the `readOperatorPath` plus `decodeDocument` plus
+`asRecord` loading shape for the same present-versus-absent collapse; that
+loading shape is used elsewhere in `src/checks.ts` and a wider sweep is
+warranted but is outside the criteria lens and outside this phase's diff.
+(d) I did not check whether `decorrelationTriple`, which uses the same `?? ""`
+for the membership test, admits a document it should not; two documents each
+missing the same field would produce equal triples, which is membership passing,
+but membership passing is not itself a wrong verdict.
+
+**Smallest fix that addresses the mechanism rather than the instance:** in the
+per-dimension loop, treat a dimension that is absent, non-string, or empty on
+ANY verdict in the group as a violation naming the file and the field, before
+the distinctness comparison runs. That is one guard covering all three
+dimensions, and its witness is any one of the three pairs above.
+
+## CR-002 (MEDIUM): `AGENTS.md` ships in the package and instructs the reader to run two files the package does not contain, and the reference checker is blind to exactly those two
+
+**Shipped artifact reached:** `AGENTS.md`, which `package.json`'s `files` adds
+to the tarball (confirmed present, 31.4kB, by `npm pack --dry-run`).
+**User path reached:** a consumer of the published package opens
+`node_modules/<pkg>/AGENTS.md`, reads the `decorrelated-review` clause's
+sentence "THE VERIFICATION IS A COMMAND, not a habit: `scripts/check-dual-review.mjs`
+reads the verdict files and exits nonzero naming the duplicated value", and
+there is no `scripts/` directory in the package.
+
+**THE DERIVATION, run against the real tarball rather than reasoned about.** I
+extracted every backticked repository path token from `AGENTS.md`, anchored or
+not, and cross-checked each against `npm pack --dry-run --json`:
+
+- 14 distinct paths named.
+- 12 carry a `#anchor`; ALL 12 exist on disk and ALL 12 are in the tarball.
+- 2 carry NO anchor: `scripts/check-agents-references.mjs` and
+  `scripts/check-dual-review.mjs`. Both exist on disk. **NEITHER is in the
+  tarball.**
+
+The two sets are IDENTICAL. The only paths the checker cannot see are exactly
+the only paths that are missing from the package.
+
+**The mechanism:** `check-agents-references.mjs`'s reference pattern requires a
+backticked `path#anchor`. A backticked path with NO anchor matches nothing and
+is therefore never resolved, never counted, and never reported. Criterion 2 as
+the plan writes it says "every path referenced by `AGENTS.md` must exist"; the
+implementation covers "every path-plus-anchor". I confirmed the count: the
+checker reports 21 references, which is the 21 anchored TOKENS across those 12
+paths, and the two anchorless paths are absent from that census.
+
+**I checked the frontmatter half separately and it is CLEAN.** All ten
+`mandated-reading` entries exist on disk and all ten are in the tarball.
+
+**Not counted as HIGH, and the reasons are stated rather than assumed.** The
+class is PRE-EXISTING on `main`: `gates.manifest.json` already names
+`scripts/check-clause-map.mjs` and `gate-registry.yaml` already names
+`scripts/render-agent-rules-gates.mjs`, both shipped, both pointing outside the
+tarball. This phase adds two more instances of a gap it did not create, and
+package completeness is explicitly M3-P10's charter. The check itself remains
+reachable by a consumer through `tiphys validate --type verdict --context`,
+which I ran successfully out of the shipped CLI, so the consumer is not without
+a route, only without the one the brief names.
+
+**Two independent fixes, either sufficient:** add `scripts` to `package.json`'s
+`files`, or make the anchorless mentions resolve by naming the CLI route the
+package actually ships. The reference checker's blindness to anchorless paths is
+worth closing in the same edit, because it is what let this reach a shipped
+document unnoticed.
+
+## CR-003 (LOW): both witness specs share the same second member, and it is a "the check does not run" mutation rather than a member of the class
+
+`witness/dual-review-distinct-model-families.json` and
+`witness/dual-review-requires-two-verdicts.json` each declare two
+`dangerousStates`. Their SECOND member is byte-identical in both:
+`if (authority !== DELEGATED_MERGE_AUTHORITY) {` to `if (true) {`. That mutation
+forces the applicability arm for every mode, so the check reports rather than
+compares, and it would redden essentially any test of this check. It is not a
+member of the class "the decorrelation comparison stops discriminating"; it is
+"the check is disabled".
+
+Each spec still satisfies the letter of the two-member rule, because its FIRST
+member is specific and structurally different from the second, and I measured
+all four members red. But the effective strength is one specific member per
+behaviour. Filed LOW because nothing shipped is wrong; a stronger second member
+would be a different way to break the comparison, for example comparing the
+dimension case-insensitively or grouping on the wrong key.
+
+## CR-004 (LOW): criterion 5b's weakening test asserts over a hand-written string
+
+Detailed under criterion 5b above. Member 1 is the literal
+`"Confirm CI is green on main after merging."` and the assertion is that the
+element patterns do not match it, which is a statement about the patterns rather
+than about the document. The red-witness rule's own words are that assertions
+must use real captured output rather than hand-written strings chosen to match
+the implementation. Filed LOW rather than higher because I MEASURED that the
+real weakening reddens: I performed both weakenings on the real `AGENTS.md` and
+both turned the neighbouring test red. The property is guarded; the test that
+claims to be the two-member witness is not the thing guarding it.
+
+## CR-005 (TRACKED): the `git archive HEAD` staging overlays only `AGENTS.md`
+
+`test/agents-policy.test.ts`'s staging tars HEAD and copies the WORKING TREE's
+`AGENTS.md` over it, but not working-tree versions of the reference TARGETS.
+This phase edits `roles/implementer.md`, which is a reference target. With
+everything committed the two agree, and I confirmed it by reproducing the head's
+exact baseline (`green (21 references resolved)`) from my own identical staging.
+A future round with uncommitted edits to a target would test HEAD's target
+against the working tree's document. Harness-only, no shipped artifact,
+therefore tracked and not a blocker.
+
