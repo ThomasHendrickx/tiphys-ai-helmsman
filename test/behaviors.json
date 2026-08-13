@@ -649,5 +649,6 @@
   "verdict-records-review-contract": "a complete hazard verdict validates through the CLI, and --type auto resolves it",
   "verdict-criteria-completeness": "a verdict omitting an acceptance criterion of its phase is rejected naming the check, and passes with the check deregistered",
   "verdict-deviations-completeness": "a verdict omitting a deviation declared in the work history is rejected naming the check, and passes with the check deregistered",
-  "verdict-hazard-classes-completeness": "a hazard verdict omitting a declared hazard class is rejected naming the class and the check, and passes with the check deregistered"
+  "verdict-hazard-classes-completeness": "a hazard verdict omitting a declared hazard class is rejected naming the class and the check, and passes with the check deregistered",
+  "checklist-extra-probe-evidence-required": "an extra probe that requires no evidence is refused, whether the field is absent or false"
 }

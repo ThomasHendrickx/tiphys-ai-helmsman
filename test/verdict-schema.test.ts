@@ -283,7 +283,17 @@ test("APPROVE with a finding of severity critical is rejected too, which is wide
     {
       id: "CR-002",
       severity: "critical",
-      evidence: ["src/teardown.ts:44, the destroy runs before the branch check"],
+      /* THE CITED PATH IS FIXTURE PROSE and it is chosen, not incidental.
+         The red-witness gate's rule (e) derives a witness's class by matching
+         every entry of `gates.manifest.json`'s destructiveCommands list as a
+         SUBSTRING of the whole source of any file holding a named test. It
+         does not parse, so an illustrative file:line inside a sample finding
+         reads exactly like an invocation. No test in this file runs, imports
+         or spawns any destructive command, so the true class of the four
+         verdict witnesses is additive; an entry of that list appearing here
+         would make the derived class destructive and the declaration false.
+         Cite a module outside that list. */
+      evidence: ["src/lock.ts:44, the lease is renewed before its expiry is read"],
       "concrete-fix": "Check the branch for unpushed commits before destroying.",
     },
   ];
@@ -335,7 +345,9 @@ test("a FIX-ROUND-NEEDED finding with no concrete-fix is rejected, and is accept
     {
       id: "CR-005",
       severity: "medium",
-      evidence: ["src/pool.ts:88, two acquirers can both observe a free slot"],
+      /* Fixture prose, and outside the destructiveCommands list for the
+         reason recorded on the finding above. */
+      evidence: ["src/watcher.ts:88, two passes can both observe one wake"],
     },
   ];
   assertKeywordGuards(

@@ -1,9 +1,8 @@
 {
-  "id": "checklist-extra-probe-refusals",
+  "id": "checklist-extra-probe-collision-guard",
   "behavior": "checklist-extra-probe-collision",
   "tests": [
-    "an extra file reusing a canonical probe id is a collision naming both sources",
-    "an extra probe that requires no evidence is refused, whether the field is absent or false"
+    "an extra file reusing a canonical probe id is a collision naming both sources"
   ],
   "class": "additive",
   "deterministic": true,
@@ -18,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/checklists.ts",
-      "find": "    if (!probe.evidenceRequired) {",
-      "replace": "    if (!probe.evidenceRequired && false) {"
+      "find": "  for (const probe of canonical.probes) {\n    bySourceId.set(probe.id, probe);\n  }",
+      "replace": "  for (const probe of canonical.probes) {\n    void probe;\n  }"
     }
   ]
 }

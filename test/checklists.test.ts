@@ -847,6 +847,53 @@ test("the fix-round framing resolves fix-round-not-covered first, and moving tha
     "moving the probe later left the resolved head unchanged, so the ordering is not a property of position",
   );
   assert.equal(head.id, "fix-round-mechanism-named");
+
+  /* THE ARM NEITHER DIRECTION ABOVE REACHES, and the red-witness gate is what
+     found that rather than a reader. `fix-round-not-covered` is ALSO probe 1
+     in the shipped FILE, and the fix-round framing's first scope is that
+     probe's scope, so file order and framing order agree head for head. Both
+     assertions above are therefore satisfied by a resolver that applies no
+     framing at all: measured, defanging the scope match in orderUnderFraming
+     and bypassing the call entirely BOTH leave them green.
+
+     That is the phase's own hazard class exactly ("first in the file and not
+     first in the resolved output"), so the criterion needs a construction the
+     file order cannot satisfy. A NON-fix-round probe is hoisted to the FRONT
+     of a decoded copy, which makes the file head and the framing head
+     disagree; only a resolver that orders by the framing's scopes still puts
+     `fix-round-not-covered` first. */
+  const hoistedDocument = readShipped("clean-room");
+  const hoistedProbes = probesOf(hoistedDocument);
+  const criteriaIndex = hoistedProbes.findIndex(
+    (probe) => probe["id"] === "criteria-walked-with-evidence",
+  );
+  assert.notEqual(criteriaIndex, -1);
+  const [hoisted] = hoistedProbes.splice(criteriaIndex, 1);
+  hoistedProbes.unshift(hoisted as Record<string, unknown>);
+  assert.notEqual(
+    (hoistedProbes[0] as Record<string, unknown>)["applies-to"],
+    "fix-round",
+    "the hoisted probe must not be fix-round scoped, or the file and the framing would agree again and this assertion would reach nothing",
+  );
+
+  const hoistedProjected = checklistsModule.projectChecklist(
+    hoistedDocument,
+    "hoisted.yaml",
+    "hoisted.yaml",
+  );
+  assert.equal(hoistedProjected.ok, true);
+  const hoistedResolved = checklistsModule.resolveChecklist({
+    checklist: (hoistedProjected as { ok: true; value: Checklist }).value,
+    framingId: "fix-round",
+  });
+  assert.equal(hoistedResolved.ok, true);
+  const hoistedHead = (hoistedResolved as { ok: true; value: { probes: Probe[] } }).value
+    .probes[0] as Probe;
+  assert.equal(
+    hoistedHead.id,
+    "fix-round-not-covered",
+    `with a non-fix-round probe first in the file the head follows the framing only if the resolver orders by scope, and it resolved ${hoistedHead.id}`,
+  );
 });
 
 test("a framing drops no probe, it only reorders", () => {
@@ -1095,6 +1142,12 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "checklist-duplicate-probe-id-rejected",
     "checklist-extra-probe-merge",
     "checklist-extra-probe-collision",
+    /* Criterion 2 delivers "an extra probe without evidence-required exits
+       nonzero" as its own direction, and the plan's new-behaviors list never
+       allocated it an id, so the arm was tested and unregistered. Registered
+       in fix round 1 because the red-witness split needs a behavior for the
+       witness that guards it to name. */
+    "checklist-extra-probe-evidence-required",
     "gate-registry-probes-resolve",
     "checklist-framings-differ",
     "checklist-probe-text-specific",
