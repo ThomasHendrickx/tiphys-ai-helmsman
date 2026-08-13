@@ -375,3 +375,182 @@ rather than printing a list whose lookups are ambiguous.
     INVALID #/probes/5/id probe id criteria-walked-with-evidence is already
     declared at #/probes/4/id ... (check: checklist-probe-ids-unique)
     EXIT=1
+
+## The fix round's own claims, re-derived rather than taken
+
+The round's stated mechanism is the harness's red predicate, quoted from
+src/witness/run.ts:886 (byte-identical on `main` and on the branch, checked with
+`cmp`):
+
+    red: exitCode !== 0 && failed.length === tests.length,
+
+A member is red only when EVERY test the spec names fails, so a spec whose
+members map one-to-one onto its named tests reddens no member. The round's
+table claims four two-test specs are safe and two were not. I re-measured all
+four surviving two-test specs by applying each declared member to the working
+tree and running the spec's named tests:
+
+| spec | member 0 | member 1 |
+|---|---|---|
+| `checklist-framing-orders-by-position` | both named tests `not ok` | both `not ok` |
+| `checklist-orphan-probe-detection` | both `not ok` | both `not ok` |
+| `checklist-gate-probes-registry-direction` | both `not ok` | both `not ok` |
+| `verdict-type-registered` | both `not ok` | both `not ok` |
+
+Every mutation was reverted from a pristine copy; `git status --porcelain` is
+empty at the end.
+
+Cause B re-derived independently: no `destructiveCommands` entry appears as a
+substring anywhere in `test/verdict-schema.test.ts` or `test/checklists.test.ts`
+at this head. The round's claim holds.
+
+Claim grep over the work history, both forms:
+
+    grep -nEi '...' delivery/work-history/m3-p7.md    -> 11 matching lines
+    tr '\n' ' ' | grep -oEi '...'                     -> 11 occurrences
+                                                         (3 "cannot be", 8 "never")
+
+Line-visible count equals total, so nothing is hidden by a wrap.
+
+## Findings
+
+### CR-01 (LOW): criteria 1 and 4e name a command that exits 1 as written
+
+The criteria say `tiphys validate --type checklist` exits 0 on the checklists,
+and `tiphys validate --type checklist checklists/hazard-review.yaml` exits 0.
+Measured, both exit 1 with `SKIPPED gate-probes-resolve no context`; they exit 0
+only with `--context`.
+
+Why this is LOW and not a blocker: the behaviour is the merged convention from
+M3-P3, reproduced in the same worktree on an artifact this branch does not
+touch (`validate --type assurance-modes assurance-modes.yaml` -> three SKIPPED
+lines, exit 1). A cross-document check that could pass by not running is the
+vacuous shape the derived-check mechanism exists against, so exiting nonzero is
+the right behaviour and the criterion's wording is what is loose. Nothing a user
+does breaks; the diagnostic names the missing input.
+
+Concrete fix: none required in code. If anything is edited, it is the criteria's
+wording in the plan, and that is the orchestrator's call, not a fix round.
+
+### CR-02 (LOW): a framing whose scopes are all misspelled validates, and
+`--framing` becomes cosmetic
+
+`orderUnderFraming` groups probes by `applies-to` and leaves unmatched probes in
+file order, and nothing validates that a framing's `orders-probes` entries name
+scopes any probe carries. `schemas/checklist.schema.json` constrains those
+entries only to the token pattern.
+
+Measured, by appending one framing to a COPY of the shipped clean-room
+checklist whose two scopes are `destructive-commands` and `blast-radiuss`
+(both misspelled):
+
+    validate --type checklist --context <ctx> <copy>   EXIT=0
+    NO framing         -> head: fix-round-not-covered
+    --framing all-typo -> head: fix-round-not-covered
+    identical order to no-framing: true
+
+That is the phase's own hazard-class item word for word ("a framing that
+reorders the list without changing the ENTRY POINT, so `--framing` is cosmetic
+and the T-001 decorrelation is nominal"). Criterion 4c reddens against it for
+the two SHIPPED framings, which a test asserts and which I re-measured, so
+nothing shipped today is cosmetic. What has no guard is the CLASS: a framing
+added by a later phase.
+
+Why LOW rather than MEDIUM under DR-0027: reaching it requires an authoring
+mistake in a future shipped checklist, and a kernel user has no way to make one,
+because `--extra` does not introduce framings. Settled by construction rather
+than asserted: an extra file carrying its own `framings[]` is itself a valid
+checklist document, and the framing it declares is still unreachable.
+
+    $ node bin/tiphys.ts validate --type checklist --context <ctx> <extra-with-framing>
+    EXIT=0
+    $ node bin/tiphys.ts checklist resolve --checklist clean-room \
+        --extra <extra-with-framing> --framing user-supplied-framing
+    tiphys checklist: .../checklists/clean-room.yaml declares no framing
+    user-supplied-framing; it declares criteria-contract, destructive-paths, fix-round
+    EXIT=1
+    $ ... same --extra without --framing
+    EXIT=0, probes 24
+
+So the extra probe merges and the extra framing does not. It threatens a future
+phase's artifact, not a user path.
+
+Concrete fix, if taken: a derived check for type `checklist` asserting every
+`framings[].orders-probes` entry equals some probe's `applies-to`, and a
+witness with two members (one scope wrong, all scopes wrong). Roughly the size
+of `checklist-probe-ids-unique`.
+
+### CR-03 (LOW): `verifies-gate` may name a gate that verifies nothing by
+checklist
+
+A probe carrying `verifies-gate: suite` validates, because the check asks only
+that the named gate id exists in the registry.
+
+    <clean-room copy + probe "bogus-backref" verifies-gate: suite>   EXIT=0
+
+Criterion 3c asks exactly for "resolves to a gate id present in
+`gate-registry.yaml`", so this is inside the criterion and not a miss. It is
+recorded because the back-reference reads as an assertion of a relationship the
+registry does not have: `suite` is a script gate and names no probe. No gate
+run consumes the field, so nothing breaks.
+
+Concrete fix, if taken: tighten the same check to require the named gate's
+`verified-by` to be a `-checklist` verifier. One added condition where the
+`endsWith("-checklist")` test already sits.
+
+### Measurement hazard worth recording (not a finding against the phase)
+
+`node --test --test-name-pattern <pattern>` reports `tests 1 / pass 1 / fail 0`
+when the pattern matches NOTHING. Measured on node v26.6.0 in this worktree with
+`^this test name does not exist anywhere$`. So a green from a mistyped pattern is
+indistinguishable from a green from a passing test, and any control run that
+reads only the counters is worthless. Every control above was re-read from TAP
+`ok <n> - <name>` lines instead. This is node's behaviour and not this phase's,
+but it bit me once in this review and it is the same shape as the guard-that-
+cannot-go-red the repository keeps paying for.
+
+## What this review did NOT cover
+
+- **The `red-witness` gate itself was not re-run here.** CI is reported green by
+  step at 4bfa790 and I took that for the gate bundle. What I did instead is
+  re-measure the four multi-test witness specs member by member, which is the
+  arm the fix round was about. The other 30-odd stored witnesses were not
+  re-evaluated by me.
+- **The CI push arm was not observed.** T-009: a gate result is evidence only
+  for the configuration it ran under, and the post-merge `push` run on the new
+  `main` head is the orchestrator's to watch.
+- **Probe QUALITY is out of scope and no execution decides it.** Criterion 3b
+  and 4f constrain the text of eight probes; the other twenty-two in
+  `checklists/` and the twenty in the other four files are prose I read but did
+  not test. The phase declares this residue and so does the plan.
+- **The scope, citations, brief-drift and agent-rules-drift gates were not run
+  by me.** They are in the CI bundle and are reported green by step.
+- **I did not exercise `--extra` against the four non-clean-room checklists**,
+  nor `--framing` against them (none declares `framings[]`).
+- **The verdict checks were exercised against a context I staged from
+  `templates/plan.example.yaml` and the work-history template re-pointed at
+  phase `M9-P1`**, which is the same shape the implementer used. I did not build
+  a context from a real kernel plan document.
+- **One unexplained observation, left open rather than dressed as a finding.**
+  A single `git diff --stat` in this session reported
+  `checklists/clean-room.yaml | 2 +-` immediately after a test run, while
+  `git status --porcelain` was empty a moment later and the file's md5 matched
+  HEAD. I could not reproduce it in a dedicated run of the whole
+  `test/checklists.test.ts` file, and I found no writer: every write in that
+  file goes to a `mkdtemp` scratch directory. I state it as an open question,
+  not as a defect.
+
+## Verdict
+
+APPROVE.
+
+Thirteen acceptance criteria (1, 2, 3, 3b, 3c, 4, 4b, 4c, 4d, 4e, 4f, 5, 6) were
+walked by direct execution. Every one is discharged, with the single caveat that
+criteria 1 and 4e name a command that needs `--context` to exit 0, which is a
+pre-existing repository convention rather than a defect in this phase (CR-01).
+
+The two things this review was asked to distrust both held under independent
+measurement: the fix round's re-shaped witnesses redden on every member and
+every named test, and the criterion-4d test now reaches the arm that file order
+alone used to satisfy. Three LOW findings are recorded; none reaches a shipped
+artifact through a real user path, and per DR-0027 none blocks a merge.
