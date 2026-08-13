@@ -236,3 +236,142 @@ Check, all three captures plus the contract discrimination:
 That last row is the strong form of "a criteria verdict is unaffected": the
 green comes from the contract discriminating, not from the check being inert.
 DISCHARGED.
+
+## Criterion 3b: probe-text specificity, both directions
+
+EXECUTED. The tests assert the required substrings AND assert that a generic
+rewrite fails the same predicate, but that negative control lives inside the
+test rather than in the shipped file, so I weakened the SHIPPED probe text
+instead and re-ran the named tests. Controls first, read from TAP `ok` lines so
+a pattern that matched nothing could not read as green (see the measurement
+note below):
+
+    ok 1 - the R-027 probe carries the process document's own zero illustration ...
+    ok 1 - the R-055 correctness probes are separate entries naming negative, zero, empty and unicode
+    ok 1 - the destructive-authority probe names all three of its questions and cites destructiveCommands by name
+    ok 1 - the R-059 and R-093 probes name a consumer-search action rather than asking a bare question
+    ok 1 - the R-066 flake-playbook probes name the three-consecutive-reds threshold
+
+Then, one weakening at a time, each restored from a pristine copy afterwards:
+
+| probe replaced with the plan's own generic phrasing | result |
+|---|---|
+| `fix-shape-state-that-cannot-exit` (R-027) | `not ok` |
+| `correctness-zero` (R-055) | `not ok` |
+| `destructive-authority-declared` | `not ok` |
+| `blast-radius-consumers` (R-059) | `not ok` |
+| `shared-consumer-render-and-decide` (R-093) | `not ok` |
+| `flake-three-consecutive-reds` (R-066) | `not ok` |
+
+The third question of `destructive-authority-declared` is answerable: the list
+it tells the reviewer to open is really there.
+
+    $ node -e 'console.log(JSON.stringify(require("./gates.manifest.json").destructiveCommands))'
+    ["pool destroy","teardown","src/pool.ts","src/teardown.ts"]
+
+and that array is at gates.manifest.json:189, unchanged by this branch.
+All five sets the criterion names. DISCHARGED.
+
+## Criterion 4f: the two unexecuted-claim probes (T-006)
+
+EXECUTED, same method. Controls green; weakened to "Check claims are
+supported.":
+
+    claim-impossibility-constructed -> not ok
+    claim-coverage-constructed      -> not ok
+    class-witness-has-two-members   -> not ok  (weakened to "Check that class
+                                                tests are adequate.")
+
+Two structurally different members. DISCHARGED.
+
+## Criterion 5: the harness evidence fixture
+
+EXECUTED, and checked for provenance rather than shape alone.
+
+    $ git cat-file -t ce819fd && git cat-file -t ec77c7d      # both commit
+    ce819fd Exit-test harness: assert over the bundle's rows, not only over the expectation table (#109)
+    ec77c7d M3-P6: delivery-role briefs, the mechanism index seed, and the brief gate-list drift check (#105)
+
+The fixture's `base` and `head` are the full shas of those two commits, its
+single evaluation names `witness/modes-type-registered.json`, its two members
+each record three runs with exit codes 1/1/0 and `red` true/true/false, and its
+`appliedDiff` carries `index 4431a7d..` for `src/commands/validate.ts`, which is
+the same pre-image blob the branch's own diff of that file shows. Those are
+facts a hand-written file would have had to get right by coincidence.
+
+The provenance note's kept-field list checked against the file: `headGreen` and
+`baselineSha` are per-MEMBER fields and both are present (`headGreen: true`,
+`baselineSha: ce819fd...`). The note is accurate.
+
+Reachability of the guarding test, measured:
+
+| mutation | result |
+|---|---|
+| pristine | `ok 1 - the red-witness fixture is a real captured harness evidence file...` |
+| one run's `exitCode` flipped to 0 while `red` stays true | `not ok` |
+| `dangerousStates[0].find` edited in witness/modes-type-registered.json:8 | `not ok` |
+
+The second mutation is the staleness coupling the fixture's own note declares.
+DISCHARGED.
+
+## Criterion 6: suite, clause map, behaviors
+
+EXECUTED.
+
+    $ node scripts/check-clause-map.mjs --evidence <dir>
+    clause-map: green (60 clause-map rows checked)
+    60 rows checked, 14 pending a phase not yet in force
+    EXIT=0
+
+The clause map is keyed by requirement id; the thirteen this phase appends are
+R-026b, R-027, R-028a, R-050b, R-053, R-054, R-055, R-056a, R-057b, R-059,
+R-060, R-066, R-093, which is exactly the citations list at
+delivery/plan/kernel-plan-m3.md:3970. Earlier mappings still resolve (the run is
+whole-file).
+
+Behaviors: the plan declares 24 new behavior ids for this phase; all 24 are
+present in the registry (`MISSING: []`), plus the one the fix round added.
+
+Suite: 688 tests, 688 pass, 0 fail, 0 SKIPPED, exit 0, node v26.6.0, `dist/`
+built, invocation `npm test`. DISCHARGED.
+
+## Beyond the criteria: does this work for a USER of the kernel?
+
+The criteria are all about the repository tree. A kernel user gets a tarball, so
+I packed and installed one.
+
+    $ npm pack --pack-destination <dir>              exit 0, 160 files
+    $ npm init -y && npm install ./tiphys-kernel-0.0.0.tgz     exit 0
+
+`package.json`'s `files` carries `checklists`, and all five checklists plus both
+new schemas are in the tarball. From the installed package:
+
+| command | exit |
+|---|---|
+| `tiphys checklist resolve --checklist clean-room` | 0, 48 lines, head `fix-round-not-covered` |
+| `tiphys checklist resolve --checklist hazard-review` | 0, head `hazard-classes-addressed` |
+| `tiphys checklist resolve --checklist clean-room --framing fix-round` | 0, head `fix-round-not-covered` |
+| `tiphys checklist resolve --checklist clean-room --extra <colliding>` | 1, names both sources |
+| `tiphys validate --type checklist --context <pkg> <pkg>/checklists/clean-room.yaml` | 0 |
+| `tiphys validate --type checklist --context <pkg> <pkg>/checklists/hazard-review.yaml` | 0 |
+| `tiphys validate --type verdict --context <ctx> <APPROVE+high>` | 1 |
+| `tiphys validate --type verdict --context <ctx> <complete>` | 0 |
+
+So `packageRoot()` resolves `checklists/` correctly from `dist/` inside an
+installed package. Nothing is broken for a consumer.
+
+Two operator-path hazards probed directly, both handled:
+
+    --extra <a real mkfifo>   -> exit 1 in under 20s, "is a named pipe, not a
+                                 regular file, so it was not opened" (no hang)
+    --extra <a directory>     -> exit 1, "is a directory, not a regular file"
+
+And `checklist resolve` validates the CANONICAL checklist before serving it:
+with a duplicate probe id injected into the shipped file, the command refuses
+rather than printing a list whose lookups are ambiguous.
+
+    tiphys checklist: .../checklists/clean-room.yaml is not a valid checklist
+    document, so it is not served
+    INVALID #/probes/5/id probe id criteria-walked-with-evidence is already
+    declared at #/probes/4/id ... (check: checklist-probe-ids-unique)
+    EXIT=1
