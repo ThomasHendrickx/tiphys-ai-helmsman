@@ -7,12 +7,13 @@ acceptance-criteria walk (reviewer A holds that half).
 Question asked of every shipped surface: what does this ship that could hurt a
 user of the kernel, or silently fail to protect them?
 
-Status: IN PROGRESS (this file is appended as the review proceeds; its mtime is
-the beacon required by CLAUDE.md:397).
+Status: COMPLETE. Written incrementally and committed after each finding; its
+mtime was the beacon required by CLAUDE.md:440.
+
+Toolchain for every capture below: node v26.6.0, worktree at head 4bfa790,
+`dist/` built. Scratch lab at `RVB-lab`, referred to as `$L`.
 
 ## Findings
-
-(none yet)
 
 ### H-1 (MEDIUM, reachable on a real user path): `hazard-classes-addressed[].finding` is a dangling reference, and it bypasses the one escalation rule the verdict schema ships
 
@@ -244,3 +245,120 @@ REACHABILITY: a future editor of `checklists/clean-room.yaml`. Under DR-0027
 that is a tracked item, not a blocker, and I am saying so explicitly. The fix is
 one assertion, either "a shipped checklist's `id` equals its filename" or "every
 `clean-room-checklist` registry entry is claimed by some shipped checklist".
+
+## Questions, not findings
+
+Labelled separately because I could construct the input but could not settle
+whether the behaviour is wrong.
+
+**Q-1. A criterion recorded `met: false` in an APPROVE verdict with an empty
+`findings` list passes everything.**
+
+```
+$ node bin/tiphys.ts validate --type verdict --context $L $L/v-notmet.yaml
+EXIT=0
+```
+
+I am NOT calling this a finding, because the shipped clean-room checklist's own
+`criteria-walked-with-evidence` probe text says a criterion discharged by a
+CI-deferred reason is recorded not-met, and a criterion the reviewer could not
+evaluate is recorded not-met rather than omitted. So not-met inside an APPROVE
+is a state the design intends. The open question is whether anything downstream
+distinguishes "not-met because CI-deferred" from "not-met because it failed",
+since the schema records one boolean for both.
+
+**Q-2. An extra probe file whose `id` happens to be `clean-room` is refused,
+and the message reads as though the extra file owed the canonical gate probes.**
+
+```
+$ node bin/tiphys.ts checklist resolve --checklist clean-room --extra extra-named.yaml
+EXIT=1
+tiphys checklist: .../extra-named.yaml is not a valid checklist document, so it is not merged
+INVALID #/probes gate fixtures-for-changed-component-states in .../gate-registry.yaml names probe fixtures-for-changed-component-states, which no probe in this checklist declares (check: gate-probes-resolve)
+INVALID #/probes gate unit-tests-for-changed-service-methods in .../gate-registry.yaml names probe unit-tests-for-changed-service-methods, which no probe in this checklist declares (check: gate-probes-resolve)
+```
+
+Fail-closed, so it is not a hazard. Naming a per-phase extras file after the
+checklist it extends looks like a plausible thing for an orchestrator to do,
+and the diagnosis does not say "the id `clean-room` is taken by the shipped
+checklist". Worth one sentence in the message if the round is opened anyway.
+
+**Q-3. A `criteria` verdict may carry a `hazard-classes-addressed` array, and it
+is then asserted against by nothing.** Root `oneOf` branch A constrains only
+`review-contract`, and `verdictHazardClassesAddressed` returns early for any
+contract that is not `hazard`. I did not construct this one; it is read from the
+schema and the check body. The early return is deliberate and documented, so
+the question is only whether branch A should forbid the field outright.
+
+## What I checked and found sound
+
+Recorded so the not-covered section below is not mistaken for the whole of what
+was looked at.
+
+- `requiresContext` cannot pass by not running. `runChecks` pushes a
+  `SKIPPED <id> no context` line and sets `failed`, measured:
+  `validate --type verdict` without `--context` printed three SKIPPED lines and
+  exited 1.
+- The one escalation rule that exists does fire: a `high` finding in `findings[]`
+  with `verdict: APPROVE` was refused, exit 1, both the `if`/`then` line and the
+  enum line.
+- A named pipe at `--extra` is classified before it is opened: exit 1 with "is a
+  named pipe, not a regular file, so it was not opened", and the command did not
+  block (10s timeout unused).
+- An extra probe carrying `verifies-gate: no-such-gate` is refused before it is
+  merged, exit 1, direction 2 of `gate-probes-resolve`.
+- Duplicate probe ids are refused and the message names BOTH positions.
+- The append-only-registry trap is avoided: the "every shipped checklist
+  validates" test enumerates by `shippedChecklistIds()` rather than a hand list,
+  and the additions to `test/behaviors.json` and
+  `delivery/requirements/clause-map.json` are appends with no count pinned
+  against them.
+- The new directory reaches an installed user. `npm pack --dry-run --json`
+  reports 160 files including all five `checklists/*.yaml` and both new schemas,
+  so `checklist resolve`, which reads `checklists/` from the package root at run
+  time, is not broken by the publish step.
+- Suite, with the complete sentence CLAUDE.md asks for: `npm test`, node
+  v26.6.0, `dist/` built (`npm run build` exit 0, `git status --short` empty
+  after it), 688 tests, 688 pass, 0 fail, 0 SKIPPED.
+
+## What this review did NOT cover
+
+- **The acceptance criteria.** By contract; reviewer A walks those. Nothing here
+  should be read as evidence for or against any criterion being met.
+- **The prose quality of the 49 shipped probes.** Whether a probe's text is
+  specific enough to make a reviewer open a file is criterion 3b's territory and
+  I did not assess it.
+- **The witness specs.** I read which arms of `gate-probes-resolve` have
+  reddening tests, and used that to observe that the checklist-`id` arm has
+  none. I did not evaluate any witness spec for red-witness quality.
+- **The work history.** I did not run the fix-round contract or the claim grep
+  over `delivery/work-history/m3-p7.md`.
+- **`--type auto` resolution** for the two new `kind` discriminators.
+- **The default toolchain.** Everything above is node v26.6.0 only; I did not
+  measure the node 22 arm, so I cannot speak to floor-gated skips here.
+- **CI event arms (T-009).** I ran nothing against the `push` arm and did not
+  read the post-merge run.
+- **`test/fixtures/red-witness-evidence.*` provenance.** I confirmed the test
+  reads a static fixture rather than the live witness registry, and did not
+  audit how the fixture was captured.
+
+## Verdict
+
+**FIX-ROUND-NEEDED**, on H-1.
+
+| id | severity | reachability | blocks |
+|---|---|---|---|
+| H-1 dangling `hazard-classes-addressed[].finding` | MEDIUM | real user path (the only path the verdict type has), and it detours the one escalation rule | YES |
+| H-2 framing id collisions are silent | MEDIUM | member 2 measured end to end through the CLI on R-054's own use case | recommended in the same round; the fix is one message |
+| H-3 dangling framing scope | MEDIUM | future editor of a shipped checklist; no shipped artifact is wrong today | tracked item (DR-0027) |
+| H-4 checklist `id` divergence disarms direction 1 | MEDIUM | future editor of the data the guard reads | tracked item (DR-0027) |
+
+H-1 is the one I would not merge without. Everything this phase ships exists so
+that a review cannot look complete while a hazard goes unrecorded, and a hazard
+verdict can currently say "this class produced finding F-1", carry no F-1, say
+APPROVE, and pass. The guard that would have caught it is present and correct;
+it reads the wrong array.
+
+Reachability language above follows DR-0027: a gap reachable solely by a future
+editor of the guard is a tracked item, not a blocker
+(delivery/decisions/DR-0027-reviews-target-shipped-value-not-ceremony.md:45).
