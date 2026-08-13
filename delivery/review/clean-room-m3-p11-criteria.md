@@ -525,3 +525,23 @@ I would approve on: the amendment note reaching the runner's stdout on a green
 scope row (C-1), a decision recorded on C-2 (refusing a directory prefix at
 head, or scoping the addition rule to literal paths, or accepting it in writing
 with the reason), and the two work-history corrections.
+
+## Overlap check against the hazard lens, done last
+
+The hazard report was opened only after everything above was written and
+committed. Checked against it:
+
+- **C-1 is not in it.** Its treatment of the new stdout stream is a LOW about
+  newline forgery in `singleLine`, and elsewhere it reads the stdout half as
+  working, which it is on the `error` rows it was exercising. The green-row
+  case is untouched there.
+- **C-2 is not in it either, and it credits the mechanism to M-1.** Its
+  section on change 3 walks removal by rename, whole-declaration deletion and
+  a field-mismatched move, all of which held, and then records M-1 for the
+  directory prefix. It does not follow the prefix into the declarations
+  directory, where the per-phase scope of the removal check is what makes the
+  consequence different in kind from "unbounded scope over a tree".
+- **C-3 and C-4 are work-history accuracy findings and appear in neither.**
+
+Nothing in this review contradicts a hazard finding. H-1 stands independently
+of everything here, and it is the more serious of the two lenses' results.
