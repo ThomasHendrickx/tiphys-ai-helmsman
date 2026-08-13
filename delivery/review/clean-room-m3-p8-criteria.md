@@ -177,3 +177,241 @@ The fix-round-2 cost is real and correctly bounded as stated: `PROFILES.full` is
 is `node, git, gh, layout, remote, lock, beacon, identity, retention` and none
 of the other eight reads the charter, so nothing else in the kernel at M3
 asserts realization either. That matches what the work history claims.
+
+## Criterion 9: the two migration-ticket ids do not collide
+
+DISCHARGED AS THE PLAN SCOPES IT; the wider claim its behaviour registration
+makes is not (finding CR-2).
+
+Independent scan: the feed holds fifteen ids, the delivering log holds twenty,
+`T-021` and `T-022` are in the feed and in neither position of the log. The
+registered test asserts both by name.
+
+## Criterion 10: suite and clause map
+
+DISCHARGED.
+
+Suite sentence with all three axes: node **v26.6.0** (scratch prefix), build
+state **`dist/` PRESENT** (`npm run build` exit 0, `git status --porcelain`
+empty afterwards), invocation **`npm test`**: **710 tests, 710 pass, 0 fail, 0
+SKIPPED**, exit 0. That reproduces the integration's number exactly.
+
+Gates re-run at this head, one at a time, so each number is a gate-level
+measurement rather than a bundle-level green (T-009 one scope down):
+
+| gate | verdict | units | vacuous |
+|---|---|---|---|
+| `scope` | green | 55 changed paths audited | false |
+| `clause-map` | green | 63 clause-map rows checked | false |
+| `coverage` | green | 115 finding ids checked | false |
+| `manifest-self-check` | green | 8 | false |
+| `agent-rules-drift` | green | 18 | false |
+| `brief-drift` | green | 15 | false |
+| `citations` | not-applicable | 0 | false |
+
+`scope` is green because the declaration on `origin/main` already carries
+`test/liveness.test.ts` and `test/implementer-brief.test.ts` in
+`declaredExtras`. The clause map carries this phase's three rows: R-070 ->
+`tuition/README.md`, R-091 -> `schemas/tuition.schema.json`, R-098 ->
+`src/commands/doctor.ts`.
+
+## Witness spot-check: do the tests reach the behaviour
+
+The fix-round-2 witness is the one most worth re-measuring, because round 2 is
+where the doctor condition was split. All three of its members were applied to
+`src/commands/doctor.ts` in the working tree and the named test run under
+`--test-reporter tap`, reading `ok`/`not ok` lines rather than the summary
+counts:
+
+```
+control            ok 1 - doctor reports retention not applicable, never FAIL under --for full, ...
+member 0           not ok 1 - ...   (condition id folded back into retention-undeclared)
+member 1           not ok 1 - ...   (retention-not-applicable promoted in PROFILES.full)
+member 2           not ok 1 - ...   (the not-applicable verdict turned into PASS)
+restored control   ok 1 - ...
+```
+
+All three find-strings were confirmed present in the file before mutating, so
+none is a stale mutation that silently applies nothing.
+
+## FINDINGS
+
+### CR-1, MEDIUM: `CHECK retention PASS` on a charter that declares no usable retention path
+
+**Shipped behaviour threatened:** the `retention` doctor check (R-098), this
+phase's step 7, in both the generic and the `full` profile.
+
+The check builds its path list with
+
+```
+Object.values(retention).filter(v => typeof v === "string" && v !== "")
+```
+
+and then, if the list is empty, falls through the loop and returns PASS with
+`0 declared retention path(s) present and tracked`. Measured against a real
+fleet (`tiphys init` plus a hand-written charter), THREE structurally different
+shapes reach it, under both profiles:
+
+| charter `retention` | generic | `--for full` |
+|---|---|---|
+| `retention: {}` | `PASS 0 declared retention path(s) present and tracked` | same PASS |
+| values are nested maps (`work-history: {path: ...}`) | same PASS | same PASS |
+| values are empty strings | same PASS | same PASS |
+
+The check's own header at `src/commands/doctor.ts` says the opposite in the
+same words the plan uses: "the two states a reader might confuse (nothing
+declared, everything declared and present) never print the same word". Here they
+print the same word, PASS, and the plan's hazard-to-criterion row
+(delivery/plan/kernel-plan-m3.md:4042) requires FAIL or
+not-applicable-with-a-reason for a charter with no retention path.
+
+**Why it is reachable by a real user rather than only by a fixture.** Doctor
+does not validate the charter: its check list is `node, git, gh, layout, remote,
+lock, beacon, identity, retention` and none of the other eight reads
+`charter/`. `tiphys init` writes no charter, and charter authorship is an owner
+duty, so every charter in existence is hand-written. `schemas/charter.schema.json`
+does forbid all three shapes (three required string properties,
+`additionalProperties: false`), so `tiphys validate --type charter` catches
+them, but nothing makes a user run it before `tiphys doctor --for full`, and
+doctor is the command criterion 8 points at.
+
+**Bounding what is and is not covered.** The implementer named the first of the
+three shapes in the round-2 not-covered section and left it; the other two were
+not named. No registered test exercises any of them (`grep -n retention
+test/doctor.test.ts` shows three tests, covering present/ignored, absent-path
+plus `full` promotion, and the no-charter state).
+
+**Cost to fix:** one guard, `if (paths.length === 0)` returning
+`retention-undeclared`, plus a member on the existing witness. That is inside
+the same function this phase already owns.
+
+### CR-2, MEDIUM: the cross-directory id guard is green on the collision it names
+
+**Shipped behaviour threatened:** the registry entry
+`tuition-ids-unique-across-directories` in `test/behaviors.json`, which the
+`suite` gate resolves by name, and criterion 9's "the test outlives this phase,
+which is the point, since the two directories will keep growing independently".
+
+The registered description is `no tuition id is claimed by both the shipped feed
+and the delivering project's log`. That sentence is FALSE of the tree it
+describes: thirteen ids (T-001 to T-009, T-015 to T-018) are claimed by both,
+by design, because the feed entries are promotions. The test does not assert it
+either. For a shared id it asserts only that the delivering log's file contains
+`- id: T-nnn` or `# T-nnn:`, which is true of all twenty log files by naming
+convention, so the assertion is satisfied by the filename scheme rather than by
+the property.
+
+Measured. A new shipped entry claiming `T-010`, an id the delivering log gave to
+a completely different incident (the NUL control-character check), was added to
+the feed and the two test files run:
+
+```
+node --test --test-reporter tap --test-name-pattern "no tuition id is claimed by both ..." test/tuition.test.ts
+ok 1 - no tuition id is claimed by both the shipped feed and the delivering project's log
+
+node --test test/tuition.test.ts test/mechanism-index.test.ts   ->   exit 0
+```
+
+Green, whole-file, on the exact dangerous state. The witness spec does not
+contradict this: its two members are `T-021 -> T-005` (caught by the
+within-feed duplicate loop) and `T-022 -> T-999` (caught by the by-id ticket
+assertion), so neither reaches the cross-directory arm, and the witness's green
+at head is honest about a narrower class than the behaviour name claims.
+
+The plan's hazard table already scopes the ONGOING collision risk out
+("criterion 9 checks the two ids this phase allocates"), so the finding is not
+that the class is unpoliced. It is that the assertion and the registered
+description both say it IS policed, which is the shape CLAUDE.md names: a guard
+whose condition does not test the property that matters is green and worthless.
+Either strengthen the assertion (compare the two documents' subject lines) or
+narrow the description and the failure message to what is checked.
+
+### L-1, LOW: a shipped schema still names the deleted `MECHANISMS.md`
+
+`src/gates/schemas/gate-manifest.schema.json:60` carries "the mechanism
+MECHANISMS.md forbids" in a `description`, and it IS shipped: `npm pack`
+produces `package/dist/src/gates/schemas/gate-manifest.schema.json`. Criterion
+4d forbids the string in "briefs, `AGENTS.md`, checklists, schemas"; under the
+top-level-`schemas/` reading the tree is clean and the phase is satisfied, and
+that reading is the one the orchestrator's own record
+(delivery/plan/m3-p8-declaration-gap.md:1) put to the dispatch. The file is not
+on the phase's declaration. LOW because the consequence is one dangling pointer
+in a description string, and the phase resolved the reading in writing rather
+than silently.
+
+### L-2, LOW: one of the claim-file row's two citations resolves to nothing
+
+Criterion 5 asks for evidence that "resolves to both cited files". The shipped
+row's second evidence string is `delivery/tuition/T-005, the silent
+reimplementation two phases later that became M1's most severe defect`.
+`pathReferencesIn` requires a token with a slash AND an extension, so
+`delivery/tuition/T-005` is not treated as a path: it is neither resolved nor
+reported, and `validate` exits 0. The string is the interim file's citation
+carried over verbatim, which step 2b asks for, so this is a collision between
+two plan instructions rather than a mistake. LOW: a reader can still find the
+entry, and the implementer's residue names prose-only evidence as an accepted
+boundary.
+
+### L-3, LOW: the shipped feed's evidence references do not resolve in the package
+
+`package.json` ships `tuition`, and `delivery/` is deliberately not shipped, so
+every `delivery/...` citation in the shipped feed and index dangles for a
+consumer. Measured on the packed tarball:
+
+```
+node bin/tiphys.ts validate --type mechanism-index --context <pack>/package <pack>/package/tuition/mechanism-index.yaml
+INVALID #/mechanisms/11/evidence/0 evidence names delivery/verification/u2-race-flake-investigation.md, which does not exist (check: mechanism-rule-evidence-resolves)
+... exit 1
+```
+
+`tuition list` and `tuition index --check` against the packed feed both exit 0,
+and `structural-consequence[].target` paths such as `roles/implementer.md` do
+resolve in the package, so the commands a consumer actually runs are unaffected.
+LOW, and stated because the mechanism index is mandated reading and a reader who
+follows a citation from an installed package finds nothing there.
+
+### Observation, not a finding: the machine-readable-form row is named differently from the plan
+
+Criterion 4b calls it "the `destructive-git-operation` entry". The shipped index
+key is `worktree-removal-and-force-branch-delete`, the interim file's own name,
+which is what step 2b and criterion 4c require. The substance criterion 4b asks
+for (a `machine-readable-form` naming `gates.manifest.json` and the key
+`destructiveCommands`, resolving, and reddening on a renamed key) is delivered
+and was measured above.
+
+## What this review did NOT cover
+
+- **I did not run the `red-witness` or `suite` gates.** The suite was run
+  directly (`npm test`, 710/710/0 skipped) and six other gates were run
+  individually; `red-witness` takes several minutes over 63 witnesses and I
+  spot-checked one witness (three members) by hand instead. So the claim
+  "every declared member of every witness is red" is NOT re-measured here; only
+  `doctor-retention-not-applicable-without-a-charter` is.
+- **I did not re-derive the eleven behaviour descriptions** corrected in fix
+  round 1, beyond confirming the `suite` gate's own resolution is not part of
+  what I ran.
+- **I did not audit the other four doctor profiles** (`generic`, `local-only`,
+  `direct-pr`, `watch`) for the one-id-two-states shape, which the implementer
+  also lists as uncovered.
+- **I did not read `src/tuition.ts`'s projection code line by line.** The
+  projection was exercised behaviourally (four drift directions, regeneration,
+  the interim-row derivation) rather than read.
+- **I did not observe CI.** No `pull_request` run and no post-merge `push` run
+  on this head was watched; every number above is local, on node v26.6.0 with
+  `dist/` built, in a worktree of 26ee653.
+- **I did not review M3-P7's half of the merge**, only that the enumeration the
+  work history claims (22 registered checks) is consistent with the suite
+  passing at 710.
+- **The `retention: {}` family was probed for three shapes.** Other charter
+  shapes (a `retention` value that is a string, a number, a list of non-strings)
+  were not probed.
+
+## Verdict
+
+**FINDINGS, not APPROVE.** Two MEDIUM findings block under DR-0012's
+"no unresolved high or medium finding": CR-1 (the retention check prints PASS on
+the vacuous declaration the plan's hazard row says must never pass silently) and
+CR-2 (the cross-directory id guard is green on the collision its own registered
+description claims to catch). Both are small, local fixes inside files the phase
+already owns. Everything else in the criteria walk is discharged with executed
+evidence.
