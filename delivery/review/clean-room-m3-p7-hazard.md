@@ -146,3 +146,101 @@ served entry point depends on file position with nothing saying so.
 
 The cheapest fix for member 2 is a message. For member 1 it is a check of the
 same shape as the one already shipped for probes.
+
+### H-3 (MEDIUM, tracked item under DR-0027: reachable by a future editor, not by a shipped artifact today): a framing scope that names nothing is accepted, and the framing then reorders nothing while still printing as a framing
+
+`orders-probes` entries are `applies-to` scope tokens, and the schema
+constrains their SHAPE (`^[a-z0-9]+(-[a-z0-9]+)*$`) and never their
+RESOLUTION. `orderUnderFraming` matches `probe.appliesTo === scope`, so a scope
+naming no probe contributes nothing and the whole list falls through to file
+order.
+
+Constructed, a checklist with `orders-probes: [scope-that-does-not-exist]`:
+
+```
+$ node bin/tiphys.ts validate --type checklist --context <package-root> dup-framing.yaml
+EXIT=0
+
+no framing   : probe-a,probe-b
+typo-framing : probe-a,probe-b
+identical    : true
+printed head : checklist my-checklist | framing typo-framing | entry-point Start from the destructive commands.
+```
+
+The resolved list under the framing is byte-identical to the list with no
+framing at all, and the output still announces `framing typo-framing` with its
+entry point, so the reader is told an ordering was applied.
+
+WHY IT MATTERS MORE THAN A TYPO USUALLY WOULD: the checklist schema's own
+`$comment` on `orders-probes` argues that ordering by scope rather than by
+probe id is what makes criterion 4d falsifiable, and calls a framing that
+cannot move the head "the hazard class's 'ordering expressed as a comment
+rather than as position' wearing a schema's clothes". A dangling scope
+produces exactly that document, and the schema does not reach it. This is an
+intra-document reference, the same class the phase already shipped
+`checklist-probe-ids-unique` for.
+
+REACHABILITY, measured. All five shipped checklists were enumerated and every
+framing scope resolves today:
+
+```
+clean-room            scopes fix-round,deviations,criteria-walk,changed-code,destructive-command,test-honesty,blast-radius,gate-probe
+  framing criteria-contract  orders criteria-walk,changed-code,test-honesty,deviations,gate-probe   (no dangling)
+  framing destructive-paths  orders destructive-command,blast-radius,changed-code,test-honesty      (no dangling)
+  framing fix-round          orders fix-round,criteria-walk,test-honesty,changed-code               (no dangling)
+env-failure-diagnosis, flake-playbook, hazard-review, plan-review: no framings declared
+```
+
+So no shipped artifact is wrong today. Under DR-0027 this is a tracked item
+rather than a blocker, and I am saying so explicitly.
+
+### H-4 (MEDIUM, tracked item under DR-0027: reachable by a future editor of the data, not of the guard): editing a checklist's `id` field silently disarms the registry-to-checklist direction of `gate-probes-resolve`
+
+Direction 1 keys on the checklist document's own `id`:
+`if (entry.checklist !== checklistId) continue;`, where `entry.checklist` is
+`verified-by` with `-checklist` sliced off. Nothing anywhere compares a shipped
+checklist's `id` to its FILENAME, and `readShippedChecklist` looks the file up
+by filename alone.
+
+Constructed on a scratch copy of the shipped file, `id: clean-room` changed to
+`id: clean-room-v2`, filename untouched, everything else byte-identical:
+
+```
+$ node bin/tiphys.ts validate --type checklist --context <package-root> checklists/clean-room.yaml
+validate EXIT=0
+
+$ node bin/tiphys.ts checklist resolve --checklist clean-room
+resolve EXIT=0
+checklist clean-room-v2
+probes 23
+```
+
+Both green. At library level, same document, before and after the one-field
+edit:
+
+```
+id as shipped   : clean-room     -> green (direction 1 asserts 2 registry entries)
+id edited       : clean-room-v2  -> green []
+```
+
+The `[]` is the point: after the edit the check produces no lines and asserts
+nothing in direction 1, so the two registry entries whose `verified-by` is
+`clean-room-checklist` (`unit-tests-for-changed-service-methods`,
+`fixtures-for-changed-component-states`) lose their only verification with no
+signal at all. Direction 2 does not compensate, by construction: it starts from
+probes carrying `verifies-gate`, and the probes are still present and still
+resolve, so it stays green too.
+
+The file was restored; `git status --short -- checklists/` is empty after the
+experiment.
+
+WHAT IT THREATENS: this is the exact join the phase exists to close, and the
+docstring's claim that it is closed "in BOTH DIRECTIONS" holds only while the
+id and the filename agree. The tests redden `gate-probes-resolve` by deleting a
+probe, deleting a `verifies-gate`, renaming a probe id and deleting a gate; none
+of them touches the checklist `id`, which is why this arm has no witness.
+
+REACHABILITY: a future editor of `checklists/clean-room.yaml`. Under DR-0027
+that is a tracked item, not a blocker, and I am saying so explicitly. The fix is
+one assertion, either "a shipped checklist's `id` equals its filename" or "every
+`clean-room-checklist` registry entry is claimed by some shipped checklist".
