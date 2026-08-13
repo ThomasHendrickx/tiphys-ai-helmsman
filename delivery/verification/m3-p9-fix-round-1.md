@@ -369,14 +369,16 @@ context that the "absence is a FAIL under a grant" policy wrongly refuses.
   never fails, on the exact pair that reddens under a delegated grant:
   confirmed by the existing passing test of the same name.
 - `eachMode`'s own id-defaulting (`String(mode["id"] ?? "")`, explicitly NOT
-  changed by this round) cannot be exploited to make an id-less mode row
-  match a real charter's delivery-mode, because the charter's `delivery-mode`
-  is now established as a non-empty string before the mode lookup runs; an
-  empty mode id can never equal it. Confirmed by reading the lookup
-  (`` `const mode = eachMode(modesDocument.value).find((row) => row.id === modeId);` ``,
-  quoted rather than cited per the branch-diff rule above) rather than by a
-  new fixture, since the reasoning is a closed case (empty string can never
-  equal an established non-empty string).
+  changed by this round) is not exploitable to make an id-less mode row match
+  a real charter's delivery-mode, because the charter's `delivery-mode` is
+  now established as a non-empty string before the mode lookup runs, and an
+  empty mode id cannot equal a non-empty one. MEASURED rather than only
+  reasoned: I staged the real `assurance-modes.yaml` with the `full` mode's
+  `id: full` line deleted (leaving the entry with no id at all) and ran the
+  shipped script against the shared-family pair. Result: exit 1, "declares
+  delivery mode full, which assurance-modes.yaml does not define, so its
+  merge-authority is unknown", which is the fail-closed "mode not found" arm,
+  not a false match through the id-less row.
 - The one edge case I could construct where "absence is a FAIL" refuses
   something a document author might have intended as legitimate: a
   `produced-by` value that is a bare YAML scalar coinciding with a YAML
