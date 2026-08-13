@@ -313,14 +313,18 @@ test("every AGENTS.md reference resolves, and deleting a referenced file makes t
   }
 });
 
-test("a reference whose target file is present and whose ANCHOR moved is refused, for a markdown heading and for a renamed YAML key", () => {
-  /* TWO STRUCTURALLY DIFFERENT MEMBERS of one class (section 2.3 rule 6), and
-     they are different because the checker LOCATES them by different means:
-     member A scans heading text and compares slugs, member B decodes the
-     document and walks a key path. A checker that handled one and not the
-     other would pass a one-member witness, which is why criterion 2b names
-     both targets explicitly. */
-  const dir = stage("agents-ref-anchor");
+/*
+ * CRITERION 2b's TWO MEMBERS ARE TWO TESTS, one each, and that is deliberate.
+ * They are structurally different because the checker LOCATES them by different
+ * means: member A scans heading text and compares slugs, member B DECODES the
+ * document and walks a key path. A checker could implement one and not the
+ * other, which is the criterion's own reason for naming both targets. Splitting
+ * them also gives each of the two registered behaviours its own resolving test
+ * name, which `test/behaviors.json` requires.
+ */
+
+test("a reference whose markdown heading anchor moved is refused while the target file is still present", () => {
+  const dir = stage("agents-ref-anchor-md");
   try {
     assert.equal(runChecker(dir).status, 0);
 
@@ -341,10 +345,20 @@ test("a reference whose target file is present and whose ANCHOR moved is refused
     );
     writeFileSync(implementer, before);
     assert.equal(runChecker(dir).status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a reference whose YAML field pointer key was renamed is refused while the target file is still present", () => {
+  const dir = stage("agents-ref-anchor-yaml");
+  try {
+    assert.equal(runChecker(dir).status, 0);
 
     /* MEMBER B: a field pointer whose KEY was renamed inside a YAML target,
        file present. The file is still there, still decodes, and still says the
-       same thing to a human; only the key a reference names has moved. */
+       same thing to a human; only the key a reference names has moved. This is
+       the SILENT half of criterion 2b: nothing about the file looks wrong. */
     const modes = join(dir, "assurance-modes.yaml");
     const modesBefore = readFileSync(modes, "utf8");
     const renamed = modesBefore.replace(
