@@ -8,15 +8,15 @@
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "roles/implementer.md",
-      "find": "  - tuition/mechanism-index.yaml\n",
+      "file": "tuition/mechanism-index.yaml",
+      "find": "  - key: lease-compare-and-swap\n    name: Lease compare-and-swap\n    rule: >-\n      Liveness is lease freshness, never pid, process probing or signals\n      (constraint C-2). Expiry does not block a release, but it DOES block a\n      renew and it DOES block teardown's holdership check, which fails closed.\n    siblings:\n      - src/lock.ts\n      - src/task.ts\n    evidence:\n      - src/lock.ts\n      - checkHoldership in src/task.ts\n      - CR-680 in delivery/review/clean-room-m1-p6-round3-hazard.md\n\n",
       "replace": ""
     },
     {
       "kind": "mutation",
       "file": "tuition/mechanism-index.yaml",
-      "find": "kind: mechanism-index\nversion: 1",
-      "replace": "kind: mechanism-index\nversion: 1\n# hand edited"
+      "find": "# THE MECHANISM INDEX (kernel plan M3; T-005, D-M3-23).\n",
+      "replace": "# THE MECHANISM INDEX (kernel plan M3; T-005, D-M3-23).\n# hand edited after generation\n"
     }
   ],
   "deterministic": true,

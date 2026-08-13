@@ -27,5 +27,12 @@
     }
   ],
   "deterministic": true,
-  "repeats": 2
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git check-ignore -q -- <path>",
+    "captures": [
+      "witness/captures/doctor-git-check-ignore-resolution.txt"
+    ],
+    "provenance": "isGitIgnored in src/commands/doctor.ts decides the retention check by spawning `git check-ignore -q -- <path>` and reading ONLY its exit code, so red-witness rule (f) binds this witness (SPAWN_GREP matches the changed file). Because -q suppresses stdout, the exit code is the entire contract and there is no text to fall back on, which is what makes a hand-written expectation here indistinguishable from a fabricated one. Captured 2026-08-13 against git 2.43.0 in a scratch repository ignoring notes/evidence/: an ignored path exits 0, an unignored path exits 1, and a path outside any repository exits 128 with `fatal: not a git repository`. The named test reads the capture and asserts a live scratch repository reproduces the first two codes before exercising the check, so the retention verdict is anchored to real git output rather than a hand-written string (CLAUDE.md warning 10). The 1-versus-128 conflation the capture names is a residue recorded in the work history, not a covered case."
+  }
 }

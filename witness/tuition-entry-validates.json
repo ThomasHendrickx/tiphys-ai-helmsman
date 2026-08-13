@@ -2,7 +2,7 @@
   "id": "tuition-entry-validates",
   "behavior": "tuition-entry-validates",
   "tests": [
-    "every entry in the shipped feed validates, and the feed's entry count equals the promoted set plus the two migration tickets"
+    "every entry in the shipped feed validates, the migration tickets are present by id, and every kernel-relevant entry of the delivering log resolves in the feed"
   ],
   "class": "additive",
   "dangerousStates": [

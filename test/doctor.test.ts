@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -30,6 +31,7 @@ const { nodeCheckFor } = (await import(
 )) as { nodeCheckFor: (range: string, version: string) => NodeCheckResult };
 
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * The kernel floor is Node >= 26 (DR-0002). On a runner below the floor,
@@ -294,6 +296,51 @@ function charterWithRetention(fleet: string): string[] {
 }
 
 test("doctor reports CHECK retention PASS for declared paths that exist and are not ignored, and FAIL naming the path once it is git-ignored", (t) => {
+  /* ANCHOR THE CHECK TO REAL EXTERNAL-PROGRAM OUTPUT FIRST (red-witness rule
+     (f), CLAUDE.md warning 10). `isGitIgnored` in src/commands/doctor.ts
+     spawns `git check-ignore -q` and reads ONLY its exit code, so the exit
+     code is the entire contract and a hand-written expectation for it would
+     be indistinguishable from a fabricated one. The capture records the three
+     real codes; a live scratch repository must reproduce them before the
+     assertions below mean anything. */
+  const captureName = "doctor-git-check-ignore-resolution.txt";
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", captureName),
+    "utf8",
+  );
+  assert.match(captured, /ignored-path: git check-ignore -q -- \S+\n\s*exit 0/);
+  assert.match(captured, /unignored-path: git check-ignore -q -- \S+\n\s*exit 1/);
+  assert.match(captured, /not-a-repository: .*\n\s*exit 128/);
+  {
+    const probe = makeTempDir(t);
+    mkdirSync(join(probe, "notes", "evidence"), { recursive: true });
+    mkdirSync(join(probe, "notes", "tuition"), { recursive: true });
+    writeFileSync(join(probe, "notes", "evidence", "keep.md"), "# kept\n");
+    writeFileSync(join(probe, "notes", "tuition", "keep.md"), "# kept\n");
+    writeFileSync(join(probe, ".gitignore"), "notes/evidence/\n");
+    assert.equal(
+      spawnSync("git", ["-C", probe, "init", "-q"], { encoding: "utf8" }).status,
+      0,
+      "the probe repository could not be created",
+    );
+    const ignored = spawnSync(
+      "git",
+      ["-C", probe, "check-ignore", "-q", "--", "notes/evidence"],
+      { encoding: "utf8" },
+    );
+    assert.equal(ignored.status, 0, `captured contract: an ignored path exits 0, live git said ${String(ignored.status)}`);
+    const unignored = spawnSync(
+      "git",
+      ["-C", probe, "check-ignore", "-q", "--", "notes/tuition"],
+      { encoding: "utf8" },
+    );
+    assert.equal(
+      unignored.status,
+      1,
+      `captured contract: an unignored path exits 1, live git said ${String(unignored.status)}`,
+    );
+  }
+
   const fleet = initFleet(t);
   const paths = charterWithRetention(fleet);
 

@@ -108,10 +108,10 @@ function tuitionSchema(): Record<string, unknown> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Criterion 1: every shipped entry validates, and the count is a relation */
+/* Criterion 1: every shipped entry validates, and the feed is named not counted */
 /* ------------------------------------------------------------------ */
 
-test("every entry in the shipped feed validates, and the feed's entry count equals the promoted set plus the two migration tickets", () => {
+test("every entry in the shipped feed validates, the migration tickets are present by id, and every kernel-relevant entry of the delivering log resolves in the feed", () => {
   const files = entryFiles();
   assert.ok(files.length > 0, "the shipped tuition feed is empty");
   for (const name of files) {
@@ -135,30 +135,53 @@ test("every entry in the shipped feed validates, and the feed's entry count equa
   ]);
   assert.equal(index.status, 0, `${index.stdout}${index.stderr}`);
 
-  /* THE RELATION, DERIVED FROM BOTH DIRECTORIES AT RUN TIME. The promoted set
-     is every entry in the delivering project's own log that DECLARES kernel
-     relevance in its own header, plus any entry promoted to host a mechanism
-     the index must carry; the tickets are the two entries whose stage names
-     them. Nothing here is a literal count, so a later phase promoting another
-     entry does not redden this test. */
-  const promoted = files.filter((name) => {
-    const entry = readEntry(name);
-    return !String(entry["stage"]).includes("migration ticket");
-  });
-  const tickets = files.filter((name) =>
-    String(readEntry(name)["stage"]).includes("migration ticket"),
-  );
-  assert.equal(tickets.length, 2, `tickets: ${tickets.join(", ")}`);
-  assert.equal(files.length, promoted.length + tickets.length);
-  const declared = readdirSync(join(repoRoot, "delivery", "tuition")).filter(
-    (name) =>
-      /kernel-relevant:\s*yes/i.test(
-        readFileSync(join(repoRoot, "delivery", "tuition", name), "utf8"),
-      ),
-  );
-  assert.ok(
-    promoted.length >= declared.length,
-    `the delivering log declares ${String(declared.length)} kernel-relevant entries and the feed carries ${String(promoted.length)} promoted ones`,
+  /* BY NAME, NEVER BY COUNT. `tuition/` is append-only across every future
+     phase, so any number written here (a literal, or a relation between two
+     directory sizes) is a claim about phases that have not happened yet and is
+     false the moment the next one appends: CLAUDE.md convention 5, which was
+     written for test/behaviors.json and binds every append-only registry. The
+     earlier form of this test pinned `tickets.length === 2` and compared the
+     two directories' sizes; both are replaced by id resolution below, which is
+     also STRICTLY STRONGER, because a size comparison is satisfied by a feed
+     carrying the right NUMBER of entirely different entries. */
+  const shippedIds = new Set(files.map((name) => String(readEntry(name)["id"])));
+
+  /* The two entries this phase allocated as migration tickets, named because
+     the ticket is the artifact: T-021 carries the retention duty and T-022 the
+     collision risk between the two T-nnn spaces. A later phase adding a third
+     ticket appends to the feed and leaves this assertion true. */
+  for (const ticket of ["T-021", "T-022"]) {
+    assert.ok(shippedIds.has(ticket), `the feed does not carry ${ticket}`);
+    const staged = files.find((name) => String(readEntry(name)["id"]) === ticket);
+    assert.match(
+      String(readEntry(staged as string)["stage"]),
+      /migration ticket/,
+      `${ticket} is in the feed but its stage does not name it a migration ticket`,
+    );
+  }
+
+  /* R-091's duty, checked rather than asserted: kernel-relevant tuition ships
+     upstream. Every entry of the delivering project's own log that DECLARES
+     kernel relevance in its own header must resolve by id in the shipped feed.
+     The delivering log is the source, so this reddens when a future phase
+     records a kernel-relevant entry and does not promote it, which is the
+     obligation and not an accident of numbering. */
+  const unpromoted: string[] = [];
+  for (const name of readdirSync(join(repoRoot, "delivery", "tuition"))) {
+    const body = readFileSync(join(repoRoot, "delivery", "tuition", name), "utf8");
+    if (!/kernel-relevant:\s*yes/i.test(body)) {
+      continue;
+    }
+    const id = /^T-\d+/.exec(name)?.[0];
+    assert.ok(id !== undefined, `${name} does not begin with a T-nnn id`);
+    if (!shippedIds.has(id as string)) {
+      unpromoted.push(`${id as string} (${name})`);
+    }
+  }
+  assert.deepEqual(
+    unpromoted,
+    [],
+    `the delivering log declares these kernel-relevant entries and the shipped feed carries no entry with their id: ${unpromoted.join(", ")}`,
   );
 });
 
@@ -225,7 +248,7 @@ test("an entry claiming kernel relevance with an empty or an absent structural c
 /* Criterion 2b: KIND A, a rule with no citation is not a rule          */
 /* ------------------------------------------------------------------ */
 
-test("a mechanism with a rule and no evidence is rejected naming the field, and removing minItems accepts it", () => {
+test("a mechanism with a rule and no evidence is rejected naming the field whether the array is empty or the key is absent, and removing either guard accepts it", () => {
   const entry = readEntry("T-005.yaml");
   const mechanisms = entry["mechanisms"] as Record<string, unknown>[];
   mechanisms[0]!["evidence"] = [];
@@ -252,6 +275,36 @@ test("a mechanism with a rule and no evidence is rejected naming the field, and 
   assert.deepEqual(validateModule.validateInstance(defanged, entry), []);
 
   assert.ok(validateModule.validateInstance(tuitionSchema(), entry).length > 0);
+
+  /* THE SECOND GUARD, AND IT IS A DIFFERENT ONE. `minItems` catches an EMPTY
+     evidence array; `required` catches an ABSENT evidence key. Both spell the
+     same T-005 rule ("a rule with no citation is not a rule") and each is
+     witnessed separately, because a state only one of them refuses is the only
+     state that can tell them apart: two guards catching one input make each
+     other unwitnessable (T-018), which is the shape this phase already paid
+     for once in the add path. */
+  const missing = readEntry("T-005.yaml");
+  const missingMechanisms = missing["mechanisms"] as Record<string, unknown>[];
+  delete missingMechanisms[0]!["evidence"];
+  assert.ok(
+    validateModule
+      .validateInstance(tuitionSchema(), missing)
+      .some((diagnostic) => diagnostic.pointer === "#/mechanisms/0/evidence"),
+    `expected a diagnostic naming the absent evidence key, got ${JSON.stringify(
+      validateModule.validateInstance(tuitionSchema(), missing),
+    )}`,
+  );
+
+  const unrequired = tuitionSchema();
+  const mechanismItems = (
+    (unrequired["properties"] as Record<string, Record<string, unknown>>)[
+      "mechanisms"
+    ] as Record<string, Record<string, unknown>>
+  )["items"] as Record<string, unknown>;
+  mechanismItems["required"] = (mechanismItems["required"] as string[]).filter(
+    (name) => name !== "evidence",
+  );
+  assert.deepEqual(validateModule.validateInstance(unrequired, missing), []);
 });
 
 /* ------------------------------------------------------------------ */
