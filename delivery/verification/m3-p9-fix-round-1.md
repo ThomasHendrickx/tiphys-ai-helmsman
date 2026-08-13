@@ -1,8 +1,6 @@
 # M3-P9 fix round 1: delta verification
 
-Status: IN PROGRESS, written incrementally. This file's mtime is the
-liveness beacon for this session; a death leaves this partial content rather
-than nothing.
+Status: COMPLETE.
 
 Scope: verifying ONE repair, the fix round on branch
 `claude/m3-p9-agents-policy`, delta `d9d5a1d..0cf4676`, PR #131. Not a
@@ -79,17 +77,21 @@ Read this section first.
    as a class
    rather than resting on the normalisation point alone.
 
-## Summary of verdict (expanded reasoning below)
+## Summary of verdict (full reasoning and the verdict statement are at the
+bottom of this file)
 
-**NOT VERIFIED AS FULLY CLOSING THE MECHANISM. VERIFIED AS A CORRECT AND
-HONEST PARTIAL REPAIR** that closes every instance the two clean-room reviews
-and the round's own derivation named, with one HIGH-severity residue the round
-did not find and did not name, in the same fail-open direction as CR-001.
+**VERIFIED WITH FINDINGS: one HIGH.** The round closes every instance the two
+clean-room reviews and its own derivation named, correctly and honestly, with
+one HIGH-severity residue it did not find and did not name, in the same
+fail-open direction as CR-001, reachable by attacking the exact declared
+residue (case folding) the round names and generalising past it as
+instructed. Recommendation: a second fix round scoped to that finding, not a
+merge.
 
 Everything else the round claims (the four red witnesses, the CR-002 fix, the
-absence-vs-not-applicable policy, the suite counts, the claim-grep discipline)
-held up under direct attack and is recorded below with the commands that
-checked it.
+absence-vs-not-applicable policy, the suite counts, the gate bundle, the
+claim-grep discipline) held up under direct attack and is recorded below with
+the commands that checked it.
 
 ## FINDING 1 (HIGH): establishField normalises whitespace only, and a
 lookalike or invisible character reopens the exact fail-open direction CR-001
@@ -491,5 +493,76 @@ taken "at head `c7f3d13`", one commit earlier than the branch's final head
 handed back") already carries 37, not 36. A commit between those two heads
 added the fourth new witness spec. Checked rather than assumed, so this is
 recorded as a confirmation, not left as a loose thread.
+
+## Suite, toolchain, build state, invocation (T-020's four-axis rule)
+
+node v26.6.0 (confirmed by `node --version` in the shell that ran each
+command below), from the scratch prefix. `dist/` BUILT (`npm run build`,
+exit 0, `git status --short` empty afterward, on `verify-wt`).
+
+| invocation | file(s) | tests | pass | fail | skipped |
+|---|---|---|---|---|---|
+| `node --test test/dual-review.test.ts` | dual-review only | 23 | 23 | 0 | 0 |
+| `node --test test/agents-policy.test.ts` | agents-policy only | 29 | 29 | 0 | 0 |
+| gate bundle's `suite` gate (full `npm test` invocation, child-process reported) | whole suite | 765 | 765 | 0 | 0 |
+
+The 765 matches the round's own reported `npm test` count exactly. A full
+bare `node --test` run from the repository root (which would add the two
+tracked `sandbox/test/greet.test.js` tests per standing warning 12) was not
+run to completion in this verification; it timed out twice at the 120-second
+foreground limit before I switched to targeted per-file runs and the gate
+bundle's own `suite` gate result, both of which completed and are the ones
+quoted above.
+
+## Verdict
+
+**VERIFIED WITH FINDINGS. Recommend a second fix round (round 2 of the
+DR-0027 maximum of two) rather than a merge, scoped to FINDING 1.**
+
+What holds, confirmed independently rather than re-derived from the work
+history's own numbers: the four new red witnesses are honest (green at head,
+red under all 8 declared mutations, correctly classified by structural
+difference including the self-graded "weakest pair"); CR-002's fix works end
+to end through the actual shipped CLI path, not only inside the internal
+script; the absence-vs-not-applicable policy does not wrongly refuse any
+legitimate configuration I could construct, including the id-less-mode-row
+edge case, which I measured rather than only argued; the stage-1 derivation
+count (198) is exact; the suite, gate bundle, and claim-grep discipline all
+check out with matching numbers.
+
+What does not hold: the round explicitly names case-insensitivity as a
+declared, deliberate residue and invites exactly this kind of follow-up
+attack on it ("the first thing a second reviewer should push on"). Attacking
+past it finds a materially worse member of the SAME class, live against the
+shipped script, on the SAME fixture pair the round's own witness reddens: a
+single Unicode substitution (a cross-script homoglyph, a fullwidth variant,
+a lookalike dash, or a genuinely invisible zero-width space) in one side's
+`produced-by` field makes a same-model-family review pair compare as
+decorrelated and authorises a merge under DR-0012's delegated grant, exactly
+the outcome CR-001 was filed to prevent. It is not closed by the current
+`establishField`, which normalises only ASCII whitespace via `.trim()`, and
+it would not be closed by the validation-composition gap the round's own
+comment names as future work either, because the schema's own constraint on
+`produced-by` (`pattern: "\\S"`) does not restrict the character set. This is
+HIGH: it is live, it is on the highest-stakes predicate in the repository per
+the task brief, and at least one member (the embedded zero-width space) is
+completely invisible to a human clean-room reviewer reading the committed
+verdict files.
+
+FINDING 2 (documentation accuracy, LOW, not blocking) is recorded for
+completeness: the work history's own summary table for the derivation (37,
+6) does not match its own appended full output and my independent re-run of
+that identical script (35, 4). It changes no conclusion the round drew, but
+undercuts the "publish the full output, not a summary" contract if the
+summary is what a later reader quotes.
+
+The two candidate sites (`src/checklists.ts`'s id-less probe,
+`src/commands/brief.ts`'s role fallback) were correctly scoped out and
+correctly named for the orchestrator; I confirmed the checklists.ts one by
+execution (upgrading it from "read" to "measured") and confirmed it is
+reachable through a real shipped CLI command, and confirmed the brief.ts one
+is currently dormant given the shipped role files. Neither blocks a merge on
+its own; both are informational, matching the round's own framing.
+
 
 
