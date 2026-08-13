@@ -470,9 +470,15 @@ rather than "clean".
    red-witness gate, did not check that each spec's two members are structurally
    different, and did not verify that any mutation reddens the tests it names.
    "One witness is not a class" is therefore UNTESTED by me.
-3. **The full test suite.** Started under node v26.6.0 with `dist/` present via
-   `npm test`; it had not finished when this review closed, so I quote no suite
-   numbers at all. CI on the head is the authority.
+3. **The full test suite was RUN but not analysed.** Complete sentence, per
+   standing warning 12: invocation `npm test`, toolchain node v26.6.0, build
+   state `dist/` present, head 26ee653, working tree clean. Result: 710 tests,
+   710 pass, 0 fail, 0 skipped, 0 todo, duration 191332ms, exit 0. Two glyphs
+   were stripped from the captured summary lines to keep this file ASCII: U+2139
+   (8 occurrences on the summary lines quoted) and U+FE0F (1); no digit or word
+   in the counts was altered. I did NOT read which tests those 710 are, did not
+   re-run for flake (`test/watcher.test.ts` flakes at about 1 in 62 and did not
+   flake here), and ran no gate bundle. CI on the head remains the authority.
 4. **The gate bundle.** I ran no `tiphys gates run`. Every green I cite is a
    single command I ran myself, never a bundle verdict.
 5. **`test/liveness.test.ts`, `test/doctor.test.ts` and
