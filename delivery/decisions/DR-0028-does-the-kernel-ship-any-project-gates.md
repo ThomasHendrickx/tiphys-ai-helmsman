@@ -6,8 +6,16 @@
   lint, i18n parity, analytics symmetry, manifest regen, e2e, docs grep) land IN
   the kernel. Should the kernel ship project gates at all, or ship only the
   CONTRACT and let a project declare its own?
-- status: **RAISED, NOT DECIDED.** Raised by the OWNER, 2026-08-13, unprompted,
-  while M3-P9 was in its fix round.
+- status: **DECIDED BY THE OWNER, 2026-08-13, the same day it was raised.**
+  Raised by the owner unprompted while M3-P9 was in its fix round, and answered
+  by them with a principle broader than the question.
+- answer: **the kernel ships the gate CONTRACT and ZERO project gates.** The
+  reasoning, the two clarifications that shaped it, and the applicability
+  envelope it implies are recorded in
+  `delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md`,
+  which supersedes nothing here and states the general rule this question is a
+  special case of. That path is QUOTED rather than cited because this branch adds
+  that file, and a citation resolves against the tree being linted.
 - decides: the framing of M4's intake, which plan decision D-19 makes mandatory
   before M4 can dispatch
 - does NOT reopen: DR-0020, which is decided and whose closed-at-v0.1.0 half was
