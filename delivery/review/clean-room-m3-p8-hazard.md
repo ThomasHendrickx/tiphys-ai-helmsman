@@ -254,3 +254,76 @@ likely origin.
 
 Fix shape: accept `.yml` as well, or emit one line per non-entry file skipped so
 the drop is never silent.
+
+### HRB-6 (MEDIUM, demonstrated) the retention vacuous pass is wider than round 2 recorded: `{}`, `[]` and non-string values all reach PASS, and each defeats the `full` promotion
+
+Round 2 left `retention: {}` open by name. Measured, it is not one shape but a
+family, and the boundary is sharp enough to matter: the promoted condition
+`retention-undeclared` is defeated by two characters.
+
+Lab fleet from `tiphys init`, one charter under `charter/`, `tiphys doctor` and
+`tiphys doctor --for full`:
+
+| charter `retention` | doctor row |
+|---|---|
+| key absent | `FAIL ... declares no retention paths (required for profile full)` |
+| `retention: {}` | `PASS 0 declared retention path(s) present and tracked` |
+| `retention: []` | `PASS 0 declared retention path(s) present and tracked` |
+| `retention: {work-history: 12, evidence: null, tuition: []}` | `PASS 0 declared retention path(s) present and tracked` |
+
+The condition behind the WARN is `typeof retention !== "object" || retention ===
+null`, which decides PRESENCE OF AN OBJECT, not "declares something". The check's
+own header says the two states "never print the same word"; the second row above
+prints PASS, the same word as a charter with three present, tracked paths.
+
+The third row is the one round 2 did not name: `Object.values(...).filter(v =>
+typeof v === "string" && v !== "")` DISCARDS every non-string value with no
+diagnostic, so a charter that declares three retention paths with the wrong
+types reports the same green as one that declares none.
+
+Reachability, and the honest limit. `schemas/charter.schema.json` requires
+`work-history`, `evidence` and `tuition` as non-empty strings under
+`additionalProperties: false`, so every row above except the first is
+SCHEMA-INVALID. The load-bearing fact is that `checkRetention` never validates
+the charter: `grep -n charter src/commands/doctor.ts` shows no call into
+`validateInstance`, and `tiphys doctor` is exactly the command a user runs to
+learn whether the fleet is sound. Charters are owner-authored by design (the
+check's own header says so), so a hand-written charter that does not match its
+schema is the ordinary case, not the exotic one, and doctor green-lights its
+retention.
+
+Fix shape: derive the verdict from the count, not from the type. `checked === 0`
+should take the `retention-undeclared` branch whatever the shape of `retention`
+was, and a non-string value should be its own FAIL rather than a silent drop.
+
+### HRB-7 (LOW, demonstrated, non-blocking) `tuition-target-exists` resolves outside the tree and accepts a dangling symlink
+
+Shipped artifact: `src/checks.ts`, `tuitionTargetExists`. Its condition is
+`classifyEntry(join(contextDirectory, target)).kind === "absent"`, and its
+header says the target is resolved "against the tree" / "against the
+repository".
+
+    $ node --input-type=module -e '...classifyEntry...'
+    dangling       {"kind":"dangling"}
+    T-902.yaml     {"kind":"regular"}
+    missing        {"kind":"absent"}
+
+So a `status: applied` consequence whose target is a dangling symlink is green:
+in the probe entry only index 0 was reported, index 1 (`target: dangling`) was
+not.
+
+And `join` normalises `..`, so with enough leading `../` the target leaves the
+context entirely:
+
+    target: ../../../../../../../../etc/passwd    status: applied
+    $ node bin/tiphys.ts validate --type tuition --context <ctx> T-902.yaml
+    exit=0
+
+Nothing in this feed does that today, and the entry would have to be authored
+that way. It is worth a tracked item rather than a block because the feed is
+CROSS-PROJECT by construction: an entry promoted out of a project whose layout
+differs is exactly where a `../` target comes from, and there it silently
+asserts nothing.
+
+Fix shape: reject a target that resolves outside `contextDirectory`, and treat
+`dangling` as absent.
