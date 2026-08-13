@@ -4,7 +4,7 @@
   "tests": [
     "a gate whose command names a missing path, one whose launcher is not executable, and one whose interpreter line is bad are all error, and the missing path is the path named"
   ],
-  "class": "classification",
+  "class": "destructive",
   "dangerousStates": [
     {
       "kind": "mutation",

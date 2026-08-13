@@ -4,7 +4,7 @@
   "tests": [
     "the same gate id is not-applicable when its precondition script exists and exits 1, and error naming the script when only that script is absent"
   ],
-  "class": "classification",
+  "class": "destructive",
   "dangerousStates": [
     {
       "kind": "mutation",
