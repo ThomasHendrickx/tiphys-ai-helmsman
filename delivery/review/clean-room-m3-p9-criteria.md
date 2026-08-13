@@ -170,3 +170,118 @@ EXECUTED on my staging. Reverting returned exit 0 in all three cases.
 **761 tests, 761 pass, 0 fail, 0 SKIPPED, exit 0.** All three axes named, per
 standing warning 12. Zero failing, zero skipped, so no test is unaccounted.
 
+
+## Criterion 4: clause map and the clause round trip
+
+EXECUTED. `node scripts/check-clause-map.mjs` exits 0,
+`clause-map: green (74 clause-map rows checked)`, `74 rows checked, 0 pending a
+phase not yet in force`. Eleven rows carry phase M3-P9 (R-001b, R-002, R-013,
+R-030, R-061, R-062, R-065b, R-067, R-073, R-076, R-077), all discharging into
+`AGENTS.md`, which is the count the plan asks for.
+
+THE ROUND TRIP NEEDED A SECOND LOOK AND CAME OUT CLEAN. My first derivation
+read the raw body and reported TWO frontmatter clause ids with no body heading,
+`incremental-output` and `beacon-is-not-a-claim`. That reading was WRONG and I
+am recording it because the correction is the interesting part: the document
+carries a `$include:` directive naming the shared dispatch contract, and the
+round trip is computed over the INCLUDE-EXPANDED body. The two ids are headings
+in `roles/_shared-dispatch-contract.md`. I then checked the four ALREADY-MERGED
+role briefs and every one of them shows the identical pattern, so `AGENTS.md`
+follows the established convention rather than deviating from it. The anchor
+grammar is deliberate and explicit at src/roles.ts:77.
+
+Both refusal directions are witnessed by the phase's own test against a real
+staged tree and a real `tiphys validate` invocation (orphaned clause, stray
+anchor), which is the strongest shape of witness used anywhere in this phase.
+
+## Criterion 5: no process-liveness vocabulary
+
+EXECUTED with MY OWN, BROADER grep, not the phase's token list: I searched for
+`pid`, `/proc`, `signal(s)`, `SIGKILL`, `SIGTERM`, `process liveness`, `kill -`,
+`background/backgrounding/backgrounded`, `nohup`, and a trailing bare `&`. ZERO
+hits in the shipped file. The positive half is present: the supervision section
+states LIVENESS IS LEASE FRESHNESS and the beacon clause is a body heading.
+
+The phase's test is stronger than the criterion asks: it scans BOTH the raw file
+and the include-expanded body, and it drives the other direction once per token,
+six members rather than the two the class rule requires.
+
+## Criteria 6, 7c, 8: text assertions, verified against the shipped file
+
+EXECUTED by my own extraction of each clause's text from the include-expanded
+body, then asserting the tokens INSIDE the owning clause rather than anywhere in
+the document.
+
+Criterion 6, four duties, each citing its source inside its own clause:
+`fleet-state-commit-discipline` carries D-4 and PR-012; `merge-authority`
+carries D-6 and SC-008; `projects-read-only` carries D-8 and SC-010;
+`fleet-resume-specification` carries PR-201. All four present.
+
+Criterion 7c: all three supervision clauses exist as body headings and are
+declared in frontmatter. The `dispatch-requires-a-guard` clause contains
+FRESHNESS and "newest mtime". It DOES contain the word "completion", and that is
+CORRECT rather than a miss: the criterion forbids those words AS THE WATCHED
+CONDITION, and the occurrence is in the sentence "IT TESTS FRESHNESS. Never
+existence, and never completion." The phase's test scopes its two
+`doesNotMatch` assertions to the sentence containing "watches", and records
+that a line-based split failed on first run for exactly this reason. That is a
+correctly built guard, not a loophole.
+
+Criterion 8: DR-0012 and T-001 inside `decorrelated-review`; DR-0015 inside
+`merge-authority`; DR-0016 inside BOTH `escalation-threshold` and
+`stalled-phase-response`; T-007 inside `two-review-contracts`; T-008 in the
+supervision section. Six for six.
+
+## Criterion 5b: I did not accept the weakening test as written, and measured instead
+
+The registered weakening test does NOT mutate the document. Member 1 is a
+HAND-WRITTEN string, `"Confirm CI is green on main after merging."`, and the
+assertion is that the four element patterns do not match it. That is an
+assertion about the patterns and a string chosen to fail them, which is the
+construction the red-witness rule warns about. Member 2 is derived from the real
+clause by regex, which is better, but still only asserts which patterns stop
+matching.
+
+SO I RAN THE REAL EXPERIMENT. I replaced the actual clause in the actual
+`AGENTS.md` in my worktree (restoring by `cp` from a pristine copy, never
+`git checkout --`), for both members, and ran the criterion 5b tests:
+
+| state of the document | "clause states the event..." test | "weakening is caught" test |
+|---|---|---|
+| control, unmodified | exit 0, tests 1 pass 1 fail 0 | exit 0, tests 1 pass 1 fail 0 |
+| MEMBER 1, clause replaced by the vague sentence | **exit 1, tests 1 pass 0 fail 1** | **exit 1, fail 1** |
+| MEMBER 2, event name dropped, tip kept | **exit 1, tests 1 pass 0 fail 1** | **exit 1, fail 1** |
+
+`cmp` confirmed `AGENTS.md` byte-identical to the pristine copy afterwards and
+`git status --short` was empty.
+
+CONCLUSION: the criterion IS genuinely guarded, and by two structurally
+different real weakenings, because the FIRST test reads the real clause out of
+the real document. The criticism of the second test's construction stands and is
+filed LOW; the property it is supposed to protect is protected by its neighbour.
+
+TRANSLITERATION DECLARED for this capture: U+2139 replaced with `i`
+(18 occurrences, three summary lines across six runs). U+2714 and U+2716 do not
+appear in the filtered capture (0 occurrences each). Nothing else was changed.
+
+## The three shipped artifacts, checked as shipped
+
+`npm pack --dry-run` on the head: 181 files. `AGENTS.md` (31.4kB) is in the
+tarball, as are `roles/implementer.md`, `roles/_shared-dispatch-contract.md`,
+`assurance-modes.yaml`, `gate-registry.yaml`, `role-model-config.yaml`,
+`checklists/`, `schemas/` and `tuition/`.
+
+`roles/implementer.md` gains exactly two rendered gate rows, and both drift
+guards are green at this head: `agent-rules-drift: green (20 rendered gate rows
+compared)` and `check-brief-drift.mjs --check` exit 0. The rendered rows agree
+with the registry entries row for row, including the `conditional` flag and the
+unit label on `check-dual-review`.
+
+`node scripts/check-authored-bytes.mjs` exits 0.
+
+Suite, all three axes: `npm test`, node v26.6.0, `dist/` built: 761 tests, 761
+pass, 0 fail, **0 skipped**, exit 0. Bare `node --test` from the repository
+root, same toolchain and build state: **763** tests, 763 pass, 0 skipped,
+exit 0. The two-test gap is the tracked `sandbox/test/greet.test.js` pair that
+`package.json`'s test glob excludes, which is the known and explained
+difference, not a new discrepancy.
