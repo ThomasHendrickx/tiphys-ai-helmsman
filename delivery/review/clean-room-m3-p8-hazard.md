@@ -214,3 +214,43 @@ Non-blocking under DR-0027: the verdict is already nonzero on every case probed,
 so no drift reaches a user; the defect is the explanation. Tracked item. Fix is
 one line: report a duplicate or unkeyed committed row as its own DRIFT line
 before the byte comparison runs.
+
+### HRB-5 (MEDIUM, demonstrated) a valid `.yml` entry is dropped from the feed with no diagnostic, and `--check` calls the result green
+
+Shipped artifact: `src/tuition.ts`, `listEntryFiles`.
+
+    .filter((name) => name.endsWith(".yaml") && name !== MECHANISM_INDEX_FILE)
+
+Anything else is discarded silently. The header comment justifies the filter as
+"a README beside the feed is not an entry", which is true and is not the whole
+set it removes.
+
+Demonstrated: feed of two entries, `T-900.yaml` and `T-901.yml`, both accepted
+by `tiphys validate --type tuition` with exit 0, the second declaring the
+mechanism "Never trust a lease you did not take":
+
+    $ node bin/tiphys.ts tuition list --dir <feed>
+    T-900 2026-08-13 targets=0
+    exit=0
+    $ node bin/tiphys.ts tuition index --dir <feed>
+    wrote 1 mechanism(s) from 1 entr(ies) to <feed>/mechanism-index.yaml
+    $ grep -c second-probe-mechanism <feed>/mechanism-index.yaml
+    0
+    $ node bin/tiphys.ts tuition index --dir <feed> --check
+    1 mechanism(s) projected from 1 entr(ies); the committed index matches
+    exit=0
+
+Two entries in the directory, one in the feed, every command green and no
+message naming the dropped file. The harm is T-005's own failure mode: a
+mechanism that was paid for sits in the archive layer and never reaches the READ
+layer, and nothing reddens.
+
+Reachability, stated honestly. `tuition/README.md:22` documents the convention
+as `T-nnn.yaml`, so this needs a user who deviates. That is not far-fetched
+inside this phase: `checkRetention` in `src/commands/doctor.ts`, shipped by the
+SAME phase, accepts charters as `.yaml` OR `.yml`, so the codebase teaches that
+both are ordinary. An external promotion of an entry from another project is the
+likely origin.
+
+Fix shape: accept `.yml` as well, or emit one line per non-entry file skipped so
+the drop is never silent.
