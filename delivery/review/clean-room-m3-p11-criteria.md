@@ -40,3 +40,8 @@ In progress.
   real CLI, with a `main` control.
 - Criterion 5 executed against a packed tree from `npm pack`, with a `main`
   control.
+- Criterion 4 executed, both members, on the precondition path.
+- Criteria 8, 9, 10, 11 executed on a purpose-built scope-gate lab repo,
+  both directions on the same declaration, plus a prefix-boundary control.
+- FINDING IN HAND: the criterion-9 amendment note does not reach the
+  runner's stdout on the GREEN arm. Measured, see C-1 below.
