@@ -1,0 +1,16 @@
+{
+  "id": "M3-P11",
+  "branch": "claude/m3-p11-precondition-crash-verdict",
+  "filesToTouch": [
+    "src/gates/run.ts",
+    "test/gates.test.ts",
+    "witness/",
+    "delivery/requirements/clause-map.json"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "SC-011",
+    "DR-0029",
+    "T-008"
+  ]
+}

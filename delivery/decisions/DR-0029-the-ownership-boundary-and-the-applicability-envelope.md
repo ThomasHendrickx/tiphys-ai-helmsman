@@ -2,10 +2,12 @@
 
 - id: DR-0029
 - project: tiphys-kernel
-- status: **BOUNDARY DECIDED BY THE OWNER, 2026-08-13. ENVELOPE DRAFTED BY THE
-  ORCHESTRATOR AT THE OWNER'S INSTRUCTION AND AWAITING THEIR CONFIRMATION.**
-  The two halves are marked separately below and must not be read as one
-  sign-off.
+- status: **FULLY DECIDED BY THE OWNER, 2026-08-13.** The boundary (Parts 1 and
+  2) was stated by the owner and agreed the same day. Part 3, the applicability
+  envelope, was drafted by the orchestrator at the owner's instruction and then
+  **APPROVED BY THE OWNER VERBATIM ("DR-0029 approved")** without amendment. The
+  drafting-versus-approval distinction is kept in the text below because it
+  records who authored what, not because any part is outstanding.
 - resolves: DR-0028
 - governs: the framing of M4's mandatory intake (plan decision D-19)
 - date: 2026-08-13
@@ -120,13 +122,16 @@ instructs an orchestrator is a prompt-injection surface. Without this boundary,
 anyone who can land a pull request in a consuming repository can steer the
 orchestrator that has authority to write code and open pull requests elsewhere.
 
-## Part 3: the applicability envelope. ORCHESTRATOR DRAFT, NOT YET CONFIRMED.
+## Part 3: the applicability envelope. DRAFTED BY THE ORCHESTRATOR, APPROVED BY THE OWNER.
 
 The owner's instruction: "tighten the exact scope where Tiphys works in and does
 not work in. Not be usable for is as important as when it is usable."
 
-Everything in Part 3 is the orchestrator's proposal. It is written as
-definitively as it can be so that it is ARGUABLE, not because it is settled.
+Part 3 was written by the orchestrator and approved by the owner unamended. The
+authorship is recorded because an approved draft and an owner-authored rule carry
+different weight when a future reader wants to know how hard a line was thought
+about: Parts 1 and 2 are the owner's own words, Part 3 is the orchestrator's
+reading of them that the owner accepted.
 
 ### 3a. Tiphys APPLIES when all of these hold
 
