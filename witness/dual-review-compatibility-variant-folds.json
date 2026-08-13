@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-compatibility-variant-folds",
+  "behavior": "dual-review-compatibility-variant-folds",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a compatibility variant of a model family is folded onto it rather than refused"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  const folded = raw.normalize(\"NFKC\");",
+      "replace": "  const folded = raw;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  const folded = raw.normalize(\"NFKC\");",
+      "replace": "  const folded = raw.normalize(\"NFC\");"
+    }
+  ]
+}

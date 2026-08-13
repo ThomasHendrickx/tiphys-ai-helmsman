@@ -700,5 +700,8 @@
   "dual-review-absent-dimension-refuses": "a verdict that states no produced-by is refused rather than read as distinct from the other",
   "dual-review-unestablished-merge-authority": "a mode that states no merge-authority is refused rather than reported as not a delegated grant",
   "agents-references-refuse-unshipped-path": "a reference to a path the package does not publish is refused even though the file exists",
-  "dual-review-whitespace-is-not-distinctness": "two verdicts whose produced-by differs only by surrounding whitespace are not distinct"
+  "dual-review-whitespace-is-not-distinctness": "two verdicts whose produced-by differs only by surrounding whitespace are not distinct",
+  "dual-review-lookalike-is-not-distinctness": "a lookalike or invisible character in produced-by does not make a shared model family distinct",
+  "dual-review-compatibility-variant-folds": "a compatibility variant of a model family is folded onto it rather than refused",
+  "dual-review-merge-authority-lookalike": "a lookalike character in merge-authority does not turn a delegated grant into no grant"
 }

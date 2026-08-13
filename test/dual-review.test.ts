@@ -454,6 +454,135 @@ test("two verdicts whose produced-by differs only by surrounding whitespace are 
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* Fix round 2: a comparison without a declared canonical form           */
+/* ------------------------------------------------------------------ */
+
+/* EVERY NON-ASCII CHARACTER BELOW IS BUILT FROM AN ESCAPE, NEVER PASTED.
+   CLAUDE.md's binding convention 3 requires authored files to be pure ASCII,
+   and the point is sharper than the rule: a literal U+200B in this file would
+   be INVISIBLE to the next reader, which is the very property under test. A
+   test whose data cannot be seen in its own source is a test nobody can
+   review. `String.fromCodePoint` keeps the byte out of the file and the
+   intent in it. */
+const CYRILLIC_SMALL_A = String.fromCodePoint(0x0430);
+const FULLWIDTH_SMALL_A = String.fromCodePoint(0xff41);
+const EN_DASH = String.fromCodePoint(0x2013);
+const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+const SOFT_HYPHEN = String.fromCodePoint(0x00ad);
+
+/** Stage the shared-family pair, rewrite one side's produced-by, run. */
+function withProducedBy<T>(value: string, body: (run: ReturnType<typeof runScript>) => T): T {
+  const dir = stageContext("full", SHARED_FAMILY);
+  try {
+    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
+    const before = readFileSync(path, "utf8");
+    assert.match(before, /^produced-by: family-a$/m);
+    const after = before.replace(/^produced-by: family-a$/m, `produced-by: "${value}"`);
+    assert.notEqual(after, before, "produced-by line not rewritten");
+    writeFileSync(path, after);
+    return body(runScript(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("a lookalike or invisible character in produced-by does not make a shared model family distinct", () => {
+  /* THE FIX-ROUND-2 FINDING, AND THE FOUR MEMBERS ARE STRUCTURALLY DIFFERENT
+     ROUTES TO ONE OUTCOME rather than four spellings of one route:
+
+       - CYRILLIC SMALL LETTER A is a CROSS-SCRIPT HOMOGLYPH: a different
+         character that renders identically in most fonts.
+       - EN DASH is LOOKALIKE PUNCTUATION, and it is Common script, so no
+         script-mixing rule would catch it.
+       - ZERO WIDTH SPACE renders as NOTHING AT ALL, so the two values are
+         indistinguishable to a human even side by side, not merely similar.
+       - SOFT HYPHEN is invisible too but for a different reason: it is a
+         conditional hyphen a renderer shows only at a line break.
+
+     Measured against the shipped script before the canonical form existed: all
+     four exited 0 GREEN on the shared-family pair, printing "are distinct on
+     produced-by, framing, review-contract". That is a merge authorised under
+     DR-0012's delegated grant by two reviews from ONE model family.
+
+     They are REFUSED rather than repaired. The check names the codepoint and
+     its position, because a reader cannot be asked to find a character that
+     has no width. */
+  for (const [label, value] of [
+    ["cyrillic homoglyph", `f${CYRILLIC_SMALL_A}mily-a`],
+    ["en dash", `family${EN_DASH}a`],
+    ["zero width space", `family${ZERO_WIDTH_SPACE}-a`],
+    ["soft hyphen", `fami${SOFT_HYPHEN}ly-a`],
+  ] as const) {
+    withProducedBy(value, (run) => {
+      assert.equal(run.status, 1, `${label} exited 0: ${run.output}`);
+      assert.match(run.output, /declares produced-by using the character U\+[0-9A-F]{4} at position \d+/);
+      assert.match(run.output, /cannot be shown decorrelated on produced-by/);
+      /* THE FALSE GREEN SENTENCE MUST BE ABSENT, not merely outweighed. */
+      assert.doesNotMatch(run.output, /are distinct on produced-by/);
+    });
+  }
+});
+
+test("a compatibility variant of a model family is folded onto it rather than refused", () => {
+  /* THE OTHER HALF OF THE CANONICAL FORM, and it is a separate behaviour from
+     the refusal above. NFKC exists so that a value which is genuinely the SAME
+     value written in compatibility characters is RECOGNISED as the same, and
+     reported as the correlation it is, rather than refused as unreadable.
+
+     FULLWIDTH LATIN SMALL LETTER A is the measured case: NFKC folds it to `a`,
+     so the pair is caught by the DUPLICATE-VALUE arm and the message names
+     `family-a`, the value the document means. Of the five substitutions that
+     defeated the previous code, NFKC folds exactly this one; that measurement
+     is why the ASCII refusal above exists as well, and this test is what would
+     redden if someone deleted the normalisation as redundant. */
+  withProducedBy(`f${FULLWIDTH_SMALL_A}mily-a`, (run) => {
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /produced-by value family-a occurs in 2 of the 2 verdicts/);
+    assert.match(run.output, /not decorrelated on produced-by/);
+    /* NOT the refusal arm: this value is readable, and saying otherwise would
+       send its author looking for a character that is not the problem. */
+    assert.doesNotMatch(run.output, /using the character U\+/);
+  });
+});
+
+test("a lookalike character in merge-authority does not turn a delegated grant into no grant", () => {
+  /* THE SAME MECHANISM AT THE SITE THAT DISABLES THE WHOLE CHECK, which is why
+     this is a separate behaviour rather than another row above. `merge-authority`
+     is compared against a POLICY CONSTANT rather than against a sibling
+     document, and the not-a-delegated-grant arm is a REPORT, so a single
+     lookalike character in `assurance-modes.yaml` made the shared-family pair
+     exit 0 GREEN printing "mode full declares merge-authority
+     delegated-under-conditions, which is not a delegated grant". The sentence
+     is false and the exit code authorises the merge.
+
+     Measured before the canonical form existed, on the real shipped script,
+     with a Cyrillic o and with an ASCII case change: both exited 0. */
+  for (const [label, authority] of [
+    ["cyrillic o", `delegated-under-c${String.fromCodePoint(0x043e)}nditions`],
+    ["ascii case", "Delegated-Under-Conditions"],
+  ] as const) {
+    const dir = stageContext("full", SHARED_FAMILY);
+    try {
+      const path = join(dir, "assurance-modes.yaml");
+      const before = readFileSync(path, "utf8");
+      const after = before.replace(
+        /merge-authority: delegated-under-conditions/,
+        `merge-authority: "${authority}"`,
+      );
+      assert.notEqual(after, before, "merge-authority line not rewritten");
+      writeFileSync(path, after);
+      const run = runScript(dir);
+      assert.equal(run.status, 1, `${label} exited 0: ${run.output}`);
+      /* THE CHECK MUST NOT HAVE REPORTED ITSELF INAPPLICABLE. That is the
+         precise failure: not a wrong answer, but no answer presented as one. */
+      assert.doesNotMatch(run.output, /which is not a delegated grant/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
   /* THE SAME MECHANISM AT A STRUCTURALLY DIFFERENT SITE, and the consequence
      is larger: this one does not weaken one dimension, it turns the whole

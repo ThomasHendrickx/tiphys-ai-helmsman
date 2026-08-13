@@ -1,0 +1,24 @@
+{
+  "id": "dual-review-merge-authority-lookalike",
+  "behavior": "dual-review-merge-authority-lookalike",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a lookalike character in merge-authority does not turn a delegated grant into no grant"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    const authorityReading = establishField(mode.mode, \"merge-authority\");",
+      "replace": "    const authorityReading = { kind: \"established\" as const, value: String(mode.mode[\"merge-authority\"] ?? \"\") };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "export const DELEGATED_MERGE_AUTHORITY = \"delegated-under-conditions\";",
+      "replace": "export const DELEGATED_MERGE_AUTHORITY = \"Delegated-Under-Conditions\";"
+    }
+  ]
+}

@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  return { kind: \"established\", value: raw.trim() };",
-      "replace": "  return { kind: \"established\", value: raw };"
+      "find": "  const collapsed = folded.replace(/\\s+/g, \" \").trim();",
+      "replace": "  const collapsed = folded;"
     },
     {
       "kind": "mutation",
