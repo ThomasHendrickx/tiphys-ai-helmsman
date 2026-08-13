@@ -474,9 +474,11 @@ rather than "clean".
    standing warning 12: invocation `npm test`, toolchain node v26.6.0, build
    state `dist/` present, head 26ee653, working tree clean. Result: 710 tests,
    710 pass, 0 fail, 0 skipped, 0 todo, duration 191332ms, exit 0. Two glyphs
-   were stripped from the captured summary lines to keep this file ASCII: U+2139
-   (8 occurrences on the summary lines quoted) and U+FE0F (1); no digit or word
-   in the counts was altered. I did NOT read which tests those 710 are, did not
+   were stripped from the captured summary lines to keep this file ASCII, counted
+   over the exact block read (suite.tap lines 760-772): U+2139 (8) and U+2714
+   (1), both removed rather than substituted; no digit or word in the counts was
+   altered, and nothing else in any captured output in this document was
+   changed. I did NOT read which tests those 710 are, did not
    re-run for flake (`test/watcher.test.ts` flakes at about 1 in 62 and did not
    flake here), and ran no gate bundle. CI on the head remains the authority.
 4. **The gate bundle.** I ran no `tiphys gates run`. Every green I cite is a
