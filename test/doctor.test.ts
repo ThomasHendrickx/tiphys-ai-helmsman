@@ -476,3 +476,103 @@ test("doctor reports retention not applicable, never FAIL under --for full, in a
   );
   assert.equal(misconfigured.status, 1);
 });
+
+/**
+ * THE VACUOUS-PASS FAMILY (CR-1 and HRB-6, M3-P8 fix round 3).
+ *
+ * Round 2 recorded `retention: {}` as one open item. Two clean-room reviews
+ * measured it as a FAMILY, and the boundary is what makes it worth a test: an
+ * ABSENT `retention` key correctly FAILs under `full` (the test above owns
+ * that), so a charter author defeated the promoted condition with TWO
+ * CHARACTERS and got `PASS 0 declared retention path(s) present and tracked`,
+ * the same word a charter with three present, tracked paths prints.
+ *
+ * ONE WITNESS IS NOT A CLASS, so this asserts five structurally different
+ * members against BOTH profiles. They fall into two mechanisms and the fix has
+ * two arms accordingly: `{}` and `[]` are objects that yield no path (the
+ * verdict must come from the COUNT, not from `typeof`), and nested-map,
+ * empty-string and number values are values the old filter DISCARDED with no
+ * diagnostic (a non-string value is its own FAIL naming its key).
+ *
+ * THE POSITIVE CONTROL IS PART OF THE TEST. A fix that reddened everything
+ * would satisfy every assertion above and destroy the check, so the last row
+ * asserts a real declared, present, tracked path still PASSes with its count.
+ */
+test("doctor never prints PASS for a charter whose retention declares no usable path, under either profile, for any of five shapes", (t) => {
+  const shapes: { name: string; lines: string[]; expect: RegExp }[] = [
+    {
+      name: "empty map",
+      lines: ["retention: {}"],
+      expect: /declares no retention paths/,
+    },
+    {
+      name: "empty list",
+      lines: ["retention: []"],
+      expect: /declares no retention paths/,
+    },
+    {
+      name: "nested map value",
+      lines: ["retention:", "  work-history: {path: notes/keep}"],
+      expect: /declares retention key work-history as a map, which names no path/,
+    },
+    {
+      name: "empty string value",
+      lines: ["retention:", '  work-history: ""'],
+      expect: /declares retention key work-history as an empty string, which names no path/,
+    },
+    {
+      name: "number value",
+      lines: ["retention:", "  work-history: 12"],
+      expect: /declares retention key work-history as a number, which names no path/,
+    },
+  ];
+
+  for (const shape of shapes) {
+    const fleet = initFleet(t);
+    writeFileSync(
+      join(fleet, "charter", "charter.yaml"),
+      ["kind: charter", "identity:", "  name: example-service", ...shape.lines, ""].join("\n"),
+    );
+    for (const profile of [[], ["--for", "full"]]) {
+      const run = runCli(["doctor", ...profile], { cwd: fleet });
+      const line = /^CHECK retention (\S+) (.+)$/m.exec(run.stdout);
+      assert.ok(line !== null, `${shape.name}: no retention line in ${run.stdout}`);
+      /* THE LOAD-BEARING ASSERTION. Not "it is FAIL": the shapes divide
+         between WARN-promoted and FAIL, and pinning each to one status would
+         make this test a restatement of the implementation. What the plan's
+         hazard row at delivery/plan/kernel-plan-m3.md:4042 forbids is the
+         SILENT PASS, so PASS is what must never appear. */
+      assert.notEqual(
+        line[1],
+        "PASS",
+        `${shape.name} (profile ${profile.length === 0 ? "generic" : "full"}) printed PASS: ${line[2] as string}`,
+      );
+      assert.match(line[2] as string, shape.expect, `${shape.name}: ${line[2] as string}`);
+      assert.doesNotMatch(
+        line[2] as string,
+        /present and tracked/,
+        `${shape.name} reported the tracked-path verdict for a charter that declares none`,
+      );
+    }
+    /* THE PROMOTION STILL BITES, which is the half a count-blind fix loses:
+       under `full` every one of these shapes must exit nonzero. */
+    assert.equal(
+      runCli(["doctor", "--for", "full"], { cwd: fleet }).status,
+      1,
+      `${shape.name} did not fail --for full`,
+    );
+  }
+
+  /* POSITIVE CONTROL: a declared, present, tracked path still PASSes, and the
+     count is derived rather than pinned. */
+  const healthy = initFleet(t);
+  const paths = charterWithRetention(healthy);
+  const green = runCli(["doctor"], { cwd: healthy });
+  const greenLine = /^CHECK retention (\S+) (.+)$/m.exec(green.stdout);
+  assert.ok(greenLine !== null, green.stdout);
+  assert.equal(greenLine[1], "PASS", greenLine[2]);
+  assert.match(
+    greenLine[2] as string,
+    new RegExp(`^${String(paths.length)} declared retention path\\(s\\) present and tracked$`),
+  );
+});
