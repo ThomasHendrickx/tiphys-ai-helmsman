@@ -398,3 +398,59 @@ that produced it.
 Not prescribing the fix, since more than one is defensible (ship an evidence
 subset, rewrite citations to durable public URLs, or scope the check's context
 to the repository it was authored in and say so). Naming it is the finding.
+
+### HRB-9 (LOW, demonstrated, non-blocking) every option is accepted by every subcommand and silently ignored by the ones that do not use it; `tuition add --dir` writes somewhere the operator did not name
+
+Shipped artifact: `src/commands/tuition.ts`, `parseArgs`, which fills one shared
+`Options` record for all three subcommands and never checks that the option
+belongs to the subcommand.
+
+`add` uses `--into`; `list` and `index` use `--dir`. Confusing the two is a
+one-character-class mistake and it is not refused. Reproduced (and then undone):
+
+    $ node bin/tiphys.ts tuition add --file <entry> --dir <intended-dir>
+    added T-900 to <cwd>/tuition/T-900.yaml
+    exit=0
+    $ ls <intended-dir>
+    mechanism-index.yaml          # the entry is not there
+
+I ran that against the branch worktree and it wrote an untracked
+`tuition/T-900.yaml` into it; removed, `git status --short` now empty.
+
+The same shape covers `--out` and `--check` on `add` and `list`, and
+`--kernel-relevant` on `add` and `index`: accepted, ignored, exit 0.
+
+Non-blocking: the success line does name the real target, so an attentive
+operator sees it, and nothing is overwritten (the write is `wx`). The residue is
+an entry filed into whatever directory the process happened to be standing in,
+which for the tuition feed is the artifact the id rules exist to protect.
+
+Fix shape: reject an option the chosen subcommand does not read, the way
+`parseArgs` already rejects an unknown one.
+
+### Observations, not findings
+
+- **`tuition index` and `tuition index --check` DO distinguish "nothing to
+  project" from "projected and clean"**: both print the entry and mechanism
+  counts (`wrote 0 mechanism(s) from 0 entr(ies)`, `0 mechanism(s) projected from
+  0 entr(ies); the committed index matches`). The brief's question is answered
+  in the affirmative for `index`. `tuition list` prints nothing on an empty feed
+  and nothing on a feed with no kernel-relevant entries, both exit 0; both mean
+  "nothing to promote", so I do not count it.
+- **The shipped index IS checked by the suite**, so the drift guard is not
+  unwired even though no gate names it: `test/mechanism-index.test.ts:393` runs
+  `runCli(["tuition","index","--check"])` at the repository root and asserts exit
+  0, and the `suite` gate runs the suite. Confirmed separately that `tuition`
+  appears nowhere in `gate-registry.yaml`, `gates.manifest.json`,
+  `.github/workflows/` or `scripts/` except as a scope path and a clause-map row.
+- **No pinned count over the append-only feed.** `test/mechanism-index.test.ts`
+  uses `names.length >= 12`, a floor, and `test/tuition.test.ts:9` states the
+  rule in its own header. The promotion scan is not vacuous either: 12 of the 20
+  files in `delivery/tuition/` match its `kernel-relevant:\s*yes` probe, so it
+  examines rows rather than passing on an empty set. Its condition is a literal
+  string form, so an entry written `kernel-relevant: true` would be skipped;
+  that is a delivery-side test, not a shipped artifact, so it is a note.
+- **`tuition add` derives the filename from the validated id**, which is
+  `^T-[0-9]{3}$`, so no path element from the entry reaches the write. A
+  filename whose stem disagrees with the id inside is accepted on read, but the
+  suite's duplicate-id scan reads ids from content, so a real collision reddens.
