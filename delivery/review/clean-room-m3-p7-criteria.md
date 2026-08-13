@@ -94,3 +94,68 @@ Noted for the test-reachability check below: the DEFAULT resolution, with no
 framing at all, also heads on `fix-round-not-covered`, because that probe is
 first in the file. This is exactly the confound the fix round says it closed;
 checked separately.
+
+## Criterion 4d, re-derived: does the test REACH the ordering arm?
+
+This is the arm the fix round says it closed, so I mutated the resolver myself
+rather than reading the round's table. Both mutations are the two members the
+witness spec declares; both were applied to a working copy of `src/checklists.ts`
+and reverted from a pristine copy afterwards (`git status --porcelain` empty).
+
+Named tests, run with `--test-name-pattern` BEFORE the positional path:
+
+| mutation | `...fix-round-not-covered first...` | `...first probes differ` |
+|---|---|---|
+| pristine (control) | pass 1 fail 0 | pass 1 fail 0 |
+| scope match in `orderUnderFraming` defanged | **fail 1** | **fail 1** |
+| `orderUnderFraming` call bypassed | **fail 1** | **fail 1** |
+
+The failure message under the first mutation is the hoisted-probe assertion:
+
+    actual: 'criteria-walked-with-evidence'
+    expected: 'fix-round-not-covered'
+
+So the round's claim holds as measured: BOTH members redden BOTH named tests,
+which is what the harness's conjunctive `red` predicate requires. DISCHARGED,
+both directions plus the arm the file order alone could satisfy.
+
+## Criterion 3: `gate-probes-resolve`, registry to checklist
+
+EXECUTED, all three captures, against a staged context holding a copy of
+`gate-registry.yaml`:
+
+    control, shipped checklist        -> EXIT=0
+    probe deleted from the checklist  -> EXIT=1
+      INVALID #/probes gate unit-tests-for-changed-service-methods in <ctx>/gate-registry.yaml
+      names probe unit-tests-for-changed-service-methods, which no probe in this
+      checklist declares (check: gate-probes-resolve)
+    check DEREGISTERED, same fixture  -> failed=false, lines []
+    check RE-REGISTERED               -> failed=true
+
+Names the gate AND the probe id. DISCHARGED.
+
+## Criterion 3c: the other direction, checklist to registry
+
+EXECUTED, two structurally different members plus the deregistration.
+
+Member 1, gate id RENAMED to `unit-tests-for-changed-service-methods-v2`:
+
+    EXIT=1
+    INVALID #/probes/21/verifies-gate probe unit-tests-for-changed-service-methods
+      is named by gate unit-tests-for-changed-service-methods-v2 ... and its
+      verifies-gate says unit-tests-for-changed-service-methods
+    INVALID #/probes/21/verifies-gate probe unit-tests-for-changed-service-methods
+      verifies gate unit-tests-for-changed-service-methods, which <ctx>/gate-registry.yaml
+      does not declare (check: gate-probes-resolve)
+    restoring the name -> EXIT=0
+
+Member 2, gate entry DELETED (gates 15 -> 14, asserted before running):
+
+    EXIT=1
+    INVALID #/probes/22/verifies-gate probe fixtures-for-changed-component-states
+      verifies gate fixtures-for-changed-component-states, which <ctx>/gate-registry.yaml
+      does not declare (check: gate-probes-resolve)
+    check DEREGISTERED -> failed=false, lines []
+    check RE-REGISTERED -> failed=true
+
+The two fail through different lookups, as the criterion requires. DISCHARGED.
