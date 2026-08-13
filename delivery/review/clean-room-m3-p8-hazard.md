@@ -327,3 +327,29 @@ asserts nothing.
 
 Fix shape: reject a target that resolves outside `contextDirectory`, and treat
 `dangling` as absent.
+
+#### HRB-2, addendum: what the work history already disclosed, and what it did not
+
+Checked rather than assumed. `delivery/work-history/m3-p8.md` DOES disclose arm
+2 in its residues, in these words: "`git check-ignore` exit 1 and exit 128 are
+conflated by the retention check ... a declared retention path in a directory
+that is no repository at all is reported as tracked ... no test in this round
+forces that arm." That arm is therefore an ACKNOWLEDGED residue and I do not
+count it against the round.
+
+Arm 1 is not disclosed anywhere. Measured over the work history:
+
+| term | occurrences |
+|---|---|
+| `untracked` | 0 |
+| `ls-files --` | 0 |
+| `pathReferencesIn` | 0 |
+| `listEntryFiles` | 0 |
+| `foldedBlock` | 0 |
+| `normali` | 0 |
+| `whitespace` | 0 |
+| `round-trip` / `roundtrip` | 0 |
+| `endsWith` | 0 |
+
+So HRB-1, HRB-3, HRB-4, HRB-5, HRB-7 and arm 1 of HRB-2 are new, and the
+non-string arm of HRB-6 is new. HRB-6's `{}` arm is round 2's named open item.
