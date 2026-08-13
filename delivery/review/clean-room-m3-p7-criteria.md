@@ -159,3 +159,80 @@ Member 2, gate entry DELETED (gates 15 -> 14, asserted before running):
     check RE-REGISTERED -> failed=true
 
 The two fail through different lookups, as the criterion requires. DISCHARGED.
+
+## Criterion 4: Kind A dangerous-instance rejections on the verdict schema
+
+EXECUTED against a verdict I wrote, in a staged context holding
+`templates/plan.example.yaml` as `plan.yaml` (phase `M9-P1`, acceptance ids
+1 and 2, hazard classes H1 and H2) and the work-history template re-pointed at
+that phase.
+
+| instance | exit | diagnostic |
+|---|---|---|
+| control, complete `criteria` verdict | 0 | - |
+| (a) APPROVE + `high` finding | 1 | `#/verdict value "APPROVE" is not one of the permitted values "FIX-ROUND-NEEDED"` |
+| (a) APPROVE + `critical` finding | 1 | same |
+| control, FIX-ROUND-NEEDED + `high` | 0 | - |
+| control, APPROVE + `low` | 0 | - |
+| (b) finding with no `concrete-fix` | 1 | `#/findings/0/concrete-fix required property concrete-fix is missing` |
+| (c) no `produced-by` | 1 | `#/produced-by required property produced-by is missing` |
+| (c) no `framing` | 1 | `#/framing required property framing is missing` |
+
+Witnesses, each by editing `schemas/verdict.schema.json` in the working tree and
+restoring it from a pristine copy (`git status --porcelain` clean afterwards):
+
+| keyword removed | the rejected instance then |
+|---|---|
+| the `enum` inside `then` | APPROVE+high EXIT=0, APPROVE+critical EXIT=0; restored -> EXIT=1 |
+| `concrete-fix` from `$defs.finding.required` | EXIT=0 |
+| `produced-by` and `framing` from root `required` | both EXIT=0 |
+
+Declared deviation 2 checked rather than taken: deleting `then` outright gives
+
+    INVALID # schema is refused by this validator's strict policy
+
+so it would witness nothing, and removing the inner `enum` is the correct
+defang. The deviation's claim is TRUE as measured. DISCHARGED.
+
+## Criterion 4b: Kind B completeness, both checks, both directions
+
+EXECUTED.
+
+    criteria[] omits criterion "2"     -> EXIT=1, "acceptance criterion 2 of phase M9-P1
+                                          in <ctx>/plan.yaml has no entry, so this review
+                                          did not walk it (check: verdict-criteria-complete)"
+    criteria[] names criterion "99"    -> EXIT=1, "...declares no such acceptance criterion"
+    deviations-judged omits one        -> EXIT=1, "(check: verdict-deviations-judged)"
+    deviations-judged invents one      -> EXIT=1, "...declares no such deviation"
+
+Deregistration witnesses, run through the checks module:
+
+    verdict-criteria-complete   REGISTERED failed=true / DEREGISTERED failed=false []
+                                / RE-REGISTERED failed=true
+    verdict-deviations-judged   REGISTERED failed=true / DEREGISTERED failed=false []
+                                / RE-REGISTERED failed=true
+
+DISCHARGED.
+
+## Criterion 4e: hazard checklist and `verdict-hazard-classes-addressed`
+
+EXECUTED.
+
+    validate --type checklist --context . checklists/hazard-review.yaml -> EXIT=0
+    probe-id sets: clean-room 23, hazard-review 9, SHARED []
+    hazard-review resolved head: "1. hazard-classes-addressed [hazard-classes]"
+
+Check, all three captures plus the contract discrimination:
+
+    hazard verdict, both classes addressed   -> EXIT=0
+    hazard verdict, H2 omitted               -> EXIT=1, "hazard class H2 of phase M9-P1
+                                                 ... did not address it
+                                                 (check: verdict-hazard-classes-addressed)"
+    check deregistered, same fixture         -> failed=false, lines []
+    check re-registered                      -> failed=true
+    THE SAME incomplete document with only `review-contract` flipped to
+    `criteria`                               -> EXIT=0
+
+That last row is the strong form of "a criteria verdict is unaffected": the
+green comes from the contract discriminating, not from the check being inert.
+DISCHARGED.
