@@ -165,8 +165,10 @@ then `driftLines` on one row:
 Why it hurts a user rather than being cosmetic. The DRIFT line names the entry,
 which is the file the operator is told to go to, and the entry is not wrong. The
 documented remedy (`regenerate it with tiphys tuition index`) provably does not
-clear it, and the byte arm is not what fires, so the "it has been hand-edited"
-message never appears to redirect the reader. The stuck state is a drift check
+clear it, and the byte arm is not what fires: `cmp` reports the committed and
+regenerated files IDENTICAL, and the "it has been hand-edited" message did not
+appear in any run I captured, so nothing redirects the reader. The stuck state
+is a drift check
 that is red for a reason it does not state, which is the condition under which
 operators start ignoring drift output.
 
@@ -253,7 +255,7 @@ both are ordinary. An external promotion of an entry from another project is the
 likely origin.
 
 Fix shape: accept `.yml` as well, or emit one line per non-entry file skipped so
-the drop is never silent.
+each drop is reported.
 
 ### HRB-6 (MEDIUM, demonstrated) the retention vacuous pass is wider than round 2 recorded: `{}`, `[]` and non-string values all reach PASS, and each defeats the `full` promotion
 
@@ -284,10 +286,14 @@ types reports the same green as one that declares none.
 Reachability, and the honest limit. `schemas/charter.schema.json` requires
 `work-history`, `evidence` and `tuition` as non-empty strings under
 `additionalProperties: false`, so every row above except the first is
-SCHEMA-INVALID. The load-bearing fact is that `checkRetention` never validates
-the charter: `grep -n charter src/commands/doctor.ts` shows no call into
-`validateInstance`, and `tiphys doctor` is exactly the command a user runs to
-learn whether the fleet is sound. Charters are owner-authored by design (the
+SCHEMA-INVALID. The load-bearing fact is that `checkRetention` does not validate
+the charter it reads, settled by command rather than by reading:
+
+    $ grep -nE "validateInstance|loadTypeSchema|charter\.schema" src/commands/doctor.ts
+    exit=1        # no hits
+
+and `tiphys doctor` is exactly the command a user runs to learn whether the
+fleet is sound. Charters are owner-authored by design (the
 check's own header says so), so a hand-written charter that does not match its
 schema is the ordinary case, not the exotic one, and doctor green-lights its
 retention.
