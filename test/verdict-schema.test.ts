@@ -57,6 +57,7 @@ const checksModule = (await import(
   verdictCriteriaComplete: DerivedCheck;
   verdictDeviationsJudged: DerivedCheck;
   verdictHazardClassesAddressed: DerivedCheck;
+  verdictFindingReferencesResolve: DerivedCheck;
 };
 
 const validateModule = (await import(
@@ -713,6 +714,111 @@ test("a hazard verdict addressing a class the phase does not declare is rejected
 /* Registration and behaviors                                           */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Fix round 2, H-1: the intra-document finding reference               */
+/* ------------------------------------------------------------------ */
+
+test("a hazard class naming a finding the verdict does not declare is rejected naming the id and the check, and is accepted with the check deregistered", () => {
+  const dir = scratch();
+  try {
+    writeYaml(dir, "plan.yaml", loadPlan());
+    writeYaml(dir, "work-history.yaml", loadWorkHistory());
+
+    /* THE DANGEROUS STATE, and it is the APPROVE side rather than an
+       obviously broken document: every required field present, `verdict`
+       APPROVE, `findings` EMPTY, and one hazard class recording that it
+       produced `F-1`. Before this check that validated at exit 0, so the
+       schema's one escalation rule saw an empty findings array while the
+       review had written down that it found something. */
+    const instance = baselineHazardVerdict();
+    const addressed = instance["hazard-classes-addressed"] as Record<string, unknown>[];
+    const first = addressed[0] as Record<string, unknown>;
+    delete first["cleared-because"];
+    first["finding"] = "F-1";
+    assert.equal((instance["findings"] as unknown[]).length, 0);
+    assert.equal(instance["verdict"], "APPROVE");
+    const file = writeYaml(dir, "verdict.yaml", instance);
+
+    const rejected = runCli(["validate", "--type", "verdict", "--context", dir, file]);
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(
+      rejected.stdout,
+      new RegExp(
+        `^INVALID #/hazard-classes-addressed/0/finding finding F-1 is named by hazard class ${String(first["class-id"])} and no findings\\[\\] entry declares that id, so the verdict's escalation rule cannot see it \\(check: verdict-finding-references-resolve\\)$`,
+        "m",
+      ),
+      rejected.stdout,
+    );
+
+    /* KIND B WITNESS: the same instance with the CHECK deregistered. The
+       rule joins two arrays inside one document, which is not a keyword
+       property, so removing a keyword could not produce this. */
+    assert.equal(checksModule.deregisterCheck("verdict-finding-references-resolve"), true);
+    const withoutCheck = checksModule.runChecks("verdict", instance, dir);
+    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
+    checksModule.registerCheck(checksModule.verdictFindingReferencesResolve);
+    assert.equal(checksModule.runChecks("verdict", instance, dir).failed, true);
+
+    /* THE SAME DOCUMENT MADE HONEST passes: the finding declared in
+       `findings[]`, which is where the escalation rule reads. It is `low`
+       here so the control isolates reference resolution from the severity
+       rule, whose own witnesses are above. */
+    const honest = baselineHazardVerdict();
+    const honestFirst = (honest["hazard-classes-addressed"] as Record<string, unknown>[])[0] as
+      Record<string, unknown>;
+    delete honestFirst["cleared-because"];
+    honestFirst["finding"] = "F-1";
+    honest["findings"] = [
+      {
+        id: "F-1",
+        severity: "low",
+        evidence: ["src/example.ts:1"],
+        "concrete-fix": "Name the edit that closes it.",
+      },
+    ];
+    const control = writeYaml(dir, "honest.yaml", honest);
+    const passed = runCli(["validate", "--type", "verdict", "--context", dir, control]);
+    assert.equal(passed.status, 0, passed.stdout + passed.stderr);
+
+    /* AND THE ESCALATION RULE IS REAL ONCE THE REFERENCE RESOLVES, which is
+       the point of the fix: the same document at `severity: high` is refused
+       for its APPROVE. Without this line the check would look like tidiness. */
+    const escalating = JSON.parse(JSON.stringify(honest)) as Record<string, unknown>;
+    ((escalating["findings"] as Record<string, unknown>[])[0] as Record<string, unknown>)[
+      "severity"
+    ] = "high";
+    const escalated = runCli([
+      "validate",
+      "--type",
+      "verdict",
+      "--context",
+      dir,
+      writeYaml(dir, "escalating.yaml", escalating),
+    ]);
+    assert.equal(escalated.status, 1, escalated.stdout + escalated.stderr);
+    assert.match(escalated.stdout, /#\/verdict value "APPROVE" is not one of/, escalated.stdout);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a criteria verdict carrying no hazard classes is unaffected by the finding-reference check", () => {
+  const dir = scratch();
+  try {
+    writeYaml(dir, "plan.yaml", loadPlan());
+    writeYaml(dir, "work-history.yaml", loadWorkHistory());
+    /* The check must not be able to redden a document that has no
+       `hazard-classes-addressed` at all, which is every criteria verdict. */
+    const outcome = checksModule.runChecks("verdict", baselineVerdict(), dir);
+    assert.ok(
+      !outcome.lines.some((line) => line.includes("verdict-finding-references-resolve")),
+      outcome.lines.join("\n"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("verdict is registered in the validator type table and its schema declares the dialect", async () => {
   const validateCommand = (await import(
     new URL("../src/commands/validate.ts", import.meta.url).href
@@ -733,6 +839,7 @@ test("this phase's verdict behaviors are registered in test/behaviors.json", () 
     "verdict-records-framing",
     "verdict-hazard-classes-completeness",
     "verdict-records-review-contract",
+    "verdict-dangling-finding-reference-rejected",
   ]) {
     assert.ok(
       Object.prototype.hasOwnProperty.call(behaviors, id),
