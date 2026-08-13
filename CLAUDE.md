@@ -770,6 +770,23 @@ Each of these bit someone once. Forward them to every implementer.
    path have different authorities in this container, and `gh pr create`,
    `gh pr merge` and `gh pr view` cannot be relied on. Full mode needs a real
    runner or the owner's machine; local mode is the form that runs here.
+   **THE CONSEQUENCE THAT KEEPS COSTING SOMETHING: NO BASH-BASED CI WATCHER CAN
+   WORK HERE, AND IT FAILS SILENTLY.** `GH_TOKEN` and `GITHUB_TOKEN` are both
+   SET, which is why this looks like it should work, and the REST API answers
+   `{"message":"Bad credentials","status":"401"}` to every request made with
+   them. Measured 2026-08-13 against `/repos/.../pulls/125` and `/pulls/128`.
+   A poll loop written the obvious way pipes that 401 into a `.catch(()=>{})` or
+   a `|| true` and emits nothing, so **a watcher with no CI access is
+   indistinguishable from a CI run still in progress.** The orchestrator armed
+   exactly such a watcher for 1500s and it reported nothing while a job it was
+   watching had already completed; it was caught by an hourly liveness check,
+   not by the watcher. This is the T-008 shape, a guard that cannot go red, in
+   the one family where the environment guarantees it.
+   **The GitHub MCP tools DO work** and are the only reachable CI path, so
+   status is read by calling them, which means CI polling is an ORCHESTRATOR
+   ACTION and cannot be delegated to a background monitor. Plan accordingly: an
+   hourly liveness check that reads CI by hand is the mechanism, and arming a
+   bash watchdog instead is worse than arming none.
 7. `--test-name-pattern` must precede the positional test path, or it is
    silently ignored.
 8. `git checkout --` wipes uncommitted sibling edits. Copy before

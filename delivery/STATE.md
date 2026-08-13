@@ -5,7 +5,38 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-12 evening, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-13 morning, NEWEST BLOCK. Everything below is OLDER.
+- **M3 IS 7 OF 10 MERGED.** M3-P6 at `ec77c7d`, M3-P7 at `2a3892b`. The harness
+  saga that fills the block below is CLOSED: its branch merged and `main` is
+  green on both CI arms.
+- **THE GOVERNING RULE CHANGED, AND IT IS THE MOST IMPORTANT LINE IN THIS FILE.**
+  DR-0027 narrows what blocks a merge to findings that can REACH a shipped
+  artifact or a real user path. Findings that cannot are recorded in
+  `delivery/review/tracked-findings-register.md` and the branch merges carrying
+  them. The measured cost of the old reading is in the decision record: 29 merges
+  in 24 hours of which 2 touched `src/`, about 1.66 million subagent tokens, and
+  M3 static at 5 of 10 throughout.
+- **M3-P8 IS AT ITS ROUND CAP AND MERGES CARRYING TRACKED FINDINGS.** Round 3
+  closed the three that reach a consumer: the shipped package resolved zero of 16
+  mechanism-index citations because it ships `tuition/` and not `delivery/`; the
+  retention doctor check printed PASS on empty and non-string values under both
+  profiles; and the citation resolver was blind to `path.ext:LINE`, which is the
+  form this repository mandates. Ten findings are tracked and not fixed, one of
+  them (HRB-2) CONTESTED by the implementer that found it, with its constructed
+  repro recorded in the register. DR-0027 rule 3 caps a branch at two rounds and
+  this branch has had three; a fourth is refused on that ground and not on the
+  merits.
+- **M3-P9 CANNOT RUN CONCURRENTLY WITH M3-P8, AND THIS IS MEASURED.** Its
+  declaration claims `src/checks.ts` and `src/commands/validate.ts`
+  (delivery/plan/phase-declarations/m3-p9.json:1), and M3-P8's round-3 fix
+  rewrites both. Its cross-phase READS are all on `main` already, so the
+  sequencing constraint is file conflict, not a missing deliverable. Dispatch it
+  the moment M3-P8 merges; its criterion read is already written at
+  delivery/plan/m3-p9-dispatch-read.md:1 and its one design constraint is that
+  `scripts/check-agents-references.mjs` must take a context argument.
+- **M3-P10 IS BLOCKED ON THE OWNER, ACTION A-7**, the npm publish credential.
+  That is the intended end state for this stretch of work and it is not a
+  process failure.
 - **READ THIS FIRST: THE BLOCKED HARNESS CODE IS ON `main`, AND THE
   ORCHESTRATOR PUT IT THERE.** PR #117 was opened to land one verification
   document. It carried the rounds 1-2 harness fix with it, because its branch was
