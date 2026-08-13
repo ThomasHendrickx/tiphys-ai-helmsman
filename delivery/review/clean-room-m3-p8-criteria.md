@@ -125,3 +125,55 @@ line 11:  3. tuition/mechanism-index.yaml
 
 The named path is the generated file: `tuition index --check` against it exits 0
 with `the committed index matches`.
+
+## Criterion 4c: no interim row is dropped
+
+DISCHARGED, derived independently of the phase's test.
+
+`test/fixtures/mechanisms-interim.md` is byte-identical to `git show
+037477e:MECHANISMS.md` (`diff -q` exit 0), so the capture is verbatim as the
+criterion requires. Parsing the fixture's table myself and applying the key
+derivation the schema documents (lowercase, non-alphanumeric runs to one hyphen,
+ends trimmed) gives twelve keys, and all twelve are present in
+`tuition/mechanism-index.yaml`. The generated index carries fifteen keys; the
+three extra are `shared-worktree`, `supervising-a-dispatched-agent` and
+`checking-a-generated-artifact-against-its-own-generator`.
+
+Removing a mechanism and regenerating is the reverse direction, and it is
+measured under criterion 4 above (the deleted `claim-file-...` row is named).
+
+## Criterion 5: the claim-file row
+
+DISCHARGED for the rule, with a citation caveat recorded as L-2 below.
+
+The row `claim-file-mutual-exclusion-by-o-excl` carries T-005's loud-failure
+rule ("A claim that cannot be taken must fail LOUDLY and name the stuck file"),
+three siblings, and two evidence strings. The first resolves
+(`delivery/verification/u2-race-flake-investigation.md`). The second is
+`delivery/tuition/T-005, the silent reimplementation ...`, which
+`pathReferencesIn` does not treat as a path (no extension), so it is neither
+resolved nor reported. See L-2.
+
+## Criterion 8: the retention doctor check
+
+DISCHARGED for the states the criterion names; a MEDIUM finding sits beside it
+(CR-1).
+
+Probed against a real fleet built with `tiphys init` plus a hand-written
+`charter/charter.yaml` declaring three retention paths, all present and tracked:
+
+| fleet state | generic | `--for full` |
+|---|---|---|
+| three paths declared, present, tracked | `PASS 3 declared retention path(s) present and tracked`, exit 0 | PASS |
+| `delivery/evidence/` added to `.gitignore` | `FAIL ... is git-ignored and will not survive a clone`, exit 1 | FAIL |
+| the ignore removed again | PASS | PASS |
+| charter present, `retention` key ABSENT | `WARN ... declares no retention paths` | `FAIL ... (required for profile full)` |
+| `tiphys init` fleet, `charter/` holds only `.gitkeep` | `WARN ... no project is realized here yet and retention is not applicable` | `WARN`, NOT promoted |
+
+The fix-round-2 cost is real and correctly bounded as stated: `PROFILES.full` is
+`["gh-missing", "remote-missing", "retention-undeclared"]` at
+`src/commands/doctor.ts:53` and `retention-not-applicable` is absent from it, so
+`--for full` no longer asserts that a project is realized. Doctor's check list
+is `node, git, gh, layout, remote, lock, beacon, identity, retention` and none
+of the other eight reads the charter, so nothing else in the kernel at M3
+asserts realization either. That matches what the work history claims.
