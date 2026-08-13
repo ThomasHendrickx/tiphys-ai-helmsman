@@ -1,0 +1,289 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/verdict.schema.json",
+  "title": "Tiphys clean-room review verdict",
+  "$comment": "R-053, R-057b, R-060, T-001, T-007. Kernel plan M3, M3-P7 steps 6 and 6a. THE OUTPUT OF A CLEAN-ROOM REVIEW, and the document that decides what a review is ALLOWED TO SAY. THE HAZARD THIS DOCUMENT EXISTS AGAINST is the phase's own last item: a verdict that admits APPROVE alongside an unaddressed hazard class. WHAT IT REACHES. (1) APPROVE beside a finding the review itself ranked high or critical, which is a review saying yes while recording a reason to say no, and is how a fix round gets skipped; the root `if`/`then` inverts it into the form the closed vocabulary can carry (schemas/README.md has no `not`): a set CONTAINING such a finding must carry the FIX-ROUND-NEEDED verdict. Stated deliberately WIDER than criterion 4(a), which names `high` alone: `critical` outranks it, and a rule that stopped at `high` would let the worse finding through. (2) A finding with no `concrete-fix`, on EVERY finding rather than on high ones, because a low finding with no proposed edit is a remark. (3) A verdict with no `produced-by` or no `framing`: DR-0012 condition 1 compares two reviews of one head on family AND entry point, and neither comparison is reachable from inside one document, so what is bought here is that neither field can be absent. (4) T-007's `review-contract`, and `hazard-classes-addressed[]` required exactly when the contract is `hazard`, through the `oneOf`. WHAT IT CANNOT REACH, each with its instrument. (a) Whether `criteria[]` covers every acceptance criterion of the phase: that is a comparison against a DIFFERENT document and is the Kind B check `verdict-criteria-complete`. (b) Same for `deviations-judged[]` against the work history's `deviations[]` (M3R-005), check `verdict-deviations-judged`. (c) Same for `hazard-classes-addressed[]` against the plan phase's `hazard-classes[]`, check `verdict-hazard-classes-addressed`. (d) Whether a `cleared-because` statement is true, or whether `met: true` was earned; those are the reviewer's judgement and no keyword reaches them. (e) ADDED IN FIX ROUND 2, and it is INTRA-document rather than cross-document, which is why it was missed: whether `hazard-classes-addressed[].finding` names a finding this document actually declares. It is the check `verdict-finding-references-resolve`, and what it protects is rule (1) above, which reads `findings[]` alone and is therefore blind to a finding recorded one field away.",
+  "description": "A clean-room review verdict: the decision, the findings behind it, and the three completeness arrays that say what the review actually walked.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "phase",
+    "verdict",
+    "produced-by",
+    "framing",
+    "review-contract",
+    "findings",
+    "criteria",
+    "deviations-judged"
+  ],
+  "properties": {
+    "kind": {
+      "$comment": "R-016's discriminator, so `tiphys validate --type auto` resolves this document without being told (M3R-001).",
+      "type": "string",
+      "const": "verdict"
+    },
+    "phase": {
+      "$comment": "The plan phase this review is OF. Not decoration: it is the join key all three Kind B checks use to select the phase in `plan.yaml` and to confirm `work-history.yaml` is the right one. A verdict that named no phase would make every cross-document completeness rule unimplementable, which is the same reason the checklist probe carries `verifies-gate`.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "verdict": {
+      "$comment": "R-060's closed vocabulary, exactly two values. A third value such as 'approve with comments' is the shape that lets a fix round be skipped by wording, so the enum is the whole point of the field.",
+      "type": "string",
+      "enum": ["APPROVE", "FIX-ROUND-NEEDED"]
+    },
+    "produced-by": {
+      "$comment": "T-001: record in the review header which model family produced it. DR-0012 condition 1 requires the two clean-room reviews of one head to differ here, and that comparison is between two documents.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "framing": {
+      "$comment": "Step 6: which entry point this review was given, naming a `framings[].id` of the checklist it ran. T-001's second lesson is that decorrelation comes from the STARTING QUESTION rather than only from the reviewer, so a verdict that does not record its framing cannot be checked for decorrelation at all.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "review-contract": {
+      "$comment": "T-007, step 6a. Which of the two review CONTRACTS produced this verdict, mirroring the field the role brief carries (M3-P6). `scripts/check-dual-review.mjs` can then check contract distinctness alongside model-family and framing distinctness, which is T-007's point: the phase that met fifteen of fifteen criteria and live-locked every supervision command was caught by a reviewer that differed in its BRIEF, not in its model.",
+      "type": "string",
+      "enum": ["criteria", "hazard"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "criteria": {
+      "$comment": "R-053: each acceptance criterion quoted, with file:line evidence and a met-or-not-met verdict. One entry per criterion; that it is EVERY criterion is Kind B.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/criterionWalk"
+      }
+    },
+    "deviations-judged": {
+      "$comment": "R-057b, and M3R-005 is why it is an ARRAY rather than a probe question. 'Each declared deviation judged against the plan's intent by the reviewer, never assumed by the implementer' has exactly the same completeness shape as criteria coverage, and revision 0 had left it as a bare probe, so a reviewer could silently skip judging one of three declared deviations and every criterion still passed. Empty is legitimate: a phase can declare no deviation.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/deviationJudgement"
+      }
+    },
+    "hazard-classes-addressed": {
+      "$comment": "T-007, step 6a. Required exactly when `review-contract` is `hazard`, by the `oneOf` below. One entry per class declared by the referenced plan phase; that it is EVERY class is Kind B, check `verdict-hazard-classes-addressed`, which has the shape `verdict-criteria-complete` has for criteria and for the same reason.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/hazardClassAddressed"
+      }
+    }
+  },
+  "if": {
+    "$comment": "THE DANGEROUS INSTANCE, criterion 4(a), inverted into the closed vocabulary's reach. The rule wanted is APPROVE implies no high finding, and the direct spelling needs `not`, which schemas/README.md does not permit. `contains` matches the NON-empty case, which is the polarity that works here: a set that CONTAINS a finding the review itself ranked high or critical is a set whose verdict must be FIX-ROUND-NEEDED. `type: array` is restated inside because ajv 8.20.0 under `strict: true` refuses `contains` in a subschema that has not declared its type at the same level.",
+    "properties": {
+      "findings": {
+        "type": "array",
+        "contains": {
+          "type": "object",
+          "required": ["severity"],
+          "properties": {
+            "severity": {
+              "type": "string",
+              "enum": ["high", "critical"]
+            }
+          }
+        }
+      }
+    }
+  },
+  "then": {
+    "$comment": "So APPROVE beside a high or critical finding fails HERE, naming the verdict field. Restated in `properties` at this level because a bare `enum` under a name ajv cannot see declared is a compilation error under strictTypes.",
+    "properties": {
+      "verdict": {
+        "type": "string",
+        "enum": ["FIX-ROUND-NEEDED"]
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$comment": "Branch A, the criteria contract. `hazard-classes-addressed` is not required, and criterion 4e asserts a `criteria` verdict is unaffected by the hazard completeness check as well, so the rule applies exactly where the contract applies and nowhere else.",
+      "properties": {
+        "review-contract": {
+          "type": "string",
+          "const": "criteria"
+        }
+      }
+    },
+    {
+      "$comment": "Branch B, the hazard contract (T-007). `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.",
+      "required": ["hazard-classes-addressed"],
+      "properties": {
+        "review-contract": {
+          "type": "string",
+          "const": "hazard"
+        },
+        "hazard-classes-addressed": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "finding": {
+      "$comment": "R-060: severity-ranked, a concrete fix each. Ranked low < medium < high < critical, the same four names schemas/finding.schema.json and schemas/plan.schema.json use, so the kernel carries one severity vocabulary rather than three.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "evidence", "concrete-fix"],
+      "properties": {
+        "id": {
+          "$comment": "The stable id the arbitration and the fix round cite. CLAUDE.md owns the scheme (CR-nnn for a clean-room finding on a PR); this schema does not pick one.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "evidence": {
+          "$comment": "Evidence beats assertion: exit codes, counts, paths with line numbers, captured output. `minItems: 1` because a finding with no evidence is an opinion, and this repository treats a claim with no verifiable artifact behind it as unknown.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "concrete-fix": {
+          "$comment": "Criterion 4(b) names a FIX-ROUND-NEEDED finding with no concrete fix as the dangerous instance. Required on EVERY finding regardless of verdict or severity, which is deliberately stronger: a review made of remarks is the empty review with extra steps. DR-0027 sharpens what a fix should say, since a finding that cannot name the shipped behaviour at risk has found nothing worth a round.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "analysis": {
+          "$comment": "The argument behind one finding, which is not enumerable and therefore lives inside a field rather than becoming structure (section 1.5). Optional, non-empty when present.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "criterionWalk": {
+      "$comment": "R-053, one acceptance criterion walked.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "quote", "evidence", "met"],
+      "properties": {
+        "id": {
+          "$comment": "The `acceptance[].id` of the criterion in the referenced plan phase. This is the join key `verdict-criteria-complete` compares; a walk keyed only by its quoted text could not be compared to anything without matching prose.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "quote": {
+          "$comment": "R-053 says QUOTED, so the reviewer has read the criterion rather than the id. The schema cannot check that the quote matches the plan's text; it can require that something was quoted.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "met": {
+          "type": "boolean"
+        }
+      }
+    },
+    "deviationJudgement": {
+      "$comment": "R-057b, one declared deviation judged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviation", "serves-plan-intent", "reasoning"],
+      "properties": {
+        "deviation": {
+          "$comment": "The work history's `deviations[].plan-clause`, verbatim. The join key `verdict-deviations-judged` compares.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "serves-plan-intent": {
+          "$comment": "The REVIEWER's judgement, which is the half R-057b insists is never the implementer's. A boolean, so a deviation cannot be waved through in prose that reads as approval without being one.",
+          "type": "boolean"
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "hazardClassAddressed": {
+      "$comment": "T-007, step 6a: one declared hazard class, probed, and either a finding it produced or a statement clearing it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class-id", "probed"],
+      "properties": {
+        "class-id": {
+          "$comment": "The `hazard-classes[].id` of the referenced plan phase, the join key `verdict-hazard-classes-addressed` compares.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "probed": {
+          "$comment": "What the reviewer actually DID against this class. The hazard checklist's canonical probes each name a construction rather than asking a bare question (a real mkfifo, a forced concurrency, a killed process mid-write, a destroy on a branch carrying committed unpushed work), and this is where that construction is recorded.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "finding": {
+          "$comment": "The `findings[].id` this class produced, when it produced one. THE ONLY INTRA-DOCUMENT ID REFERENCE IN ANY SHIPPED SCHEMA, and resolving it is the Kind B check `verdict-finding-references-resolve` rather than a keyword: matching one array's entry against another array's ids is not a keyword property under any DR-0013 option. It is not decoration. The escalation rule at the root of this document reads `findings[]` and nothing else, so a class recorded as having produced a finding that never reaches `findings[]` is an APPROVE the rule cannot see past; measured before the check, that document validated at exit 0.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "cleared-because": {
+          "$comment": "The statement clearing the class, when the probe produced no finding. Step 6a asks for EITHER a finding reference OR this, and the `oneOf` below is that either.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "Branch A: the class produced a finding. `finding` is restated in a sibling `properties` for the strictRequired reason recorded on the root `oneOf`.",
+          "required": ["finding"],
+          "properties": {
+            "finding": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        {
+          "$comment": "Branch B: the class was cleared and the reviewer says why. An entry carrying BOTH matches both branches and is therefore invalid, which is deliberate: a class both cleared and found is a contradiction and the reader cannot tell which the review meant.",
+          "required": ["cleared-because"],
+          "properties": {
+            "cleared-because": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

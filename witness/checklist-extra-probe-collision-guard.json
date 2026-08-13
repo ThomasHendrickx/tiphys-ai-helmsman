@@ -1,0 +1,24 @@
+{
+  "id": "checklist-extra-probe-collision-guard",
+  "behavior": "checklist-extra-probe-collision",
+  "tests": [
+    "an extra file reusing a canonical probe id is a collision naming both sources"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "    if (clash !== undefined) {",
+      "replace": "    if (clash !== undefined && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "  for (const probe of canonical.probes) {\n    bySourceId.set(probe.id, probe);\n  }",
+      "replace": "  for (const probe of canonical.probes) {\n    void probe;\n  }"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "checklist-orphan-probe-detection",
+  "behavior": "checklist-probe-verifies-gate-resolves",
+  "tests": [
+    "a gate RENAMED in the registry orphans the probe that verifies it, and restoring the name returns exit 0",
+    "a gate DELETED from the registry orphans the probe that verifies it"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (gateIds.has(gateId)) {\n        continue;\n      }",
+      "replace": "      if (gateIds.has(gateId) || true) {\n        continue;\n      }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    for (const [probeId, gateId] of verifiesGateByProbe) {",
+      "replace": "    for (const [probeId, gateId] of new Map<string, string>()) {"
+    }
+  ]
+}

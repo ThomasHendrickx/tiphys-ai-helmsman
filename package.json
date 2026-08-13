@@ -17,6 +17,7 @@
     "gate-registry.yaml",
     "gates.manifest.json",
     "assurance-modes.yaml",
+    "checklists",
     "role-model-config.yaml",
     "roles",
     "schemas",

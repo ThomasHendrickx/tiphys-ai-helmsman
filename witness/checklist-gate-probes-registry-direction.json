@@ -1,0 +1,25 @@
+{
+  "id": "checklist-gate-probes-registry-direction",
+  "behavior": "gate-registry-probes-resolve",
+  "tests": [
+    "a registry entry naming a probe the checklist does not declare is rejected naming the gate and the probe, and passes with the check deregistered",
+    "a probe the registry names that carries no verifies-gate back-reference is rejected"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (entry.checklist !== checklistId) {\n        continue;\n      }",
+      "replace": "      if (entry.checklist !== checklistId || true) {\n        continue;\n      }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "        verifiedBy.endsWith(\"-checklist\") &&",
+      "replace": "        verifiedBy.endsWith(\"-checklist-never\") &&"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "checklist-duplicate-probe-id-guard",
+  "behavior": "checklist-duplicate-probe-id-rejected",
+  "tests": [
+    "a checklist with two probes sharing an id is rejected naming the id and the check, and is accepted with the check deregistered"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      const first = firstIndexById.get(id);\n      if (first === undefined) {",
+      "replace": "      const first = firstIndexById.get(id);\n      if (first !== undefined || true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  checklistProbeIdsUnique,\n",
+      "replace": ""
+    }
+  ]
+}

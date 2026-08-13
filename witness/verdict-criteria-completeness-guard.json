@@ -1,0 +1,24 @@
+{
+  "id": "verdict-criteria-completeness-guard",
+  "behavior": "verdict-criteria-completeness",
+  "tests": [
+    "a verdict omitting an acceptance criterion of its phase is rejected naming the check, and passes with the check deregistered"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (!walked.has(id)) {",
+      "replace": "      if (!walked.has(id) && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  verdictCriteriaComplete,\n",
+      "replace": ""
+    }
+  ]
+}

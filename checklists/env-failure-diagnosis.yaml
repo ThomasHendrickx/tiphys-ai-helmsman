@@ -1,0 +1,68 @@
+# ENVIRONMENT-FAILURE DIAGNOSIS (kernel plan M3, M3-P7 step 4, R-050b).
+#
+# Run when a failure is about to be attributed to "the environment". R-050b's
+# three words are byte-identical route, reproduced outside the runner, and
+# never waved off; each is a probe below rather than a slogan, because an
+# environmental attribution with no evidence behind it is the cheapest way to
+# close a real defect.
+kind: checklist
+id: env-failure-diagnosis
+applies-to: >-
+  a failure someone is about to call environmental: an end-to-end test red only
+  in CI, a step that passes locally, a toolchain or network difference.
+
+probes:
+  - id: env-route-byte-identical
+    probe: >-
+      Is the failing route BYTE-IDENTICAL to the one that passes? Compare the
+      exact command line, the argument order, the environment variables the
+      child receives, the working directory, and the resolved absolute path of
+      every binary invoked. This repository has three Node versions installed
+      and which one you get depends on how the shell was started, so
+      `node --version` IN THE SHELL THAT RUNS THE COMMAND is part of the
+      route, not context. Paste both routes side by side and name every
+      difference, including the ones you judge irrelevant.
+    applies-to: route
+    evidence-required: true
+
+  - id: env-reproduced-outside-the-runner
+    probe: >-
+      Has the failure been reproduced OUTSIDE the runner? Construct the same
+      conditions locally, or in a container, and record the invocation and the
+      exit code. A failure that reproduces outside the runner is not
+      environmental. A failure that does not reproduce is not thereby
+      environmental either; it is unexplained, and saying so is the honest
+      form.
+    applies-to: reproduce
+    evidence-required: true
+
+  - id: env-difference-named-not-assumed
+    probe: >-
+      Which specific environmental difference is being blamed, and what is the
+      evidence that it CAUSES this failure? Name the variable, version, path,
+      clock, filesystem or network behaviour, show its value on both sides,
+      and show the causal step. "It is the environment" names nothing and can
+      therefore never be wrong, which is why it is so often reached for.
+    applies-to: reproduce
+    evidence-required: true
+
+  - id: env-never-waved-off
+    probe: >-
+      If the diagnosis is inconclusive, is that written down as inconclusive
+      and tracked, rather than closed as environmental? R-050b's rule is that
+      an environmental failure is diagnosed with evidence and NEVER waved off.
+      An unexplained failure recorded as unexplained is a lead the next reader
+      can pick up; the same failure recorded as environmental is one nobody
+      looks at again.
+    applies-to: record
+    evidence-required: true
+
+  - id: env-both-ci-arms-considered
+    probe: >-
+      Does this workflow fork on the CI event, and if so was the OTHER arm
+      examined? A gate result is evidence only for the configuration it ran
+      under, so a failure seen on one event says nothing about the other, and
+      an arm nobody witnesses is the one that breaks. Name the event and the
+      head sha of every run you read.
+    applies-to: route
+    evidence-required: true
