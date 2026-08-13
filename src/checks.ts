@@ -2969,11 +2969,107 @@ function loadCommittedVerdicts(
   return { ok: true, verdicts };
 }
 
-/** The triple that identifies one review's decorrelation position. */
+/**
+ * A field read WITH ITS PRESENCE ESTABLISHED. This is the whole of CR-001's
+ * repair, and it is stated as a mechanism rather than as three field names.
+ *
+ * THE MECHANISM CR-001 NAMES: a value read with a DEFAULT and then compared
+ * makes ABSENT and PRESENT-AND-DIFFERENT into the same fact. `?? ""` turned a
+ * missing `produced-by` into the empty string, the empty string differs from
+ * every real family name, and "differs" is what this check reads as
+ * decorrelated. So a pair that could NOT be shown decorrelated was reported as
+ * one that was, and that is the direction which authorises a merge.
+ *
+ * The repair is not a fourth comparison. It is that a value is not COMPARABLE
+ * until it has been established, and the three outcomes are kept apart:
+ * ESTABLISHED (a non-empty string), ABSENT (the key is not there at all), and
+ * UNUSABLE (the key is there carrying null, whitespace, a number, a list or a
+ * map). Only the first is ever handed to a comparison. The other two get their
+ * own verdict in their own words, because "could not look" must never print as
+ * "looked and fine" (SC-011), which is the rule this function already applied
+ * to the charter one screen above and did not apply here.
+ *
+ * `field in record` is why this is not merely a `typeof` test, and the
+ * distinction is not academic: `produced-by:` with nothing after it decodes to
+ * `null`, which is present-and-unusable rather than missing, and the reader who
+ * fixes one is not fixing the other.
+ *
+ * WHY THE SCHEMA DOES NOT DISCHARGE THIS. `schemas/verdict.schema.json` really
+ * does put all three dimensions in `required`, and the previous version of this
+ * code relied on that. Nothing on the shipped path ever runs that validation
+ * over the SIBLING documents: `loadCommittedVerdicts` skips a file only when it
+ * fails to decode or is not `kind: verdict`, so a verdict missing a required
+ * field is loaded and compared. The composition was asserted in a comment and
+ * implemented nowhere. A check does not get to assume its inputs were validated
+ * by a step that does not exist.
+ */
+type EstablishedField =
+  | { kind: "established"; value: string }
+  | { kind: "absent" }
+  | { kind: "unusable"; found: string };
+
+function establishField(
+  record: Record<string, unknown> | undefined,
+  field: string,
+): EstablishedField {
+  if (record === undefined || !(field in record)) {
+    return { kind: "absent" };
+  }
+  const raw = record[field];
+  if (typeof raw !== "string") {
+    /* The vocabulary is the DOCUMENT's, not JavaScript's: a reader looking at
+       their own YAML is helped by "a list" and "a map" and not by "an object". */
+    const found =
+      raw === null
+        ? "null"
+        : Array.isArray(raw)
+          ? "a list"
+          : typeof raw === "object"
+            ? "a map"
+            : `a ${typeof raw}`;
+    return { kind: "unusable", found };
+  }
+  if (raw.trim() === "") {
+    return { kind: "unusable", found: raw === "" ? "an empty string" : "only whitespace" };
+  }
+  return { kind: "established", value: raw };
+}
+
+/**
+ * The sentence for a reading that is NOT established, so absence and
+ * unusability never share a message with each other or with a comparison.
+ * Returns `undefined` for an established reading, which no caller asks about.
+ */
+function unestablishedReason(reading: EstablishedField, field: string): string | undefined {
+  if (reading.kind === "established") {
+    return undefined;
+  }
+  return reading.kind === "absent"
+    ? `declares no ${field}`
+    : `declares ${field} as ${reading.found}, which names no value`;
+}
+
+/**
+ * The triple that identifies one review's decorrelation position.
+ *
+ * BUILT FROM ESTABLISHED READINGS rather than from `?? ""`, for the same reason
+ * as everything else in this section: the old form mapped an ABSENT field and a
+ * field carrying the empty string onto the same token, so two documents that
+ * were merely both incomplete compared as the same review.
+ *
+ * WHAT IT STILL DOES NOT SEPARATE, said here rather than left to be found: two
+ * documents each missing the SAME dimension still produce the same token for it,
+ * because identity-by-triple cannot distinguish two absences. That is not a way
+ * to a wrong decorrelation verdict any more, because the per-dimension loop now
+ * refuses an unestablished dimension outright; it can still let a verdict that
+ * is not the committed one pass the membership test when both are incomplete in
+ * the same way.
+ */
 function decorrelationTriple(record: Record<string, unknown> | undefined): string {
-  return DECORRELATION_DIMENSIONS.map((dimension) =>
-    String(record?.[dimension] ?? ""),
-  ).join(" | ");
+  return DECORRELATION_DIMENSIONS.map((dimension) => {
+    const reading = establishField(record, dimension);
+    return reading.kind === "established" ? `=${reading.value}` : `<${reading.kind}>`;
+  }).join(" | ");
 }
 
 /**
@@ -2983,9 +3079,17 @@ function decorrelationTriple(record: Record<string, unknown> | undefined): strin
  * WHY THIS IS KIND B AND COULD NOT BE A KEYWORD. Every dimension it compares
  * lives in a DIFFERENT DOCUMENT from the instance: distinctness is a property
  * of a PAIR of verdicts, and no keyword under any DR-0013 option can see the
- * sibling. The verdict schema's own `$comment` says exactly this and stops
- * where a schema must stop: what it buys is that `produced-by`, `framing` and
- * `review-contract` cannot be ABSENT. That they DIFFER is here.
+ * sibling.
+ *
+ * IT ESTABLISHES PRESENCE ITSELF AND DOES NOT BORROW IT FROM THE SCHEMA. An
+ * earlier version of this comment said the verdict schema's `required` buys
+ * absence-freedom, so this check only had to decide difference. That division of
+ * labour was never composed: nothing on the shipped path validates the SIBLING
+ * documents, so a document with `kind: verdict` and a missing required field is
+ * loaded here and compared. The rule the whole section now follows is
+ * `establishField`, one screen up: a value is not comparable until it has been
+ * established, and absence, unusability and difference are three verdicts, not
+ * one.
  *
  * IT APPLIES EXACTLY WHERE THE GRANT APPLIES. The regime is read from the
  * declared mode, not assumed: `charter.yaml` names the delivery mode and
@@ -3091,7 +3195,28 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const modeId = asRecord(charter.value)?.["delivery-mode"];
+    /* SITE TWO OF THE SAME MECHANISM. `asRecord(charter.value)?.["delivery-mode"]`
+       used to flow into `String(modeId)` and into an `===` against every mode's
+       id, so a charter declaring NO delivery mode reddened with the sentence
+       "declares delivery mode undefined, which ... does not define". The verdict
+       was right by luck and the sentence was false: the charter declares no mode
+       rather than one called "undefined". Establishing it first gives absence its
+       own sentence, and gives the `===` below a non-empty string, which is also
+       what stops an id-less mode row (`eachMode` defaults a missing id to "")
+       from matching a charter whose delivery-mode is the empty string. */
+    const modeReading = establishField(asRecord(charter.value), "delivery-mode");
+    if (modeReading.kind !== "established") {
+      return {
+        violations: [
+          {
+            pointer: "#/produced-by",
+            message: `${charter.path} ${unestablishedReason(modeReading, "delivery-mode") as string}, so no mode's merge-authority can be looked up and whether the delegated grant applies to phase ${phase} could not be established`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const modeId = modeReading.value;
     const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
     if (!modesDocument.ok) {
       return {
@@ -3116,7 +3241,30 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const authority = String(mode.mode["merge-authority"] ?? "");
+    /* SITE THREE, AND IT IS THE WORST OF THE FOUR BECAUSE IT DISABLES THE WHOLE
+       CHECK RATHER THAN ONE DIMENSION. `String(mode.mode["merge-authority"] ?? "")`
+       made a mode that declares NO merge-authority indistinguishable from one
+       declaring some other authority, and the not-a-delegated-grant arm below is
+       a REPORT rather than a violation. Measured on the shipped script before
+       this repair (probe P1 in delivery/work-history/m3-p9.md): a pair sharing
+       one model family, under a mode with its `merge-authority` line deleted,
+       exited 0 GREEN printing "mode full declares merge-authority , which is not
+       a delegated grant". That sentence is false and the exit code authorises
+       the merge the check exists to refuse. The reviewer did not find this one;
+       the derivation did. */
+    const authorityReading = establishField(mode.mode, "merge-authority");
+    if (authorityReading.kind !== "established") {
+      return {
+        violations: [
+          {
+            pointer: "#/produced-by",
+            message: `${modesDocument.path} ${unestablishedReason(authorityReading, "merge-authority") as string} for mode ${modeId}, so whether the delegated grant applies to phase ${phase} could not be established, and a merge check that cannot determine the regime must not report that no decorrelation is required`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const authority = authorityReading.value;
     if (authority !== DELEGATED_MERGE_AUTHORITY) {
       return {
         violations: [],
@@ -3165,10 +3313,34 @@ export const dualReviewDecorrelation: DerivedCheck = {
     }
 
     for (const dimension of DECORRELATION_DIMENSIONS) {
+      /* SITE ONE, THE ONE CR-001 REPORTS. ABSENCE IS ITS OWN VERDICT AND IT IS A
+         FAIL, and the choice was deliberate rather than inherited.
+
+         The alternative the plan permits elsewhere, a not-applicable carrying a
+         reason, is the RIGHT answer where the check has established that the
+         regime does not apply: that is why an absent charter above REPORTS. It
+         is the WRONG answer here, because by this line the regime HAS been
+         established as a delegated grant, these documents ARE the ones the grant
+         rests on, and a dimension no verdict states is a precondition that has
+         not been shown. Under a grant, unshown must be refused; anything else is
+         the fail-open direction this finding is about.
+
+         The message is deliberately UNLIKE the correlation message below, so
+         "could not be shown decorrelated" and "was shown correlated" never print
+         the same line. Note also that an unestablished dimension does not
+         suppress the comparison over the rest of the group: with three verdicts,
+         one absent and two sharing a family, a reader is owed both facts. */
       const counts = new Map<string, string[]>();
       for (const candidate of group) {
-        const value = String(candidate.record[dimension] ?? "");
-        counts.set(value, [...(counts.get(value) ?? []), candidate.path]);
+        const reading = establishField(candidate.record, dimension);
+        if (reading.kind !== "established") {
+          violations.push({
+            pointer: `#/${dimension}`,
+            message: `${candidate.path} ${unestablishedReason(reading, dimension) as string}, so the ${String(group.length)} verdicts for phase ${phase} cannot be shown decorrelated on ${dimension}, and a delegated grant is not satisfied by a dimension a verdict does not state`,
+          });
+          continue;
+        }
+        counts.set(reading.value, [...(counts.get(reading.value) ?? []), candidate.path]);
       }
       for (const value of [...counts.keys()].sort()) {
         const paths = counts.get(value) as string[];

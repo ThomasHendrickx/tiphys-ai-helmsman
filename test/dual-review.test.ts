@@ -355,6 +355,93 @@ test("the same pair with one criteria contract and one hazard contract exits 0",
 });
 
 /* ------------------------------------------------------------------ */
+/* CR-001: ABSENT IS NOT DISTINCT, and it is not a not-applicable either */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Stage a context and then REMOVE ONE LINE from one staged document.
+ *
+ * THE MUTATION IS A DELETION FROM A REAL FIXTURE, not a hand-written document.
+ * That matters twice over. The fixtures are the ones criterion 7's own
+ * directions use and every one of them validates against the shipped schema
+ * (the first test in this file), so the ONLY delta between the pair that
+ * correctly reddens and the pair below is the missing line, and nothing else
+ * can be the cause of a different verdict. And a malformed verdict cannot be
+ * COMMITTED as a fixture instead, because the schema test above walks every
+ * `.yaml` under `witness/fixtures/dual-review/` and would refuse it, which is
+ * the schema doing its job rather than an obstacle.
+ */
+function withLineRemoved<T>(
+  fixtures: string[],
+  target: { file: "modes" | string; line: RegExp },
+  body: (dir: string) => T,
+): T {
+  const dir = stageContext("full", fixtures);
+  try {
+    const path =
+      target.file === "modes"
+        ? join(dir, "assurance-modes.yaml")
+        : join(dir, "delivery", "review", target.file);
+    const before = readFileSync(path, "utf8");
+    /* THE GUARD IS THAT THE LINE EXISTS, never that the text changed. A
+       replacement equal to the original is a silent no-op, and a probe whose
+       mutation did not apply reports the control's result as the mutant's. */
+    assert.match(before, target.line, `no line matching ${String(target.line)} in ${path}`);
+    writeFileSync(path, before.replace(target.line, ""));
+    return body(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("a verdict that states no produced-by is refused rather than read as distinct from the other", () => {
+  /* THE FAIL-OPEN DIRECTION, and it is the whole reason this round exists.
+     The pair is the SHARED-FAMILY pair, which the direction above proves
+     reddens. Deleting one side's `produced-by` used to make the two "differ",
+     and differing is what this check reads as decorrelated, so the pair that
+     must be refused exited 0 printing "distinct on produced-by, framing,
+     review-contract". Measured at d9d5a1d before the repair.
+
+     THE ASSERTIONS ARE IN BOTH DIRECTIONS ON PURPOSE. A test that only asserts
+     the exit code would still pass if the refusal came back with the WRONG
+     sentence, and the sentence is half the finding: "could not be shown" and
+     "was shown correlated" must not print the same line (SC-011). */
+  withLineRemoved(SHARED_FAMILY, { file: "shared-family-hazard.yaml", line: /^produced-by: .*\n/m }, (dir) => {
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /shared-family-hazard\.yaml declares no produced-by/);
+    assert.match(run.output, /cannot be shown decorrelated on produced-by/);
+    /* THE FALSE SENTENCE IS GONE. This is the exact line the check printed
+       while exiting 0 on this input before the repair. */
+    assert.doesNotMatch(run.output, /are distinct on produced-by/);
+    /* AND IT IS NOT A NOT-APPLICABLE. Under an established delegated grant an
+       unshown precondition is refused, not excused. */
+    assert.doesNotMatch(run.output, /no decorrelation is required/);
+    assert.match(run.output, /1 registered check\(s\) named dual-review-decorrelation ran over 2 verdict\(s\)/);
+  });
+});
+
+test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
+  /* THE SAME MECHANISM AT A STRUCTURALLY DIFFERENT SITE, and the consequence
+     is larger: this one does not weaken one dimension, it turns the whole
+     check off. `String(mode.mode["merge-authority"] ?? "")` made a mode with no
+     merge-authority compare unequal to the delegated grant, and that arm is a
+     REPORT, so the shared-family pair exited 0 GREEN under a regime the check
+     had not established. Measured at d9d5a1d before the repair, printing
+     "mode full declares merge-authority , which is not a delegated grant".
+
+     THE PAIR IS AGAIN THE SHARED-FAMILY ONE, so a green here would be a wrong
+     merge authorisation rather than merely a wrong message. */
+  withLineRemoved(SHARED_FAMILY, { file: "modes", line: /^ +merge-authority: .*\n/m }, (dir) => {
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /declares no merge-authority for mode full/);
+    assert.match(run.output, /could not be established/);
+    assert.doesNotMatch(run.output, /which is not a delegated grant/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* The vacuity arms: a check that cannot reach its subject              */
 /* ------------------------------------------------------------------ */
 

@@ -843,14 +843,83 @@ test("the duplication detectors read the body and not the frontmatter, so this d
   assert.ok(stripped.includes("# Orchestrator"), "the body was stripped away");
 });
 
-test("the reference scanner finds only backticked path-plus-anchor tokens, so a bare path and a line citation are not references", () => {
+test("the reference scanner finds every backticked path, anchored or not, while a bare path and a line citation remain outside it", () => {
+  /* THIS TEST ASSERTED THE BLIND SPOT AS A FEATURE and CR-002 is what it cost.
+     The old contract was "only `path#anchor` is a reference", so a backticked
+     path with NO anchor matched nothing: never resolved, never counted, never
+     reported. The reviewer who found CR-002 measured the consequence and it is
+     as sharp as this failure gets: of the 14 paths `AGENTS.md` named, the 12
+     anchored ones all existed and all shipped, and the 2 anchorless ones were
+     exactly the 2 that did neither. The blind spot and the defect were the same
+     set.
+
+     WHAT STAYS OUTSIDE, and both exclusions are deliberate rather than
+     leftovers. A BARE path (no backticks) is prose, and treating prose as a
+     reference would make every sentence mentioning a directory a resolution
+     failure. A LINE CITATION (`path.ext:LINE`, outside backticks) belongs to
+     the citations gate, which resolves it against line numbers; this scanner
+     claiming it too would give one token two owners. */
   const found = checkerModule.collectReferences(
-    "see `roles/implementer.md#clause-R-074` and roles/implementer.md:143 and `roles/implementer.md` and `roles/implementer.md#clause-R-074`",
+    "see `roles/implementer.md#clause-R-074` and roles/implementer.md:143 and " +
+      "`roles/implementer.md` and `roles/implementer.md#clause-R-074` and " +
+      "`scripts/check-dual-review.mjs` and roles/investigator.md",
   );
   assert.deepEqual(
     found.map((entry) => entry.token),
-    ["roles/implementer.md#clause-R-074"],
+    [
+      "roles/implementer.md#clause-R-074",
+      "roles/implementer.md",
+      "scripts/check-dual-review.mjs",
+    ],
   );
+  /* AND THE ANCHOR IS REPORTED AS ABSENT rather than as an empty string, which
+     is the same distinction the decorrelation repair turns on: every consumer
+     below branches on `anchor === undefined`, so an anchorless reference cannot
+     be silently walked as a pointer to nothing. */
+  assert.equal(found[1]?.anchor, undefined);
+  assert.equal(found[0]?.anchor, "clause-R-074");
+});
+
+test("a reference to a path the package does not publish is refused even though the file exists", () => {
+  /* CR-002's MECHANISM, and it is a different question from "does the file
+     exist". `AGENTS.md` is itself in the tarball, so every path it names is an
+     instruction a consumer follows from inside `node_modules`; a path that
+     resolves in this repository and not in the package is dead exactly where it
+     is used. Existence was checked and shippability was not, which is how two
+     dead references reached a shipped document.
+
+     BOTH DIRECTIONS, against a REAL staged tree, and the added reference is a
+     real repository file (`scripts/check-dual-review.mjs`) rather than an
+     invented name, so the only property under test is publication. */
+  const dir = stage("agents-unshipped-reference");
+  try {
+    /* THE BASELINE FIRST. A red arm with no green control cannot tell a defect
+       from a broken probe, and this round has already been bitten once by a
+       probe whose every row reddened for a reason that had nothing to do with
+       the subject. */
+    const baseline = runChecker(dir);
+    assert.equal(baseline.status, 0, baseline.stdout);
+
+    /* THE FILE REALLY IS THERE UNDER THE STAGED ROOT, read rather than assumed,
+       so a refusal below cannot be the "not a readable file" arm wearing the
+       wrong message. */
+    const staged = readFileSync(join(dir, "scripts", "check-dual-review.mjs"), "utf8");
+    assert.ok(staged.length > 0);
+
+    writeFileSync(
+      join(dir, "AGENTS.md"),
+      `${AGENTS}\n\nSee \`scripts/check-dual-review.mjs\` for the runner.\n`,
+    );
+    const refused = runChecker(dir);
+    assert.equal(refused.status, 1, refused.stdout);
+    assert.match(
+      refused.stdout,
+      /scripts\/check-dual-review\.mjs, which exists here and is NOT in the published package/,
+    );
+    assert.doesNotMatch(refused.stdout, /is not a readable file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ------------------------------------------------------------------ */

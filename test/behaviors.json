@@ -696,5 +696,8 @@
   "dual-review-requires-two-verdicts": "one verdict for a head exits nonzero saying a delegated grant needs two",
   "dual-review-inapplicable-under-owner-authority": "a mode whose merge-authority is owner exits 0 on the very pair that reddens under a delegated grant",
   "dual-review-check-registered": "dual-review-decorrelation is registered in the shipped registry for the verdict type and requires a context",
-  "dual-review-fails-closed-without-a-declared-mode": "the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent"
+  "dual-review-fails-closed-without-a-declared-mode": "the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent",
+  "dual-review-absent-dimension-refuses": "a verdict that states no produced-by is refused rather than read as distinct from the other",
+  "dual-review-unestablished-merge-authority": "a mode that states no merge-authority is refused rather than reported as not a delegated grant",
+  "agents-references-refuse-unshipped-path": "a reference to a path the package does not publish is refused even though the file exists"
 }

@@ -141,7 +141,25 @@ const ENUMERATIVE_LINE = /^[ \t]*([-*+][ \t]|[0-9]+[.)][ \t]|\|)/;
  * the full stop.
  */
 const REFERENCE_PATTERN =
-  /`([A-Za-z0-9][A-Za-z0-9._/-]*\.(?:md|ya?ml|json))#([A-Za-z0-9][A-Za-z0-9._-]*)`/g;
+  /`([A-Za-z0-9][A-Za-z0-9._/-]*\.(?:md|ya?ml|json|mjs|c?js|ts))(?:#([A-Za-z0-9][A-Za-z0-9._-]*))?`/g;
+
+/**
+ * THE ANCHOR IS OPTIONAL AND THE EXTENSION SET IS WIDER, and both halves of
+ * that change are CR-002's repair rather than tidying.
+ *
+ * The first version required a `#anchor`, so a backticked path WITHOUT one
+ * matched nothing: never resolved, never counted, never reported. The reviewer
+ * who found CR-002 measured the consequence and it is the sharpest form this
+ * failure takes: of the 14 paths `AGENTS.md` named, the 12 anchored ones all
+ * existed and all shipped, and the 2 anchorless ones were exactly the 2 that did
+ * neither. The blind spot and the defect were the same set. A guard whose
+ * condition does not test the property that matters is green and worthless,
+ * which is this repository's standing lesson one more time.
+ *
+ * The extension set gained `mjs`, `js`, `cjs` and `ts` for the same reason: the
+ * two paths that got through were `.mjs`, so the old pattern could not have seen
+ * them even with the anchor made optional.
+ */
 
 function usage() {
   return (
@@ -275,19 +293,91 @@ export function resolveFieldPointer(document, pointer) {
   return { found: true };
 }
 
-/** Every `<path>#<anchor>` reference in the document, in order, deduplicated. */
+/**
+ * Every `<path>` or `<path>#<anchor>` reference in the document, in order,
+ * deduplicated. `anchor` is `undefined` for an anchorless reference, and every
+ * consumer below branches on that rather than on the token's spelling.
+ */
 export function collectReferences(text) {
   const found = [];
   const seen = new Set();
   for (const match of text.matchAll(REFERENCE_PATTERN)) {
-    const token = `${match[1]}#${match[2]}`;
+    const anchor = match[2];
+    const token = anchor === undefined ? match[1] : `${match[1]}#${anchor}`;
     if (seen.has(token)) {
       continue;
     }
     seen.add(token);
-    found.push({ path: match[1], anchor: match[2], token });
+    found.push({ path: match[1], anchor, token });
   }
   return found;
+}
+
+/**
+ * The `files` entries of the package manifest under `root`, split into the
+ * INCLUDED and the NEGATED, or `undefined` when the manifest cannot be read or
+ * declares no `files`.
+ */
+function packagedFileRules(root) {
+  const text = readUnderRoot(root, "package.json");
+  if (text === undefined) {
+    return undefined;
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const files = manifest?.files;
+  if (!Array.isArray(files)) {
+    return undefined;
+  }
+  const included = [];
+  const negated = [];
+  for (const entry of files) {
+    if (typeof entry !== "string" || entry === "") {
+      continue;
+    }
+    (entry.startsWith("!") ? negated : included).push(entry.replace(/^!/, "").replace(/\/$/, ""));
+  }
+  return { included, negated };
+}
+
+/** Whether one entry covers `path`, either exactly or as a containing directory. */
+function entryCovers(entry, path) {
+  return path === entry || path.startsWith(`${entry}/`);
+}
+
+/**
+ * Whether `path` is inside the published package.
+ *
+ * THIS IS CR-002's MECHANISM, and it is a different question from "does the
+ * file exist". `AGENTS.md` is itself SHIPPED, so every path it hands the reader
+ * is an instruction a consumer will follow from inside `node_modules`. A path
+ * that exists in the repository and not in the tarball reads as checked to every
+ * guard here and is absent where it is actually used. Existence was checked and
+ * shippability was not, which is why two dead references reached a shipped
+ * document.
+ *
+ * WHAT THIS MODELS AND WHAT IT DOES NOT, stated rather than left to be found.
+ * It applies npm's `files` semantics only in the plain form this package uses:
+ * an entry is a literal path or a directory prefix, and a `!` entry excludes.
+ * It does NOT implement glob patterns, npm's always-included list (`package.json`,
+ * `README`, `LICENSE`, the `main`/`bin` targets) or its always-excluded list.
+ * So it can call a path unshipped that npm would in fact include by one of those
+ * rules. That direction is the safe one: it can demand a reference be rephrased,
+ * never let an absent one through. Verify the assumption by reading the array,
+ * which is short: `package.json#files`.
+ */
+function shippedPath(rules, path) {
+  if (rules === undefined) {
+    return undefined;
+  }
+  if (rules.negated.some((entry) => entryCovers(entry, path))) {
+    return false;
+  }
+  return rules.included.some((entry) => entryCovers(entry, path));
 }
 
 /**
@@ -398,6 +488,16 @@ export function duplicationViolations(body, sources) {
 export function evaluate(root, documentText) {
   const problems = [];
   const references = collectReferences(documentText);
+  const packaged = packagedFileRules(root);
+  if (packaged === undefined) {
+    /* FAIL CLOSED, same rule as an unreadable duplication source below: a
+       shippability rule that could not read the manifest has not been applied,
+       and must not print as one that was applied and found nothing. */
+    problems.push(
+      `package.json under ${root} could not be read as a manifest declaring files[], ` +
+        "so no reference could be checked for presence in the published package",
+    );
+  }
 
   for (const reference of references) {
     const target = readUnderRoot(root, reference.path);
@@ -406,6 +506,23 @@ export function evaluate(root, documentText) {
       problems.push(
         `${reference.token} names ${reference.path}, which is not a readable file under ${root}`,
       );
+      continue;
+    }
+    /* CR-002: EXISTS IS NOT THE SAME AS SHIPS. This document is in the tarball,
+       so a path it names is an instruction a consumer follows from inside
+       node_modules, and a path outside the tarball is dead there however well it
+       resolves here. Checked for EVERY reference, anchored or not. */
+    if (shippedPath(packaged, reference.path) === false) {
+      problems.push(
+        `${reference.token} names ${reference.path}, which exists here and is NOT in the ` +
+          "published package (package.json files[]), so a consumer reading this shipped " +
+          "document is being sent to a path their install does not contain",
+      );
+      continue;
+    }
+    if (reference.anchor === undefined) {
+      /* An anchorless reference asserts the PATH only. It is resolved and
+         ship-checked above, and there is nothing further to walk. */
       continue;
     }
     if (/\.md$/i.test(reference.path)) {
@@ -561,7 +678,9 @@ function main(argv) {
     startedAt,
     detail:
       problems.length === 0
-        ? `${String(references.length)} references resolved to a path and to an anchor inside it, under root ${options.root}`
+        ? `${String(references.length)} references resolved to a path that the package publishes, ` +
+          `${String(references.filter((reference) => reference.anchor !== undefined).length)} of them ` +
+          `also to an anchor inside it, under root ${options.root}`
         : problems.join("; "),
     evidenceLines: [
       `root: ${options.root}`,

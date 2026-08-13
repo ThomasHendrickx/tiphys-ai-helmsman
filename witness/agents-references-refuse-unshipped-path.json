@@ -1,0 +1,24 @@
+{
+  "id": "agents-references-refuse-unshipped-path",
+  "behavior": "agents-references-refuse-unshipped-path",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a reference to a path the package does not publish is refused even though the file exists"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/check-agents-references.mjs",
+      "find": "  return rules.included.some((entry) => entryCovers(entry, path));",
+      "replace": "  return true;"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/check-agents-references.mjs",
+      "find": "  /`([A-Za-z0-9][A-Za-z0-9._/-]*\\.(?:md|ya?ml|json|mjs|c?js|ts))(?:#([A-Za-z0-9][A-Za-z0-9._-]*))?`/g;",
+      "replace": "  /`([A-Za-z0-9][A-Za-z0-9._/-]*\\.(?:md|ya?ml|json))#([A-Za-z0-9][A-Za-z0-9._-]*)`/g;"
+    }
+  ]
+}
