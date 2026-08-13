@@ -1,7 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { lstatSync, mkdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  lstatSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   classifyEntry,
   readRegularFileIfPresent,
@@ -617,6 +625,161 @@ type PreconditionOutcome =
   | { kind: "unmet"; record: PreconditionRecord }
   | { kind: "error"; reason: string };
 
+/**
+ * A CRASH IS NOT A SKIP (M3-P11, delivery/plan/m3-p11-phase-spec.md:15).
+ *
+ * THE DEFECT THIS EXISTS FOR, root-caused by the M3-P9 hazard reviewer. The
+ * `command-exit-zero` evaluator below treated a command as "could not run"
+ * only when `spawnSync` set `error`, which is the LAUNCHER failing to spawn.
+ * A launcher that spawns perfectly well and runs a script that does not
+ * exist gets exit 1, which the evaluator read as "the precondition is
+ * unmet", so the gate printed `not-applicable`. Measured on this machine,
+ * node v26.6.0, four commands, one `spawnSync` each:
+ *
+ *   node missing-script.mjs        status 1     error undefined
+ *   node -e "process.exit(1)"      status 1     error undefined
+ *   ./noexec.sh (mode 644)         status null  error EACCES
+ *   ./badinterp.sh (bad shebang)   status null  error ENOENT
+ *
+ * Rows one and two are the whole problem: identical to `spawnSync`, opposite
+ * in meaning. Row two is a REAL declaration in this repository
+ * (`credential-token`'s precondition, gates.manifest.json), so "exit 1 means
+ * unmet" cannot simply be withdrawn; and rows three and four already reached
+ * `error` before this phase, so they are regression guards rather than the
+ * new behaviour.
+ *
+ * THE DISTINGUISHING EVIDENCE IS THEREFORE NOT THE EXIT CODE (spec step 2).
+ * It is whether the paths the command names can be run at all, established
+ * BEFORE the spawn, so that "could not run" is a fact about the filesystem
+ * rather than an inference from a number that two different situations
+ * produce identically.
+ *
+ * WHICH ARGV ELEMENTS ARE PROBED, stated as a rule rather than left to
+ * judgment, because MECHANISMS.md's row about deciding what another program
+ * will do by pattern-matching its input is exactly the trap here. An element
+ * is a PATH OPERAND when ALL FOUR hold:
+ *
+ *   1. it is not `command[0]` (the launcher, handled separately);
+ *   2. it does not begin with `-` (an option, not an operand);
+ *   3. it contains `/` (a bare word is not treated as a path, so `.` and
+ *      `--pin-root src` are left alone);
+ *   4. it contains no whitespace, and the element before it does not begin
+ *      with `-` (so an option's VALUE is not probed, which is what keeps
+ *      `node -e "process.exit(...)"` out of this set even when the inline
+ *      code happens to contain a slash).
+ *
+ * WHAT THIS RULE DOES NOT COVER, so the next reader does not have to
+ * rediscover it: an interpreter invoked as `node --flag script.mjs` puts the
+ * script after an option and rule 4 skips it; an operand named by an
+ * environment variable or produced by a shell is invisible here; and a
+ * script that EXISTS but whose own body throws still exits 1 and is still
+ * read as unmet, because nothing outside the script can distinguish that
+ * from a deliberate refusal. Those residues are recorded in
+ * delivery/work-history/m3-p11.md rather than implied.
+ *
+ * FAIL CLOSED, LOUDLY (M2-C-3). An operand this rule probes and does not
+ * find is `error` naming the element and its resolved absolute path, never a
+ * quiet `not-applicable`. The cost of the rule being wrong about an element
+ * is a loud refusal an operator can read and fix; the cost of the old
+ * behaviour was a skip nobody could see.
+ */
+export interface CommandRunnability {
+  /** False when the command could not have run: this is `error`, not unmet. */
+  runnable: boolean;
+  /** Why not. Empty when runnable. */
+  reason: string;
+  /** Every element this probe examined, so its scope is data, not a claim. */
+  probed: string[];
+}
+
+/** The path operands of a command, by the four-part rule documented above. */
+export function commandPathOperands(command: string[]): string[] {
+  const operands: string[] = [];
+  for (let index = 1; index < command.length; index += 1) {
+    const element = command[index] as string;
+    const previous = command[index - 1] as string;
+    if (element.startsWith("-")) {
+      continue;
+    }
+    if (!element.includes("/")) {
+      continue;
+    }
+    if (/\s/.test(element)) {
+      continue;
+    }
+    if (previous.startsWith("-")) {
+      continue;
+    }
+    operands.push(element);
+  }
+  return operands;
+}
+
+/**
+ * Can this command run at all? See the block comment above for the rule and
+ * for what it deliberately does not cover.
+ *
+ * The launcher is probed only when it names a path (contains `/`); a bare
+ * name is a PATH lookup and is left to `spawnSync`'s own `error`, which
+ * already reports it, rather than reimplementing PATH resolution here.
+ * Executability is read from the mode bits rather than through `access`,
+ * because `access(X_OK)` answers a question about the CALLING UID and this
+ * check must give the same answer under root as under anyone else.
+ */
+export function probeCommandRunnable(
+  command: string[],
+  cwd: string,
+): CommandRunnability {
+  const probed: string[] = [];
+  const launcher = command[0];
+  if (launcher === undefined || launcher === "") {
+    return { runnable: false, reason: "the command is empty", probed };
+  }
+  const targets: { path: string; isLauncher: boolean }[] = [];
+  if (launcher.includes("/")) {
+    targets.push({ path: launcher, isLauncher: true });
+  }
+  for (const operand of commandPathOperands(command)) {
+    targets.push({ path: operand, isLauncher: false });
+  }
+  for (const target of targets) {
+    const absolute = isAbsolute(target.path) ? target.path : resolve(cwd, target.path);
+    probed.push(target.path);
+    const entry = classifyEntry(absolute);
+    if (entry.kind === "absent") {
+      return {
+        runnable: false,
+        reason: `${target.path} does not exist (resolved to ${absolute})`,
+        probed,
+      };
+    }
+    if (entry.kind === "dangling") {
+      return {
+        runnable: false,
+        reason: `${target.path} is a symbolic link whose target does not exist (resolved to ${absolute})`,
+        probed,
+      };
+    }
+    if (entry.kind === "irregular" || entry.kind === "unexaminable") {
+      return { runnable: false, reason: entry.reason, probed };
+    }
+    if (target.isLauncher) {
+      const executable = runStep(`examining ${absolute}`, () => statSync(absolute));
+      if (!executable.ok) {
+        return { runnable: false, reason: executable.reason, probed };
+      }
+      if ((executable.value.mode & 0o111) === 0) {
+        return {
+          runnable: false,
+          reason: `${target.path} is not executable (mode ${(executable.value.mode & 0o777).toString(8)}, resolved to ${absolute})`,
+          probed,
+        };
+      }
+    }
+  }
+  return { runnable: true, reason: "", probed };
+}
+
 function gitLines(
   cwd: string,
   args: string[],
@@ -757,6 +920,19 @@ function evaluatePrecondition(
   if (command === undefined || command.length === 0) {
     return { kind: "error", reason: `precondition ${id} declares no command` };
   }
+  // M3-P11. THE PROBE COMES BEFORE THE SPAWN, and it is the whole of the
+  // difference between the three outcomes below and the two there used to be.
+  // After the spawn there is only an exit code, and an exit code cannot
+  // separate "this script does not exist" from "this script says no".
+  const runnable = probeCommandRunnable(command, cwd);
+  if (!runnable.runnable) {
+    return {
+      kind: "error",
+      reason:
+        `precondition ${id} command ${command.join(" ")} could not be run: ${runnable.reason}` +
+        ` (this is NOT not-applicable: nothing was evaluated, M2-C-3)`,
+    };
+  }
   const result = spawnSync(command[0] as string, command.slice(1), {
     cwd,
     encoding: "utf8",
@@ -889,6 +1065,28 @@ function runOneGate(
         applicable: false,
       };
     }
+  }
+
+  // M3-P11, the same rule one level out. A GATE whose command names a path
+  // that does not exist reached `error` before this phase too, but by a
+  // route that named the wrong path: the child exited 1 without writing a
+  // record, so the detail read "gate X exited 1 without writing a result
+  // record at <the RECORD path>", which is the one path in the sentence that
+  // is not the problem. Probing first makes the missing path the thing the
+  // operator is told about (criterion 1). This sits AFTER the precondition
+  // block deliberately: a precondition the runner evaluated and found unmet
+  // is a real skip, and a gate that was never going to run is honestly
+  // reported as not-applicable rather than as a crash.
+  const commandRunnable = probeCommandRunnable(entry.command, cwd);
+  if (!commandRunnable.runnable) {
+    return {
+      result: errorResult(
+        entry,
+        startedAt,
+        `gate ${entry.id} could not be run: ${commandRunnable.reason}`,
+      ),
+      applicable: false,
+    };
   }
 
   // The record path is probed BEFORE the child exists. A named pipe here
