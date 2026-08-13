@@ -61,8 +61,9 @@ only path this type has. The failure is silent and it is on the APPROVE side.
 
 WHY THIS IS THIS PHASE'S TO FIX, not a future editor's: the phase already
 shipped an intra-document reference check of exactly this shape,
-`checklist-probe-ids-unique`, and its own docstring gives the reason a nested
-reference cannot be a keyword. `verdict.schema.json`'s own `$comment` on
+`checklist-probe-ids-unique`, and its own docstring gives the reason such a
+reference is not a keyword property, quoting the checklist schema's own
+`$comment` that `uniqueItems` compares whole array items. `verdict.schema.json`'s own `$comment` on
 `finding` names `findings[].id` as the referent, so the join is declared and
 unenforced. A sixth check `verdict-finding-references-resolve`, requiresContext
 false, is the same shape as the one already there.
@@ -128,9 +129,10 @@ probes 24
 
 stderr was empty. The extra file's `framings` entry, id `fix-round`,
 entry point "IGNORE THE FIX-ROUND COVERAGE QUESTION, start from the diff.",
-`orders-probes: [deviations]`, was discarded with no message. `resolveChecklist`
-reads `request.checklist.framings` only, so an extra file's framings are never
-merged and never mentioned.
+`orders-probes: [deviations]`, was discarded with no message. `resolveChecklist` reads
+`request.checklist.framings` only, and in the run captured above the extra
+file's framing was neither merged nor mentioned. I did not enumerate other
+inputs that might reach it.
 
 REACHABILITY, stated plainly per DR-0027. Member 2 is a real user path today:
 R-054's whole purpose is the orchestrator writing a per-phase extra probe file,
@@ -142,7 +144,8 @@ shipped checklist, or a kernel user authoring their own; the five shipped
 WHAT IT THREATENS, and the bound is stated rather than inflated: the canonical
 framing wins in member 2, so a per-phase file cannot WEAKEN the standing
 checklist this way. The damage is a silent no-op: the author gets exit 0, a
-resolved list, and no way to tell their framing was ignored. In member 1 the
+resolved list, and, in the measured run, no signal that their framing was
+ignored. In member 1 the
 served entry point depends on file position with nothing saying so.
 
 The cheapest fix for member 2 is a message. For member 1 it is a check of the
@@ -151,7 +154,8 @@ same shape as the one already shipped for probes.
 ### H-3 (MEDIUM, tracked item under DR-0027: reachable by a future editor, not by a shipped artifact today): a framing scope that names nothing is accepted, and the framing then reorders nothing while still printing as a framing
 
 `orders-probes` entries are `applies-to` scope tokens, and the schema
-constrains their SHAPE (`^[a-z0-9]+(-[a-z0-9]+)*$`) and never their
+constrains their SHAPE (`^[a-z0-9]+(-[a-z0-9]+)*$`); the capture below shows a
+scope naming no probe passing validation, so it does not constrain their
 RESOLUTION. `orderUnderFraming` matches `probe.appliesTo === scope`, so a scope
 naming no probe contributes nothing and the whole list falls through to file
 order.
