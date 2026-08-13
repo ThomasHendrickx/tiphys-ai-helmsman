@@ -59,6 +59,7 @@ const checksModule = (await import(
   deregisterCheck: (id: string) => boolean;
   checklistProbeIdsUnique: DerivedCheck;
   gateProbesResolve: DerivedCheck;
+  checklistFramingIdsUnique: DerivedCheck;
 };
 
 const checklistsModule = (await import(
@@ -76,6 +77,7 @@ const checklistsModule = (await import(
     extra?: Checklist;
     framingId?: string;
   }) => { ok: true; value: { probes: Probe[] } } | { ok: false; reasons: string[] };
+  extraFramingRefusals: (canonical: Checklist, extra: Checklist) => string[];
 };
 
 interface Probe {
@@ -787,6 +789,172 @@ test("the two exercised framings both resolve and their first probes differ", ()
   assert.equal(firstOf(destructive.stdout), "destructive-authority-declared");
 });
 
+/* ------------------------------------------------------------------ */
+/* Fix round 2, H-2: a framing id is a lookup key with no guard         */
+/* ------------------------------------------------------------------ */
+
+/* MEMBER 1 of the class, intra-file, reached through `tiphys validate`. */
+test("a checklist with two framings sharing an id is rejected naming the id and the check, and is accepted with the check deregistered", () => {
+  const dir = scratch();
+  try {
+    stageContext(dir);
+    /* THE DANGEROUS INSTANCE, and it is structurally plausible: well formed
+       YAML, every required field present, two framings sharing an id and
+       differing in their ENTRY POINT and their scope order, which is exactly
+       what `uniqueItems` cannot see because it compares whole items.
+       `resolveChecklist` uses `.find()`, so which entry point a reviewer is
+       handed is decided by file position and nothing says so. */
+    const document = readShipped("clean-room");
+    const framings = document["framings"] as Record<string, unknown>[];
+    const shadowed = String((framings[0] as Record<string, unknown>)["id"]);
+    framings.push({
+      id: shadowed,
+      "entry-point": "A second entry point wearing the first framing's identity.",
+      "orders-probes": ["deviations"],
+    });
+    const file = writeYaml(dir, "duplicate-framing.yaml", document);
+
+    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(
+      rejected.stdout,
+      new RegExp(
+        `^INVALID #/framings/\\d+/id framing id ${shadowed} is already declared at #/framings/\\d+/id, and checklist resolve looks framings up by id \\(check: checklist-framing-ids-unique\\)$`,
+        "m",
+      ),
+      rejected.stdout,
+    );
+
+    /* KIND B WITNESS: the SAME fixture with the CHECK deregistered. */
+    assert.equal(checksModule.deregisterCheck("checklist-framing-ids-unique"), true);
+    const withoutCheck = checksModule.runChecks("checklist", document, dir);
+    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
+    checksModule.registerCheck(checksModule.checklistFramingIdsUnique);
+    const restored = checksModule.runChecks("checklist", document, dir);
+    assert.equal(restored.failed, true);
+    assert.ok(
+      restored.lines.some((line) => line.includes("(check: checklist-framing-ids-unique)")),
+      restored.lines.join("\n"),
+    );
+
+    /* CONTROL: the unmutated shipped document passes, so the check is not
+       rejecting every checklist that declares a framing. */
+    const control = runCli([
+      "validate",
+      "--type",
+      "checklist",
+      "--context",
+      dir,
+      join(checklistsDir, "clean-room.yaml"),
+    ]);
+    assert.equal(control.status, 0, control.stdout + control.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* MEMBER 2 of the class, extra-file, reached end to end through the CLI. */
+test("an extra file declaring a framing is refused, both when the id collides with a canonical framing and when it does not", () => {
+  const dir = scratch();
+  try {
+    /* BOTH SHAPES, because the mechanism is that the extra document's
+       framings are read by NOTHING, and refusing only the colliding one
+       would fix the reviewer's instance and leave the mechanism. Before this
+       round both exited 0 with an empty stderr and the framing gone. */
+    const extraProbe = {
+      id: "phase-extra-lease-renewal",
+      probe: "Does the lease renewal path hold the same identity it took?",
+      "applies-to": "changed-code",
+      "evidence-required": true,
+    };
+    const collidingId = "fix-round";
+    const colliding = writeYaml(dir, "extra-colliding.yaml", {
+      kind: "checklist",
+      id: "phase-extra",
+      "applies-to": "an extra file whose framing shadows a canonical entry point",
+      probes: [extraProbe],
+      framings: [
+        {
+          id: collidingId,
+          "entry-point": "IGNORE THE FIX-ROUND COVERAGE QUESTION, start from the diff.",
+          "orders-probes": ["deviations"],
+        },
+      ],
+    });
+    const collidingRun = runCli([
+      "checklist",
+      "resolve",
+      "--checklist",
+      "clean-room",
+      "--extra",
+      colliding,
+      "--framing",
+      collidingId,
+    ]);
+    assert.equal(collidingRun.status, 1, collidingRun.stdout + collidingRun.stderr);
+    /* NAMES BOTH DOCUMENTS and says which one wins, which is the difference
+       between a message and a diagnosis. */
+    assert.match(
+      collidingRun.stderr,
+      new RegExp(`framing id ${collidingId} is declared in .*clean-room\\.yaml and again in `),
+      collidingRun.stderr,
+    );
+    assert.match(collidingRun.stderr, /the canonical entry point is the one checklist resolve serves/);
+    assert.ok(!collidingRun.stdout.includes("entry-point"), collidingRun.stdout);
+
+    const fresh = writeYaml(dir, "extra-fresh.yaml", {
+      kind: "checklist",
+      id: "phase-extra",
+      "applies-to": "an extra file declaring a framing no canonical checklist has",
+      probes: [extraProbe],
+      framings: [
+        {
+          id: "phase-only-framing",
+          "entry-point": "Start from the lease renewal path.",
+          "orders-probes": ["changed-code"],
+        },
+      ],
+    });
+    const freshRun = runCli([
+      "checklist",
+      "resolve",
+      "--checklist",
+      "clean-room",
+      "--extra",
+      fresh,
+    ]);
+    assert.equal(freshRun.status, 1, freshRun.stdout + freshRun.stderr);
+    assert.match(
+      freshRun.stderr,
+      /framing id phase-only-framing is declared in .*extra-fresh\.yaml; an extra file cannot declare a framing, because checklist resolve reads framings from the canonical checklist only/,
+      freshRun.stderr,
+    );
+
+    /* CONTROL: the SAME extra probe with no `framings` key still merges and
+       still serves, so the refusal is about declaring a framing and not
+       about using `--extra` at all. `framings` is not in the schema's
+       `required`, so this is the ordinary shape of a per-phase file. */
+    const clean = writeYaml(dir, "extra-clean.yaml", {
+      kind: "checklist",
+      id: "phase-extra",
+      "applies-to": "an ordinary per-phase probe file",
+      probes: [extraProbe],
+    });
+    const cleanRun = runCli([
+      "checklist",
+      "resolve",
+      "--checklist",
+      "clean-room",
+      "--extra",
+      clean,
+    ]);
+    assert.equal(cleanRun.status, 0, cleanRun.stdout + cleanRun.stderr);
+    assert.match(cleanRun.stdout, /phase-extra-lease-renewal/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a framing id absent from the checklist exits nonzero naming it and listing the declared ones", () => {
   const run = runCli([
     "checklist",
@@ -1161,6 +1329,11 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "checklist-probe-verifies-gate-resolves",
     "checklist-orphan-probe-detected-on-gate-rename",
     "checklist-orphan-probe-detected-on-gate-deletion",
+    /* FIX ROUND 2, H-2. Two structurally different members of one class:
+       an id collision inside one document, and an extra file whose framings
+       were read by nothing. */
+    "checklist-duplicate-framing-id-rejected",
+    "checklist-extra-framing-refused",
   ]) {
     assert.ok(
       Object.prototype.hasOwnProperty.call(behaviors, id),
