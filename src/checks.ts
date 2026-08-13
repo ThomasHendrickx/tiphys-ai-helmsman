@@ -3006,7 +3006,78 @@ function loadCommittedVerdicts(
 type EstablishedField =
   | { kind: "established"; value: string }
   | { kind: "absent" }
-  | { kind: "unusable"; found: string };
+  | { kind: "unusable"; found: string }
+  | { kind: "uncanonical"; found: string };
+
+/**
+ * THE CANONICAL FORM OF A GOVERNANCE SCALAR, DECLARED HERE BECAUSE A
+ * COMPARISON WITHOUT A DECLARED CANONICAL FORM IS THE FIX-ROUND-2 MECHANISM.
+ *
+ * THE MECHANISM: two strings are compared for EQUALITY or DISTINCTNESS without
+ * a declared canonical form, so two REPRESENTATIONS of one value read as two
+ * different values. Round 1 closed "absent versus present-and-differing". This
+ * closes "differently represented versus different", which is the same check
+ * one layer down.
+ *
+ * WHY IT IS SAFE TO COLLAPSE HARD HERE, which is the argument that decides
+ * every choice below. This check REFUSES when two reviews are NOT distinct, so
+ * any rule that makes MORE strings compare as equal produces MORE refusals.
+ * Aggressive canonicalisation is the FAIL-CLOSED direction; timid
+ * canonicalisation is what leaves the hole. The one call site where collapsing
+ * is instead mildly permissive is named at `decorrelationTriple` below rather
+ * than left to be found.
+ *
+ * THE FORM, in order, and the order is load-bearing:
+ *
+ *   1. NFKC. Folds compatibility variants onto their ordinary forms, so
+ *      FULLWIDTH LATIN SMALL LETTER A (U+FF41) becomes `a` and NO-BREAK SPACE
+ *      (U+00A0) becomes a space. Measured: of the five lookalike substitutions
+ *      that defeated the previous code, NFKC folds exactly ONE. That
+ *      measurement is why step 2 exists and is not decoration.
+ *   2. PRINTABLE ASCII ONLY (U+0020 to U+007E). Anything else is REFUSED, not
+ *      repaired. This is what actually closes the class: NFKC leaves CYRILLIC
+ *      SMALL LETTER A (U+0430), EN DASH (U+2013), ZERO WIDTH SPACE (U+200B)
+ *      and SOFT HYPHEN (U+00AD) exactly as they were, all four measured, and
+ *      no Unicode normalisation form folds a cross-script homoglyph onto its
+ *      lookalike. Closing those by normalisation would need a confusables
+ *      table this package does not carry and which goes stale; refusing the
+ *      character set needs no table and cannot go stale.
+ *   3. Whitespace runs collapse to one space, then trim. Whitespace carries no
+ *      information in a scalar identifier (round 1's argument, kept).
+ *   4. ASCII case fold. See the CR-003 note at `establishField`.
+ *
+ * WHY REFUSE AN INVISIBLE CHARACTER RATHER THAN STRIP IT. Stripping is also
+ * fail-closed and was the other real option. Refusing is chosen because a
+ * document carrying a zero-width space in a model-family id is a document that
+ * reads one way to a human and another way to the program, and silently
+ * repairing it would hand back a green having never said so. That is SC-011's
+ * rule, which this file already applies one screen up: "could not look" must
+ * never print as "looked and fine", and "looked, and what I found was built to
+ * deceive the reader" is the same fact. A refusal names the codepoint and its
+ * position, so the person holding the file can see what they cannot see.
+ */
+const CANONICAL_MAX_CODE = 0x7e;
+const CANONICAL_MIN_CODE = 0x20;
+
+function canonicalScalar(raw: string): { ok: true; value: string } | { ok: false; found: string } {
+  const folded = raw.normalize("NFKC");
+  for (const character of folded) {
+    const code = character.codePointAt(0) as number;
+    if (code < CANONICAL_MIN_CODE || code > CANONICAL_MAX_CODE) {
+      /* The POSITION is in the NFKC-folded string, and it is reported because
+         the whole point of this arm is characters a reader cannot see. A
+         codepoint alone does not tell them WHERE to look. */
+      const at = [...folded].indexOf(character);
+      const point = `U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
+      return { ok: false, found: `${point} at position ${String(at + 1)}` };
+    }
+  }
+  const collapsed = folded.replace(/\s+/g, " ").trim();
+  if (collapsed === "") {
+    return { ok: false, found: "no printable characters" };
+  }
+  return { ok: true, value: collapsed.toLowerCase() };
+}
 
 function establishField(
   record: Record<string, unknown> | undefined,
@@ -3032,22 +3103,37 @@ function establishField(
   if (raw.trim() === "") {
     return { kind: "unusable", found: raw === "" ? "an empty string" : "only whitespace" };
   }
-  /* TRIMMED, AND THAT IS A SECOND FAIL-OPEN CLOSED RATHER THAN TIDYING. An
-     established value is what the document MEANS, and surrounding whitespace is
-     not part of a model family's name. Without this, `produced-by: "family-a "`
-     and `produced-by: family-a` are two different strings, "different" is what
-     this check reads as decorrelated, and one quoted space turns a correlated
-     pair green. Measured before this line existed, on a pair sharing one family:
-     a trailing space and a leading space each exited 0.
+  /* CANONICALISED, AND THAT IS THE WHOLE OF FIX ROUND 2. An established value is
+     what the document MEANS, and neither surrounding whitespace nor the choice
+     of codepoint used to draw a letter is part of a model family's name. The
+     form itself, and the argument for its aggressiveness, is at
+     `canonicalScalar` one screen up.
 
-     CASE IS DELIBERATELY NOT FOLDED. `Family-A` and `family-a` still compare as
-     distinct, and that is left alone on purpose rather than missed: the review
-     that found CR-001 names case-insensitive comparison as an example of a
-     WEAKENING of this check, so folding it here would be adopting the thing that
-     review treats as the defect. Whitespace has no such reading; it carries no
-     information in a scalar id, which is why the two are treated differently.
-     The residue is recorded in delivery/work-history/m3-p9.md. */
-  return { kind: "established", value: raw.trim() };
+     CASE IS NOW FOLDED, REVERSING ROUND 1, AND THE CITATION ROUND 1 INHERITED
+     WAS CHECKED RATHER THAN CARRIED FORWARD. Round 1 declined to fold case on
+     the grounds that "the review that found CR-001 names case-insensitive
+     comparison as an example of a WEAKENING of this check". CR-003 is a LOW
+     finding about WITNESS SPEC CONSTRUCTION, not about this comparison. Its
+     words, at delivery/review/clean-room-m3-p9-criteria.md:527, are that "a
+     stronger second member would be a different way to break the comparison,
+     for example comparing the dimension case-insensitively or grouping on the
+     wrong key". That is a suggestion for a MUTATION to put in a witness spec's
+     `dangerousStates`, which is a deliberate defect a test must redden against.
+     It is not a ruling that the shipped comparison should be case-sensitive.
+
+     And the direction settles it independently of what the reviewer meant: this
+     check refuses when values are NOT distinct, so folding case makes more
+     values compare as equal, which produces MORE refusals. A case-insensitive
+     comparison here cannot be a weakening, because there is no input it lets
+     through that a case-sensitive one refuses. Measured before this line
+     existed: `produced-by: Family-A` against `produced-by: family-a` on a pair
+     sharing one model family exited 0 GREEN, and `merge-authority:
+     Delegated-Under-Conditions` disabled the check entirely. Both now redden. */
+  const canonical = canonicalScalar(raw);
+  if (!canonical.ok) {
+    return { kind: "uncanonical", found: canonical.found };
+  }
+  return { kind: "established", value: canonical.value };
 }
 
 /**
@@ -3059,9 +3145,20 @@ function unestablishedReason(reading: EstablishedField, field: string): string |
   if (reading.kind === "established") {
     return undefined;
   }
-  return reading.kind === "absent"
-    ? `declares no ${field}`
-    : `declares ${field} as ${reading.found}, which names no value`;
+  if (reading.kind === "absent") {
+    return `declares no ${field}`;
+  }
+  if (reading.kind === "uncanonical") {
+    /* ITS OWN SENTENCE, because it is its own fact. "Names no value" is false
+       here: the field names a value perfectly well, and the value is drawn in
+       characters that no reader can tell from another value's. Printing that as
+       "names no value" would send the reader looking for a missing field. */
+    return (
+      `declares ${field} using the character ${reading.found}, which is outside the printable ASCII ` +
+      `a governance identifier is compared as, so it cannot be told apart from a value drawn in ordinary characters`
+    );
+  }
+  return `declares ${field} as ${reading.found}, which names no value`;
 }
 
 /**
@@ -3079,6 +3176,17 @@ function unestablishedReason(reading: EstablishedField, field: string): string |
  * refuses an unestablished dimension outright; it can still let a verdict that
  * is not the committed one pass the membership test when both are incomplete in
  * the same way.
+ *
+ * THIS IS THE ONE SITE WHERE FIX ROUND 2's CANONICALISATION IS PERMISSIVE
+ * RATHER THAN REFUSING, AND IT IS DECLARED HERE RATHER THAN DISCOVERED. Every
+ * other comparison in this check refuses more inputs once values are collapsed
+ * onto one form. This one accepts more: a verdict differing from a committed
+ * one only in case or in a compatibility variant now passes the membership test
+ * where it previously did not. That is accepted deliberately, on the ground
+ * that it wins an attacker nothing: membership only decides whether this check
+ * proceeds, and what it proceeds to compare is the COMMITTED group, which the
+ * non-committed document is not a member of and does not change. An attacker
+ * who wants the comparison to run can always submit the committed file itself.
  */
 function decorrelationTriple(record: Record<string, unknown> | undefined): string {
   return DECORRELATION_DIMENSIONS.map((dimension) => {
@@ -3148,19 +3256,35 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
     const verdict = asRecord(instance);
-    const phase = verdict?.["phase"];
-    if (typeof phase !== "string") {
+    /* THE JOIN KEY IS CANONICALISED TOO, AND IT IS NOT AN AFTERTHOUGHT. `phase`
+       selects the GROUP the distinctness comparison runs over, so a lookalike
+       character here shrinks the group instead of changing a dimension. With
+       three verdicts, two of them sharing a family, drawing one sibling's
+       `phase` with a homoglyph drops it from the group and leaves two distinct
+       ones behind, which is the same fail-open outcome by a different route.
+       Canonicalising GROWS the group, which is the fail-closed direction: more
+       verdicts compared means more chances to find a shared value. */
+    const phaseReading = establishField(verdict, "phase");
+    if (phaseReading.kind !== "established") {
       return {
         violations: [
           {
             pointer: "#/phase",
-            message:
-              "the verdict names no phase, so the other reviews of the same work cannot be selected",
+            message: `the verdict ${unestablishedReason(phaseReading, "phase") as string}, so the other reviews of the same work cannot be selected`,
           },
         ],
         reports: [],
       };
     }
+    /* TWO JOBS, TWO VALUES, AND CONFLATING THEM IS ITS OWN SMALL DEFECT. The
+       phase is a JOIN KEY, which must be canonical so the group is assembled
+       correctly, and it is also a LABEL printed back at a reader, which must be
+       the reader's OWN spelling so the sentence matches the file they are
+       holding. Printing the canonical form would tell someone whose charter says
+       `M3-P9` about a phase called `m3-p9`, which is a document they do not
+       have. Only `phaseKey` is ever compared; only `phase` is ever printed. */
+    const phaseKey = phaseReading.value;
+    const phase = verdict?.["phase"] as string;
 
     /* THE REGIME IS READ, NEVER ASSUMED, AND "ABSENT" IS NOT THE SAME FACT AS
        "PRESENT AND BROKEN". This distinction was NOT in the first version of
@@ -3244,7 +3368,19 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const mode = eachMode(modesDocument.value).find((row) => row.id === modeId);
+    /* BOTH SIDES CANONICAL, and the direction here is worth stating because it
+       is the one place in this function where collapsing makes a lookup SUCCEED
+       more often rather than fail. `eachMode` builds `row.id` with its own
+       `String(... ?? "")` and is shared with six other consumers, so it is left
+       alone and its output is canonicalised at THIS use site. Finding the mode
+       a charter actually names is the correct reading; the security-relevant
+       comparison is the `merge-authority` one below, and THAT one is fail-closed
+       under collapsing, because more values matching the delegated constant
+       means the decorrelation requirement applies more often, never less. */
+    const mode = eachMode(modesDocument.value).find((row) => {
+      const reading = canonicalScalar(row.id);
+      return reading.ok && reading.value === modeId;
+    });
     if (mode === undefined) {
       return {
         violations: [
@@ -3298,7 +3434,13 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
     const group = committed.verdicts.filter(
-      (candidate) => candidate.record["phase"] === phase,
+      /* BOTH SIDES CANONICAL. `phase` above is already canonical; the sibling's
+         is read through the same function so the two are compared in one form
+         rather than one canonical value against one raw one. */
+      (candidate) => {
+        const reading = establishField(candidate.record, "phase");
+        return reading.kind === "established" && reading.value === phaseKey;
+      },
     );
 
     /* MEMBERSHIP FIRST. DR-0012 condition 1 says the two reviews are WRITTEN TO
