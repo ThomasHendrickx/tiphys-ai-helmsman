@@ -1837,7 +1837,7 @@ test("exactly one job in any workflow declares a write grant on the repository, 
   assert.equal(
     "id-token" in writer.scopes,
     false,
-    "the tag job declares id-token; DR-0032:63 gives it contents: write and NO id-token, and the absence is the assertion",
+    "the tag job declares id-token; DR-0032:65 gives it contents: write and NO id-token, and the absence is the assertion",
   );
 
   const minter = exactlyOne(jobs.filter(grantsIdToken), "job able to mint an OIDC token", describeJob);
