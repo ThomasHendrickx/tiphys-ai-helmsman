@@ -213,3 +213,134 @@ fail 0`.
 - **The lock-driven `build:runtime-deps` ships exactly the set the old walk
   shipped.** Ten packages either way, same names, measured by replaying the old
   walk against the same `node_modules`.
+
+## DV-4 (LOW, and it is really an accuracy correction): DV-3 is DECLARED non-coverage, DV-2 is not
+
+The round's own "what the derivation did NOT cover" says an interpolation
+inside "a `with:` value that a used action passes to a shell" would not appear.
+DV-3 is therefore declared, and I record it as stated at its true size for the
+file's PRESENT state. What is NOT declared is the forward claim: the round's
+item 3 says the property is "asserted over every step rather than fixed at the
+two sites", and the reason given is "fixing two sites leaves the mechanism live
+for the next step anybody adds". The next step anybody adds may be a `uses:`
+step or a step in a second job, and in both cases the assertion is silent. The
+DERIVATION (a parse of every workflow) is broader than the GUARD (a parse of one
+job of one workflow), and only the guard ships forward.
+
+## Mechanism M3: order verified independently, and the mislabel confirmed as a label only
+
+Step order read out of the parsed workflow by my own classifier, which matches
+`npm publish` only at the START of a line of the trimmed run body rather than
+anywhere in it:
+
+```
+ 9 LISTING   "npm pack, and check the listing against the tree on disk" if=undefined
+10 EXECUTION "Install and RUN the packed artifact, before any publish (SC-011)" if=undefined
+11 PUBLISH   "Publish to npmjs over OIDC ..." if="${{ steps.decide.outputs.publish == 'yes' }}"
+12 .         "Rehearsal only, nothing was published" if="${{ steps.decide.outputs.publish != 'yes' }}"
+13 EXECUTION "Release verification against the registry, after publishing (SC-011)" if="..."
+```
+
+LISTING then EXECUTION then PUBLISH, and the pre-publish execution at index 10
+carries no `if:`. **The step-12 mislabel the round declares is confirmed and it
+is a label only**: my classifier puts step 12 at `.` and the ordering conclusion
+is unchanged, because the real publish is index 11 and the execution is index 10
+either way.
+
+**The pre-publish execution genuinely runs.** I packed the kernel
+(`npm pack`, 181 files, no publish of any kind anywhere in this verification)
+and ran `scripts/release-verify.sh @tiphys/kernel 0.1.0 --tarball ...` from a
+clean directory, which is exactly what the workflow step does:
+
+```
+release-verify: @tiphys/kernel@0.1.0 verified from .../lab/m3/verify
+release-verify: resolved package path .../lab/m3/verify/node_modules/@tiphys/kernel/package.json
+EXIT=0
+```
+
+Six records, every `exitCode` 0, every `resolvedPackagePath` inside the install
+prefix, every `sourceTreeOnResolutionPath` null: `clean-environment`, `install`,
+`import`, `bin-version`, `copy-template`, `validate-template`.
+
+## DV-5 (LOW): what is executed is not what is published; it is an equivalent re-pack
+
+The pre-publish step verifies `$RUNNER_TEMP/artifact/*.tgz`, produced by the
+`npm pack` step. `npm publish` at index 11 does NOT publish that file: it runs
+`prepublishOnly` and `prepack` again and packs the workspace afresh. So the
+tarball that reaches the registry is a re-pack of the same tree, not the bytes
+that were installed and executed.
+
+Nothing between the two steps writes to the workspace, so in practice the two
+are equivalent, and I did not find a difference. But the phase's claim is that
+nothing is published before it has been executed, and strictly the published
+bytes have not been. `npm publish <tarball>` accepts a path and would close the
+gap exactly. Recorded as a LOW rather than charged, because I did not
+demonstrate a divergence.
+
+## DV-6 (MEDIUM, tracked-register material, NOT this phase's code): gates.yml:233 is exploitable, and it is not on the register the round created
+
+The round classifies this and does not attack it, which its non-coverage section
+says plainly. I attacked the classification.
+
+`.github/workflows/gates.yml:233` interpolates `${{ github.head_ref }}` inside a
+double-quoted `$(printf ... | sed ...)` in a `run:` body. The remaining question
+is whether a git ref name can carry the metacharacters, and it can:
+
+```
+claude/m3-p1-$(id)           -> LEGAL
+claude/m3-p1-"$(id)"         -> LEGAL
+claude/m3-p1-;id;            -> LEGAL
+claude/m3-p1-`id`            -> LEGAL
+```
+
+(`git check-ref-format --branch`, exit 0 for all four.) The trigger is
+`on: pull_request:` with no branch filter, so `github.head_ref` is the SOURCE
+branch of any pull request including one from a fork, which is attacker-chosen.
+`gates.yml` carries no `permissions:` key at any level, so the job runs with the
+repository's default token grant. The consequence is arbitrary shell execution
+on the runner during the very run that decides whether a change is green.
+
+**By whom:** anyone who can open a pull request. **Does this branch touch it:**
+no. `git diff --name-only origin/main...HEAD` does list the file, and
+`git diff origin/main...HEAD -- .github/workflows/gates.yml | grep -c head_ref`
+is 0, so the round's claim is confirmed: the branch changes the file but not
+that line.
+
+**The finding against THIS ROUND is not the injection.** It is that the round
+created `delivery/review/tracked-findings-register.md` in this same commit range,
+whose stated purpose is that "a finding whose only home is a review document
+nobody re-reads ... is a finding that has been lost politely", and then left this
+one in the work history and off the register. It is the register's own failure
+mode, in the pull request that adds the register.
+
+## Suite, all four axes, measured rather than accepted
+
+Reported by the round and re-measured by me at 26ebf7f. Every number matches.
+
+| invocation | toolchain | dist | tests | pass | fail | SKIPPED |
+|---|---|---|---|---|---|---|
+| `npm test` | v26.6.0 | built | 809 | 809 | 0 | **0** |
+| bare `node --test` from the root | v26.6.0 | built | 811 | 811 | 0 | **0** |
+| `npm test` under `bash -lc` | v22.22.2 | built | 809 | 807 | 0 | **2** |
+| `npm test` | v26.6.0 | **absent** | 809 | 797 | 0 | **12** |
+
+`npm run build` after the dist-absent run exits 0 and `git status --porcelain`
+is empty. The dist-absent skip count is 12 where standing warning 12 records 9,
+so this round adds three more dist-dependent tests; the round reports 12 and
+that is the number I measure.
+
+## The fixtures becoming real installed trees: measured, and it costs little
+
+- **Not network-dependent.** The fixtures use `file:` dependencies only. A
+  fixture install with the registry pointed at an unreachable address
+  (`--registry http://127.0.0.1:1`) still exits 0 in 220ms and writes
+  `node_modules/.package-lock.json`.
+- **Cost, measured at both heads on the same toolchain and build state:**
+  `test/license-gate.test.ts` at pre-round `8d056f6` is 16 tests, 16 pass, 0
+  skipped, `duration_ms 13340`; at 26ebf7f it is 23 tests, 23 pass, 0 skipped,
+  `duration_ms 21308`. Eight seconds for seven more tests, in a suite whose
+  whole run is about 197 seconds.
+- **Order dependence:** each fixture is installed into its own `mkdtemp`
+  directory and torn down, and I did not find shared state between them. I did
+  not run the file under a randomised test order, so this is a reading rather
+  than a measurement.
