@@ -369,7 +369,20 @@ function packListing(options) {
       source: "npm pack --dry-run --json --ignore-scripts",
     };
   }
-  const files = (parsed?.[0]?.files ?? []).map((entry) =>
+  /* EXACTLY ONE PACK RESULT, not the first of however many (round 2, the same
+     mechanism as DV-1 one file along). `npm pack --json` returns an ARRAY: one
+     entry per package packed, which for a workspace root is one per workspace.
+     Taking `[0]` would silently describe one member of a set and report it as
+     the package. This tree has no workspaces today, so the count is one; that
+     is a fact to CHECK rather than a reason not to. */
+  if (!Array.isArray(parsed) || parsed.length !== 1) {
+    return {
+      ok: false,
+      reason: `npm pack --dry-run --json returned ${Array.isArray(parsed) ? String(parsed.length) : "a non-array"} pack result(s); exactly one is expected, and more than one means several packages were packed and this listing describes only one of them`,
+      source: "npm pack --dry-run --json --ignore-scripts",
+    };
+  }
+  const files = (parsed[0]?.files ?? []).map((entry) =>
     String(entry.path).replace(/^package\//, ""),
   );
   return { ok: true, files, source: "npm pack --dry-run --json --ignore-scripts" };

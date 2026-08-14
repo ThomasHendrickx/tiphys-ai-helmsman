@@ -756,7 +756,13 @@ function packListing(): string[] {
     { cwd: repoRoot, encoding: "utf8", env: cleanEnv(), maxBuffer: 64 * 1024 * 1024 },
   );
   assert.equal(result.status, 0, `npm pack --dry-run failed: ${result.stderr ?? ""}`);
-  return (JSON.parse(result.stdout) as { files: { path: string }[] }[])[0].files.map((entry) =>
+  /* EXACTLY ONE PACK RESULT (round 2). `npm pack --json` returns one entry per
+     package packed, and `[0]` would describe one member of a set as though it
+     were the package. Found by this round's own derivation, not by the verifier:
+     it is the same first-match shape as DV-1, in a helper nobody attacked. */
+  const results = JSON.parse(result.stdout) as { files: { path: string }[] }[];
+  assert.equal(results.length, 1, `npm pack returned ${String(results.length)} pack results; exactly one is expected`);
+  return (results[0] as { files: { path: string }[] }).files.map((entry) =>
     entry.path.replace(/^package\//, ""),
   );
 }
