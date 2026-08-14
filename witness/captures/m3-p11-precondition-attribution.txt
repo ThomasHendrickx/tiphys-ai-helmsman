@@ -1,0 +1,55 @@
+Real captured output, M3-P11 fix round 1, 2026-08-14, node v26.6.0.
+Two arms of the same four one-gate manifests, run through bin/tiphys.ts as the
+unprivileged user 'ubuntu' (root bypasses the mode bits, so the unreadable member
+does not exist as root). CONTROL is the phase branch at a73313d, the head the two
+clean-room reviews examined; HEAD is fix round 1. Only src/ differs between them.
+The 'gates: run <id>' line is dropped from each block because it is nondeterministic.
+
+$ member=unreadable arm=control
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: lab: not-applicable: precondition lab-pre evaluated and unmet: node scripts/unreadable.mjs exited 1
+gates: no applicable gate
+exit=21
+
+$ member=unreadable arm=head
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: lab: error: precondition lab-pre command node scripts/unreadable.mjs could not be run: scripts/unreadable.mjs exists and is a regular file but is NOT READABLE by this process (mode 0, resolved to /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/fixround1/lab/scripts/unreadable.mjs); the command would launch and then fail to open it, which an exit code cannot be distinguished from a deliberate refusal (this is NOT not-applicable: nothing was evaluated, M2-C-3)
+gates: 1 gate(s) reported error: lab
+exit=21
+
+$ member=afteroption arm=control
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: lab: not-applicable: precondition lab-pre evaluated and unmet: node --no-warnings scripts/absent-after-option.mjs exited 1
+gates: no applicable gate
+exit=21
+
+$ member=afteroption arm=head
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: lab: error: precondition lab-pre command node --no-warnings scripts/absent-after-option.mjs exited 1, and that exit CANNOT BE ATTRIBUTED to an evaluated precondition: 1 path-shaped argv element(s) cannot be opened by this process: scripts/absent-after-option.mjs does not exist (resolved to /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/fixround1/lab/scripts/absent-after-option.mjs) (this is NOT not-applicable: nothing was established, M2-C-3. If such an element is not a path, give the command a form in which it is not path-shaped)
+gates: 1 gate(s) reported error: lab
+exit=21
+
+$ member=whitespace arm=control
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: lab: not-applicable: precondition lab-pre evaluated and unmet: node scripts/with space/absent.mjs exited 1
+gates: no applicable gate
+exit=21
+
+$ member=whitespace arm=head
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: lab: error: precondition lab-pre command node scripts/with space/absent.mjs exited 1, and that exit CANNOT BE ATTRIBUTED to an evaluated precondition: 1 path-shaped argv element(s) cannot be opened by this process: scripts/with space/absent.mjs does not exist (resolved to /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/fixround1/lab/scripts/with space/absent.mjs) (this is NOT not-applicable: nothing was established, M2-C-3. If such an element is not a path, give the command a form in which it is not path-shaped)
+gates: 1 gate(s) reported error: lab
+exit=21
+
+$ member=honest arm=control
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: lab: not-applicable: precondition lab-pre evaluated and unmet: node -e process.exit(process.env.LAB_TOKEN === undefined ? 1 : 0) exited 1
+gates: no applicable gate
+exit=21
+
+$ member=honest arm=head
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: lab: not-applicable: precondition lab-pre evaluated and unmet: node -e process.exit(process.env.LAB_TOKEN === undefined ? 1 : 0) exited 1
+gates: no applicable gate
+exit=21
+

@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -3480,6 +3481,176 @@ test("a precondition command whose path operand is a directory, and one whose op
   }
 });
 
+/**
+ * Run the CLI as a user WITHOUT the privilege to bypass a file's mode bits.
+ *
+ * Fix round 1, half A. `access(R_OK)` is the right primitive for "may the
+ * process that will spawn this command open that file", and it is the right
+ * primitive precisely because it answers for the CALLING UID. Root has
+ * CAP_DAC_OVERRIDE, so root reads a `chmod 000` file happily and BOTH the
+ * probe and the real spawn succeed: the readability arm is not merely hard
+ * to observe as root, it does not exist as root, because as root there is
+ * nothing wrong. CI runs the suite as an unprivileged user and observes it
+ * directly; a root shell has to drop to one, which `spawnSync`'s `uid`
+ * option does, and this repository's own container is the root case.
+ *
+ * This never SKIPS. If the drop cannot be performed the child fails to spawn
+ * and the caller asserts on that, because a silent skip here would be the
+ * same class of green-and-worthless guard the phase exists to abolish.
+ */
+const UNPRIVILEGED_UID = 65534;
+
+function runCliUnprivileged(args: string[], worldWritable: string[]) {
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (asRoot) {
+    for (const path of worldWritable) {
+      chmodSync(path, 0o777);
+    }
+  }
+  return spawnSync(process.execPath, [sourceEntry, ...args], {
+    encoding: "utf8",
+    cwd: repoRoot,
+    ...(asRoot ? { uid: UNPRIVILEGED_UID, gid: UNPRIVILEGED_UID } : {}),
+  });
+}
+
+test("a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace", () => {
+  // FIX ROUND 1, MECHANISM 1: runnability was established by testing a PROPER
+  // SUBSET of what running actually requires, so a command that crashed still
+  // reached `not-applicable` through the exit-code fallback. That is the exact
+  // defect this phase exists to close, surviving inside its own fix. A clean-
+  // room hazard reviewer reproduced all three members below end to end through
+  // the packed CLI before this round; all three were `not-applicable`.
+  //
+  // THREE STRUCTURALLY DIFFERENT MEMBERS, and they are different in KIND, not
+  // in decoration:
+  //
+  //   unreadable  the element IS examined by the pre-spawn probe, and the
+  //               condition that fails is one the probe never tested
+  //               (permission, as against existence and type). Closed by
+  //               asking the complete question.
+  //   after-flag  the element is NOT examined at all, because separating an
+  //               option's value from an operand needs the launcher's flag
+  //               grammar. Closed after the spawn, on the nonzero arm.
+  //   whitespace  also not examined, by a different guard, and it is the one
+  //               shape where an over-inclusive scan could be wrong; it fails
+  //               closed and loudly, which M2-C-3 prefers to a silent skip.
+  //
+  // The fourth arm is the CONTROL, and it is the reason the scan tests for a
+  // slash rather than for absence: `credential-token`'s real precondition in
+  // gates.manifest.json is inline code that deliberately exits 1, and it must
+  // still mean unmet.
+  //
+  // The wording of these assertions is anchored by real captured output from
+  // the runner's own spawns, both arms, in
+  // m3-p11-precondition-attribution.txt, not by strings chosen to match the
+  // implementation.
+  const dir = scratch();
+  try {
+    const gateCommand = writeGate(dir, "unattributable-gate", {
+      record: gateRecord("p11-attr", "green", 1),
+      exit: 0,
+    });
+
+    const unreadable = join(dir, "unreadable-precondition.mjs");
+    writeFileSync(unreadable, "process.exit(0);\n");
+    chmodSync(unreadable, 0o000);
+
+    const spaced = join(dir, "a directory with spaces");
+    mkdirSync(spaced, { recursive: true });
+
+    const members: [string, string[], RegExp][] = [
+      ["unreadable", ["node", unreadable], /NOT READABLE by this process/],
+      [
+        "after-flag",
+        ["node", "--no-warnings", join(dir, "absent-after-a-flag.mjs")],
+        /CANNOT BE ATTRIBUTED/,
+      ],
+      [
+        "whitespace",
+        ["node", join(spaced, "absent-with-space.mjs")],
+        /CANNOT BE ATTRIBUTED/,
+      ],
+    ];
+
+    for (const [name, command, pattern] of members) {
+      const evidence = join(dir, `evidence-attr-${name}`);
+      const manifest = writeManifest(
+        dir,
+        [
+          {
+            id: "p11-attr",
+            command: gateCommand,
+            unitLabel: "fixture units",
+            applicability: "conditional",
+            precondition: {
+              id: "p11-attr-probe",
+              kind: "command-exit-zero",
+              command,
+            },
+          },
+        ],
+        `manifest-attr-${name}.json`,
+      );
+      const run = runCliUnprivileged(
+        ["gates", "run", "--manifest", manifest, "--evidence", evidence],
+        [dir],
+      );
+      assert.equal(
+        run.error,
+        undefined,
+        `${name}: the CLI could not be spawned unprivileged: ${String(run.error)}`,
+      );
+      assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
+      const record = JSON.parse(
+        readFileSync(join(evidence, "p11-attr", "result.json"), "utf8"),
+      ) as { status: string; detail: string };
+      assert.equal(record.status, "error", `${name} reported ${record.status}: ${record.detail}`);
+      assert.notEqual(record.status, "not-applicable");
+      assert.match(record.detail, pattern);
+      const summary = readSummary(evidence);
+      assert.equal(summary.counts["not-applicable"], 0, `${name} counted a skip`);
+      assert.equal(summary.counts.error, 1);
+    }
+
+    // THE CONTROL. An honest refusal is still an honest refusal: no element of
+    // this command contains a slash, so nothing is scanned and exit 1 keeps
+    // meaning unmet. Without this arm the three above would be satisfied by a
+    // change that simply stopped believing exit codes.
+    const honestEvidence = join(dir, "evidence-attr-honest");
+    const honestManifest = writeManifest(
+      dir,
+      [
+        {
+          id: "p11-attr",
+          command: gateCommand,
+          unitLabel: "fixture units",
+          applicability: "conditional",
+          precondition: {
+            id: "p11-attr-probe",
+            kind: "command-exit-zero",
+            command: ["node", "-e", "process.exit(process.env.P11_LAB_TOKEN === undefined ? 1 : 0)"],
+          },
+        },
+      ],
+      "manifest-attr-honest.json",
+    );
+    const honest = runCliUnprivileged(
+      ["gates", "run", "--manifest", honestManifest, "--evidence", honestEvidence],
+      [dir],
+    );
+    assert.equal(honest.error, undefined, String(honest.error));
+    const honestRecord = JSON.parse(
+      readFileSync(join(honestEvidence, "p11-attr", "result.json"), "utf8"),
+    ) as { status: string; detail: string; precondition?: { met: boolean } };
+    assert.equal(honestRecord.status, "not-applicable", honestRecord.detail);
+    assert.equal(honestRecord.precondition?.met, false);
+    assert.equal(readSummary(honestEvidence).counts.error, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a gate whose command names a missing path, one whose launcher is not executable, and one whose interpreter line is bad are all error, and the missing path is the path named", () => {
   // Criteria 1 and 4. The three members are structurally different: the
   // first is an operand that does not exist (the launcher spawns fine), the
@@ -3694,10 +3865,97 @@ test("a not-applicable gate's reason reaches stdout too, so a skip and a crash a
     assert.match(run.stdout, /^gates: p11-skipped: not-applicable: /m);
     assert.match(run.stdout, /p11-absent-config/);
     assert.match(run.stdout, /absent-config\.json/);
-    // A green gate's detail is a count the summary line already carries, so it
-    // is NOT printed; without this arm the assertion above would be satisfied
-    // by a change that prints every row indiscriminately.
-    assert.doesNotMatch(run.stdout, /^gates: p11-green: green: /m);
+    // FIX ROUND 1, finding C-1. This arm asserted the OPPOSITE until now: that
+    // a green row is not printed, on the ground that a green detail is a count
+    // the summary line already carries. That ground was an assumption about
+    // what a green verdict can contain, and the scope gate falsified it in the
+    // same pull request (see the dedicated test below). The line still has to
+    // carry its own STATUS, which is what keeps the not-applicable assertion
+    // above from being satisfied by an undifferentiated dump.
+    assert.match(run.stdout, /^gates: p11-green: green: /m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a GREEN gate's own detail reaches stdout as well, so a disclosure a green verdict carries cannot be silent", () => {
+  // FIX ROUND 1, finding C-1, and the reason it is a separate test from the
+  // not-applicable one above.
+  //
+  // M3-P11 change B relaxed a HARD control (a head-side declaration addition
+  // was impossible) into a VISIBLE one (allowed, and NAMED for a reviewer to
+  // sign off). A scope gate carrying nothing but an amendment is GREEN, so
+  // while this loop skipped green rows the note reached stdout only when the
+  // gate ALSO had something else to refuse: visible exactly where the gate
+  // already says no, invisible where it is the only refusal there is. Neither
+  // `summary.json` nor the gate's captured `stdout.txt` leaves the runner, so
+  // that was the whole safeguard, gone.
+  //
+  // The fixture is a green gate whose detail carries a sentence no summary
+  // count could reproduce, which is the property under test: a green row's
+  // detail is not derivable from the row above it.
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence-green-stdout");
+    const disclosure = "DECLARATION AMENDED AT HEAD: filesToTouch src/added.ts";
+    const manifest = writeManifest(dir, [
+      {
+        id: "p11-discloser",
+        command: writeGate(dir, "discloser", {
+          record: {
+            ...gateRecord("p11-discloser", "green", 4),
+            detail: `4 changed path(s) audited. ${disclosure}`,
+          },
+          exit: 0,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.match(run.stdout, /^gates: p11-discloser: green: /m);
+    assert.ok(
+      run.stdout.includes(disclosure),
+      `the green row's own disclosure never reached stdout: ${run.stdout}`,
+    );
+    // It is stdout specifically, not "somewhere in the output": a consumer
+    // capturing one stream is the case this exists for.
+    assert.ok(!run.stderr.includes(disclosure));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a gate detail carrying a bare carriage return is escaped rather than allowed to overwrite its own printed line", () => {
+  // FIX ROUND 1, the hazard reviewer's TRACKED item. The print loop's comment
+  // claimed a gate's multi-line detail "cannot forge additional `gates:`
+  // lines", which `singleLine` makes true for `\n` and NOT for a bare `\r`:
+  // `"a\rb".trim()` trims only the ends. A gate's detail is already-trusted
+  // manifest content, so this is defense in depth rather than a live exploit
+  // path; it is fixed because a comment that claims more than it delivers is
+  // the shape this repository keeps paying for.
+  const dir = scratch();
+  try {
+    const evidence = join(dir, "evidence-cr");
+    const forged = `real detail\rgates: p11-cr: green: everything is fine`;
+    const manifest = writeManifest(dir, [
+      {
+        id: "p11-cr",
+        command: writeGate(dir, "cr", {
+          record: { ...gateRecord("p11-cr", "red", 1), detail: forged },
+          exit: 1,
+        }),
+        unitLabel: "fixture units",
+        applicability: "required",
+      },
+    ]);
+    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    assert.notEqual(run.status, 0);
+    const printed = run.stdout.split("\n").filter((line) => line.startsWith("gates: p11-cr: "));
+    assert.equal(printed.length, 1, `expected exactly one row line, got ${JSON.stringify(printed)}`);
+    assert.ok(!printed[0]?.includes("\r"), "a bare carriage return survived into the printed line");
+    assert.match(printed[0] ?? "", /\\x0d/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

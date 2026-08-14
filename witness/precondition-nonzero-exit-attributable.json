@@ -1,0 +1,31 @@
+{
+  "id": "precondition-nonzero-exit-attributable",
+  "behavior": "precondition-nonzero-exit-must-be-attributable",
+  "tests": [
+    "a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    const gaps = attributionGaps(command, cwd);",
+      "replace": "    const gaps: string[] = [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  if (!readable.ok) {",
+      "replace": "  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the precondition command the runner spawns with spawnSync, and the runner's own result records and summary.json",
+    "captures": [
+      "witness/captures/m3-p11-precondition-attribution.txt"
+    ],
+    "provenance": "src/gates/run.ts spawns the precondition command with spawnSync and derives a verdict from what that program did, so rule (f) binds this witness. The cited capture is verbatim output of eight real runs taken on 2026-08-14, node v26.6.0, four one-gate manifests against two arms (the phase branch at a73313d, which is the head both clean-room reviews examined, and fix round 1), run as the unprivileged user ubuntu because root bypasses the mode bits and the unreadable member does not exist as root. Its basename is referenced from the named test's source file. THE TWO MEMBERS ARE THE TWO HALVES OF THE MECHANISM, not two variants of one: the first removes the post-spawn attribution scan, which is what closes an argv position the pre-spawn rule declines to examine (the after-an-option and whitespace members go back to not-applicable while the unreadable one still errors); the second removes only the readability condition from the complete open question, which is a structurally different failure because the scan still runs and the element is still examined, and it is the condition itself that stops being tested."
+  }
+}

@@ -713,5 +713,9 @@
   "scope-phase-own-evidence-standing-extra": "a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one",
   "scope-declaration-addition-named-removal-red": "a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it",
   "scope-declaration-deleted-at-head-red": "a head that deletes the phase declaration outright reddens rather than falling back to the merge base",
-  "gates-command-prints-nongreen-detail-to-stdout": "a not-applicable gate's reason reaches stdout too, so a skip and a crash are distinguishable from the terminal alone"
+  "gates-command-prints-nongreen-detail-to-stdout": "a not-applicable gate's reason reaches stdout too, so a skip and a crash are distinguishable from the terminal alone",
+  "precondition-nonzero-exit-must-be-attributable": "a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace",
+  "gates-command-prints-green-detail-to-stdout": "a GREEN gate's own detail reaches stdout as well, so a disclosure a green verdict carries cannot be silent",
+  "gates-command-detail-control-characters-escaped": "a gate detail carrying a bare carriage return is escaped rather than allowed to overwrite its own printed line",
+  "scope-foreign-declaration-refused-and-prefix-named": "a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one"
 }

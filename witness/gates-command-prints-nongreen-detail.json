@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/commands/gates.ts",
-      "find": "    if (row.status === \"green\") {\n      continue;\n    }",
-      "replace": "    if (row.status !== \"green\") {\n      continue;\n    }"
+      "find": "  for (const row of outcome.summary.gates) {\n    const detail = printableDetail(row.detail);",
+      "replace": "  for (const row of outcome.summary.gates) {\n    if (row.status !== \"red\") {\n      continue;\n    }\n    const detail = printableDetail(row.detail);"
     },
     {
       "kind": "mutation",
       "file": "src/commands/gates.ts",
-      "find": "    process.stdout.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\\n`);",
-      "replace": "    process.stderr.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\\n`);"
+      "find": "    process.stdout.write(\n      detail === \"\"",
+      "replace": "    process.stderr.write(\n      detail === \"\""
     }
   ],
   "deterministic": true,

@@ -1454,3 +1454,184 @@ test("a head that deletes the phase declaration outright reddens rather than fal
     cleanup(dir, outside);
   }
 });
+
+test("a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one", () => {
+  // FIX ROUND 1, MECHANISM 2: change B relaxed a HARD control into a VISIBLE
+  // one, and the visibility was weaker than the refusal it replaced in three
+  // independent ways. Two of them are here (C-2 and M-1); the third, the note
+  // never reaching the runner's stdout on the green arm, is in
+  // test/gates.test.ts because it is the runner that was dropping it.
+  //
+  // C-2, THE MECHANISM. `compareDeclarations` reads exactly ONE file on both
+  // sides, `<declarationsDir>/<phase>.json`, so "a removal is still hard" is a
+  // guarantee about the audited phase's own declaration and about nothing
+  // else. Every OTHER phase's declaration is, to this gate, an ordinary path:
+  // get it into scope by any route and the branch may narrow it with no delta
+  // check at all, and the narrowing lands on main and governs that phase's
+  // later audit. A clean-room reviewer measured that green in a scratch
+  // repository before this round.
+  //
+  // TWO STRUCTURALLY DIFFERENT MEMBERS, because the fix is a property of the
+  // DIRECTORY and must not depend on how the scope was granted:
+  //
+  //   ARM 1  the grant is a head-side DIRECTORY PREFIX addition, which is the
+  //          reachability change B introduced and the shape that was measured.
+  //   ARM 2  the grant is a LITERAL path that was already in the MERGE BASE,
+  //          so change B is not involved at all and no amendment exists. A fix
+  //          that only inspected the head-side delta would leave this green.
+  //
+  // ARM 3 is the control: a branch touching only its OWN declaration is still
+  // green, so the rule refuses a class rather than the directory.
+  //
+  // Every audited path below comes from git's own `diff --name-status`, whose
+  // line shape is anchored by the real capture git-name-status-real.txt, and
+  // the harness that runs this test parses node's TAP stream, anchored by
+  // node-test-tap-real.txt.
+
+  // ARM 1: head-side directory-prefix grant.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(join(dir, "src"), { recursive: true });
+      writeFileSync(join(dir, "src", "a.ts"), "1\n");
+      writeFileSync(join(dir, "src", "other.ts"), "1\n");
+      writeFileSync(join(dir, "src", "guarded.ts"), "1\n");
+      writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+      writeDeclaration(declDir, "m2-p7", {
+        filesToTouch: ["src/other.ts", "src/guarded.ts"],
+      });
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+      writeDeclaration(declDir, "m2-p4", {
+        filesToTouch: ["src/a.ts", "delivery/plan/phase-declarations/"],
+      });
+      // The narrowing itself: M2-P7 loses src/guarded.ts, on a branch that has
+      // no relationship to M2-P7 whatsoever.
+      writeDeclaration(declDir, "m2-p7", { filesToTouch: ["src/other.ts"] });
+      writeFileSync(join(dir, "src", "a.ts"), "2\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "grant the directory and narrow another phase"]);
+      const head = git(dir, ["rev-parse", "HEAD"]);
+      const run = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
+
+      assert.notEqual(run.run.status, 0, run.run.stdout + run.run.stderr);
+      assert.equal(run.record?.status, "red");
+      assert.match(run.record?.detail ?? "", /not its own declaration/);
+      assert.match(
+        run.record?.detail ?? "",
+        /delivery\/plan\/phase-declarations\/m2-p7\.json/,
+      );
+      // M-1: the grant that made this possible is named AS a directory prefix,
+      // not as a string the same shape as a single-file addition.
+      assert.match(run.run.stdout, /DECLARATION AMENDED AT HEAD/);
+      assert.match(
+        run.run.stdout,
+        /filesToTouch delivery\/plan\/phase-declarations\/ \(DIRECTORY PREFIX/,
+      );
+      assert.match(run.run.stdout, /1 of them a DIRECTORY PREFIX/);
+      const audit = JSON.parse(
+        readFileSync(join(run.evidenceDir, "scope-audit.json"), "utf8"),
+      ) as { foreignDeclarations: string[]; declarationDelta: { added: string[] } };
+      assert.deepEqual(audit.foreignDeclarations, [
+        "delivery/plan/phase-declarations/m2-p7.json",
+      ]);
+      // The recorded delta stays unannotated DATA; the annotation is a
+      // property of the sentence a reviewer reads, not of the diff.
+      assert.deepEqual(audit.declarationDelta.added, [
+        "filesToTouch delivery/plan/phase-declarations/",
+      ]);
+    } finally {
+      cleanup(dir, outside);
+    }
+  }
+
+  // ARM 2: the grant was already in the merge base, so there is no amendment
+  // and no head-side delta to inspect.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(join(dir, "src"), { recursive: true });
+      writeFileSync(join(dir, "src", "a.ts"), "1\n");
+      writeFileSync(join(dir, "src", "other.ts"), "1\n");
+      writeFileSync(join(dir, "src", "guarded.ts"), "1\n");
+      writeDeclaration(declDir, "m2-p4", {
+        filesToTouch: ["src/a.ts", "delivery/plan/phase-declarations/m2-p7.json"],
+      });
+      writeDeclaration(declDir, "m2-p7", {
+        filesToTouch: ["src/other.ts", "src/guarded.ts"],
+      });
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+      writeDeclaration(declDir, "m2-p7", { filesToTouch: ["src/other.ts"] });
+      writeFileSync(join(dir, "src", "a.ts"), "2\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "narrow another phase under a merge-base grant"]);
+      const head = git(dir, ["rev-parse", "HEAD"]);
+      const run = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
+
+      assert.notEqual(run.run.status, 0, run.run.stdout + run.run.stderr);
+      assert.equal(run.record?.status, "red");
+      assert.match(run.record?.detail ?? "", /not its own declaration/);
+      assert.match(
+        run.record?.detail ?? "",
+        /delivery\/plan\/phase-declarations\/m2-p7\.json/,
+      );
+      // No amendment exists on this arm, which is what makes it a different
+      // member rather than a restatement of arm 1.
+      assert.doesNotMatch(run.run.stdout, /DECLARATION AMENDED AT HEAD/);
+    } finally {
+      cleanup(dir, outside);
+    }
+  }
+
+  // ARM 3, THE CONTROL. Touching only its OWN declaration is still green, and
+  // a single-file addition is NOT annotated as a directory prefix.
+  {
+    const { dir, outside } = initRepo();
+    try {
+      const declDir = join(dir, "delivery/plan/phase-declarations");
+      mkdirSync(join(dir, "src"), { recursive: true });
+      writeFileSync(join(dir, "src", "a.ts"), "1\n");
+      writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/a.ts"] });
+      writeDeclaration(declDir, "m2-p7", { filesToTouch: ["src/other.ts"] });
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "base"]);
+      const base = git(dir, ["rev-parse", "HEAD"]);
+      git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+      writeDeclaration(declDir, "m2-p4", {
+        filesToTouch: [
+          "src/a.ts",
+          "src/added.ts",
+          "delivery/plan/phase-declarations/m2-p4.json",
+        ],
+      });
+      writeFileSync(join(dir, "src", "a.ts"), "2\n");
+      writeFileSync(join(dir, "src", "added.ts"), "new\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-q", "-m", "amend only its own declaration"]);
+      const head = git(dir, ["rev-parse", "HEAD"]);
+      const run = runScope(dir, outside, ["--base", base, "--head", head, "--phase", "m2-p4"]);
+
+      assert.equal(run.run.status, 0, run.run.stdout + run.run.stderr);
+      assert.equal(run.record?.status, "green");
+      assert.match(run.run.stdout, /DECLARATION AMENDED AT HEAD/);
+      assert.match(run.run.stdout, /filesToTouch src\/added\.ts/);
+      assert.doesNotMatch(run.run.stdout, /DIRECTORY PREFIX/);
+      const audit = JSON.parse(
+        readFileSync(join(run.evidenceDir, "scope-audit.json"), "utf8"),
+      ) as { foreignDeclarations: string[] };
+      assert.deepEqual(audit.foreignDeclarations, []);
+    } finally {
+      cleanup(dir, outside);
+    }
+  }
+});

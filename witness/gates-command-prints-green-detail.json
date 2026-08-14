@@ -1,0 +1,24 @@
+{
+  "id": "gates-command-prints-green-detail",
+  "behavior": "gates-command-prints-green-detail-to-stdout",
+  "tests": [
+    "a GREEN gate's own detail reaches stdout as well, so a disclosure a green verdict carries cannot be silent"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "  for (const row of outcome.summary.gates) {\n    const detail = printableDetail(row.detail);",
+      "replace": "  for (const row of outcome.summary.gates) {\n    if (row.status === \"green\") {\n      continue;\n    }\n    const detail = printableDetail(row.detail);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/gates.ts",
+      "find": "        ? `gates: ${row.id}: ${row.status}\\n`\n        : `gates: ${row.id}: ${row.status}: ${detail}\\n`,",
+      "replace": "        ? `gates: ${row.id}: ${row.status}\\n`\n        : `gates: ${row.id}: ${row.status}\\n`,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

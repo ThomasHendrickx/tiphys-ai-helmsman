@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/gates/run.ts",
-      "find": "      if ((executable.value.mode & 0o111) === 0) {",
+      "find": "  if ((stat.value.mode & 0o111) === 0) {",
       "replace": "      if (false) {"
     }
   ],
@@ -26,6 +26,6 @@
     "captures": [
       "witness/captures/gate-precondition-crash-vs-skip.txt"
     ],
-    "provenance": "src/gates/run.ts spawns every gate with spawnSync and ingests the record it authors, so rule (f) binds this witness. The cited capture is verbatim output of two real runs taken on 2026-08-13 against a consumer package tree, and it is the artifact showing what the runner said about manifest-self-check on each arm: before, a detail naming the RECORD path; after, a detail naming bin/tiphys.ts. Its basename is referenced from the named test's source file. The first member restores the state in which nothing is probed before the spawn, which leaves the error reachable only by the route that names the wrong path; the second removes only the mode-bit half, which is a structurally different failure because the launcher then reaches spawnSync and fails there with a message about EACCES rather than about executability."
+    "provenance": "src/gates/run.ts spawns every gate with spawnSync and ingests the record it authors, so rule (f) binds this witness. The cited capture is verbatim output of two real runs taken on 2026-08-13 against a consumer package tree, and it is the artifact showing what the runner said about manifest-self-check on each arm: before, a detail naming the RECORD path; after, a detail naming bin/tiphys.ts. Its basename is referenced from the named test's source file. The first member restores the state in which nothing is probed before the spawn, which leaves the error reachable only by the route that names the wrong path; the second removes only the mode-bit half of the launcher's check, which is a structurally different failure because the launcher then reaches spawnSync and fails there with a message about EACCES rather than about executability. Fix round 1 moved that test into probeOpenable, where the complete open question is asked once, so the find string is two spaces shallower than it was and names stat rather than executable; nothing about what this member does changed."
   }
 }
