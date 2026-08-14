@@ -1,0 +1,24 @@
+{
+  "id": "release-github-release-body-anchors-the-version",
+  "behavior": "release-github-release-body-anchors-the-version",
+  "tests": [
+    "the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          gh release create \"${tag}\" --verify-tag --title \"${tag}\" --notes-file \"${notes}\"\n",
+      "replace": "          gh release create \"${tag}\" --title \"${tag}\" --notes-file \"${notes}\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "            echo \"npm: https://www.npmjs.com/package/${package}/v/${declared}\"\n            echo \"\"\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

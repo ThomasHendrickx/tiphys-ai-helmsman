@@ -119,6 +119,19 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    # THE ONLY REASON THIS OUTPUT EXISTS is the `tag` job's second gate
+    # (DR-0032, M3-P12). `steps.decide.outputs.publish` is visible only inside
+    # this job, so without a job-level output the tag job has no way to
+    # distinguish a rehearsal, which SUCCEEDS, from a publish. `needs: tag`
+    # alone would therefore tag every rehearsal.
+    #
+    # It is a bare reference and nothing else, and that is asserted by
+    # EVALUATION in test/license-gate.test.ts rather than by matching its text:
+    # the test parses this expression and runs it against a table of decide
+    # outputs, so an output pinned to a literal `yes` is red even though its
+    # text still mentions the step.
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
     steps:
       # fetch-depth: 0 for the same reason .github/workflows/gates.yml gives:
       # several gates and the exit harness need real history.
@@ -294,3 +307,149 @@ jobs:
           bash "$GITHUB_WORKSPACE/scripts/release-verify.sh" "$name" "$REQUESTED" \
             --records "$RUNNER_TEMP/verify-registry/records.json"
           cat "$RUNNER_TEMP/verify-registry/records.json"
+
+  # ------------------------------------------------------------------------
+  # THE TAG AND THE GITHUB RELEASE (DR-0032, phase M3-P12).
+  #
+  # WHY A SECOND JOB AND NOT A STEP. Naming any permission replaces the whole
+  # default set, so a job's `permissions:` block is its complete grant. Adding
+  # `contents: write` to the job above would widen the grant held by the job
+  # that mints the OIDC token, which is the wrong direction; DR-0032:60 decided
+  # two jobs for exactly that reason. This job holds `contents: write` and NO
+  # `id-token`, and the absence is asserted as an absence in
+  # test/license-gate.test.ts, not as some particular value.
+  #
+  # THE HAZARD THIS JOB IS SHAPED BY, in the owner's terms (DR-0032:44): the
+  # GitHub release is the owner's mental model of what exists, so a release or
+  # a tag that exists WITHOUT a corresponding published version is worse than
+  # having none. It is a confident anchor pointing at nothing. Every guard
+  # below is that hazard, and none of them is about the npm package being
+  # wrong.
+  #
+  # TWO INDEPENDENT GATES, because each covers a failure the other does not:
+  #
+  #   - `needs: release` means this job does not run if ANY step of the release
+  #     job failed, INCLUDING the post-publish registry verification. That is
+  #     the "the publish happened and then something was wrong" case.
+  #   - `if: needs.release.outputs.publish == 'yes'` means it does not run on a
+  #     REHEARSAL, which is the ordinary path and which SUCCEEDS. `needs:`
+  #     alone is green on every rehearsal, so it would tag a dispatch that
+  #     published nothing. That is the "nothing was published at all" case.
+  #
+  # Neither is claimed to be sufficient; the spec asks a reviewer to look for a
+  # third (delivery/plan/m3-p12-phase-spec.md:86).
+  #
+  # WHAT HAPPENS IF THE TAG WRITE FAILS AFTER A SUCCESSFUL PUBLISH, stated
+  # rather than left implicit because the spec requires the choice to be named:
+  # this job FAILS LOUDLY and the published version exists with no tag. That is
+  # the deliberate direction. The state DR-0032 forbids is an anchor pointing
+  # at nothing; a MISSING anchor is a visibly missing one, and a red job on the
+  # run page is the signal. Every refusal below prints the tag name and the
+  # commit so the recovery is a copyable pair of facts rather than an
+  # investigation. Nothing here retries and nothing here forces.
+  tag:
+    needs: release
+    if: ${{ needs.release.outputs.publish == 'yes' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth: 0 so that `git rev-parse` and the tag target resolve
+      # against real history rather than a one-commit graft.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # THE TAGGING COMMAND IS SHELL SO THAT A TEST CAN RUN IT, which is the
+      # pattern the `decide` step above established and the reason it exists:
+      # the correct number of runs of this workflow during M3-P12 is zero, so a
+      # guard that is only described can only ever be described.
+      # test/license-gate.test.ts extracts this body, executes it against a
+      # scratch git repository with a scratch bare remote, and reads back the
+      # OBJECT TYPE and the TARGET of what it produced. Keep it self-contained
+      # and keep every operator-supplied value in `env:`.
+      - name: Create the annotated tag at the published commit (DR-0032)
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          # `set -e` AND NOT ONLY `set -u`, which is a difference from the
+          # decide step above and is deliberate: this script WRITES. A failed
+          # `git push` under `set -u` alone would fall through to the closing
+          # echo and exit 0, reporting a tag that is not there.
+          set -eu
+          declared="$(node -p 'require("./package.json").version')"
+          if [ "$declared" != "$VERSION" ]; then
+            echo "tag: package.json declares ${declared} and this dispatch asked for ${VERSION}." >&2
+            echo "tag: refusing. A tag naming a version that was not published is the anchor pointing at nothing." >&2
+            exit 1
+          fi
+          tag="v${declared}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "tag: ${tag} already exists in this checkout at $(git rev-parse "refs/tags/${tag}")." >&2
+            echo "tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}." >&2
+            exit 1
+          fi
+          # THE FAILURE ARM IS WRITTEN FIRST AND ON PURPOSE. `--exit-code`
+          # returns 2 for "no such ref" and 0 for "found"; ANY OTHER status is
+          # an unreadable remote, and reading that as absence is a guard that
+          # cannot go red. So the three cases are kept apart and the third one
+          # refuses rather than assuming.
+          probe=0
+          git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null || probe=$?
+          if [ "$probe" -eq 0 ]; then
+            echo "tag: ${tag} already exists on the remote." >&2
+            echo "tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}." >&2
+            exit 1
+          fi
+          if [ "$probe" -ne 2 ]; then
+            echo "tag: could not read the remote's tags; git ls-remote exited ${probe}." >&2
+            echo "tag: refusing rather than assuming ${tag} is absent. Recover by hand for ${tag} at ${SHA}." >&2
+            exit 1
+          fi
+          # ANNOTATED, never lightweight: an annotated tag carries its own
+          # object with an author and a date, which is what makes it a record
+          # rather than a moveable label. The identity is command-scoped
+          # because a CI runner has no git identity and this must never touch
+          # user or global configuration.
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "${tag}" -m "${tag}, published to the npm registry by the release workflow" "${SHA}"
+          git push origin "refs/tags/${tag}"
+          echo "tag: created annotated ${tag} at ${SHA} and pushed it."
+
+      # THE RELEASE BODY IS COMPOSED IN SHELL, FOR THE SAME REASON. The test
+      # runs this body with a stub `gh` on PATH and reads the notes file back,
+      # so the four things the body must carry are asserted by name against
+      # what the command would actually have sent.
+      #
+      # `--verify-tag` is load-bearing: without it `gh release create` CREATES
+      # the missing tag itself, lightweight and by its own hand, which would
+      # undo the step above and hide a failed push.
+      - name: Create the GitHub release, which is the owner's mental model (DR-0032)
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          declared="$(node -p 'require("./package.json").version')"
+          package="$(node -p 'require("./package.json").name')"
+          if [ "$declared" != "$VERSION" ]; then
+            echo "release: package.json declares ${declared} and this dispatch asked for ${VERSION}." >&2
+            echo "release: refusing to describe a version that was not published." >&2
+            exit 1
+          fi
+          tag="v${declared}"
+          notes="${RUNNER_TEMP}/release-notes.md"
+          {
+            echo "version: ${declared}"
+            echo ""
+            echo "commit: ${SHA}"
+            echo ""
+            echo "npm: https://www.npmjs.com/package/${package}/v/${declared}"
+            echo ""
+            echo "workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${notes}"
+          cat "${notes}"
+          gh release create "${tag}" --verify-tag --title "${tag}" --notes-file "${notes}"

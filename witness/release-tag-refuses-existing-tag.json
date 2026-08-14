@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-refuses-existing-tag",
+  "behavior": "release-tag-refuses-existing-tag",
+  "tests": [
+    "the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "            echo \"tag: ${tag} already exists in this checkout at $(git rev-parse \"refs/tags/${tag}\").\" >&2\n            echo \"tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n",
+      "replace": "            git tag -d \"${tag}\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          probe=0\n          git ls-remote --exit-code --tags origin \"refs/tags/${tag}\" >/dev/null || probe=$?\n          if [ \"$probe\" -eq 0 ]; then\n            echo \"tag: ${tag} already exists on the remote.\" >&2\n            echo \"tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n          fi\n          if [ \"$probe\" -ne 2 ]; then\n            echo \"tag: could not read the remote's tags; git ls-remote exited ${probe}.\" >&2\n            echo \"tag: refusing rather than assuming ${tag} is absent. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n          fi\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-annotated-at-published-commit",
+  "behavior": "release-tag-annotated-at-published-commit",
+  "tests": [
+    "the tagging command, executed against a scratch repository, produces an ANNOTATED tag at the commit it was given"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "              tag -a \"${tag}\" -m \"${tag}, published to the npm registry by the release workflow\" \"${SHA}\"\n",
+      "replace": "              tag \"${tag}\" \"${SHA}\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "published to the npm registry by the release workflow\" \"${SHA}\"\n",
+      "replace": "published to the npm registry by the release workflow\" HEAD\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

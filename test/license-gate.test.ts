@@ -1326,8 +1326,17 @@ test("the release workflow is manually dispatched only, authenticates by OIDC, a
      assertion makes adding one a deliberate act that reddens here first; the
      assertions below ALSO iterate every job, so relaxing this line does not
      silently reopen the hole. Two guards, because the whole finding is that one
-     guard's scope was narrower than its claim. */
-  assert.deepEqual(Object.keys(document.jobs), ["release"]);
+     guard's scope was narrower than its claim.
+
+     M3-P12 IS THE DELIBERATE ACT THE COMMENT ABOVE ANTICIPATED, and the list
+     is EXTENDED rather than the assertion WEAKENED. It is still `deepEqual`
+     over the whole set in file order, so DV-2's mutant, which prepends a
+     `notify` job carrying an unguarded publish, still reddens here: three
+     names are not two. What would reopen the hole is turning this into an
+     `includes` or a length check, and that is not what happened. The tag job
+     also brings its own guards under `M3-P12` below, which iterate every job
+     of every workflow rather than this file's two. */
+  assert.deepEqual(Object.keys(document.jobs), ["release", "tag"]);
 
   const job = document.jobs["release"];
   assert.ok(job !== undefined, "the release job is not named `release`");
@@ -1409,7 +1418,13 @@ test("exactly one step in any workflow invokes a publish command, and it is the 
 
      The search is over EVERY job of EVERY workflow file, not over the release
      job, because a publish added anywhere is the thing being guarded against. */
-  const publishing = allWorkflowSteps().filter((entry) => PUBLISH_COMMAND.test(entry.step.run ?? ""));
+  /* CONTINUATIONS ARE JOINED FIRST, added in M3-P12. The comment on
+     PUBLISH_COMMAND lists "a publish written with the command split across a
+     line continuation" as one of its exclusions, and M3-P12's tagging command
+     really is written that way, so the gap stopped being hypothetical. Joining
+     WIDENS the search and narrows nothing: measured at this head, both the raw
+     and the joined scan of every workflow report the same single invocation. */
+  const publishing = allWorkflowSteps().filter((entry) => PUBLISH_COMMAND.test(joinContinuations(entry.step.run ?? "")));
   const publish = exactlyOne(publishing, "step invoking a publish command", describeStep);
 
   /* AND EXACTLY ONE INVOCATION, NOT MERELY EXACTLY ONE STEP. Found by measuring
@@ -1421,7 +1436,7 @@ test("exactly one step in any workflow invokes a publish command, and it is the 
      guarded. Counting steps was itself a scope one size too wide, which is this
      round's own mechanism appearing inside this round's own fix. */
   const invocations = allWorkflowSteps().flatMap((entry) =>
-    (entry.step.run ?? "").split("\n").filter((line) => PUBLISH_COMMAND.test(line)).map((line) => `${describeStep(entry)}: ${line.trim()}`),
+    joinContinuations(entry.step.run ?? "").split("\n").filter((line) => PUBLISH_COMMAND.test(line)).map((line) => `${describeStep(entry)}: ${line.trim()}`),
   );
   assert.equal(
     invocations.length,
@@ -1579,5 +1594,703 @@ test("the publish decision script is EXECUTED against a table of inputs, and onl
     assert.equal(injected.emitted, "publish=no", "a command-substitution value must not reach a publish");
   } finally {
     rmSync(laboratory, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P12: the tag and the GitHub release, which must never point at    */
+/* nothing (DR-0032)                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE HAZARD THESE TESTS ARE SHAPED BY, in the owner's terms rather than in a
+ * security frame: "If the GitHub release is the mental model of what exists,
+ * then a release or a tag that exists WITHOUT a corresponding published version
+ * is worse than having none at all"
+ * (delivery/decisions/DR-0032-the-github-release-is-the-owners-mental-model.md:44).
+ * A false release does not make the npm package wrong; it makes the OWNER
+ * wrong. So every assertion below attacks REACHABILITY of a tag or a release
+ * without a publish, and none of them is about the package.
+ *
+ * TWO MECHANISMS THIS REPOSITORY PAID FOR IN M3-P10 ARE NOT REINTRODUCED HERE,
+ * and both are named rather than left to a reader to notice:
+ *
+ *   - M1: a guard asserted by its TEXT rather than EVALUATED. The tag job's
+ *     condition guards a repository write, so it is COMPILED and RUN against a
+ *     table of contexts below. `assert.match(job.if, /publish/)` would pass on
+ *     an inverted guard, on a truthy bare reference, and on a comparison
+ *     against the wrong context path; the table reddens on all three.
+ *   - Round 2: a check whose SEARCH SCOPE is narrower than the property it
+ *     protects. The subject of these tests is selected as "every job of every
+ *     workflow that declares a write grant", not as "the job named tag", and
+ *     every selection goes through the existing `exactlyOne` helper.
+ */
+
+interface RawJob {
+  permissions?: unknown;
+  needs?: unknown;
+  if?: unknown;
+  outputs?: unknown;
+}
+
+interface RawWorkflow {
+  permissions?: unknown;
+  jobs?: Record<string, RawJob>;
+}
+
+interface JobGrant {
+  file: string;
+  job: string;
+  raw: RawJob;
+  /** Whether the grant is the job's own, inherited from the workflow, or absent. */
+  source: "job" | "workflow" | "undeclared";
+  /** The scope map as written. Empty for a shorthand grant or an absent one. */
+  scopes: Record<string, string>;
+  /** `read-all` or `write-all`, the two shorthand forms, or undefined. */
+  shorthand?: string;
+}
+
+/**
+ * A GRANT THIS WALK CANNOT INTERPRET IS A FAILURE, NEVER A SKIP.
+ *
+ * GitHub accepts `permissions:` as a map OR as one of two shorthand strings,
+ * and `write-all` grants `contents: write` and `id-token: write` at once. A
+ * normaliser that only understood the map form would read a `write-all` job as
+ * holding nothing, which is the "guard that cannot go red" shape: silently
+ * green over exactly the state it exists to catch.
+ */
+function normalizeGrant(declared: unknown, where: string): { scopes: Record<string, string>; shorthand?: string } {
+  if (declared === undefined || declared === null) {
+    return { scopes: {} };
+  }
+  if (typeof declared === "string") {
+    assert.ok(
+      declared === "read-all" || declared === "write-all",
+      `${where}: permissions shorthand ${declared} is not one this walk understands, so it must not be read as granting nothing`,
+    );
+    return { scopes: {}, shorthand: declared };
+  }
+  assert.equal(typeof declared, "object", `${where}: permissions is neither a map nor a shorthand string`);
+  const scopes: Record<string, string> = {};
+  for (const [scope, value] of Object.entries(declared as Record<string, unknown>)) {
+    scopes[scope] = String(value);
+  }
+  return { scopes };
+}
+
+/**
+ * EVERY JOB OF EVERY WORKFLOW FILE, with its EFFECTIVE grant.
+ *
+ * The sibling of `allWorkflowSteps` one level up, and it exists for the same
+ * reason: the property being guarded is about the repository's workflows, not
+ * about the file the author had open.
+ *
+ * WHAT THIS SCAN CANNOT SEE, stated before the assertions rather than
+ * discovered afterwards:
+ *
+ *   - the REPOSITORY or ORGANISATION default grant, which applies to a job
+ *     declaring no `permissions:` at either level and which lives in settings
+ *     no file in this tree carries. Such jobs are enumerated and named by the
+ *     first test below rather than passed over, because a new one is a thing to
+ *     look at.
+ *   - reusable workflows called through `jobs.<id>.uses:`, whose grant is
+ *     declared in another file, and composite actions, which have no grant of
+ *     their own. Both are the boundary `allWorkflowSteps` already records.
+ *   - `GITHUB_TOKEN` handed to a step through `env:` from a context this walk
+ *     does not read, and any credential reaching a step other than through
+ *     `permissions:`. The token-absence assertions above are the guard for
+ *     that, not this one.
+ */
+function allWorkflowJobs(): JobGrant[] {
+  const directory = join(repoRoot, ".github", "workflows");
+  const names = readdirSync(directory).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
+  assert.ok(names.length > 0, "no workflow files found, so every assertion over them would be vacuous");
+  const out: JobGrant[] = [];
+  for (const name of names) {
+    const document = parseWorkflow(join(directory, name)) as unknown as RawWorkflow;
+    for (const [job, raw] of Object.entries(document.jobs ?? {})) {
+      const source: JobGrant["source"] =
+        raw.permissions !== undefined ? "job" : document.permissions !== undefined ? "workflow" : "undeclared";
+      const declared = raw.permissions !== undefined ? raw.permissions : document.permissions;
+      out.push({ file: name, job, raw, source, ...normalizeGrant(declared, `${name} job ${job}`) });
+    }
+  }
+  return out;
+}
+
+const describeJob = (grant: JobGrant): string => `${grant.file} job ${grant.job}`;
+
+const grantsRepositoryWrite = (grant: JobGrant): boolean =>
+  grant.shorthand === "write-all" || grant.scopes["contents"] === "write";
+
+const grantsIdToken = (grant: JobGrant): boolean =>
+  grant.shorthand === "write-all" || grant.scopes["id-token"] !== undefined;
+
+function normalizeNeeds(value: unknown, where: string): string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return [value];
+  }
+  assert.ok(Array.isArray(value), `${where}: needs is neither a job id nor a list of them`);
+  return (value as unknown[]).map((entry) => String(entry));
+}
+
+/**
+ * A DELIBERATELY TINY EVALUATOR FOR THE ONLY TWO EXPRESSION SHAPES THESE GATES
+ * ARE ALLOWED TO TAKE, and it REFUSES everything else.
+ *
+ * `${{ a.b.c }}` compiles to a lookup and `${{ a.b.c == 'literal' }}` to a
+ * strict string comparison. Anything richer is `assert.fail`, and that is the
+ * point rather than a limitation: `always()`, `!= `, `&&`, a function call and a
+ * bare literal are all ways to make a repository write reachable on a dispatch
+ * that published nothing, and an evaluator that quietly returned `undefined`
+ * for them would be green over every one.
+ *
+ * A BARE REFERENCE IS NOT A BOOLEAN, and that distinction is a real defect
+ * rather than pedantry: GitHub treats any non-empty string as truthy, so
+ * `if: ${{ needs.release.outputs.publish }}` runs on `publish=no`. The tables
+ * below assert booleans, so that shape reddens.
+ */
+const EXPRESSION_PATH = "[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)*";
+const EXPRESSION_REFERENCE = new RegExp(`^\\$\\{\\{\\s*(${EXPRESSION_PATH})\\s*\\}\\}$`);
+const EXPRESSION_EQUALITY = new RegExp(`^\\$\\{\\{\\s*(${EXPRESSION_PATH})\\s*==\\s*'([^']*)'\\s*\\}\\}$`);
+
+function lookupContext(context: Record<string, unknown>, path: string): unknown {
+  let here: unknown = context;
+  for (const part of path.split(".")) {
+    if (here === null || typeof here !== "object") {
+      return undefined;
+    }
+    here = (here as Record<string, unknown>)[part];
+  }
+  return here;
+}
+
+function compileExpression(source: unknown, where: string): (context: Record<string, unknown>) => unknown {
+  assert.equal(
+    typeof source,
+    "string",
+    `${where}: there is no expression here at all, found ${JSON.stringify(source)}`,
+  );
+  const text = source as string;
+  const equality = EXPRESSION_EQUALITY.exec(text);
+  if (equality !== null) {
+    const path = equality[1] as string;
+    const literal = equality[2] as string;
+    return (context) => lookupContext(context, path) === literal;
+  }
+  const reference = EXPRESSION_REFERENCE.exec(text);
+  if (reference !== null) {
+    const path = reference[1] as string;
+    return (context) => lookupContext(context, path);
+  }
+  return assert.fail(
+    `${where}: ${text} is outside the two shapes this evaluator accepts (a bare reference, or a reference compared to a single-quoted literal). ` +
+      "It is refused rather than approximated, because every richer shape is a way to reach a repository write on a dispatch that published nothing.",
+  );
+}
+
+/**
+ * A COMMAND SPLIT ACROSS A LINE CONTINUATION IS STILL ONE COMMAND.
+ *
+ * `PUBLISH_COMMAND`'s own comment names this as one of its exclusions, and the
+ * tag command below IS written with continuations, so the predicates that
+ * select it join them first. Applied to the publish scan too, where it widens
+ * the search and narrows nothing.
+ */
+const joinContinuations = (body: string): string => body.replace(/\\\n[ \t]*/g, " ");
+
+/**
+ * `git tag` THE SUBCOMMAND, not the three-letter sequence.
+ *
+ * Measured while writing this: a predicate of `/^\s*git\b.*\btag\b/m` matches
+ * `git rev-parse -q --verify "refs/tags/${tag}"`, because `${tag}` is delimited
+ * by non-word characters on both sides. Two of the three git lines in the step
+ * would have been candidates and `exactlyOne` would have reported three where
+ * one was wanted. The `-c` repetition is what lets the identity flags through.
+ */
+const GIT_TAG_COMMAND = /^[ \t]*git[ \t]+(?:-c[ \t]+\S+[ \t]+)*tag\b/m;
+const GH_RELEASE_COMMAND = /^[ \t]*gh[ \t]+release[ \t]+create\b/m;
+
+test("exactly one job in any workflow declares a write grant on the repository, and it holds no id-token", () => {
+  /* CRITERION 1 AND CRITERION 4. DR-0032:60 decided two jobs so that each grant
+     stays minimal: the publisher keeps `contents: read` plus `id-token: write`,
+     and the tagger takes `contents: write` and no `id-token`. The absence is
+     asserted AS AN ABSENCE rather than as any particular value, because
+     `id-token: none` and `id-token: read` are both "not write" and neither is
+     what the decision says. */
+  const jobs = allWorkflowJobs();
+
+  const writer = exactlyOne(
+    jobs.filter(grantsRepositoryWrite),
+    "job declaring a write grant on repository contents",
+    describeJob,
+  );
+  assert.equal(writer.file, "release.yml");
+  assert.equal(writer.job, "tag");
+  assert.equal(writer.source, "job", "the write grant is inherited from the workflow level rather than being the job's own");
+  assert.equal(writer.shorthand, undefined, "a shorthand grant is not a minimal grant; write-all carries id-token with it");
+  assert.deepEqual(Object.keys(writer.scopes).sort(), ["contents"]);
+  assert.equal(writer.scopes["contents"], "write");
+  assert.equal(
+    "id-token" in writer.scopes,
+    false,
+    "the tag job declares id-token; DR-0032:63 gives it contents: write and NO id-token, and the absence is the assertion",
+  );
+
+  const minter = exactlyOne(jobs.filter(grantsIdToken), "job able to mint an OIDC token", describeJob);
+  assert.equal(minter.file, "release.yml");
+  assert.equal(minter.job, "release");
+  assert.deepEqual(Object.keys(minter.scopes).sort(), ["contents", "id-token"]);
+  assert.equal(minter.scopes["contents"], "read", "the publishing job may write to the repository");
+  assert.equal(minter.scopes["id-token"], "write");
+
+  /* THE BLIND SPOT, ENUMERATED RATHER THAN DESCRIBED. A job declaring no
+     permissions at either level inherits the repository default, which no file
+     here carries, so the two assertions above say nothing about it. Naming the
+     set makes a NEW such job redden here, where a reviewer will read this
+     comment, rather than pass silently. */
+  assert.deepEqual(
+    jobs.filter((grant) => grant.source === "undeclared").map(describeJob),
+    ["gates.yml job gates"],
+    "a job declares no permissions at either level, so its grant is the repository default and this scan cannot see it",
+  );
+});
+
+test("the job that may write to the repository is gated twice, and both gates are EVALUATED rather than matched as text", () => {
+  /* CRITERION 2 AND CRITERION 3. The two gates cover different failures and
+     either alone leaves a hole (delivery/plan/m3-p12-phase-spec.md:22):
+     `needs:` covers "the publish happened and then something was wrong", and
+     the `if:` covers "nothing was published at all", which is the ordinary
+     rehearsal and which SUCCEEDS. */
+  const writer = exactlyOne(
+    allWorkflowJobs().filter(grantsRepositoryWrite),
+    "job declaring a write grant on repository contents",
+    describeJob,
+  );
+
+  /* GATE ONE. `needs: release` is what makes a failed post-publish registry
+     verification stop the tag, and it is asserted as the EXACT set: a `needs`
+     that also names some always-succeeding job would still satisfy an
+     `includes` check while adding nothing. */
+  assert.deepEqual(
+    normalizeNeeds(writer.raw.needs, describeJob(writer)),
+    ["release"],
+    "the write-capable job does not depend on the release job, so a failed publish does not stop it",
+  );
+
+  /* GATE TWO, COMPILED AND RUN. Row by row, and each row is a dispatch that
+     really happens: a publish, a rehearsal, an empty output because the decide
+     step never ran, and three near misses. */
+  const condition = compileExpression(writer.raw.if, `${describeJob(writer)} if:`);
+  const rows: { publish: string | undefined; gated: boolean; why: string }[] = [
+    { publish: "yes", gated: true, why: "the only value that may tag" },
+    { publish: "no", gated: false, why: "a rehearsal succeeds, and must not tag" },
+    { publish: "", gated: false, why: "an empty output must not tag" },
+    { publish: undefined, gated: false, why: "an absent output must not tag" },
+    { publish: "YES", gated: false, why: "the comparison is not case-insensitive" },
+    { publish: " yes", gated: false, why: "leading whitespace is not a match" },
+    { publish: "true", gated: false, why: "the old boolean shape must not tag" },
+  ];
+  for (const row of rows) {
+    const outputs = row.publish === undefined ? {} : { publish: row.publish };
+    assert.equal(
+      condition({ needs: { release: { outputs } } }),
+      row.gated,
+      `${row.why}: publish=${JSON.stringify(row.publish)}`,
+    );
+  }
+  assert.equal(
+    condition({ needs: {} }),
+    false,
+    "an absent needs context gates open, which is the direction that tags a dispatch that published nothing",
+  );
+
+  /* THE PRODUCER IS EVALUATED TOO, and this is the half a text assertion cannot
+     reach at all. An output pinned to a literal still MENTIONS the decide step
+     in the job that reads it; running it against a table is what separates
+     "derived from the decision" from "named after it". */
+  const document = parseWorkflow(releaseWorkflowPath) as unknown as RawWorkflow;
+  const releaseJob = (document.jobs ?? {})["release"];
+  assert.ok(releaseJob !== undefined, "the release job is not named `release`");
+  const outputs = releaseJob.outputs as Record<string, unknown> | undefined;
+  assert.ok(
+    outputs !== undefined,
+    "the release job declares no job-level outputs, so `steps.decide.outputs.publish` is invisible to every other job and the gate above reads nothing",
+  );
+  const produced = compileExpression(outputs["publish"], "the release job's publish output");
+  for (const value of ["yes", "no", "", "whatever the decide step wrote"]) {
+    assert.equal(
+      produced({ steps: { decide: { outputs: { publish: value } } } }),
+      value,
+      "the job-level output does not carry the decide step's value through unchanged",
+    );
+  }
+  assert.equal(
+    produced({ steps: { decide: { outputs: {} } } }),
+    undefined,
+    "the job-level output produces a value the decide step never wrote",
+  );
+
+  /* AND THE TWO COMPOSE, END TO END. Producer then consumer, on the same rows:
+     this is the assertion that says a REHEARSAL does not tag, rather than two
+     assertions about two expressions that might not be connected. */
+  for (const row of rows) {
+    const decided = produced({
+      steps: { decide: { outputs: row.publish === undefined ? {} : { publish: row.publish } } },
+    });
+    assert.equal(
+      condition({ needs: { release: { outputs: { publish: decided } } } }),
+      row.gated,
+      `end to end, ${row.why}`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* The tagging command, EXECUTED against a scratch repository           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE LAB VERSION AND PACKAGE NAME ARE NOT THIS REPOSITORY'S.
+ *
+ * `0.7.3` and `@tiphys-lab/anchor` are chosen so that a value hard-coded in the
+ * workflow reddens instead of coinciding. This repository is at `0.1.0` and
+ * ships `@tiphys/kernel`; a step that wrote either literal would pass a lab
+ * fixture that reused them.
+ */
+const LAB_VERSION = "0.7.3";
+const LAB_PACKAGE = "@tiphys-lab/anchor";
+
+/** CI runners have no git identity, so every lab command carries its own. */
+const LAB_IDENTITY: Record<string, string> = {
+  GIT_AUTHOR_NAME: "Tiphys tag lab",
+  GIT_AUTHOR_EMAIL: "tag-lab@tiphys.invalid",
+  GIT_COMMITTER_NAME: "Tiphys tag lab",
+  GIT_COMMITTER_EMAIL: "tag-lab@tiphys.invalid",
+};
+
+function labGit(cwd: string, args: string[]): { status: number; stdout: string; stderr: string } {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: { ...cleanEnv(), ...LAB_IDENTITY },
+  });
+  return { status: result.status ?? -1, stdout: (result.stdout ?? "").trim(), stderr: result.stderr ?? "" };
+}
+
+interface TagLab {
+  root: string;
+  /** The working clone the step runs in. */
+  work: string;
+  /** A bare repository standing in for `origin`, at an ABSOLUTE path. */
+  remote: string;
+  /** The commit the step is TOLD to tag. Deliberately not HEAD. */
+  target: string;
+  /** HEAD, which is a LATER commit, so that tagging HEAD is a visible defect. */
+  head: string;
+}
+
+function makeTagLab(): TagLab {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-tag-lab-"));
+  const remote = join(root, "remote.git");
+  const work = join(root, "work");
+  mkdirSync(work);
+  assert.equal(labGit(root, ["init", "--bare", "--initial-branch=main", remote]).status, 0);
+  assert.equal(labGit(work, ["init", "--initial-branch=main"]).status, 0);
+  writeFileSync(join(work, "package.json"), `${JSON.stringify({ name: LAB_PACKAGE, version: LAB_VERSION })}\n`);
+  assert.equal(labGit(work, ["add", "."]).status, 0);
+  assert.equal(labGit(work, ["commit", "-m", "the commit the release ran from"]).status, 0);
+  const target = labGit(work, ["rev-parse", "HEAD"]).stdout;
+  /* A SECOND COMMIT, SO THAT HEAD IS NOT THE TARGET. Without it, a step that
+     tagged `HEAD` instead of the sha it was given would pass every assertion
+     below, which is the vacuous-witness shape the red-witness rule's stronger
+     form names. */
+  writeFileSync(join(work, "later.txt"), "a commit made after the one that was published\n");
+  assert.equal(labGit(work, ["add", "."]).status, 0);
+  assert.equal(labGit(work, ["commit", "-m", "a later commit"]).status, 0);
+  const head = labGit(work, ["rev-parse", "HEAD"]).stdout;
+  assert.notEqual(target, head, "the lab's target and HEAD coincide, so the target assertion would be vacuous");
+  /* ABSOLUTE, because git resolves a remote path against the REPOSITORY and not
+     against the current directory (standing warning 9). */
+  assert.equal(labGit(work, ["remote", "add", "origin", remote]).status, 0);
+  assert.equal(labGit(work, ["push", "origin", "main"]).status, 0);
+  return { root, work, remote, target, head };
+}
+
+/**
+ * Run an extracted step body with NO git identity in its environment and no
+ * user or system configuration to fall back on, which is what a CI runner
+ * looks like. The step's own command-scoped `-c user.name`/`-c user.email` is
+ * therefore load-bearing here rather than incidental.
+ */
+function runStepScript(
+  directory: string,
+  script: string,
+  environment: Record<string, string>,
+): { status: number; stdout: string; stderr: string } {
+  const path = join(directory, `step-${Math.random().toString(36).slice(2)}.sh`);
+  writeFileSync(path, script);
+  const base = cleanEnv();
+  for (const key of Object.keys(base)) {
+    if (key.startsWith("GIT_") || key === "EMAIL") {
+      delete base[key];
+    }
+  }
+  const result = spawnSync("bash", [path], {
+    cwd: directory,
+    encoding: "utf8",
+    env: { ...base, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", ...environment },
+  });
+  return { status: result.status ?? -1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+function taggingStepScript(): string {
+  const tagging = exactlyOne(
+    allWorkflowSteps().filter((entry) => GIT_TAG_COMMAND.test(joinContinuations(entry.step.run ?? ""))),
+    "step invoking git tag in any workflow",
+    describeStep,
+  );
+  assert.equal(tagging.file, "release.yml");
+  assert.equal(tagging.job, "tag", "a step creates a git tag outside the job DR-0032 gave the write grant to");
+  const script = tagging.step.run;
+  assert.ok(typeof script === "string" && script.length > 0, "the tagging step has no run body");
+  return script as string;
+}
+
+test("the tagging command, executed against a scratch repository, produces an ANNOTATED tag at the commit it was given", () => {
+  /* CRITERION 5, and it is executed rather than grepped for exactly the reason
+     the decide step above is: the correct number of runs of this workflow
+     during M3-P12 is zero, so a description is all a text assertion can ever
+     produce. What is read back is the OBJECT TYPE and the TARGET, both from
+     git, in the working clone AND in the remote. */
+  const script = taggingStepScript();
+  const lab = makeTagLab();
+  try {
+    const outcome = runStepScript(lab.work, script, { VERSION: LAB_VERSION, SHA: lab.target });
+    assert.equal(outcome.status, 0, `${outcome.stdout}${outcome.stderr}`);
+
+    const tag = `v${LAB_VERSION}`;
+    assert.equal(
+      labGit(lab.work, ["cat-file", "-t", tag]).stdout,
+      "tag",
+      "the tag is lightweight; an annotated tag is what carries its own object, author and date",
+    );
+    assert.equal(
+      labGit(lab.work, ["rev-parse", `${tag}^{commit}`]).stdout,
+      lab.target,
+      "the tag points somewhere other than the commit the workflow ran from",
+    );
+    assert.notEqual(labGit(lab.work, ["rev-parse", `${tag}^{commit}`]).stdout, lab.head);
+
+    /* THE REMOTE IS THE ONE THAT MATTERS. A runner's working clone is thrown
+       away at the end of the job, so a tag that was created and not pushed is
+       a tag that does not exist. */
+    assert.equal(labGit(lab.remote, ["cat-file", "-t", tag]).stdout, "tag", "the annotated tag never reached the remote");
+    assert.equal(labGit(lab.remote, ["rev-parse", `${tag}^{commit}`]).stdout, lab.target);
+
+    /* AND IT CARRIES A MESSAGE, which is the difference between an annotation
+       and an empty object with a date on it. */
+    assert.match(labGit(lab.work, ["tag", "-l", "--format=%(contents)", tag]).stdout, /\S/);
+  } finally {
+    rmSync(lab.root, { recursive: true, force: true });
+  }
+});
+
+test("the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it", () => {
+  /* CRITERION 6, witnessed against a scratch repository IN THAT STATE rather
+     than argued. Two structurally different states, because a tag can already
+     exist in either of two places and only one of them is the checkout: an
+     earlier dispatch that pushed and then failed leaves the remote carrying a
+     tag this job's fresh checkout has never seen. */
+  const script = taggingStepScript();
+  const tag = `v${LAB_VERSION}`;
+
+  const local = makeTagLab();
+  try {
+    assert.equal(labGit(local.work, ["tag", "-a", tag, "-m", "a tag that was already here", local.head]).status, 0);
+    const before = labGit(local.work, ["rev-parse", tag]).stdout;
+    const outcome = runStepScript(local.work, script, { VERSION: LAB_VERSION, SHA: local.target });
+    assert.notEqual(outcome.status, 0, `a pre-existing tag must refuse; stdout ${outcome.stdout}`);
+    assert.match(outcome.stderr, /refusing/);
+    assert.equal(labGit(local.work, ["rev-parse", tag]).stdout, before, "the pre-existing tag object was replaced");
+    assert.equal(
+      labGit(local.work, ["rev-parse", `${tag}^{commit}`]).stdout,
+      local.head,
+      "the pre-existing tag was moved, deleted or reused",
+    );
+    assert.notEqual(
+      labGit(local.remote, ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status,
+      0,
+      "a tag reached the remote on a run that refused",
+    );
+  } finally {
+    rmSync(local.root, { recursive: true, force: true });
+  }
+
+  const remote = makeTagLab();
+  try {
+    /* THE TAG EXISTS ON THE REMOTE AND NOT IN THE CHECKOUT, which is the state
+       a fresh `actions/checkout` produces after an earlier dispatch pushed one:
+       created here, pushed, then removed locally. */
+    assert.equal(labGit(remote.work, ["tag", "-a", tag, "-m", "pushed by an earlier dispatch", remote.head]).status, 0);
+    assert.equal(labGit(remote.work, ["push", "origin", `refs/tags/${tag}`]).status, 0);
+    assert.equal(labGit(remote.work, ["tag", "-d", tag]).status, 0);
+    const before = labGit(remote.remote, ["rev-parse", `refs/tags/${tag}`]).stdout;
+
+    const outcome = runStepScript(remote.work, script, { VERSION: LAB_VERSION, SHA: remote.target });
+    assert.notEqual(outcome.status, 0, `a tag already on the remote must refuse; stdout ${outcome.stdout}`);
+    assert.match(outcome.stderr, /refusing/);
+    assert.equal(labGit(remote.remote, ["rev-parse", `refs/tags/${tag}`]).stdout, before, "the remote tag was moved");
+    assert.notEqual(
+      labGit(remote.work, ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status,
+      0,
+      "a local tag was created for a tag the remote already carries, so the refusal came after a write rather than before one",
+    );
+  } finally {
+    rmSync(remote.root, { recursive: true, force: true });
+  }
+});
+
+test("the tagging command refuses rather than assuming, when the remote cannot be read or the version disagrees", () => {
+  /* THE THIRD ARM OF THE REMOTE PROBE. `git ls-remote --exit-code` answers 0
+     for found and 2 for absent, and ANY OTHER status is an unreadable remote.
+     Folding that into the absent branch is the "guard that cannot go red"
+     shape: it would tag confidently on exactly the runs where it knows least.
+     The version arm is here for the same reason and is the same sentence one
+     level up: a tag naming a version that was not published is the anchor
+     DR-0032 forbids. */
+  const script = taggingStepScript();
+
+  const drift = makeTagLab();
+  try {
+    const outcome = runStepScript(drift.work, script, { VERSION: "9.9.9", SHA: drift.target });
+    assert.notEqual(outcome.status, 0, `a version package.json does not declare must refuse; stdout ${outcome.stdout}`);
+    assert.match(outcome.stderr, /refusing/);
+    for (const tag of ["v9.9.9", `v${LAB_VERSION}`]) {
+      assert.notEqual(
+        labGit(drift.work, ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status,
+        0,
+        `${tag} was created on a run whose requested version does not match package.json`,
+      );
+    }
+  } finally {
+    rmSync(drift.root, { recursive: true, force: true });
+  }
+
+  const unreadable = makeTagLab();
+  try {
+    /* ABSOLUTE AGAIN (standing warning 9): a relative remote path would resolve
+       against the repository and might well exist. */
+    const nowhere = join(unreadable.root, "there-is-no-repository-here.git");
+    assert.equal(labGit(unreadable.work, ["remote", "set-url", "origin", nowhere]).status, 0);
+    const outcome = runStepScript(unreadable.work, script, { VERSION: LAB_VERSION, SHA: unreadable.target });
+    assert.notEqual(outcome.status, 0, `an unreadable remote must refuse; stdout ${outcome.stdout}`);
+    assert.match(outcome.stderr, /ls-remote/);
+    assert.notEqual(
+      labGit(unreadable.work, ["rev-parse", "-q", "--verify", `refs/tags/v${LAB_VERSION}`]).status,
+      0,
+      "a tag was created against a remote whose existing tags could not be read",
+    );
+  } finally {
+    rmSync(unreadable.root, { recursive: true, force: true });
+  }
+});
+
+test("the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run", () => {
+  /* CRITERION 7, asserted against what the command WOULD HAVE SENT rather than
+     against the text that composes it. `gh` is absent locally and present in
+     CI (standing warning 6), so the stub is not a convenience: it is the only
+     form that runs in both places, and it records its argv so the invocation
+     is asserted as well as the body. */
+  const step = exactlyOne(
+    allWorkflowSteps().filter((entry) => GH_RELEASE_COMMAND.test(joinContinuations(entry.step.run ?? ""))),
+    "step invoking gh release create in any workflow",
+    describeStep,
+  );
+  assert.equal(step.file, "release.yml");
+  assert.equal(step.job, "tag", "a step creates a GitHub release outside the job DR-0032 gave the write grant to");
+  const script = step.step.run as string;
+  assert.ok(typeof script === "string" && script.length > 0, "the release-creation step has no run body");
+
+  const laboratory = mkdtempSync(join(tmpdir(), "tiphys-release-lab-"));
+  try {
+    const bin = join(laboratory, "bin");
+    mkdirSync(bin);
+    const argvRecord = join(laboratory, "gh-argv.txt");
+    writeFileSync(join(bin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(argvRecord)}\n`, { mode: 0o755 });
+    writeFileSync(join(laboratory, "package.json"), `${JSON.stringify({ name: LAB_PACKAGE, version: LAB_VERSION })}\n`);
+    const runnerTemp = join(laboratory, "runner-temp");
+    mkdirSync(runnerTemp);
+
+    /* Values chosen so that none of the four can be produced by accident from
+       another: a sha that is not any real commit, a run id that appears nowhere
+       else, and a server URL that is not github.com. */
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    const environment: Record<string, string> = {
+      PATH: `${bin}:${cleanEnv()["PATH"] ?? ""}`,
+      VERSION: LAB_VERSION,
+      SHA: sha,
+      GH_TOKEN: "this-is-not-a-credential",
+      RUNNER_TEMP: runnerTemp,
+      GITHUB_SERVER_URL: "https://github.invalid",
+      GITHUB_REPOSITORY: "an-owner/a-repository",
+      GITHUB_RUN_ID: "8675309",
+    };
+
+    const outcome = runStepScript(laboratory, script, environment);
+    assert.equal(outcome.status, 0, `${outcome.stdout}${outcome.stderr}`);
+
+    const notes = readFileSync(join(runnerTemp, "release-notes.md"), "utf8");
+    assert.match(notes, /^version: 0\.7\.3$/m, "the release body does not name the version");
+    assert.match(notes, new RegExp(`^commit: ${sha}$`, "m"), "the release body does not name the commit");
+    assert.match(
+      notes,
+      /^npm: https:\/\/www\.npmjs\.com\/package\/@tiphys-lab\/anchor\/v\/0\.7\.3$/m,
+      "the release body does not carry the npm package URL for the package and version it anchors",
+    );
+    assert.match(
+      notes,
+      /^workflow run: https:\/\/github\.invalid\/an-owner\/a-repository\/actions\/runs\/8675309$/m,
+      "the release body does not link the workflow run that produced it",
+    );
+
+    const argv = readFileSync(argvRecord, "utf8").split("\n").filter((line) => line.length > 0);
+    assert.deepEqual(argv.slice(0, 3), ["release", "create", `v${LAB_VERSION}`]);
+    assert.ok(
+      argv.includes("--verify-tag"),
+      "without --verify-tag, gh CREATES the missing tag itself, lightweight and by its own hand, which hides a failed push behind a green release",
+    );
+    assert.ok(argv.includes("--notes-file"), "the composed body is not the body gh was given");
+    assert.equal(argv[argv.indexOf("--notes-file") + 1], join(runnerTemp, "release-notes.md"));
+
+    /* AND IT REFUSES BEFORE INVOKING gh when the version disagrees, which is
+       the same fail-closed direction as the tagging step's. `gh` recording
+       nothing is the assertion; a nonzero exit alone would not distinguish
+       "refused" from "created the release and then failed". */
+    rmSync(argvRecord, { force: true });
+    const drifted = runStepScript(laboratory, script, { ...environment, VERSION: "9.9.9" });
+    assert.notEqual(drifted.status, 0, `a version package.json does not declare must refuse; stdout ${drifted.stdout}`);
+    assert.equal(existsSync(argvRecord), false, "gh was invoked for a version this package.json does not declare");
+  } finally {
+    rmSync(laboratory, { recursive: true, force: true });
+  }
+});
+
+test("this phase's new behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). A count is a claim about
+     every future phase and is false the moment the next one appends. */
+  const behaviors = JSON.parse(readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8")) as Record<string, string>;
+  for (const id of [
+    "release-tag-write-permission-minimal",
+    "release-tag-gated-on-published-version",
+    "release-tag-annotated-at-published-commit",
+    "release-tag-refuses-existing-tag",
+    "release-tag-refuses-unreadable-remote",
+    "release-github-release-body-anchors-the-version",
+  ]) {
+    assert.ok(Object.hasOwn(behaviors, id), `behavior ${id} does not resolve in test/behaviors.json`);
   }
 });
