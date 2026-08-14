@@ -159,3 +159,54 @@ which is the same lesson as the expired-monitor variant one level along.
   against a genuinely dead agent, so it is not known to be able to go red for the
   right reason. That gap is the same one the first section records and it is now
   twice unclosed.
+
+## THIRD INSTANCE, caught BEFORE it fired, and the fix is a different KIND of fix
+
+Later the same day, dispatching the two M3-P10 clean-room reviewers. The
+watchdog was armed over the two worktrees the briefs named, which is what the
+briefs told the agents to create and what they did create.
+
+Eleven minutes in, a routine re-measure (the rule at CLAUDE.md:1 that says to
+measure rather than trust the reading) found the hazard reviewer had made FOUR
+mutation labs at the scratchpad root that no brief names: `lab-rv`,
+`lab-guard`, `lab-realtree`, `lab-license`. Measured at that moment:
+
+| set | newest write |
+|---|---|
+| the two WATCHED worktrees | 96s old |
+| the whole scratchpad, labs included | 13s old |
+
+Nothing had fired yet. It would have, and it would have been a third false red
+against a reviewer doing exactly what it was asked to do, because building a
+mutation lab outside the tree under review is correct practice.
+
+**The fix is not another path added to a list.** The first two instances were
+each repaired by naming one more place, and this instance is the evidence that
+naming places does not converge: the set of places an agent will write is not
+knowable when the watchdog is armed. So the watch set is now computed by
+EXCLUSION rather than enumeration: everything under the scratchpad MINUS the
+orchestrator's own paths, which auto-includes whatever an agent makes next.
+
+Exclusion has its own failure direction and it is stated rather than left
+implicit: it can only be wrong by watching too much, and watching too much is
+how a watchdog stops being able to go red. That is why the orchestrator's own
+worktree and evidence directories are pruned by name, and why the repository
+root is not watched at all during a review: the orchestrator commits there
+throughout, and including it would keep the alarm green regardless of the
+reviewers.
+
+The pruned expression was then VERIFIED rather than assumed, because instance
+one was a malformed `find` that parsed differently from how it read: the armed
+command was run by hand and its top five paths were all inside a lab, and its
+hit count for the two pruned orchestrator trees was zero for each.
+
+### What the THIRD instance does NOT establish
+
+- **Exclusion has no red witness either.** It has been shown to SEE a lab and
+  to prune the orchestrator's trees. It has not been made to fire against a
+  genuinely dead reviewer, which is the same gap the first two sections record
+  and it is now three times unclosed.
+- **The exclusion list is hand-maintained and will go stale.** It names the
+  orchestrator's current directories. A new orchestrator scratch directory not
+  matching those patterns silently joins the watch set and quietly weakens the
+  alarm, and nothing detects that.
