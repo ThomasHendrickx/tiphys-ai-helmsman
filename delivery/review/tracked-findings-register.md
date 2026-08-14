@@ -253,6 +253,46 @@ M3-P10.
 It is the same family as `describeDrift` below and as HRB-4 above: a comparison
 whose equivalence class is not the one its message quantifies over.
 
+## THE NON-PUBLISH EVIDENCE RESTED ON TWO PROBES THAT LAG, ONE OF THEM BY HOURS
+
+Found 2026-08-14 evening, by accident, while helping the owner through A-7's
+bootstrap. It is recorded because it weakens evidence that is already MERGED,
+which is the kind of finding that otherwise disappears.
+
+M3-P10's work history establishes "I did not publish" with two probes:
+`GET https://registry.npmjs.org/@tiphys%2fkernel` returning 404, and
+`search?text=scope:tiphys` returning `{"total":0}`. The orchestrator quoted both
+back in the pull request body. Both are now measured to be capable of reporting
+an empty registry that is not empty.
+
+The owner published the `0.0.0` stub. Timeline, all measured:
+
+| moment | observation |
+|---|---|
+| 14:13:53.690Z | version `0.0.0` created, per the packument's own `time` map |
+| 14:14:04Z | the owner's `npm deprecate` returns **E404** |
+| 14:17:43Z | the orchestrator's packument probe returns **404** |
+| 19:42:39Z | packument returns **200** with the version present |
+| 19:42:39Z | `search?text=scope:tiphys` STILL returns `{"total":0}` |
+
+So the packument read path lagged at least four minutes behind a successful
+write, and the search index lagged more than five and a half hours. **The
+orchestrator read the 404 and reported that the package did not exist**, which
+was a wrong inference from a correct measurement, and it is written that way
+rather than as a registry fault.
+
+**The consequence for the phase, stated in both directions.** M3-P10's claim
+that it did not publish is almost certainly TRUE, and it is now supported by a
+stronger measurement than the one it recorded: the packument holds exactly one
+version, `0.0.0`, created from the owner's laptop, and no `0.1.0` exists. What
+is weakened is the METHOD, not the conclusion. A future phase that proves a
+negative about a registry with either of these probes is proving less than it
+appears to.
+
+The stronger form, for whoever needs it next: enumerate the versions that DO
+exist and account for each, rather than asserting the package is absent. An
+absence read from a lagging index is indistinguishable from a lagging index.
+
 ## UNOWNED AND EXPLOITABLE: `gates.yml` interpolates a branch name into a shell
 
 Found by the M3-P10 round-1 delta verifier as DV-8. It is listed here rather

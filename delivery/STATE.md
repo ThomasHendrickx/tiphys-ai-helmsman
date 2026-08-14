@@ -5,7 +5,34 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-14 mid-morning, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-14 evening, NEWEST BLOCK. Everything below is OLDER.
+- **ALL ELEVEN M3 PHASES ARE MERGED.** `main` is at `40b70a8`, and both its
+  post-merge `push` run and M3-P10's at `a676c80` were read by step and are green
+  in every step. M3-P10 merged at DR-0027's hard two-round cap carrying six
+  recorded residues; the reasoning is in
+  `delivery/review/arbitration-m3-p10-addendum.md`, now on `main`.
+- **A-7's BOOTSTRAP HALF IS DONE (owner, 2026-08-14).** `@tiphys/kernel@0.0.0`
+  is published and deprecated. Measured from here rather than reported:
+  `created` is `2026-08-14T14:13:53.386Z`, the packument holds exactly one
+  version, `dist-tags.latest` is `0.0.0`, and its `deprecated` field reads
+  "Placeholder only. The first real release is 0.1.0." `npm org ls tiphys`
+  returns the owner, which SETTLES the scope claim that DR-0024 had recorded on
+  the owner's word alone because no agent could confirm it.
+- **WHAT REMAINS OF A-7 IS ONE npm UI STEP**: configure the trusted publisher
+  for `@tiphys/kernel` against `ThomasHendrickx/tiphys-ai-helmsman` and workflow
+  file `release.yml`, environment empty. There is no credential; authentication
+  is OIDC (DR-0024).
+- **THE ORCHESTRATOR OWES A REHEARSAL DISPATCH BEFORE ANY REAL PUBLISH.** No
+  workflow has ever been executed. Every claim about the release machinery, from
+  three agents across two reviews and a verification, is static analysis of YAML
+  and shell, and the round-2 implementer named that absence itself. A dispatch
+  with `confirm` left empty runs every step on a real runner and stops before the
+  irreversible action.
+- **TWO REGISTRY PROBES ARE NOW KNOWN TO LAG, AND ONE OF THEM IS EVIDENCE IN A
+  MERGED WORK HISTORY.** Detail in the register; the short form is that the
+  packument 404 persisted for at least four minutes after a successful publish
+  and the scope search still read `{"total":0}` five and a half hours after it.
+- as of: 2026-08-14 mid-morning. Everything below is OLDER.
 - **M3-P10 HAS HANDED BACK AND IS PULL REQUEST #140, UNDER DUAL CLEAN-ROOM
   REVIEW.** `main` is at `5897291`, whose post-merge `push` run was read by step
   and is green in every step (two legitimate skips: the dual-review
