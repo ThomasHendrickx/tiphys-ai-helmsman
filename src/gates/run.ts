@@ -662,13 +662,15 @@ type PreconditionOutcome =
  * is a PATH OPERAND when ALL FOUR hold:
  *
  *   1. it is not `command[0]` (the launcher, handled separately);
- *   2. it does not begin with `-` (an option, not an operand);
- *   3. it contains `/` (a bare word is not treated as a path, so `.` and
- *      `--pin-root src` are left alone);
+ *   2. `namesNoPath` does not rule it out (it is not an option, not the code
+ *      value of one, and not a URL). Fix round 2 hoisted this into its own
+ *      function so this rule and the wider one below cannot drift apart.
+ *   3. it contains `/` (a bare word is not treated as a path HERE, so `.` and
+ *      `--pin-root src` are left alone; the wider rule below adds the one
+ *      further test that makes `node check.mjs` visible);
  *   4. it contains no whitespace, and the element before it does not begin
- *      with `-` (so an option's VALUE is not probed, which is what keeps
- *      `node -e "process.exit(...)"` out of this set even when the inline
- *      code happens to contain a slash).
+ *      with `-` (so an option's VALUE is never probed by THIS rule, whatever
+ *      the option is).
  *
  * WHAT THIS RULE DOES NOT COVER, so the next reader does not have to
  * rediscover it: an interpreter invoked as `node --flag script.mjs` puts the
@@ -681,9 +683,11 @@ type PreconditionOutcome =
  *
  * FAIL CLOSED, LOUDLY (M2-C-3). An operand this rule probes and does not
  * find is `error` naming the element and its resolved absolute path, never a
- * quiet `not-applicable`. The cost of the rule being wrong about an element
- * is a loud refusal an operator can read and fix; the cost of the old
- * behaviour was a skip nobody could see.
+ * quiet `not-applicable`. That is the right direction HERE, and only because
+ * rules 2 to 4 keep the set small: this probe runs before the spawn, so a
+ * false positive refuses a command that would have exited 0, and no exit code
+ * exists yet to tell you it would have. Round 2 hit exactly that with a URL
+ * operand.
  *
  * ------------------------------------------------------------------------
  * FIX ROUND 1 (M3-P11), AND THE MECHANISM IT CLOSES.
@@ -746,13 +750,39 @@ export interface CommandRunnability {
   probed: string[];
 }
 
-/** The path operands of a command, by the four-part rule documented above. */
+/**
+ * ELEMENTS THAT ARE NOT PATHS, WHATEVER SHAPE THEY HAVE. One function, so the
+ * two rules below cannot drift apart: fix round 2 found the URL case by
+ * fixing only the wider rule and watching the narrower one hard-refuse the
+ * same element BEFORE the spawn, which is a strictly worse failure because it
+ * refuses a command that would have exited 0. The three reasons are the three
+ * this file claims to know, and each is written down rather than inferred:
+ *
+ *   an OPTION           begins with `-`. `--out=/tmp/x` is an option carrying
+ *                       a value, not a path; probing the whole element could
+ *                       never succeed, since no file is named `--out=/tmp/x`.
+ *   an OPTION'S CODE    the element before it is in `CODE_VALUED_OPTIONS`.
+ *   a URL               `scheme://...` has slashes and no filesystem.
+ */
+function namesNoPath(element: string, previous: string): boolean {
+  return (
+    element.startsWith("-") || CODE_VALUED_OPTIONS.has(previous) || URL_SHAPED.test(element)
+  );
+}
+
+/**
+ * The path operands of a command, by the four-part rule documented above,
+ * MINUS the elements `namesNoPath` rules out. This is the STRICT set: it is
+ * probed before the spawn and a failure here is a hard `error`, so it stays
+ * conservative and keeps the whitespace and after-an-option guards that the
+ * wider rule drops.
+ */
 export function commandPathOperands(command: string[]): string[] {
   const operands: string[] = [];
   for (let index = 1; index < command.length; index += 1) {
     const element = command[index] as string;
     const previous = command[index - 1] as string;
-    if (element.startsWith("-")) {
+    if (namesNoPath(element, previous)) {
       continue;
     }
     if (!element.includes("/")) {
@@ -877,13 +907,7 @@ export function commandPathCandidates(command: string[]): string[] {
   for (let index = 1; index < command.length; index += 1) {
     const element = command[index] as string;
     const previous = command[index - 1] as string;
-    if (element.startsWith("-")) {
-      continue;
-    }
-    if (CODE_VALUED_OPTIONS.has(previous)) {
-      continue;
-    }
-    if (URL_SHAPED.test(element)) {
+    if (namesNoPath(element, previous)) {
       continue;
     }
     const named =
