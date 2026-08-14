@@ -241,3 +241,216 @@ round's own documentation states the RESIDUE exists but does not demonstrate
 how ordinary the trigger is or that it takes down the WHOLE bundle
 regardless of applicability; that composition with `decideAggregate` was not
 walked in the round's own document.
+
+## Finding 3 (informational, CONFIRMS the round's claim): `credential-token` arm is verified unaffected
+
+Read `gates.manifest.json` (unchanged by this branch, resolves on `main`)
+directly:
+
+```
+credential-token gates.manifest.json:43-59 (id "credential-token"),
+precondition.command = ["node", "-e",
+  "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"]
+```
+
+confirmed on `main`: `gates.manifest.json:57` holds exactly that command
+string. No `/` anywhere in it, so it is invisible to `commandPathCandidates`
+on the nonzero arm exactly as the round claims. Ran the REAL declaration
+(not a fixture copy) through the packed CLI at the fix-round head, in the
+phase worktree, with `TIPHYS_IMPLEMENTER_TOKEN` unset:
+
+```
+$ node bin/tiphys.ts gates run --manifest gates.manifest.json --only \
+    credential-token --evidence evidence
+gates: credential-token: not-applicable: precondition
+implementer-token-present-owner-action-a-3 evaluated and unmet: node -e
+process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)
+exited 1
+```
+
+`result.json` status: `"not-applicable"`, not `"error"`. Confirmed: the
+round's claim that this arm is unaffected is TRUE, verified against the real
+manifest entry rather than a paraphrase of it.
+
+Judging the deliberate behaviour change (task item 3's second half): whether
+"any realistic inline precondition is now wrongly refused" -- Finding 2a
+above answers this directly and concretely: yes. `credential-token` survives
+only because it happens to carry no slash; any inline precondition that
+DOES (which is common for anything touching a path, URL, date or division)
+is exposed. This is the same fact as Finding 2, restated from the "is the
+one shipped declaration safe" angle rather than the "can a false error be
+constructed" angle.
+
+## Finding 4: C-2's bluntness -- no counter-example found, and the merge case that would most plausibly break it is confirmed handled correctly
+
+Attempted to construct a case where a phase branch legitimately needs to
+touch another phase's declaration. Two angles:
+
+1. **Direct edit of another phase's declaration file.** No legitimate
+   scenario found; every plausible reason to touch it (a typo fix, a
+   post-merge correction, a schema migration) is squarely "paperwork", which
+   the scope gate's own commentary (quoted, branch-only,
+   `src/gates/scope.ts`) already excludes by construction: paperwork
+   branches do not match the phase-branch pattern this gate audits, so the
+   correct venue already exists and does not need C-2 relaxed.
+2. **An ordinary `git merge origin/main` bringing in a NEW phase declaration
+   that main gained after the branch's fork point**, which was the
+   candidate most likely to produce a FALSE positive (a legitimate merge
+   misread as a violation). Read `computeTouchedPaths` (quoted, branch-only,
+   `src/gates/scope.ts`): it diffs `git diff --name-status <mergeBase>
+   <head>` where `mergeBase` is the ACTUAL git merge-base of `--base` and
+   `--head`, not `--base` itself. If a phase branch merges main in, the
+   merge-base of a later `--base` (a fresher `origin/main`) and the phase's
+   `--head` becomes the point up to which the branch has already absorbed
+   main, so any declaration file main gained AFTER that point and BEFORE the
+   branch's own tip is already present, byte-identical, at both ends of the
+   diff and does not appear as "touched" at all. This is not merely reasoned
+   through: the round's own pre-existing test (quoted, branch-only,
+   `test/scope-gate.test.ts`, "diffs are computed against the merge base of
+   base and head, so a base that has advanced past the fork point does not
+   misattribute another phase's changes") exercises exactly this shape (main
+   advancing independently after the fork) and asserts `mergeBase ===
+   forkPoint`, `mergeBase !== advancedMain`, and a GREEN result with no
+   mention of the file main changed. Re-ran it directly:
+
+```
+$ node --test --test-name-pattern "diffs are computed against the merge base" \
+    test/scope-gate.test.ts
+tests 1  pass 1  fail 0
+```
+
+So: I did not find a counter-example, matching the orchestrator's own stated
+conclusion (round's item 8), and the specific case most likely to produce a
+FALSE positive under the blunt rule (an ordinary main-merge) is confirmed,
+by a passing pre-existing test plus independent code reading, not to
+misfire. This is a "did not find a way", stated as such rather than as
+"cannot be done": no exhaustive search was run and none is claimed.
+
+## Finding 5: witnesses re-derived independently, both confirmed
+
+### Red/green, two of the round's five named tests, run against BOTH arms directly
+
+Built a detached worktree at the REVIEWED head (`a73313d`), copied the fix
+round's own `test/gates.test.ts` and `test/scope-gate.test.ts` into it (the
+"pre-fix source, this round's tests verbatim" shape the round's own document
+describes), and ran the two tests that most directly guard the two
+mechanisms:
+
+```
+$ node --test --test-name-pattern \
+  "a precondition command exiting nonzero is error, not a skip" \
+  test/gates.test.ts        # at a73313d (reviewed head), round's tests
+```
+```
+tests 1  pass 0  fail 1
+AssertionError: unreadable reported not-applicable ... actual
+'not-applicable' expected 'error'
+```
+
+```
+$ node --test --test-name-pattern \
+  "a phase branch that changes ANOTHER phase's declaration is red" \
+  test/scope-gate.test.ts   # at a73313d (reviewed head), round's tests
+```
+```
+tests 1  pass 0  fail 1
+AssertionError: scope: green (3 changed paths audited) ... DECLARATION
+AMENDED AT HEAD: ... filesToTouch delivery/plan/phase-declarations/.
+```
+
+Both RED at the reviewed head, and both GREEN when the same commands were
+re-run in the fix-round worktree (`6274414`) without modification:
+
+```
+$ node --test --test-name-pattern \
+  "a precondition command exiting nonzero is error, not a skip" \
+  test/gates.test.ts        # at 6274414 (fix-round head)
+tests 1  pass 1  fail 0
+```
+```
+$ node --test --test-name-pattern \
+  "a phase branch that changes ANOTHER phase's declaration is red" \
+  test/scope-gate.test.ts   # at 6274414 (fix-round head)
+tests 1  pass 1  fail 0
+```
+
+This confirms the round's red-witness claim for these two tests directly
+against the dangerous state (the reviewed head running the round's own
+tests), not merely trusting the transliterated capture in the work history.
+
+### 25-mutation-member claim, re-derived independently rather than trusted
+
+The round's document quotes a derivation command as `$ node -e '...' over
+witness/*.json` with the body elided. Wrote an independent script from
+scratch (not copied from the round's own harness) implementing the same
+rule stated in prose: for every `witness/*.json` spec, count
+`dangerousStates` entries with `kind: "mutation"` whose `file` is one of the
+three files this round changed, and check each one's `find` string appears
+in that file's current content EXACTLY once.
+
+```
+$ node rederive-witnesses.mjs <phase-worktree>
+gate-command-unrunnable-names-path.json | members on changed files: 2 | mismatches: 0
+gate-precondition-crash-vs-skip.json | members on changed files: 2 | mismatches: 0
+gate-registry-checklist-not-executed.json | members on changed files: 2 | mismatches: 0
+gate-registry-cli-selection.json | members on changed files: 2 | mismatches: 0
+gate-registry-mode-excludes.json | members on changed files: 2 | mismatches: 0
+gate-registry-zero-units-green.json | members on changed files: 2 | mismatches: 0
+gates-command-prints-green-detail.json | members on changed files: 2 | mismatches: 0
+gates-command-prints-nongreen-detail.json | members on changed files: 2 | mismatches: 0
+macos-portability-scope-entry.json | members on changed files: 1 | mismatches: 0
+precondition-nonzero-exit-attributable.json | members on changed files: 2 | mismatches: 0
+scope-declaration-both-sides.json | members on changed files: 2 | mismatches: 0
+scope-foreign-declaration-refused.json | members on changed files: 2 | mismatches: 0
+scope-phase-own-evidence.json | members on changed files: 2 | mismatches: 0
+TOTAL members on changed files: 25 | TOTAL mismatches: 0
+```
+
+Matches the round's claim exactly: thirteen specs, twenty-five members,
+zero stale. Independently derived, not copy-pasted from the round's script
+(which was not shown in full), and it agrees.
+
+### C-1 (relay every row) and the CR escape, verified live, both directions
+
+Constructed a green fixture gate whose `detail` contains a raw `\r`
+(carriage return) followed by text designed to visually overwrite the start
+of the line on a naive terminal. At the fix-round head:
+
+```
+$ node bin/tiphys.ts gates run --manifest manifest.json --evidence evidence \
+    | cat -A
+gates: run <id>$
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 \
+  error 0 vacuous 0$
+gates: g-cr: green: line-one\x0dOVERWRITE-ATTEMPT$
+gates: every applicable gate is green$
+```
+
+The green row's detail IS printed (confirming C-1: green rows are no
+longer skipped) and the raw `\r` (`cat -A` renders it as `^M`, absent here
+because it never reaches the stream) is rendered as the literal escape
+`\x0d` rather than a live control character (confirming `printableDetail`).
+Re-ran the identical manifest at the REVIEWED head as a negative control:
+
+```
+$ node bin/tiphys.ts gates run --manifest manifest.json --evidence evidence2
+gates: run <id>
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 \
+  error 0 vacuous 0
+gates: every applicable gate is green
+```
+
+No `gates: g-cr: ...` line at all: the green detail (and with it, both the
+scope-amendment note and the raw `\r`) was silently dropped at the reviewed
+head, confirming C-1 closes a real gap rather than a cosmetic one.
+
+One residual gap in `printableDetail`, noted for completeness rather than
+raised as a finding: the escaping covers C0 controls and DEL (`code < 0x20 ||
+code === 0x7f`) and `singleLine` covers `\n`. Neither covers U+2028 (LINE
+SEPARATOR) or U+2029 (PARAGRAPH SEPARATOR), which some Unicode-aware log
+consumers (not this repository's own reader, which is a plain byte/line
+scan) treat as line breaks. The code's own comment claims coverage only for
+"newline OR ... carriage return", so this is not a false claim by the
+code, just an unclaimed residual; marked TRACKED, not scored, since gate
+`detail` is manifest-authored trusted content per the same comment's own
+framing, not external input.
