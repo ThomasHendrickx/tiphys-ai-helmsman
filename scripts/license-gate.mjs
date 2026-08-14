@@ -59,7 +59,7 @@
  * phase's declaration. `test/gate-registry.test.ts` records the divergence.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -134,35 +134,84 @@ function readJson(path) {
 }
 
 /**
- * THE TRANSITIVE PRODUCTION SET.
+ * THE TRANSITIVE PRODUCTION SET, READ OUT OF THE TREE npm ACTUALLY BUILT.
  *
- * Start at the root manifest's `dependencies` (never `devDependencies`), and
- * for each, follow ITS `dependencies` through `node_modules`. `optionalDependencies`
- * and `peerDependencies` are deliberately NOT followed and that is stated
- * rather than left implicit: neither is installed by `npm ci --omit=dev` in
- * this repository today (the walk below is compared against
- * `npm ls --omit=dev --all` in the work history, and the two agree at ten
- * packages), and following a set nothing installs would inventory packages
- * that do not ship. If either is ever added to a manifest here, this walk
- * misses it, which is a real limit and is why the work history records the
- * `npm ls` cross-check rather than trusting this function alone.
+ * ROUND 1 REWROTE THIS FUNCTION AND THE REASON IS THE WHOLE POINT OF THE
+ * CHANGE. The first version MODELLED the tree: it read the root manifest's
+ * `dependencies` and recursed through each package's own `dependencies`,
+ * resolving every name against the ROOT `node_modules` with a visited set keyed
+ * on NAME. The installer does not build trees that way, so two ordinary npm
+ * outcomes were invisible to it and both were measured going green over a
+ * genuinely unlicensed package (clean-room finding HRB-1):
  *
- * A dependency that cannot be resolved is an UNRESOLVED entry rather than a
- * silent omission, because "not installed" and "has no license" are different
- * findings and collapsing them would hide the first.
+ *   - an OPTIONAL dependency, which `npm install` and `npm ci --omit=dev` both
+ *     install and which the manifest walk never followed; and
+ *   - a package NESTED because of a version conflict, at
+ *     `node_modules/<parent>/node_modules/<name>`, which the name-keyed visited
+ *     set skipped because the HOISTED copy of the same name had already been
+ *     seen. A GPL-3.0-only package physically installed, reported green.
+ *
+ * The mechanism was not "optional dependencies are skipped". It was that the
+ * gate answered a question ABOUT A MODEL and reported the answer as though it
+ * were about the tree. So it now READS, from two sources that are each
+ * authoritative for a different half, and it cross-checks them against each
+ * other rather than trusting either alone:
+ *
+ *   1. `node_modules/.package-lock.json`, which npm WRITES when it installs and
+ *      which lists EVERY installed package by PATH, with `dev` and `optional`
+ *      flags. Keying on path is what makes nesting visible, because
+ *      `node_modules/parentb/node_modules/nested` is a different key from
+ *      `node_modules/nested`. This gives the SET and the dev/production
+ *      classification, which is not derivable from the filesystem.
+ *   2. Each package's own `package.json` ON DISK, which gives the LICENSE. The
+ *      lock file carries a `license` field too and it is deliberately NOT used:
+ *      it is registry metadata, and the file that actually ships to a consumer
+ *      is the one on disk. Where the two disagree the disk is right.
+ *
+ * BOTH DIRECTIONS OF THE CROSS-CHECK ARE FINDINGS, because a stale lock is
+ * exactly the state where one source alone lies:
+ *
+ *   - a path in the lock that is not on disk (the lock over-reports), and
+ *   - a package directory on disk that the lock does not list (the lock
+ *     under-reports, which is the direction that hides a package).
+ *
+ * ABSENCE OF THE LOCK IS A FINDING, NOT AN EMPTY INVENTORY. Falling back to the
+ * old walk when the lock is missing would have reinstated the defect on exactly
+ * the path where it matters, so there is no fallback: run `npm ci` or
+ * `npm install` first, and the gate says so.
+ *
+ * OPTIONAL PRODUCTION DEPENDENCIES ARE INCLUDED, deliberately. They are
+ * installed and they ship, so a licence gate that excluded them would be
+ * excluding packages a consumer receives. Only `dev: true` is excluded.
  */
 function inventory(root) {
-  const manifest = readJson(join(root, "package.json"));
-  const packages = new Map();
+  const modules = join(root, "node_modules");
+  const lockPath = join(modules, ".package-lock.json");
+  if (!existsSync(lockPath)) {
+    return { lockMissing: lockPath, packages: [], unresolved: [], untracked: [] };
+  }
+  const lock = readJson(lockPath);
+  const packages = [];
   const unresolved = [];
-  const visit = (name, requiredBy) => {
-    if (packages.has(name)) {
-      return;
+  const lockPaths = new Set();
+
+  for (const [entryPath, entry] of Object.entries(lock.packages ?? {})) {
+    if (entryPath === "" || !entryPath.startsWith("node_modules/")) {
+      continue;
     }
-    const manifestPath = join(root, "node_modules", name, "package.json");
+    /* `dev: true` is npm's own classification and is the one thing the
+       filesystem cannot tell us. Everything else ships, optional included. */
+    if (entry?.dev === true) {
+      continue;
+    }
+    lockPaths.add(entryPath);
+    /* The name is the segment after the LAST `node_modules/`, which is what
+       makes a nested copy carry its real name rather than its parent's. */
+    const name = entryPath.slice(entryPath.lastIndexOf("node_modules/") + "node_modules/".length);
+    const manifestPath = join(root, entryPath, "package.json");
     if (!existsSync(manifestPath)) {
-      unresolved.push({ name, requiredBy });
-      return;
+      unresolved.push({ name, path: entryPath, reason: "listed in node_modules/.package-lock.json and absent from disk" });
+      continue;
     }
     const meta = readJson(manifestPath);
     /* `licenses` (plural, an array) is the retired pre-SPDX form. It is read
@@ -173,26 +222,60 @@ function inventory(root) {
         ? meta.license
         : Array.isArray(meta.licenses)
           ? meta.licenses
-              .map((entry) => (typeof entry === "string" ? entry : entry?.type))
-              .filter((entry) => typeof entry === "string")
+              .map((item) => (typeof item === "string" ? item : item?.type))
+              .filter((item) => typeof item === "string")
               .join(" OR ")
           : undefined;
-    packages.set(name, {
+    packages.push({
       name,
+      path: entryPath,
       version: typeof meta.version === "string" ? meta.version : undefined,
       license: declared === "" ? undefined : declared,
-      requiredBy,
+      optional: entry?.optional === true,
     });
-    for (const next of Object.keys(meta.dependencies ?? {})) {
-      visit(next, name);
+  }
+
+  /* THE OTHER DIRECTION: every package directory on disk that the lock does not
+     list. This is the one that hides a package, so it is not left to the lock's
+     honesty. The walk descends through nested `node_modules` and skips the
+     dot-directories npm keeps there. */
+  const untracked = [];
+  const walkDisk = (directory, prefix) => {
+    if (!existsSync(directory)) {
+      return;
+    }
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+      const here = join(directory, entry.name);
+      if (entry.name.startsWith("@")) {
+        walkDisk(here, `${prefix}${entry.name}/`);
+        continue;
+      }
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+        continue;
+      }
+      const packagePath = `${prefix}${entry.name}`;
+      if (existsSync(join(here, "package.json")) && !lockPaths.has(packagePath)) {
+        /* A dev dependency is legitimately on disk and legitimately absent from
+           the production set, so `untracked` means absent from the lock
+           ENTIRELY, in either classification. */
+        if (lock.packages?.[packagePath] === undefined) {
+          untracked.push({ name: entry.name, path: packagePath });
+        }
+      }
+      walkDisk(join(here, "node_modules"), `${packagePath}/node_modules/`);
     }
   };
-  for (const name of Object.keys(manifest.dependencies ?? {})) {
-    visit(name, manifest.name ?? "<root>");
-  }
+  walkDisk(modules, "node_modules/");
+
+  const byPath = (a, b) => a.path.localeCompare(b.path);
   return {
-    packages: [...packages.values()].sort((a, b) => a.name.localeCompare(b.name)),
-    unresolved: unresolved.sort((a, b) => a.name.localeCompare(b.name)),
+    lockMissing: undefined,
+    packages: packages.sort(byPath),
+    unresolved: unresolved.sort(byPath),
+    untracked: untracked.sort(byPath),
   };
 }
 
@@ -304,10 +387,21 @@ export function main(argv) {
   const findings = [];
   const declaration = manifest.tiphys ?? {};
 
-  /* CHECK 1: the inventory itself resolves. */
+  /* CHECK 1: the inventory is a READ of the installed tree, and both directions
+     of the lock-versus-disk cross-check are findings. */
+  if (taken.lockMissing !== undefined) {
+    findings.push(
+      `LICENSE-INVENTORY ${taken.lockMissing} does not exist, so npm has not recorded what it installed and the production set cannot be READ; run npm ci or npm install before this gate. There is deliberately no fallback to walking the manifest: that walk is what missed an optional dependency and a version-conflict nesting`,
+    );
+  }
   for (const entry of taken.unresolved) {
     findings.push(
-      `LICENSE-INVENTORY ${entry.name} is a production dependency of ${entry.requiredBy} and is not installed under node_modules, so its license could not be read; run npm ci before this gate`,
+      `LICENSE-INVENTORY ${entry.name} at ${entry.path} ${entry.reason}, so its license could not be read`,
+    );
+  }
+  for (const entry of taken.untracked) {
+    findings.push(
+      `LICENSE-INVENTORY ${entry.path} holds a package.json and appears nowhere in node_modules/.package-lock.json, so npm did not install it and nothing classifies it; the lock is stale or the tree was edited by hand`,
     );
   }
 
@@ -315,7 +409,7 @@ export function main(argv) {
   for (const entry of taken.packages) {
     if (entry.license === undefined) {
       findings.push(
-        `LICENSE-METADATA ${entry.name}@${entry.version ?? "?"} declares no license field`,
+        `LICENSE-METADATA ${entry.name}@${entry.version ?? "?"} at ${entry.path} declares no license field`,
       );
     }
   }
@@ -336,7 +430,7 @@ export function main(argv) {
       }
       if (!allowed.has(entry.license)) {
         findings.push(
-          `LICENSE-ALLOWLIST ${entry.name}@${entry.version ?? "?"} declares ${entry.license}, which is not on tiphys.licenseAllowlist`,
+          `LICENSE-ALLOWLIST ${entry.name}@${entry.version ?? "?"} at ${entry.path} declares ${entry.license}, which is not on tiphys.licenseAllowlist`,
         );
       }
     }
@@ -396,7 +490,9 @@ export function main(argv) {
     `package: ${String(manifest.name)}@${String(manifest.version)}`,
     `production packages: ${String(taken.packages.length)}`,
     ...taken.packages.map(
-      (entry) => `  ${entry.name}@${entry.version ?? "?"} ${entry.license ?? "<no license field>"} (via ${entry.requiredBy})`,
+      (entry) =>
+        `  ${entry.name}@${entry.version ?? "?"} ${entry.license ?? "<no license field>"}` +
+        ` at ${entry.path}${entry.optional ? " (optional, installed and shipped)" : ""}`,
     ),
     `allowlist: ${Array.isArray(allowlist) ? allowlist.join(", ") : "<not declared>"}`,
     `copied third-party components declared: ${Array.isArray(copied) ? String(copied.length) : "<not declared>"}`,
