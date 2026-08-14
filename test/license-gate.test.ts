@@ -656,7 +656,6 @@ test("release-verify refuses to run where the source tree is on the resolution p
   assert.match(capture, /resolved package path \S+\/node_modules\/@tiphys\/kernel\/package\.json/);
 
   const records = join(mkdtempSync(join(tmpdir(), "tiphys-rv-")), "records.json");
-  const before = spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8", env: cleanEnv() });
   const result = spawnSync(
     "bash",
     [releaseVerify, "@tiphys/kernel", "0.1.0", "--records", records],
@@ -674,8 +673,29 @@ test("release-verify refuses to run where the source tree is on the resolution p
   assert.equal(record["exitCode"], 1);
   assert.equal(record["sourceTreeOnResolutionPath"], join(repoRoot, "package.json"));
 
-  const after = spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8", env: cleanEnv() });
-  assert.equal(after.stdout, before.stdout, "release-verify changed the repository before refusing");
+  /* IT REFUSED WITHOUT INSTALLING, asserted by naming the two artefacts a run
+     that had NOT refused would have left in this repository: its own npm cache
+     directory, and the package installed under the repository's node_modules.
+     Neither exists.
+
+     THIS WAS A `git status --porcelain` COMPARISON BEFORE AND AFTER, and that
+     was WRONG in a way worth recording rather than quietly replacing: it passed
+     standalone and FAILED inside the `suite` gate, because `node --test` runs
+     test FILES concurrently and a sibling file transiently dirties the tree, so
+     the two statuses differ for reasons that have nothing to do with this
+     script. A whole-repository assertion inside a concurrent suite is a flake
+     by construction. Naming the specific paths is both narrower and stronger:
+     it cannot be satisfied by a quiet tree and cannot be broken by a busy one. */
+  assert.equal(
+    existsSync(join(repoRoot, ".release-verify-npm-cache")),
+    false,
+    "release-verify created its npm cache inside the repository before refusing",
+  );
+  assert.equal(
+    existsSync(join(repoRoot, "node_modules", "@tiphys", "kernel")),
+    false,
+    "release-verify installed the package into the repository before refusing",
+  );
 });
 
 test("release-verify from a clean directory passes and records a resolved path inside the install prefix", { skip: existsSync(distEntry) ? false : `dist/ is absent (${distEntry}); build first` }, () => {
