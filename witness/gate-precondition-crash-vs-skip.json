@@ -1,0 +1,31 @@
+{
+  "id": "gate-precondition-crash-vs-skip",
+  "behavior": "gate-precondition-crash-and-skip-distinguishable",
+  "tests": [
+    "the same gate id is not-applicable when its precondition script exists and exits 1, and error naming the script when only that script is absent"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  if (!runnable.runnable) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (!element.includes(\"/\")) {",
+      "replace": "    if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the precondition command the runner spawns with spawnSync, and the runner's own result records",
+    "captures": [
+      "witness/captures/gate-precondition-crash-vs-skip.txt"
+    ],
+    "provenance": "src/gates/run.ts spawns the precondition command with spawnSync and derives a verdict from what that program did, so rule (f) binds this witness. The cited capture is verbatim output of two real runs taken on 2026-08-13, one against origin/main at 755a9ff and one against this branch, in a consumer package tree carrying gate-registry.yaml and nothing else; it is the artifact establishing that the BEFORE arm printed not-applicable for a crash and the AFTER arm prints error. Its basename is referenced from the named test's source file. The first member removes the refusal that separates could-not-run from unmet; the second removes the derivation that finds the path operand at all, which is the other way this guard stops testing the property it names."
+  }
+}

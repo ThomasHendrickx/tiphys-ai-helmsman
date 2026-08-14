@@ -1,0 +1,32 @@
+{
+  "id": "scope-foreign-declaration-refused",
+  "behavior": "scope-foreign-declaration-refused-and-prefix-named",
+  "tests": [
+    "a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "    if (foreignDeclarations.length > 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "    ? `${entry} (DIRECTORY PREFIX: grants every current and future path under it, not one file)`",
+      "replace": "    ? entry"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, spawned by src/gates/scope.ts for show and diff --name-status, and node --test --test-reporter tap, which the witness harness parses",
+    "captures": [
+      "witness/captures/git-name-status-real.txt",
+      "witness/captures/node-test-tap-real.txt"
+    ],
+    "provenance": "Every audited path comes from git diff --name-status and both declarations are read out of the git object database with git show, so rule (f) binds this witness. Both cited captures are real captured output already stored in this repository and both basenames are referenced from the named test's source file. THE TWO MEMBERS FAIL DIFFERENTLY IN KIND: the first drops the refusal outright, so a phase branch narrows another phase's declaration and the gate says green, which is the wrong VERDICT; the second leaves the verdict entirely correct and removes only the annotation that says an addition is a directory prefix rather than a single file, which is the wrong DISCLOSURE, and a disclosure a reviewer cannot tell apart from a narrow one is the whole of what change B traded a hard refusal for."
+  }
+}

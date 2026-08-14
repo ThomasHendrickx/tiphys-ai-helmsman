@@ -105,6 +105,30 @@ import type { GateResultFields, GateStatus } from "./result.ts";
  * would give a filesystem read, and it exists here as a side effect of the
  * anti-widening design, not as a second implementation of the primitive.
  *
+ * THE ANTI-WIDENING PROPERTY IS DELIBERATELY WEAKENED FOR ADDITIONS, AND
+ * SAYING SO IS PART OF THE CHANGE (M3-P11 change B, DR-0031). From this
+ * phase on, the declaration is read from BOTH the merge base and the head.
+ * A removal is still refused outright and the merge base is still the
+ * yardstick for `id` and `branch`, so every cross-check above is unchanged.
+ * But an entry ADDED on the head is now ALLOWED, and the gate's protection
+ * against it is that the addition is PRINTED BY NAME on stdout and recorded
+ * in `scope-audit.json`, for a human reviewer to sign off. That is a real
+ * reduction in what this gate refuses, traded for the ability to land a
+ * declaration amendment with the phase that needs it rather than in a
+ * separate pull request. It is a trade, not a free improvement, and a
+ * reviewer who ignores the printed line gets no protection from it at all.
+ *
+ * FIX ROUND 1 STRENGTHENED THE VISIBLE HALF THREE WAYS, because a hard
+ * control relaxed into a visible one is only as good as the visibility, and
+ * two clean-room reviewers found the visibility defective in three
+ * independent places. The note now says when an addition is a DIRECTORY
+ * PREFIX rather than a single file (M-1); `tiphys gates run` relays every
+ * gate row rather than non-green ones only, so the note reaches stdout on
+ * the GREEN arm, which is the only arm this is about (C-1); and a phase
+ * branch that touches any path under the declarations directory other than
+ * its own declaration is RED, so the removal refusal is no longer scoped to
+ * one file while the grant can reach every file (C-2).
+ *
  * RENAMES AND DELETIONS (criteria 3 and 4). `git diff --name-status`
  * reports a rename as one line carrying both the old and the new path; this
  * module treats a rename or copy as touching BOTH names, so an old path
@@ -429,8 +453,25 @@ function loadDeclarationAtMergeBase(
   declarationsDir: string,
   phase: string,
 ): DeclarationLoad {
+  return loadDeclarationAtCommit(cwd, mergeBase, declarationsDir, phase);
+}
+
+/**
+ * The same object-database read at ANY commit (M3-P11 change B). The
+ * merge-base wrapper above keeps its name and its exported identity because
+ * the anti-widening property is a statement about THAT call, and a reader
+ * following the property should land on a function whose name says which
+ * side it reads.
+ */
+function loadDeclarationAtCommit(
+  cwd: string,
+  commit: string,
+  declarationsDir: string,
+  phase: string,
+): DeclarationLoad {
   const relPath = `${declarationsDir.replace(/\/+$/, "")}/${phase}.json`;
-  const ref = `${mergeBase}:${relPath}`;
+  const ref = `${commit}:${relPath}`;
+  const mergeBase = commit;
   const result = runGit(cwd, ["show", ref]);
   if (result.error !== undefined) {
     return {
@@ -476,6 +517,156 @@ function loadDeclarationAtMergeBase(
 /** A declared entry is a literal path, or (trailing slash) a directory prefix. */
 function isAllowed(path: string, allowed: readonly string[]): boolean {
   return allowed.some((entry) => (entry.endsWith("/") ? path.startsWith(entry) : path === entry));
+}
+
+/* -------------------------------------------------------------------- */
+/* M3-P11 change A: a phase's OWN evidence is a standing extra.          */
+/* -------------------------------------------------------------------- */
+
+/**
+ * WHY (DR-0031, delivery/plan/m3-p11-phase-spec.md:142). The standing
+ * pre-authorized extras were `test/behaviors.json` and the phase work
+ * history, so the only way to land a clean-room review or a delta
+ * verification without reddening this gate was a SEPARATE pull request.
+ * That is not a theoretical cost. Measured on `main` at bdec27d, while
+ * M3-P9 was still open: the two clean-room reviews and the delta
+ * verification for M3-P9 were PRESENT and `AGENTS.md` was ABSENT, so `main`
+ * carried review evidence for code it did not contain.
+ *
+ * WHAT COUNTS AS THE PHASE'S OWN EVIDENCE, and the rule is mechanical
+ * because the alternative is a reviewer's judgment about a filename. A
+ * changed path qualifies when all three hold:
+ *
+ *   1. it sits DIRECTLY under `delivery/review/` or
+ *      `delivery/verification/`, one level only, so nothing under
+ *      `delivery/review/evidence/` is swept in by a directory prefix;
+ *   2. its basename begins with one of the evidence-kind prefixes below,
+ *      possibly the empty one;
+ *   3. what follows that prefix is the phase id, followed by a BOUNDARY:
+ *      `-`, `.`, or the end of the basename.
+ *
+ * RULE 3'S BOUNDARY IS LOAD-BEARING AND IT IS NOT DECORATION. Phase ids in
+ * this project are not prefix-free: `m3-p1` is a proper string prefix of
+ * `m3-p11`. Without the boundary, the M3-P1 branch would silently own every
+ * M3-P11 review document, which is precisely the cross-phase leak the
+ * "another phase's evidence still reddens" arm of criterion 8 exists to
+ * refuse.
+ *
+ * THE PREFIX LIST IS DERIVED, NOT INVENTED. `clean-room-` and the empty
+ * prefix come from criterion 8 and from the spec's own list;
+ * `arbitration-` comes from the spec's list; `verification-` comes from
+ * CLAUDE.md's durability table, which names
+ * `delivery/review/verification-<phase>-fix-round.md` as a required
+ * artifact. Names in use on `main` that are NOT covered (`final-review-`,
+ * `open-call-`) are left out deliberately: nothing binding requires them,
+ * and a phase that needs one declares it. That limit is recorded in
+ * delivery/work-history/m3-p11.md rather than left to be discovered.
+ */
+const PHASE_EVIDENCE_DIRECTORIES = ["delivery/review/", "delivery/verification/"] as const;
+const PHASE_EVIDENCE_PREFIXES = ["", "clean-room-", "arbitration-", "verification-"] as const;
+
+function isPhaseOwnEvidence(path: string, phase: string): boolean {
+  const id = phase.toLowerCase();
+  if (id === "") {
+    return false;
+  }
+  const directory = PHASE_EVIDENCE_DIRECTORIES.find((entry) => path.startsWith(entry));
+  if (directory === undefined) {
+    return false;
+  }
+  const basename = path.slice(directory.length);
+  if (basename === "" || basename.includes("/")) {
+    return false;
+  }
+  const lower = basename.toLowerCase();
+  return PHASE_EVIDENCE_PREFIXES.some((prefix) => {
+    if (!lower.startsWith(prefix)) {
+      return false;
+    }
+    const rest = lower.slice(prefix.length);
+    if (!rest.startsWith(id)) {
+      return false;
+    }
+    const after = rest.slice(id.length);
+    return after === "" || after.startsWith("-") || after.startsWith(".");
+  });
+}
+
+/* -------------------------------------------------------------------- */
+/* M3-P11 change B: the declaration is read from BOTH sides.             */
+/* -------------------------------------------------------------------- */
+
+interface DeclarationDelta {
+  /** Entries present at the head and absent from the merge base. */
+  added: string[];
+  /** Entries present at the merge base and absent from the head. */
+  removed: string[];
+}
+
+/**
+ * Compare the merge-base declaration with the head's, field by field.
+ *
+ * THE ASYMMETRY IS THE POINT (DR-0031,
+ * delivery/plan/m3-p11-phase-spec.md:156). Reading the declaration from the
+ * head alone would let a phase grant itself scope, which removes the only
+ * check on scope there is; reading it from the merge base alone means a
+ * declaration amendment can never ride with the phase that needs it, and
+ * three of one day's ten pull requests existed for nothing else. So an
+ * ADDITION is allowed and reported as a loud NAMED diff for a reviewer to
+ * sign off, and a REMOVAL stays hard.
+ *
+ * `id` and `branch` are compared as scalars and any difference is a
+ * REMOVAL, never an addition: they are the two fields the anti-widening
+ * cross-checks are anchored to, and a phase that renames its own anchor has
+ * changed which declaration governs it.
+ */
+function compareDeclarations(
+  base: PhaseDeclaration,
+  head: PhaseDeclaration,
+): DeclarationDelta {
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const field of ["filesToTouch", "declaredExtras", "citations"] as const) {
+    const baseSet = new Set(base[field]);
+    const headSet = new Set(head[field]);
+    for (const entry of headSet) {
+      if (!baseSet.has(entry)) {
+        added.push(`${field} ${entry}`);
+      }
+    }
+    for (const entry of baseSet) {
+      if (!headSet.has(entry)) {
+        removed.push(`${field} ${entry}`);
+      }
+    }
+  }
+  for (const field of ["id", "branch"] as const) {
+    if (base[field] !== head[field]) {
+      removed.push(`${field} ${base[field]} (the head declares ${head[field]})`);
+    }
+  }
+  return { added: added.sort(), removed: removed.sort() };
+}
+
+/**
+ * One added entry, rendered for the line a reviewer actually reads.
+ *
+ * FIX ROUND 1, finding M-1. `isAllowed` above treats a trailing slash as a
+ * DIRECTORY PREFIX matching every path beneath it, so `filesToTouch src/`
+ * grants scope over an entire tree, present and future. Printed by the
+ * unannotated diff it was a string the same shape and roughly the same
+ * length as a single-file addition, and change B's whole protection is a
+ * human scanning that line for something anomalous. Disclosure that does not
+ * distinguish "one file" from "everything under this tree" is not disclosure
+ * at the strength the refusal it replaced had.
+ *
+ * The delta itself stays unannotated data (`scope-audit.json` records the
+ * raw entries); the annotation is applied where the sentence is composed.
+ */
+function describeAddition(entry: string): string {
+  return entry.endsWith("/")
+    ? `${entry} (DIRECTORY PREFIX: grants every current and future path under it, not one file)`
+    : entry;
 }
 
 /* -------------------------------------------------------------------- */
@@ -725,6 +916,54 @@ export function main(argv: string[]): number {
       });
     }
 
+    // M3-P11 change B. The head's declaration is read as well, from the
+    // object database at the commit this process has already proven is the
+    // real checkout. An ADDITION is allowed and named; a REMOVAL is red.
+    const headDeclLoad = loadDeclarationAtCommit(
+      cwd,
+      actualHeadResult.sha,
+      declarationsDir,
+      phase,
+    );
+    if (!headDeclLoad.ok && headDeclLoad.kind === "error") {
+      return emit(resultPath, {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail: `reading the head declaration: ${headDeclLoad.reason}`,
+      });
+    }
+    if (!headDeclLoad.ok) {
+      // The declaration exists at the merge base and NOT at the head: the
+      // branch deleted it. That is the largest possible removal, so it takes
+      // the removal arm rather than being treated as "no delta".
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `declaration ${declarationPath} exists at merge base ${mergeBase} but not at head ` +
+          `${actualHeadResult.sha}; a phase branch may ADD to its own declaration, and this ` +
+          "branch removed the whole of it",
+      });
+    }
+    const delta = compareDeclarations(declaration, headDeclLoad.declaration);
+    if (delta.removed.length > 0) {
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `declaration ${declarationPath} REMOVES ${String(delta.removed.length)} entry/entries at ` +
+          `head ${actualHeadResult.sha} that are present at merge base ${mergeBase}: ` +
+          `${delta.removed.join(", ")}; a phase branch may ADD to its own declaration, never remove ` +
+          "from it, because a removal narrows what a later audit will check",
+      });
+    }
+
     const touchedResult = computeTouchedPaths(cwd, mergeBase, head);
     if (!touchedResult.ok) {
       return emit(resultPath, {
@@ -738,15 +977,67 @@ export function main(argv: string[]): number {
     const touched = touchedResult.paths;
 
     const standingExtras = ["test/behaviors.json", `delivery/work-history/${phase}.md`];
-    const allowed = [...declaration.filesToTouch, ...declaration.declaredExtras, ...standingExtras];
+    // The allowed set is the UNION of the two sides. Only additions can reach
+    // here: a removal already returned red above, so the union never grants
+    // less than the merge base did.
+    const headDeclaration = headDeclLoad.declaration;
+    const allowed = [
+      ...new Set([
+        ...declaration.filesToTouch,
+        ...declaration.declaredExtras,
+        ...headDeclaration.filesToTouch,
+        ...headDeclaration.declaredExtras,
+        ...standingExtras,
+      ]),
+    ];
 
-    const violations = [
-      ...new Set(touched.filter((entry) => !isAllowed(entry.path, allowed)).map((entry) => entry.path)),
+    // FIX ROUND 1, finding C-2. The removal refusal above reads exactly ONE
+    // file, `<declarationsDir>/<phase>.json`, on both sides. Every other
+    // phase's declaration is, to this gate, an ordinary path: allow it into
+    // scope by any route and the branch may NARROW it, with no delta check at
+    // all, and the narrowing lands on main and governs that phase's later
+    // audit. Change B made that reachable without a separate merged pull
+    // request, which is the friction it was written to remove and was also
+    // the review point. Measured green in a scratch repository by a clean-room
+    // reviewer before this round.
+    //
+    // The rule is a property of the DIRECTORY, not of the route that granted
+    // access, so it covers a directory-prefix addition, an explicitly listed
+    // foreign declaration, and a grant that was already in the merge base
+    // alike. It is deliberately blunt: ANY touched path under the
+    // declarations directory other than this phase's own declaration is red,
+    // including a non-declaration file such as that directory's README, which
+    // a phase branch has no business editing either. Paperwork branches do
+    // not match the phase-branch pattern, so this gate is not applicable to
+    // them and they remain the place such edits are made.
+    const declarationsPrefix = `${declarationsDir.replace(/\/+$/, "")}/`;
+    const foreignDeclarations = [
+      ...new Set(
+        touched
+          .map((entry) => entry.path)
+          .filter((path) => path.startsWith(declarationsPrefix) && path !== declarationPath),
+      ),
     ].sort();
 
-    const declaredLiterals = [...declaration.filesToTouch, ...declaration.declaredExtras].filter(
-      (entry) => !entry.endsWith("/"),
-    );
+    const violations = [
+      ...new Set(
+        touched
+          .filter(
+            (entry) =>
+              !isAllowed(entry.path, allowed) && !isPhaseOwnEvidence(entry.path, phase),
+          )
+          .map((entry) => entry.path),
+      ),
+    ].sort();
+
+    const declaredLiterals = [
+      ...new Set([
+        ...declaration.filesToTouch,
+        ...declaration.declaredExtras,
+        ...headDeclaration.filesToTouch,
+        ...headDeclaration.declaredExtras,
+      ]),
+    ].filter((entry) => !entry.endsWith("/"));
     const touchedSet = new Set(touched.map((entry) => entry.path));
     const underTouched = declaredLiterals.filter((entry) => !touchedSet.has(entry)).sort();
 
@@ -761,9 +1052,12 @@ export function main(argv: string[]): number {
           mergeBase,
           declarationPath,
           declarationSha256,
+          headDeclarationSha256: headDeclLoad.sha256,
+          declarationDelta: delta,
           touchedPaths: touched,
           allowed,
           violations,
+          foreignDeclarations,
           underTouched,
         },
         null,
@@ -773,10 +1067,60 @@ export function main(argv: string[]): number {
     const evidence = evidenceName === undefined ? [] : [evidenceName];
 
     const units = touched.length;
+    // M3-P11 criterion 9. The addition is PRINTED BY NAME, on both the green
+    // and the red arm, because a silent pass is the exact failure this change
+    // would otherwise introduce: the gate would stop refusing a widened
+    // declaration and say nothing about it, which is worse than either the
+    // old hard red or an honest named note. `emit` writes `detail` to stdout,
+    // so putting it here is what makes it a printed line rather than only a
+    // field in a record somebody might read.
+    //
+    // FIX ROUND 1, findings C-1 and M-1. Two things were wrong with the note
+    // as first written, and both are the same mechanism: a compensating
+    // control is worth what it is READ at, and this one was weaker in two
+    // independent ways than the hard refusal it replaced.
+    //
+    //   M-1, WHAT IS GRANTED WAS NOT LEGIBLE. A directory prefix printed
+    //   exactly like a single file. `describeAddition` now says which it is.
+    //
+    //   C-1, THE NOTE DID NOT REACH THE READER on the green arm, which is
+    //   the only arm criterion 9 is about, because `tiphys gates run` printed
+    //   non-green rows only. That half is fixed in src/commands/gates.ts,
+    //   which now relays EVERY row; it is named here so the next reader of
+    //   this note knows its delivery depends on a second file.
+    const directoryPrefixCount = delta.added.filter((entry) => entry.endsWith("/")).length;
+    const amendmentNote =
+      delta.added.length > 0
+        ? ` DECLARATION AMENDED AT HEAD: ${String(delta.added.length)} entry/entries ADDED at ` +
+          `head ${actualHeadResult.sha} that are absent from the merge-base declaration, allowed ` +
+          `and NAMED here for a reviewer to sign off (this gate does not sign them off)` +
+          (directoryPrefixCount > 0
+            ? `, ${String(directoryPrefixCount)} of them a DIRECTORY PREFIX rather than a single file`
+            : "") +
+          `: ${delta.added.map(describeAddition).join(", ")}.`
+        : "";
     const underTouchNote =
       underTouched.length > 0
         ? ` (${String(underTouched.length)} declared path(s) not touched: ${underTouched.join(", ")})`
         : "";
+
+    if (foreignDeclarations.length > 0) {
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units,
+        endedAt: now(),
+        detail:
+          `this branch changes ${String(foreignDeclarations.length)} path(s) under ` +
+          `${declarationsPrefix} that are not its own declaration ${declarationPath}: ` +
+          `${foreignDeclarations.join(", ")}; a phase branch may ADD to its OWN declaration and ` +
+          "nothing else here, because the removal refusal reads only this phase's file and a " +
+          "change to another phase's declaration is therefore unchecked and lands on main " +
+          "governing that phase's later audit" +
+          `${underTouchNote}${amendmentNote}`,
+        evidence,
+      });
+    }
 
     if (violations.length > 0) {
       return emit(resultPath, {
@@ -786,7 +1130,8 @@ export function main(argv: string[]): number {
         endedAt: now(),
         detail:
           `touched path(s) outside the declared scope: ${violations.join(", ")} ` +
-          `(declaration ${declarationPath} at merge base ${mergeBase}, sha256 ${declarationSha256})${underTouchNote}`,
+          `(declaration ${declarationPath} at merge base ${mergeBase}, sha256 ${declarationSha256})` +
+          `${underTouchNote}${amendmentNote}`,
         evidence,
       });
     }
@@ -798,7 +1143,7 @@ export function main(argv: string[]): number {
       endedAt: now(),
       detail:
         `${String(units)} changed path(s) audited against declaration ${declarationPath} ` +
-        `at merge base ${mergeBase} (sha256 ${declarationSha256})${underTouchNote}`,
+        `at merge base ${mergeBase} (sha256 ${declarationSha256})${underTouchNote}${amendmentNote}`,
       evidence,
     });
   } catch (error) {
@@ -840,13 +1185,16 @@ if (invokedDirectly) {
 }
 
 export {
+  compareDeclarations,
   computeTouchedPaths,
   currentBranch,
   isAllowed,
   isAncestorOf,
+  isPhaseOwnEvidence,
+  loadDeclarationAtCommit,
   loadDeclarationAtMergeBase,
   resolveMergeBase,
   resolveRef,
   resolveTrunk,
 };
-export type { PhaseDeclaration, TouchedPath };
+export type { DeclarationDelta, PhaseDeclaration, TouchedPath };

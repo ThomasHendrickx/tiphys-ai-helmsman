@@ -1,0 +1,73 @@
+REAL CAPTURED OUTPUT, tiphys gate runner, node v26.6.0, 2026-08-13.
+
+A consumer package tree containing gate-registry.yaml and NOTHING ELSE:
+no scripts/, no src/, no bin/. This is the tree the M3-P9 hazard review
+measured (delivery/review/clean-room-m3-p9-hazard.md). Two arms, one
+command each, differing only in which installation ran it.
+
+$ ls
+gate-registry.yaml
+
+================ ARM 1: origin/main at 755a9ff (BEFORE M3-P11) ================
+
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only check-dual-review --evidence <dir>
+gates: run 609454a436803200d9ccfdf8
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry <scratch>/mainwt/gate-registry.yaml mode full
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0
+gates: no applicable gate
+(exit 21)
+$ cat <dir>/check-dual-review/result.json | jq '{status, detail, precondition}'
+{
+  "status": "not-applicable",
+  "detail": "precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1",
+  "precondition": {
+    "id": "dual-review-verdicts-present",
+    "met": false,
+    "reason": "node scripts/check-dual-review.mjs --precondition . exited 1"
+  }
+}
+
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only manifest-self-check --evidence <dir>
+gates: run 922fb409131875e305712524
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry <scratch>/mainwt/gate-registry.yaml mode full
+gates: declared 1 applicable 1 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: 1 gate(s) reported error: manifest-self-check
+(exit 21)
+$ cat <dir>/manifest-self-check/result.json | jq '{status, detail, precondition}'
+{
+  "status": "error",
+  "detail": "gate manifest-self-check exited 1 without writing a result record at <scratch>/cap-b-manifest-self-check/manifest-self-check/result.json",
+  "precondition": null
+}
+
+================ ARM 2: claude/m3-p11-precondition-crash-verdict (AFTER) ================
+
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only check-dual-review --evidence <dir>
+gates: run eae285f4824211ca01623a4a
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry /home/user/tiphys-ai-helmsman/gate-registry.yaml mode full
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: 1 gate(s) reported error: check-dual-review
+(exit 21)
+$ cat <dir>/check-dual-review/result.json | jq '{status, detail, precondition}'
+{
+  "status": "error",
+  "detail": "precondition dual-review-verdicts-present command node scripts/check-dual-review.mjs --precondition . could not be run: scripts/check-dual-review.mjs does not exist (resolved to <scratch>/pkgtree/scripts/check-dual-review.mjs) (this is NOT not-applicable: nothing was evaluated, M2-C-3)",
+  "precondition": null
+}
+
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only manifest-self-check --evidence <dir>
+gates: run f0f6460c562b242175841b6d
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry /home/user/tiphys-ai-helmsman/gate-registry.yaml mode full
+gates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: 1 gate(s) reported error: manifest-self-check
+(exit 21)
+$ cat <dir>/manifest-self-check/result.json | jq '{status, detail, precondition}'
+{
+  "status": "error",
+  "detail": "gate manifest-self-check could not be run: bin/tiphys.ts does not exist (resolved to <scratch>/pkgtree/bin/tiphys.ts)",
+  "precondition": null
+}

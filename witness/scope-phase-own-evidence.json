@@ -1,0 +1,32 @@
+{
+  "id": "scope-phase-own-evidence",
+  "behavior": "scope-phase-own-evidence-standing-extra",
+  "tests": [
+    "a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "const PHASE_EVIDENCE_PREFIXES = [\"\", \"clean-room-\", \"arbitration-\", \"verification-\"] as const;",
+      "replace": "const PHASE_EVIDENCE_PREFIXES = [] as const;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "    return after === \"\" || after.startsWith(\"-\") || after.startsWith(\".\");",
+      "replace": "    return true;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, spawned by src/gates/scope.ts for diff --name-status and show, and node --test --test-reporter tap, which the witness harness parses",
+    "captures": [
+      "witness/captures/git-name-status-real.txt",
+      "witness/captures/node-test-tap-real.txt"
+    ],
+    "provenance": "src/gates/scope.ts derives every audited path from git's own output, so rule (f) binds this witness, and the harness that runs the named test parses Node's TAP stream. Both cited captures are real captured output already stored in this repository and both basenames are referenced from the named test's source file. The first member removes the prefix set, so a phase's own evidence stops being a standing extra and the green arm reddens; the second removes the BOUNDARY after the phase id, which is a structurally different failure because it leaves the feature working and makes it over-match: m3-p1 then owns every m3-p11 document, and the cross-phase arm silently goes green."
+  }
+}

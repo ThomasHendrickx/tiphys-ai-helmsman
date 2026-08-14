@@ -1,0 +1,32 @@
+{
+  "id": "scope-declaration-both-sides",
+  "behavior": "scope-declaration-addition-named-removal-red",
+  "tests": [
+    "a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "    if (delta.removed.length > 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "      delta.added.length > 0",
+      "replace": "      false"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, spawned by src/gates/scope.ts for show and diff --name-status, and node --test --test-reporter tap, which the witness harness parses",
+    "captures": [
+      "witness/captures/git-name-status-real.txt",
+      "witness/captures/node-test-tap-real.txt"
+    ],
+    "provenance": "Both sides of the declaration are read out of the git object database with git show, and the audited paths come from git diff --name-status, so rule (f) binds this witness. Both cited captures are real captured output already stored in this repository and both basenames are referenced from the named test's source file. The first member drops the REMOVAL refusal, so a branch that narrows its own declaration passes; the second empties the amendment note, which is a structurally different failure because the gate still reaches the right verdict and simply stops SAYING what it allowed, and a silent pass is the exact failure criterion 9 exists to refuse."
+  }
+}

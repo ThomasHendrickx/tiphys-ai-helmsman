@@ -1,0 +1,31 @@
+{
+  "id": "precondition-not-a-path-is-not-an-error",
+  "behavior": "precondition-not-a-path-is-not-an-error",
+  "tests": [
+    "an argv element that is not a path does not turn a legitimate unmet precondition into an error that fails the whole bundle"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    element.startsWith(\"-\") || CODE_VALUED_OPTIONS.has(previous) || URL_SHAPED.test(element)",
+      "replace": "    false"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (kind.ok && kind.value.isDirectory()) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the precondition command the runner spawns with spawnSync, and the runner's own result records and summary.json",
+    "captures": [
+      "witness/captures/m3-p11-round-2-two-arm.txt"
+    ],
+    "provenance": "src/gates/run.ts spawns the precondition command with spawnSync and derives a verdict from what that program did, so rule (f) binds. The cited capture is verbatim output of twenty-six real runs taken on 2026-08-14, node v26.6.0, thirteen one-gate-plus-companion manifests against two arms (the phase branch at 6274414, the head the delta verification examined, and fix round 2). THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT AND EACH KILLS A DIFFERENT ARM OF THE TEST: the first removes the not-a-path predicate, so an option, an option's code value and a URL all become path candidates again (capture rows A1 to A4); the second removes the directory allowance from the attribution scan only, leaving the predicate intact, so an operand that IS a path and exists is refused for being a directory (capture row A5). Neither subsumes the other: with only the first restored, A5 still errors; with only the second restored, A1 to A4 still error."
+  }
+}
