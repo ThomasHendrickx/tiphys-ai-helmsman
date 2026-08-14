@@ -18,17 +18,28 @@ is wrong: verify against git and the PR list before trusting it.
   "Placeholder only. The first real release is 0.1.0." `npm org ls tiphys`
   returns the owner, which SETTLES the scope claim that DR-0024 had recorded on
   the owner's word alone because no agent could confirm it.
-- **WHAT REMAINS OF A-7 IS ONE npm UI STEP**: configure the trusted publisher
-  for `@tiphys/kernel` against `ThomasHendrickx/tiphys-ai-helmsman` and workflow
-  file `release.yml`, environment empty. There is no credential; authentication
-  is OIDC, decided at
+- **A-7's REMAINING HALF WAS ONE npm UI STEP** and it was done the same evening,
+  see the next line: the trusted publisher for `@tiphys/kernel` against this
+  repository and workflow file `release.yml`, environment empty. There was no
+  credential; authentication is OIDC, decided at
   delivery/decisions/DR-0024-oidc-trusted-publishing.md:157.
-- **THE ORCHESTRATOR OWES A REHEARSAL DISPATCH BEFORE ANY REAL PUBLISH.** No
-  workflow has ever been executed. Every claim about the release machinery, from
-  three agents across two reviews and a verification, is static analysis of YAML
-  and shell, and the round-2 implementer named that absence itself. A dispatch
-  with `confirm` left empty runs every step on a real runner and stops before the
-  irreversible action.
+- **A-7 IS COMPLETE (owner, 2026-08-14).** The trusted publisher is configured
+  for `@tiphys/kernel` against `ThomasHendrickx/tiphys-ai-helmsman` and
+  `release.yml`, permission `npm publish`. Nothing in M3 now waits on the owner
+  except the decision to publish itself.
+- **THE REHEARSAL RAN, AND IT IS THE FIRST TIME ANY OF THIS MACHINERY HAS
+  EXECUTED.** Run `31836129435` against `40b70a8`, `version: 0.1.0`, `confirm`
+  empty, conclusion `success`, read by step. The publish step is SKIPPED and the
+  install-and-run-the-packed-artifact step is SUCCESS, which witnesses round 1's
+  M3 fix in execution rather than in YAML. Detail and the two strengths of
+  non-publish evidence are in the register.
+- **WHAT THE REHEARSAL CLOSED, stated because it was true for most of today and
+  is the thing a later reader would otherwise still believe:** until 20:03Z, no
+  workflow had ever been executed, and every claim about the release machinery,
+  from three agents across two reviews and a verification, was static analysis of
+  YAML and shell. That is no longer the state. The two steps that have STILL
+  never run are the publish and the post-publish verification, and by
+  construction neither can be witnessed without publishing.
 - **TWO REGISTRY PROBES ARE NOW KNOWN TO LAG, AND ONE OF THEM IS EVIDENCE IN A
   MERGED WORK HISTORY.** Detail in the register; the short form is that the
   packument 404 persisted for at least four minutes after a successful publish

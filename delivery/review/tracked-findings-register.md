@@ -340,12 +340,38 @@ branch. Merged at DR-0027's hard two-round cap.
 | HRB-4 | `== false` coercion, now a `confirm` string measured failing closed on all nine off-table values | reachability was not established by the reviewer or by either round, and is not claimed now |
 | round-1 residues | the `.npmrc` registry-redirect gap (records do not carry which registry answered); workspaces, npm aliases and `auto-install-peers` untested | gaps in coverage rather than wrong answers at that head |
 
-**The one that is not a finding but is the most important line here: NO
-WORKFLOW HAS BEEN EXECUTED.** Every claim about `release.yml`, from three agents
-across two reviews and a verification, is static analysis of YAML and shell. The
-round-2 implementer named that absence itself. The plan for closing it is a
-REHEARSAL dispatch, which runs every step on a real runner and stops before the
-irreversible action, and it has not happened yet.
+**The one that was not a finding but was the most important line here: NO
+WORKFLOW HAD BEEN EXECUTED. CLOSED 2026-08-14 20:03Z.** Every claim about
+`release.yml`, from three agents across two reviews and a verification, was
+static analysis of YAML and shell, and the round-2 implementer named that
+absence itself.
+
+The first ever execution of that workflow was a REHEARSAL dispatch against
+`main` at `40b70a8`, run `31836129435`, `version: 0.1.0` and `confirm` empty.
+`total_count` for the workflow was 1, which is how "first ever" is established
+rather than remembered. Conclusion `success`, read by step:
+
+| step | conclusion | why it matters |
+|---|---|---|
+| 05 `Decide whether this dispatch publishes` | success | the version-agreement check passed and the empty confirm did not refuse |
+| 11 `npm pack, and check the listing against the tree on disk` | success | the listing check held against a real built tree on a real runner |
+| **12 `Install and RUN the packed artifact, before any publish`** | **success** | **round 1's M3 fix, witnessed in execution: it carries no `if:` and it really does run on a rehearsal** |
+| 13 `Publish to npmjs over OIDC` | **skipped** | the guard held under a real dispatch, not only under a test |
+| 14 `Rehearsal only, nothing was published` | success | the complementary arm fired |
+| 15 `Release verification ... after publishing` | skipped | correct; it is post-publish by design |
+
+Nothing was published, and the two pieces of evidence are given in order of
+strength rather than run together. PRIMARY: GitHub's own job record reports step
+13 SKIPPED. SECONDARY: the registry holds exactly one version, `0.0.0`,
+published 14:13:53Z by the owner, with `modified` 19:44:54Z being the
+deprecation, and no `0.1.0`. The secondary is the weaker of the two here
+BECAUSE OF THE ENTRY ABOVE: a version published at 20:03 might not have appeared
+by 20:09, so a registry read cannot carry this claim on its own.
+
+**What the rehearsal still does NOT establish**: the publish arm. Steps 13 and
+15 are the only two that have never run, and by construction they cannot be
+witnessed without publishing. That is the one asymmetry this design accepts on
+purpose.
 
 ## Carried from before DR-0027
 
