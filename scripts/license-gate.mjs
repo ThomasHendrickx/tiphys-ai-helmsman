@@ -59,7 +59,7 @@
  * phase's declaration. `test/gate-registry.test.ts` records the divergence.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -236,39 +236,85 @@ function inventory(root) {
   }
 
   /* THE OTHER DIRECTION: every package directory on disk that the lock does not
-     list. This is the one that hides a package, so it is not left to the lock's
-     honesty. The walk descends through nested `node_modules` and skips the
-     dot-directories npm keeps there. */
+     list. This is the one that HIDES a package, so it is not left to the lock's
+     honesty.
+     THE WALK SEES THE WHOLE DISK, WHICH IS ROUND 2's CORRECTION (DV-6). The
+     first version skipped every dot-prefixed directory and treated only `@`
+     directories as containers, so a package at `node_modules/.hidden/evil` or
+     at `node_modules/good/node_modules/.deep/evil` was invisible: two of the
+     verifier's six plants went green, and both were reachable code, resolvable
+     by `require.resolve` from the tree. A cross-check is fail-closed only if
+     the disk side sees the whole disk.
+     THE RULE IS NOW STRUCTURAL RATHER THAN NAME-BASED. A directory holding a
+     `package.json` IS a package, and the walk then descends into its own
+     `node_modules`. A directory NOT holding one is a CONTAINER and the walk
+     descends into it, which is what `@scope` was a special case of and what
+     `.hidden` needed. npm's own dot entries fall out of this correctly:
+     `.package-lock.json` is a file, and `.bin` holds symlinks to executables
+     rather than package directories, so neither yields an entry.
+     WHAT THIS SCOPE STILL EXCLUDES, asked before the code was written:
+       - anything outside the root `node_modules` tree, for example a vendored
+         copy at the repository root;
+       - a package whose directory carries no `package.json`, which is not a
+         package by npm's own definition and could still hold code;
+       - depth beyond MAX_DEPTH, which exists because a symlinked directory can
+         form a cycle and an unbounded walk would hang rather than fail;
+       - a directory the process cannot read, which throws and is reported
+         rather than skipped. */
   const untracked = [];
-  const walkDisk = (directory, prefix) => {
-    if (!existsSync(directory)) {
+  const MAX_DEPTH = 32;
+  const seen = new Set();
+  const walkDisk = (directory, prefix, depth) => {
+    if (!existsSync(directory) || depth > MAX_DEPTH) {
       return;
     }
+    /* Cycle protection keyed on the REAL path, so a symlink back into an
+       ancestor terminates instead of recurring until the stack gives out. */
+    let real;
+    try {
+      real = realpathSync(directory);
+    } catch {
+      return;
+    }
+    if (seen.has(real)) {
+      return;
+    }
+    seen.add(real);
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith(".")) {
-        continue;
-      }
       const here = join(directory, entry.name);
-      if (entry.name.startsWith("@")) {
-        walkDisk(here, `${prefix}${entry.name}/`);
-        continue;
+      /* IS IT A DIRECTORY AFTER FOLLOWING LINKS, which is not the same question
+         as `entry.isDirectory()`. `node_modules/.bin` is full of symlinks to
+         FILES, and a `isDirectory() || isSymbolicLink()` test calls those
+         directories and then throws ENOTDIR on the first read. Measured on this
+         repository's own tree the moment the dot skip was removed. */
+      let isDirectory = entry.isDirectory();
+      if (!isDirectory && entry.isSymbolicLink()) {
+        try {
+          isDirectory = statSync(here).isDirectory();
+        } catch {
+          isDirectory = false;
+        }
       }
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+      if (!isDirectory) {
         continue;
       }
       const packagePath = `${prefix}${entry.name}`;
-      if (existsSync(join(here, "package.json")) && !lockPaths.has(packagePath)) {
+      if (existsSync(join(here, "package.json"))) {
         /* A dev dependency is legitimately on disk and legitimately absent from
            the production set, so `untracked` means absent from the lock
            ENTIRELY, in either classification. */
         if (lock.packages?.[packagePath] === undefined) {
           untracked.push({ name: entry.name, path: packagePath });
         }
+        walkDisk(join(here, "node_modules"), `${packagePath}/node_modules/`, depth + 1);
+        continue;
       }
-      walkDisk(join(here, "node_modules"), `${packagePath}/node_modules/`);
+      /* Not a package, so a container: an `@scope`, a dot directory, or any
+         other directory somebody put here. Descend. */
+      walkDisk(here, `${packagePath}/`, depth + 1);
     }
   };
-  walkDisk(modules, "node_modules/");
+  walkDisk(modules, "node_modules/", 0);
 
   const byPath = (a, b) => a.path.localeCompare(b.path);
   return {

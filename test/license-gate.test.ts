@@ -627,6 +627,75 @@ test("a package NESTED by a version conflict is inventoried under its own path, 
   }
 });
 
+test("the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding", () => {
+  /* DV-6, and it is the same mechanism as DV-1 and DV-2 rather than a third
+     thing: THE CHECK'S SEARCH SCOPE WAS NARROWER THAN THE PROPERTY IT ASSERTS.
+     The lock-versus-disk cross-check claims to find every package directory the
+     lock does not list. Its walk skipped every dot-prefixed directory and
+     treated only `@` names as containers, so two of the verifier's six plants
+     went green, and both were reachable code that `require.resolve` finds.
+
+     Six plants, one at a time, each a package declaring GPL-3.0-only against an
+     allowlist of MIT. The two marked below are the ones that used to pass. */
+  const base = mkdtempSync(join(tmpdir(), "tiphys-diskwalk-"));
+  try {
+    const good = packageSource(base, "good", { license: "MIT" });
+    writeFileSync(join(base, "LICENSE"), "x\n");
+    installFixture(base, {
+      name: "diskwalk-fixture",
+      version: "1.0.0",
+      license: "MIT",
+      files: ["LICENSE"],
+      dependencies: { good: `file:${good}` },
+      tiphys: { licenseAllowlist: ["MIT"], thirdPartyCode: [] },
+    });
+    const listing = join(base, "listing.txt");
+    writeFileSync(listing, "package.json\nLICENSE\n");
+
+    /* THE CONTROL FIRST, so a red below is attributable to the plant and not to
+       the fixture shape. */
+    const control = runGate(["--root", base, "--pack-listing", listing]);
+    assert.equal(control.status, 0, `${control.stdout}${control.stderr}`);
+
+    const plants = [
+      "node_modules/evil",
+      "node_modules/.hidden/evil",
+      "node_modules/@scope/evil",
+      "node_modules/good/node_modules/evil",
+      "node_modules/good/node_modules/.deep/evil",
+    ];
+    for (const relative of plants) {
+      const planted = join(base, relative);
+      mkdirSync(planted, { recursive: true });
+      writeFileSync(
+        join(planted, "package.json"),
+        `${JSON.stringify({ name: "evil", version: "1.0.0", license: "GPL-3.0-only" })}\n`,
+      );
+      writeFileSync(join(planted, "index.js"), "module.exports = 1;\n");
+      const result = runGate(["--root", base, "--pack-listing", listing]);
+      assert.notEqual(result.status, 0, `a package planted at ${relative} was reported green`);
+      assert.match(
+        result.stdout,
+        new RegExp(`LICENSE-INVENTORY ${relative.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} holds a package\\.json`),
+        `${relative}: ${result.stdout}`,
+      );
+      rmSync(planted, { recursive: true, force: true });
+    }
+
+    /* AND ONE THAT IS NOT A DIRECTORY AT ALL, because removing the dot skip
+       meant `node_modules/.bin` entries became candidates and the first read
+       threw ENOTDIR on this repository's own tree. A symlink to a FILE is not a
+       container and must be stepped over rather than crashed on. */
+    mkdirSync(join(base, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(join(base, "node_modules", ".bin", "target.js"), "#!/usr/bin/env node\n");
+    symlinkSync(join(base, "node_modules", ".bin", "target.js"), join(base, "node_modules", ".bin", "tool"));
+    const withBin = runGate(["--root", base, "--pack-listing", listing]);
+    assert.equal(withBin.status, 0, `a symlink to a file broke the walk: ${withBin.stdout}${withBin.stderr}`);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test("a package on disk that npm did not install is a finding, and an absent lock is a finding rather than an empty inventory", () => {
   /* THE TWO DIRECTIONS OF THE LOCK-VERSUS-DISK CROSS-CHECK, which is what stops
      the new read being a new model. Reading only the lock would trust a file
@@ -1104,32 +1173,131 @@ test("release-verify from a clean directory passes and records a resolved path i
 /* The release workflow: delivered, named, and NOT run                  */
 /* ------------------------------------------------------------------ */
 
-/** The parsed release workflow, and its steps. */
-function releaseWorkflow(): {
+interface WorkflowStepShape {
+  name?: string;
+  id?: string;
+  run?: string;
+  if?: string;
+  uses?: string;
+  env?: Record<string, string>;
+  with?: Record<string, unknown>;
+}
+
+interface WorkflowDocument {
   on: Record<string, unknown>;
   jobs: Record<string, { permissions?: Record<string, string>; steps: WorkflowStepShape[] }>;
-} {
+}
+
+function parseWorkflow(file: string): WorkflowDocument {
   const parsed = spawnSync(
     process.execPath,
     [
       "-e",
       "const {parse}=require(process.argv[1]);process.stdout.write(JSON.stringify(parse(require('node:fs').readFileSync(process.argv[2],'utf8'))));",
       join(repoRoot, "node_modules", "yaml"),
-      join(repoRoot, ".github", "workflows", "release.yml"),
+      file,
     ],
     { encoding: "utf8", env: cleanEnv(), cwd: repoRoot },
   );
   assert.equal(parsed.status, 0, `${parsed.stdout ?? ""}${parsed.stderr ?? ""}`);
-  return JSON.parse(parsed.stdout);
+  return JSON.parse(parsed.stdout) as WorkflowDocument;
 }
 
-interface WorkflowStepShape {
-  name?: string;
-  id?: string;
-  run?: string;
-  if?: string;
-  env?: Record<string, string>;
+const releaseWorkflowPath = join(repoRoot, ".github", "workflows", "release.yml");
+function releaseWorkflow(): WorkflowDocument {
+  return parseWorkflow(releaseWorkflowPath);
 }
+
+/**
+ * EVERY STEP OF EVERY JOB OF EVERY WORKFLOW FILE.
+ *
+ * ROUND 2 ADDED THIS AND THE REASON IS THE MECHANISM THIS ROUND EXISTS FOR: a
+ * check's SEARCH SCOPE was narrower than the property it asserted. Round 1's
+ * interpolation assertion iterated `jobs["release"].steps` while its comment
+ * claimed "every step", and the delta verifier defeated it with a second job
+ * carrying two interpolations and an unguarded `npm publish`, passing all four
+ * tests (DV-2). Round 1's DERIVATION parsed every job; only the GUARD ships
+ * forward, and the guard did not.
+ *
+ * WHAT THIS SCOPE STILL EXCLUDES, asked before the code was written rather than
+ * discovered afterwards, because this repository has recorded four consecutive
+ * rounds re-introducing a mechanism inside the code that closed it (T-020):
+ *
+ *   - workflow files OUTSIDE `.github/workflows/`. GitHub reads only that
+ *     directory, so this is a limit of GitHub's own scope, not of the walk.
+ *   - reusable workflows called through `jobs.<id>.uses:`, which have no
+ *     `steps` here and whose bodies live in another file or another repository.
+ *     This repository has none; a future one would be invisible.
+ *   - composite actions, whose `steps` live in an `action.yml` that this walk
+ *     never opens. DV-3 is the same boundary seen from the other side.
+ *   - anything a `run:` body INVOKES: `npm run release`, a shell script, a
+ *     `make` target. The predicates below read the body, not what it calls.
+ *   - `.yaml` as an extension, which GitHub also accepts. The walk takes both,
+ *     and that is asserted below rather than assumed.
+ */
+function allWorkflowSteps(): { file: string; job: string; index: number; step: WorkflowStepShape }[] {
+  const directory = join(repoRoot, ".github", "workflows");
+  const out: { file: string; job: string; index: number; step: WorkflowStepShape }[] = [];
+  const names = readdirSync(directory).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
+  assert.ok(names.length > 0, "no workflow files found, so every assertion over them would be vacuous");
+  for (const name of names) {
+    const document = parseWorkflow(join(directory, name));
+    for (const [job, body] of Object.entries(document.jobs ?? {})) {
+      (body.steps ?? []).forEach((step, index) => {
+        out.push({ file: name, job, index, step });
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * A LINE THAT INVOKES A PUBLISH COMMAND, not a line that mentions one.
+ *
+ * DV-1's mechanism verbatim: round 1 selected the publish step with
+ * `steps.find((step) => (step.run ?? "").includes("npm publish"))`, the FIRST
+ * step whose body CONTAINS that substring. `release.yml` already has a second
+ * step whose body carries the string, because the rehearsal notice says
+ * "npm publish did NOT run". The verifier inserted one step before the real one
+ * and deleted the real step's `if:` outright; the workflow then published on
+ * every dispatch and all three M1 tests passed.
+ *
+ * Anchoring at the start of a LINE is what separates invocation from prose. The
+ * alternation covers the two package managers CLAUDE.md bans as well as npm,
+ * because a check should not rest on a convention it does not enforce.
+ *
+ * WHAT THIS PREDICATE EXCLUDES, stated with the same discipline: a publish
+ * reached indirectly (`npm run release`), a publish inside a quoted string
+ * passed to another shell (`sh -c "npm publish"`), a publish performed by a
+ * `uses:` action, and a publish written with the command split across a line
+ * continuation. The first is the widest gap and is why the assertion below also
+ * pins the number of steps rather than only their guards.
+ */
+const PUBLISH_COMMAND = /^[ \t]*(?:npm|pnpm|yarn)[ \t]+publish\b/m;
+
+/**
+ * SELECT BY ASSERTING UNIQUENESS, NEVER BY TAKING THE FIRST MATCH.
+ *
+ * This is the round's one-line correction and it is deliberately a helper, so
+ * that every selection in this file goes through it and a future selection has
+ * to opt OUT of it rather than in. `Array.prototype.find` returns the first
+ * match and says nothing about the rest, which is exactly how a decoy absorbs
+ * an assertion. The pattern was already correct at one site in this file, where
+ * a record count is asserted to be 1 before the record is read; this generalises
+ * that site rather than inventing something.
+ */
+function exactlyOne<T>(candidates: T[], description: string, show: (item: T) => string): T {
+  assert.equal(
+    candidates.length,
+    1,
+    `expected exactly one ${description}, found ${String(candidates.length)}` +
+      (candidates.length === 0 ? "" : `: ${candidates.map(show).join(" | ")}`),
+  );
+  return candidates[0] as T;
+}
+
+const describeStep = (entry: { file: string; job: string; index: number; step: WorkflowStepShape }): string =>
+  `${entry.file} job ${entry.job} step ${String(entry.index)} ${entry.step.name ?? entry.step.id ?? "<unnamed>"}`;
 
 test("the release workflow is manually dispatched only, authenticates by OIDC, and holds no npm token", () => {
   /* WHY THIS IS ASSERTED AT ALL. The plan requires "it never runs on push"
@@ -1138,14 +1306,22 @@ test("the release workflow is manually dispatched only, authenticates by OIDC, a
      because the correct number of runs of this workflow during M3-P10 is zero.
      A structural assertion is the only witness available for THESE two and is
      labelled as that rather than as a behavioural one. The publish DECISION is
-     a different matter and is executed, two tests below. */
-  const workflow = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+     a different matter and is executed, three tests below. */
+  const workflow = readFileSync(releaseWorkflowPath, "utf8");
   const document = releaseWorkflow();
 
   /* THE TRIGGER SET IS EXACT. Asserting that `push` is absent is weaker than
      asserting the whole set, because a `schedule` or a `pull_request` trigger
      added later would pass the first and is the same defect. */
   assert.deepEqual(Object.keys(document.on), ["workflow_dispatch"]);
+
+  /* THE JOB SET IS EXACT TOO (DV-2). A second job on a release workflow is an
+     ordinary thing to add, and the verifier's mutant was exactly that. This
+     assertion makes adding one a deliberate act that reddens here first; the
+     assertions below ALSO iterate every job, so relaxing this line does not
+     silently reopen the hole. Two guards, because the whole finding is that one
+     guard's scope was narrower than its claim. */
+  assert.deepEqual(Object.keys(document.jobs), ["release"]);
 
   const job = document.jobs["release"];
   assert.ok(job !== undefined, "the release job is not named `release`");
@@ -1175,27 +1351,29 @@ test("the release workflow is manually dispatched only, authenticates by OIDC, a
 });
 
 /* ------------------------------------------------------------------ */
-/* M1: the guard is EVALUATED, not read                                 */
+/* M1: the guard is EVALUATED, and its SUBJECT is identified uniquely   */
 /* ------------------------------------------------------------------ */
 
-test("no Actions expression is interpolated into any run: body of the release workflow", () => {
-  /* HRB-11's MECHANISM, closed at class level rather than at its two instances.
-     `${{ }}` inside a `run:` body is substituted TEXTUALLY before the shell
-     parses the line, so an operator-supplied value is not a string to compare,
-     it is shell source. Measured by the clean-room reviewer against the old
-     version-agreement step: a value of `$declared` made the guard agree with
-     whatever package.json held, and a `$(...)` value executed, inside a job
-     holding `id-token: write`.
+test("no Actions expression is interpolated into any run: body of the release workflow, in any job", () => {
+  /* HRB-11's MECHANISM, closed at class level rather than at its two instances,
+     and DV-2's correction to the SCOPE of that closure. `${{ }}` inside a `run:`
+     body is substituted TEXTUALLY before the shell parses the line, so an
+     operator-supplied value is not a string to compare, it is shell source.
 
-     Fixing the two sites would leave the mechanism live for the next step
-     anybody adds. This asserts the property over EVERY step, so a reintroduced
-     interpolation reddens wherever it is written. Operator input reaches the
-     shell through `env:`, which the runner sets rather than pastes. */
+     ROUND 1 ITERATED `jobs["release"].steps` AND CLAIMED "every step". Round 2
+     iterates every job of this file. `gates.yml` is deliberately NOT included:
+     it carries eight such interpolations, all pre-existing, all on no phase's
+     declaration, and one of them is a real finding the orchestrator now tracks.
+     Widening this assertion to it would redden a file this branch must not
+     touch, so the scope is release.yml and that is a choice with a reason
+     rather than an oversight. */
   const document = releaseWorkflow();
   const offenders: string[] = [];
-  for (const step of document.jobs["release"].steps) {
-    if (typeof step.run === "string" && step.run.includes("${{")) {
-      offenders.push(`${step.name ?? step.id ?? "<unnamed>"}: ${/\$\{\{[^}]*\}\}/.exec(step.run)?.[0] ?? ""}`);
+  for (const [jobName, body] of Object.entries(document.jobs ?? {})) {
+    for (const step of body.steps ?? []) {
+      if (typeof step.run === "string" && step.run.includes("${{")) {
+        offenders.push(`job ${jobName} step ${step.name ?? step.id ?? "<unnamed>"}: ${/\$\{\{[^}]*\}\}/.exec(step.run)?.[0] ?? ""}`);
+      }
     }
   }
   assert.deepEqual(offenders, [], `Actions expressions interpolated into run: bodies: ${offenders.join("; ")}`);
@@ -1203,13 +1381,65 @@ test("no Actions expression is interpolated into any run: body of the release wo
   /* AND THE OPERATOR INPUTS DO REACH THE SHELL, so this is not satisfied by a
      workflow that simply stopped reading them. Both operator-supplied inputs
      are referenced from some step's `env:`. */
-  const envValues = document.jobs["release"].steps.flatMap((step) => Object.values(step.env ?? {}));
+  const envValues = Object.values(document.jobs ?? {}).flatMap((body) =>
+    (body.steps ?? []).flatMap((step) => Object.values(step.env ?? {})),
+  );
   assert.ok(envValues.some((value) => value.includes("inputs.version")), "inputs.version reaches no step's env:");
   assert.ok(envValues.some((value) => value.includes("inputs.confirm")), "inputs.confirm reaches no step's env:");
 });
 
-test("the publish and rehearsal guards are exact complements, so an inverted guard reddens", () => {
-  /* HRB-3. The previous assertion here was `assert.match(publish.if, /dry-run/)`,
+test("exactly one step in any workflow invokes a publish command, and it is the guarded step in the release job", () => {
+  /* DV-1. Round 1 asserted the publish guard by taking the FIRST step whose run
+     body CONTAINED "npm publish" and constraining that step. The verifier
+     inserted a decoy step ahead of it carrying the expected `if:`, deleted the
+     real publish step's `if:` entirely, and all three M1 tests stayed green over
+     a workflow that publishes on every dispatch.
+
+     The correction is two-part and both parts are needed. IDENTIFY by a line
+     that INVOKES a publish command rather than a body that mentions one, so the
+     rehearsal notice's "npm publish did NOT run" is not a candidate. And assert
+     UNIQUENESS rather than taking the first match, so a second publishing step
+     is a finding in its own right instead of being ignored.
+
+     The search is over EVERY job of EVERY workflow file, not over the release
+     job, because a publish added anywhere is the thing being guarded against. */
+  const publishing = allWorkflowSteps().filter((entry) => PUBLISH_COMMAND.test(entry.step.run ?? ""));
+  const publish = exactlyOne(publishing, "step invoking a publish command", describeStep);
+
+  /* AND EXACTLY ONE INVOCATION, NOT MERELY EXACTLY ONE STEP. Found by measuring
+     rather than by design: a mutant adding `yarn publish` to the SAME guarded
+     step left the step count at one and passed. The step really was guarded, so
+     the guard assertion was not wrong; the claim this phase makes is narrower
+     than "the publishing step is guarded", it is that ONE artifact is published
+     ONCE, and a step body with two publish lines is two publishes however well
+     guarded. Counting steps was itself a scope one size too wide, which is this
+     round's own mechanism appearing inside this round's own fix. */
+  const invocations = allWorkflowSteps().flatMap((entry) =>
+    (entry.step.run ?? "").split("\n").filter((line) => PUBLISH_COMMAND.test(line)).map((line) => `${describeStep(entry)}: ${line.trim()}`),
+  );
+  assert.equal(
+    invocations.length,
+    1,
+    `expected exactly one publish invocation across every workflow, found ${String(invocations.length)}: ${invocations.join(" | ")}`,
+  );
+  assert.equal(publish.file, "release.yml");
+  assert.equal(publish.job, "release");
+  assert.equal(String(publish.step.if), "${{ steps.decide.outputs.publish == 'yes' }}");
+
+  /* THE DECOY MUST NOT BE A CANDIDATE, asserted rather than assumed, because the
+     rehearsal notice's presence in the file is what made round 1's substring
+     match survive in the first place. If a future edit made its body invoke a
+     publish, the assertion above would already have failed on the count; this
+     leg names the reason so a reader does not have to reconstruct it. */
+  const rehearsalText = allWorkflowSteps().filter((entry) => (entry.step.run ?? "").includes("npm publish"));
+  assert.ok(
+    rehearsalText.length > publishing.length,
+    "no step MENTIONS npm publish without invoking it, so this test is not exercising the distinction it exists for",
+  );
+});
+
+test("the publish and rehearsal guards are exact complements, and the pre-publish verification is unguarded and earlier", () => {
+  /* HRB-3. The original assertion here was `assert.match(publish.if, /dry-run/)`,
      a substring match on the guard's TEXT, and the clean-room reviewer measured
      three separately inverted guards passing it exit 0, one of which published
      on every dispatch. A test that greps a condition is not a test of the
@@ -1217,28 +1447,45 @@ test("the publish and rehearsal guards are exact complements, so an inverted gua
 
      Exact string equality reddens on every one of those mutants, and asserting
      the two guards as COMPLEMENTS is what stops a rewrite that quietly makes
-     both arms run or neither. */
-  const document = releaseWorkflow();
-  const steps = document.jobs["release"].steps;
-  const publish = steps.find((step) => (step.run ?? "").includes("npm publish"));
-  assert.ok(publish !== undefined, "the workflow has no npm publish step");
-  assert.equal(String(publish.if), "${{ steps.decide.outputs.publish == 'yes' }}");
+     both arms run or neither. Every selection below goes through `exactlyOne`,
+     which is DV-1's correction applied to the sites the verifier did not
+     attack: a second step named "Rehearsal only ..." would have absorbed the
+     round-1 `find` exactly as the decoy did. */
+  const steps = releaseWorkflow().jobs["release"].steps.map((step, index) => ({
+    file: "release.yml",
+    job: "release",
+    index,
+    step,
+  }));
 
-  const rehearsal = steps.find((step) => (step.name ?? "").startsWith("Rehearsal only"));
-  assert.ok(rehearsal !== undefined, "the workflow has no rehearsal notice step");
-  assert.equal(String(rehearsal.if), "${{ steps.decide.outputs.publish != 'yes' }}");
+  const publish = exactlyOne(
+    steps.filter((entry) => PUBLISH_COMMAND.test(entry.step.run ?? "")),
+    "publishing step in the release job",
+    describeStep,
+  );
+  const rehearsal = exactlyOne(
+    steps.filter((entry) => (entry.step.name ?? "").startsWith("Rehearsal only")),
+    "rehearsal notice step",
+    describeStep,
+  );
+  const preflight = exactlyOne(
+    steps.filter((entry) => (entry.step.name ?? "").startsWith("Install and RUN the packed artifact")),
+    "pre-publish verification step",
+    describeStep,
+  );
+
+  assert.equal(String(publish.step.if), "${{ steps.decide.outputs.publish == 'yes' }}");
+  assert.equal(String(rehearsal.step.if), "${{ steps.decide.outputs.publish != 'yes' }}");
 
   /* THE PRE-PUBLISH VERIFICATION CARRIES NO GUARD AT ALL (HRB-5). A rehearsal
      that skips the one check which installs and runs the artifact is a
      rehearsal that cannot catch what it exists for. */
-  const preflight = steps.find((step) => (step.name ?? "").startsWith("Install and RUN the packed artifact"));
-  assert.ok(preflight !== undefined, "the workflow does not install and run the artifact before publishing");
-  assert.equal(preflight.if, undefined, "the pre-publish verification is conditional; a rehearsal must run it too");
+  assert.equal(preflight.step.if, undefined, "the pre-publish verification is conditional; a rehearsal must run it too");
 
   /* AND IT COMES BEFORE THE PUBLISH. Order is the whole finding: the same step
      after the publish can only report the damage. */
   assert.ok(
-    steps.indexOf(preflight) < steps.indexOf(publish),
+    preflight.index < publish.index,
     "the artifact is installed and run AFTER the publish, which is the defect HRB-5 names",
   );
 });
@@ -1261,8 +1508,17 @@ test("the publish decision script is EXECUTED against a table of inputs, and onl
      step it made the version check agree with whatever package.json held; here
      it must be eight literal characters that match nothing. */
   const document = releaseWorkflow();
-  const decide = document.jobs["release"].steps.find((step) => step.id === "decide");
-  assert.ok(decide !== undefined, "the workflow has no step with id `decide`");
+  /* `exactlyOne` HERE TOO, and this site is why the correction is a helper
+     rather than three edits. A `find` on `step.id === "decide"` is the same
+     first-match shape the verifier defeated, one field along: YAML does not stop
+     two steps carrying the same id, and the second would be silently ignored. */
+  const decide = exactlyOne(
+    document.jobs["release"].steps
+      .map((step, index) => ({ file: "release.yml", job: "release", index, step }))
+      .filter((entry) => entry.step.id === "decide"),
+    "step with id `decide`",
+    describeStep,
+  ).step;
   assert.ok(typeof decide.run === "string" && decide.run.length > 0, "the decide step has no run body");
 
   const laboratory = mkdtempSync(join(tmpdir(), "tiphys-decide-"));

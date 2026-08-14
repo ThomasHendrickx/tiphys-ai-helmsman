@@ -734,7 +734,9 @@
   "license-gate-reads-the-installed-tree-optional": "an OPTIONAL production dependency is inventoried, and an unlicensed one reddens",
   "license-gate-reads-the-installed-tree-nested": "a package NESTED by a version conflict is inventoried under its own path, and a prohibited licence there reddens",
   "license-gate-lock-and-disk-cross-check": "a package on disk that npm did not install is a finding, and an absent lock is a finding rather than an empty inventory",
-  "release-workflow-no-expression-in-run-body": "no Actions expression is interpolated into any run: body of the release workflow",
-  "release-publish-guard-exact-complements": "the publish and rehearsal guards are exact complements, so an inverted guard reddens",
-  "release-publish-decision-executed": "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes"
+  "release-workflow-no-expression-in-run-body": "no Actions expression is interpolated into any run: body of the release workflow, in any job",
+  "release-publish-guard-exact-complements": "the publish and rehearsal guards are exact complements, and the pre-publish verification is unguarded and earlier",
+  "release-publish-decision-executed": "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes",
+  "release-publish-identified-uniquely": "exactly one step in any workflow invokes a publish command, and it is the guarded step in the release job",
+  "license-gate-disk-walk-sees-every-container": "the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding"
 }
