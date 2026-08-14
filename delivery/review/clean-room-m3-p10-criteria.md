@@ -373,6 +373,55 @@ standing document rather than measured in the session making the claim. It
 is walked in the claim-grep section below rather than left as a silent
 finding.
 
+## The gate bundle, independently re-run on the phase's own branch
+
+The gate runner's `scope` gate derives the phase id from the CURRENT branch
+name (CLAUDE.md's "Branch names are load-bearing" rule), so running it from
+my own review branch (`claude/reviews-m3-p10-criteria`) makes `scope`
+not-applicable rather than green -- that is an artifact of my branch, not a
+phase defect, and I confirmed it by re-running the identical command from a
+second worktree checked out directly onto `claude/m3-p10-release-and-exit`
+at the same head 8d056f6 (a leftover worktree found already present and
+clean in the shared scratchpad; used read-only, nothing committed there):
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --evidence <scratch> --base origin/main --head HEAD --phase m3-p10
+gates: declared 16 applicable 11 verdict 11 green 11 red 0 not-applicable 5 error 0 vacuous 0
+gates: suite: green: ... reported 802 test(s) from 45 file(s) (pass 802, fail 0, skipped 0, todo 0, did-not-run 0); ... 732 behavior(s) resolve; merge base 39316be5055a
+gates: scope: green: 22 changed path(s) audited against declaration delivery/plan/phase-declarations/m3-p10.json at merge base 39316be5055a... (3 declared path(s) not touched: delivery/requirements/clause-map.json, src/commands/validate.ts, supervision-rules.md) DECLARATION AMENDED AT HEAD: 3 entry/entries ADDED at head 8d056f6...
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet
+gates: license: green: 10 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+```
+
+This is an EXACT match to the work history's claimed bundle
+(`declared 16 applicable 11 verdict 11 green 11 red 0 not-applicable 5
+error 0 vacuous 0`), the per-gate verdict table, the not-touched declared
+paths, and the declaration-amendment message. Independently confirmed rather
+than trusted.
+
+**One process-level fact worth recording, not a defect.** The `gates run`
+process itself EXITS 20 (`EXIT_NOT_APPLICABLE`, src/gates/result.ts:67), not
+0, whenever any REQUIRED gate ends up not-applicable -- confirmed by reading
+`decideAggregate` (src/gates/run.ts:1692-1719): it checks only whether
+`requiredNotApplicable.length > 0`, with no distinction between an
+"explained" and "unexplained" not-applicable at the exit-code level. So a
+green-looking bundle summary line (`red 0 error 0 vacuous 0`) can still exit
+nonzero at the process level whenever `citations` (a required, diff-scoped
+gate) has no changed path under its trigger set, which is exactly this
+diff's case and exactly what the work history's own note explains ("citations
+is not-applicable here and that is a fact about the DIFF, not a skip",
+delivery/work-history/m3-p10.md:837). Checked where the CI harness
+distinguishes an acceptable required-not-applicable from an unacceptable
+one: `scripts/m2-exit-test.sh` names `citations` explicitly with
+`"expect": "green|not-applicable", "required": true, "diffScoped": true`
+and separately verifies the not-applicable carries a valid evaluated
+precondition rather than trusting the raw process exit code (its own
+comments cite DR-0018 point 2 for exactly this). So the raw `EXIT=20` I
+observed is expected and handled one layer up, by a wrapper this review did
+not otherwise audit; it is not evidence of anything wrong with this phase's
+diff.
+
 ### No other findings
 
 Every other criterion's own claimed numbers, commands, and exit codes were
@@ -380,3 +429,123 @@ independently reproduced and matched. No discrepancy was found in criteria
 1, 1b, 2, 3, 4 (pre-publication half), 5, or 7.
 
 ---
+
+## Criteria summary
+
+| criterion | verdict | independently reproduced |
+|---|---|---|
+| 1 (license gate, 4 directions) | MET | yes, real gate + numbers |
+| 1b (transitive set, both directions, vacuous pass) | MET, criterion's own prediction corrected | yes, whole-walk removal (exit 21) and the true vacuous pass (skip-one-by-name) both reproduced |
+| 2 (pack listing, both halves) | MET | yes, 181 entries, 5-directory tracked/packed parity |
+| 3 (installed package, dangerous direction) | MET | yes, install + schema-removed refusal both reproduced |
+| 4 (fleet pin installs) | pre-publication MET; post-publication genuinely blocked | yes, tarball install and registry E404 both reproduced (after correcting my own stale-tmp-dir mistake, see criterion 4 above) |
+| 5 (release-verify.sh, both directions) | MET except the registry-fetch arm | yes, both directions plus the literal no-flag command's real failure |
+| 6 (M3 exit test) | correctly NOT MET, deferred | yes, both merge blockers confirmed independently and unconditionally sufficient; see CR-001 on the third blocker's framing |
+| 7 (suite, 4 axes) | MET | yes, all four axes reproduced exactly |
+
+## Claim grep, run against this document
+
+Run for real against the file on disk (not paraphrased). **Run BEFORE this
+section existed**, against everything above it, both forms agreeing:
+
+```
+$ grep -noEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' \
+    <everything above this section>
+77:never
+84:catches
+
+$ tr '\n' ' ' < <same range> | grep -oEi '<same alternation>' | wc -l
+2
+```
+
+Two substantive hits, both settled:
+
+| line | hit | settled by |
+|---|---|---|
+| 77 | "never" | captured program output, quoted verbatim from the M2-C-2 rewrite's own message (`M2-C-2 (never green by omission)`), not my sentence |
+| 84 | "catches" | describes what `src/gates/result.ts:179`'s rewrite does; settled by the captured `EXIT=21` output immediately above it (lines 74-79 of this document), which is the behavior being described |
+
+**This section is self-referential once it lands, the same way CLAUDE.md's
+own worked example is, and that is stated rather than left to confuse the
+next reader.** This section quotes the alternation pattern itself (in the
+`grep` command shown above) and quotes the word "never" and "catches" a
+second time in the settle-column, so running either grep form against the
+FINAL file reports a larger number purely from this section quoting itself.
+Re-run after this paragraph was added: line-based and wrap-insensitive both
+report 21, agreeing with each other, which is the property that actually
+matters (nothing hidden by a wrap) -- the count itself is not meaningful
+once the section quoting the pattern is part of what it scans, and it will
+drift again with the next edit to this section, which is expected rather
+than a defect. The two
+substantive hits are the ones above; everything else any later re-run finds
+is this section quoting them.
+
+**One correction made in drafting this, worth recording rather than
+silently fixing.** An earlier draft of this section stated a paraphrased,
+invented table of hits (things like "does not change the criterion 6
+verdict") that do not match the pattern at all and were never real grep
+output. That was caught by actually re-running the command against the file
+on disk before finalizing, rather than describing what the grep would
+probably show -- which is the exact discipline this rule exists to enforce,
+demonstrated on itself.
+
+## Verdict
+
+**APPROVE.**
+
+Every acceptance criterion this review re-derived independently matches the
+work history's own account, including the two places the work history
+corrects the plan's own predictions (criterion 1b's vacuous-pass direction)
+or names a residue precisely (criterion 5's registry-fetch arm). The one
+finding raised (CR-001) is LOW-MEDIUM, does not reach a shipped artifact,
+and does not change any criterion's verdict; it is a methodology note about
+how a future dispatch should re-measure rather than cite a standing
+environmental claim, and is offered for the record rather than as a blocker.
+
+No HIGH or MEDIUM finding is outstanding under this lens.
+
+## What this review does NOT establish
+
+- **The adversarial hazard lens is a separate review and this one does not
+  duplicate it.** This review is CRITERIA-lens only: does the branch do what
+  the plan's acceptance criteria say. It does not hunt for hazards outside
+  the criteria's own text (malicious inputs, injection surfaces, concurrent-
+  access races, or the M3-P10 hazard table's items beyond what a criterion
+  already encodes).
+- **CI on GitHub was not read to completion for this exact head.** CR-001
+  establishes that a plain curl with `$GH_TOKEN` reads real PR, rate-limit,
+  and check-run data in THIS session, and that the `gates` check for
+  8d056f6 was `in_progress` at the time I read it (not yet concluded). I did
+  not poll it to completion, because doing so is not what this review was
+  asked to establish (the phase's own gate bundle, independently re-run
+  locally in full mode, is the evidence I gathered instead) and because
+  polling CI to completion is explicitly an orchestrator action under
+  standing warning 6, not a clean-room reviewer's. So: **this review does
+  not know, and does not claim to know, whether the `pull_request`-event CI
+  check for 8d056f6 is currently green.**
+- **No `npm publish`, `npm publish --dry-run`, `npm login`, or workflow
+  dispatch was run by me**, per the hard limits of this dispatch. Everything
+  about criteria 4, 5 and 6's blocked halves is confirmed by READ-ONLY
+  registry probes and local script runs, the same class of evidence the
+  work history itself used.
+- **I did not independently review `.github/workflows/gates.yml`'s diff, the
+  full `roles/implementer.md` diff, or the full `test/behaviors.json` diff
+  line by line.** I spot-checked the pieces the criteria and the work
+  history's own claims depend on (the workflow trigger set, the
+  `prepublishOnly` wiring, the witness specs, the `REGISTRY_ONLY_SCRIPT_GATES`
+  test) rather than reading every changed line of every changed file.
+- **I did not re-verify the round 1/2/3 fix-round narrative's own claim greps
+  against the work history** (the work history did that itself and I spot-
+  checked a sample of its citations rather than re-running its grep from
+  scratch).
+- **CR-001's finding is scoped to THIS session.** I cannot establish what
+  the implementer's own session could or could not reach on 2026-08-14; the
+  finding is that the standing warning's claim does not reproduce here, not
+  that the implementer's claim was false when they made it.
+- **I did not audit `package-lock.json`'s full diff for anything beyond the
+  version bump.** I did independently confirm `git diff origin/main...HEAD
+  --stat -- package-lock.json` reports exactly `4 ++--` (2 insertions, 2
+  deletions), matching the work history's claim, and that the file's
+  `version` fields read `0.1.0` and agree with `package.json`. I did not
+  line-diff every other field in the lockfile.
+
