@@ -40,7 +40,6 @@ const MILESTONE = (() => {
   return i !== -1 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : "m3";
 })();
 
-const PHASE_COUNT = 10;
 const STALE_SECONDS = 420;
 const SCRATCH =
   "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad";
@@ -92,8 +91,66 @@ function newestMtime(dir) {
 
 git(["fetch", "-q", "origin", "main"]);
 
+/* THE PHASE SET IS DERIVED, NEVER COUNTED.
+ *
+ * This was `const PHASE_COUNT = 10` until 2026-08-14, and by then M3 had
+ * ELEVEN phases: M3-P11 was added mid-milestone to own the crash-is-not-a-skip
+ * defect. The script printed "9/10 phases merged" with M3-P11 merged and
+ * invisible, because a phase outside the range is not merely uncounted, it is
+ * never examined at all.
+ *
+ * The mechanism is the one binding convention 5 names for append-only
+ * registries: a hard-coded count is a claim about every FUTURE member, and it
+ * is false the moment one is appended. It is the same defect as a test pinning
+ * a row count over `test/behaviors.json`, in the one script whose whole job is
+ * to be the stop condition that cannot be reported around.
+ *
+ * So the set is the UNION of three independent sources, because no single one
+ * covers every phase this repository has had: a declaration on main (M2-P1 has
+ * none; declarations began at M2-P2), a work history on main (a dispatched but
+ * unmerged phase has none there), and a pushed branch (a planned but
+ * undispatched phase has none). A phase counts if ANY of them names it.
+ *
+ * An empty derivation is a FAILURE, not an empty milestone, and it exits
+ * nonzero saying so. Reporting "0/0 merged, nothing left" would be this
+ * script's own false green. */
+function derivePhaseNumbers() {
+  const found = new Set();
+  const harvest = (text, re) => {
+    for (const line of text.split("\n")) {
+      const m = re.exec(line.trim());
+      if (m !== null) found.add(Number.parseInt(m[1], 10));
+    }
+  };
+  harvest(
+    git(["ls-tree", "--name-only", "origin/main", "delivery/plan/phase-declarations/"]),
+    new RegExp(`(?:^|/)${MILESTONE}-p([0-9]+)\\.json$`),
+  );
+  harvest(
+    git(["ls-tree", "--name-only", "origin/main", "delivery/work-history/"]),
+    new RegExp(`(?:^|/)${MILESTONE}-p([0-9]+)\\.md$`),
+  );
+  harvest(
+    git(["branch", "-r", "--list", `origin/claude/${MILESTONE}-p*`]),
+    new RegExp(`^origin/claude/${MILESTONE}-p([0-9]+)-`),
+  );
+  return [...found].sort((a, b) => a - b);
+}
+
+const phaseNumbers = derivePhaseNumbers();
+if (phaseNumbers.length === 0) {
+  process.stderr.write(
+    `orchestrator-next: derived ZERO phases for ${MILESTONE}. That is a broken derivation, ` +
+      `not an empty milestone, and this script will not report "nothing left" on it. ` +
+      `Check that origin/main has delivery/plan/phase-declarations/ and ` +
+      `delivery/work-history/, and that --milestone is spelled as the file prefix.\n`,
+  );
+  process.exit(4);
+}
+const PHASE_COUNT = phaseNumbers.length;
+
 const phases = [];
-for (let n = 1; n <= PHASE_COUNT; n += 1) {
+for (const n of phaseNumbers) {
   const id = `${MILESTONE}-p${n}`;
   const merged = onMain(`delivery/work-history/${id}.md`);
   const branch = `claude/${id}-`;

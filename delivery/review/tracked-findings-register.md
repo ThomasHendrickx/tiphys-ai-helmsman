@@ -253,6 +253,60 @@ M3-P10.
 It is the same family as `describeDrift` below and as HRB-4 above: a comparison
 whose equivalence class is not the one its message quantifies over.
 
+## UNOWNED AND EXPLOITABLE: `gates.yml` interpolates a branch name into a shell
+
+Found by the M3-P10 round-1 delta verifier as DV-8. It is listed here rather
+than left in a work history because that is precisely the finding the verifier
+made against the round: it lived in one document and not in the register that
+exists for it.
+
+`.github/workflows/gates.yml` interpolates `github.head_ref` into a shell inside
+a `$(printf | sed)`. The verifier established three things rather than one:
+
+1. `claude/m3-p1-"$(id)"` is a LEGAL git ref name, so the injection has a
+   carrier;
+2. `on: pull_request` is unfiltered, so the workflow fires for it;
+3. the job declares no `permissions:` key, so it takes the default set rather
+   than a named one.
+
+That is exploitable rather than merely shaped like a risk. It is bounded: this
+repository is public and `pull_request` (not `pull_request_target`) gives a fork
+a read-only token with no secrets, so the reachable harm is what an attacker can
+do INSIDE a runner rather than to the repository's contents. The bound is stated
+because a finding whose blast radius is not stated gets either over-read or
+ignored.
+
+**It is not M3-P10's.** That branch does touch `gates.yml` (round 0 added the
+licence-gate step, so `gates.yml` is on its `filesToTouch`), and it was told not
+to touch this line: a last fix round under a spent cap is not where an unrelated
+security fix belongs. The M3-P10 round-2 implementer nearly wrote that the file
+was outside its declaration, checked, found that false, and corrected it, which
+is why the reason recorded here is the true one.
+
+Reachability under DR-0027: a shell running attacker-chosen text in this
+repository's CI. It reaches a real path and it needs an owner.
+
+## M3-P10, merged carrying these
+
+Full reasoning in `delivery/review/arbitration-m3-p10-addendum.md` on the phase
+branch. Merged at DR-0027's hard two-round cap.
+
+| id | what | why not blocking |
+|---|---|---|
+| DV-3 | `${{ }}` into `actions/github-script`'s `with: script:` is invisible to the interpolation assertion | declared by the round; no such site exists at that head |
+| DV-4 | a zero-dependency tree reads as "run npm ci" when npm install did run | not reachable (3 dependencies) and `scripts/` does not ship |
+| DV-5 | npm puts `dev:true` on the `vendor/x` lock key rather than the `node_modules/x` link key, so a dev `file:` dependency reads as production | not reachable at that head; the shipped set was verified unchanged, 10 of 10 |
+| DV-7 | what the pre-publish step executes is a re-pack, not the published bytes, because `npm publish` repacks | no divergence demonstrated; `npm publish <tarball>` would close it |
+| HRB-4 | `== false` coercion, now a `confirm` string measured failing closed on all nine off-table values | reachability was not established by the reviewer or by either round, and is not claimed now |
+| round-1 residues | the `.npmrc` registry-redirect gap (records do not carry which registry answered); workspaces, npm aliases and `auto-install-peers` untested | gaps in coverage rather than wrong answers at that head |
+
+**The one that is not a finding but is the most important line here: NO
+WORKFLOW HAS BEEN EXECUTED.** Every claim about `release.yml`, from three agents
+across two reviews and a verification, is static analysis of YAML and shell. The
+round-2 implementer named that absence itself. The plan for closing it is a
+REHEARSAL dispatch, which runs every step on a real runner and stops before the
+irreversible action, and it has not happened yet.
+
 ## Carried from before DR-0027
 
 These predate the decision and were already unowned. They are listed so that
