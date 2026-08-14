@@ -719,17 +719,23 @@ type PreconditionOutcome =
  * answer; this one wants a UID-dependent one, and both are now applied to
  * the launcher).
  *
- * HALF B CANNOT BE CLOSED BY WIDENING THIS RULE, because separating an
- * option's VALUE from an operand needs the launcher's own flag grammar, and
- * deciding what another program will do by pattern-matching its input is the
- * trap named above. So it is closed on the OTHER SIDE OF THE SPAWN, where
- * the cost of being wrong has flipped: see `attributionGaps` below. A
- * nonzero exit is only evidence about a command's own semantics if
- * everything the command needed in order to reach its own logic was
- * available, and after a nonzero exit a deliberately OVER-INCLUSIVE scan is
- * the safe direction, because its false positive is a loud `error` an
- * operator can read while its false negative is the silent skip this whole
- * phase exists to abolish.
+ * HALF B IS NOT CLOSED BY WIDENING THIS RULE. This rule hard-refuses BEFORE
+ * the spawn, so a false positive here breaks a precondition that would have
+ * exited 0, and that is a worse direction to be wrong in than any silent skip.
+ * Half B is closed by a SECOND, wider rule (`commandPathCandidates` below)
+ * whose result is consulted only when the exit is nonzero, so an exit of 0
+ * remains its own proof and no working declaration can be affected.
+ *
+ * ------------------------------------------------------------------------
+ * FIX ROUND 2 (M3-P11) CORRECTED THAT SECOND RULE IN TWO WAYS, and the
+ * sentence round 1 wrote here is the one that had to go. Round 1 argued that
+ * after a nonzero exit a deliberately OVER-INCLUSIVE scan is the safe
+ * direction, because its false positive is only a loud `error` an operator
+ * can read. A delta verifier measured that trade and it does not hold:
+ * `decideAggregate` checks `counts.error > 0` before anything else, so one
+ * false error on one conditional gate fails the WHOLE bundle. The two
+ * corrections are documented on `commandPathCandidates` (which elements) and
+ * on `attributionGaps` (which moment).
  */
 export interface CommandRunnability {
   /** False when the command could not have run: this is `error`, not unmet. */
@@ -764,32 +770,131 @@ export function commandPathOperands(command: string[]): string[] {
 }
 
 /**
- * Every argv element SHAPED LIKE A PATH, by the single surviving test from
- * the four-part rule: it contains `/`. Deliberately wider than
- * `commandPathOperands` (no position guard, no whitespace guard, and the
- * launcher is not exempt) and used ONLY after a nonzero exit, where an
- * over-inclusive answer costs a loud refusal and an under-inclusive one
- * costs a wrong verdict. Fix round 1, half B.
+ * Options whose VALUE is CODE and never a path. A closed, explicit list, and
+ * that is the point: it is the one piece of launcher grammar this file claims
+ * to know, it is written down rather than inferred, and anything not in it is
+ * treated as possibly naming a path. `node -e` and `node --eval` are the pair
+ * that matters here, because `credential-token`'s real precondition in
+ * gates.manifest.json:54 is exactly that shape; the others are the same
+ * construct in the launchers a precondition is most likely to use (`sh -c`,
+ * `bash -c`, `python -c`, `perl -e`, `ruby -e`, `node -p`).
+ */
+const CODE_VALUED_OPTIONS: ReadonlySet<string> = new Set([
+  "-e",
+  "--eval",
+  "-p",
+  "--print",
+  "-c",
+  "--command",
+]);
+
+/**
+ * Suffixes that make a DIRECTORY-LESS operand a script path. This is the only
+ * reason `node check.mjs` (fix round 1's declared residue, and the exact
+ * defect class this phase exists to close) is visible at all: it has no `/`,
+ * so the separator test cannot see it. A closed list, deliberately, because
+ * the alternative is dropping the shape test entirely and that breaks a real
+ * declaration: `check-dual-review`'s precondition ends `--precondition .`, and
+ * `.` resolves to a DIRECTORY, which `probeOpenable` calls irregular, which
+ * would make every run of that gate a false `error`. Measured, not assumed.
+ */
+const SCRIPT_SUFFIXES: readonly string[] = [
+  ".mjs",
+  ".cjs",
+  ".js",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".sh",
+  ".bash",
+  ".py",
+  ".rb",
+  ".pl",
+];
+
+/** `scheme://...`, which contains slashes and is never a filesystem path. */
+const URL_SHAPED = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+
+/**
+ * Every argv element that names a PATH THE COMMAND NEEDED, used only to decide
+ * whether a NONZERO exit is attributable to the command's own logic.
  *
- * `/` IS THE ONE GUARD THAT SURVIVES, and it is what keeps this repository's
- * two real `command-exit-zero` declarations working. `credential-token`'s
- * precondition is `node -e "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN
- * === undefined ? 1 : 0)"`: the inline code carries whitespace but NO slash,
- * so it is not path-shaped here and its deliberate exit 1 still means unmet.
- * `check-dual-review`'s is `node scripts/check-dual-review.mjs --precondition
- * .`, whose only slash-bearing element is a real script and whose `.` has no
- * slash. Both were enumerated, not assumed; the derivation is in
+ * ------------------------------------------------------------------------
+ * FIX ROUND 2 (M3-P11) REWROTE THIS RULE, AND WHY IS THE WHOLE POINT.
+ *
+ * Fix round 1 defined it as "contains `/`", at any position, launcher
+ * included. A delta verifier measured what that costs
+ * (delivery/verification/m3-p11-fix-round-1.md, findings 2a and 2b) and the
+ * cost is larger than round 1's own note conveyed: `decideAggregate` checks
+ * `counts.error > 0` FIRST, so ONE false error on ONE conditional gate fails
+ * the ENTIRE bundle. An honest, correctly written precondition could take a
+ * consumer's whole delivery down. That is a worse failure than the silent
+ * skip this phase set out to abolish, because a silent skip is wrong and
+ * quiet while this is wrong and total.
+ *
+ * THE MECHANISM: "contains a slash" was being used as a proxy for "is a path
+ * operand", and it is neither necessary nor sufficient.
+ *
+ *   NOT SUFFICIENT: inline code (`process.exit(existsSync("/marker")?0:1)`),
+ *   a URL, an `--opt=/value` pair, a date (`2026/08/14`), a regex and plain
+ *   division all contain `/` and none of them is a path.
+ *
+ *   NOT NECESSARY: `node check.mjs` names a real script with no `/` in it.
+ *
+ * So the rule now tests four things instead of one. An element at index >= 1
+ * is a path this command needed when ALL FOUR hold:
+ *
+ *   1. it does not itself begin with `-`. An option is not an operand, and
+ *      `--out=/tmp/x` is an option carrying a value, not a path: probing the
+ *      whole element was a GUARANTEED false error for every `--opt=/path`
+ *      form, since no file is ever named `--out=/tmp/x`.
+ *   2. the element before it is not in `CODE_VALUED_OPTIONS`. This is the
+ *      `node -e` case, and it is the one measured in finding 2a.
+ *   3. it is not URL-shaped.
+ *   4. it either contains `/`, or it carries a `SCRIPT_SUFFIXES` suffix and
+ *      no whitespace. The second disjunct is new in round 2 and is what
+ *      closes the bare-operand residue.
+ *
+ * The launcher (index 0) is deliberately NOT in this set. It is already
+ * probed, with the executable conditions on top, by `probeCommandRunnable`
+ * before the spawn, so including it here only duplicated that work.
+ *
+ * WHAT THIS RULE STILL GETS WRONG, stated rather than left to be discovered.
+ * A FALSE ERROR remains reachable for an element that is not a path, is not
+ * an option's value, and either contains `/` or ends in a script suffix: a
+ * bare date operand (`mytool 2026/08/14`), an operand-position regex, and a
+ * value passed to an option that takes a non-path value NOT in
+ * `CODE_VALUED_OPTIONS` (`awk -v expr=a/b`). A SILENT SKIP remains reachable
+ * for an operand with no `/` and no known suffix (`node check`, an
+ * extensionless script), for a path named through an environment variable or
+ * produced by a shell, and for an `--opt=/path` pair, which rule 1 now
+ * declines to probe. Both lists are shorter than round 1's; neither is empty.
+ * Full accounting, with the enumeration that produced it, in
  * delivery/work-history/m3-p11.md.
- *
- * WHAT THIS STILL DOES NOT COVER, stated here rather than left to be found:
- * an operand with no `/` in it (`node script.mjs` from the command's own
- * cwd) is invisible to this scan for the same reason `.` and `src` must be,
- * and an element that is inline code CONTAINING a slash will be treated as a
- * path and produce a loud false `error` on the nonzero arm. Both are
- * recorded in the work history as accepted, declared costs of failing closed.
  */
 export function commandPathCandidates(command: string[]): string[] {
-  return [...new Set(command.filter((element) => element.includes("/")))];
+  const candidates: string[] = [];
+  for (let index = 1; index < command.length; index += 1) {
+    const element = command[index] as string;
+    const previous = command[index - 1] as string;
+    if (element.startsWith("-")) {
+      continue;
+    }
+    if (CODE_VALUED_OPTIONS.has(previous)) {
+      continue;
+    }
+    if (URL_SHAPED.test(element)) {
+      continue;
+    }
+    const named =
+      element.includes("/") ||
+      (!/\s/.test(element) && SCRIPT_SUFFIXES.some((suffix) => element.endsWith(suffix)));
+    if (!named) {
+      continue;
+    }
+    candidates.push(element);
+  }
+  return [...new Set(candidates)];
 }
 
 /**
@@ -896,19 +1001,54 @@ export function probeCommandRunnable(
 }
 
 /**
- * After a NONZERO exit, every path-shaped argv element this process cannot
- * open, with the reason. Empty means the nonzero exit is ATTRIBUTABLE to the
- * command's own logic; non-empty means it is not, and M2-C-3 says a check
- * that cannot reach a verdict fails closed rather than guessing one.
+ * Every path-shaped argv element this process cannot open, with the reason.
+ * Empty means a nonzero exit is ATTRIBUTABLE to the command's own logic;
+ * non-empty means it is not, and M2-C-3 says a check that cannot reach a
+ * verdict fails closed rather than guessing one.
  *
- * This runs only on the nonzero arm. An exit of 0 is its own proof that the
- * command ran, so nothing is scanned there and no declaration that succeeds
- * can be affected by this at all.
+ * FIX ROUND 2 MOVED THE CALL SITE, and the move is the fix for a second
+ * mechanism, independent of which elements are scanned. Round 1 ran this
+ * AFTER the spawn, on the nonzero arm only. The question it answers is "did
+ * the command have what it needed IN ORDER TO RUN", which is a question about
+ * the moment BEFORE the spawn, and answering it from the filesystem AFTER the
+ * spawn reads the command's own effects back as evidence about its inputs. A
+ * precondition script that legitimately decides "unmet" and deletes itself as
+ * its last act (a one-shot or bootstrap script) was therefore reported
+ * `error`, deterministically, no timing window needed: measured in
+ * delivery/verification/m3-p11-fix-round-1.md as finding 2b.
+ *
+ * So the scan now runs BEFORE the spawn and its result is CARRIED. The exit
+ * code still decides whether the result is consulted: an exit of 0 is its own
+ * proof that the command ran, so no declaration that succeeds can be affected
+ * by this at all, which is the property round 1 established and round 2 keeps.
  */
-function attributionGaps(command: string[], cwd: string): string[] {
+export function attributionGaps(command: string[], cwd: string): string[] {
   const gaps: string[] = [];
   for (const element of commandPathCandidates(command)) {
     const absolute = isAbsolute(element) ? element : resolve(cwd, element);
+    // A DIRECTORY IS A PATH, and this scan must not say otherwise. Round 2
+    // found this by enumeration rather than by argument: this repository's OWN
+    // `scope` gate is declared as
+    // `node src/gates/scope.ts --declarations delivery/plan/phase-declarations`
+    // (gate-registry.yaml:126), whose last element is a directory that exists,
+    // is exactly what the command wants, and which `probeOpenable` refuses as
+    // "not a regular file". That gate has no `command-exit-zero` precondition,
+    // so nothing was breaking today, but it is a real declared counter-example
+    // to the regular-file question being the right one HERE. The pre-spawn
+    // runnability probe keeps asking the stricter question, because there the
+    // element is a script the LAUNCHER is about to open.
+    const kind = runStep(`examining ${absolute}`, () => statSync(absolute));
+    if (kind.ok && kind.value.isDirectory()) {
+      const enterable = runStep(`entering ${absolute}`, () =>
+        accessSync(absolute, fsConstants.R_OK | fsConstants.X_OK),
+      );
+      if (!enterable.ok) {
+        gaps.push(
+          `${element} is a directory this process cannot read or enter (resolved to ${absolute})`,
+        );
+      }
+      continue;
+    }
     const openable = probeOpenable(element, absolute, false);
     if (!openable.ok) {
       gaps.push(openable.reason);
@@ -1070,6 +1210,11 @@ function evaluatePrecondition(
         ` (this is NOT not-applicable: nothing was evaluated, M2-C-3)`,
     };
   }
+  // FIX ROUND 2, MECHANISM B. Taken HERE, before the spawn, and carried.
+  // "Did this command have what it needed" is a question about the state the
+  // command was launched into, and the filesystem after it has run is a
+  // different subject. Consulted only on the nonzero arm, below.
+  const gapsAtSpawnTime = attributionGaps(command, cwd);
   const result = spawnSync(command[0] as string, command.slice(1), {
     cwd,
     encoding: "utf8",
@@ -1090,24 +1235,23 @@ function evaluatePrecondition(
   }
   const met = result.status === 0;
   if (!met) {
-    // FIX ROUND 1, HALF B. Reading this nonzero exit as "evaluated and unmet"
-    // asserts that the command reached its own logic. That assertion is only
-    // sound if everything the command needed in order to get there was
-    // available, and the pre-spawn probe establishes that for a PROPER SUBSET
-    // of the path-shaped elements (an operand after an option, or one
-    // carrying whitespace, is skipped there by design, because separating an
-    // option's value from an operand needs the launcher's flag grammar).
-    // Here the cost of being wrong has flipped, so the scan is deliberately
-    // over-inclusive: every `/`-bearing element, whatever its position.
-    const gaps = attributionGaps(command, cwd);
-    if (gaps.length > 0) {
+    // FIX ROUND 1, HALF B, AS CORRECTED BY ROUND 2. Reading this nonzero exit
+    // as "evaluated and unmet" asserts that the command reached its own logic.
+    // That assertion is only sound if everything the command needed in order
+    // to get there was available AT THE MOMENT IT WAS LAUNCHED, which is what
+    // `gapsAtSpawnTime` records. The pre-spawn runnability probe establishes
+    // the same thing for a PROPER SUBSET of the elements (it declines to look
+    // at an option's value at all, and it hard-refuses rather than carrying a
+    // result), so this wider, carried scan is what covers the rest.
+    if (gapsAtSpawnTime.length > 0) {
       return {
         kind: "error",
         reason:
           `precondition ${id} command ${command.join(" ")} exited ${String(result.status)}, ` +
           `and that exit CANNOT BE ATTRIBUTED to an evaluated precondition: ` +
-          `${String(gaps.length)} path-shaped argv element(s) cannot be opened by this process: ` +
-          `${gaps.join("; ")}` +
+          `${String(gapsAtSpawnTime.length)} path-shaped argv element(s) could not be opened by ` +
+          `this process when the command was launched: ` +
+          `${gapsAtSpawnTime.join("; ")}` +
           ` (this is NOT not-applicable: nothing was established, M2-C-3. If such an element is ` +
           `not a path, give the command a form in which it is not path-shaped)`,
       };
