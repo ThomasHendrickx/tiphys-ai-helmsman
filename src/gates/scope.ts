@@ -118,6 +118,17 @@ import type { GateResultFields, GateStatus } from "./result.ts";
  * separate pull request. It is a trade, not a free improvement, and a
  * reviewer who ignores the printed line gets no protection from it at all.
  *
+ * FIX ROUND 1 STRENGTHENED THE VISIBLE HALF THREE WAYS, because a hard
+ * control relaxed into a visible one is only as good as the visibility, and
+ * two clean-room reviewers found the visibility defective in three
+ * independent places. The note now says when an addition is a DIRECTORY
+ * PREFIX rather than a single file (M-1); `tiphys gates run` relays every
+ * gate row rather than non-green ones only, so the note reaches stdout on
+ * the GREEN arm, which is the only arm this is about (C-1); and a phase
+ * branch that touches any path under the declarations directory other than
+ * its own declaration is RED, so the removal refusal is no longer scoped to
+ * one file while the grant can reach every file (C-2).
+ *
  * RENAMES AND DELETIONS (criteria 3 and 4). `git diff --name-status`
  * reports a rename as one line carrying both the old and the new path; this
  * module treats a rename or copy as touching BOTH names, so an old path
@@ -637,6 +648,27 @@ function compareDeclarations(
   return { added: added.sort(), removed: removed.sort() };
 }
 
+/**
+ * One added entry, rendered for the line a reviewer actually reads.
+ *
+ * FIX ROUND 1, finding M-1. `isAllowed` above treats a trailing slash as a
+ * DIRECTORY PREFIX matching every path beneath it, so `filesToTouch src/`
+ * grants scope over an entire tree, present and future. Printed by the
+ * unannotated diff it was a string the same shape and roughly the same
+ * length as a single-file addition, and change B's whole protection is a
+ * human scanning that line for something anomalous. Disclosure that does not
+ * distinguish "one file" from "everything under this tree" is not disclosure
+ * at the strength the refusal it replaced had.
+ *
+ * The delta itself stays unannotated data (`scope-audit.json` records the
+ * raw entries); the annotation is applied where the sentence is composed.
+ */
+function describeAddition(entry: string): string {
+  return entry.endsWith("/")
+    ? `${entry} (DIRECTORY PREFIX: grants every current and future path under it, not one file)`
+    : entry;
+}
+
 /* -------------------------------------------------------------------- */
 /* Emitting the gate's own record (M2-C-6: --result opened through the   */
 /* delivered primitive, same pattern as src/commands/gates.ts's emit()). */
@@ -959,6 +991,34 @@ export function main(argv: string[]): number {
       ]),
     ];
 
+    // FIX ROUND 1, finding C-2. The removal refusal above reads exactly ONE
+    // file, `<declarationsDir>/<phase>.json`, on both sides. Every other
+    // phase's declaration is, to this gate, an ordinary path: allow it into
+    // scope by any route and the branch may NARROW it, with no delta check at
+    // all, and the narrowing lands on main and governs that phase's later
+    // audit. Change B made that reachable without a separate merged pull
+    // request, which is the friction it was written to remove and was also
+    // the review point. Measured green in a scratch repository by a clean-room
+    // reviewer before this round.
+    //
+    // The rule is a property of the DIRECTORY, not of the route that granted
+    // access, so it covers a directory-prefix addition, an explicitly listed
+    // foreign declaration, and a grant that was already in the merge base
+    // alike. It is deliberately blunt: ANY touched path under the
+    // declarations directory other than this phase's own declaration is red,
+    // including a non-declaration file such as that directory's README, which
+    // a phase branch has no business editing either. Paperwork branches do
+    // not match the phase-branch pattern, so this gate is not applicable to
+    // them and they remain the place such edits are made.
+    const declarationsPrefix = `${declarationsDir.replace(/\/+$/, "")}/`;
+    const foreignDeclarations = [
+      ...new Set(
+        touched
+          .map((entry) => entry.path)
+          .filter((path) => path.startsWith(declarationsPrefix) && path !== declarationPath),
+      ),
+    ].sort();
+
     const violations = [
       ...new Set(
         touched
@@ -997,6 +1057,7 @@ export function main(argv: string[]): number {
           touchedPaths: touched,
           allowed,
           violations,
+          foreignDeclarations,
           underTouched,
         },
         null,
@@ -1013,17 +1074,53 @@ export function main(argv: string[]): number {
     // old hard red or an honest named note. `emit` writes `detail` to stdout,
     // so putting it here is what makes it a printed line rather than only a
     // field in a record somebody might read.
+    //
+    // FIX ROUND 1, findings C-1 and M-1. Two things were wrong with the note
+    // as first written, and both are the same mechanism: a compensating
+    // control is worth what it is READ at, and this one was weaker in two
+    // independent ways than the hard refusal it replaced.
+    //
+    //   M-1, WHAT IS GRANTED WAS NOT LEGIBLE. A directory prefix printed
+    //   exactly like a single file. `describeAddition` now says which it is.
+    //
+    //   C-1, THE NOTE DID NOT REACH THE READER on the green arm, which is
+    //   the only arm criterion 9 is about, because `tiphys gates run` printed
+    //   non-green rows only. That half is fixed in src/commands/gates.ts,
+    //   which now relays EVERY row; it is named here so the next reader of
+    //   this note knows its delivery depends on a second file.
+    const directoryPrefixCount = delta.added.filter((entry) => entry.endsWith("/")).length;
     const amendmentNote =
       delta.added.length > 0
         ? ` DECLARATION AMENDED AT HEAD: ${String(delta.added.length)} entry/entries ADDED at ` +
           `head ${actualHeadResult.sha} that are absent from the merge-base declaration, allowed ` +
-          `and NAMED here for a reviewer to sign off (this gate does not sign them off): ` +
-          `${delta.added.join(", ")}.`
+          `and NAMED here for a reviewer to sign off (this gate does not sign them off)` +
+          (directoryPrefixCount > 0
+            ? `, ${String(directoryPrefixCount)} of them a DIRECTORY PREFIX rather than a single file`
+            : "") +
+          `: ${delta.added.map(describeAddition).join(", ")}.`
         : "";
     const underTouchNote =
       underTouched.length > 0
         ? ` (${String(underTouched.length)} declared path(s) not touched: ${underTouched.join(", ")})`
         : "";
+
+    if (foreignDeclarations.length > 0) {
+      return emit(resultPath, {
+        ...shared,
+        status: "red",
+        units,
+        endedAt: now(),
+        detail:
+          `this branch changes ${String(foreignDeclarations.length)} path(s) under ` +
+          `${declarationsPrefix} that are not its own declaration ${declarationPath}: ` +
+          `${foreignDeclarations.join(", ")}; a phase branch may ADD to its OWN declaration and ` +
+          "nothing else here, because the removal refusal reads only this phase's file and a " +
+          "change to another phase's declaration is therefore unchecked and lands on main " +
+          "governing that phase's later audit" +
+          `${underTouchNote}${amendmentNote}`,
+        evidence,
+      });
+    }
 
     if (violations.length > 0) {
       return emit(resultPath, {

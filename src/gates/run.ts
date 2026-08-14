@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
+  accessSync,
+  constants as fsConstants,
   lstatSync,
   mkdirSync,
   renameSync,
@@ -682,6 +684,52 @@ type PreconditionOutcome =
  * quiet `not-applicable`. The cost of the rule being wrong about an element
  * is a loud refusal an operator can read and fix; the cost of the old
  * behaviour was a skip nobody could see.
+ *
+ * ------------------------------------------------------------------------
+ * FIX ROUND 1 (M3-P11), AND THE MECHANISM IT CLOSES.
+ *
+ * As first written, the paragraphs above established SOME of the
+ * preconditions of running and then let the exit code decide. That is one
+ * mechanism with two independent halves, and a clean-room hazard reviewer
+ * reproduced BOTH of them end to end through the packed CLI as a wrong
+ * verdict (`not-applicable` for a command that crashed), which is the exact
+ * defect this phase exists to close, surviving inside its own fix:
+ *
+ *   HALF A, the CONDITIONS tested per examined element were incomplete.
+ *   `classifyEntry` answers "does it exist and is it a regular file". It
+ *   does not answer "may this process OPEN it". A `chmod 000` script is
+ *   present and regular, the probe passed it, `node` launched fine (so
+ *   `spawnSync.error` stayed undefined), the open failed with EACCES, the
+ *   exit was 1, and 1 meant unmet. Existence and type are two of the
+ *   conditions for an open; permission is the third and it was untested.
+ *
+ *   HALF B, the SET of elements examined was a proper subset of the
+ *   path-shaped ones. Rules 2 and 4 above skip an operand that follows an
+ *   option (`node --flag script.mjs`) and one carrying whitespace, and both
+ *   were confirmed to produce the same wrong verdict.
+ *
+ * HALF A IS CLOSED OUTRIGHT, by asking the complete question. A path can be
+ * opened for reading exactly when `access(R_OK)` succeeds, which resolves
+ * every component's traversal permission and the file's own mode in one
+ * call, FOR THE CALLING PROCESS. That last clause is the point: the process
+ * that runs this probe is the process that will spawn the command, so the
+ * calling UID is the right UID to ask about, and `access` is therefore the
+ * correct primitive here even though the pre-existing executable check
+ * deliberately reads mode bits instead (that check wants a UID-independent
+ * answer; this one wants a UID-dependent one, and both are now applied to
+ * the launcher).
+ *
+ * HALF B CANNOT BE CLOSED BY WIDENING THIS RULE, because separating an
+ * option's VALUE from an operand needs the launcher's own flag grammar, and
+ * deciding what another program will do by pattern-matching its input is the
+ * trap named above. So it is closed on the OTHER SIDE OF THE SPAWN, where
+ * the cost of being wrong has flipped: see `attributionGaps` below. A
+ * nonzero exit is only evidence about a command's own semantics if
+ * everything the command needed in order to reach its own logic was
+ * available, and after a nonzero exit a deliberately OVER-INCLUSIVE scan is
+ * the safe direction, because its false positive is a loud `error` an
+ * operator can read while its false negative is the silent skip this whole
+ * phase exists to abolish.
  */
 export interface CommandRunnability {
   /** False when the command could not have run: this is `error`, not unmet. */
@@ -716,15 +764,109 @@ export function commandPathOperands(command: string[]): string[] {
 }
 
 /**
+ * Every argv element SHAPED LIKE A PATH, by the single surviving test from
+ * the four-part rule: it contains `/`. Deliberately wider than
+ * `commandPathOperands` (no position guard, no whitespace guard, and the
+ * launcher is not exempt) and used ONLY after a nonzero exit, where an
+ * over-inclusive answer costs a loud refusal and an under-inclusive one
+ * costs a wrong verdict. Fix round 1, half B.
+ *
+ * `/` IS THE ONE GUARD THAT SURVIVES, and it is what keeps this repository's
+ * two real `command-exit-zero` declarations working. `credential-token`'s
+ * precondition is `node -e "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN
+ * === undefined ? 1 : 0)"`: the inline code carries whitespace but NO slash,
+ * so it is not path-shaped here and its deliberate exit 1 still means unmet.
+ * `check-dual-review`'s is `node scripts/check-dual-review.mjs --precondition
+ * .`, whose only slash-bearing element is a real script and whose `.` has no
+ * slash. Both were enumerated, not assumed; the derivation is in
+ * delivery/work-history/m3-p11.md.
+ *
+ * WHAT THIS STILL DOES NOT COVER, stated here rather than left to be found:
+ * an operand with no `/` in it (`node script.mjs` from the command's own
+ * cwd) is invisible to this scan for the same reason `.` and `src` must be,
+ * and an element that is inline code CONTAINING a slash will be treated as a
+ * path and produce a loud false `error` on the nonzero arm. Both are
+ * recorded in the work history as accepted, declared costs of failing closed.
+ */
+export function commandPathCandidates(command: string[]): string[] {
+  return [...new Set(command.filter((element) => element.includes("/")))];
+}
+
+/**
+ * MAY THIS PROCESS OPEN THIS PATH? The complete question, asked once, so
+ * there is one enumeration of "what opening a file requires" and not one per
+ * call site: it must exist, it must be a regular file, and this process must
+ * be permitted to read it. Fix round 1, half A (finding H-1).
+ *
+ * `requireExecutable` adds the launcher's two extra conditions: the
+ * UID-independent mode-bit test that was already here, and `access(X_OK)`,
+ * which is the UID-dependent one it could not answer.
+ */
+function probeOpenable(
+  display: string,
+  absolute: string,
+  requireExecutable: boolean,
+): { ok: true } | { ok: false; reason: string } {
+  const entry = classifyEntry(absolute);
+  if (entry.kind === "absent") {
+    return { ok: false, reason: `${display} does not exist (resolved to ${absolute})` };
+  }
+  if (entry.kind === "dangling") {
+    return {
+      ok: false,
+      reason: `${display} is a symbolic link whose target does not exist (resolved to ${absolute})`,
+    };
+  }
+  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
+    return { ok: false, reason: entry.reason };
+  }
+  const stat = runStep(`examining ${absolute}`, () => statSync(absolute));
+  if (!stat.ok) {
+    return { ok: false, reason: stat.reason };
+  }
+  const mode = (stat.value.mode & 0o777).toString(8);
+  const readable = runStep(`checking read access to ${absolute}`, () =>
+    accessSync(absolute, fsConstants.R_OK),
+  );
+  if (!readable.ok) {
+    return {
+      ok: false,
+      reason:
+        `${display} exists and is a regular file but is NOT READABLE by this process ` +
+        `(mode ${mode}, resolved to ${absolute}); the command would launch and then fail to ` +
+        "open it, which an exit code cannot be distinguished from a deliberate refusal",
+    };
+  }
+  if (!requireExecutable) {
+    return { ok: true };
+  }
+  if ((stat.value.mode & 0o111) === 0) {
+    return {
+      ok: false,
+      reason: `${display} is not executable (mode ${mode}, resolved to ${absolute})`,
+    };
+  }
+  const executable = runStep(`checking execute access to ${absolute}`, () =>
+    accessSync(absolute, fsConstants.X_OK),
+  );
+  if (!executable.ok) {
+    return {
+      ok: false,
+      reason:
+        `${display} carries an execute bit but is NOT EXECUTABLE by this process ` +
+        `(mode ${mode}, resolved to ${absolute})`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Can this command run at all? See the block comment above for the rule and
  * for what it deliberately does not cover.
  *
  * The launcher is probed only when it names a path (contains `/`); a bare
  * name is a PATH lookup and is left to `spawnSync`'s own `error`, which
  * already reports it, rather than reimplementing PATH resolution here.
- * Executability is read from the mode bits rather than through `access`,
- * because `access(X_OK)` answers a question about the CALLING UID and this
- * check must give the same answer under root as under anyone else.
  */
 export function probeCommandRunnable(
   command: string[],
@@ -745,39 +887,34 @@ export function probeCommandRunnable(
   for (const target of targets) {
     const absolute = isAbsolute(target.path) ? target.path : resolve(cwd, target.path);
     probed.push(target.path);
-    const entry = classifyEntry(absolute);
-    if (entry.kind === "absent") {
-      return {
-        runnable: false,
-        reason: `${target.path} does not exist (resolved to ${absolute})`,
-        probed,
-      };
-    }
-    if (entry.kind === "dangling") {
-      return {
-        runnable: false,
-        reason: `${target.path} is a symbolic link whose target does not exist (resolved to ${absolute})`,
-        probed,
-      };
-    }
-    if (entry.kind === "irregular" || entry.kind === "unexaminable") {
-      return { runnable: false, reason: entry.reason, probed };
-    }
-    if (target.isLauncher) {
-      const executable = runStep(`examining ${absolute}`, () => statSync(absolute));
-      if (!executable.ok) {
-        return { runnable: false, reason: executable.reason, probed };
-      }
-      if ((executable.value.mode & 0o111) === 0) {
-        return {
-          runnable: false,
-          reason: `${target.path} is not executable (mode ${(executable.value.mode & 0o777).toString(8)}, resolved to ${absolute})`,
-          probed,
-        };
-      }
+    const openable = probeOpenable(target.path, absolute, target.isLauncher);
+    if (!openable.ok) {
+      return { runnable: false, reason: openable.reason, probed };
     }
   }
   return { runnable: true, reason: "", probed };
+}
+
+/**
+ * After a NONZERO exit, every path-shaped argv element this process cannot
+ * open, with the reason. Empty means the nonzero exit is ATTRIBUTABLE to the
+ * command's own logic; non-empty means it is not, and M2-C-3 says a check
+ * that cannot reach a verdict fails closed rather than guessing one.
+ *
+ * This runs only on the nonzero arm. An exit of 0 is its own proof that the
+ * command ran, so nothing is scanned there and no declaration that succeeds
+ * can be affected by this at all.
+ */
+function attributionGaps(command: string[], cwd: string): string[] {
+  const gaps: string[] = [];
+  for (const element of commandPathCandidates(command)) {
+    const absolute = isAbsolute(element) ? element : resolve(cwd, element);
+    const openable = probeOpenable(element, absolute, false);
+    if (!openable.ok) {
+      gaps.push(openable.reason);
+    }
+  }
+  return gaps;
 }
 
 function gitLines(
@@ -952,6 +1089,30 @@ function evaluatePrecondition(
     };
   }
   const met = result.status === 0;
+  if (!met) {
+    // FIX ROUND 1, HALF B. Reading this nonzero exit as "evaluated and unmet"
+    // asserts that the command reached its own logic. That assertion is only
+    // sound if everything the command needed in order to get there was
+    // available, and the pre-spawn probe establishes that for a PROPER SUBSET
+    // of the path-shaped elements (an operand after an option, or one
+    // carrying whitespace, is skipped there by design, because separating an
+    // option's value from an operand needs the launcher's flag grammar).
+    // Here the cost of being wrong has flipped, so the scan is deliberately
+    // over-inclusive: every `/`-bearing element, whatever its position.
+    const gaps = attributionGaps(command, cwd);
+    if (gaps.length > 0) {
+      return {
+        kind: "error",
+        reason:
+          `precondition ${id} command ${command.join(" ")} exited ${String(result.status)}, ` +
+          `and that exit CANNOT BE ATTRIBUTED to an evaluated precondition: ` +
+          `${String(gaps.length)} path-shaped argv element(s) cannot be opened by this process: ` +
+          `${gaps.join("; ")}` +
+          ` (this is NOT not-applicable: nothing was established, M2-C-3. If such an element is ` +
+          `not a path, give the command a form in which it is not path-shaped)`,
+      };
+    }
+  }
   const record: PreconditionRecord = {
     id,
     met,

@@ -119,6 +119,35 @@ function parseFlags(args: string[]): Flags | undefined {
   return flags;
 }
 
+/**
+ * One gate's `detail`, made safe to print as ONE line of this stream.
+ *
+ * `singleLine` folds newlines, which was the claim the original comment on
+ * the print loop made ("cannot forge additional `gates:` lines"). A clean-
+ * room hazard reviewer measured that claim as true for `\n` and silently
+ * narrower than it reads: `"a\rb".trim()` only trims the ends, so a bare
+ * carriage return survives into the printed line and can cosmetically
+ * overwrite its start on a real terminal. A gate's `detail` is already-
+ * trusted manifest content rather than an external input, so that is
+ * defense in depth, not a live exploit; it is fixed here because a comment
+ * that claims more than it delivers is the shape this repository keeps
+ * paying for. Every C0 control character and DEL becomes a visible escape,
+ * so nothing in a detail can move the cursor and nothing is silently
+ * dropped either.
+ */
+function printableDetail(detail: string): string {
+  let printable = "";
+  for (const character of singleLine(detail)) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) {
+      printable += `\\x${code.toString(16).padStart(2, "0")}`;
+      continue;
+    }
+    printable += character;
+  }
+  return printable;
+}
+
 function cmdRun(args: string[]): number {
   const flags = parseFlags(args);
   if (flags === undefined) {
@@ -202,19 +231,39 @@ function cmdRun(args: string[]): number {
   // `bin/tiphys.ts`. A verdict a reader has to go and look up is one step
   // better than the skip-that-was-a-crash, not two.
   //
-  // EVERY NON-GREEN ROW, not only the errors. Distinguishing a skip from a
-  // crash is the whole phase, and both are non-green; printing only the
-  // errors would leave the `not-applicable` reason exactly as unreadable as
-  // it was. Green rows are omitted because their detail is a count the line
-  // above already summarises.
+  // EVERY ROW, GREEN INCLUDED. Fix round 1, finding C-1, and the reason the
+  // rule is now "every row" rather than "every row that looks interesting".
   //
-  // Bounded by the gate count, and `singleLine` is applied so one gate's
-  // multi-line detail cannot forge additional `gates:` lines in this stream.
+  // As first written this loop skipped green rows, on the stated ground that
+  // a green detail is a count the summary line above already carries. That
+  // is an ASSUMPTION ABOUT WHAT A GREEN VERDICT CAN CONTAIN, and the scope
+  // gate falsified it in the same pull request: M3-P11 change B relaxed a
+  // HARD refusal (a head-side declaration addition was impossible) into a
+  // VISIBLE one (it is allowed, and NAMED for a reviewer to sign off), which
+  // makes the printed line the entire remaining safeguard. A scope gate
+  // carrying nothing but an amendment is GREEN, so the note reached stdout
+  // only when the gate ALSO had something else to refuse: visible exactly
+  // where the gate already says no, invisible where it is the only refusal
+  // there is. The evidence directory holds it in `summary.json` and the
+  // gate's captured `stdout.txt`, and no workflow in this repository uploads
+  // an artifact, so neither leaves the runner.
+  //
+  // The mechanism, not the instance: a compensating control is worth what it
+  // is READ at, so nothing may decide on a gate's behalf that its own
+  // sentence is not worth relaying. Matching a marker string here would fix
+  // one gate and leave the next author to rediscover this; relaying every
+  // row costs one line per gate and closes the class.
+  //
+  // Bounded by the gate count, and every printed line goes through
+  // `printableDetail` so one gate's detail cannot forge additional `gates:`
+  // lines in this stream, by newline OR by carriage return.
   for (const row of outcome.summary.gates) {
-    if (row.status === "green") {
-      continue;
-    }
-    process.stdout.write(`gates: ${row.id}: ${row.status}: ${singleLine(row.detail)}\n`);
+    const detail = printableDetail(row.detail);
+    process.stdout.write(
+      detail === ""
+        ? `gates: ${row.id}: ${row.status}\n`
+        : `gates: ${row.id}: ${row.status}: ${detail}\n`,
+    );
   }
   const stream = outcome.exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`gates: ${outcome.reason ?? ""}\n`);
