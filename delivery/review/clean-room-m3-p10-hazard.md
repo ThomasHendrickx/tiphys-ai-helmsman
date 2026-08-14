@@ -624,6 +624,68 @@ The step ordering supports the gate: it runs at position 9 of the job, after
 confirms. And it carries no `if:`, so both CI events run it, which is T-009's
 second rule satisfied.
 
+### HRB-11 (MEDIUM, ADDED by this reviewer): the version-agreement refusal is defeated by the value it is given, because the input is interpolated into the shell
+
+**ADDED**: this attack was not on the dispatched list.
+
+**Mechanism.** `${{ inputs.version }}` is substituted TEXTUALLY into two `run:`
+bodies, at .github/workflows/release.yml:102 and
+.github/workflows/release.yml:179. The first is the guard the workflow calls "a
+second pair of eyes on the one irreversible field, not a way to set it"
+(.github/workflows/release.yml:57):
+
+    requested="${{ inputs.version }}"
+    if [ "$declared" != "$requested" ]; then ... exit 1; fi
+
+Because the substitution happens before the shell parses the line, the operator
+is not supplying a STRING to compare, they are supplying SHELL SOURCE.
+
+**Measured**, by reproducing the step body byte for byte in a scratch directory
+whose package.json declares `9.9.9-oops`, and substituting each candidate the
+way GitHub substitutes it:
+
+| value of `inputs.version` | step says | exit |
+|---|---|---|
+| `0.1.0` | refusing, declares 9.9.9-oops, asked for 0.1.0 | 1 |
+| `9.9.9-oops` | agree on 9.9.9-oops | 0 |
+| `$declared` | **agree on 9.9.9-oops** | **0** |
+| `$(touch /tmp/INJECTED-BY-REVIEWER; echo 9.9.9-oops)` | **agree on 9.9.9-oops** | **0** |
+
+The third row is the one that matters most and it is not an exploit: a value of
+`$declared` makes the guard agree with WHATEVER package.json holds, so the
+second pair of eyes reports agreement without ever having compared anything.
+The fourth row shows the same hole reaches command execution; the file it
+created was confirmed present and then removed.
+
+**Which half is measured and which is deduced** (CLAUDE.md:591). MEASURED: the
+shell behaviour of the step body given each substituted text. DEDUCED: that
+GitHub performs `${{ }}` substitution textually into `run:` before execution,
+which is its documented behaviour and the basis of its own script-injection
+hardening guidance. I did not dispatch the workflow, per the hard limits.
+
+**Reachability (DR-0027).** The injected code runs inside a job that holds
+`id-token: write` and that goes on to run `npm publish --provenance`, so it
+runs adjacent to the credential minting. It requires the ability to dispatch
+the workflow, and anyone with that can also push a branch carrying an edited
+workflow and dispatch THAT ref, so the injection grants little privilege that
+is not already held. That is why this is MEDIUM and not HIGH. The
+guard-defeating row needs no attacker at all: it is one plausible value typed
+into a box.
+
+**What would close it.** Pass the input through `env:` and quote it, which is
+the standard hardening and is two lines:
+
+    env:
+      REQUESTED: ${{ inputs.version }}
+    run: |
+      ...
+      if [ "$declared" != "$REQUESTED" ]; then ...
+
+An `env:` value is set by the runner rather than pasted into the script, so
+`$declared` becomes the literal eight characters and the comparison fails, which
+is the behaviour the step's own comment describes. The same change applies at
+.github/workflows/release.yml:179.
+
 ## The claim grep, run against THIS document
 
 Both forms from CLAUDE.md:368 and CLAUDE.md:406, run against this review before
@@ -694,6 +756,7 @@ Each of the nine, settled or restated:
 | HRB-8 | LOW | the release-verify witness's two members both delete the same probe rather than making it answer wrongly |
 | HRB-9 | none (attack refuted) | the ten production licenses verified independently; all permissive, maps exact |
 | HRB-10 | LOW | the pack listing is a function of build state under `--ignore-scripts`; check 5 is green over a code-free listing |
+| HRB-11 | MEDIUM | the version-agreement refusal is shell source, so `$declared` makes it agree with anything (ADDED) |
 
 Three HIGH findings, each with its DR-0027 reachability argument stated in its
 own section: HRB-1 at the paragraph headed "Reachability (DR-0027)", likewise
