@@ -1,0 +1,24 @@
+{
+  "id": "release-publish-decision-executed",
+  "behavior": "release-publish-decision-executed",
+  "tests": [
+    "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          if [ \"$CONFIRM\" = \"$declared\" ]; then",
+      "replace": "          if [ -n \"$CONFIRM\" ]; then"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "if [ \"$declared\" != \"$REQUESTED\" ]; then",
+      "replace": "if [ \"$declared\" != \"${{ inputs.version }}\" ]; then"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

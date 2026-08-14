@@ -20,7 +20,11 @@
     "witness/",
     "delivery/requirements/clause-map.json"
   ],
-  "declaredExtras": [],
+  "declaredExtras": [
+    "package-lock.json",
+    "test/gate-registry.test.ts",
+    "delivery/plan/phase-declarations/m3-p10.json"
+  ],
   "citations": [
     "SC-006",
     "SC-011",

@@ -9,6 +9,23 @@ import {
 import { join, resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
 import { FLEET_DIRS, FLEET_IGNORED } from "../fleet.ts";
+import { readOwnVersion } from "../version.ts";
+
+/**
+ * THE PUBLISHED KERNEL NAME (DR-0008, decided 2026-08-05: public npmjs under
+ * the `@tiphys` scope, `@tiphys/kernel` and `@tiphys/claude-code-plugin`).
+ *
+ * WHY THE NAME IS A CONSTANT AND THE VERSION IS DERIVED, since a reader will
+ * reasonably ask why the two halves of one pin are sourced differently. The
+ * version is the half that changes on every release, and a hardcoded one drifts
+ * silently the first time it is bumped somewhere else, which is exactly the
+ * failure the M1-P2 placeholder was left open against; so it is read from the
+ * running kernel's own `package.json` by the same walk `tiphys version` uses,
+ * and a fleet home is therefore pinned to the kernel that initialized it. The
+ * name is the half DR-0008 fixed permanently, because a published npm name
+ * cannot be taken back, which is why the plan marks that decision costly.
+ */
+export const KERNEL_PACKAGE_NAME = "@tiphys/kernel";
 
 /**
  * The documented deterministic machine identity for fleet-scoped commits
@@ -85,12 +102,24 @@ export function cmdInit(args: string[]): number {
     writeFileSync(join(root, name, ".gitkeep"), "");
   }
   writeFileSync(join(root, "backlog.md"), "# Backlog\n");
+  /* THE FLEET-HOME KERNEL PIN (kernel plan M3, M3-P10 step 3), replacing the
+     M1-P2 placeholder whose own text said the pin "is added at M3 first
+     publish" (kernel plan v1, M1-P2 step 2). The pin is EXACT, with no range
+     prefix: blueprint section 3 makes the npm spine's pin the upgrade
+     mechanism, so a caret here would mean a fleet home silently changed kernel
+     between two `npm install` runs, which is the opposite of what the pin is
+     for. `readOwnVersion()` is the same reader `tiphys version` uses, so the
+     fleet home is pinned to the kernel that initialized it rather than to a
+     number typed here. */
   const fleetPackageJson = {
     name: "tiphys-fleet-home",
     version: "0.0.0",
     private: true,
     description:
-      "Tiphys fleet home stub. The @tiphys/kernel dependency pin is added at M3 first publish (kernel plan v1, M1-P2 step 2).",
+      "Tiphys fleet home. The kernel dependency below is an exact pin; changing it is how this fleet upgrades (blueprint section 3).",
+    dependencies: {
+      [KERNEL_PACKAGE_NAME]: readOwnVersion(),
+    },
   };
   writeFileSync(
     join(root, "package.json"),

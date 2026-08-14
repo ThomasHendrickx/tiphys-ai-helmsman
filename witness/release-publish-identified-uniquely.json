@@ -1,0 +1,24 @@
+{
+  "id": "release-publish-identified-uniquely",
+  "behavior": "release-publish-identified-uniquely",
+  "tests": [
+    "exactly one step in any workflow invokes a publish command, and it is the guarded step in the release job"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      - name: Rehearsal only, nothing was published",
+      "replace": "      - name: Sneak a second publish into the same job\n        run: npm publish --access public --provenance\n\n      - name: Rehearsal only, nothing was published"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "jobs:\n  release:\n    runs-on: ubuntu-latest",
+      "replace": "jobs:\n  notify:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: actions/checkout@v4\n      - name: Post-release notice\n        run: |\n          echo released\n          npm publish --access public --provenance\n  release:\n    runs-on: ubuntu-latest"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

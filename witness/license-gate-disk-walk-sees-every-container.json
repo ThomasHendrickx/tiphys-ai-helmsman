@@ -1,0 +1,31 @@
+{
+  "id": "license-gate-disk-walk-sees-every-container",
+  "behavior": "license-gate-disk-walk-sees-every-container",
+  "tests": [
+    "the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/license-gate.mjs",
+      "find": "    for (const entry of readdirSync(directory, { withFileTypes: true })) {\n      const here = join(directory, entry.name);",
+      "replace": "    for (const entry of readdirSync(directory, { withFileTypes: true })) {\n      if (entry.name.startsWith(\".\")) {\n        continue;\n      }\n      const here = join(directory, entry.name);"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/license-gate.mjs",
+      "find": "      walkDisk(here, `${packagePath}/`, depth + 1);",
+      "replace": "      if (entry.name.startsWith(\"@\")) {\n        walkDisk(here, `${packagePath}/`, depth + 1);\n      }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm install --install-links, spawned by the named test to build a real installed tree",
+    "captures": [
+      "witness/captures/npm-pack-dry-run-json.txt"
+    ],
+    "provenance": "The named test builds its fixture with a real `npm install --install-links` and the gate reads `node_modules/.package-lock.json`, which only npm writes, so the whole test consumes npm's output rather than a hand-drawn model. The cited capture is real npm output from this repository at v0.1.0 and is read by a sibling test in the same file. TWO STRUCTURALLY DIFFERENT MEMBERS AND NEITHER IS THE OTHER SPELLED DIFFERENTLY: member 0 reinstates the dot skip, so the walk never LOOKS at `.hidden` or `.deep`; member 1 restores the `@`-only container rule, so the walk looks at them and refuses to DESCEND. One is a blind spot in what is enumerated, the other in what is followed."
+  }
+}
