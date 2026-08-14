@@ -689,17 +689,29 @@ is the behaviour the step's own comment describes. The same change applies at
 ## The claim grep, run against THIS document
 
 Both forms from CLAUDE.md:368 and CLAUDE.md:406, run against this review before
-submitting it. They agree at NINE occurrences each, so no hit is hidden by a
-line wrap:
+submitting it, and the two ALWAYS agree here, so no hit is hidden by a line
+wrap.
+
+**The whole-document count is self-inflated and the honest number is stated
+rather than the flattering one.** Run over the entire file both forms report 43
+occurrences, because THIS SECTION quotes the pattern itself and quotes each hit
+it settles. Run over everything ABOVE this heading, both forms report 8. Eight
+is the number of substantive hits; 43 is an artifact of documenting the check
+inside the document being checked, which is worth naming because a reader
+comparing this figure to another review's would otherwise be comparing two
+different things.
 
 ```
-$ grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/review/clean-room-m3-p10-hazard.md | wc -l
-9
-$ tr '\n' ' ' < delivery/review/clean-room-m3-p10-hazard.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-9
+$ head -n 688 delivery/review/clean-room-m3-p10-hazard.md > /tmp/pre.md
+$ grep -oEi '<the pattern>' /tmp/pre.md | wc -l
+8
+$ tr '\n' ' ' < /tmp/pre.md | grep -oEi '<the pattern>' | wc -l
+8
 ```
 
-Each of the nine, settled or restated:
+Each hit, settled or restated. Item 2 is listed because the restatement is part
+of the record; it is no longer a hit above this line, which is why the count is
+8 and not 9:
 
 1. `M2-C-2 (never green by omission)` is quoted stdout from the program under
    test, captured in HRB-2. Settled.
