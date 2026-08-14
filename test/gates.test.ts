@@ -9,11 +9,12 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -3500,18 +3501,71 @@ test("a precondition command whose path operand is a directory, and one whose op
  */
 const UNPRIVILEGED_UID = 65534;
 
+/**
+ * Let the dropped-privilege child TRAVERSE INTO this checkout, but only when
+ * the checkout is inside the OS temp directory.
+ *
+ * The red-witness harness scratch-clones the repository under a `mkdtemp`
+ * root, and `mkdtemp` creates its directory 0700, so the unprivileged child
+ * cannot reach the clone at all: it spawns, fails to open the CLI entry, and
+ * writes no record. That looked identical to "the gate reported the wrong
+ * verdict", which is why this is a named helper with a stated bound rather
+ * than a `chmod` inline. The bound is the point: a real checkout under a home
+ * directory is left alone, because widening permissions on somebody's home is
+ * not a thing a test may do, and it is also not needed there.
+ */
+function grantTraversalWhenUnderTmp(path: string): void {
+  const temp = resolve(tmpdir());
+  let current = resolve(path);
+  while (current.startsWith(`${temp}/`)) {
+    chmodSync(current, statSync(current).mode | 0o055);
+    const parent = dirname(current);
+    if (parent === current) {
+      return;
+    }
+    current = parent;
+  }
+}
+
 function runCliUnprivileged(args: string[], worldWritable: string[]) {
   const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
   if (asRoot) {
     for (const path of worldWritable) {
       chmodSync(path, 0o777);
     }
+    grantTraversalWhenUnderTmp(repoRoot);
   }
   return spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
     cwd: repoRoot,
     ...(asRoot ? { uid: UNPRIVILEGED_UID, gid: UNPRIVILEGED_UID } : {}),
   });
+}
+
+/**
+ * The record a gate run must have written, with a failure message that
+ * distinguishes "the verdict was wrong" from "the unprivileged child never
+ * ran", because those two produce the same missing file and only one of them
+ * is a finding about the code under test.
+ */
+function readGateRecord(
+  evidence: string,
+  gate: string,
+  run: { status: number | null; stdout: string; stderr: string },
+): { status: string; detail: string; precondition?: { id: string; met: boolean } } {
+  const path = join(evidence, gate, "result.json");
+  if (!existsSync(path)) {
+    assert.fail(
+      `gate ${gate} wrote no record at ${path}; the run itself did not reach a verdict, ` +
+        `which is an environment failure rather than a wrong verdict. exit=${String(run.status)} ` +
+        `stdout=${run.stdout} stderr=${run.stderr}`,
+    );
+  }
+  return JSON.parse(readFileSync(path, "utf8")) as {
+    status: string;
+    detail: string;
+    precondition?: { id: string; met: boolean };
+  };
 }
 
 test("a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace", () => {
@@ -3602,9 +3656,7 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
         `${name}: the CLI could not be spawned unprivileged: ${String(run.error)}`,
       );
       assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
-      const record = JSON.parse(
-        readFileSync(join(evidence, "p11-attr", "result.json"), "utf8"),
-      ) as { status: string; detail: string };
+      const record = readGateRecord(evidence, "p11-attr", run);
       assert.equal(record.status, "error", `${name} reported ${record.status}: ${record.detail}`);
       assert.notEqual(record.status, "not-applicable");
       assert.match(record.detail, pattern);
@@ -3640,9 +3692,7 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
       [dir],
     );
     assert.equal(honest.error, undefined, String(honest.error));
-    const honestRecord = JSON.parse(
-      readFileSync(join(honestEvidence, "p11-attr", "result.json"), "utf8"),
-    ) as { status: string; detail: string; precondition?: { met: boolean } };
+    const honestRecord = readGateRecord(honestEvidence, "p11-attr", honest);
     assert.equal(honestRecord.status, "not-applicable", honestRecord.detail);
     assert.equal(honestRecord.precondition?.met, false);
     assert.equal(readSummary(honestEvidence).counts.error, 0);
