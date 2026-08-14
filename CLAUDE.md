@@ -799,6 +799,38 @@ Each of these bit someone once. Forward them to every implementer.
    `git status` after build, and `npm test` exit 0 with 106 tests, 106 pass,
    0 fail and 0 SKIPPED, where the default toolchain skips the floor-gated
    ones. Install to a scratch prefix, never over the system Node.
+
+   **AND THE SCRATCH PREFIX HAS A TRAP THAT DEPENDS ON WHERE YOUR CLONE IS,
+   measured 2026-08-14.** `/tmp/claude-0` is `drwx------`, so a process running
+   as an unprivileged uid cannot traverse into it. `runCliUnprivileged` at
+   test/gates.test.ts:3530 drops to exactly such a uid and spawns
+   `process.execPath`, which IS the scratch toolchain when you have put it first
+   on PATH. Same head, same working tree, one variable changed:
+
+   | interpreter | result |
+   |---|---|
+   | the scratch toolchain under `/tmp/claude-0/...` | `spawnSync ... EACCES`, suite exit 1 |
+   | `/opt/node22/bin/node` | that test alone: 1 test, 1 pass, 0 fail |
+
+   The failure is a property of the INTERPRETER'S PATH, not of the branch, and
+   the diagnosis is `namei -m "$(command -v node)"` rather than reading the
+   assertion.
+
+   **Why nobody hit it before, and it is the interesting half.** The test's own
+   helper calls `grantTraversalWhenUnderTmp(repoRoot)`, which opens the
+   traversal chain when the REPO is under `/tmp`, and says nothing about the
+   interpreter. An agent whose worktree is in the scratchpad therefore opens
+   `/tmp/claude-0` incidentally and the interpreter becomes reachable as a side
+   effect. The ORCHESTRATOR's clone is at `/home/user`, so nothing opens it.
+   Three agents reported 809 pass 0 skipped on this exact toolchain while the
+   orchestrator got a hard failure, and both were honest.
+
+   Two consequences. First, a green suite from a scratchpad worktree is not
+   evidence that the same suite is green from a clone elsewhere, which is one
+   more axis on top of standing warning 12's three. Second, the helper granting
+   traversal for the repo and not for the interpreter is a real gap in
+   `test/`, tracked rather than blocking, and it would bite a consumer running
+   from a home directory with a privately-installed Node.
 2. `typescript` is pinned exact. Do not remove `"types": ["node"]` from
    either tsconfig; the strict build cannot resolve Node builtins without it.
 3. `*.tsbuildinfo` is gitignored deliberately; `tsc -b` writes one at the
