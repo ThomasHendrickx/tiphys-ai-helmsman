@@ -686,6 +686,34 @@ An `env:` value is set by the runner rather than pasted into the script, so
 is the behaviour the step's own comment describes. The same change applies at
 .github/workflows/release.yml:179.
 
+**Enumeration of the mechanism, and what it did NOT cover.** Every template
+interpolation in every workflow, so the count is a fact rather than an
+impression:
+
+```
+$ grep -rn '\${{' .github/workflows/ | grep -vE '(if:|uses:|with:|name:)'
+```
+
+Twelve sites. TEN are in `.github/workflows/gates.yml` and TWO are this
+phase's, both in `.github/workflows/release.yml` and both `inputs.version`
+(:102 and :179). Of the ten pre-existing ones, nine interpolate
+`runner.temp`, `github.ref` or a commit sha, which are not operator-supplied
+text. **One is the same shape as this finding and is NOT this phase's**:
+`.github/workflows/gates.yml:233` interpolates `github.head_ref` inside a
+`$(printf ... | sed ...)`, and a git ref name may legally contain `$` and
+parentheses. It is on `main` today (`git show origin/main:.github/workflows/gates.yml`
+shows it at line 204) and this branch does not touch it
+(`git diff origin/main...HEAD -- .github/workflows/gates.yml | grep -c head_ref`
+prints 0). Reported to the orchestrator as a pre-existing item rather than
+charged to M3-P10.
+
+NOT covered by that command: I did not exploit the second site
+(.github/workflows/release.yml:179) separately, having established the
+mechanism at the first; and the grep excludes lines containing `if:`, `uses:`,
+`with:` or `name:`, so an interpolation on a line that also carries one of those
+words would not appear. I read the two workflow files in full and saw none, but
+the command alone does not establish that.
+
 ## The claim grep, run against THIS document
 
 Both forms from CLAUDE.md:368 and CLAUDE.md:406, run against this review before
@@ -794,12 +822,15 @@ why.
 1. **The acceptance criteria were not walked.** That was the parallel
    reviewer's lens by dispatch, and I deliberately did not duplicate it. If
    that reviewer did not walk a criterion, nobody did.
-2. **The whole-suite result is not mine.** I started `npm test` on this head on
-   node v26.6.0 with `dist/` built and did not have its summary block in hand
-   when I wrote this section. CI is the authority I am relying on for suite
-   health: the `gates` job at head 8d056f6 concluded success, reported to me by
-   the orchestrator (I did not read the job myself). I ran individual tests by
-   name throughout, and every control run I did take was green.
+2. **The whole-suite result IS mine and is stated with all three axes**
+   (CLAUDE.md:894 and CLAUDE.md:907, which require the toolchain, the build
+   state and the invocation): `npm test` on node v26.6.0 with `dist/` built, at
+   head 8d056f6, reports **802 tests, 802 pass, 0 fail, 0 SKIPPED**, exit 0,
+   duration 394116.959485ms. I did NOT run the bare `node --test` invocation,
+   which warning 12 records as reporting two more from the tracked sandbox
+   fixture, so I make no claim about that number. CI is the authority for the
+   rest: the `gates` job at head 8d056f6 concluded success, reported to me by
+   the orchestrator (I did not read the job myself).
 3. **Nothing was published, packed for publication, or dispatched.** By the
    dispatch's hard limits I did not run `npm publish` in any form, did not
    authenticate to npm, and did not dispatch the release workflow. So EVERY
