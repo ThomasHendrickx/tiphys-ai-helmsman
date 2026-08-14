@@ -2,21 +2,27 @@
   "id": "release-verify-refuses-contaminated-resolution-path",
   "behavior": "release-verify-refuses-contaminated-resolution-path",
   "tests": [
-    "release-verify refuses to run where the source tree is on the resolution path, naming that path"
+    "release-verify refuses a contaminated resolution path through the real path, through a symlink, and from a parent node_modules"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "scripts/release-verify.sh",
-      "find": "CONTAMINATION=\"$(probe_source_tree)\"\nif [ -n \"$CONTAMINATION\" ]; then",
+      "find": "CONTAMINATION=\"$(probe_contamination)\"\nif [ -n \"$CONTAMINATION\" ]; then",
       "replace": "CONTAMINATION=\"\"\nif [ -n \"$CONTAMINATION\" ]; then"
     },
     {
       "kind": "mutation",
       "file": "scripts/release-verify.sh",
-      "find": "          if (JSON.parse(readFileSync(candidate, \"utf8\")).name === name) {\n            process.stdout.write(candidate);\n            process.exit(0);\n          }",
-      "replace": "          if (false) {\n            process.stdout.write(candidate);\n            process.exit(0);\n          }"
+      "find": "      process.stdout.write(from.resolve(specifier));\n        process.exit(0);",
+      "replace": "      process.stdout.write(\"\");\n        process.exit(0);"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    \"$PREFIX\"/node_modules/*) printf '' ;;\n    *) printf '%s' \"$found\" ;;",
+      "replace": "    \"$PREFIX\"/node_modules/*) printf '' ;;\n    *) printf '' ;;"
     }
   ],
   "deterministic": true,
@@ -26,6 +32,6 @@
     "captures": [
       "witness/captures/release-verify-contaminated-and-clean.txt"
     ],
-    "provenance": "scripts/release-verify.sh is a *.sh that spawns npm and node and records their exit codes, so rule (f)'s shell arm binds it. The capture is the real output of BOTH directions run on 2026-08-14 with npm 11.18.0 and node v26.6.0: the script invoked from the repository root refusing and naming the repository's own package.json, and the script invoked from a clean temporary directory passing and reporting a resolved path inside its install prefix. The named test reads the capture's basename and asserts the refusal names the same path shape rather than a hand-written one. RESIDUE: The clean direction in the capture was run with --tarball, because nothing is published yet (owner action A-7 part 2 is outstanding). So the capture witnesses every step of the script except which artifact npm fetched. The registry arm has NOT been captured and this witness does not claim it has."
+    "provenance": "scripts/release-verify.sh is a *.sh that spawns npm and node and records their exit codes, so rule (f)'s shell arm binds it. The capture is real output of both directions on 2026-08-14 with npm 11.18.0 and node v26.6.0. RESIDUE: the clean direction was run with --tarball, because nothing is published yet (owner action A-7 part 2 is outstanding), so the capture witnesses every step except which artifact npm fetched; the registry arm has NOT been captured and this witness does not claim it has. THREE MEMBERS, AND HRB-8 IS WHY. The previous pair both DELETED the same probe, which is two ways of removing one feature rather than two members of a class, and the dangerous state is the probe RUNNING AND ANSWERING WRONG. Member 0 removes the guard. Member 1 blinds Node resolution while leaving the probe intact and executing, so a parent node_modules that no ancestor package.json mentions reports clean. Member 2 leaves the probe and its answer intact and discards the answer in the classifier. Members 1 and 2 are wrong-answer states at two different points of one pipeline."
   }
 }

@@ -1,0 +1,24 @@
+{
+  "id": "release-publish-guard-exact-complements",
+  "behavior": "release-publish-guard-exact-complements",
+  "tests": [
+    "the publish and rehearsal guards are exact complements, so an inverted guard reddens"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "        if: ${{ steps.decide.outputs.publish == 'yes' }}\n        run: npm publish",
+      "replace": "        if: ${{ always() }}\n        run: npm publish"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      - name: Install and RUN the packed artifact, before any publish (SC-011)\n        env:",
+      "replace": "      - name: Install and RUN the packed artifact, before any publish (SC-011)\n        if: ${{ steps.decide.outputs.publish == 'yes' }}\n        env:"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

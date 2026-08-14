@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -947,6 +948,100 @@ test("release-verify refuses to run where the source tree is on the resolution p
   assert.equal(record["step"], "clean-environment");
   assert.equal(record["exitCode"], 1);
   assert.equal(record["sourceTreeOnResolutionPath"], join(repoRoot, "package.json"));
+});
+
+test("release-verify refuses a contaminated resolution path through the real path, through a symlink, and from a parent node_modules", () => {
+  /* HRB-6 AND HRB-8 TOGETHER, and they are one test on purpose.
+
+     HRB-6: the old probe defined contamination as "some ancestor of the LOGICAL
+     working directory holds a package.json whose `name` equals the package".
+     That is a MODEL of Node's resolution and is neither necessary nor
+     sufficient for it. The clean-room reviewer defeated it three ways and the
+     symlink one was the worst: the script passed, recorded
+     `sourceTreeOnResolutionPath: null`, and INSTALLED INTO THE CHECKOUT it was
+     supposed to refuse.
+
+     HRB-8: the witness for this behaviour had two dangerous states that both
+     DELETED the same probe, which is two ways of removing one feature, not two
+     structurally different members of a class. The dangerous state is the probe
+     RUNNING AND ANSWERING WRONG, and that state needs an arm to be visible in.
+     Arm 3 below is that arm: nothing in the ancestor chain declares the name,
+     so only asking Node finds it.
+
+     THREE ARMS, all against the real script:
+       1. a real path inside a checkout, which only the ancestor walk finds;
+       2. the SAME directory reached through a symlink, which the ancestor walk
+          finds only because the probe now resolves the real path;
+       3. a `node_modules/@tiphys/kernel` in a PARENT directory, which no
+          ancestor `package.json` mentions and only Node's own resolver finds.
+
+     A stand-in checkout is used, so the tree under review is never written
+     into, which is also how the reviewer ran it. */
+  const laboratory = mkdtempSync(join(tmpdir(), "tiphys-contaminated-"));
+  try {
+    const checkout = join(laboratory, "checkout");
+    mkdirSync(join(checkout, "sub"), { recursive: true });
+    writeFileSync(join(checkout, "package.json"), `${JSON.stringify({ name: "@tiphys/kernel", version: "0.1.0" })}\n`);
+
+    const refuse = (workdir: string, arm: string) => {
+      const records = join(laboratory, `records-${arm}.json`);
+      const result = spawnSync(
+        "bash",
+        [releaseVerify, "@tiphys/kernel", "0.1.0", "--records", records],
+        { cwd: workdir, encoding: "utf8", env: cleanEnv(), maxBuffer: 64 * 1024 * 1024 },
+      );
+      assert.notEqual(result.status, 0, `arm ${arm}: release-verify produced a green from a contaminated directory`);
+      assert.match(result.stderr ?? "", /REFUSED\./, `arm ${arm}: ${result.stderr ?? ""}`);
+      const written = readFileSync(records, "utf8").split("\n").filter((line) => line !== "");
+      assert.equal(written.length, 1, `arm ${arm}: expected one record from a refusal, got ${String(written.length)}`);
+      const record = JSON.parse(written[0] as string) as Record<string, unknown>;
+      assert.equal(record["step"], "clean-environment", `arm ${arm}`);
+      assert.notEqual(record["sourceTreeOnResolutionPath"], null, `arm ${arm}: the record reports a clean environment`);
+      return String(record["sourceTreeOnResolutionPath"]);
+    };
+
+    /* ARM 1, the real path. */
+    assert.equal(refuse(join(checkout, "sub"), "real"), join(checkout, "package.json"));
+
+    /* ARM 2, the same physical directory through a symlink. */
+    const link = join(laboratory, "link");
+    symlinkSync(join(checkout, "sub"), link, "dir");
+    assert.equal(refuse(link, "symlink"), join(checkout, "package.json"));
+
+    /* ARM 3, a parent node_modules and NO ancestor package.json naming the
+       package. Only Node's resolver finds this, which is why it is the arm
+       that makes the wrong-answer dangerous state visible. */
+    const parent = join(laboratory, "parent");
+    const installed = join(parent, "node_modules", "@tiphys", "kernel");
+    mkdirSync(installed, { recursive: true });
+    writeFileSync(join(installed, "package.json"), `${JSON.stringify({ name: "@tiphys/kernel", version: "0.0.1" })}\n`);
+    const work = join(parent, "work");
+    mkdirSync(work, { recursive: true });
+    assert.equal(refuse(work, "parent-node-modules"), join(installed, "package.json"));
+
+    /* AND NOTHING WAS INSTALLED INTO ANY OF THEM. The reviewer's symlink member
+       did install: `node_modules`, `package-lock.json` and the npm cache all
+       appeared inside the checkout it should have refused. */
+    for (const path of ["node_modules", "package-lock.json", ".release-verify-npm-cache", "copied-out-of-install"]) {
+      assert.equal(existsSync(join(checkout, "sub", path)), false, `release-verify created ${path} in a directory it refused`);
+      assert.equal(existsSync(join(parent, "work", path)), false, `release-verify created ${path} in a directory it refused`);
+    }
+
+    /* NODE_PATH IS REFUSED OUTRIGHT, which is a different remedy from the three
+       above and is recorded as such: it is not that the probe finds something,
+       it is that an inherited variable makes the whole run irreproducible. */
+    const clean = join(laboratory, "clean");
+    mkdirSync(clean, { recursive: true });
+    const withNodePath = spawnSync(
+      "bash",
+      [releaseVerify, "@tiphys/kernel", "0.1.0", "--records", join(laboratory, "records-nodepath.json")],
+      { cwd: clean, encoding: "utf8", env: { ...cleanEnv(), NODE_PATH: join(laboratory, "anywhere") }, maxBuffer: 64 * 1024 * 1024 },
+    );
+    assert.notEqual(withNodePath.status, 0, "release-verify ran with NODE_PATH set");
+    assert.match(withNodePath.stderr ?? "", /NODE_PATH is set/);
+  } finally {
+    rmSync(laboratory, { recursive: true, force: true });
+  }
 });
 
 test("release-verify from a clean directory passes and records a resolved path inside the install prefix", { skip: existsSync(distEntry) ? false : `dist/ is absent (${distEntry}); build first` }, () => {

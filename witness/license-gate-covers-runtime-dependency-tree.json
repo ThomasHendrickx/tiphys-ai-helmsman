@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "scripts/license-gate.mjs",
-      "find": "    for (const next of Object.keys(meta.dependencies ?? {})) {\n      visit(next, name);\n    }",
-      "replace": "  "
+      "find": "    const name = entryPath.slice(entryPath.lastIndexOf(\"node_modules/\") + \"node_modules/\".length);",
+      "replace": "    const name = entryPath.slice(\"node_modules/\".length);"
     },
     {
       "kind": "mutation",
@@ -26,6 +26,6 @@
     "captures": [
       "witness/captures/npm-pack-dry-run-json.txt"
     ],
-    "provenance": "scripts/license-gate.mjs spawns `npm pack --dry-run --json --ignore-scripts` and parses its stdout for the pack listing that check 5 decides on, so rule (f) binds this witness (SPAWN_GREP matches the changed file). The capture is real output from npm 11.18.0 and node v26.6.0 against this repository at v0.1.0, plus the failing direction: npm pack in a directory with no package.json exits 254 and prints no JSON array, which is the arm the parser's ok/reason branch exists for. It also records a fact the SOURCE would mislead a reader about: on this npm the `--json` paths carry NO `package/` prefix, so the strip in packListing is a no-op kept for older npm. The named tests read the capture and assert that shape rather than a hand-written one (CLAUDE.md warning 10). RESIDUE: the capture fixes the successful shape and one failure, and does not enumerate npm's other failure modes; a pack that exited 0 and printed malformed JSON is handled by the parser's catch and is not represented here."
+    "provenance": "scripts/license-gate.mjs spawns `npm pack --dry-run --json --ignore-scripts` and parses its stdout for the pack listing that check 5 decides on, so rule (f) binds this witness (SPAWN_GREP matches the changed file). The capture is real output from npm 11.18.0 and node v26.6.0 against this repository at v0.1.0, plus the failing direction: npm pack in a directory with no package.json exits 254 and prints no JSON array, which is the arm the parser's ok/reason branch exists for. It also records a fact the SOURCE would mislead a reader about: on this npm the `--json` paths carry NO `package/` prefix, so the strip in packListing is a no-op kept for older npm. The named tests read the capture and assert that shape rather than a hand-written one (CLAUDE.md warning 10). MEMBERS REWRITTEN IN FIX ROUND 1 because the inventory itself was rewritten: member 0 now derives the name from the FIRST node_modules segment instead of the last, so a nested copy is inventoried under its parent's name and the set no longer matches what M3-P1 recorded; member 1 reads every licence as a constant, so the set is complete and the classification is wrong. Two wrong-answer states at two different points. RESIDUE: the capture fixes the successful shape and one failure, and does not enumerate npm's other failure modes; a pack that exited 0 and printed malformed JSON is handled by the parser's catch and is not represented here."
   }
 }

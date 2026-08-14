@@ -729,6 +729,12 @@
   "pack-excludes-delivery-and-tests": "the pack listing carries no delivery, test, sandbox or src entry",
   "installed-package-schemas-resolve": "a template copied out of an installed package validates against a schema from the same install, and removing that schema reddens",
   "init-writes-kernel-pin": "init writes a fleet package.json depending on the published kernel at an exact pin",
-  "release-verify-refuses-contaminated-resolution-path": "release-verify refuses to run where the source tree is on the resolution path, naming that path",
-  "release-workflow-dispatch-only-and-tokenless": "the release workflow is manually dispatched only, authenticates by OIDC, and holds no npm token"
+  "release-verify-refuses-contaminated-resolution-path": "release-verify refuses a contaminated resolution path through the real path, through a symlink, and from a parent node_modules",
+  "release-workflow-dispatch-only-and-tokenless": "the release workflow is manually dispatched only, authenticates by OIDC, and holds no npm token",
+  "license-gate-reads-the-installed-tree-optional": "an OPTIONAL production dependency is inventoried, and an unlicensed one reddens",
+  "license-gate-reads-the-installed-tree-nested": "a package NESTED by a version conflict is inventoried under its own path, and a prohibited licence there reddens",
+  "license-gate-lock-and-disk-cross-check": "a package on disk that npm did not install is a finding, and an absent lock is a finding rather than an empty inventory",
+  "release-workflow-no-expression-in-run-body": "no Actions expression is interpolated into any run: body of the release workflow",
+  "release-publish-guard-exact-complements": "the publish and rehearsal guards are exact complements, so an inverted guard reddens",
+  "release-publish-decision-executed": "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes"
 }
