@@ -172,3 +172,93 @@ The rewrite is in `makeGateResult` at src/gates/result.ts:179 and the exit code
 is taken from the REWRITTEN status at scripts/license-gate.mjs:284, so the
 protection does not depend on the runner. Attack failed; recorded because a
 failed attack is evidence too.
+
+### HRB-3 (HIGH): the ONLY automated guard over `npm publish` asserts that the guard STRING CONTAINS "dry-run", so an inverted guard is green
+
+**Mechanism.** The single irreversible action in this phase is
+`npm publish --access public --provenance` at .github/workflows/release.yml:158.
+Its guard is .github/workflows/release.yml:157. The only test that claims to
+check it is test/license-gate.test.ts:845, whose comment reads "THE PUBLISH IS
+GUARDED and the guard defaults to a rehearsal", and whose assertion is
+
+    assert.match(String(publish.if), /dry-run/);          test/license-gate.test.ts:848
+
+A substring match on the guard's TEXT. It does not evaluate the guard, does not
+compare it to an expected expression, and does not distinguish a guard from its
+own inverse. This is CLAUDE.md:116 exactly: a guard whose condition does not
+test the property that matters is green and worthless. There is also no witness
+spec for the registered behavior `release-workflow-dispatch-only-and-tokenless`
+(witness/ carries three new specs and none is that one), and the `red-witness`
+gate does not require one because it scopes to `src/` and `bin/`, so nothing
+else covers this either.
+
+**Measured, THREE structurally different members** (CLAUDE.md:415). Node
+v26.6.0, in a lab copy of the tree outside the worktree, one line changed per
+run, `--test-name-pattern` before the positional path (warning 7).
+
+Control, unmutated:
+
+```
++ the release workflow is manually dispatched only, authenticates by OIDC, and holds no npm token (83.320699ms)
+tests 1 / pass 1 / fail 0
+```
+
+| mutation applied to the publish step's `if:` | what it would do | test |
+|---|---|---|
+| `${{ inputs.dry-run == true }}` | publishes EXACTLY when the operator asked for a rehearsal | tests 1, pass 1, fail 0 |
+| `${{ inputs.dry-run != null }}` | publishes on every dispatch | tests 1, pass 1, fail 0 |
+| `${{ inputs.dry-run \|\| true }}` | publishes on every dispatch | tests 1, pass 1, fail 0 |
+
+Three inversions of the guard over the one action with no clean undo, and the
+suite is green on all three, exit 0. (The capture above is real `node --test`
+output; U+2714 was transliterated to `+`, 1 occurrence, and the U+2139 that
+prefixes the summary lines was dropped from the table rows, 3 occurrences.
+Nothing else in any captured output was changed.)
+
+**Reachability (DR-0027).** It reaches the shipped artifact directly: the
+defect class is "a wrong publish guard reaches `main` green", and the published
+package is what a wrong guard publishes. It needs no attacker: an ordinary
+edit to that line during a later phase, or a rebase resolving a conflict the
+wrong way, is caught by nothing.
+
+**What would close it.** Assert the guard EXACTLY, not by substring:
+`assert.equal(String(publish.if).trim(), "${{ inputs.dry-run == false }}")`,
+and assert the rehearsal step's guard is its exact complement. An exact-string
+assertion reddens on all three mutants above. A behavioural alternative does not
+exist here, because the correct number of runs of this workflow in M3-P10 is
+zero, which the test's own comment (test/license-gate.test.ts:795) correctly
+says.
+
+### HRB-4 (LOW, reachability NOT established): `== false` coerces, and the permissive direction is null or empty string
+
+**Mechanism.** .github/workflows/release.yml:157 compares an input to a BOOLEAN
+LITERAL. GitHub's expression language casts operands of differing types to
+numbers before comparing, with `null` and `''` both casting to 0, `false`
+casting to 0, and a non-numeric string casting to NaN. Applying that table:
+
+| value of `inputs.dry-run` | `== false` (publish) | `!= false` (rehearsal) |
+|---|---|---|
+| boolean `true` | false, skip | true |
+| boolean `false` | TRUE, publish | false |
+| string `"false"` | false, skip | true |
+| string `"true"` | false, skip | true |
+| `null` or `''` | **TRUE, publish** | **false** |
+
+Every wrong value fails CLOSED except null and the empty string, which fail
+OPEN and additionally suppress the "Rehearsal only, nothing was published"
+notice, so the run looks like neither branch ran.
+
+**This is DEDUCED, not measured, and the deduced half is named as such**
+(CLAUDE.md:591). I have no way to evaluate a GitHub expression locally and the
+hard limits forbid dispatching the workflow, so I did NOT establish that a
+dispatch can ever deliver null or `''` for a `type: boolean` input carrying
+`default: true`. It may be that GitHub's dispatch validation makes those
+unreachable, in which case this is latent rather than live. **Open question for
+the arbitrator**, stated as one rather than as a claim.
+
+Severity LOW on that basis, and it is recorded because the FIX is free and
+removes the question: gate on a string the operator must type, for example a
+required `confirm` input asserted `inputs.confirm == inputs.version`. A
+string-to-string comparison performs no numeric coercion, so null and `''` both
+fail it, and it is a second pair of eyes rather than a default that can be
+inverted by one keystroke.
