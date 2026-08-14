@@ -5,7 +5,38 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-14 early morning, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-14 mid-morning, NEWEST BLOCK. Everything below is OLDER.
+- **M3-P10 HAS HANDED BACK AND IS PULL REQUEST #140, UNDER DUAL CLEAN-ROOM
+  REVIEW.** `main` is at `5897291`, whose post-merge `push` run was read by step
+  and is green in every step (two legitimate skips: the dual-review
+  decorrelation check and the M2 exit test's `pull_request` arm). M3 is still
+  10 of 11 merged; #140 is the eleventh.
+- **IT DID NOT PUBLISH, AND THAT IS MEASURED RATHER THAN PROMISED.** A probe run
+  AFTER all its work returned HTTP 404 for the package and `{"total":0}` for a
+  scope search, at 07:03Z.
+- **A-7 PART 2 IS NOW ACTIONABLE, AND IT IS THE GATE ON EVERYTHING LEFT IN M3.**
+  The npm trusted-publisher values the owner needs are in pull request #140's
+  body and on its branch. They are deliberately NOT copied here: `main` must not
+  assert facts about a workflow file that has not landed, which is the mirror of
+  T-019 that DR-0031 names. When #140 merges, they become facts on `main` and
+  this block should be amended to carry them.
+- **THE M3 EXIT TEST HAS A READ, WRITTEN BEFORE DISPATCH**, at
+  delivery/plan/m3-exit-test-dispatch-read.md:1. Its load-bearing finding is that
+  **stage E3.1 is an ORCHESTRATOR action and no agent in this container can
+  discharge it**, because both GitHub tokens 401 on REST, so an agent's CI
+  watcher is indistinguishable from a run still in progress. The second is that
+  the supervision-rules file must be committed BEFORE stage E1 begins and no
+  later commit can satisfy that.
+- **CRITERION 6 OF M3-P10 IS NOT MET AND IS DECLARED SO**, not discovered. The
+  exit test is its own dispatch and waits on three blockers in order: both
+  phases merged, the publish, then E3.1.
+- **THE STOP-CONDITION SCRIPT WAS WRONG IN BOTH DIRECTIONS AND IS FIXED.**
+  `.claude/orchestrator-next.mjs` had a hard-coded phase count, so M3-P11 was
+  never examined at all, and on M2, a finished milestone, it invented a phantom
+  `m2-p10` and told the orchestrator to dispatch it. The phase set is now
+  derived as a union of three sources. Recorded as
+  delivery/tuition/T-024-the-stop-condition-counted-instead-of-deriving.md:1.
+- as of: 2026-08-14 early morning. Everything below is OLDER.
 - **M3 IS 10 OF 11 MERGED.** Only M3-P10, the release phase, remains, and it is
   DISPATCHED. `main` is at `39316be`. M3-P6, M3-P7, M3-P8, M3-P9 and M3-P11 all
   landed in the last day, from a static 5 of 10 the day before.
@@ -1425,8 +1456,15 @@ and `A-3` meant three, one of them a literal string inside
      What remains is a CONFIGURATION the owner makes in the npm UI, linking
      `@tiphys/kernel` to this repository and the release workflow, and it
      cannot be done until M3-P10 can name the workflow file.
+   - **PART 2 BECAME ACTIONABLE 2026-08-14**, when M3-P10 handed back and named
+     the file. The four values the owner types into the npm UI are in pull
+     request #140's body and on its branch, and are not copied into this file
+     while that branch is unmerged, because `main` must not assert facts about
+     a workflow file it does not contain. Part 2 also includes publishing the
+     `0.0.0` stub and deprecating it, per DR-0024's sequencing.
    Still owner-reserved, because it needs npm account access the orchestrator
-   does not hold. Still blocks M3-P10 only; M3-P1 through M3-P9 run without it.
+   does not hold. It now blocks the PUBLISH and the M3 exit test rather than
+   M3-P10's implementation, which is complete and in review.
    **The reason for the change, in one line: this repository runs two gates whose
    whole purpose is keeping credentials out of artifacts, and the better move is
    to have no credential rather than a well-guarded one.**
