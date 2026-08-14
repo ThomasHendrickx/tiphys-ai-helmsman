@@ -1,0 +1,296 @@
+# THE RELEASE WORKFLOW (kernel plan M3, M3-P10 step 4; DR-0008, DR-0024).
+#
+# IT NEVER RUNS ON PUSH. `workflow_dispatch` is the only trigger, and that is
+# the plan's requirement in its own words: "a manually dispatched workflow that
+# runs the gates, the license gate, `npm pack`, and publishes to the DR-0008
+# registry ... it never runs on push"
+# (delivery/plan/kernel-plan-m3.md:4875). Publishing is the one action in this
+# milestone with no clean undo, so nothing automatic may reach it.
+#
+# THE FILENAME AND THE JOB NAME ARE THE INTERFACE TO OWNER ACTION A-7 PART 2.
+# npm's trusted-publisher configuration names a repository AND a workflow FILE,
+# so this file's path is a value the owner types into the npm UI, and renaming
+# it later invalidates that configuration and makes every publish fail closed.
+# Treat `.github/workflows/release.yml` as a published identifier, not a name.
+#
+# AUTHENTICATION IS OIDC, AND THERE IS NO TOKEN (DR-0024, decided 2026-08-10).
+# The workflow requests a short-lived audience-scoped token from GitHub's OIDC
+# provider at publish time and npm verifies it against the trusted-publisher
+# configuration. No npm credential is created, stored, or scrubbed for, which
+# is why no repository secret appears anywhere below and why the npm auth
+# environment variable is not set. `permissions: id-token: write` is what allows
+# the token to be minted; DR-0024:71 records that without it the publish FAILS
+# CLOSED, which is the correct direction.
+#
+# WHY `contents: read` IS WRITTEN OUT rather than left to the default: naming
+# any permission replaces the whole default set, so the two lines below are the
+# complete grant. This job reads the repository and mints an OIDC token; it can
+# do nothing else.
+#
+# NOTHING HERE HAS RUN. This workflow is delivered by M3-P10 in the state the
+# plan and DR-0024's addendum require: ready, named, and not executed. The
+# sequencing is DR-0024:120 and it is not optional, because the middle step is
+# not ours:
+#
+#   1. M3-P10 writes this file. It does NOT publish.
+#   2. OWNER (A-7 part 2), needing the filename from step 1: publish the 0.0.0
+#      stub for @tiphys/kernel, deprecate it, and configure the trusted
+#      publisher against this repository and this workflow file.
+#   3. Only then can a dispatch of this workflow publish 0.1.0 over OIDC.
+#
+# WHY THE RELEASE STEPS ARE AT WORKFLOW LEVEL AND NOT IN gate-registry.yaml,
+# stated because D-M3-34 requires that reason to be given rather than left
+# implicit (delivery/plan/kernel-plan-m3.md:4891): these steps run on a manual
+# dispatch, which is an event the gate bundle never sees. The LICENSE GATE is
+# the opposite case and is a registry entry, because it is a property of every
+# change and not of a release.
+#
+# ------------------------------------------------------------------------
+# THREE THINGS FIX ROUND 1 CHANGED, AND WHY. All three came from the clean-room
+# hazard review and all three are about the same class of mistake: a guard that
+# is DESCRIBED rather than EXERCISED.
+#
+# 1. NO `${{ }}` APPEARS INSIDE ANY `run:` BODY (HRB-11). Actions substitutes
+#    those textually BEFORE the shell parses the line, so an operator supplying
+#    the literal text `$declared` was supplying SHELL SOURCE, not a string to
+#    compare: the version-agreement guard then agreed with whatever
+#    package.json held, and a `$(...)` value executed, in a job holding
+#    `id-token: write`. Every operator-supplied value now reaches the shell
+#    through `env:`, which the runner sets rather than pastes.
+#
+# 2. THE PUBLISH DECISION IS A SHELL SCRIPT, NOT A GITHUB EXPRESSION (HRB-3,
+#    HRB-4). The old guard was `if: ${{ inputs.dry-run == false }}`, and the
+#    only automated check on it asserted that its TEXT contained "dry-run", so
+#    three separately inverted guards including publish-always were all green.
+#    The decision now lives in the `decide` step's `run:` body, which
+#    `test/license-gate.test.ts` EXTRACTS AND EXECUTES against a table of
+#    inputs. The `if:` expressions that remain are asserted by EXACT STRING
+#    EQUALITY, which reddens on every inversion.
+#
+#    The boolean input is gone with it. `== false` coerces: GitHub casts
+#    operands of differing types to numbers, and `null` and `''` both cast to 0
+#    like `false` does, so the two wrong values that fail OPEN were the ones a
+#    dispatch is most likely to deliver. The replacement is a `confirm` STRING
+#    the operator must type to match the version exactly. A string comparison
+#    performs no coercion, an empty confirm rehearses, and publishing now needs
+#    a deliberate act rather than the absence of one.
+#
+# 3. THE ARTIFACT IS INSTALLED AND EXECUTED BEFORE THE PUBLISH, IN BOTH ARMS
+#    (HRB-5). Every pre-publish check used to inspect a LISTING, and a listing
+#    check does not establish that the artifact runs: changing `files` from
+#    `dist` to `dist/bin` was measured to pass both pack tests, this workflow's
+#    own pack check and the license gate, and to produce a package whose bin
+#    dies with ERR_MODULE_NOT_FOUND. Release verification ran only AFTER the
+#    publish, so the one check that could see it could only report the damage.
+#    It now runs against the locally packed tarball BEFORE the publish step, on
+#    every dispatch including a rehearsal, and the post-publish run against the
+#    registry is kept as well, because they answer different questions.
+# ------------------------------------------------------------------------
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          The exact version expected in package.json, for example 0.1.0. The job
+          REFUSES to run when package.json disagrees. This is a second pair of
+          eyes on the one irreversible field, not a way to set it.
+        required: true
+        type: string
+      confirm:
+        description: >-
+          To PUBLISH, type the version again here, exactly. Anything else,
+          including leaving it empty, runs the full rehearsal and stops before
+          publishing. A string comparison, so no value coerces its way into a
+          publish.
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # fetch-depth: 0 for the same reason .github/workflows/gates.yml gives:
+      # several gates and the exit harness need real history.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
+      # npm's trusted-publishing support is version-dependent, and DR-0024:75
+      # requires this workflow to PIN and RECORD the npm version it used rather
+      # than inherit whatever the runner image ships. The pin is what makes a
+      # later "which npm published this" answerable.
+      - name: Pin and record the npm version (DR-0024)
+        run: |
+          npm install -g npm@11.18.0
+          echo "npm $(npm --version), node $(node --version)"
+
+      # THE DECISION, AND IT IS SHELL SO THAT A TEST CAN RUN IT.
+      #
+      # `test/license-gate.test.ts` extracts this exact `run:` body out of this
+      # file and executes it under bash against a table of REQUESTED, CONFIRM
+      # and declared-version combinations, asserting the `publish=` it writes.
+      # That is the difference between a guard that is checked and a guard that
+      # is described. Keep the body self-contained and keep every input in
+      # `env:`; both properties are asserted by that test.
+      #
+      # Two outcomes are NOT the same and are kept apart deliberately:
+      #   - version disagreement is an ERROR (exit 1). The operator asked about
+      #     a version this tree is not, and continuing would run every gate
+      #     against something other than what was asked for.
+      #   - confirm mismatch is a REHEARSAL (exit 0, publish=no). That is the
+      #     ordinary path and it must not look like a failure, or operators
+      #     learn to ignore red.
+      - name: Decide whether this dispatch publishes
+        id: decide
+        env:
+          REQUESTED: ${{ inputs.version }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -u
+          declared="$(node -p 'require("./package.json").version')"
+          if [ "$declared" != "$REQUESTED" ]; then
+            echo "release: package.json declares ${declared} and this dispatch asked for ${REQUESTED}." >&2
+            echo "release: refusing. A published version cannot be unpublished cleanly, so the two must agree before anything runs." >&2
+            exit 1
+          fi
+          if [ "$CONFIRM" = "$declared" ]; then
+            echo "publish=yes" >> "$GITHUB_OUTPUT"
+            echo "release: confirm matches ${declared}; this dispatch WILL publish after every check below passes."
+          else
+            echo "publish=no" >> "$GITHUB_OUTPUT"
+            echo "release: confirm does not match ${declared}; this dispatch is a REHEARSAL and will not publish."
+          fi
+
+      # The ordered preflight of CLAUDE.md's gate list, run here in full rather
+      # than assumed from a green pull request. T-009's rule is that a gate
+      # result is evidence only for the configuration it ran under, and a
+      # release is a configuration no pull-request run has taken.
+      - run: npm ci
+      - run: npm run build
+      - name: git status must be clean after the build (plan decision D-17)
+        run: |
+          set -u
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain >&2
+            echo "release: the build left the tree dirty; dist/ is never committed and a dirty tree here means something else changed." >&2
+            exit 1
+          fi
+      - run: npm test
+
+      - name: License gate (EXT-F-09, M3-P10 step 2)
+        run: node scripts/license-gate.mjs
+
+      # A REAL PACK, not a dry run, because the next step installs what this
+      # produces. `prepack` rebuilds, which is why the listing here is always a
+      # built tree and why the build state is printed beside the count (HRB-10:
+      # a pack number quoted without its build state starts an investigation).
+      - name: npm pack, and check the listing against the tree on disk
+        run: |
+          set -u
+          mkdir -p "$RUNNER_TEMP/artifact"
+          npm pack --pack-destination "$RUNNER_TEMP/artifact"
+          npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
+          node -e '
+            const { readFileSync, readdirSync } = require("node:fs");
+            const { join } = require("node:path");
+            const listing = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/pack.json", "utf8"))[0];
+            const files = listing.files.map((entry) => entry.path.replace(/^package\//, ""));
+            const problems = [];
+            for (const name of ["LICENSE", "AGENTS.md", "gate-registry.yaml", "assurance-modes.yaml", "role-model-config.yaml"]) {
+              if (!files.includes(name)) problems.push("missing " + name);
+            }
+            for (const dir of ["delivery", "test", "sandbox", "src", "scripts", "witness"]) {
+              if (files.some((path) => path === dir || path.startsWith(dir + "/"))) problems.push("forbidden " + dir + "/");
+            }
+            /* THE dist LEG GETS AN ORACLE (HRB-5). Every other shipped directory
+               is compared against git ls-files; dist/ is built and untracked, so
+               its oracle is the built tree itself. A presence check here is what
+               let a files list of ["dist/bin"] pass with two entries where 121
+               were expected. */
+            const walk = (dir, prefix) => {
+              const out = [];
+              for (const entry of readdirSync(dir, { withFileTypes: true })) {
+                if (prefix === "dist/" && entry.name === "node_modules") continue;
+                const here = prefix + entry.name;
+                if (entry.isDirectory()) out.push(...walk(join(dir, entry.name), here + "/"));
+                else out.push(here);
+              }
+              return out;
+            };
+            const onDisk = walk("dist", "dist/");
+            const packed = new Set(files);
+            const absent = onDisk.filter((path) => !packed.has(path));
+            console.log(listing.entryCount + " pack entries, " + onDisk.length + " files under dist/ on disk (built tree)");
+            if (absent.length > 0) problems.push(absent.length + " built file(s) missing from the pack, first: " + absent.slice(0, 5).join(", "));
+            if (problems.length > 0) { console.error(problems.join("\n")); process.exit(1); }
+          '
+
+      # RELEASE VERIFICATION BEFORE THE PUBLISH, ON EVERY DISPATCH (HRB-5).
+      #
+      # This is the only check in the phase that INSTALLS the artifact and RUNS
+      # it. Everything above inspects a listing. It carries no `if:` on purpose:
+      # a rehearsal that does not run it is a rehearsal that cannot catch the
+      # thing the rehearsal exists for.
+      #
+      # `cd "$RUNNER_TEMP/verify"` is not tidiness: scripts/release-verify.sh
+      # REFUSES to run anywhere the package is already resolvable, and the
+      # checkout is exactly that, so running it from the workspace would fail by
+      # design.
+      - name: Install and RUN the packed artifact, before any publish (SC-011)
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -u
+          tarball="$(ls "$RUNNER_TEMP"/artifact/*.tgz | head -1)"
+          name="$(node -p 'require("./package.json").name')"
+          mkdir -p "$RUNNER_TEMP/verify"
+          cd "$RUNNER_TEMP/verify"
+          bash "$GITHUB_WORKSPACE/scripts/release-verify.sh" "$name" "$REQUESTED" \
+            --tarball "$tarball" --records "$RUNNER_TEMP/verify/pre-publish-records.json"
+          cat "$RUNNER_TEMP/verify/pre-publish-records.json"
+
+      # THE PUBLISH. Its guard is asserted by EXACT STRING EQUALITY in
+      # test/license-gate.test.ts, together with the rehearsal step's guard
+      # below, which must be its exact complement. Changing either string
+      # reddens that test.
+      - name: Publish to npmjs over OIDC (DR-0008 registry, DR-0024 authentication)
+        if: ${{ steps.decide.outputs.publish == 'yes' }}
+        run: npm publish --access public --provenance
+
+      - name: Rehearsal only, nothing was published
+        if: ${{ steps.decide.outputs.publish != 'yes' }}
+        run: |
+          echo "release: this dispatch was a rehearsal. Every gate ran, the artifact was packed, installed and executed, and npm publish did NOT run."
+          echo "release: to publish, re-dispatch with confirm set to the exact version."
+
+      # The post-publish run answers a DIFFERENT question from the pre-publish
+      # one: not "does this artifact work" but "does the artifact the registry
+      # now serves work". Both are wanted; only the first can prevent a bad
+      # publish.
+      - name: Release verification against the registry, after publishing (SC-011)
+        if: ${{ steps.decide.outputs.publish == 'yes' }}
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -u
+          name="$(node -p 'require("./package.json").name')"
+          mkdir -p "$RUNNER_TEMP/verify-registry"
+          cd "$RUNNER_TEMP/verify-registry"
+          bash "$GITHUB_WORKSPACE/scripts/release-verify.sh" "$name" "$REQUESTED" \
+            --records "$RUNNER_TEMP/verify-registry/records.json"
+          cat "$RUNNER_TEMP/verify-registry/records.json"

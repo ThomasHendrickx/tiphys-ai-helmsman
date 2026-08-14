@@ -292,6 +292,45 @@ gates:
       kind: command-exit-zero
       command: [node, scripts/check-dual-review.mjs, --precondition, .]
 
+  # NEW IN M3-P10 (EXT-F-09, DR-0013 clause 5, D-M3-34).
+  - id: license
+    $comment: >-
+      M3-P10 step 2. EXT-F-09's five checks as one command with one exit code:
+      inventory the TRANSITIVE production dependency set, require license
+      metadata on every member, refuse any license off the declared allowlist,
+      require THIRD-PARTY-NOTICES whenever copied third-party code is declared
+      (plan v1 D-1's license note makes this declaration-driven, because
+      protocol reimplementation carries no notice obligation), and require
+      LICENSE in the `npm pack` listing. WHY IT IS A GATE AND NOT ONLY A RELEASE
+      STEP: what ships is a property of every change, not of the release that
+      happens to notice it, and DR-0013 marked a grown production tree the
+      costly direction. WHERE IT RUNS, STATED AS WHAT IS TRUE RATHER THAN AS AN
+      ABSOLUTE (corrected in M3-P10 fix round 1, clean-room finding HRB-7):
+      `.github/workflows/release.yml` runs it as an explicit STEP before
+      publishing, which is the enforcement point because it depends on no
+      lifecycle hook; `prepublishOnly` runs it on every publish path that runs
+      lifecycle scripts, and `--ignore-scripts` skips it, measured on npm
+      11.18.0. The earlier wording said no publish path at all could skip it,
+      and that was false in a file that SHIPS. BOTH EVENTS, and the
+      reason is T-009's: a dependency added on `main` by a merge is exactly the
+      state that matters, and an arm with no witness is the arm that breaks.
+      WHAT EXECUTES IT IN CI, stated rather than implied: `scripts/m2-exit-test.sh`
+      invokes the runner with `--manifest gates.manifest.json` on both arms and
+      that file is on no M3 phase's declaration, so a registry-only gate does not
+      reach the runner. A step in `.github/workflows/gates.yml` carrying no `if:`
+      is what runs it, exactly as for `agent-rules-drift` and
+      `check-agents-references`, and `test/gate-registry.test.ts` records the
+      divergence with its reason so the gap is declared rather than discovered.
+      NOT CONDITIONAL, DELIBERATELY: there is no tree here with no production
+      dependencies, so a precondition would be a not-applicable arm that can
+      never be reached, and M2-C-2 already refuses a green with zero units.
+    command: [node, scripts/license-gate.mjs]
+    unitLabel: production packages licensed
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
   # NEW IN M3-P2, entry two of three (R-043, D-11).
   - id: unit-tests-for-changed-service-methods
     $comment: >-

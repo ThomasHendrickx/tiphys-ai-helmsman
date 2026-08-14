@@ -393,6 +393,7 @@ Then the gates `full` mode selects, run by `tiphys gates run --registry gate-reg
 | `brief-drift` | script | required | generated brief gate rows compared |
 | `check-agents-references` | script | required | references resolved |
 | `check-dual-review` | script | conditional | review verdicts examined for decorrelation |
+| `license` | script | required | production packages licensed |
 | `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | changed service methods checked |
 | `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | changed component states checked |
 

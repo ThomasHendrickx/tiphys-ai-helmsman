@@ -193,6 +193,35 @@ jobs:
           else
             echo "check-dual-review: not applicable, no verdict document under delivery/review, so there is no pair of reviews to compare"
           fi
+      # THE LICENSE GATE (kernel plan M3, M3-P10 step 2; EXT-F-09, DR-0013
+      # clause 5, D-M3-34).
+      #
+      # DECLARED in gate-registry.yaml as `license` with
+      # `events: [pull_request, push]`. This step is what EXECUTES it, for the
+      # reason `agent-rules-drift` and `check-agents-references` carry the same
+      # shape: scripts/m2-exit-test.sh invokes the runner with
+      # `--manifest gates.manifest.json` on both arms, that file is on no M3
+      # phase's declaration, and a registry-only gate therefore never reaches
+      # the runner.
+      #
+      # NO `if:`, DELIBERATELY. What the package ships is a property of `main`
+      # and not only of a proposed change: a production dependency arrives on
+      # `main` through a merge, and T-009's second rule is that where behaviour
+      # forks on the CI event both arms need a witness. An `if:` here would
+      # also CONTRADICT the registry entry's declared events, which is the
+      # difference between this step and the `check-dual-review` step above.
+      #
+      # IT RUNS AFTER `npm ci`, and that ordering is load-bearing rather than
+      # incidental: the gate reads each production dependency's own
+      # package.json out of node_modules, because the TRANSITIVE production set
+      # is what ships and the three names in `dependencies` are not it. Without
+      # an install it reports every dependency unresolved, which is a finding
+      # and not a pass.
+      #
+      # DR-0017 and DR-0004: a STEP in the one job named `gates`. No job, no
+      # matrix, so the published required status context is still `gates`.
+      - name: License gate (EXT-F-09, M3-P10)
+        run: node scripts/license-gate.mjs
       - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
         run: >

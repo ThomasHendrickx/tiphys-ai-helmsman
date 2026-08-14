@@ -1,7 +1,6 @@
 {
   "name": "@tiphys/kernel",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Tiphys kernel: the fleet orchestration toolbelt, delivered as an npm package.",
   "type": "module",
   "license": "Apache-2.0",
@@ -14,6 +13,7 @@
   "files": [
     "dist",
     "!dist/node_modules",
+    "LICENSE",
     "AGENTS.md",
     "gate-registry.yaml",
     "gates.manifest.json",
@@ -28,10 +28,12 @@
   "scripts": {
     "build": "tsc -b tsconfig.src.json tsconfig.test.json && npm run build:schemas && npm run build:runtime-deps",
     "build:schemas": "node --input-type=module -e \"import { cpSync } from 'node:fs'; cpSync('src/gates/schemas', 'dist/src/gates/schemas', { recursive: true });\"",
-    "build:runtime-deps": "node --input-type=module -e \"import { cpSync, readFileSync } from 'node:fs'; const seen = new Set(); const walk = (name) => { if (seen.has(name)) return; seen.add(name); const from = 'node_modules/' + name; const meta = JSON.parse(readFileSync(from + '/package.json', 'utf8')); cpSync(from, 'dist/node_modules/' + name, { recursive: true }); for (const next of Object.keys(meta.dependencies ?? {})) walk(next); }; for (const dep of Object.keys(JSON.parse(readFileSync('package.json', 'utf8')).dependencies ?? {})) walk(dep);\"",
+    "build:runtime-deps": "node --input-type=module -e \"import { cpSync, readFileSync } from 'node:fs'; const lock = JSON.parse(readFileSync('node_modules/.package-lock.json', 'utf8')); for (const [path, entry] of Object.entries(lock.packages ?? {})) { if (!path.startsWith('node_modules/') || entry?.dev === true) continue; cpSync(path, 'dist/' + path, { recursive: true }); }\"",
     "test": "node --test \"test/**/*.test.ts\"",
     "gate:suite": "node src/gates/suite.ts --pin-root src --pin-root bin --pin-root test",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "gate:license": "node scripts/license-gate.mjs",
+    "prepublishOnly": "node scripts/license-gate.mjs"
   },
   "devDependencies": {
     "@types/node": "26.1.2",
@@ -41,5 +43,15 @@
     "ajv": "8.20.0",
     "commonmark": "0.31.2",
     "yaml": "2.9.0"
+  },
+  "tiphys": {
+    "licenseAllowlist": [
+      "Apache-2.0",
+      "MIT",
+      "ISC",
+      "BSD-2-Clause",
+      "BSD-3-Clause"
+    ],
+    "thirdPartyCode": []
   }
 }

@@ -1069,6 +1069,31 @@ const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
       coveredBy: /check-dual-review\.mjs/,
     },
   ],
+  /* NEW IN M3-P10, and the fourth instance of one structural cause rather than
+     a fourth cause. `scripts/m2-exit-test.sh` invokes the runner with
+     `--manifest gates.manifest.json` on both arms; neither that script nor that
+     manifest is on any M3 phase's declaration; so a gate declared only in
+     gate-registry.yaml never reaches the runner. This entry is what turns that
+     from a silent non-run into a declared one, and the `coveredBy` regex is
+     what stops the declaration becoming an excuse for a gate nothing executes. */
+  [
+    "license",
+    {
+      reason:
+        "M3-P10 step 2 declares it per D-M3-34 (EXT-F-09's five checks, and " +
+        "DR-0013 clause 5's requirement that the TRANSITIVE production set be " +
+        "the thing inventoried). It is executed by a step in " +
+        ".github/workflows/gates.yml carrying no `if:`, so both CI events run " +
+        "it: a production dependency arrives on `main` through a merge, so what " +
+        "the package ships is a property of the default branch and not only of " +
+        "a proposed change (T-009). The release workflow runs it again as an " +
+        "explicit step before publishing, which is the enforcement point because " +
+        "it depends on no lifecycle hook; `prepublishOnly` runs it on every " +
+        "publish path that runs lifecycle scripts, and `--ignore-scripts` skips " +
+        "it (HRB-7, measured on npm 11.18.0).",
+      coveredBy: /license-gate\.mjs/,
+    },
+  ],
 ]);
 
 /** Every `run:` step of the gates workflow, across all jobs, in order. */
