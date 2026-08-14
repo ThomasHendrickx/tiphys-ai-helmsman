@@ -10,8 +10,8 @@ end of this pass: `git log --oneline -1` in the phase worktree still reports
 the gitignored `node_modules` copy and `dist/` build output as untracked-and-
 ignored).
 
-Status while in progress: WRITE IN PROGRESS. Sections are appended as work is
-done; the verdict at the bottom is the last thing written.
+Status: COMPLETE. Written incrementally and committed as work progressed;
+the verdict section at the bottom was the last thing written.
 
 ## What this document does NOT cover
 
