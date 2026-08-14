@@ -262,3 +262,257 @@ required `confirm` input asserted `inputs.confirm == inputs.version`. A
 string-to-string comparison performs no numeric coercion, so null and `''` both
 fail it, and it is a second pair of eyes rather than a default that can be
 inverted by one keystroke.
+
+### HRB-5 (HIGH): the rehearsal cannot catch a broken artifact, and the check that can runs AFTER the publish
+
+**Mechanism.** The release workflow's step order is: pack listing check (no
+`if:`), then publish guarded `dry-run == false`, then the rehearsal notice, then
+release verification ALSO guarded `dry-run == false`
+(.github/workflows/release.yml:157, .github/workflows/release.yml:171). So:
+
+- a REHEARSAL (`dry-run` true, the default) never runs
+  scripts/release-verify.sh at all, and
+- a REAL run runs it only after `npm publish` has already happened.
+
+The one check in the phase that installs the artifact and executes it is
+therefore incapable of preventing a bad publish. It can only report one. That
+inverts the purpose the workflow header states for the rehearsal
+(.github/workflows/release.yml:134: "Run every gate, the license gate and npm
+pack, then STOP before publishing. This is the rehearsal").
+
+**Why that matters, measured.** Everything upstream of `npm publish` is a
+LISTING check, and a listing check does not establish that the artifact runs.
+One-word mutation in a faithful lab copy of this branch (`git archive HEAD`,
+same node_modules, same dist): `files: ["dist", ...]` becomes
+`files: ["dist/bin", ...]` at package.json:12.
+
+| | control | mutant |
+|---|---|---|
+| pack listing | 181 entries, 121 under `dist/` | 62 entries, 2 under `dist/` |
+| `the pack listing carries every declared kernel artifact ...` + `... no delivery, test, sandbox or src entry` | tests 2, pass 2, fail 0 | **tests 2, pass 2, fail 0** |
+| the workflow's inline pack check (.github/workflows/release.yml:143) | exit 0 | **exit 0** |
+| `node scripts/license-gate.mjs` | green, exit 0 | **green, exit 0** |
+| install the packed tarball and run its bin | prints the version | **ERR_MODULE_NOT_FOUND `dist/src/cli.js`, exit 1** |
+
+A package that is completely non-functional passes every check the phase runs
+before `npm publish`, and fails the one it runs after.
+
+The reason the listing checks miss it is the same defect on both sides: the
+`dist` leg is a PRESENCE test. test/license-gate.test.ts:554 asserts
+`[...files].some((path) => path.startsWith("dist/"))` and
+.github/workflows/release.yml:148 asserts
+`files.some((path) => path.startsWith(dir + "/"))`. The same test comments,
+twelve lines earlier at test/license-gate.test.ts:523, correctly say that a
+per-directory presence check is exactly what the plan's hazard row defeats, and
+apply the stronger `git ls-files` comparison to the five TRACKED directories.
+`dist/` is the one directory carrying the executable code and it gets the weak
+check, because it is not tracked and `git ls-files` cannot be its oracle.
+
+**Reachability (DR-0027).** Directly: it publishes. `npm publish` is
+irreversible by the workflow's own account (.github/workflows/release.yml:114).
+
+**What would close it, and both halves are cheap.**
+
+1. Run scripts/release-verify.sh with `--tarball` against the locally packed
+   artifact in BOTH arms, BEFORE the publish step. The `--tarball` mode exists
+   for precisely this and is documented at scripts/release-verify.sh:46; it is
+   simply not wired into the rehearsal.
+2. Give the `dist` leg an oracle: compare the listing against
+   `find dist -type f` (or against the built tree's file list) the way the five
+   tracked directories are compared against `git ls-files`.
+
+### HRB-6 (MEDIUM): the contamination probe answers a question that is neither necessary nor sufficient for Node resolution, and reports CLEAN three ways
+
+**Mechanism.** scripts/release-verify.sh:112 defines "the source tree is on the
+resolution path" as "some ancestor of the LOGICAL working directory holds a
+package.json whose `name` equals the package under test". Node's resolution
+does not work that way: it walks the REAL path, it consults `NODE_PATH`, and it
+consults `node_modules` at every ancestor. The probe models none of those.
+
+**Three structurally different members, all measured** (node v26.6.0, npm
+11.18.0, real script, real tarball packed from this branch). A stand-in
+checkout was used so the worktree under review was never written into.
+
+Control, the real path: workdir `<checkout>/sub`.
+
+```
+release-verify: step clean-environment exited 1
+release-verify: REFUSED. <checkout>/package.json declares name @tiphys/kernel,
+  so the source tree is on the resolution path from <checkout>/sub.
+EXIT 1
+```
+
+Member A, THE SAME PHYSICAL DIRECTORY reached through a symlink
+(`<lab>/link -> <checkout>/sub`). `WORKDIR="$(cd ... && pwd)"` at
+scripts/release-verify.sh:98 gives bash's LOGICAL pwd, so the upward walk never
+leaves `<lab>`:
+
+```
+release-verify: @tiphys/kernel@0.1.0 verified from <lab>/link
+EXIT 0
+```
+
+and every one of the six records carries `sourceTreeOnResolutionPath: null`.
+This member also refutes the claim at scripts/release-verify.sh:109, that the
+probes are safe to run before the install because "the contaminated direction
+must fail without having mutated the tree it was wrongly pointed at". It did
+not fail and it DID mutate: `ls -a <checkout>/sub` afterwards shows
+`node_modules`, `package-lock.json`, `.release-verify-npm-cache` and
+`copied-out-of-install`, none of which were there before.
+
+Member B, `NODE_PATH`. In the same directory and the same environment:
+
+```
+$ NODE_PATH=<fake> node -e "console.log(require.resolve('@tiphys/kernel/package.json'))"
+<fake>/@tiphys/kernel/package.json
+$ NODE_PATH=<fake> bash scripts/release-verify.sh @tiphys/kernel 0.1.0 --tarball ...
+release-verify: @tiphys/kernel@0.1.0 verified ...        EXIT 0
+clean-environment record -> sourceTreeOnResolutionPath: null
+```
+
+Member C, a PARENT-directory `node_modules/@tiphys/kernel`, which the walk never
+looks at because it only opens `<ancestor>/package.json`:
+
+```
+$ node -e "console.log(require.resolve('@tiphys/kernel/package.json'))"
+<lab>/pn/node_modules/@tiphys/kernel/package.json
+$ bash scripts/release-verify.sh ...                     EXIT 0
+clean-environment record -> sourceTreeOnResolutionPath: null
+```
+
+**Honest severity.** In members B and C the install prefix still wins once the
+install succeeds, so the WITNESS is probably not corrupted, only the VERDICT is
+false. Member A is the one where both are wrong. The workflow's own invocation
+runs from `$RUNNER_TEMP/release-verify` (.github/workflows/release.yml:176),
+which is not a symlink into the checkout, so the CI path is not defeated today.
+MEDIUM on that basis: the defect is in a claim that a reader is invited to rely
+on, in the direction of a false green, on the path a human takes.
+
+**Enumeration and what it did NOT cover.** Sites of the mechanism:
+
+```
+$ grep -n 'probe_source_tree\|probe_installed\|WORKDIR=' scripts/release-verify.sh
+```
+
+gives scripts/release-verify.sh:98, :112, :136, :152, :190. I did NOT probe
+`NPM_CONFIG_PREFIX`, a global install, or a parent `.npmrc`: with three members
+already reddening the same mechanism, further members would add nothing to the
+severity, and I say so rather than reporting an empty result from a search I
+did not run. I also did not test a bind mount, which is the same class as the
+symlink and would behave differently (bash's `pwd` has no logical form to
+report there).
+
+**What would close it.** `pwd -P` at scripts/release-verify.sh:98 closes member
+A. Refusing outright when `NODE_PATH` is set closes B. Checking
+`<ancestor>/node_modules/<name>` as well as `<ancestor>/package.json` closes C.
+The general form is to ASK NODE: run `require.resolve` for the package from the
+workdir before the install and refuse if it resolves at all, which covers all
+three and any fourth.
+
+### HRB-7 (MEDIUM): "no publish path can skip it" is false, and it is asserted in a SHIPPED file
+
+**Mechanism.** Two places state that no publish can bypass the license gate:
+
+- gate-registry.yaml:308, "`prepublishOnly` runs it a third time, because a
+  publish from any path at all must not be able to skip it";
+- test/gate-registry.test.ts, in the registry-only-gate reason string, "so no
+  publish path can skip it".
+
+`--ignore-scripts` suppresses lifecycle scripts. Measured directly on npm
+11.18.0 with an instrumented fixture package (appending to a probe file from
+each hook), which is the same npm configuration key that governs
+`prepublishOnly`:
+
+| command | hooks fired |
+|---|---|
+| `npm pack --dry-run` | prepack, prepare |
+| `npm pack --dry-run --ignore-scripts` | (none) |
+| `npm pack --dry-run --json --ignore-scripts` | (none) |
+| `npm pack` | prepack, prepare |
+| `npm install --no-audit --no-fund` | prepare |
+
+**Which half is measured and which is deduced** (CLAUDE.md:591). MEASURED: the
+`--ignore-scripts` flag suppresses lifecycle hooks completely on this npm.
+DEDUCED: that `npm publish --ignore-scripts` therefore also suppresses
+`prepublishOnly`. I did not run `npm publish` in any form, because the review's
+hard limits forbid it. A second candidate bypass, `npm publish <tarball>`
+against a pre-built artifact, I did not test and do not claim; it is an OPEN
+QUESTION.
+
+The second, larger loss of the same guard is that package.json:3 no longer
+carries `"private": true`. Before this branch, `npm publish` in this repository
+failed closed on the manifest alone, regardless of credentials, flags or
+intent. After it, the local, offline, unconditional guard is gone and what
+remains is the workflow guard (HRB-3, untested) and npm authentication. That
+removal is REQUIRED by the phase, so it is not a defect; it is the reason the
+absolute claims above should not be made.
+
+**Reachability (DR-0027).** gate-registry.yaml is in the `files` array at
+package.json:16 and therefore SHIPS. An over-claim in it reaches every consumer
+of the package, and this repository's own rule (CLAUDE.md:376) is that a claim
+of this shape carries an adjacent captured command or is restated as an open
+question.
+
+**What would close it.** Restate both as what is true: "every publish path that
+runs lifecycle scripts runs it, and `--ignore-scripts` skips it", or make the
+workflow the enforcement point by keeping the explicit `License gate` step
+(.github/workflows/release.yml:141), which is already there and does not depend
+on a lifecycle hook at all.
+
+### HRB-8 (LOW): the `release-verify` witness reddens against the ABSENT feature, not against the DANGEROUS state
+
+CLAUDE.md:324 requires the stronger form. The two dangerous states in
+witness/release-verify-refuses-contaminated-resolution-path.json are
+
+1. `CONTAMINATION="$(probe_source_tree)"` becomes `CONTAMINATION=""`, and
+2. the name comparison inside the probe becomes `if (false)`.
+
+Both DISABLE the same probe. Neither is a state in which the probe RUNS and
+returns the wrong answer, which is the dangerous state HRB-6 exhibits three
+times. So the pair is two ways of deleting one feature rather than two
+structurally different members of the class "refuses a contaminated resolution
+path" (CLAUDE.md:415). Any of HRB-6's three members would make a real second
+member: the probe is intact, it executes, and it answers `null`.
+
+The other two new witnesses do NOT have this defect and are noted as sound:
+witness/license-gate-covers-runtime-dependency-tree.json:18 mutates the license
+to a constant `"MIT"`, which is a wrong-answer state, and
+witness/init-writes-kernel-pin.json:18 turns the exact pin into a caret range,
+which is also a wrong-answer state. The `red-witness` gate on this branch is
+green over all of them (`red-witness: green (4 witness(es) evaluated (3 own, 1
+stored re-evaluated in 11218ms); every witness red against every declared
+dangerous state and green at head)`, exit 0), which is a true statement about
+the states DECLARED and not about the class.
+
+### HRB-9 (refuted, no finding): the dependency growth 6 to 10
+
+Verified independently of the work history, by reading each installed
+package.json rather than the maps:
+
+| package | license | ships a license file |
+|---|---|---|
+| ajv | MIT | LICENSE |
+| fast-deep-equal | MIT | LICENSE |
+| fast-uri | BSD-3-Clause | LICENSE |
+| json-schema-traverse | MIT | LICENSE |
+| require-from-string | MIT | license |
+| yaml | ISC | LICENSE |
+| commonmark | BSD-2-Clause | LICENSE |
+| entities | BSD-2-Clause | LICENSE |
+| mdurl | MIT | LICENSE |
+| minimist | MIT | LICENSE |
+
+All ten permissive, all ten matching test/license-gate.test.ts:285 and
+test/license-gate.test.ts:309 exactly. `git log -S'"commonmark"' -- package.json`
+gives `1a5b7ba M3-P3 round 6 (A2): SALVAGED from a died implementer, gates not
+yet run`, which matches the attribution at test/license-gate.test.ts:302.
+
+The allowlist question has an answer worth stating rather than a finding. The
+allowlist did not WIDEN to admit the growth, because no allowlist existed before
+this phase; it was authored against the tree as it already stood, so it could
+not have caught the growth and does not claim to. What records the growth is
+the two-map split, which is genuine work and which the test uses in BOTH
+directions (test/license-gate.test.ts:338). One observation: `Apache-2.0` is on
+the allowlist at package.json:48 and is the license of ZERO production
+packages, so it is surface admitted in advance rather than in response to a
+need. Informational, not charged.
