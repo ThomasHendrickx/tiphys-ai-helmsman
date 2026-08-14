@@ -709,7 +709,7 @@
   "gate-precondition-unrunnable-operand-is-error": "a precondition command whose path operand is a directory, and one whose operand is a dangling symlink, are both error and neither is not-applicable",
   "gate-command-unrunnable-names-the-missing-path": "a gate whose command names a missing path, one whose launcher is not executable, and one whose interpreter line is bad are all error, and the missing path is the path named",
   "gate-registry-consumer-tree-crash-is-not-a-skip": "the shipped registry run against a consumer package tree with no scripts directory reports error for the conditional gate, never not-applicable",
-  "gate-precondition-inline-option-value-not-probed": "the path-operand rule leaves an option's inline value alone, which is what keeps a real declared precondition working",
+  "gate-precondition-inline-option-value-not-probed": "an option's inline value is left alone when it is not path-shaped, which is what keeps a real declared precondition working, and fails closed loudly when it is",
   "scope-phase-own-evidence-standing-extra": "a phase's own clean-room review and delta verification pass undeclared, another phase's review reddens, and a longer phase id is not swallowed by a shorter one",
   "scope-declaration-addition-named-removal-red": "a head declaration that ADDS an entry passes with the added entry PRINTED by name, and the same declaration with an entry REMOVED reddens naming it",
   "scope-declaration-deleted-at-head-red": "a head that deletes the phase declaration outright reddens rather than falling back to the merge base",

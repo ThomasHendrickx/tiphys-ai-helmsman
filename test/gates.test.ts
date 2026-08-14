@@ -3786,41 +3786,97 @@ test("the shipped registry run against a consumer package tree with no scripts d
   }
 });
 
-test("the path-operand rule leaves an option's inline value alone, which is what keeps a real declared precondition working", () => {
+test("an option's inline value is left alone when it is not path-shaped, which is what keeps a real declared precondition working, and fails closed loudly when it is", () => {
   // `credential-token`'s precondition in gates.manifest.json is
   // ["node", "-e", "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"],
   // and it is REQUIRED to keep reporting not-applicable when the token is
-  // absent: that is a legitimate skip, not a crash. This arm exists because
-  // a probe rule that swept inline code into its path set would convert
-  // every such skip into an error, which is this change's own failure mode
-  // in the opposite direction.
+  // absent: that is a legitimate skip, not a crash. This test exists because
+  // a rule that swept inline code into its path set would convert every such
+  // skip into an error, which is this change's own failure mode in the
+  // opposite direction.
+  //
+  // FIX ROUND 1 CHANGED THE SECOND ARM BELOW, AND SAYING SO IS PART OF THE
+  // CHANGE. Until this round both arms asserted `not-applicable`. The
+  // post-spawn attribution scan is deliberately over-inclusive: after a
+  // NONZERO exit it examines every argv element containing `/`, at any
+  // position, because separating an option's value from an operand needs the
+  // launcher's flag grammar and guessing at that is the trap the runner's own
+  // header forbids. So inline code that happens to CONTAIN a slash is now
+  // treated as a path it cannot open, and the verdict is `error`.
+  //
+  // THAT IS A REAL COST AND IT IS ACCEPTED FOR A REASON THAT IS NOT A
+  // PREFERENCE. The scan's false positive is a loud refusal naming the exact
+  // element, with the message telling the author to restructure the command;
+  // its false negative is a crash reported as a legitimate skip, which is the
+  // defect this entire phase exists to abolish and which nobody can see. M2-C-3
+  // settles that direction. The scan tests for a SLASH rather than for
+  // absence precisely so that the real declaration in arm 1, which contains no
+  // slash at all, is unaffected; both `command-exit-zero` declarations in this
+  // repository were enumerated rather than assumed, and neither is touched.
+  //
+  // ARM 1 IS THE REAL COMMAND, VERBATIM. It is the property the test was
+  // written for, and it is untouched by this round.
   const dir = scratch();
   try {
-    const evidence = join(dir, "evidence-inline");
-    const manifest = writeManifest(dir, [
-      {
-        id: "p11-inline-code",
-        command: writeGate(dir, "inline-gate", {
-          record: gateRecord("p11-inline-code", "green", 1),
-          exit: 0,
-        }),
-        unitLabel: "fixture units",
-        applicability: "conditional",
-        precondition: {
-          id: "p11-inline-probe",
-          // The inline code contains a slash on purpose.
-          kind: "command-exit-zero",
-          command: ["node", "-e", "process.exit('a/b'.length === 3 ? 1 : 0)"],
-        },
-      },
+    const gateCommand = writeGate(dir, "inline-gate", {
+      record: gateRecord("p11-inline-code", "green", 1),
+      exit: 0,
+    });
+    const inlineManifest = (name: string, code: string): string =>
+      writeManifest(
+        dir,
+        [
+          {
+            id: "p11-inline-code",
+            command: gateCommand,
+            unitLabel: "fixture units",
+            applicability: "conditional",
+            precondition: {
+              id: "p11-inline-probe",
+              kind: "command-exit-zero",
+              command: ["node", "-e", code],
+            },
+          },
+        ],
+        name,
+      );
+
+    const realEvidence = join(dir, "evidence-inline-real");
+    runCli([
+      "gates",
+      "run",
+      "--manifest",
+      inlineManifest(
+        "manifest-inline-real.json",
+        "process.exit(process.env.P11_NEVER_SET_TOKEN === undefined ? 1 : 0)",
+      ),
+      "--evidence",
+      realEvidence,
     ]);
-    runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
-    const record = JSON.parse(
-      readFileSync(join(evidence, "p11-inline-code", "result.json"), "utf8"),
+    const realRecord = JSON.parse(
+      readFileSync(join(realEvidence, "p11-inline-code", "result.json"), "utf8"),
     ) as { status: string; detail: string };
-    assert.equal(record.status, "not-applicable");
-    assert.match(record.detail, /evaluated and unmet/);
-    assert.doesNotMatch(record.detail, /could not be run/);
+    assert.equal(realRecord.status, "not-applicable", realRecord.detail);
+    assert.match(realRecord.detail, /evaluated and unmet/);
+    assert.doesNotMatch(realRecord.detail, /could not be run/);
+
+    // ARM 2: the same shape with a slash inside the inline code. Loud, named,
+    // and telling the author what to do about it.
+    const slashEvidence = join(dir, "evidence-inline-slash");
+    runCli([
+      "gates",
+      "run",
+      "--manifest",
+      inlineManifest("manifest-inline-slash.json", "process.exit('a/b'.length === 3 ? 1 : 0)"),
+      "--evidence",
+      slashEvidence,
+    ]);
+    const slashRecord = JSON.parse(
+      readFileSync(join(slashEvidence, "p11-inline-code", "result.json"), "utf8"),
+    ) as { status: string; detail: string };
+    assert.equal(slashRecord.status, "error", slashRecord.detail);
+    assert.match(slashRecord.detail, /CANNOT BE ATTRIBUTED/);
+    assert.match(slashRecord.detail, /not path-shaped/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
