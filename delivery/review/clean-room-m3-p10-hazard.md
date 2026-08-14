@@ -249,7 +249,7 @@ OPEN and additionally suppress the "Rehearsal only, nothing was published"
 notice, so the run looks like neither branch ran.
 
 **This is DEDUCED, not measured, and the deduced half is named as such**
-(CLAUDE.md:591). I have no way to evaluate a GitHub expression locally and the
+(CLAUDE.md:591). I did not find a way to evaluate a GitHub expression locally, and the
 hard limits forbid dispatching the workflow, so I did NOT establish that a
 dispatch can ever deliver null or `''` for a `type: boolean` input carrying
 `default: true`. It may be that GitHub's dispatch validation makes those
@@ -623,3 +623,143 @@ The step ordering supports the gate: it runs at position 9 of the job, after
 (.github/workflows/gates.yml:207) says is load-bearing and which the step order
 confirms. And it carries no `if:`, so both CI events run it, which is T-009's
 second rule satisfied.
+
+## The claim grep, run against THIS document
+
+Both forms from CLAUDE.md:368 and CLAUDE.md:406, run against this review before
+submitting it. They agree at NINE occurrences each, so no hit is hidden by a
+line wrap:
+
+```
+$ grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/review/clean-room-m3-p10-hazard.md | wc -l
+9
+$ tr '\n' ' ' < delivery/review/clean-room-m3-p10-hazard.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
+9
+```
+
+Each of the nine, settled or restated:
+
+1. `M2-C-2 (never green by omission)` is quoted stdout from the program under
+   test, captured in HRB-2. Settled.
+2. `I have no way to evaluate a GitHub expression locally` was an over-claim of
+   exactly the shape CLAUDE.md:376 names. RESTATED as "I did not find a way to",
+   which is the true sentence, and it invites the arbitrator to try.
+3. `a REHEARSAL never runs scripts/release-verify.sh at all`. Settled:
+
+   ```
+   $ grep -n "if: \${{ inputs.dry-run" .github/workflows/release.yml
+   157:        if: ${{ inputs.dry-run == false }}
+   161:        if: ${{ inputs.dry-run != false }}
+   172:        if: ${{ inputs.dry-run == false }}
+   ```
+
+   Line 157 guards the publish, 172 guards the release verification, and both
+   are the same expression, so the arm that skips one skips the other.
+4. `git ls-files cannot be its oracle` for `dist/`. Settled:
+   `git ls-files dist | wc -l` prints `0`, exit 0. `dist/` is built and never
+   committed (plan decision D-17).
+5. `the worktree under review was never written into` during the release-verify
+   labs. Settled: `git status --short` in this worktree prints nothing, and
+   `git diff --stat origin/claude/m3-p10-release-and-exit...HEAD` reports one
+   file changed, this review document. Every lab lives outside the worktree.
+6. `the upward walk never leaves <lab>` under the symlink. Settled by the
+   measured run in HRB-6 member A, which exits 0 from inside the checkout.
+7. `a PARENT-directory node_modules, which the walk never looks at`. Settled by
+   the probe's own source, which opens exactly one path per ancestor:
+
+   ```
+   const candidate = join(dir, "package.json");
+   ```
+
+   at scripts/release-verify.sh:119, with no second `join` in the loop.
+8. `the real publish therefore always lists a BUILT tree`. Settled by the
+   third row of HRB-10's table: `dist/` absent with scripts ENABLED still gives
+   `entryCount 181`, because `prepack` rebuilds.
+9. `an unreported negative is indistinguishable from a search never run` is a
+   paraphrase of CLAUDE.md:351, not a claim of mine. Settled.
+
+## Verdict
+
+**REQUEST CHANGES.**
+
+| id | severity | subject |
+|---|---|---|
+| HRB-1 | HIGH | the license inventory models the tree instead of reading it, and is green over a genuinely unlicensed shipped package |
+| HRB-2 | none (attack refuted) | zero-unit vacuity is correctly rewritten to error, exit 21, on the direct invocation path CI uses |
+| HRB-3 | HIGH | the only automated guard over `npm publish` asserts the guard STRING contains "dry-run"; three inverted guards are green |
+| HRB-4 | LOW | `== false` coerces; null and empty string are the permissive direction. Reachability NOT established, raised as an open question |
+| HRB-5 | HIGH | the rehearsal never runs release verification, and the real run runs it after `npm publish` |
+| HRB-6 | MEDIUM | the contamination probe reports CLEAN under a symlink, `NODE_PATH`, and a parent `node_modules` |
+| HRB-7 | MEDIUM | "no publish path can skip it" is false and is asserted in a file that SHIPS |
+| HRB-8 | LOW | the release-verify witness's two members both delete the same probe rather than making it answer wrongly |
+| HRB-9 | none (attack refuted) | the ten production licenses verified independently; all permissive, maps exact |
+| HRB-10 | LOW | the pack listing is a function of build state under `--ignore-scripts`; check 5 is green over a code-free listing |
+
+Three HIGH findings, each with its DR-0027 reachability argument stated in its
+own section: HRB-1 at the paragraph headed "Reachability (DR-0027)", likewise
+HRB-3 and HRB-5.
+
+The phase's central claim is that publishing is READY and CANNOT HAPPEN by
+accident. My reading after this work is that the READY half is in good shape:
+the workflow is dispatch-only with an exact trigger set, there is no stored
+credential, the version-agreement refusal exists, the license gate is a real
+gate wired into both CI events, and the ten shipped licenses are exactly what
+the maps say. What is not established is the second half. The guard over the
+irreversible action has no test that evaluates it (HRB-3), the artifact is
+never executed before it is published (HRB-5), and the gate whose name promises
+to say what ships does not read the tree that ships (HRB-1). Each of the three
+has a small, mechanical fix, and none of them requires redesigning anything the
+phase built.
+
+## What this review does NOT establish
+
+The arbitrator reads this first. These are the regions I did not attack, and
+why.
+
+1. **The acceptance criteria were not walked.** That was the parallel
+   reviewer's lens by dispatch, and I deliberately did not duplicate it. If
+   that reviewer did not walk a criterion, nobody did.
+2. **The whole-suite result is not mine.** I started `npm test` on this head on
+   node v26.6.0 with `dist/` built and did not have its summary block in hand
+   when I wrote this section. CI is the authority I am relying on for suite
+   health: the `gates` job at head 8d056f6 concluded success, reported to me by
+   the orchestrator (I did not read the job myself). I ran individual tests by
+   name throughout, and every control run I did take was green.
+3. **Nothing was published, packed for publication, or dispatched.** By the
+   dispatch's hard limits I did not run `npm publish` in any form, did not
+   authenticate to npm, and did not dispatch the release workflow. So EVERY
+   statement here about the publish path is derived from the workflow file, from
+   `npm pack`, and from lifecycle probes on a fixture package. The one place
+   that matters most is HRB-7, where the `--ignore-scripts` suppression of
+   `prepublishOnly` is deduced from measured suppression of `prepack` and
+   `prepare` by the same flag.
+4. **HRB-4's reachability is open.** Whether a `workflow_dispatch` can ever
+   deliver `null` or `''` for a `type: boolean` input carrying `default: true`
+   is unresolved, and resolving it needs a dispatch I am not permitted to make.
+   If it is unreachable, HRB-4 is latent rather than live; the recommended fix
+   makes the question moot either way.
+5. **`npm publish <tarball>` was not tested** as a second bypass of
+   `prepublishOnly`. Named as an open question in HRB-7 rather than claimed.
+6. **The OIDC and trusted-publisher configuration was not exercised**, because
+   owner action A-7 part 2 has not happened. Whether `permissions: id-token:
+   write` plus `--provenance` actually authenticates against npm is untested by
+   anyone, here or in the phase, and the workflow header
+   (.github/workflows/release.yml:52) says so honestly.
+7. **`src/` was not audited for a third copy of the dependency walk.** HRB-1's
+   enumeration covers scripts/license-gate.mjs and names the second copy at
+   package.json:31; I did not grep `src/` for a third.
+8. **Workspaces, npm aliases (`"a": "npm:b@1"`), and `peerDependencies` under
+   `auto-install-peers`** were reasoned about and NOT measured as further
+   members of HRB-1's class. Two members were measured, which is the CLAUDE.md
+   floor, and I stopped there.
+9. **A bind mount, a `node_modules` already inside the working directory, and
+   npm workspaces** were not probed as further members of HRB-6's class, for
+   the same reason.
+10. **`src/commands/init.ts` got a read, not an attack.** I read the diff and
+    the pin logic and found nothing to charge; I did not attack `readOwnVersion`
+    for failure modes, nor test what a fleet home does when the pin does not
+    resolve because nothing is published yet. That last one is a real question
+    somebody should ask before M4.
+11. **I did not evaluate scope, citations, or the clause map**, and I did not
+    check whether this pull request's contents match the unit of value it claims
+    to deliver (DR-0031). Those are the orchestrator's and the other reviewer's.
