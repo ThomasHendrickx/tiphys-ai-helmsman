@@ -1,0 +1,31 @@
+{
+  "id": "precondition-argv-probe-is-at-spawn-time",
+  "behavior": "precondition-argv-probe-is-at-spawn-time",
+  "tests": [
+    "a precondition that removes one of its own argv paths as an ordinary last act is still an evaluated skip, not an error"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (gapsAtSpawnTime.length > 0) {",
+      "replace": "    if (attributionGaps(command, cwd).length > 0) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  const gapsAtSpawnTime = attributionGaps(command, cwd);\n  const result = spawnSync(command[0] as string, command.slice(1), {\n    cwd,\n    encoding: \"utf8\",\n  });\n",
+      "replace": "  const result = spawnSync(command[0] as string, command.slice(1), {\n    cwd,\n    encoding: \"utf8\",\n  });\n  const gapsAtSpawnTime = attributionGaps(command, cwd);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the precondition command the runner spawns with spawnSync, and the runner's own result records and summary.json",
+    "captures": [
+      "witness/captures/m3-p11-round-2-two-arm.txt"
+    ],
+    "provenance": "Same capture and same two arms as the sibling witness; rows B1 and B2. The class this witness guards has its two structurally different members IN THE TEST, not in the mutation list: B1 is a script that removes ITSELF (the vanished element is argv[1], the launcher's own operand) and B2 is a script that removes a DATA operand it was handed and survives (the vanished element is a later operand and the script naming it is still there). The two declared mutations both restore fix round 1's moment, by different edits: the first keeps the carried value and recomputes at the consult site, the second keeps the consult site and moves the declaration past the spawn. That they agree is the point; a mutation list is not where this class is demonstrated."
+  }
+}

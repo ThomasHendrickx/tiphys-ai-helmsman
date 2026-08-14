@@ -717,5 +717,8 @@
   "precondition-nonzero-exit-must-be-attributable": "a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace",
   "gates-command-prints-green-detail-to-stdout": "a GREEN gate's own detail reaches stdout as well, so a disclosure a green verdict carries cannot be silent",
   "gates-command-detail-control-characters-escaped": "a gate detail carrying a bare carriage return is escaped rather than allowed to overwrite its own printed line",
-  "scope-foreign-declaration-refused-and-prefix-named": "a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one"
+  "scope-foreign-declaration-refused-and-prefix-named": "a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one",
+  "precondition-not-a-path-is-not-an-error": "an argv element that is not a path does not turn a legitimate unmet precondition into an error that fails the whole bundle",
+  "precondition-argv-probe-is-at-spawn-time": "a precondition that removes one of its own argv paths as an ordinary last act is still an evaluated skip, not an error",
+  "precondition-bare-script-operand-is-error": "a directory-less script operand that is not there is error, and a bare word with no script suffix is still left alone"
 }

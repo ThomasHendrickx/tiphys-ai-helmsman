@@ -1,0 +1,87 @@
+M3-P11 FIX ROUND 2: per-member two-arm capture, verbatim.
+
+Taken 2026-08-14, node v26.6.0, by running the REAL packed CLI
+(bin/tiphys.ts) from two trees against one one-gate-plus-companion manifest
+per member. Arm 1 is the phase branch at 6274414, the head the delta
+verification examined, in a detached worktree. Arm 2 is the fix-round-2 tree.
+Nothing is hand-written: every `verdict=` is read out of the runner's own
+result.json and every `errors=`/`green=` out of its summary.json.
+
+WHY THE COMPANION GATE IS THERE. A bundle whose only gate is not-applicable
+exits 21 for "no applicable gate", which would make the exit column say
+nothing. With one ordinary required green gate present, `bundle-exit=21
+errors=1 green=1` is the finding itself, in one line: a green gate ran, and
+the bundle still failed, because one merely-conditional gate reported a false
+error and decideAggregate checks counts.error first.
+
+MEMBER CLASSES
+  A  mechanism A, the wrong elements: five members, each containing a slash,
+     none of them a path, each ruled out for a DIFFERENT reason.
+  B  mechanism B, the wrong moment: two members, each a real path that was
+     present when the command was launched and removed by the command's own
+     ordinary last act.
+  C  the residue fix round 1 declared and could not close: a directory-less
+     script operand that is absent.
+  D  CONTROLS. D1 and D2 are the fail-closed direction and must stay `error`
+     in BOTH arms; D3 and D4 are the shapes of this repository's two real
+     command-exit-zero declarations and must stay `not-applicable` in both.
+     Without D1 to D4 the nine flips above could have been bought by a change
+     that simply stopped believing exit codes.
+
+=========== ARM 1: PREVIOUS HEAD 6274414 (the dangerous state) ===========
+tree <scratch>/wt-prev
+FAIL A1 inline-code after -e
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL A2 inline-code after --eval
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL A3 url operand
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL A4 --opt=/value
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL A5 existing directory operand
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL B1 script deletes itself
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL B2 script deletes a data operand
+       verdict=error expected=not-applicable bundle-exit=21 errors=1 green=1
+FAIL C1 node check.mjs, absent
+       verdict=not-applicable expected=error bundle-exit=0 errors=0 green=1
+FAIL C2 bash verify.sh, absent
+       verdict=not-applicable expected=error bundle-exit=0 errors=0 green=1
+PASS D1 absent operand after a flag
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS D2 absent operand carrying whitespace
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS D3 bare words . and src
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS D4 credential-token's real command
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+
+=========== ARM 2: FIX ROUND 2 ===========
+tree /home/user/tiphys-ai-helmsman
+PASS A1 inline-code after -e
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS A2 inline-code after --eval
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS A3 url operand
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS A4 --opt=/value
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS A5 existing directory operand
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS B1 script deletes itself
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS B2 script deletes a data operand
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS C1 node check.mjs, absent
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS C2 bash verify.sh, absent
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS D1 absent operand after a flag
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS D2 absent operand carrying whitespace
+       verdict=error expected=error bundle-exit=21 errors=1 green=1
+PASS D3 bare words . and src
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1
+PASS D4 credential-token's real command
+       verdict=not-applicable expected=not-applicable bundle-exit=0 errors=0 green=1

@@ -1,0 +1,31 @@
+{
+  "id": "precondition-bare-script-operand-is-error",
+  "behavior": "precondition-bare-script-operand-is-error",
+  "tests": [
+    "a directory-less script operand that is not there is error, and a bare word with no script suffix is still left alone"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "      (!/\\s/.test(element) && SCRIPT_SUFFIXES.some((suffix) => element.endsWith(suffix)));",
+      "replace": "      false;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  \".mjs\",",
+      "replace": "  \".tiphys-not-a-real-suffix\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the precondition command the runner spawns with spawnSync, and the runner's own result records and summary.json",
+    "captures": [
+      "witness/captures/m3-p11-round-2-two-arm.txt"
+    ],
+    "provenance": "Same capture and same two arms as the sibling witnesses; rows C1 and C2 flip from not-applicable to error, and rows D1 to D4 hold in BOTH arms, which is what stops the flip having been bought by probing every operand. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT IN KIND: the first removes the suffix TEST, which is logic and takes both C1 and C2 down at once; the second removes one DATUM from the suffix list, leaving the logic intact, which takes C1 down and leaves C2 standing. A mutation that only deletes logic cannot show that the closed list is load-bearing data rather than decoration."
+  }
+}

@@ -3981,6 +3981,11 @@ test("an argv element that is not a path does not turn a legitimate unmet precon
   // the finding delivery/verification/m3-p11-fix-round-1.md reported as 2a
   // and it is why the bundle counts are asserted here and not only the row.
   //
+  // The verbatim two-arm capture, member by member, at the previous head and
+  // at this one, is witness/captures/m3-p11-round-2-two-arm.txt; the
+  // assertions below are anchored to what the runner actually printed there,
+  // not to strings chosen to match the implementation.
+  //
   // FOUR STRUCTURALLY DIFFERENT MEMBERS, different in the REASON the shape
   // test is wrong about them, not in decoration:
   //
@@ -4091,7 +4096,8 @@ test("a precondition that removes one of its own argv paths as an ordinary last 
   // delivery/verification/m3-p11-fix-round-1.md reports the first member as
   // finding 2b.
   //
-  // TWO STRUCTURALLY DIFFERENT MEMBERS:
+  // TWO STRUCTURALLY DIFFERENT MEMBERS, rows B1 and B2 of the two-arm capture
+  // witness/captures/m3-p11-round-2-two-arm.txt:
   //
   //   self-delete   the script removes ITSELF (a one-shot or bootstrap
   //                 script). The vanished element is argv[1], the launcher's
@@ -4196,7 +4202,9 @@ test("a directory-less script operand that is not there is error, and a bare wor
   //
   // TWO STRUCTURALLY DIFFERENT MEMBERS: a different launcher, a different
   // suffix, and a different exit code from the launcher itself (node reports
-  // 1 for a module it cannot find, bash reports 127).
+  // 1 for a module it cannot find, bash reports 127). Rows C1 and C2 of
+  // witness/captures/m3-p11-round-2-two-arm.txt, whose D rows are the
+  // controls that hold in BOTH arms.
   const dir = scratch();
   try {
     const gateCommand = writeGate(dir, "bare-operand-gate", {
