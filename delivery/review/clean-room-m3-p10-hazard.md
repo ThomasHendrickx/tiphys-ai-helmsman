@@ -158,7 +158,7 @@ difference between a one-time human observation and a gate.
 
 The implementer's claim that M2-C-2 rewrites green-with-zero-units to error
 holds on the DIRECT invocation path, which is the one CI uses
-(.github/workflows/gates.yml:222 runs `node scripts/license-gate.mjs`, not the
+(.github/workflows/gates.yml:223 runs `node scripts/license-gate.mjs`, not the
 runner). Measured against a manifest with no `dependencies`:
 
 ```
@@ -268,7 +268,7 @@ inverted by one keystroke.
 **Mechanism.** The release workflow's step order is: pack listing check (no
 `if:`), then publish guarded `dry-run == false`, then the rehearsal notice, then
 release verification ALSO guarded `dry-run == false`
-(.github/workflows/release.yml:157, .github/workflows/release.yml:171). So:
+(.github/workflows/release.yml:157, .github/workflows/release.yml:172). So:
 
 - a REHEARSAL (`dry-run` true, the default) never runs
   scripts/release-verify.sh at all, and
@@ -277,20 +277,20 @@ release verification ALSO guarded `dry-run == false`
 The one check in the phase that installs the artifact and executes it is
 therefore incapable of preventing a bad publish. It can only report one. That
 inverts the purpose the workflow header states for the rehearsal
-(.github/workflows/release.yml:134: "Run every gate, the license gate and npm
+(.github/workflows/release.yml:62: "Run every gate, the license gate and npm
 pack, then STOP before publishing. This is the rehearsal").
 
 **Why that matters, measured.** Everything upstream of `npm publish` is a
 LISTING check, and a listing check does not establish that the artifact runs.
 One-word mutation in a faithful lab copy of this branch (`git archive HEAD`,
 same node_modules, same dist): `files: ["dist", ...]` becomes
-`files: ["dist/bin", ...]` at package.json:12.
+`files: ["dist/bin", ...]` at package.json:14.
 
 | | control | mutant |
 |---|---|---|
 | pack listing | 181 entries, 121 under `dist/` | 62 entries, 2 under `dist/` |
 | `the pack listing carries every declared kernel artifact ...` + `... no delivery, test, sandbox or src entry` | tests 2, pass 2, fail 0 | **tests 2, pass 2, fail 0** |
-| the workflow's inline pack check (.github/workflows/release.yml:143) | exit 0 | **exit 0** |
+| the workflow's inline pack check (.github/workflows/release.yml:129) | exit 0 | **exit 0** |
 | `node scripts/license-gate.mjs` | green, exit 0 | **green, exit 0** |
 | install the packed tarball and run its bin | prints the version | **ERR_MODULE_NOT_FOUND `dist/src/cli.js`, exit 1** |
 
@@ -300,7 +300,7 @@ before `npm publish`, and fails the one it runs after.
 The reason the listing checks miss it is the same defect on both sides: the
 `dist` leg is a PRESENCE test. test/license-gate.test.ts:554 asserts
 `[...files].some((path) => path.startsWith("dist/"))` and
-.github/workflows/release.yml:148 asserts
+.github/workflows/release.yml:141 asserts
 `files.some((path) => path.startsWith(dir + "/"))`. The same test comments,
 twelve lines earlier at test/license-gate.test.ts:523, correctly say that a
 per-directory presence check is exactly what the plan's hazard row defeats, and
@@ -309,7 +309,7 @@ apply the stronger `git ls-files` comparison to the five TRACKED directories.
 check, because it is not tracked and `git ls-files` cannot be its oracle.
 
 **Reachability (DR-0027).** Directly: it publishes. `npm publish` is
-irreversible by the workflow's own account (.github/workflows/release.yml:114).
+irreversible by the workflow's own account (.github/workflows/release.yml:8).
 
 **What would close it, and both halves are cheap.**
 
@@ -448,7 +448,7 @@ removal is REQUIRED by the phase, so it is not a defect; it is the reason the
 absolute claims above should not be made.
 
 **Reachability (DR-0027).** gate-registry.yaml is in the `files` array at
-package.json:16 and therefore SHIPS. An over-claim in it reaches every consumer
+package.json:18 and therefore SHIPS. An over-claim in it reaches every consumer
 of the package, and this repository's own rule (CLAUDE.md:376) is that a claim
 of this shape carries an adjacent captured command or is restated as an open
 question.
@@ -456,7 +456,7 @@ question.
 **What would close it.** Restate both as what is true: "every publish path that
 runs lifecycle scripts runs it, and `--ignore-scripts` skips it", or make the
 workflow the enforcement point by keeping the explicit `License gate` step
-(.github/workflows/release.yml:141), which is already there and does not depend
+(.github/workflows/release.yml:126), which is already there and does not depend
 on a lifecycle hook at all.
 
 ### HRB-8 (LOW): the `release-verify` witness reddens against the ABSENT feature, not against the DANGEROUS state
@@ -513,7 +513,7 @@ this phase; it was authored against the tree as it already stood, so it could
 not have caught the growth and does not claim to. What records the growth is
 the two-map split, which is genuine work and which the test uses in BOTH
 directions (test/license-gate.test.ts:338). One observation: `Apache-2.0` is on
-the allowlist at package.json:48 and is the license of ZERO production
+the allowlist at package.json:49 and is the license of ZERO production
 packages, so it is surface admitted in advance rather than in response to a
 need. Informational, not charged.
 
@@ -522,7 +522,7 @@ need. Informational, not charged.
 **Mechanism.** `npm pack --dry-run` lists what is ON DISK. The real publish
 runs `prepack` (`npm run build`, package.json:34) and therefore always lists a
 BUILT tree. Every pack observation in this phase passes `--ignore-scripts`
-(scripts/license-gate.mjs:223, .github/workflows/release.yml:145,
+(scripts/license-gate.mjs:223, .github/workflows/release.yml:132,
 test/license-gate.test.ts:496), which suppresses `prepack` outright, so those
 observations describe whatever `dist/` happened to be.
 
@@ -538,7 +538,7 @@ Measured in a faithful lab copy (`git archive HEAD`, node v26.6.0, npm 11.18.0):
 listing evidence in the work history was produced WITH scripts disabled
 (delivery/work-history/m3-p10.md:475 shows `--ignore-scripts` on the command)
 and the capture reports `"entryCount": 181`
-(witness/captures/npm-pack-dry-run-json.txt:16). 181 is the BUILT number, so
+(witness/captures/npm-pack-dry-run-json.txt:17). 181 is the BUILT number, so
 the capture describes the same tree a real publish would produce. It does NOT
 describe a different tree, and the worry is discharged.
 
@@ -594,7 +594,7 @@ inside the working directory before the run, and npm workspaces.
 CLAUDE.md:556 exists because a green BUNDLE is not evidence about a particular
 gate. Here the four-fact procedure is NOT needed, and that is the good news
 about how this gate was wired: `license` is not inside the bundle. It is a
-DIRECT step in the workflow (.github/workflows/gates.yml:222), so its own
+DIRECT step in the workflow (.github/workflows/gates.yml:223), so its own
 per-step conclusion is a gate-level observation rather than a deduction.
 
 **Reported to me by the orchestrator, which read the job steps; I did not read
@@ -620,7 +620,7 @@ review:
 
 The step ordering supports the gate: it runs at position 9 of the job, after
 `npm ci` at position 2, which the workflow comment
-(.github/workflows/gates.yml:207) says is load-bearing and which the step order
+(.github/workflows/gates.yml:214) says is load-bearing and which the step order
 confirms. And it carries no `if:`, so both CI events run it, which is T-009's
 second rule satisfied.
 
@@ -744,7 +744,7 @@ why.
    owner action A-7 part 2 has not happened. Whether `permissions: id-token:
    write` plus `--provenance` actually authenticates against npm is untested by
    anyone, here or in the phase, and the workflow header
-   (.github/workflows/release.yml:52) says so honestly.
+   (.github/workflows/release.yml:30) says so honestly.
 7. **`src/` was not audited for a third copy of the dependency walk.** HRB-1's
    enumeration covers scripts/license-gate.mjs and names the second copy at
    package.json:31; I did not grep `src/` for a third.
@@ -763,3 +763,31 @@ why.
 11. **I did not evaluate scope, citations, or the clause map**, and I did not
     check whether this pull request's contents match the unit of value it claims
     to deliver (DR-0031). Those are the orchestrator's and the other reviewer's.
+
+## Citation hygiene, checked rather than assumed
+
+This review is cut FROM the phase branch, so a `path:LINE` into a file the
+branch CHANGES resolves against the version under discussion, which is the
+condition CLAUDE.md:183 says to check rather than assume. Every citation in
+this document was extracted (backticked spans stripped first, per the grammar
+at CLAUDE.md:155) and resolved against this tree: **62 distinct citations, 62
+in range, 0 failing**, and the cited lines were then read back to confirm they
+carry the content claimed. Thirteen `.github/workflows/*` line numbers were
+wrong on the first pass and were corrected here rather than left to redden
+somewhere else; the failure mode is CLAUDE.md:202's, where an out-of-range
+citation is loud and an in-range wrong one is silent.
+
+One structural note for the arbitrator: the `citations` gate does not lint this
+document at all. Run against this branch it reports
+
+```
+gates: citations: not-applicable: precondition citations-diff-touches-documents
+evaluated and unmet: no changed path under delivery/plan/,
+delivery/verification/, delivery/decisions/, delivery/tuition/,
+delivery/requirements/, delivery/STATE.md
+```
+
+`delivery/review/` is not in that list, so clean-room reviews carry no
+citation enforcement. That is not this phase's doing and is not charged against
+it; it is stated because it means the numbers above are the only check these
+citations got.
