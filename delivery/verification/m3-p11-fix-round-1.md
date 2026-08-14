@@ -4,7 +4,11 @@ Delta verifier, adversarial pass. Branch under verification:
 `claude/m3-p11-precondition-crash-verdict`, reviewed head `a73313d`, fix round
 `a73313d..6274414`, with `origin/main` merged in at `2947240`. This document
 lives on `claude/verify-m3-p11-fr1`, cut from `main` at `6fa9633` per T-019, in
-its own worktree; the phase branch itself was never modified.
+its own worktree; the phase branch itself was never modified (checked at the
+end of this pass: `git log --oneline -1` in the phase worktree still reports
+`6274414`, and `git status --short` reports no tracked-file changes, only
+the gitignored `node_modules` copy and `dist/` build output as untracked-and-
+ignored).
 
 Status while in progress: WRITE IN PROGRESS. Sections are appended as work is
 done; the verdict at the bottom is the last thing written.
@@ -245,15 +249,12 @@ walked in the round's own document.
 ## Finding 3 (informational, CONFIRMS the round's claim): `credential-token` arm is verified unaffected
 
 Read `gates.manifest.json` (unchanged by this branch, resolves on `main`)
-directly:
+directly. The `credential-token` gate's declaration spans
+gates.manifest.json:43-59 on `main` (id `credential-token`), and its
+precondition command is `["node", "-e", "process.exit(process.env.
+TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"]`.
 
-```
-credential-token gates.manifest.json:43-59 (id "credential-token"),
-precondition.command = ["node", "-e",
-  "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"]
-```
-
-confirmed on `main`: `gates.manifest.json:57` holds exactly that command
+Confirmed on `main`: gates.manifest.json:57 holds exactly that command
 string. No `/` anywhere in it, so it is invisible to `commandPathCandidates`
 on the nonzero arm exactly as the round claims. Ran the REAL declaration
 (not a fixture copy) through the packed CLI at the fix-round head, in the
@@ -454,3 +455,198 @@ scan) treat as line breaks. The code's own comment claims coverage only for
 code, just an unclaimed residual; marked TRACKED, not scored, since gate
 `detail` is manifest-authored trusted content per the same comment's own
 framing, not external input.
+
+## Finding 6 (MEDIUM, NEW, outside the round's declared scope but real): `credentials.ts` reads a signal-killed git/gh subprocess as a benign "clean" verdict in a REQUIRED gate
+
+The round's document lists the `result.status === 0` sibling sites
+(`citations.ts`, `scope.ts`, `credentials.ts`, `pool.ts`, `witness/run.ts`,
+`doctor.ts`) and states it audited none of them and makes no claim about
+any. This section is that audit, done because the task asked for it, not
+because the round claimed otherwise.
+
+Read each site:
+
+- `src/gates/citations.ts` (`gitObjectType`) and `src/gates/scope.ts`
+  (`isAncestorOf`): both check `result.error !== undefined` FIRST, and both
+  additionally check `result.signal` explicitly before falling through,
+  returning `error` rather than a guessed verdict for anything outside the
+  documented `git` exit-code contract. No misreport found.
+- `src/witness/run.ts` (`gitIn`): `ok = result.status === 0`, but this
+  helper returns a plain boolean plus the raw `status`/`reason`, never a
+  POSITIVE semantic claim about what "not ok" means; a signal-killed git
+  call correctly reads as `ok: false` (`null !== 0`). The test-runner
+  function one level up (`runNamedTests`) separately checks `.error` and
+  `.signal` before touching `.status`, and derives pass/fail per NAMED TEST
+  by parsing the TAP stream rather than trusting the aggregate exit code.
+  No misreport found.
+- `src/commands/doctor.ts` (`checkRemote`, `isGitIgnored`): `checkRemote`
+  treats any non-zero `git remote` result (including a signal-kill, which
+  this session confirmed produces `status: null, error: undefined`, see
+  below) as "no remotes" and reports `WARN "no remote configured"`, which IS
+  a positive claim drawn from an indeterminate state. `doctor` is diagnostic
+  tooling, not part of the exit-code-driven pass/fail gate machinery that
+  blocks merges (no `applicability`, no `EXIT_GATE_ERROR`), so this is noted
+  but not scored as a gate-verdict-honesty defect; marked TRACKED.
+- `src/pool.ts`: every site read follows a fallback-chain pattern
+  (`resolveDefaultBranch` and similar: "try method A via `.status === 0`,
+  else try method B") where a crash of one probe just falls through to try
+  the next resolution method rather than being read as a specific claim
+  about the world. Judged lower risk BY INSPECTION, not independently
+  attacked with a live signal-kill; see the coverage section at the top.
+- `src/gates/credentials.ts`: THIS site DOES misreport, confirmed by
+  execution, and it feeds `credential-scrub`, a **required** gate
+  (`gates.manifest.json` line for `credential-scrub`'s `applicability` reads
+  `"required"`).
+
+### Reproduction
+
+Built a `git` wrapper on `$PATH` that self-inflicts `SIGSEGV` when invoked
+with a `config` subcommand (simulating, for example, an OOM-killed or
+otherwise crashed `git` mid-probe), placed ahead of the real `git`, and
+called `probeCredentialSources` directly (the exported function `src/gates/
+credentials.ts` implements) with a scrubbed environment carrying only `PATH`
+and `HOME`.
+
+```
+$ node -e 'spawnSync("bash",["-c","kill -SEGV $$"],{encoding:"utf8"})'
+{"status":null,"signal":"SIGSEGV"}
+```
+
+Control (real `git`, credential.helper genuinely unset):
+
+```
+git-global-config    clean   git config --global --get-all credential.helper exited 1 with no output
+git-system-config    clean   git config --system --get-all credential.helper exited 1 with no output
+git-resolved-config  clean   git config --get-all credential.helper exited 1 with no output
+```
+
+Attack (crashy `git` wrapper ahead on `PATH`, same otherwise):
+
+```
+git-global-config    clean   git config --global --get-all credential.helper exited null with no output
+git-system-config    clean   git config --system --get-all credential.helper exited null with no output
+git-resolved-config  clean   git config --get-all credential.helper exited null with no output
+```
+
+All three probes fall into the `else` branch of `if (result.error !==
+undefined) { ... } else if (result.status === 0 && ...) { ... } else { //
+"clean" }` (quoted, `src/gates/credentials.ts`, unchanged by this branch so
+these lines are stable relative to `main` but quoted anyway for consistency
+with the rest of this document), which makes the POSITIVE claim "no
+credential helper configured" (`outcome: "clean"`) for a source that
+crashed mid-probe rather than genuinely resolving to nothing. `verdictFromProbes`
+(quoted, `src/gates/credentials.ts`) only escalates to `error` when
+`outcome === "error"` and to `red` when any probe is `resolvable`; three
+crashed-but-"clean" probes among otherwise-clean others still yields overall
+GREEN.
+
+What breaks for a user: `credential-scrub`, a REQUIRED gate whose entire
+purpose is catching credential leakage, can report GREEN ("no leak sources
+found") when three of its seven sources never actually resolved anything
+because the `git` subprocess backing them was killed by a signal (an
+OOM-kill under memory pressure is the most plausible real trigger; the
+SIGSEGV wrapper here is a stand-in for any signal death, not the specific
+mechanism). `credential-scrub`'s `applicability: "required"` is confirmed at
+gates.manifest.json:40 on `main` (this file is unchanged by the phase
+branch, so this citation resolves identically on both sides). This is the
+same STRUCTURAL class the whole M3-P11/DR-0029 effort exists to close (a
+crash read as a benign, indistinguishable-from-legitimate verdict) in a
+sibling location this round explicitly declined to audit. It is narrower
+than Findings 1 and 2 (it needs a signal-level crash of `git`/`gh`, not
+merely a missing file or a nonzero exit) and it is only PART of
+`credential-scrub`'s coverage (other sources, notably the environment-
+variable tripwire, are unaffected and would likely still catch many real
+leaks), so it is rated MEDIUM rather than HIGH: real, reproduced, in a
+required gate, but requiring an unusual triggering condition and not a total
+defeat of the gate's purpose.
+
+## Suite verification (782/782/0 claim)
+
+Ran the full suite on the fix-round head (`6274414`) with `dist/` already
+built (`npm run build` exited 0 earlier in this pass, `git status --short`
+clean of build artifacts as expected since `dist/` is gitignored), toolchain
+node v26.6.0, invocation `npm test` (i.e. `node --test "test/**/*.test.ts"`,
+package.json's own script, NOT the bare `node --test` from the repository
+root that CLAUDE.md's warning 12 notes picks up two extra sandbox tests):
+
+```
+$ npm test
+...
+tests 782
+pass 782
+fail 0
+cancelled 0
+skipped 0
+todo 0
+duration_ms 205366.093878
+```
+
+Confirms the round's claimed 782/782/0 exactly, on this toolchain, this
+build state, this invocation. Per CLAUDE.md's warning 12, this number is
+NOT expected to match a bare `node --test` from the repository root (which
+would report 784, picking up the two `sandbox/test/greet.test.js` tests
+`npm test`'s glob excludes); that bare invocation was not separately run
+here since the round's own claim was specifically the `npm test` figure.
+
+## Verdict
+
+**NOT VERIFIED as a clean fix. VERIFIED as a real, substantial improvement
+that leaves two confirmed classes of wrong verdict, one already declared by
+the round and one materially new.**
+
+What the round gets right, confirmed by direct execution rather than by
+trusting its prose:
+
+- Mechanism 1 half A (the readable-but-unopenable member) is closed, and the
+  round's own two named tests were independently reproduced red at the
+  reviewed head and green at the fix-round head.
+- Mechanism 2 (C-1 relay-every-row, C-2 foreign-declaration refusal, M-1
+  directory-prefix disclosure) all verified live: the green-detail line now
+  reaches stdout, a raw carriage return in a detail is escaped rather than
+  live, and a constructed foreign-declaration touch reproduces the RED
+  verdict the round's own test also demonstrates red-to-green.
+- `credential-token`, the one real inline `command-exit-zero` declaration in
+  this repository, is verified unaffected against its ACTUAL manifest entry.
+- The 25-mutation-member witness-coverage claim was independently
+  re-derived from a script written from scratch and matches exactly.
+- The 782/782/0 suite claim is reproduced exactly, toolchain and build
+  state and invocation all named.
+- No legitimate counter-example to C-2's bluntness was found, and the
+  scenario most likely to produce a false positive there (an ordinary
+  main-merge bringing in a new phase's declaration) is confirmed handled
+  correctly by a passing pre-existing test.
+
+What remains wrong, in order of what a real user hits:
+
+- **Finding 1 (the no-slash residue)**: the exact defect class the phase
+  exists to close (a crashed/absent command read as a legitimate skip)
+  still reproduces for any `command-exit-zero` precondition whose
+  script-shaped operand carries no `/`. This is ALREADY DECLARED by the
+  round's own document as "the residue that matters most" -- this
+  verification confirms that self-assessment is accurate, not overstated,
+  via a real CLI run rather than trusting the prose.
+- **Finding 2 (false errors from ordinary inline preconditions and
+  self-cleaning scripts)**: NEW in its concreteness. The round's comment
+  names the abstract shape ("inline code containing a slash") as an
+  accepted cost; this verification shows a completely ordinary existence-
+  check precondition triggers it, and that `decideAggregate` makes ONE such
+  false error fail the ENTIRE gate bundle regardless of applicability,
+  which the round's document does not walk through.
+- **Finding 6 (credentials.ts signal-crash)**: NEW, outside the round's
+  declared scope (the round explicitly made no claim about this sibling
+  site), real and reproduced, in a REQUIRED gate, though narrower in
+  trigger than Findings 1 and 2.
+
+Findings 3, 4 and 5 found nothing further wrong; stated plainly rather than
+manufactured. The M-1/C-1 Unicode-line-separator residual noted under
+Finding 5 is TRACKED, not scored, since the code's own claim does not extend
+to it and gate `detail` is trusted content.
+
+This verification does not recommend a specific disposition (merge, another
+fix round, or escalation); that is the orchestrator's call under the
+fix-round contract (a hard maximum of two rounds, DR-0027) and DR-0016. It
+reports what was found: the round closes the reviewed hazards it targeted,
+reproducibly, and leaves the class it exists to close reachable through two
+argv shapes (bare filename operands, and path-shaped-but-not-a-path inline
+code) plus one adjacent, unaudited site (`credentials.ts`) that shares the
+same structural defect.
