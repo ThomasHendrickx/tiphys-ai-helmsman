@@ -2,8 +2,7 @@
   "id": "license-gate-covers-runtime-dependency-tree",
   "behavior": "license-gate-covers-runtime-dependency-tree",
   "tests": [
-    "the inventory is the transitive production set, compared by name against what M3-P1 recorded",
-    "skipping ONE package out of several IS a vacuous green, and the recorded-set comparison is what catches it"
+    "the inventory is the transitive production set, compared by name against what M3-P1 recorded"
   ],
   "class": "classification",
   "dangerousStates": [
