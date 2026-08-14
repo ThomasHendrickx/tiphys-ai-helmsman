@@ -179,7 +179,22 @@ probe_source_tree() {
 # The union of the two, which is what "contaminated" means. Reported as the
 # resolved path so the refusal names WHAT answered, not merely that something
 # did.
+# CONTAMINATION IS "SOMETHING OUTSIDE THE INSTALL PREFIX ANSWERS", not "something
+# answers". Before the install nothing may answer at all; after it, the install
+# prefix is the RIGHT answer and anything else is still wrong. Reporting the
+# prefix as contamination would make every post-install record read as a
+# failure, and dropping the probe after the install would stop watching exactly
+# when a second tree could start answering. So the prefix is subtracted rather
+# than the probe being switched off.
 probe_contamination() {
+  local found; found="$(probe_contamination_raw)"
+  case "$found" in
+    "$PREFIX"/node_modules/*) printf '' ;;
+    *) printf '%s' "$found" ;;
+  esac
+}
+
+probe_contamination_raw() {
   local viaNode; viaNode="$(probe_node_resolution)"
   if [ -n "$viaNode" ]; then
     printf '%s' "$viaNode"

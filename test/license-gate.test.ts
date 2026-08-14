@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -88,46 +89,73 @@ interface FixtureOptions {
   license?: boolean;
 }
 
-/** A minimal but REAL npm package tree: `npm pack --dry-run` runs over it. */
+/**
+ * A REAL npm tree, INSTALLED, not a hand-built directory.
+ *
+ * ROUND 1 CHANGED THIS AND THE CHANGE IS NOT INCIDENTAL. The fixtures used to
+ * be three files written by hand: a manifest, a `node_modules/<name>/package.json`,
+ * and a LICENSE. That was possible only because the gate MODELLED the tree from
+ * the manifest, so a hand-drawn model was enough to satisfy it. The gate now
+ * READS `node_modules/.package-lock.json`, which only npm writes, so a fixture
+ * has to be a tree npm actually built. The fixtures got more expensive and more
+ * honest in the same act, which is the usual price of a check that stops
+ * accepting a model.
+ *
+ * `--install-links` COPIES `file:` dependencies rather than symlinking them, so
+ * the tree on disk is a real installed tree and not a set of links back into the
+ * fixture source. Measured cost: about 250ms per fixture.
+ */
+function installFixture(
+  root: string,
+  manifest: Record<string, unknown>,
+  extraArgs: string[] = [],
+): void {
+  writeFileSync(join(root, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  const installed = spawnSync(
+    "npm",
+    ["install", "--install-links", "--no-audit", "--no-fund", ...extraArgs],
+    { cwd: root, encoding: "utf8", env: cleanEnv(), maxBuffer: 64 * 1024 * 1024 },
+  );
+  assert.equal(installed.status, 0, `npm install in the fixture failed: ${installed.stderr ?? ""}`);
+  assert.ok(
+    existsSync(join(root, "node_modules", ".package-lock.json")),
+    "npm did not write node_modules/.package-lock.json, so the fixture is not a real installed tree",
+  );
+}
+
+/** A package source directory the fixtures depend on through `file:`. */
+function packageSource(parent: string, name: string, fields: Record<string, unknown>): string {
+  const directory = join(parent, `src-${name}`);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "package.json"), `${JSON.stringify({ name, version: "1.0.0", ...fields }, null, 2)}\n`);
+  return directory;
+}
+
+/** The one-dependency fixture the criterion-1 directions vary one field of. */
 function fixtureTree(options: FixtureOptions): string {
   const root = mkdtempSync(join(tmpdir(), "tiphys-license-fixture-"));
   const files = ["LICENSE"];
   if (options.notices !== undefined) {
     files.push("THIRD-PARTY-NOTICES");
   }
-  writeFileSync(
-    join(root, "package.json"),
-    `${JSON.stringify(
-      {
-        name: "license-fixture",
-        version: "1.0.0",
-        license: "Apache-2.0",
-        files,
-        dependencies: { widget: "1.0.0" },
-        tiphys: {
-          licenseAllowlist: ["Apache-2.0", "MIT"],
-          thirdPartyCode: options.thirdPartyCode ?? [],
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  mkdirSync(join(root, "node_modules", "widget"), { recursive: true });
-  const dependency: Record<string, unknown> = { name: "widget", version: "1.0.0" };
-  if (options.dependencyLicense !== null) {
-    dependency["license"] = options.dependencyLicense;
-  }
-  writeFileSync(
-    join(root, "node_modules", "widget", "package.json"),
-    `${JSON.stringify(dependency, null, 2)}\n`,
-  );
+  const widget = packageSource(root, "widget", options.dependencyLicense === null ? {} : { license: options.dependencyLicense });
   if (options.license !== false) {
     writeFileSync(join(root, "LICENSE"), "Apache License 2.0\n");
   }
   if (options.notices !== undefined) {
     writeFileSync(join(root, "THIRD-PARTY-NOTICES"), options.notices);
   }
+  installFixture(root, {
+    name: "license-fixture",
+    version: "1.0.0",
+    license: "Apache-2.0",
+    files,
+    dependencies: { widget: `file:${widget}` },
+    tiphys: {
+      licenseAllowlist: ["Apache-2.0", "MIT"],
+      thirdPartyCode: options.thirdPartyCode ?? [],
+    },
+  });
   return root;
 }
 
@@ -161,7 +189,7 @@ test("a production dependency with no license field exits nonzero naming the pac
   try {
     const result = runGate(["--root", root]);
     assert.notEqual(result.status, 0);
-    assert.match(result.stdout, /LICENSE-METADATA widget@1\.0\.0 declares no license field/);
+    assert.match(result.stdout, /LICENSE-METADATA widget@1\.0\.0 at node_modules\/widget declares no license field/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -172,7 +200,7 @@ test("a production dependency whose license is off the allowlist exits nonzero n
   try {
     const result = runGate(["--root", root]);
     assert.notEqual(result.status, 0);
-    assert.match(result.stdout, /LICENSE-ALLOWLIST widget@1\.0\.0 declares SSPL-1\.0/);
+    assert.match(result.stdout, /LICENSE-ALLOWLIST widget@1\.0\.0 at node_modules\/widget declares SSPL-1\.0/);
     /* UNKNOWN IS REFUSED THE SAME AS PROHIBITED, which is the half of EXT-F-09
        that a prohibited-list-only gate would miss: a license nobody has
        classified is not a license anybody has cleared. */
@@ -180,7 +208,7 @@ test("a production dependency whose license is off the allowlist exits nonzero n
     try {
       const second = runGate(["--root", unknown]);
       assert.notEqual(second.status, 0);
-      assert.match(second.stdout, /declares NoSuchLicense-9\.9, which is not on tiphys\.licenseAllowlist/);
+      assert.match(second.stdout, /at node_modules\/widget declares NoSuchLicense-9\.9, which is not on tiphys\.licenseAllowlist/);
     } finally {
       rmSync(unknown, { recursive: true, force: true });
     }
@@ -374,8 +402,9 @@ function defangedGate(find: string, replace: string): { path: string; laboratory
   return { path, laboratory };
 }
 
-const WALK_ENTRY =
-  "  for (const name of Object.keys(manifest.dependencies ?? {})) {\n    visit(name, manifest.name ?? \"<root>\");\n  }";
+const LOCK_READ_ENTRY =
+  "  for (const [entryPath, entry] of Object.entries(lock.packages ?? {})) {";
+const DEV_FILTER = "    if (entry?.dev === true) {";
 
 test("dropping the WHOLE inventory walk cannot produce a vacuous green, because M2-C-2 rewrites it to error", () => {
   /* CRITERION 1b's VACUOUS-PASS DIRECTION, ARM 1, AND THE RESULT IS NOT WHAT
@@ -394,7 +423,7 @@ test("dropping the WHOLE inventory walk cannot produce a vacuous green, because 
      needs a different witness, which is the point of "one witness is not a
      class". */
   const root = fixtureTree({ dependencyLicense: null });
-  const { path, laboratory } = defangedGate(WALK_ENTRY, "  for (const name of []) {\n    visit(name, manifest.name ?? \"<root>\");\n  }");
+  const { path, laboratory } = defangedGate(LOCK_READ_ENTRY, "  for (const [entryPath, entry] of []) {");
   try {
     const real = runGate(["--root", root]);
     assert.notEqual(real.status, 0, "the fixture must redden under the real gate for the defang to mean anything");
@@ -428,28 +457,30 @@ test("skipping ONE package out of several IS a vacuous green, and the recorded-s
      skipped package is missing from the inventory, and that test names it. The
      defence is the comparison, not the gate, and this test is what proves the
      comparison is load-bearing rather than decorative. */
-  const root = fixtureTree({ dependencyLicense: "MIT" });
+  const root = mkdtempSync(join(tmpdir(), "tiphys-license-two-"));
   const { path, laboratory } = defangedGate(
-    "    if (packages.has(name)) {\n      return;\n    }",
-    "    if (packages.has(name) || name === \"widget\") {\n      return;\n    }",
+    DEV_FILTER,
+    "    if (entry?.dev === true || entryPath.endsWith(\"/widget\")) {",
   );
   try {
-    /* A second, licensed dependency so the defanged run still has a unit to
-       report; with one dependency this arm would collapse into arm 1. */
-    mkdirSync(join(root, "node_modules", "gadget"), { recursive: true });
-    writeFileSync(
-      join(root, "node_modules", "gadget", "package.json"),
-      `${JSON.stringify({ name: "gadget", version: "2.0.0", license: "MIT" })}\n`,
-    );
-    const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<string, unknown>;
-    (manifest["dependencies"] as Record<string, string>)["gadget"] = "2.0.0";
-    /* `widget` is now the one WITHOUT a license, so the real gate reddens. */
-    writeFileSync(join(root, "node_modules", "widget", "package.json"), `${JSON.stringify({ name: "widget", version: "1.0.0" })}\n`);
-    writeFileSync(join(root, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    /* A REAL two-dependency install: `widget` with no license field, `gadget`
+       with one. Two are needed because with a single dependency this arm
+       collapses into arm 1, where the count reaches zero and M2-C-2 fires. */
+    const widget = packageSource(root, "widget", {});
+    const gadget = packageSource(root, "gadget", { license: "MIT" });
+    writeFileSync(join(root, "LICENSE"), "Apache License 2.0\n");
+    installFixture(root, {
+      name: "two-dep-fixture",
+      version: "1.0.0",
+      license: "Apache-2.0",
+      files: ["LICENSE"],
+      dependencies: { widget: `file:${widget}`, gadget: `file:${gadget}` },
+      tiphys: { licenseAllowlist: ["Apache-2.0", "MIT"], thirdPartyCode: [] },
+    });
 
     const real = runGate(["--root", root]);
     assert.notEqual(real.status, 0, "the real gate must redden on the unlicensed package");
-    assert.match(real.stdout, /LICENSE-METADATA widget@1\.0\.0/);
+    assert.match(real.stdout, /LICENSE-METADATA widget@1\.0\.0 at node_modules\/widget/);
 
     const defanged = spawnSync(process.execPath, [path, "--root", root], {
       encoding: "utf8",
@@ -474,6 +505,164 @@ test("skipping ONE package out of several IS a vacuous green, and the recorded-s
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(laboratory, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M2, HRB-1: the inventory READS the installed tree, two members       */
+/* ------------------------------------------------------------------ */
+
+test("an OPTIONAL production dependency is inventoried, and an unlicensed one reddens", () => {
+  /* HRB-1 MEMBER A, reproduced from the clean-room review and now a registered
+     test. The old inventory walked only edges spelled `dependencies`, so an
+     optional dependency was invisible to it: npm installs one, it ships to
+     every consumer, and the gate reported green over a package with no license
+     field at all.
+
+     `npm ci --omit=dev` installs optional dependencies too, which the old
+     script's own comment denied. That comment was true only because no
+     dependency here declared any, and nothing detected the day one did. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-license-optional-"));
+  try {
+    const evil = packageSource(root, "evil", {});
+    const good = packageSource(root, "good", { license: "MIT" });
+    /* The optional edge lives on the DEPENDENCY, not on the root, so the
+       finding is reached transitively and not by a direct declaration. */
+    writeFileSync(
+      join(good, "package.json"),
+      `${JSON.stringify({ name: "good", version: "1.0.0", license: "MIT", optionalDependencies: { evil: `file:${evil}` } }, null, 2)}\n`,
+    );
+    writeFileSync(join(root, "LICENSE"), "Apache License 2.0\n");
+    installFixture(root, {
+      name: "optional-fixture",
+      version: "1.0.0",
+      license: "Apache-2.0",
+      files: ["LICENSE"],
+      dependencies: { good: `file:${good}` },
+      tiphys: { licenseAllowlist: ["Apache-2.0", "MIT"], thirdPartyCode: [] },
+    });
+
+    /* THE PREMISE IS CHECKED, NOT ASSUMED: npm really did install it. A fixture
+       whose premise silently failed would make this test green for the wrong
+       reason, which is the vacuous witness this repository keeps paying for. */
+    assert.ok(existsSync(join(root, "node_modules", "evil", "package.json")), "npm did not install the optional dependency, so this test proves nothing");
+
+    const result = runGate(["--root", root]);
+    assert.notEqual(result.status, 0, "an installed, shipped, unlicensed optional dependency was reported green");
+    assert.match(result.stdout, /LICENSE-METADATA evil@1\.0\.0 at node_modules\/evil declares no license field/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a package NESTED by a version conflict is inventoried under its own path, and a prohibited licence there reddens", () => {
+  /* HRB-1 MEMBER B, structurally different from member A: the edge is an
+     ordinary `dependencies` edge that the old walk DID follow, and the defect
+     was the visited set being keyed on NAME. npm hoists one copy of `nested`
+     and nests the other at `node_modules/parentb/node_modules/nested`; the old
+     walk saw the hoisted MIT copy, marked the name visited, and never looked at
+     the GPL-3.0-only one that was physically installed and would ship.
+
+     Reading `node_modules/.package-lock.json` keys on PATH, so the two copies
+     are two entries. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-license-nested-"));
+  try {
+    /* Real tarballs, not `file:` directories: npm dedupes two `file:` sources
+       of the same name and the conflict never forms, which was measured before
+       this fixture was written. */
+    const tarballs = join(root, "tgz");
+    mkdirSync(tarballs, { recursive: true });
+    const pack = (source: string): string => {
+      const packed = spawnSync("npm", ["pack", "--pack-destination", tarballs], {
+        cwd: source,
+        encoding: "utf8",
+        env: cleanEnv(),
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      assert.equal(packed.status, 0, `npm pack failed for the fixture: ${packed.stderr ?? ""}`);
+      return join(tarballs, (packed.stdout ?? "").trim().split("\n").pop() as string);
+    };
+    const one = pack(packageSource(root, "nested-one", { license: "MIT" }));
+    const two = pack(packageSource(root, "nested-two", { license: "GPL-3.0-only" }));
+    /* Both sources are named `nested`; the directory names above only keep the
+       fixture sources apart on disk. */
+    for (const [directory, version] of [["src-nested-one", "1.0.0"], ["src-nested-two", "2.0.0"]] as const) {
+      const meta = JSON.parse(readFileSync(join(root, directory, "package.json"), "utf8")) as Record<string, unknown>;
+      meta["name"] = "nested";
+      meta["version"] = version;
+      writeFileSync(join(root, directory, "package.json"), `${JSON.stringify(meta, null, 2)}\n`);
+    }
+    const oneAgain = pack(join(root, "src-nested-one"));
+    const twoAgain = pack(join(root, "src-nested-two"));
+    void one;
+    void two;
+
+    const parenta = packageSource(root, "parenta", { license: "MIT", dependencies: { nested: `file:${oneAgain}` } });
+    const parentb = packageSource(root, "parentb", { license: "MIT", dependencies: { nested: `file:${twoAgain}` } });
+    writeFileSync(join(root, "LICENSE"), "Apache License 2.0\n");
+    installFixture(root, {
+      name: "nested-fixture",
+      version: "1.0.0",
+      license: "Apache-2.0",
+      files: ["LICENSE"],
+      dependencies: { parenta: `file:${parenta}`, parentb: `file:${parentb}` },
+      tiphys: { licenseAllowlist: ["Apache-2.0", "MIT"], thirdPartyCode: [] },
+    });
+
+    /* THE PREMISE, CHECKED: npm really did nest a second copy. Without this the
+       test would pass on a tree where the conflict never formed. */
+    const nestedPath = join(root, "node_modules", "parentb", "node_modules", "nested", "package.json");
+    assert.ok(existsSync(nestedPath), "npm did not nest a second copy, so this test proves nothing");
+    assert.equal((JSON.parse(readFileSync(nestedPath, "utf8")) as { license: string }).license, "GPL-3.0-only");
+
+    const result = runGate(["--root", root]);
+    assert.notEqual(result.status, 0, "a GPL-3.0-only package physically installed under a nested path was reported green");
+    assert.match(
+      result.stdout,
+      /LICENSE-ALLOWLIST nested@2\.0\.0 at node_modules\/parentb\/node_modules\/nested declares GPL-3\.0-only/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a package on disk that npm did not install is a finding, and an absent lock is a finding rather than an empty inventory", () => {
+  /* THE TWO DIRECTIONS OF THE LOCK-VERSUS-DISK CROSS-CHECK, which is what stops
+     the new read being a new model. Reading only the lock would trust a file
+     that can be stale; reading only the disk cannot tell production from dev.
+     So both, and a disagreement either way is a finding.
+
+     The under-reporting direction is the dangerous one, because that is how a
+     package hides. */
+  const root = fixtureTree({ dependencyLicense: "MIT" });
+  try {
+    mkdirSync(join(root, "node_modules", "smuggled"), { recursive: true });
+    writeFileSync(
+      join(root, "node_modules", "smuggled", "package.json"),
+      `${JSON.stringify({ name: "smuggled", version: "6.6.6", license: "GPL-3.0-only" })}\n`,
+    );
+    const result = runGate(["--root", root]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /LICENSE-INVENTORY node_modules\/smuggled holds a package\.json and appears nowhere in node_modules\/\.package-lock\.json/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  /* AND NO FALLBACK. A gate that quietly reverted to walking the manifest when
+     the lock was missing would have reinstated the whole defect on exactly the
+     path where it matters. */
+  const bare = mkdtempSync(join(tmpdir(), "tiphys-license-nolock-"));
+  try {
+    writeFileSync(
+      join(bare, "package.json"),
+      `${JSON.stringify({ name: "bare", version: "1.0.0", license: "Apache-2.0", files: ["LICENSE"], dependencies: { widget: "1.0.0" }, tiphys: { licenseAllowlist: ["Apache-2.0"], thirdPartyCode: [] } }, null, 2)}\n`,
+    );
+    writeFileSync(join(bare, "LICENSE"), "x\n");
+    const result = runGate(["--root", bare]);
+    assert.notEqual(result.status, 0, "a tree with no installed lock was not a finding");
+    assert.match(result.stdout, /LICENSE-INVENTORY .*\.package-lock\.json does not exist/);
+  } finally {
+    rmSync(bare, { recursive: true, force: true });
   }
 });
 
@@ -538,20 +727,49 @@ test("the pack listing carries every declared kernel artifact, and every FILE in
     const absent = names.filter((name) => !files.has(name));
     assert.deepEqual(absent, [], `tracked under ${directory} and absent from the pack listing: ${absent.join(", ")}`);
   }
-  /* THE `dist/` LEG IS CONDITIONAL AND THE REST IS NOT, which is a correction
-     of this test rather than a concession. As first written the assertion was
-     unconditional and the test FAILED (it did not skip) when the suite ran
-     without a prior build, because `npm pack` lists what is on disk and `dist/`
-     is built, never committed (plan decision D-17). That is standing warning
-     12's family with the wrong ending: a build-state-dependent test that fails
-     instead of skipping turns a documented, expected suite configuration into a
-     red, and would have reddened anyone running `node --test` before `npm run
-     build`. Everything else here is about TRACKED files and is true at any
-     build state, so only this leg moves. Measured: with `dist/` absent the
-     suite is 802 tests, 801 pass, 1 fail before this change and 802 pass, 0
-     fail after it. */
+  /* THE `dist/` LEG NOW HAS AN ORACLE, and it is conditional on the build state
+     rather than unconditional.
+
+     TWO CORRECTIONS LIVE HERE AND THEY ARE DIFFERENT. The first, from the
+     original round: this assertion was unconditional and the test FAILED (it
+     did not skip) when the suite ran without a prior build, turning a
+     documented and expected configuration into a red. The second, from the
+     clean-room hazard review (HRB-5): even with a build it was a PRESENCE check,
+     `files.some(p => p.startsWith("dist/"))`, which is precisely the shape the
+     plan's hazard row defeats and which the five tracked directories above are
+     deliberately NOT checked with. Changing `files` from `dist` to `dist/bin`
+     was measured to pass it with two entries where 121 were expected, producing
+     a package whose bin dies with ERR_MODULE_NOT_FOUND.
+
+     `dist/` is the one shipped directory carrying executable code and it was
+     the one getting the weak check, because it is untracked and `git ls-files`
+     cannot be its oracle. The built tree itself can: every file under `dist/`
+     on disk must be in the listing, name for name, with `dist/node_modules`
+     excluded because `package.json`'s files list excludes it explicitly. */
   if (existsSync(distEntry)) {
-    assert.ok([...files].some((path) => path.startsWith("dist/")), "dist/ is not in the pack listing");
+    const walkDist = (directory: string, prefix: string): string[] => {
+      const out: string[] = [];
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (prefix === "dist/" && entry.name === "node_modules") {
+          continue;
+        }
+        const here = `${prefix}${entry.name}`;
+        if (entry.isDirectory()) {
+          out.push(...walkDist(join(directory, entry.name), `${here}/`));
+        } else {
+          out.push(here);
+        }
+      }
+      return out;
+    };
+    const onDisk = walkDist(join(repoRoot, "dist"), "dist/");
+    assert.ok(onDisk.length > 0, "dist/ holds no files, so this assertion would be vacuous");
+    const absent = onDisk.filter((path) => !files.has(path));
+    assert.deepEqual(
+      absent,
+      [],
+      `built and absent from the pack listing (${String(absent.length)} of ${String(onDisk.length)}): ${absent.slice(0, 5).join(", ")}`,
+    );
   }
 });
 
@@ -791,25 +1009,43 @@ test("release-verify from a clean directory passes and records a resolved path i
 /* The release workflow: delivered, named, and NOT run                  */
 /* ------------------------------------------------------------------ */
 
+/** The parsed release workflow, and its steps. */
+function releaseWorkflow(): {
+  on: Record<string, unknown>;
+  jobs: Record<string, { permissions?: Record<string, string>; steps: WorkflowStepShape[] }>;
+} {
+  const parsed = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      "const {parse}=require(process.argv[1]);process.stdout.write(JSON.stringify(parse(require('node:fs').readFileSync(process.argv[2],'utf8'))));",
+      join(repoRoot, "node_modules", "yaml"),
+      join(repoRoot, ".github", "workflows", "release.yml"),
+    ],
+    { encoding: "utf8", env: cleanEnv(), cwd: repoRoot },
+  );
+  assert.equal(parsed.status, 0, `${parsed.stdout ?? ""}${parsed.stderr ?? ""}`);
+  return JSON.parse(parsed.stdout);
+}
+
+interface WorkflowStepShape {
+  name?: string;
+  id?: string;
+  run?: string;
+  if?: string;
+  env?: Record<string, string>;
+}
+
 test("the release workflow is manually dispatched only, authenticates by OIDC, and holds no npm token", () => {
   /* WHY THIS IS ASSERTED AT ALL. The plan requires "it never runs on push"
      (delivery/plan/kernel-plan-m3.md:4877) and DR-0024 requires OIDC with no
      stored credential. Both are properties of the file that no run can witness,
      because the correct number of runs of this workflow during M3-P10 is zero.
-     A structural assertion is the only witness available and it is labelled as
-     that rather than as a behavioural one. */
+     A structural assertion is the only witness available for THESE two and is
+     labelled as that rather than as a behavioural one. The publish DECISION is
+     a different matter and is executed, two tests below. */
   const workflow = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
-  const parsed = spawnSync(
-    process.execPath,
-    ["-e", "const {parse}=require(process.argv[1]);const d=parse(require('node:fs').readFileSync(process.argv[2],'utf8'));process.stdout.write(JSON.stringify(d));",
-      join(repoRoot, "node_modules", "yaml"), join(repoRoot, ".github", "workflows", "release.yml")],
-    { encoding: "utf8", env: cleanEnv(), cwd: repoRoot },
-  );
-  assert.equal(parsed.status, 0, `${parsed.stdout ?? ""}${parsed.stderr ?? ""}`);
-  const document = JSON.parse(parsed.stdout) as {
-    on: Record<string, unknown>;
-    jobs: Record<string, { permissions?: Record<string, string>; steps: { run?: string; if?: string }[] }>;
-  };
+  const document = releaseWorkflow();
 
   /* THE TRIGGER SET IS EXACT. Asserting that `push` is absent is weaker than
      asserting the whole set, because a `schedule` or a `pull_request` trigger
@@ -826,8 +1062,8 @@ test("the release workflow is manually dispatched only, authenticates by OIDC, a
 
      COMMENT LINES ARE STRIPPED FIRST, and that is a real finding rather than a
      convenience. Written as a whole-file regex this assertion FIRED, correctly,
-     on the workflow's own header comment explaining that `NODE_AUTH_TOKEN` is
-     deliberately not set. Prose about a token is not a token. Stripping `#`
+     on the workflow's own header comment explaining that the npm auth variable
+     is deliberately not set. Prose about a token is not a token. Stripping `#`
      lines is what makes the assertion about the executable half; it also means
      a token hidden in a comment would pass, which is a real limit and is stated
      rather than left for a reader to discover. */
@@ -841,10 +1077,150 @@ test("the release workflow is manually dispatched only, authenticates by OIDC, a
     "the release workflow references an npm token outside its comments",
   );
   assert.equal(/secrets\./.test(executable), false, "the release workflow reads a repository secret; DR-0024 stores none");
+});
 
-  /* THE PUBLISH IS GUARDED and the guard defaults to a rehearsal. */
-  const publish = job.steps.find((step) => (step.run ?? "").includes("npm publish"));
+/* ------------------------------------------------------------------ */
+/* M1: the guard is EVALUATED, not read                                 */
+/* ------------------------------------------------------------------ */
+
+test("no Actions expression is interpolated into any run: body of the release workflow", () => {
+  /* HRB-11's MECHANISM, closed at class level rather than at its two instances.
+     `${{ }}` inside a `run:` body is substituted TEXTUALLY before the shell
+     parses the line, so an operator-supplied value is not a string to compare,
+     it is shell source. Measured by the clean-room reviewer against the old
+     version-agreement step: a value of `$declared` made the guard agree with
+     whatever package.json held, and a `$(...)` value executed, inside a job
+     holding `id-token: write`.
+
+     Fixing the two sites would leave the mechanism live for the next step
+     anybody adds. This asserts the property over EVERY step, so a reintroduced
+     interpolation reddens wherever it is written. Operator input reaches the
+     shell through `env:`, which the runner sets rather than pastes. */
+  const document = releaseWorkflow();
+  const offenders: string[] = [];
+  for (const step of document.jobs["release"].steps) {
+    if (typeof step.run === "string" && step.run.includes("${{")) {
+      offenders.push(`${step.name ?? step.id ?? "<unnamed>"}: ${/\$\{\{[^}]*\}\}/.exec(step.run)?.[0] ?? ""}`);
+    }
+  }
+  assert.deepEqual(offenders, [], `Actions expressions interpolated into run: bodies: ${offenders.join("; ")}`);
+
+  /* AND THE OPERATOR INPUTS DO REACH THE SHELL, so this is not satisfied by a
+     workflow that simply stopped reading them. Both operator-supplied inputs
+     are referenced from some step's `env:`. */
+  const envValues = document.jobs["release"].steps.flatMap((step) => Object.values(step.env ?? {}));
+  assert.ok(envValues.some((value) => value.includes("inputs.version")), "inputs.version reaches no step's env:");
+  assert.ok(envValues.some((value) => value.includes("inputs.confirm")), "inputs.confirm reaches no step's env:");
+});
+
+test("the publish and rehearsal guards are exact complements, so an inverted guard reddens", () => {
+  /* HRB-3. The previous assertion here was `assert.match(publish.if, /dry-run/)`,
+     a substring match on the guard's TEXT, and the clean-room reviewer measured
+     three separately inverted guards passing it exit 0, one of which published
+     on every dispatch. A test that greps a condition is not a test of the
+     condition.
+
+     Exact string equality reddens on every one of those mutants, and asserting
+     the two guards as COMPLEMENTS is what stops a rewrite that quietly makes
+     both arms run or neither. */
+  const document = releaseWorkflow();
+  const steps = document.jobs["release"].steps;
+  const publish = steps.find((step) => (step.run ?? "").includes("npm publish"));
   assert.ok(publish !== undefined, "the workflow has no npm publish step");
-  assert.match(String(publish.if), /dry-run/);
-  assert.equal((document.on["workflow_dispatch"] as { inputs: Record<string, { default?: unknown }> }).inputs["dry-run"].default, true);
+  assert.equal(String(publish.if), "${{ steps.decide.outputs.publish == 'yes' }}");
+
+  const rehearsal = steps.find((step) => (step.name ?? "").startsWith("Rehearsal only"));
+  assert.ok(rehearsal !== undefined, "the workflow has no rehearsal notice step");
+  assert.equal(String(rehearsal.if), "${{ steps.decide.outputs.publish != 'yes' }}");
+
+  /* THE PRE-PUBLISH VERIFICATION CARRIES NO GUARD AT ALL (HRB-5). A rehearsal
+     that skips the one check which installs and runs the artifact is a
+     rehearsal that cannot catch what it exists for. */
+  const preflight = steps.find((step) => (step.name ?? "").startsWith("Install and RUN the packed artifact"));
+  assert.ok(preflight !== undefined, "the workflow does not install and run the artifact before publishing");
+  assert.equal(preflight.if, undefined, "the pre-publish verification is conditional; a rehearsal must run it too");
+
+  /* AND IT COMES BEFORE THE PUBLISH. Order is the whole finding: the same step
+     after the publish can only report the damage. */
+  assert.ok(
+    steps.indexOf(preflight) < steps.indexOf(publish),
+    "the artifact is installed and run AFTER the publish, which is the defect HRB-5 names",
+  );
+});
+
+test("the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes", () => {
+  /* THE BEHAVIOURAL HALF OF M1, and the reason the decision was moved out of a
+     GitHub expression and into a shell step: a `${{ }}` condition cannot be
+     evaluated here, and the correct number of runs of this workflow during
+     M3-P10 is zero, so a guard written as an expression can only ever be
+     described. Written as shell it can be EXTRACTED AND RUN, which is the
+     pattern test/m2-exit-test.test.ts already uses for the exit-test guard.
+
+     The old boolean input is gone with the old expression. `== false` coerces:
+     GitHub casts operands of differing types to numbers and `null` and `''`
+     both cast to 0 exactly as `false` does, so the two values a malformed
+     dispatch is most likely to deliver were the two that failed OPEN. Rows 4
+     and 5 below are those values against the replacement, and both rehearse.
+
+     Row 6 is the clean-room reviewer's guard-defeating value. Under the old
+     step it made the version check agree with whatever package.json held; here
+     it must be eight literal characters that match nothing. */
+  const document = releaseWorkflow();
+  const decide = document.jobs["release"].steps.find((step) => step.id === "decide");
+  assert.ok(decide !== undefined, "the workflow has no step with id `decide`");
+  assert.ok(typeof decide.run === "string" && decide.run.length > 0, "the decide step has no run body");
+
+  const laboratory = mkdtempSync(join(tmpdir(), "tiphys-decide-"));
+  try {
+    /* A package.json the script reads, in a directory that is not this
+       repository, so the declared version under test is chosen here. */
+    writeFileSync(join(laboratory, "package.json"), `${JSON.stringify({ name: "lab", version: "0.1.0" })}\n`);
+    const script = join(laboratory, "decide.sh");
+    writeFileSync(script, decide.run as string);
+
+    const run = (requested: string, confirm: string) => {
+      const output = join(laboratory, `out-${Math.random().toString(36).slice(2)}`);
+      writeFileSync(output, "");
+      const result = spawnSync("bash", [script], {
+        cwd: laboratory,
+        encoding: "utf8",
+        env: { ...cleanEnv(), REQUESTED: requested, CONFIRM: confirm, GITHUB_OUTPUT: output },
+      });
+      return { status: result.status, emitted: readFileSync(output, "utf8").trim(), stderr: result.stderr ?? "" };
+    };
+
+    const table: { requested: string; confirm: string; status: number; emitted: string; why: string }[] = [
+      { requested: "0.1.0", confirm: "0.1.0", status: 0, emitted: "publish=yes", why: "the only publishing combination" },
+      { requested: "0.1.0", confirm: "", status: 0, emitted: "publish=no", why: "empty confirm rehearses" },
+      { requested: "0.1.0", confirm: "yes", status: 0, emitted: "publish=no", why: "a plausible wrong word rehearses" },
+      { requested: "0.1.0", confirm: "false", status: 0, emitted: "publish=no", why: "the old boolean's string form rehearses" },
+      { requested: "0.1.0", confirm: "true", status: 0, emitted: "publish=no", why: "and so does its opposite" },
+      { requested: "0.1.0", confirm: "$declared", status: 0, emitted: "publish=no", why: "the reviewer's guard-defeating value is eight literal characters here" },
+      { requested: "0.1.0", confirm: "0.1.1", status: 0, emitted: "publish=no", why: "a near-miss version rehearses" },
+      { requested: "0.1.0", confirm: " 0.1.0", status: 0, emitted: "publish=no", why: "leading whitespace is not a match" },
+    ];
+    for (const row of table) {
+      const outcome = run(row.requested, row.confirm);
+      assert.equal(outcome.status, row.status, `${row.why}: exited ${String(outcome.status)}; ${outcome.stderr}`);
+      assert.equal(outcome.emitted, row.emitted, `${row.why}: emitted ${outcome.emitted}`);
+    }
+
+    /* VERSION DISAGREEMENT IS AN ERROR AND NOT A REHEARSAL, and the difference
+       matters: continuing would run every gate against a tree the operator did
+       not ask about. */
+    const mismatch = run("9.9.9", "9.9.9");
+    assert.equal(mismatch.status, 1, `a version the manifest does not declare should exit 1, got ${String(mismatch.status)}`);
+    assert.match(mismatch.stderr, /refusing/);
+    assert.equal(mismatch.emitted, "", "a refusing decision must emit no publish decision at all");
+
+    /* THE INJECTION DIRECTION, run rather than reasoned about. Under the old
+       step the value was pasted into the script before bash parsed it; under
+       `env:` it is data. If it were still source, the file below would exist. */
+    const canary = join(laboratory, "INJECTED");
+    const injected = run("0.1.0", `$(touch ${canary}; echo 0.1.0)`);
+    assert.equal(existsSync(canary), false, "the confirm value executed as shell; env: is not being used");
+    assert.equal(injected.emitted, "publish=no", "a command-substitution value must not reach a publish");
+  } finally {
+    rmSync(laboratory, { recursive: true, force: true });
+  }
 });

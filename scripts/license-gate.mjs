@@ -471,7 +471,19 @@ export function main(argv) {
   if (!listing.ok) {
     findings.push(`LICENSE-PACK ${listing.reason}`);
   } else {
-    packLines.push(`pack source: ${listing.source}`, `pack entries: ${String(listing.files.length)}`);
+    /* THE BUILD STATE BESIDE THE COUNT (HRB-10). `npm pack --dry-run` lists what
+       is ON DISK, and `--ignore-scripts` suppresses the `prepack` rebuild, so
+       this listing describes whatever `dist/` happened to be. Measured: 181
+       entries with dist built, 60 without. A pack number quoted without its
+       build state is the standing-warning-12 harm one artifact along, so the
+       gate prints the state it observed rather than leaving a reader to assume
+       the built one. */
+    const built = listing.files.some((path) => path.startsWith("dist/"));
+    packLines.push(
+      `pack source: ${listing.source}`,
+      `pack entries: ${String(listing.files.length)}`,
+      `pack build state: dist/ ${built ? "present" : "ABSENT, so this listing carries no executable code"}`,
+    );
     const packed = new Set(listing.files);
     if (!packed.has("LICENSE")) {
       findings.push(
