@@ -215,3 +215,92 @@ the phase proves larger again, splitting change A and B out to run AFTER M3-P10
 is the escape, since they are delivery-process changes rather than shipped-
 correctness ones, and only the crash-verdict fix genuinely needs to precede a
 release.
+
+## CORRECTION, 2026-08-14: three spec defects the reviewers found, fixed here
+
+Both clean-room reviews reported that **all eleven criteria are met as literally
+written**. Nothing below rescues a failed criterion, and that fact is what makes
+correcting the spec after the reviews legitimate rather than moving a goalpost.
+Two of these are claims in the spec that are simply FALSE about what the phase
+witnesses, and the third is a step that cannot be satisfied without a shipped
+field lying. The spec was written by the orchestrator, so these are the
+orchestrator's defects, not the implementer's.
+
+### Criterion 5's "real-world witness" claim is false
+
+As written, criterion 5 says `manifest-self-check` against a package tree
+lacking `scripts/` reporting `error` is "the phase's real-world witness".
+
+**Measured by the criteria reviewer: `manifest-self-check` ALREADY errored on
+`main`.** What this phase changed there is the DETAIL text, which now names
+`bin/tiphys.ts` rather than the record path. So criterion 5 witnesses an
+improvement in a message, not a change of verdict, and calling it the phase's
+real-world witness overstates it.
+
+The implementer's own work history says so unprompted, which is why this is
+recorded as a spec defect rather than as an overclaim by the implementer.
+
+**Corrected reading of criterion 5:** `manifest-self-check` against a package
+tree lacking `scripts/` reports `error`, and its detail names the missing
+command path. The phase's real verdict-changing witness in a consumer tree is
+`check-dual-review`, measured `not-applicable` -> `error`.
+
+### Criterion 4 names two members that were already covered
+
+As written, criterion 4 asks for a non-executable command and a bad interpreter
+line, "two structurally different members of the could-not-run class".
+
+**Measured by the criteria reviewer: both were ALREADY `error` on `main`.** So
+criterion 4 as written can be satisfied without the phase moving anything, which
+is the same shape as a green-and-worthless guard one level up: a criterion whose
+condition does not test the property the phase exists to change.
+
+That is worth naming precisely, because it is the anti-vacuity rule at
+delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:1
+applied to a SPEC rather than to a gate. The rule says zero units asserted is
+vacuous rather than green. A criterion satisfied by behaviour that predates the
+phase asserts zero units ABOUT THE PHASE, and it passes anyway. The kernel now
+enforces that property on gates; nothing enforces it on acceptance criteria, and
+the only reason it was caught here is that a reviewer executed the criterion
+against a `main` control instead of reading it.
+
+The same reviewer measured the class this phase ACTUALLY moves and found three
+structurally different members, each red on `main`: an absent operand, a
+directory, and a dangling symlink.
+
+**Corrected reading of criterion 4:** at least two structurally different
+members of the could-not-run class that report `not-applicable` on `main` and
+`error` at head. An absent operand, a directory operand and a dangling symlink
+are three such; a non-executable command and a bad interpreter line are NOT,
+because they already error.
+
+### Step 3 cannot be satisfied without a shipped field lying
+
+Step 3 asks for "an evaluated precondition record on every path, so the reason is
+DATA".
+
+**Both reviewers independently concluded the implementer was right to refuse.**
+`PreconditionRecord.met` is a boolean documented on `main` as EVALUATED AND
+UNMET, with no third state, so attaching a record to a crash path would make a
+shipped field assert something false. The criteria reviewer's judgement was that
+**the spec is what should be corrected, not the code**, and that no criterion
+requires a record on the crash path, so the contract is intact either way.
+
+**Corrected reading of step 3:** the reason for every outcome must be readable
+as data. Where `PreconditionRecord` can carry it truthfully it does; where it
+cannot, `status` plus `detail` carry it, and the three outcomes stay
+distinguishable. Extending `PreconditionRecord` to a third state is a change to
+`src/gates/result.ts` and belongs to whichever phase next owns that file.
+
+## What this correction does NOT do
+
+- **It does not weaken any criterion the phase failed.** Both reviewers found all
+  eleven met as written; these corrections make two of them MORE demanding, not
+  less, by naming members that were already covered and excluding them.
+- **It does not re-open the reviews.** The findings the reviewers raised against
+  the CODE (the readability gap in the runnability probe, and the three ways the
+  amendment's printed control is weaker than the refusal it replaced) are a fix
+  round, not a spec question.
+- **It does not audit the rest of the spec.** Three defects were found because
+  two reviewers executed the criteria rather than reading them. No sweep of the
+  remaining eight has been run, and a fourth defect would not be surprising.
