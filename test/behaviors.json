@@ -720,5 +720,15 @@
   "scope-foreign-declaration-refused-and-prefix-named": "a phase branch that changes ANOTHER phase's declaration is red however it got the scope, and a directory-prefix addition says that it is one",
   "precondition-not-a-path-is-not-an-error": "an argv element that is not a path does not turn a legitimate unmet precondition into an error that fails the whole bundle",
   "precondition-argv-probe-is-at-spawn-time": "a precondition that removes one of its own argv paths as an ordinary last act is still an evaluated skip, not an error",
-  "precondition-bare-script-operand-is-error": "a directory-less script operand that is not there is error, and a bare word with no script suffix is still left alone"
+  "precondition-bare-script-operand-is-error": "a directory-less script operand that is not there is error, and a bare word with no script suffix is still left alone",
+  "license-gate-missing-metadata": "the license gate exits nonzero naming a production dependency whose package.json declares no license field",
+  "license-gate-prohibited-license": "the license gate exits nonzero naming a license that is not on the declared allowlist, and refuses an unknown one the same way",
+  "license-gate-missing-notices": "the license gate exits nonzero when copied third-party code is declared and THIRD-PARTY-NOTICES is absent or does not name the declared component",
+  "license-gate-covers-runtime-dependency-tree": "the license gate inventories the transitive production set and a registered test compares it by name against the set M3-P1 recorded",
+  "pack-contains-kernel-artifacts": "the npm pack listing carries every declared kernel artifact and every tracked file inside each shipped directory",
+  "pack-excludes-delivery-and-tests": "the npm pack listing carries no delivery, test, sandbox, src, scripts or witness entry",
+  "installed-package-schemas-resolve": "a template copied out of an installed package validates against a schema from the same install, and removing that schema from the install reddens",
+  "init-writes-kernel-pin": "init writes a fleet package.json depending on the published kernel name at the running kernel's exact version",
+  "release-verify-refuses-contaminated-resolution-path": "release-verify exits nonzero naming the source-tree package.json when the package under test is resolvable from the working directory, before installing anything",
+  "release-workflow-dispatch-only-and-tokenless": "the release workflow declares workflow_dispatch as its only trigger, grants id-token write for OIDC, and references no npm token or repository secret outside its comments"
 }

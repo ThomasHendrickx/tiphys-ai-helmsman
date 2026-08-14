@@ -1,0 +1,181 @@
+# THE RELEASE WORKFLOW (kernel plan M3, M3-P10 step 4; DR-0008, DR-0024).
+#
+# IT NEVER RUNS ON PUSH. `workflow_dispatch` is the only trigger, and that is
+# the plan's requirement in its own words: "a manually dispatched workflow that
+# runs the gates, the license gate, `npm pack`, and publishes to the DR-0008
+# registry ... it never runs on push"
+# (delivery/plan/kernel-plan-m3.md:4875). Publishing is the one action in this
+# milestone with no clean undo, so nothing automatic may reach it.
+#
+# THE FILENAME AND THE JOB NAME ARE THE INTERFACE TO OWNER ACTION A-7 PART 2.
+# npm's trusted-publisher configuration names a repository AND a workflow FILE,
+# so this file's path is a value the owner types into the npm UI, and renaming
+# it later invalidates that configuration and makes every publish fail closed.
+# Treat `.github/workflows/release.yml` as a published identifier, not a name.
+#
+# AUTHENTICATION IS OIDC, AND THERE IS NO TOKEN (DR-0024, decided 2026-08-10).
+# The workflow requests a short-lived audience-scoped token from GitHub's OIDC
+# provider at publish time and npm verifies it against the trusted-publisher
+# configuration. No npm credential is created, stored, or scrubbed for, which
+# is why no `secrets.NPM_TOKEN` appears anywhere below and why `NODE_AUTH_TOKEN`
+# is not set. `permissions: id-token: write` is what allows the token to be
+# minted; DR-0024:71 records that without it the publish FAILS CLOSED, which is
+# the correct direction.
+#
+# WHY `contents: read` IS WRITTEN OUT rather than left to the default: naming
+# any permission replaces the whole default set, so the two lines below are the
+# complete grant. This job reads the repository and mints an OIDC token; it can
+# do nothing else.
+#
+# NOTHING HERE HAS RUN. This workflow is delivered by M3-P10 in the state the
+# plan and DR-0024's addendum require: ready, named, and not executed. The
+# sequencing is DR-0024:120 and it is not optional, because the middle step is
+# not ours:
+#
+#   1. M3-P10 writes this file. It does NOT publish.
+#   2. OWNER (A-7 part 2), needing the filename from step 1: publish the 0.0.0
+#      stub for @tiphys/kernel, deprecate it, and configure the trusted
+#      publisher against this repository and this workflow file.
+#   3. Only then can a dispatch of this workflow publish 0.1.0 over OIDC.
+#
+# WHY THE RELEASE STEPS ARE AT WORKFLOW LEVEL AND NOT IN gate-registry.yaml,
+# stated because D-M3-34 requires that reason to be given rather than left
+# implicit (delivery/plan/kernel-plan-m3.md:4891): these steps run on a manual
+# dispatch, which is an event the gate bundle never sees. The LICENSE GATE is
+# the opposite case and is a registry entry, because it is a property of every
+# change and not of a release.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          The exact version expected in package.json, for example 0.1.0. The job
+          REFUSES to publish when package.json disagrees. This is a second pair
+          of eyes on the one irreversible field, not a way to set it.
+        required: true
+        type: string
+      dry-run:
+        description: >-
+          Run every gate, the license gate and npm pack, then STOP before
+          publishing. This is the rehearsal, and it is the default.
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # fetch-depth: 0 for the same reason .github/workflows/gates.yml gives:
+      # several gates and the exit harness need real history.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
+      # npm's trusted-publishing support is version-dependent, and DR-0024:75
+      # requires this workflow to PIN and RECORD the npm version it used rather
+      # than inherit whatever the runner image ships. The pin is what makes a
+      # later "which npm published this" answerable.
+      - name: Pin and record the npm version (DR-0024)
+        run: |
+          npm install -g npm@11.18.0
+          echo "npm $(npm --version), node $(node --version)"
+
+      - name: Refuse a version the manifest does not agree with
+        run: |
+          set -u
+          declared="$(node -p 'require("./package.json").version')"
+          requested="${{ inputs.version }}"
+          if [ "$declared" != "$requested" ]; then
+            echo "release: package.json declares $declared and this dispatch asked for $requested." >&2
+            echo "release: refusing. A published version cannot be unpublished cleanly, so the two must agree before anything runs." >&2
+            exit 1
+          fi
+          echo "release: package.json and the dispatch agree on $declared"
+
+      # The ordered preflight of CLAUDE.md's gate list, run here in full rather
+      # than assumed from a green pull request. T-009's rule is that a gate
+      # result is evidence only for the configuration it ran under, and a
+      # release is a configuration no pull-request run has taken.
+      - run: npm ci
+      - run: npm run build
+      - name: git status must be clean after the build (plan decision D-17)
+        run: |
+          set -u
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain >&2
+            echo "release: the build left the tree dirty; dist/ is never committed and a dirty tree here means something else changed." >&2
+            exit 1
+          fi
+      - run: npm test
+
+      - name: License gate (EXT-F-09, M3-P10 step 2)
+        run: node scripts/license-gate.mjs
+
+      - name: npm pack, and record the listing
+        run: |
+          set -u
+          npm pack --dry-run --json --ignore-scripts > pack.json
+          node -e '
+            const files = JSON.parse(require("node:fs").readFileSync("pack.json", "utf8"))[0].files
+              .map((entry) => entry.path.replace(/^package\//, ""));
+            const missing = ["LICENSE", "AGENTS.md", "gate-registry.yaml", "assurance-modes.yaml", "role-model-config.yaml"]
+              .filter((name) => !files.includes(name));
+            const forbidden = ["delivery", "test", "sandbox", "src", "scripts", "witness"]
+              .filter((dir) => files.some((path) => path === dir || path.startsWith(dir + "/")));
+            for (const dir of ["dist", "schemas", "templates", "roles", "checklists", "tuition"]) {
+              if (!files.some((path) => path.startsWith(dir + "/"))) missing.push(dir + "/");
+            }
+            console.log(files.length + " entries in the pack listing");
+            if (missing.length || forbidden.length) {
+              console.error("missing: " + missing.join(", "));
+              console.error("forbidden: " + forbidden.join(", "));
+              process.exit(1);
+            }
+          '
+
+      # THE PUBLISH. Guarded by the dry-run input, which DEFAULTS TO TRUE, so a
+      # dispatch that forgets to think about it rehearses instead of releasing.
+      # `--provenance` is what records in the registry that this artifact came
+      # from this workflow, and it is the same OIDC identity the publish
+      # authenticates with.
+      - name: Publish to npmjs over OIDC (DR-0008 registry, DR-0024 authentication)
+        if: ${{ inputs.dry-run == false }}
+        run: npm publish --access public --provenance
+
+      - name: Rehearsal only, nothing was published
+        if: ${{ inputs.dry-run != false }}
+        run: |
+          echo "release: dry-run was true, so every gate ran and npm publish did NOT."
+          echo "release: re-dispatch with dry-run false to publish."
+
+      # Release verification is the SC-011 analogue and runs only after a real
+      # publish, from a directory that is not this checkout. `cd "$RUNNER_TEMP"`
+      # is not tidiness: scripts/release-verify.sh REFUSES to run anywhere the
+      # source tree is on the resolution path, and the checkout is exactly that,
+      # so running it from the workspace would fail by design.
+      - name: Release verification from a clean directory (SC-011, criterion 5)
+        if: ${{ inputs.dry-run == false }}
+        run: |
+          set -u
+          mkdir -p "$RUNNER_TEMP/release-verify"
+          cd "$RUNNER_TEMP/release-verify"
+          bash "$GITHUB_WORKSPACE/scripts/release-verify.sh" \
+            "$(node -p 'require(process.env.GITHUB_WORKSPACE + "/package.json").name')" \
+            "${{ inputs.version }}" \
+            --records "$RUNNER_TEMP/release-verify/records.json"
+          cat "$RUNNER_TEMP/release-verify/records.json"

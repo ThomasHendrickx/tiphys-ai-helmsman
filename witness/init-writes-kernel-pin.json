@@ -1,0 +1,33 @@
+{
+  "id": "init-writes-kernel-pin",
+  "behavior": "init-writes-kernel-pin",
+  "tests": [
+    "init writes a fleet package.json depending on the published kernel at an exact pin"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "    dependencies: {\n      [KERNEL_PACKAGE_NAME]: readOwnVersion(),\n    },",
+      "replace": "  "
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "      [KERNEL_PACKAGE_NAME]: readOwnVersion(),",
+      "replace": "      [KERNEL_PACKAGE_NAME]: `^${readOwnVersion()}`,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, spawned by src/commands/init.ts for init, add -A and commit",
+    "captures": [
+      "witness/captures/init-git-bootstrap-exit-codes.txt"
+    ],
+    "provenance": "src/commands/init.ts spawns three git commands and reads ONLY their `status`, returning 1 on any nonzero and leaving the fleet home partially initialized, so the named test's `status === 0` is a claim about real git exit codes and rule (f) binds this witness (SPAWN_GREP matches the changed file). Captured 2026-08-14 against git 2.43.0 in scratch directories with no user or global config read or written (CLAUDE.md warning 5): `git init --initial-branch=main`, `git add -A` and the identity-scoped `git commit` each exit 0, and a commit with nothing staged and no identity in the environment exits 1. The named test reads the capture and asserts those exact counts before exercising the pin, so the expectation is anchored to real git output rather than to a hand-written string (CLAUDE.md warning 10).",
+    "residue": "The capture fixes the SUCCESS codes and one failure code. It does not enumerate git's other failure codes, so a git that began returning some third nonzero value on a bootstrap step would still be handled correctly by init (any nonzero returns 1) and would not be distinguished by this capture. That is a real limit and not a covered case."
+  },
+  "$comment": "TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class (CLAUDE.md, and M1-P6's two consecutive mediums from exactly this). Member 0 REMOVES the pin: the feature is absent, `dependencies` is undefined, and the test's key-set assertion reddens. Member 1 KEEPS the pin and makes it a CARET RANGE, which is the failure mode a presence check cannot see: the dependency is there, it names the right package, it names the right version, and a fleet home would silently change kernel between two `npm install` runs, which is the opposite of what blueprint section 3 makes the pin for. Member 1 is the one that matters and it is why the named test asserts the absence of a range prefix in its own right rather than only comparing against the manifest version."
+}

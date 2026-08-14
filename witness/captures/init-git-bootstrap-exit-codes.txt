@@ -1,0 +1,28 @@
+REAL CAPTURED OUTPUT, git exit codes on the three commands src/commands/init.ts spawns.
+Captured 2026-08-14 with git version 2.43.0 in scratch directories, no user or global
+git config read or written (CLAUDE.md warning 5).
+
+$ git -C ok init --initial-branch=main
+Initialized empty Git repository in <scratch>/ok/.git/
+EXIT=0
+
+$ printf 'x\n' > ok/f && git -C ok add -A
+EXIT=0
+
+$ GIT_AUTHOR_NAME='Tiphys Fleet' ... git -C ok commit -m 'tiphys init: fleet home bootstrap'
+[main (root-commit) a5030c3] tiphys init: fleet home bootstrap
+ 1 file changed, 1 insertion(+)
+EXIT=0
+
+THE FAILING DIRECTION, which is the one init's error path reads: commit with
+nothing staged and no identity in the environment.
+
+$ git -C bad init --initial-branch=main >/dev/null && git -C bad commit -m x
+On branch main
+
+Initial commit
+EXIT=1
+
+So: 0 on each of the three success commands, and nonzero on a commit that cannot
+run. src/commands/init.ts reads ONLY result.status and returns 1 on any nonzero,
+leaving the fleet home partially initialized and saying so.

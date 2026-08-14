@@ -1,0 +1,26 @@
+{
+  "id": "license-gate-covers-runtime-dependency-tree",
+  "behavior": "license-gate-covers-runtime-dependency-tree",
+  "tests": [
+    "the inventory is the transitive production set, compared by name against what M3-P1 recorded",
+    "skipping ONE package out of several IS a vacuous green, and the recorded-set comparison is what catches it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/license-gate.mjs",
+      "find": "    for (const next of Object.keys(meta.dependencies ?? {})) {\n      visit(next, name);\n    }",
+      "replace": "  "
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/license-gate.mjs",
+      "find": "  const unexpected = [...found.keys()].filter((name) => !expected.has(name)).sort();",
+      "replace": "  const unexpected = [];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "$comment": "TWO MEMBERS REACHING TWO DIFFERENT MECHANISMS, which is what the criterion's own hazard needs. Member 0 stops the walk DESCENDING, so `dependencies` is inventoried and the transitive set is not: the gate still reports a nonzero unit count and still goes green, so M2-C-2 never fires, and the six transitive packages simply vanish. That is the plan's named hazard verbatim, 'a license gate that inventories dependencies while the TRANSITIVE production set is what actually ships', and the recorded-set comparison in the named test is the only thing that sees it. Member 1 attacks the COMPARISON rather than the walk: the inventory is complete and the both-directions check is reduced to one direction, so a package that appeared in the production tree and in no recorded set stops being named. Member 1 is the subtler of the two and is the reason the named test asserts `unexpected` as well as `missing`; a subset assertion would survive it."
+}
