@@ -139,3 +139,105 @@ prefix) gets a silent `not-applicable` instead of a loud `error` the moment
 that script is absent, misconfigured, or shipped incorrectly (the same
 "eleven gates naming unshipped paths" class the round's item 6 already flags
 as M4/DR-0029 territory, but for the OPERAND rather than the launcher).
+
+## Finding 2 (MEDIUM/HIGH, NEW and more concrete than the round's own note): the post-spawn scan turns realistic, self-contained legitimate skips into false `error`, and one false `error` fails the WHOLE bundle regardless of applicability
+
+The round's own comment on `commandPathCandidates` (quoted, branch-only)
+already names, in the abstract, that "an element that is inline code
+CONTAINING a slash will be treated as a path and produce a loud false
+`error` on the nonzero arm" and calls this an "accepted, declared cost". This
+verification confirms it is real, and shows it is easier to trigger, on a
+more ordinary precondition shape, than the abstract note suggests.
+
+### 2a. A self-contained `node -e` existence check, with no filesystem
+     interaction beyond the check's own subject, is misreported
+
+Constructed precondition (a completely ordinary "run this gate only if some
+marker/config file is present or absent" pattern):
+
+```
+command: ["node", "-e",
+  "process.exit(require(\"fs\").existsSync(\"/nonexistent-optional-marker-9f3a\")?0:1)"]
+```
+
+This is inline code, no whitespace (so it is skipped by the PRE-spawn rule's
+option-value guard exactly like `credential-token`'s own precondition is),
+self-contained (queries nothing but its own literal argument), and it
+legitimately decides "unmet" via a clean `exit(1)`: nothing crashed, nothing
+was missing that the command itself needed to run. Captured verdict at the
+fix-round head, real CLI:
+
+```
+gates: g-probe: error: precondition optional-marker command node -e
+process.exit(require("fs").existsSync("/nonexistent-optional-marker-9f3a")?0:1)
+exited 1, and that exit CANNOT BE ATTRIBUTED to an evaluated precondition: 1
+path-shaped argv element(s) cannot be opened by this process:
+process.exit(require("fs").existsSync("/nonexistent-optional-marker-9f3a")?0:1)
+does not exist (resolved to <cwd>/process.exit(...))
+```
+
+`attributionGaps` treats the ENTIRE `-e` code string as a candidate path
+because it contains `/`, resolves it against `cwd` (nonsense: it is not a
+path at all, it is source code), finds nothing there (of course: it is not a
+path), and reports the legitimate, working, self-evaluating precondition as
+`error`. This is not a contrived shape; checking for an optional file's
+absence/presence inline is exactly the pattern `credential-token` itself
+uses one level simpler (env var rather than filesystem). Any inline
+precondition that mentions an absolute path literal, a URL, a date
+(`2026/08/14`), a regex (`/^\d+$/`), or plain division (`10/2`) and
+legitimately exits nonzero is exposed the same way; a second, narrower
+reproduction (pure arithmetic, `process.exit(10/2===5?1:0)`) was also run and
+produces the identical misclassification.
+
+### 2b. A script that legitimately decides "unmet" and deletes ITSELF as its
+     last, ordinary act (a one-shot/bootstrap pattern) is also misreported
+
+```
+command: ["node", "<scratch>/one-shot-check.mjs"]
+```
+
+where the script's body is `unlinkSync(import.meta.url-as-path);
+process.exit(met?0:1)` with `met = false`. Captured verdict, fix-round head:
+
+```
+gates: g-probe: error: precondition one-shot command node
+<scratch>/one-shot-check.mjs exited 1, and that exit CANNOT BE ATTRIBUTED to
+an evaluated precondition: 1 path-shaped argv element(s) cannot be opened by
+this process: <scratch>/one-shot-check.mjs does not exist ...
+```
+
+The scan runs AFTER the spawn completes and re-probes the filesystem at that
+later moment, so any legitimate cleanup a precondition script performs on its
+OWN argv path (deleting a lockfile with the same name as itself, a
+self-cleaning temp script, a bootstrap script that removes itself once run)
+converts a correct "unmet" into a false "error". This is order-of-operations,
+not a race: it reproduces deterministically every time, no timing window
+needed. A variant staging a SEPARATE marker/lockfile deletion (not the
+script's own path) rather than a self-delete does NOT trigger this, because
+`attributionGaps` only scans `command`'s own argv elements, not files the
+command happens to touch, confirmed by testing both shapes.
+
+### Why this matters beyond "the round already knew"
+
+`decideAggregate` (quoted, branch-only; `src/gates/run.ts`) checks
+`counts.error > 0` FIRST, before red, before required-not-applicable: **one**
+false-error verdict on **any** gate, `required` or merely `conditional`,
+forces the entire bundle to `EXIT_GATE_ERROR` (21) and a `gates: N gate(s)
+reported error: ...` line. So this is not "one gate quietly reports its own
+wrong status"; it is "one ordinary, working, self-contained inline
+precondition that happens to legitimately decide unmet via a path-shaped
+literal takes the whole run down as an error", which is a stronger effect
+than the round's phrase "the false positive is a loud `error` an operator can
+read and fix" suggests: there is nothing to fix except rewriting a
+perfectly correct precondition to avoid looking path-shaped, which the
+round's own comment acknowledges ("If such an element is not a path, give
+the command a form in which it is not path-shaped") but which is a real
+authoring tax the abstract residue note undersells.
+
+Verdict on this finding: CONFIRMED, real, reproduced twice with two
+structurally different triggers (2a: inline code; 2b: self-deleting script).
+Rated MEDIUM/HIGH rather than a plain TRACKED, because unlike Finding 1 the
+round's own documentation states the RESIDUE exists but does not demonstrate
+how ordinary the trigger is or that it takes down the WHOLE bundle
+regardless of applicability; that composition with `decideAggregate` was not
+walked in the round's own document.
