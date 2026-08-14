@@ -516,3 +516,110 @@ directions (test/license-gate.test.ts:338). One observation: `Apache-2.0` is on
 the allowlist at package.json:48 and is the license of ZERO production
 packages, so it is surface admitted in advance rather than in response to a
 need. Informational, not charged.
+
+### HRB-10 (LOW): under `--ignore-scripts` the pack listing is a function of BUILD STATE, and check 5 is green over a listing with no code in it
+
+**Mechanism.** `npm pack --dry-run` lists what is ON DISK. The real publish
+runs `prepack` (`npm run build`, package.json:34) and therefore always lists a
+BUILT tree. Every pack observation in this phase passes `--ignore-scripts`
+(scripts/license-gate.mjs:223, .github/workflows/release.yml:145,
+test/license-gate.test.ts:496), which suppresses `prepack` outright, so those
+observations describe whatever `dist/` happened to be.
+
+Measured in a faithful lab copy (`git archive HEAD`, node v26.6.0, npm 11.18.0):
+
+| build state | scripts | entryCount | entries under `dist/` |
+|---|---|---|---|
+| `dist/` present | `--ignore-scripts` | 181 | 121 |
+| `dist/` absent | `--ignore-scripts` | **60** | **0** |
+| `dist/` absent | enabled, `prepack` rebuilds | 181 | 121 |
+
+**The specific question this answers**, because the dispatch asked it: the pack
+listing evidence in the work history was produced WITH scripts disabled
+(delivery/work-history/m3-p10.md:475 shows `--ignore-scripts` on the command)
+and the capture reports `"entryCount": 181`
+(witness/captures/npm-pack-dry-run-json.txt:16). 181 is the BUILT number, so
+the capture describes the same tree a real publish would produce. It does NOT
+describe a different tree, and the worry is discharged.
+
+What is left is that the match is a coincidence of when the capture was taken,
+not a property of the command. The visible consequence: with `dist/` absent,
+`node scripts/license-gate.mjs` is `license: green (10 production packages
+licensed) ... LICENSE present in the pack listing`, exit 0, over a SIXTY-entry
+listing containing not one line of executable code. Check 5's declared contract
+is only about LICENSE (scripts/license-gate.mjs:382), so this is within its
+stated scope and is charged LOW rather than higher. It matters because
+`prepublishOnly` fires BEFORE `prepack`, so the gate npm runs on the publish
+path is, by construction, looking at the pre-build tree.
+
+**Reachability (DR-0027).** No path to a shipped artifact on its own: the
+release workflow builds before it packs. It reaches a reader, which is the
+standing-warning-12 harm this repository has paid for three times: a pack
+count quoted without its build state starts an investigation. Quote the build
+state alongside every pack number.
+
+### Attack 4 completed: the probes that did NOT defeat the contamination check
+
+HRB-6 charges three members. Three further vectors were probed and are reported
+as NEGATIVE results, because an unreported negative is indistinguishable from a
+search never run (CLAUDE.md:351).
+
+- `NPM_CONFIG_PREFIX` pointing at a tree holding `@tiphys/kernel`
+  (`npm root -g` confirmed to follow it). The script passes and records
+  `sourceTreeOnResolutionPath: null`, but a global prefix is not on Node's
+  module resolution path, so this is the probe correctly not caring rather than
+  the probe missing something. NOT a finding.
+- A `.npmrc` in a PARENT of the working directory. The premise did not hold:
+  `npm config get registry` in the working directory still reported
+  `https://registry.npmjs.org/`, so npm did not read it. NOT a finding, and the
+  reason is recorded so nobody re-runs it expecting a different answer.
+- A `.npmrc` in the WORKING DIRECTORY itself. The premise DID hold
+  (`npm config get registry` reported `https://example.invalid/`) and the run
+  hung on the unreachable registry until I killed it at 120s, because
+  `npm install <tarball>` still fetches the tarball's own dependencies. So a
+  working-directory `.npmrc` does redirect where the "verification" install
+  fetches from, and the script neither probes npm configuration nor records the
+  registry that answered. That is a REAL but small gap in the same family, and
+  it is stated here rather than raised as a separate finding because
+  scripts/release-verify.sh:20's claim is about which TREE answered, which the
+  records do carry; which REGISTRY answered they do not. Worth one line in the
+  records (`npm config get registry`) if the arbitrator wants it closed.
+
+Not probed at all, and named rather than left silent: a bind mount (same class
+as the symlink, and bash has no logical path to report there), a `node_modules`
+inside the working directory before the run, and npm workspaces.
+
+### Attack 7: what the `license` gate asserted on the CI run for this head
+
+CLAUDE.md:556 exists because a green BUNDLE is not evidence about a particular
+gate. Here the four-fact procedure is NOT needed, and that is the good news
+about how this gate was wired: `license` is not inside the bundle. It is a
+DIRECT step in the workflow (.github/workflows/gates.yml:222), so its own
+per-step conclusion is a gate-level observation rather than a deduction.
+
+**Reported to me by the orchestrator, which read the job steps; I did not read
+them myself and say so** (CLAUDE.md:591). Run 31779362386, job 94701547161,
+head sha 8d056f614bf2e3733d388f6322f386efd77998eb, event `pull_request`,
+conclusion success. Step 11, named `License gate (EXT-F-09, M3-P10)`, completed
+with conclusion success at 07:22:05Z. Every other step in that job also
+succeeded; the only skip was `M2 exit test (push)`, which is the other event's
+arm.
+
+Two things that observation does NOT establish, and both are the point of this
+review:
+
+1. It is a per-STEP success, so it says the command exited 0. It does not carry
+   `units` or `vacuous`, because the workflow uploads no evidence artifact
+   (re-checked on this branch: `grep -rn 'upload-artifact\|actions/upload'
+   .github/workflows/` gives no hits, exit 1). The `units` claim for this head
+   is mine, from the local run: `license: green (10 production packages
+   licensed)`, exit 0, on node v26.6.0 with npm 11.18.0 and `dist/` built.
+2. A green from this gate means the ten packages IT CAN SEE are licensed. HRB-1
+   is that the set it can see is not the set that ships. The CI green is true
+   and it is not the claim the gate's name makes.
+
+The step ordering supports the gate: it runs at position 9 of the job, after
+`npm ci` at position 2, which the workflow comment
+(.github/workflows/gates.yml:207) says is load-bearing and which the step order
+confirms. And it carries no `if:`, so both CI events run it, which is T-009's
+second rule satisfied.
