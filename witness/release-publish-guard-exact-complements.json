@@ -2,7 +2,7 @@
   "id": "release-publish-guard-exact-complements",
   "behavior": "release-publish-guard-exact-complements",
   "tests": [
-    "the publish and rehearsal guards are exact complements, so an inverted guard reddens"
+    "the publish and rehearsal guards are exact complements, and the pre-publish verification is unguarded and earlier"
   ],
   "class": "classification",
   "dangerousStates": [
