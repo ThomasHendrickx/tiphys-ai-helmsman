@@ -481,6 +481,15 @@ test("skipping ONE package out of several IS a vacuous green, and the recorded-s
 /* Criterion 2: the pack listing, both halves                           */
 /* ------------------------------------------------------------------ */
 
+/* THE CAPTURE THE INVENTORY AND PACK TESTS ARE ANCHORED TO (red-witness rules
+   (c) and (f)). scripts/license-gate.mjs spawns `npm pack --dry-run --json` and
+   decides check 5 on its stdout, so the shape that parser depends on is real
+   captured output rather than an expectation typed here. */
+const PACK_CAPTURE = readFileSync(
+  fileURLToPath(new URL("../witness/captures/npm-pack-dry-run-json.txt", import.meta.url)),
+  "utf8",
+);
+
 function packListing(): string[] {
   const result = spawnSync(
     "npm",
@@ -494,6 +503,11 @@ function packListing(): string[] {
 }
 
 test("the pack listing carries every declared kernel artifact, and every FILE inside each shipped directory", () => {
+  /* The capture is read before the live listing so a drift in npm's own output
+     shape reddens here rather than silently changing what the gate parses. */
+  assert.match(PACK_CAPTURE, /"path": "AGENTS\.md"/);
+  assert.match(PACK_CAPTURE, /npm 11\.\d+/);
+  assert.equal(/"path": "package\//.test(PACK_CAPTURE), false, "npm now prefixes pack paths with package/; the strip in license-gate.mjs is no longer a no-op");
   const files = new Set(packListing());
   for (const name of [
     "AGENTS.md",
@@ -668,34 +682,39 @@ test("release-verify refuses to run where the source tree is on the resolution p
     `the refusal did not name the resolved path: ${result.stderr ?? ""}`,
   );
 
-  const record = JSON.parse(readFileSync(records, "utf8").split("\n")[0] as string) as Record<string, unknown>;
+  /* IT REFUSED BEFORE RUNNING ANYTHING, and this is the order-independent form
+     of that claim: the run produced EXACTLY ONE record and its step is
+     `clean-environment`. A run that had proceeded would have written an
+     `install` record, an `import` record and three more, so one record is a
+     statement about what the script did rather than about what the filesystem
+     looks like afterwards.
+
+     THE TWO WEAKER FORMS THIS REPLACED, both recorded because each was wrong in
+     an instructive way rather than merely inconvenient:
+
+       1. `git status --porcelain` before and after. It passed standalone and
+          FAILED inside the `suite` gate, because `node --test` runs test FILES
+          concurrently and a sibling file transiently dirties the tree. A
+          whole-repository assertion inside a concurrent suite is a flake by
+          construction.
+       2. Asserting `.release-verify-npm-cache/` and `node_modules/@tiphys/`
+          are ABSENT from the repository. It passed standalone and FAILED inside
+          the RED-WITNESS harness, whose control run re-runs the named tests in
+          the SAME clone the mutated runs used. The mutated run is a run with
+          the guard removed, so it really does install into the clone and really
+          does leave that cache directory behind, and the control then reddened
+          on litter the witness itself had created. That made the whole witness
+          unusable: every member reported red including the green control, which
+          reads exactly like a broken guard.
+
+     Both were assertions about ambient state. This one is about the artifact
+     the script produced, so nothing another process did can reach it. */
+  const written = readFileSync(records, "utf8").split("\n").filter((line) => line !== "");
+  assert.equal(written.length, 1, `expected one record from a refusal, got ${String(written.length)}`);
+  const record = JSON.parse(written[0] as string) as Record<string, unknown>;
   assert.equal(record["step"], "clean-environment");
   assert.equal(record["exitCode"], 1);
   assert.equal(record["sourceTreeOnResolutionPath"], join(repoRoot, "package.json"));
-
-  /* IT REFUSED WITHOUT INSTALLING, asserted by naming the two artefacts a run
-     that had NOT refused would have left in this repository: its own npm cache
-     directory, and the package installed under the repository's node_modules.
-     Neither exists.
-
-     THIS WAS A `git status --porcelain` COMPARISON BEFORE AND AFTER, and that
-     was WRONG in a way worth recording rather than quietly replacing: it passed
-     standalone and FAILED inside the `suite` gate, because `node --test` runs
-     test FILES concurrently and a sibling file transiently dirties the tree, so
-     the two statuses differ for reasons that have nothing to do with this
-     script. A whole-repository assertion inside a concurrent suite is a flake
-     by construction. Naming the specific paths is both narrower and stronger:
-     it cannot be satisfied by a quiet tree and cannot be broken by a busy one. */
-  assert.equal(
-    existsSync(join(repoRoot, ".release-verify-npm-cache")),
-    false,
-    "release-verify created its npm cache inside the repository before refusing",
-  );
-  assert.equal(
-    existsSync(join(repoRoot, "node_modules", "@tiphys", "kernel")),
-    false,
-    "release-verify installed the package into the repository before refusing",
-  );
 });
 
 test("release-verify from a clean directory passes and records a resolved path inside the install prefix", { skip: existsSync(distEntry) ? false : `dist/ is absent (${distEntry}); build first` }, () => {

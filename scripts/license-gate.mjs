@@ -197,8 +197,12 @@ function inventory(root) {
 }
 
 /**
- * The pack listing, as top-level-relative paths with npm's `package/` prefix
- * stripped. `--ignore-scripts` is LOAD-BEARING, not tidiness: this gate is
+ * The pack listing, as repository-relative paths.
+ *
+ * The `package/` strip is a COMPATIBILITY strip and not a description of what
+ * this npm emits: measured on npm 11.18.0 (witness/captures/npm-pack-dry-run-json.txt)
+ * the `--json` paths are already bare, so the replace is a no-op here and is
+ * kept for the older npm that did prefix them. `--ignore-scripts` is LOAD-BEARING, not tidiness: this gate is
  * wired into `prepublishOnly`, so a pack that ran lifecycle scripts would run
  * `prepack` (a full `tsc -b`) from inside the gate that publish already
  * called, once per invocation.

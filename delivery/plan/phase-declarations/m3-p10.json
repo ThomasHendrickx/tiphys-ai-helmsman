@@ -22,7 +22,8 @@
   ],
   "declaredExtras": [
     "package-lock.json",
-    "test/gate-registry.test.ts"
+    "test/gate-registry.test.ts",
+    "delivery/plan/phase-declarations/m3-p10.json"
   ],
   "citations": [
     "SC-006",

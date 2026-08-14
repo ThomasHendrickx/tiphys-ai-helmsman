@@ -1,0 +1,72 @@
+REAL CAPTURED OUTPUT, npm pack --dry-run --json, which scripts/license-gate.mjs
+spawns for check 5 and parses for its listing. Captured 2026-08-14 with npm 11.18.0
+and node v26.6.0 against this repository at v0.1.0. The files array is truncated to
+the first six entries; the parser reads `path` only.
+
+NOTE, MEASURED RATHER THAN ASSUMED: on npm 11.18.0 these paths carry NO `package/`
+prefix; they are already repository-relative. scripts/license-gate.mjs strips such a
+prefix anyway, which on this npm is a no-op and is kept because older npm did emit
+it. That is stated here so a reader does not conclude from the code that the prefix
+is present in the output.
+
+[
+  {
+    "name": "@tiphys/kernel",
+    "version": "0.1.0",
+    "filename": "tiphys-kernel-0.1.0.tgz",
+    "entryCount": 181,
+    "files": [
+      {
+        "path": "AGENTS.md",
+        "size": 32112,
+        "mode": 420
+      },
+      {
+        "path": "LICENSE",
+        "size": 11358,
+        "mode": 420
+      },
+      {
+        "path": "assurance-modes.yaml",
+        "size": 14127,
+        "mode": 420
+      },
+      {
+        "path": "checklists/clean-room.yaml",
+        "size": 16332,
+        "mode": 420
+      },
+      {
+        "path": "checklists/env-failure-diagnosis.yaml",
+        "size": 3238,
+        "mode": 420
+      },
+      {
+        "path": "checklists/flake-playbook.yaml",
+        "size": 3187,
+        "mode": 420
+      }
+    ]
+  }
+]
+
+(files truncated to the first six of 181)
+
+AND THE FAILING DIRECTION the parser must survive: npm pack in a directory with no
+package.json exits nonzero and prints no JSON array.
+npm error code ENOENT
+npm error syscall open
+npm error path /tmp/package.json
+npm error errno -2
+npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/tmp/package.json'
+npm error enoent This is related to npm not being able to find a file.
+npm error enoent
+{
+  "error": {
+    "code": "ENOENT",
+    "summary": "Could not read package.json: Error: ENOENT: no such file or directory, open '/tmp/package.json'",
+    "detail": "This is related to npm not being able to find a file."
+  }
+}
+npm error A complete log of this run can be found in: /root/.npm/_logs/2026-08-14T06_06_17_481Z-debug-0.log
+EXIT=254
