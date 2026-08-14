@@ -89,3 +89,15 @@ for `@tiphys/claude-code-plugin`, which has no release workflow to attach to.
   after a successful publish.** The published version would then exist with no
   tag, which is the blind spot DR-0032 names, and the implementer should state
   what it chose and why rather than leave it implicit.
+
+## Where the hazard is written down
+
+Appended by the M3-P12 implementer, and it is a CITATION rather than a
+restatement: the sentence this whole phase is shaped by is at
+delivery/decisions/DR-0032-the-github-release-is-the-owners-mental-model.md:44,
+and the two settled design points are at
+delivery/decisions/DR-0032-the-github-release-is-the-owners-mental-model.md:60.
+Added because the `citations` gate reported this document citationRequired with
+zero substantive citations, which is a red gate rather than a stylistic note.
+Nothing above this heading was changed, so every line number cited into this
+file elsewhere still resolves.

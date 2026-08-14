@@ -739,10 +739,10 @@
   "release-publish-decision-executed": "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes",
   "release-publish-identified-uniquely": "exactly one step in any workflow invokes a publish command, and it is the guarded step in the release job",
   "license-gate-disk-walk-sees-every-container": "the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding",
-  "release-tag-write-permission-minimal": "exactly one workflow job declares a write grant on the repository, it is the tag job, and it holds no id-token",
-  "release-tag-gated-on-published-version": "the repository-write job is gated by needs and by an evaluated condition on the release job publish output",
-  "release-tag-annotated-at-published-commit": "the tagging command creates an annotated tag at the commit it was given and pushes it to the remote",
-  "release-tag-refuses-existing-tag": "the tagging command exits nonzero on a tag already present locally or on the remote and does not move, delete or reuse it",
-  "release-tag-refuses-unreadable-remote": "the tagging command refuses when the remote tags cannot be read or the requested version disagrees with package.json",
-  "release-github-release-body-anchors-the-version": "the GitHub release body names the version, the commit, the npm package URL and the workflow run, and gh is not invoked on a version disagreement"
+  "release-tag-write-permission-minimal": "exactly one job in any workflow declares a write grant on the repository, and it holds no id-token",
+  "release-tag-gated-on-published-version": "the job that may write to the repository is gated twice, and both gates are EVALUATED rather than matched as text",
+  "release-tag-annotated-at-published-commit": "the tagging command, executed against a scratch repository, produces an ANNOTATED tag at the commit it was given",
+  "release-tag-refuses-existing-tag": "the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it",
+  "release-tag-refuses-unreadable-remote": "the tagging command refuses rather than assuming, when the remote cannot be read or the version disagrees",
+  "release-github-release-body-anchors-the-version": "the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run"
 }
