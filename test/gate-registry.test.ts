@@ -1086,9 +1086,11 @@ const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
         ".github/workflows/gates.yml carrying no `if:`, so both CI events run " +
         "it: a production dependency arrives on `main` through a merge, so what " +
         "the package ships is a property of the default branch and not only of " +
-        "a proposed change (T-009). The release workflow runs it again before " +
-        "publishing and `prepublishOnly` a third time, so no publish path can " +
-        "skip it.",
+        "a proposed change (T-009). The release workflow runs it again as an " +
+        "explicit step before publishing, which is the enforcement point because " +
+        "it depends on no lifecycle hook; `prepublishOnly` runs it on every " +
+        "publish path that runs lifecycle scripts, and `--ignore-scripts` skips " +
+        "it (HRB-7, measured on npm 11.18.0).",
       coveredBy: /license-gate\.mjs/,
     },
   ],

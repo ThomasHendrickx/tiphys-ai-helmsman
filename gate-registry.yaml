@@ -304,9 +304,14 @@ gates:
       LICENSE in the `npm pack` listing. WHY IT IS A GATE AND NOT ONLY A RELEASE
       STEP: what ships is a property of every change, not of the release that
       happens to notice it, and DR-0013 marked a grown production tree the
-      costly direction. `.github/workflows/release.yml` runs it AGAIN before
-      publishing, and `prepublishOnly` runs it a third time, because a publish
-      from any path at all must not be able to skip it. BOTH EVENTS, and the
+      costly direction. WHERE IT RUNS, STATED AS WHAT IS TRUE RATHER THAN AS AN
+      ABSOLUTE (corrected in M3-P10 fix round 1, clean-room finding HRB-7):
+      `.github/workflows/release.yml` runs it as an explicit STEP before
+      publishing, which is the enforcement point because it depends on no
+      lifecycle hook; `prepublishOnly` runs it on every publish path that runs
+      lifecycle scripts, and `--ignore-scripts` skips it, measured on npm
+      11.18.0. The earlier wording said no publish path at all could skip it,
+      and that was false in a file that SHIPS. BOTH EVENTS, and the
       reason is T-009's: a dependency added on `main` by a merge is exactly the
       state that matters, and an arm with no witness is the arm that breaks.
       WHAT EXECUTES IT IN CI, stated rather than implied: `scripts/m2-exit-test.sh`

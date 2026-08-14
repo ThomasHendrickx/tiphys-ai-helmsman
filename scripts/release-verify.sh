@@ -95,7 +95,13 @@ if [ -z "$NAME" ] || [ -z "$VERSION" ]; then
   usage; exit 64
 fi
 
-WORKDIR="$(cd "${WORKDIR:-$PWD}" && pwd)"
+# `pwd -P` AND NOT `pwd`. bash's default pwd is the LOGICAL path, so a workdir
+# reached through a symlink into a checkout reports the symlink's own ancestry
+# and the upward walk below never leaves the link's parent. Measured by the
+# clean-room hazard review (HRB-6 member A): the script passed, recorded
+# `sourceTreeOnResolutionPath: null`, and installed into the checkout it was
+# supposed to refuse. Node resolves the REAL path, so the probe must use it too.
+WORKDIR="$(cd "${WORKDIR:-$PWD}" && pwd -P)"
 RECORDS="${RECORDS:-$WORKDIR/release-verify-records.json}"
 CACHE="$WORKDIR/.release-verify-npm-cache"
 PREFIX="$WORKDIR"
@@ -106,14 +112,51 @@ fi
 : > "$RECORDS"
 FAILURES=0
 
-# The resolution probes. Both are pure reads and neither installs anything, so
-# they are safe to run BEFORE the install: the contaminated direction must fail
-# without having mutated the tree it was wrongly pointed at.
+# THE RESOLUTION PROBES, REWRITTEN IN ROUND 1.
+#
+# The first version defined "the source tree is on the resolution path" as "some
+# ancestor of the working directory holds a package.json whose `name` equals the
+# package under test". That is a MODEL of Node's resolution and it is neither
+# necessary nor sufficient for it, which the clean-room hazard review measured
+# three ways (HRB-6): a symlinked workdir, `NODE_PATH`, and a `node_modules` in
+# a parent directory all resolved the package while the probe reported clean.
+#
+# So the probe now ASKS NODE, and keeps the ancestor walk as a SECOND, weaker
+# question rather than as the answer. Both are needed and neither subsumes the
+# other:
+#
+#   - `createRequire().resolve` is what Node itself would do from this
+#     directory. It consults `node_modules` at every ancestor and the global
+#     paths, so it catches the parent-node_modules case and any fourth case
+#     nobody has thought of. It is the authority.
+#   - It does NOT catch the checkout case, because a package cannot resolve
+#     itself by name without an `exports` field and this package has none. That
+#     is the ORIGINAL case this guard exists for, so the ancestor walk stays.
+#
+# `NODE_PATH` is refused outright rather than probed. It changes resolution for
+# every child process the script spawns, and a release verification whose
+# resolution order depends on an inherited variable is not reproducible even
+# when it happens to be correct.
+probe_node_resolution() {
+  node -e '
+    const { createRequire } = require("node:module");
+    const { join } = require("node:path");
+    const from = createRequire(join(process.argv[1], "release-verify-probe.cjs"));
+    for (const specifier of [process.argv[2] + "/package.json", process.argv[2]]) {
+      try {
+        process.stdout.write(from.resolve(specifier));
+        process.exit(0);
+      } catch {}
+    }
+    process.stdout.write("");
+  ' "$WORKDIR" "$NAME"
+}
+
 probe_source_tree() {
   node -e '
-    const { existsSync, readFileSync } = require("node:fs");
+    const { existsSync, readFileSync, realpathSync } = require("node:fs");
     const { dirname, join } = require("node:path");
-    let dir = process.argv[1];
+    let dir = realpathSync(process.argv[1]);
     const name = process.argv[2];
     for (;;) {
       const candidate = join(dir, "package.json");
@@ -133,6 +176,30 @@ probe_source_tree() {
   ' "$WORKDIR" "$NAME"
 }
 
+# The union of the two, which is what "contaminated" means. Reported as the
+# resolved path so the refusal names WHAT answered, not merely that something
+# did.
+probe_contamination() {
+  local viaNode; viaNode="$(probe_node_resolution)"
+  if [ -n "$viaNode" ]; then
+    printf '%s' "$viaNode"
+    return 0
+  fi
+  probe_source_tree
+}
+
+# WHICH probe answered, because saying "it resolves" when the ancestor walk
+# answered would be the same defect this round is fixing one size smaller: a
+# package.json DECLARING the name is not a resolution, it is a checkout. The
+# refusal names the question that was actually answered.
+probe_contamination_kind() {
+  if [ -n "$(probe_node_resolution)" ]; then
+    printf 'node resolution from this directory'
+  else
+    printf 'an ancestor of the real path declaring that name'
+  fi
+}
+
 probe_installed() {
   node -e '
     const { existsSync } = require("node:fs");
@@ -149,7 +216,7 @@ probe_installed() {
 record() {
   local step="$1" exit_code="$2" detail="$3"
   local resolved; resolved="$(probe_installed)"
-  local contaminated; contaminated="$(probe_source_tree)"
+  local contaminated; contaminated="$(probe_contamination)"
   node -e '
     const [step, code, detail, resolved, contaminated, name, version, workdir, cache, artifact, records] =
       process.argv.slice(1);
@@ -187,15 +254,24 @@ run_step() {
 # Step 0, and it runs FIRST for a reason: a contaminated environment must be
 # refused before anything is installed into it.
 # ---------------------------------------------------------------------------
-CONTAMINATION="$(probe_source_tree)"
+if [ -n "${NODE_PATH:-}" ]; then
+  record clean-environment 1 "NODE_PATH probe for $NAME from $WORKDIR"
+  echo "release-verify: REFUSED. NODE_PATH is set to '${NODE_PATH}', which changes module resolution for every process this script spawns." >&2
+  echo "release-verify: unset it and re-run. A verification whose resolution order depends on an inherited variable is not reproducible even when it is correct." >&2
+  echo "release-verify: $FAILURES failing step(s); records in $RECORDS" >&2
+  exit 1
+fi
+
+CONTAMINATION="$(probe_contamination)"
 if [ -n "$CONTAMINATION" ]; then
-  record clean-environment 1 "resolution-path probe for $NAME from $WORKDIR"
-  echo "release-verify: REFUSED. $CONTAMINATION declares name $NAME, so the source tree is on the resolution path from $WORKDIR." >&2
+  record clean-environment 1 "resolution probe for $NAME from $WORKDIR"
+  echo "release-verify: REFUSED. $NAME is reachable from $WORKDIR before anything has been installed." >&2
+  echo "release-verify: found by $(probe_contamination_kind), at $CONTAMINATION." >&2
   echo "release-verify: this run would witness that tree and not the installed package. Run it from a directory outside any checkout of the package." >&2
   echo "release-verify: $FAILURES failing step(s); records in $RECORDS" >&2
   exit 1
 fi
-record clean-environment 0 "resolution-path probe for $NAME from $WORKDIR"
+record clean-environment 0 "resolution probe for $NAME from $WORKDIR"
 
 # ---------------------------------------------------------------------------
 # E4.3's four witnesses.
