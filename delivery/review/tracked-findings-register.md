@@ -253,6 +253,46 @@ M3-P10.
 It is the same family as `describeDrift` below and as HRB-4 above: a comparison
 whose equivalence class is not the one its message quantifies over.
 
+## THE NON-PUBLISH EVIDENCE RESTED ON TWO PROBES THAT LAG, ONE OF THEM BY HOURS
+
+Found 2026-08-14 evening, by accident, while helping the owner through A-7's
+bootstrap. It is recorded because it weakens evidence that is already MERGED,
+which is the kind of finding that otherwise disappears.
+
+M3-P10's work history establishes "I did not publish" with two probes:
+`GET https://registry.npmjs.org/@tiphys%2fkernel` returning 404, and
+`search?text=scope:tiphys` returning `{"total":0}`. The orchestrator quoted both
+back in the pull request body. Both are now measured to be capable of reporting
+an empty registry that is not empty.
+
+The owner published the `0.0.0` stub. Timeline, all measured:
+
+| moment | observation |
+|---|---|
+| 14:13:53.690Z | version `0.0.0` created, per the packument's own `time` map |
+| 14:14:04Z | the owner's `npm deprecate` returns **E404** |
+| 14:17:43Z | the orchestrator's packument probe returns **404** |
+| 19:42:39Z | packument returns **200** with the version present |
+| 19:42:39Z | `search?text=scope:tiphys` STILL returns `{"total":0}` |
+
+So the packument read path lagged at least four minutes behind a successful
+write, and the search index lagged more than five and a half hours. **The
+orchestrator read the 404 and reported that the package did not exist**, which
+was a wrong inference from a correct measurement, and it is written that way
+rather than as a registry fault.
+
+**The consequence for the phase, stated in both directions.** M3-P10's claim
+that it did not publish is almost certainly TRUE, and it is now supported by a
+stronger measurement than the one it recorded: the packument holds exactly one
+version, `0.0.0`, created from the owner's laptop, and no `0.1.0` exists. What
+is weakened is the METHOD, not the conclusion. A future phase that proves a
+negative about a registry with either of these probes is proving less than it
+appears to.
+
+The stronger form, for whoever needs it next: enumerate the versions that DO
+exist and account for each, rather than asserting the package is absent. An
+absence read from a lagging index is indistinguishable from a lagging index.
+
 ## UNOWNED AND EXPLOITABLE: `gates.yml` interpolates a branch name into a shell
 
 Found by the M3-P10 round-1 delta verifier as DV-8. It is listed here rather
@@ -300,12 +340,38 @@ branch. Merged at DR-0027's hard two-round cap.
 | HRB-4 | `== false` coercion, now a `confirm` string measured failing closed on all nine off-table values | reachability was not established by the reviewer or by either round, and is not claimed now |
 | round-1 residues | the `.npmrc` registry-redirect gap (records do not carry which registry answered); workspaces, npm aliases and `auto-install-peers` untested | gaps in coverage rather than wrong answers at that head |
 
-**The one that is not a finding but is the most important line here: NO
-WORKFLOW HAS BEEN EXECUTED.** Every claim about `release.yml`, from three agents
-across two reviews and a verification, is static analysis of YAML and shell. The
-round-2 implementer named that absence itself. The plan for closing it is a
-REHEARSAL dispatch, which runs every step on a real runner and stops before the
-irreversible action, and it has not happened yet.
+**The one that was not a finding but was the most important line here: NO
+WORKFLOW HAD BEEN EXECUTED. CLOSED 2026-08-14 20:03Z.** Every claim about
+`release.yml`, from three agents across two reviews and a verification, was
+static analysis of YAML and shell, and the round-2 implementer named that
+absence itself.
+
+The first ever execution of that workflow was a REHEARSAL dispatch against
+`main` at `40b70a8`, run `31836129435`, `version: 0.1.0` and `confirm` empty.
+`total_count` for the workflow was 1, which is how "first ever" is established
+rather than remembered. Conclusion `success`, read by step:
+
+| step | conclusion | why it matters |
+|---|---|---|
+| 05 `Decide whether this dispatch publishes` | success | the version-agreement check passed and the empty confirm did not refuse |
+| 11 `npm pack, and check the listing against the tree on disk` | success | the listing check held against a real built tree on a real runner |
+| **12 `Install and RUN the packed artifact, before any publish`** | **success** | **round 1's M3 fix, witnessed in execution: it carries no `if:` and it really does run on a rehearsal** |
+| 13 `Publish to npmjs over OIDC` | **skipped** | the guard held under a real dispatch, not only under a test |
+| 14 `Rehearsal only, nothing was published` | success | the complementary arm fired |
+| 15 `Release verification ... after publishing` | skipped | correct; it is post-publish by design |
+
+Nothing was published, and the two pieces of evidence are given in order of
+strength rather than run together. PRIMARY: GitHub's own job record reports step
+13 SKIPPED. SECONDARY: the registry holds exactly one version, `0.0.0`,
+published 14:13:53Z by the owner, with `modified` 19:44:54Z being the
+deprecation, and no `0.1.0`. The secondary is the weaker of the two here
+BECAUSE OF THE ENTRY ABOVE: a version published at 20:03 might not have appeared
+by 20:09, so a registry read cannot carry this claim on its own.
+
+**What the rehearsal still does NOT establish**: the publish arm. Steps 13 and
+15 are the only two that have never run, and by construction they cannot be
+witnessed without publishing. That is the one asymmetry this design accepts on
+purpose.
 
 ## Carried from before DR-0027
 

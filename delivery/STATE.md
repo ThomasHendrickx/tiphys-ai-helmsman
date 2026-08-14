@@ -5,7 +5,46 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-- as of: 2026-08-14 mid-morning, NEWEST BLOCK. Everything below is OLDER.
+- as of: 2026-08-14 evening, NEWEST BLOCK. Everything below is OLDER.
+- **ALL ELEVEN M3 PHASES ARE MERGED.** `main` is at `40b70a8`, and both its
+  post-merge `push` run and M3-P10's at `a676c80` were read by step and are green
+  in every step. M3-P10 merged at DR-0027's hard two-round cap carrying six
+  recorded residues; the reasoning is at
+  delivery/review/arbitration-m3-p10-addendum.md:1, now on `main`.
+- **A-7's BOOTSTRAP HALF IS DONE (owner, 2026-08-14).** `@tiphys/kernel@0.0.0`
+  is published and deprecated. Measured from here rather than reported:
+  `created` is `2026-08-14T14:13:53.386Z`, the packument holds exactly one
+  version, `dist-tags.latest` is `0.0.0`, and its `deprecated` field reads
+  "Placeholder only. The first real release is 0.1.0." `npm org ls tiphys`
+  returns the owner, which SETTLES the scope claim that DR-0024 had recorded on
+  the owner's word alone because no agent could confirm it.
+- **A-7's REMAINING HALF WAS ONE npm UI STEP** and it was done the same evening,
+  see the next line: the trusted publisher for `@tiphys/kernel` against this
+  repository and workflow file `release.yml`, environment empty. There was no
+  credential; authentication is OIDC, decided at
+  delivery/decisions/DR-0024-oidc-trusted-publishing.md:157.
+- **A-7 IS COMPLETE (owner, 2026-08-14).** The trusted publisher is configured
+  for `@tiphys/kernel` against `ThomasHendrickx/tiphys-ai-helmsman` and
+  `release.yml`, permission `npm publish`. Nothing in M3 now waits on the owner
+  except the decision to publish itself.
+- **THE REHEARSAL RAN, AND IT IS THE FIRST TIME ANY OF THIS MACHINERY HAS
+  EXECUTED.** Run `31836129435` against `40b70a8`, `version: 0.1.0`, `confirm`
+  empty, conclusion `success`, read by step. The publish step is SKIPPED and the
+  install-and-run-the-packed-artifact step is SUCCESS, which witnesses round 1's
+  M3 fix in execution rather than in YAML. Detail and the two strengths of
+  non-publish evidence are in the register.
+- **WHAT THE REHEARSAL CLOSED, stated because it was true for most of today and
+  is the thing a later reader would otherwise still believe:** until 20:03Z, no
+  workflow had ever been executed, and every claim about the release machinery,
+  from three agents across two reviews and a verification, was static analysis of
+  YAML and shell. That is no longer the state. The two steps that have STILL
+  never run are the publish and the post-publish verification, and by
+  construction neither can be witnessed without publishing.
+- **TWO REGISTRY PROBES ARE NOW KNOWN TO LAG, AND ONE OF THEM IS EVIDENCE IN A
+  MERGED WORK HISTORY.** Detail in the register; the short form is that the
+  packument 404 persisted for at least four minutes after a successful publish
+  and the scope search still read `{"total":0}` five and a half hours after it.
+- as of: 2026-08-14 mid-morning. Everything below is OLDER.
 - **M3-P10 HAS HANDED BACK AND IS PULL REQUEST #140, UNDER DUAL CLEAN-ROOM
   REVIEW.** `main` is at `5897291`, whose post-merge `push` run was read by step
   and is green in every step (two legitimate skips: the dual-review
