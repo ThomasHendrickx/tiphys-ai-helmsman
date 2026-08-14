@@ -135,6 +135,70 @@ scrutiny as one used to justify doing it.** This repository already requires
 evidence for claims; this is the same rule applied to a claim of the form "a
 reviewer said we should not".
 
+## M3-P11, merged carrying nine residues and one finding that is not its own
+
+M3-P11 merged at `39316be` after two clean-room reviews, two fix rounds (the hard
+cap) and an independent delta verification between them.
+
+### The nine residues, and the SPLIT is the useful part
+
+The work history lists them by number in two groups, and the grouping matters
+more than the count because the two directions have different costs:
+
+- **still a FALSE ERROR**: the gate refuses something honest. Loud, and because
+  `decideAggregate` checks `counts.error` first, one of these fails the WHOLE
+  bundle regardless of applicability.
+- **still a SILENT SKIP**: the gate passes something it did not check. Quiet, and
+  it is the original defect class.
+
+Named specifically: `--opt=/path` is now UNPROBED rather than correctly probed
+(strictly better than the state it replaced, which was a guaranteed false error);
+the extensionless bare operand (`node check`) remains a silent skip; and
+mechanism C, a directory operand read as a non-regular file, is LATENT rather
+than live, because this repository's own `scope` gate is declared with a
+directory operand but carries no precondition.
+
+### What makes this phase worth reading later
+
+**The pull request was GREEN while a real regression was live.** Fix round 1
+traded a silent wrong skip for a false error and recorded it as an accepted cost.
+The delta verifier measured that a single false error fails the entire bundle, so
+an honest, correctly written precondition would have blocked a consumer's whole
+delivery. No gate in the bundle exercises that shape, so CI could not have caught
+it, and neither could any amount of re-running.
+
+**And round 2 closed what round 1 called unclosable.** Round 1's reasoning was
+sound and was not the end of the question: it never tried a SECOND, narrower way
+to be path-shaped. Measured over 30 declared commands, round 1's rule gives 2
+false gaps and round 2's gives 0. "I could not find a way" is a true sentence and
+is not the same as "there is no way", and writing the true one is what told round
+2 where to look.
+
+## UNOWNED, and the SECOND of its kind: a required credential gate reads a crash as clean
+
+Found by the M3-P11 delta verifier, reproduced with a wrapper that self-inflicts
+SIGSEGV on `git config` subcommands.
+
+`src/gates/credentials.ts` reads a signal-killed `git` or `gh` subprocess as a
+benign "clean" verdict, meaning no credential helper was found, rather than as
+`error`. It is inside `credential-scrub`, which is a **required** gate whose
+entire job is refusing a credential leak.
+
+It is the same mechanism as the entry below, one file over, and it was
+deliberately kept out of M3-P11's LAST fix round because loading a fourth file
+into a final round is how a round fails. It is pre-existing rather than a
+regression of that phase.
+
+**Reachability, which DR-0027 makes the test:** a consumer whose `git` is killed
+by a signal is told their tree is clean of credential helpers when nothing was
+established. That reaches a real user path in the gate least able to afford it.
+
+**It needs an owner and it is reported to the owner rather than filed quietly.**
+The orchestrator's recommendation is its own small phase, on the same reasoning
+that gave the entry below one: a crash read as a verdict is exactly what M3-P11
+existed to stop, and leaving a second instance in a required gate contradicts
+the phase that just shipped.
+
 ## UNOWNED AND SERIOUS: the gate runner reports a crash as a skip
 
 Found by the M3-P9 hazard reviewer while root-causing something else, and it is
