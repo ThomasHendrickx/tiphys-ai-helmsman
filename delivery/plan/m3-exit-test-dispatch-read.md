@@ -12,27 +12,51 @@ delivery/plan/kernel-plan-m3.md:5039 is the specification and it is long and
 precise. What follows is only the part a dispatched agent would get wrong, and
 the part it structurally cannot do at all.
 
-## 1. Stage E3.1 is an ORCHESTRATOR action, and no agent can discharge it
+## 1. Stage E3.1: WITHDRAWN AS WRITTEN, and the correction is the point
+
+**This section originally said E3.1 was an orchestrator action that no agent
+could discharge. That was wrong, and it was wrong on the day it was written.**
+It is corrected in place rather than quietly rewritten, because the reason it
+was wrong is more useful than the conclusion.
+
+The M3-P10 criteria reviewer reported CR-001: plain `curl` with `$GH_TOKEN`
+read pull-request, rate-limit and check-run data in its session, contradicting
+standing warning 6. The orchestrator re-measured rather than picking a side,
+and the API answers 200 to every probe including a real `push`-event run, with
+a **deliberately invalid token getting the same 200 and the same 15000 rate
+limit**. The agent proxy substitutes credentials, so the token value is
+irrelevant and "is the token good" was never the question. CLAUDE.md:841
+carries the measurement table.
+
+So an agent CAN discharge E3.1, and this section's original instruction would
+have hand-carried a stage back to the orchestrator for no reason.
+
+**The part of the original reasoning that survives**, and it is the part that
+matters: a watcher that pipes a failure into `|| true` emits nothing, and a
+watcher with no CI access is indistinguishable from a run still in progress.
+That is the T-008 guard-that-cannot-go-red shape, and it does not depend on
+which HTTP status the failure was. Whoever discharges E3.1 writes the FAILURE
+arm first and proves it can go red.
+
+**What is genuinely not established**: why the 2026-08-13 401 measurement,
+which was real, does not reproduce. Nobody has shown whether the proxy changed
+or the grants did. So the exit-test brief should PROBE reachability as its
+first step rather than assume it in either direction, and record the probe.
+
+The division of labour that remains:
 
 E3.1 requires identifying the `gates` run whose EVENT is `push` and whose head
 sha equals the new `main` tip, observing it TO COMPLETION, and recording run
 id, event, head sha and conclusion (delivery/plan/kernel-plan-m3.md:5319).
 
-No agent in this container can do any of that. Standing warning 6 records the
-measurement: `GH_TOKEN` and `GITHUB_TOKEN` are both SET and the REST API answers
-`{"message":"Bad credentials","status":"401"}` to every request made with them,
-so a poll loop written the obvious way emits nothing and **a watcher with no CI
-access is indistinguishable from a CI run still in progress**. That is the
-T-008 shape in the one family where the environment guarantees it.
-
-The GitHub MCP tools do work and they are the orchestrator's, not an agent's.
-So the division of labour is fixed rather than negotiable:
-
 | stage | who |
 |---|---|
 | E1, E2, the three controls, E4.1 to E4.3 except the publish itself | the dispatched agent |
-| E3.1, E3.1b | the ORCHESTRATOR, by hand, recording the record into the bundle |
+| E3.1, E3.1b | the dispatched agent, with the orchestrator as fallback if its reachability probe fails |
 | the publish itself | the OWNER (A-7 part 2, then a dispatch of the release workflow) |
+
+Only the publish is genuinely reserved, and it is reserved because it needs npm
+account access, not because of anything about CI.
 
 The worked form of the E3.1 reading, which the orchestrator has now done twice
 in this milestone: list the `gates` workflow runs filtered to branch `main` and

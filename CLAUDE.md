@@ -835,11 +835,47 @@ Each of these bit someone once. Forward them to every implementer.
    watching had already completed; it was caught by an hourly liveness check,
    not by the watcher. This is the T-008 shape, a guard that cannot go red, in
    the one family where the environment guarantees it.
-   **The GitHub MCP tools DO work** and are the only reachable CI path, so
-   status is read by calling them, which means CI polling is an ORCHESTRATOR
-   ACTION and cannot be delegated to a background monitor. Plan accordingly: an
-   hourly liveness check that reads CI by hand is the mechanism, and arming a
-   bash watchdog instead is worse than arming none.
+   **The GitHub MCP tools DO work** and are a reachable CI path, so status can
+   always be read by calling them.
+
+   **REVERSED IN PART, MEASURED 2026-08-14, AND THE PARAGRAPH ABOVE IS LEFT
+   STANDING RATHER THAN DELETED BECAUSE THE REASONING IN IT IS STILL RIGHT.**
+   The REST API is reachable from this container today. Found by the M3-P10
+   criteria reviewer as finding CR-001, which reported that plain `curl` with
+   `$GH_TOKEN` read pull-request, rate-limit and check-run data, contradicting
+   this warning. The orchestrator re-measured rather than averaging the two
+   honest accounts, which is the discipline standing warning 12 records for
+   suite counts:
+
+   | probe | result |
+   |---|---|
+   | `GET /rate_limit` with `$GH_TOKEN` | **200**, `core.limit` 15000 |
+   | `GET /repos/.../pulls/140` | **200** |
+   | `GET /actions/runs/31778877771` (a real `push`-event run) | **200**, head sha and conclusion readable |
+   | `GET /user` | **200**, identity `ThomasHendrickx` |
+   | **`GET /rate_limit` with a DELIBERATELY INVALID token** | **200**, same 15000 limit |
+
+   **The last row is the one that explains everything.** An invalid token
+   getting an App-installation rate limit means the value in `GH_TOKEN` is
+   IRRELEVANT: the agent proxy at `$HTTPS_PROXY` substitutes real credentials
+   on the way out. So "is the token good" was the wrong question all along, and
+   `gh auth status` calling it invalid was a true statement about a value
+   nothing uses.
+
+   Consequences, stated as changes rather than left to be inferred:
+
+   - **A bash-based CI watcher CAN work here**, and the blanket prohibition
+     above is withdrawn. Reading CI is no longer necessarily an orchestrator
+     action, so an agent can be asked to observe a run to completion.
+   - **Everything the old paragraph says about SILENCE still binds.** A watcher
+     that pipes a failure into `|| true` and emits nothing is a guard that
+     cannot go red whatever the cause of the failure, and that is the T-008
+     shape the entry was really about. Write the failure arm first.
+   - **The cause of the 2026-08-13 401s is NOT established.** That measurement
+     was real and it is not reproducible today. Nobody has shown whether the
+     proxy changed, the installation's grants changed, or those two endpoints
+     differed. Treat REST reachability as a thing to PROBE at the start of a
+     session that depends on it, not as a settled property in either direction.
 7. `--test-name-pattern` must precede the positional test path, or it is
    silently ignored.
 8. `git checkout --` wipes uncommitted sibling edits. Copy before

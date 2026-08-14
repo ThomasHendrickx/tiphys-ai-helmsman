@@ -21,12 +21,23 @@ is wrong: verify against git and the PR list before trusting it.
   T-019 that DR-0031 names. When #140 merges, they become facts on `main` and
   this block should be amended to carry them.
 - **THE M3 EXIT TEST HAS A READ, WRITTEN BEFORE DISPATCH**, at
-  delivery/plan/m3-exit-test-dispatch-read.md:1. Its load-bearing finding is that
-  **stage E3.1 is an ORCHESTRATOR action and no agent in this container can
-  discharge it**, because both GitHub tokens 401 on REST, so an agent's CI
-  watcher is indistinguishable from a run still in progress. The second is that
-  the supervision-rules file must be committed BEFORE stage E1 begins and no
-  later commit can satisfy that.
+  delivery/plan/m3-exit-test-dispatch-read.md:1. Its surviving load-bearing
+  finding is that the supervision-rules file carrying the three controls must be
+  committed BEFORE stage E1 begins, and no later commit can satisfy that, so it
+  is the first instruction in the brief rather than a step in it.
+- **STANDING WARNING 6 IS REVERSED IN PART, AND THE DISPATCH READ'S FIRST
+  SECTION WAS WITHDRAWN THE SAME DAY IT WAS WRITTEN.** That section said stage
+  E3.1 was an orchestrator action no agent could discharge, on the strength of
+  a 2026-08-13 measurement that both GitHub tokens 401 on REST. The M3-P10
+  criteria reviewer contradicted it (CR-001) and the orchestrator re-measured
+  rather than averaging two honest accounts: the REST API answers 200 to every
+  probe, including a real `push`-event run, and **a deliberately INVALID token
+  gets the same 200 and the same 15000 rate limit**, which shows the agent proxy
+  substitutes credentials and the token value is irrelevant. So a bash CI
+  watcher CAN work here and an agent can observe a run to completion. What
+  survives is that a watcher must write its FAILURE arm first, and what is NOT
+  established is why the earlier 401s do not reproduce. CLAUDE.md:841 carries
+  the table.
 - **CRITERION 6 OF M3-P10 IS NOT MET AND IS DECLARED SO**, not discovered. The
   exit test is its own dispatch and waits on three blockers in order: both
   phases merged, the publish, then E3.1.
