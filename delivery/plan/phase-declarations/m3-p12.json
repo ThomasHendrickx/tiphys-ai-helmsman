@@ -1,0 +1,21 @@
+{
+  "id": "M3-P12",
+  "branch": "claude/m3-p12-tag-and-github-release",
+  "filesToTouch": [
+    ".github/workflows/release.yml",
+    "test/license-gate.test.ts",
+    "witness/",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [
+    "delivery/plan/m3-p12-phase-spec.md",
+    "delivery/plan/phase-declarations/m3-p12.json",
+    "delivery/decisions/DR-0032-the-github-release-is-the-owners-mental-model.md"
+  ],
+  "citations": [
+    "DR-0032",
+    "DR-0008",
+    "DR-0024",
+    "SC-011"
+  ]
+}
