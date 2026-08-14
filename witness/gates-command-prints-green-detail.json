@@ -4,7 +4,7 @@
   "tests": [
     "a GREEN gate's own detail reaches stdout as well, so a disclosure a green verdict carries cannot be silent"
   ],
-  "class": "classification",
+  "class": "destructive",
   "dangerousStates": [
     {
       "kind": "mutation",

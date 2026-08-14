@@ -4,7 +4,7 @@
   "tests": [
     "a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be opened: unreadable, after an option, or carrying whitespace"
   ],
-  "class": "classification",
+  "class": "destructive",
   "dangerousStates": [
     {
       "kind": "mutation",
