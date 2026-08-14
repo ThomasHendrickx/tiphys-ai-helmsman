@@ -538,7 +538,21 @@ test("the pack listing carries every declared kernel artifact, and every FILE in
     const absent = names.filter((name) => !files.has(name));
     assert.deepEqual(absent, [], `tracked under ${directory} and absent from the pack listing: ${absent.join(", ")}`);
   }
-  assert.ok([...files].some((path) => path.startsWith("dist/")), "dist/ is not in the pack listing");
+  /* THE `dist/` LEG IS CONDITIONAL AND THE REST IS NOT, which is a correction
+     of this test rather than a concession. As first written the assertion was
+     unconditional and the test FAILED (it did not skip) when the suite ran
+     without a prior build, because `npm pack` lists what is on disk and `dist/`
+     is built, never committed (plan decision D-17). That is standing warning
+     12's family with the wrong ending: a build-state-dependent test that fails
+     instead of skipping turns a documented, expected suite configuration into a
+     red, and would have reddened anyone running `node --test` before `npm run
+     build`. Everything else here is about TRACKED files and is true at any
+     build state, so only this leg moves. Measured: with `dist/` absent the
+     suite is 802 tests, 801 pass, 1 fail before this change and 802 pass, 0
+     fail after it. */
+  if (existsSync(distEntry)) {
+    assert.ok([...files].some((path) => path.startsWith("dist/")), "dist/ is not in the pack listing");
+  }
 });
 
 test("the pack listing carries no delivery, test, sandbox or src entry", () => {
