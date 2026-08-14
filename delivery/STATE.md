@@ -9,8 +9,8 @@ is wrong: verify against git and the PR list before trusting it.
 - **ALL ELEVEN M3 PHASES ARE MERGED.** `main` is at `40b70a8`, and both its
   post-merge `push` run and M3-P10's at `a676c80` were read by step and are green
   in every step. M3-P10 merged at DR-0027's hard two-round cap carrying six
-  recorded residues; the reasoning is in
-  `delivery/review/arbitration-m3-p10-addendum.md`, now on `main`.
+  recorded residues; the reasoning is at
+  delivery/review/arbitration-m3-p10-addendum.md:1, now on `main`.
 - **A-7's BOOTSTRAP HALF IS DONE (owner, 2026-08-14).** `@tiphys/kernel@0.0.0`
   is published and deprecated. Measured from here rather than reported:
   `created` is `2026-08-14T14:13:53.386Z`, the packument holds exactly one
@@ -21,7 +21,8 @@ is wrong: verify against git and the PR list before trusting it.
 - **WHAT REMAINS OF A-7 IS ONE npm UI STEP**: configure the trusted publisher
   for `@tiphys/kernel` against `ThomasHendrickx/tiphys-ai-helmsman` and workflow
   file `release.yml`, environment empty. There is no credential; authentication
-  is OIDC (DR-0024).
+  is OIDC, decided at
+  delivery/decisions/DR-0024-oidc-trusted-publishing.md:157.
 - **THE ORCHESTRATOR OWES A REHEARSAL DISPATCH BEFORE ANY REAL PUBLISH.** No
   workflow has ever been executed. Every claim about the release machinery, from
   three agents across two reviews and a verification, is static analysis of YAML
