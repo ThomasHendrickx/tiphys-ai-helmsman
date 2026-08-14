@@ -805,7 +805,7 @@ export function commandPathOperands(command: string[]): string[] {
  * to know, it is written down rather than inferred, and anything not in it is
  * treated as possibly naming a path. `node -e` and `node --eval` are the pair
  * that matters here, because `credential-token`'s real precondition in
- * gates.manifest.json:54 is exactly that shape; the others are the same
+ * gates.manifest.json:57 is exactly that shape; the others are the same
  * construct in the launchers a precondition is most likely to use (`sh -c`,
  * `bash -c`, `python -c`, `perl -e`, `ruby -e`, `node -p`).
  */
