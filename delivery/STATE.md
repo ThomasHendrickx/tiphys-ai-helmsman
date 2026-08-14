@@ -5,6 +5,32 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-14 early morning, NEWEST BLOCK. Everything below is OLDER.
+- **M3 IS 10 OF 11 MERGED.** Only M3-P10, the release phase, remains, and it is
+  DISPATCHED. `main` is at `39316be`. M3-P6, M3-P7, M3-P8, M3-P9 and M3-P11 all
+  landed in the last day, from a static 5 of 10 the day before.
+- **M3-P11 WAS ADDED BY OWNER DECISION** and merges BEFORE M3-P10 in dependency
+  order even though its number is higher, because M3-P10 publishes and a guard
+  that cannot go red should not be in the first published version.
+- **FOUR OWNER DECISIONS LANDED**: DR-0027 (verification depth follows shipped
+  value), DR-0029 (the ownership boundary and the applicability envelope, with
+  `hemma` named as the M4 pilot in DR-0030), and DR-0031 (a commit, a pull
+  request and a CI run are three different things). DR-0029 settles that the
+  kernel will ship the gate CONTRACT and zero project gates, which is M4 work.
+- **M3-P11 IS THE FIRST PHASE TO MERGE AS A SELF-CONTAINED UNIT**: code, work
+  history, both clean-room reviews, the delta verification and the arbitration in
+  ONE pull request. That is DR-0031's rule, and it is only possible because of
+  M3-P11's own second change, which makes a phase's evidence a standing
+  pre-authorized extra.
+- **A-7 IS NOT ACTIONABLE YET AND THE DEPENDENCY RUNS THE OTHER WAY.** It is not
+  a credential (DR-0024 removed that), and its remaining half is an npm UI
+  configuration that names the RELEASE WORKFLOW FILE. That file does not exist
+  until M3-P10 creates it. M3-P10 is therefore dispatched with a HARD STOP: build
+  the release, do not execute it, and hand back the workflow path and the exact
+  identifiers the owner needs.
+- **THE M3 EXIT TEST CANNOT FULLY COMPLETE WITHOUT THE OWNER**, because it
+  publishes. M3-P10 delivers the machinery and the pre-publication criteria; the
+  publish and the post-publish verification wait on A-7 part 2.
 - as of: 2026-08-13 morning, NEWEST BLOCK. Everything below is OLDER.
 - **M3 IS 7 OF 10 MERGED.** M3-P6 at `ec77c7d`, M3-P7 at `2a3892b`. The harness
   saga that fills the block below is CLOSED: its branch merged and `main` is
