@@ -662,3 +662,32 @@ copied `dist/` to a directory with no `package.json` above it and measured
 `tiphys doctor` exit 1 with the message from `readOwnVersion` rather than from
 `checkKernelArtifacts` (its CR-004). That is a citation, not a re-derivation,
 and this round did not reproduce it.
+
+### The gate bundle at the fix-round head, beside round 0's
+
+Run locally before pushing, which is DR-0031's rule. Head `556df2f`, base
+`origin/main` at `7b18144`, node v26.6.0, `dist/` built, the same invocation
+round 0 recorded (`--phase claude/exit-subject-doctor-kernel-artifacts`, which
+the runner requires and which the earlier bundle in this round omitted, so that
+first run reported `scope: error` for want of the flag rather than for anything
+about the branch).
+
+```
+gates: declared 16 applicable 10 verdict 10 green 10 red 0 not-applicable 6 error 0 vacuous 0
+BUNDLE2 EXIT=20
+```
+
+| | round 0 | fix round 1 |
+|---|---|---|
+| applicable / green / red / error / vacuous | 9 / 9 / 0 / 0 / 0 | 10 / 10 / 0 / 0 / 0 |
+| `suite` | 847 | **849**, 0 skipped |
+| `red-witness` | green, 7 witnesses | green, **9** witnesses |
+| runner exit | 20 | 20 |
+
+The runner still exits 20, for the same two required-and-explained
+not-applicables, `citations` and `scope`. Nothing in this round changes that:
+`scope`'s precondition is that the branch matches `^claude/m[0-9]+-p[0-9]+-`,
+which the orchestrator's I-3 ruling deliberately made false, and `citations`
+has no changed path under its six configured trees. The applicable count rose
+from 9 to 10 because `citations` was applicable in the earlier arm and is not
+here; the honest way to read the pair is gate by gate rather than by count.
