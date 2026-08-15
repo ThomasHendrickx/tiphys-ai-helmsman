@@ -32,9 +32,19 @@ guard.
 ## What the reviews found, and the pair earned its keep
 
 Both returned FIX-ROUND-NEEDED. They found **CR-001 independently of each
-other**, and only the hazard contract found **CR-002**. That is T-007's property
-observed rather than asserted: two contracts, two framings, two model families,
-and the second contract found a class the first did not.
+other**, and only the hazard contract found **CR-002**: two contracts, two
+framings, two model families, and the second contract found a class the first
+did not.
+
+**The decorrelation was NOT checked by the script, and that is stated rather
+than left to be discovered.** `check-dual-review` is `not-applicable` on this
+branch, measured at this head: `node scripts/check-dual-review.mjs
+--precondition .` exits 1 because the verdicts are not in the shape it reads.
+So the distinctness of family, framing and contract rests on how the
+orchestrator dispatched the pair, which is an assertion by the party with an
+interest in it, not an exit code. What IS evidence rather than assertion is the
+outcome: the two reviews returned different finding sets, and the class only one
+of them found is the one the fix rounds spent most of their effort on.
 
 - **CR-001**: `canonicalMember` returned `["patch", member.patch]`, a POINTER,
   where the mutation arm returned file, find and replace, the CONTENT. Seven
