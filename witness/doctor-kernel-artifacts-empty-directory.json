@@ -13,6 +13,12 @@
       "file": "src/commands/doctor.ts",
       "find": "    if (entries.length === 0) {",
       "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      entries = readdirSync(path);",
+      "replace": "      entries = [\"assumed-present\"];"
     }
   ],
   "consumesExternalOutput": {

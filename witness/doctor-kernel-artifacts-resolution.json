@@ -13,6 +13,12 @@
       "file": "src/commands/doctor.ts",
       "find": "    if (classifyEntry(candidate).kind === \"regular\") {",
       "replace": "    if (classifyEntry(join(dir, \"roles\")).kind !== \"absent\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      return { ok: true, root: dir };",
+      "replace": "      return { ok: true, root: dirname(dir) };"
     }
   ],
   "consumesExternalOutput": {

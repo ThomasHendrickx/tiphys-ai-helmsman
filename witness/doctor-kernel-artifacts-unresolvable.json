@@ -13,6 +13,12 @@
       "file": "src/commands/doctor.ts",
       "find": "        reason: `no package.json above ${from}, so the installed kernel root cannot be resolved`,",
       "replace": "        reason: (() => { throw new Error(`no package.json above ${from}`); })(),"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (!resolution.ok) {",
+      "replace": "  if (false as boolean) {"
     }
   ],
   "consumesExternalOutput": {
