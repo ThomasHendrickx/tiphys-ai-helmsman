@@ -240,3 +240,113 @@ harvesting source is remote branch names: `orchestrator-next.mjs` will read
 `origin/claude/m3-p13-...` and report M3 as having a thirteenth phase. This is
 an owner or orchestrator action item rather than a note, and it is recorded here
 so it is not lost in a handback.
+
+## I-4: E1.6 is BLOCKED, and the orchestrator fixed the harness rather than re-designating the subject
+
+- **Kind: a RULING plus a DISPATCH.** No kernel artifact was substituted for, no
+  gate was run that the registry did not select, and no result was rewritten.
+  The E1.6 measurement stands exactly as `delivery/evidence/m3-exit-test/e1-6.md`
+  recorded it before this entry existed.
+- **Decided by: the orchestrator**, after independently re-deriving the runner's
+  mechanism rather than accepting it.
+
+### The state this records
+
+**Stage E1.6 is UNSATISFIED.** The full-mode bundle at the subject head reports
+9 green, 1 red, 6 not-applicable, 0 error, 0 vacuous, and the red is
+`red-witness`, which E1.6 names as the one gate that must be green on a head
+touching `src/commands/doctor.ts`. Nothing below softens that. What changes is
+its DISPOSITION: it is blocked pending a fix, not failed and abandoned, and
+E1.6 will be re-run at a head that carries the fix.
+
+### The mechanism, in the orchestrator's tighter form
+
+The runner reported the mechanism as "a witness spec's `mutation.find` is a
+verbatim quotation of a source line". The orchestrator re-derived it and made it
+sharper, and the sharper form is the one to keep:
+
+**Ownership is FILE-granular and the obligation is MEMBER-granular.**
+src/gates/red-witness.ts:277 computes the phase's own witnesses by filtering
+specs on whether the spec FILE appears in the diff, and src/witness/run.ts:1251
+then applies rule (d) to EVERY member of that file. So an edit to any one member
+drags its untouched siblings into the intersection requirement, whatever the
+edit was for.
+
+The surface was bounded rather than sampled: `grep -rn "phaseOwn" src/ test/`
+returns exactly four lines, two producers (src/gates/red-witness.ts:330 and
+src/gates/red-witness.ts:344) and one consumer (src/witness/run.ts:1251) beside
+its declaration at src/witness/run.ts:96. The runner re-ran that grep and
+reproduces the same four lines.
+
+The collision is concrete rather than theoretical: src/commands/doctor.ts:53 is
+a SINGLE-LINE array, so the designated subject cannot add its condition without
+editing the exact line two M3-P8 specs quote. The runner verified that line at
+this head and it is
+`  full: ["gh-missing", "remote-missing", "retention-undeclared"],`.
+
+### The action taken
+
+A fix is dispatched on the branch `claude/witness-ownership-scoping`, under the
+full review contract, and it changes shipped `src/`. This runner has not touched
+that branch and did not re-run E1.6.
+
+### Why re-designating the subject was REFUSED, which is the part worth keeping
+
+The cheaper move was available and was rejected: E0.4 carries a fallback rule
+that lets the orchestrator designate a different subject, and a subject that
+does not touch `src/` would have made `red-witness` not-applicable and the
+bundle green.
+
+**E0.4's fallback is scoped to BEFORE stage E1 begins**
+(delivery/plan/kernel-plan-m3.md:5107), and stage E1 had begun: its first
+evidence record, `e1/records/E1.1-charter-valid.json`, carries
+`startedAt` 2026-08-15T08:44:02.256Z, and this ruling is hours later on the same
+day. Choosing a different subject after seeing which one turned out hard
+is exactly what the ordering constraint at delivery/plan/kernel-plan-m3.md:5177
+exists to prevent, one level up: that constraint stops the CONTROLS being chosen
+after seeing which stages were weak, and this would have been the SUBJECT being
+chosen after seeing which subject was weak. An exit test that swaps its subject
+when the subject finds something has stopped being a measurement.
+
+So the finding is being paid for rather than routed around, and the cost is one
+harness fix plus a re-run of E1.6.
+
+## F-3: this container's proxy permits ref creation and update, and refuses ref DELETION
+
+**An id note first, because the dispatch that asked for this referred to an
+existing `F-3` and there was none.** The bundle carried F-1 and F-2 only,
+verified by grep over `delivery/evidence/m3-exit-test/` before writing this. F-3
+is therefore ALLOCATED here rather than added to, and nothing else in the bundle
+or the repository has ever used it.
+
+**The measurement**, three methods by the runner and a fourth by the
+orchestrator from a different clone, all today, all against a branch this
+container had pushed minutes earlier:
+
+| method | result |
+|---|---|
+| `git push origin --delete claude/m3-p13-doctor-kernel-artifacts` | `RPC failed; HTTP 403`, remote hung up |
+| `git push <url> ":refs/heads/claude/m3-p13-doctor-kernel-artifacts"` | `RPC failed; HTTP 403` |
+| `DELETE /repos/.../git/refs/heads/claude%2Fm3-p13-doctor-kernel-artifacts` | HTTP 403, `Write access to this GitHub API path is not permitted through this proxy` |
+| the same `git push origin --delete`, from the orchestrator's own clone | the same 403 |
+
+Creation and update are permitted from the same credentials in the same
+container: `claude/exit-subject-doctor-kernel-artifacts` was created and then
+updated four times during this dispatch, each push exit 0, and the remote
+readback matches the local head. So the refusal is a property of the OPERATION,
+not of the credential, the repository or the branch.
+
+**It is a REDISCOVERY, and that is why it is a finding rather than a note.** The
+identical refusal was measured on 2026-08-07 while closing owner action A-4, and
+is recorded in the A-4 row of `delivery/STATE.md` in almost the same words.
+It sat in the owner-action register and not in the standing environment
+warnings, which are what an agent reads before acting, so the next agent to
+attempt a deletion met it fresh and spent three attempts establishing it. The
+general shape is one this project keeps paying for: a measured environment fact
+filed where it will not be read again.
+
+**Not fixed here.** Adding it to the standing environment warnings edits
+`CLAUDE.md`, which is agent-rules configuration rather than exit-test evidence,
+and doing it from inside the exit test would be a second intervention on an
+artifact this run is supposed to be observing. Recorded as owed, with the owner
+action it blocks allocated as A-8 in `delivery/STATE.md`.

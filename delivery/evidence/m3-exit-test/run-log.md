@@ -158,3 +158,31 @@ task id that is not phase-shaped, the deletion of the m3-p13 declaration and the
 renaming of the work history off the phase-shaped filename. Deleting the old
 remote branch is refused by the proxy with HTTP 403 on all three routes tried,
 and is recorded as needing access this agent does not hold.
+
+## Dispatch C, paperwork only
+
+### 12. The E1.6 disposition, A-8, and the ref-deletion finding
+
+About to: record I-4, allocate A-8 in STATE.md, record F-3. No stages, no gates,
+no pull request.
+
+Happened:
+
+- I-4 written in `delivery/evidence/m3-exit-test/interventions.md`: E1.6 is
+  UNSATISFIED and BLOCKED rather than abandoned; the mechanism in the
+  orchestrator's file-granular-ownership form with its four citations, each
+  re-verified against the tree at this head; the fix dispatched on a branch this
+  runner has not touched; and why re-designating the subject was refused.
+- A-8 allocated in `delivery/STATE.md`, which is the sole allocator. Checked
+  free with `git log --all -S'A-8'`, whose only hits are the two commits that
+  added `delivery/work-history/m3-p4.md`, where A-8 is a local test-arm label
+  rather than an owner action. The allocation says so, so a grep does not
+  mislead.
+- F-3 recorded. The id was ALLOCATED rather than added to: the dispatch referred
+  to an existing F-3 and the bundle carried only F-1 and F-2, which was checked
+  before writing.
+- Nine citations added across the two files, every one resolved against the tree
+  at this head before committing; one was moved from
+  delivery/plan/kernel-plan-m3.md:5104 to :5107 because 5104 is not the sentence
+  it was cited for, and one claim ("was never planned") was replaced by the
+  `git ls-tree` measurement that settles it.
