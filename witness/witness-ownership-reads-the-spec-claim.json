@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/witness/spec.ts",
-      "find": "  if (specClaim(headSpec) !== specClaim(baselineSpec)) {",
+      "find": "  if (claimRePointed(headSpec, baselineSpec)) {",
       "replace": "  if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/witness/spec.ts",
-      "find": "  return JSON.stringify([\"claim\", spec.behavior, [...spec.tests].sort()]);",
-      "replace": "  return JSON.stringify([\"claim\", spec.behavior]);"
+      "find": "  const headTests = new Set(headSpec.tests);\n  return baselineSpec.tests.some((name) => !headTests.has(name));",
+      "replace": "  return false;"
     }
   ],
   "deterministic": true,

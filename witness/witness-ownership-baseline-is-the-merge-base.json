@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/witness/spec.ts",
-      "find": "  if (specClaim(headSpec) !== specClaim(baselineSpec)) {",
+      "find": "  if (claimRePointed(headSpec, baselineSpec)) {",
       "replace": "  if (true) {"
     }
   ],

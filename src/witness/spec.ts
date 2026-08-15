@@ -302,22 +302,68 @@ export function canonicalMember(
 }
 
 /**
- * THE SPEC'S CLAIM: what this document asserts, and about what.
+ * HAS THE SPEC BEEN RE-POINTED, as opposed to strengthened?
  *
  * A witness spec says "these named TESTS guard this BEHAVIOR, and here are the
- * dangerous states they have been shown red against". `behavior` and `tests`
- * are that sentence's subject and predicate, and rule (d) is an obligation on
- * the sentence, not only on its members: it exists so a phase cannot claim
- * coverage using a dangerous state about code it did not touch.
+ * dangerous states they have been shown red against". Rule (d) is an obligation
+ * on that sentence, not only on its members: it exists so a phase cannot claim
+ * coverage using a dangerous state about code it did not touch. So a phase that
+ * rewrites the sentence takes the obligation for every state offered under it.
  *
- * WHICH FIELDS ARE IN, AND WHY THE OTHERS ARE NOT. The test applied to every
- * field of the closed schema was: does changing THIS FIELD ALONE let a phase
- * assert something new about its own diff while reusing a dangerous state
+ * THE TEST IS DIRECTIONAL, NOT EQUALITY, AND THAT DISTINCTION IS THE WHOLE
+ * FUNCTION. Fix round 1 compared `[behavior, sortedTests]` for equality, which
+ * is wrong in the safe direction and was caught by delta verification: a phase
+ * that ADDS one guarding test to an existing spec, changing no member and no
+ * behavior, was told its untouched siblings had to intersect the diff. Adding a
+ * test is not a re-point. It is strictly strengthening, and that is a MEASURED
+ * property of the harness rather than a judgement:
+ *
+ *   - RED arm, src/witness/run.ts:918: `red: exitCode !== 0 && failed.length
+ *     === tests.length`. A repetition counts as red only when EVERY named test
+ *     failed, so an added test must ALSO redden against every declared
+ *     dangerous state or the member stops being red and the spec goes red.
+ *   - GREEN arm, src/witness/run.ts:1676: `headGreen = exitCode === 0 &&
+ *     passedNamedTests.length === spec.tests.length`. An added test must ALSO
+ *     pass at head.
+ *
+ * Both arms gain an obligation, neither loses one, and both are demonstrated by
+ * EXECUTION rather than accepted on trust. So there is nothing for rule (d) to
+ * police in an extension: no new dangerous state is declared, and the existing
+ * states' burden only grows.
+ *
+ * WHAT STILL COUNTS AS RE-POINTING, and each is a real relaxation:
+ *
+ * - `behavior` changed. The sentence is now about something else, and an older
+ *   phase's dangerous state becomes evidence for a behavior this phase
+ *   introduced. Any change, in either direction.
+ * - A baseline test name DROPPED. That relaxes both arms above: one fewer test
+ *   must redden against every member and one fewer must pass at head. A phase
+ *   can drop the test that was doing the work and keep the coverage claim.
+ * - A test name SWAPPED, which is a drop plus an addition and is caught by the
+ *   drop half.
+ *
+ * So the predicate is `behavior` equality AND `baselineTests` being a SUBSET of
+ * `headTests`. Reordering is not a change: the comparison is over sets, which
+ * is the same positional indifference the member matching gets from comparing
+ * canonical forms rather than indices. Duplicates in `tests` collapse under set
+ * semantics, and that is harmless because both arms above count `tests`
+ * positionally on the same array, so a duplicate adds an obligation to each
+ * side identically.
+ *
+ * WHY MEMBERS ARE NOT TREATED THE SAME WAY, since adding a member also only
+ * ADDS an obligation (every member must independently redden). Because a member
+ * IS the thing rule (d) is an obligation on, and a test is not. An added member
+ * is a newly declared dangerous state, and checking that a declared dangerous
+ * state relates to the phase's own diff is the entire purpose of the rule; make
+ * added members exempt and rule (d) is empty. An added test declares no
+ * dangerous state at all.
+ *
+ * WHICH FIELDS ARE CONSIDERED, AND WHY THE OTHERS ARE NOT. The test applied to
+ * every field of the closed schema was: does changing THIS FIELD ALONE let a
+ * phase assert something new about its own diff while reusing a dangerous state
  * somebody else authored?
  *
- * - `behavior`: YES. Re-point a spec at a behavior this phase just introduced
- *   and an older phase's dangerous state becomes this phase's evidence. IN.
- * - `tests`: YES, the same move spelled through the named tests. IN.
+ * - `behavior`, `tests`: YES, in the directional sense above. IN.
  * - `class`: NO. It selects which refusal rules apply (rules (a), (e), (g)) and
  *   none of them is ownership-gated, so a class change is evaluated in full on
  *   every run whether the spec is owned or not. A weakened class is refused by
@@ -331,14 +377,16 @@ export function canonicalMember(
  *   runs for every member of every evaluated spec regardless of ownership. OUT.
  * - `consumesExternalOutput`: NO. Rules (c) and (f) read it and neither is
  *   ownership-gated. OUT.
- *
- * `tests` is SORTED here. A reorder of the named tests changes nothing about
- * what is claimed, and treating it as authorship would be the same positional
- * mistake the member matching avoids by comparing canonical forms rather than
- * indices.
  */
-export function specClaim(spec: WitnessSpec): string {
-  return JSON.stringify(["claim", spec.behavior, [...spec.tests].sort()]);
+export function claimRePointed(
+  headSpec: WitnessSpec,
+  baselineSpec: WitnessSpec,
+): boolean {
+  if (headSpec.behavior !== baselineSpec.behavior) {
+    return true;
+  }
+  const headTests = new Set(headSpec.tests);
+  return baselineSpec.tests.some((name) => !headTests.has(name));
 }
 
 /**
@@ -362,14 +410,15 @@ export function specClaim(spec: WitnessSpec): string {
  *    consume rather than a set membership test, so a second copy of an existing
  *    member is authored (rule (g) is what refuses that copy, and it must still
  *    see it as new).
- * 3. THE CLAIM CHANGED. Then every member is authored, because every declared
- *    dangerous state is now being offered as evidence for a sentence this phase
- *    wrote. There is no narrower attribution available: a claim change cannot
- *    be pinned on one member, since the claim is a property of the document.
- *    This is the ONLY whole-spec trigger, and keeping it that narrow is the
- *    point. An edit to a sibling member, a `repeats` bump, a reformat or a
- *    rename still authors nothing, which is what the round's converse test
- *    holds.
+ * 3. THE CLAIM WAS RE-POINTED. Then every member is authored, because every
+ *    declared dangerous state is now being offered as evidence for a sentence
+ *    this phase wrote. There is no narrower attribution available: a claim
+ *    change cannot be pinned on one member, since the claim is a property of
+ *    the document. This is the ONLY whole-spec trigger, and keeping it that
+ *    narrow is the point. An edit to a sibling member, a `repeats` bump, a
+ *    reformat, a rename, and ADDING A GUARDING TEST all still author nothing,
+ *    which is what the converse tests hold. `claimRePointed` carries the
+ *    derivation of why extension is safe and dropping a test is not.
  *
  * `baselineSpec` is `undefined` when the spec did not exist at the merge base,
  * did not parse there, or could not be read there. All three mean the phase is
@@ -394,7 +443,7 @@ export function phaseOwnedMemberIndices(
   if (baselineSpec === undefined) {
     return ownEveryMember();
   }
-  if (specClaim(headSpec) !== specClaim(baselineSpec)) {
+  if (claimRePointed(headSpec, baselineSpec)) {
     return ownEveryMember();
   }
   const remaining = new Map<string, number>();

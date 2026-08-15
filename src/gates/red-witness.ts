@@ -305,8 +305,9 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
    *
    * The WHOLE spec goes in, not just its members, because the spec's claim
    * (`behavior` and `tests`) is part of what rule (d) is an obligation on. See
-   * `specClaim` for which fields are in that set and why the other four are
-   * not.
+   * `claimRePointed` for which fields are in that set, why the other four are
+   * not, and why the comparison is DIRECTIONAL: re-pointing a claim takes the
+   * obligation, extending its named tests does not.
    */
   const ownedMembersOf = (entry: {
     spec: WitnessSpec;

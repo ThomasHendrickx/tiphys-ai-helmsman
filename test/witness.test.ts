@@ -2008,6 +2008,69 @@ test("rewriting a witness spec's claim imposes rule (d) on every member, and cha
   assert.doesNotMatch(bumped.result.detail, /rule \(d\)/);
 });
 
+test("ADDING a guarding test to a spec authors nothing, while DROPPING one authors every member", () => {
+  // The defect this test exists for was found by delta verification of fix
+  // round 1, reproduced end to end against the real gate entrypoint: a phase
+  // that strengthens an existing spec by adding one test, touching no member
+  // and no behavior, had every untouched sibling reddened by rule (d). The
+  // comparison was equality where the property is DIRECTIONAL.
+  const twoTests = ["combo works", "combo still works"];
+
+  // EXTENSION. Base names one test, head names both. `behavior` is unchanged,
+  // both members are byte-identical to the base, and src/legacy.ts is not in
+  // the phase diff. Nothing here is a new assertion over somebody else's
+  // dangerous state, so member 1 must stay unowned and rule (d) must stay
+  // silent. Both named tests exercise `add` AND `twice`, so each one really is
+  // red against both members and green at head; the extension is strengthening
+  // in the executed sense, not merely the declared one.
+  const extended = runGate(
+    ownershipFixture(
+      ownSpec({ tests: ["combo works"], dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] }),
+      ownSpec({ tests: twoTests, dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY] }),
+    ),
+  );
+  assert.equal(extended.result.status, "green", reasonsOf(extended));
+  assert.doesNotMatch(extended.result.detail, /rule \(d\)/);
+
+  // DROP, the opposite direction, and it must still be authorship. Removing a
+  // name relaxes both executed arms: one fewer test has to redden against every
+  // member (src/witness/run.ts:918) and one fewer has to pass at head
+  // (src/witness/run.ts:1676), so a phase could drop the test that was doing
+  // the work and keep the coverage claim.
+  const dropped = runGate(
+    ownershipFixture(
+      ownSpec({ tests: twoTests, dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] }),
+      ownSpec({ tests: ["combo works"], dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY] }),
+    ),
+  );
+  assert.equal(dropped.result.status, "red", reasonsOf(dropped));
+  assert.match(
+    dropped.result.detail,
+    /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, mutation of src\/legacy\.ts\)/,
+  );
+});
+
+test("reordering a spec's named tests authors nothing, because the claim is a set", () => {
+  // The companion to the extension arm above, and it guards the SET semantics
+  // rather than the subset direction: a reorder leaves the set equal in both
+  // directions, so neither an equality test nor a subset test should fire. It
+  // is a separate test because a plausible narrowing (comparing the arrays
+  // positionally, which is cheaper than building a set) passes the extension
+  // and drop arms above and fails this one.
+  const twoTests = ["combo works", "combo still works"];
+  const reordered = runGate(
+    ownershipFixture(
+      ownSpec({ tests: twoTests, dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] }),
+      ownSpec({
+        tests: [...twoTests].reverse(),
+        dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY],
+      }),
+    ),
+  );
+  assert.equal(reordered.result.status, "green", reasonsOf(reordered));
+  assert.doesNotMatch(reordered.result.detail, /rule \(d\)/);
+});
+
 test("a member whose find or replace text changed is authored here, and a duplicated member is a new member", () => {
   const base = ownSpec({ dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] });
   const arms: Array<[string, Array<Record<string, unknown>>, RegExp]> = [
