@@ -309,8 +309,12 @@ this work at all**, on either branch name.
 `tiphys gates run --registry gate-registry.yaml --mode full --base d5d87f7
 --head HEAD --phase exit-subject-doctor-kernel-artifacts`, node v26.6.0,
 `dist/` built. Runner exit 1. Measured at 74aedeb4ee080e0960badfe369292dbcef8a926b
-and re-measured at the final head after this table was committed; the two runs
-are reported together below rather than one being quoted for the other.
+and re-measured at 7a51c6072f798bc7438bb6cac84ca044490542a2, the head carrying
+this table. The two runs were compared field by field rather than eyeballed:
+counts equal true, and every row's id, status and units equal true. The only
+commit between the two heads adds this section, so nothing a gate reads about
+the change itself differs; the re-measurement is what establishes that rather
+than an argument that it must be so.
 
 | gate | status | units | applicable | vacuous |
 |---|---|---|---|---|
