@@ -1,0 +1,84 @@
+# The SEED plan for the M3 exit test's subject change: the input the
+# orchestrator hands the plan writer, before the plan writer has written
+# anything. It carries the intent and the grounding and leaves the plan
+# writer's own output unfilled, which is what `fill-in.filled: false` says.
+#
+# It exists because `tiphys brief compose --role plan-writer` renders a NAMED
+# PHASE from a plan instance into the brief, so the role needs a phase to be
+# handed. The delivered plan for this phase is plan-kernel-artifacts.yaml in
+# this directory, and it is the plan writer's output rather than this file.
+kind: plan
+status: draft
+baseline-commit: d5d87f7
+binding-rule: >-
+  If it is not written here, it is not being made. Unanswered questions go to
+  the orchestrator.
+process-summary: >-
+  Orchestrated delivery in full mode: plan, adversarial plan review,
+  implementation in a pool worktree, dual clean-room review on two contracts,
+  merge on green, and a post-merge push-event witness.
+standing-context: |
+  M3 has just made roles/, schemas/, checklists/ and AGENTS.md load-bearing
+  kernel artifacts: the brief composer resolves roles/, the validator loads
+  schemas/, the checklist command resolves checklists/, and AGENTS.md is the
+  policy document every role brief points at. The package publishes them
+  through the files list in package.json and a pack-listing check asserts they
+  are in the tarball. Nothing checks that a RESOLVED, INSTALLED kernel carries
+  them at the moment a command needs them.
+report-code-disagreement: []
+phases:
+  - id: M3-P13
+    branch: claude/m3-p13-doctor-kernel-artifacts
+    intent: >-
+      Add a kernel-artifacts check to tiphys doctor that FAILs when the
+      resolved kernel package is missing any of roles/, schemas/, checklists/
+      or AGENTS.md, promoted to FAIL under the full profile.
+    grounding: >-
+      The subject is the one designated by the M3 exit test at
+      delivery/plan/kernel-plan-m3.md:5098. It was re-measured as not built on
+      main at d5d87f7: grep -rn "kernel-artifacts" over src/, test/ and
+      schemas/ returns exactly one hit, an unrelated behavior id in
+      test/behaviors.json, and doctor's own check names carry no such record.
+    severity: medium
+    verified-root-cause: >-
+      To be established by step 1, which is verification-first: what doctor
+      resolves as the kernel root, and whether any existing check reads it,
+      has not been confirmed against the code.
+    steps:
+      - kind: verification-first
+        text: >-
+          Establish how doctor resolves the kernel root and capture the
+          observed resolution before adding anything that depends on it.
+      - text: >-
+          Add the check, its profile promotion, its tests and its witness
+          spec, per the plan the plan writer produces from this seed.
+    files-to-touch:
+      - src/commands/doctor.ts
+      - test/doctor.test.ts
+    extras:
+      - test/behaviors.json
+    acceptance:
+      - id: "1"
+        criterion: >-
+          To be written by the plan writer. This seed states the intent only,
+          and a criterion invented here would be the orchestrator writing the
+          plan the role is dispatched to write.
+    hazard-classes:
+      - id: H1
+        statement: >-
+          A check that passes because it looked in a directory that always
+          exists, so a kernel missing an artifact still reports PASS.
+        addressed-by: criterion 1
+    migrations: none
+    conflicts-with: []
+    parallelizable: false
+    citations:
+      - R-091
+    fill-in:
+      filled: false
+      root-cause: ""
+      fix-shape: ""
+      files: []
+decisions: []
+open-questions: []
+parked: []

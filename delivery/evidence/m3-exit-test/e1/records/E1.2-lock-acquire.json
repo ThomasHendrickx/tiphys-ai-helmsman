@@ -1,0 +1,20 @@
+{
+  "stage": "E1.2",
+  "expectation": "exit 0, explicit duration covering the run",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "lock",
+    "acquire",
+    "--duration",
+    "21600"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T08:44:27.317Z",
+  "endedAt": "2026-08-15T08:44:27.526Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "acquired 93ef52e9-9707-48cc-bf3c-0ae1a5f579d3 expires 2026-08-15T14:44:27.515Z\n",
+  "stderr": ""
+}

@@ -1,0 +1,55 @@
+# The kernel's own charter, authored for stage E1.1 of the M3 exit test.
+# The subject of the run is the tiphys kernel repository itself, which is the
+# controlled exception settled decision 6 authorizes: the kernel's full mode
+# drives one change to the kernel.
+kind: charter
+identity:
+  name: tiphys-kernel
+  repo: git@github.com:ThomasHendrickx/tiphys-ai-helmsman.git
+  # The pin is the version published to the registry DR-0008 decided, and it
+  # is the version in package.json on main at d5d87f7.
+  kernel-version-pin: 0.1.0
+delivery-mode: full
+assurance-tier: full
+yolo-permissions:
+  enabled: false
+  scope: []
+irreversible-decisions:
+  stack: Node 26, TypeScript, no runtime database
+  language: TypeScript
+  framework: none, a Node CLI run natively through type stripping
+  core-data-model: >-
+    Files and git are the only durable state. Every artifact is a file in the
+    repository, current state is read from a current-state document rather
+    than from the tail of an append-only log.
+  tenancy: single repository, single fleet, no multi-tenancy
+  auth: >-
+    GitHub through the session's own credentials for reads and pushes; npm
+    publication through the trusted publisher configured as owner action A-7.
+  deployment-topology: >-
+    An npm package published from a GitHub Actions release workflow; no
+    server and no runtime environment of its own.
+product-intent: |
+  A delivery-process kernel: a versioned npm package that runs orchestrated
+  delivery for other projects. Success is that another project's phase runs
+  end to end on the kernel with its evidence, gates and reviews produced by
+  the kernel rather than by a human procedure. Not in scope before M4: the
+  harness adapter, the Claude Code plugin, and any cutover of the process
+  that builds it.
+constraints:
+  - The kernel never runs on itself before M4, with the M3 exit test as the
+    one controlled exception under current-process supervision.
+  - Falsifiable acceptance criteria only; a criterion that cannot go red is
+    not a criterion.
+  - Liveness is lease freshness, never process liveness, pid or signals.
+release-verification:
+  mode: reserved
+  note: >-
+    Reserved per DR-0014 and D-M3-29. The kernel's own release verification
+    for 0.1.0 is stage E4.3 of this exit test, which is the SC-011 analogue
+    (the published package installs and imports at the released version), and
+    it is not the charter field's designed shape.
+retention:
+  work-history: delivery/work-history/
+  evidence: delivery/evidence/
+  tuition: delivery/tuition/

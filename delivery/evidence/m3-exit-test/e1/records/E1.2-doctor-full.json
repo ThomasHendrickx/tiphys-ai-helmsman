@@ -1,0 +1,19 @@
+{
+  "stage": "E1.2",
+  "expectation": "exit 0 with no FAIL line",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "doctor",
+    "--for",
+    "full"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T08:44:26.878Z",
+  "endedAt": "2026-08-15T08:44:27.269Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "CHECK node PASS v26.6.0 satisfies kernel engines \">=26\"\nCHECK git PASS git version 2.43.0\nCHECK gh PASS gh version 2.62.0 (2024-11-14)\nCHECK layout PASS all layout entries present\nCHECK remote PASS remote configured (origin)\nCHECK lock PASS no lease present\nCHECK beacon WARN watcher not running or not scheduled\nCHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)\nCHECK retention PASS 3 declared retention path(s) present and tracked\n",
+  "stderr": ""
+}

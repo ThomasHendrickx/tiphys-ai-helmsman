@@ -59,3 +59,31 @@ M3-P3 landed as a two-parent merge commit rather than a squash.
 
 About to: build, run the suite, then author a charter and validate it, with the
 negative half.
+
+Happened (E1.1): charter authored at `delivery/evidence/m3-exit-test/e1/charter.yaml`,
+`tiphys validate --type charter` exit 0 with empty output; the copy with
+`escalation-contract` removed exit 1 naming the missing required property.
+
+Happened (E1.2): `tiphys init` exit 0 into a fresh directory;
+`tiphys doctor --for full` exit 1 on the fleet as init leaves it (gh absent,
+no remote), then exit 0 with zero FAIL lines after gh was installed from the
+release tarball, a push target was configured, the charter was placed and the
+project clone was realized; `tiphys lock acquire --duration 21600` exit 0.
+
+Happened (E1.3): `tiphys mode show --mode full` exit 0, twelve pipeline stage
+ids captured.
+
+Happened (E1.4): seed plan validates exit 0 and reports dispatchable false;
+`tiphys brief compose --role plan-writer` exit 0; the delivered plan validates
+exit 0 and reports dispatchable true.
+
+Happened (E1.5): the plan-review checklist resolved seven probes;
+`tiphys brief compose --role adversarial-plan-reviewer` exit 0; a five-finding
+set (one high, two medium, two low) validates under `--type finding` exit 0,
+and under the plan's own wording `--type finding-set` exits 64 unknown type;
+the findings were applied to the plan and the amended plan revalidates exit 0.
+
+### 5. Gates over the branch
+
+About to: commit and push, then run the citations and coverage gates through
+the kernel's own runner as the registry selects them.
