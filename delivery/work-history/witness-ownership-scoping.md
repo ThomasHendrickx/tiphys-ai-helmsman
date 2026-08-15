@@ -1169,3 +1169,250 @@ probe demonstrates the mutant is behaviourally identical, which is a different
 statement from "I did not find a way to catch it". Had the probe shown any
 difference, the row would have read "I did not find a test that distinguishes
 them".
+
+## 12. Fix round 2: the claim comparison is directional, not an equality test
+
+Round 2 of a hard cap of 2, against the delta verification of round 1 at
+`delivery/verification/witness-ownership-fix-round-1.md`. That document could
+not find a third escape, could not reproduce CR-001 or CR-002 against this
+tree, and confirmed all four deliberate exclusions including the `baseline-ref`
+mootness argument, which it checked against rule (d)'s CHECK ORDER rather than
+believing. It found one blocking MEDIUM, and it is a regression round 1
+introduced.
+
+### 12.1 The finding, restated as a mechanism
+
+**An EQUALITY test standing in where the property that matters is
+DIRECTIONAL.** Round 1's `specClaim` compared `[behavior, sortedTests]` for
+equality, so ANY difference owned every member. The verifier reproduced the
+consequence end to end through `runRedWitnessGate` with a real git fixture,
+controlling on both trees: a phase touching only `src/adder.ts` that ADDS one
+test to an existing spec, leaving an unrelated `src/legacy.ts` member untouched,
+is green at `deea501` and red at `e722f65` with `rule (d): declared dangerous
+state does not intersect the phase diff (member 1, mutation of src/legacy.ts)`.
+
+**The finding is correct and I am not arguing with it.** My own section 11.4
+justified the RE-POINT case only, and my own claim test replaces `tests[]`
+rather than extending it, so nothing I wrote covered the shape. That is the
+precise failure the fix-round contract names: I fixed the instance the review
+described (a claim change must own) and did not derive the mechanism (which
+DIRECTION of claim change is a relaxation).
+
+### 12.2 Why extension is safe, MEASURED rather than judged
+
+The coordinator's instruction asserts that extending `tests[]` is strictly
+strengthening because the harness demonstrates the new test red by execution. I
+checked that premise before relying on it, because the whole fix rests on it,
+and it holds on BOTH arms:
+
+| arm | code | consequence of adding a test name |
+|---|---|---|
+| red | src/witness/run.ts:918, `red: exitCode !== 0 && failed.length === tests.length` | a repetition counts as red only when EVERY named test failed, so the added test must ALSO redden against every declared dangerous state |
+| green at head | src/witness/run.ts:1676, `headGreen = greenOutcome.run.exitCode === 0 && greenOutcome.run.passedNamedTests.length === spec.tests.length` | the added test must ALSO pass at head |
+
+So an extension adds an obligation on both arms and removes none, and both are
+discharged by EXECUTION rather than accepted on trust. Nothing is certified
+because a document says so. **Dropping a name relaxes exactly those two
+counts**, which is why the opposite direction stays authorship: a phase could
+otherwise delete the test that was doing the work and keep the coverage claim.
+
+The fix is `claimRePointed` at src/witness/spec.ts:381: `behavior` equality AND
+`baselineTests` a SUBSET of `headTests`. A swap is a drop plus an addition and
+is caught by the drop half.
+
+### 12.3 Every comparison this branch's ownership logic makes
+
+The instruction asked me to enumerate all of them and derive equality versus
+direction for each, rather than fix only the one that was reported. Derived
+from the two function bodies, not from memory. **There are FOUR classes, not
+three: the brief named the claim, the patch sha and the multiset, and the
+establishment tests are a fourth.**
+
+| # | comparison | site | equality or directional | why |
+|---|---|---|---|---|
+| 1 | the claim | src/witness/spec.ts:381 | **DIRECTIONAL**, and it was wrong | `behavior` has no partial order so it is equality, but `tests` does: extension adds obligations on both executed arms, dropping removes them. This is the round's fix |
+| 2 | the patch body sha256 | src/witness/spec.ts:299 | **EQUALITY, correctly** | there is no partial order on patch bodies. Two patch bodies are not "more" or "less" of each other, so no direction exists to prefer. A rewritten body is a DIFFERENT dangerous state, not a stronger one, and unlike a test name it adds no obligation to any other member: it REPLACES the state being tested. Equality is the only available test and it is the right one |
+| 3 | the member multiset | src/witness/spec.ts:449 | **already asymmetric, and correctly** | this is not equality-versus-direction, because the consume is one-directional by construction: a head member with no baseline counterpart is owned; a baseline member with no head counterpart owns nothing, because it does not exist at head to carry an obligation. The only direction available is the one implemented |
+| 4 | **the establishment tests** (the fourth) | `baselineSpec === undefined` (spec.ts:441), `key === undefined` on the baseline side (spec.ts:454) and on the head side (spec.ts:462) | **DIRECTIONAL, and deliberately asymmetric** | these compare against "could not be established" rather than against a value. All three resolve toward OWNING: an unestablished baseline owns every member, an unreadable baseline member exempts nothing, an unreadable head member is owned. The failure mode of this derivation is a member wrongly EXEMPTED, so the direction is chosen to fail toward the obligation |
+
+**Why members are not treated like tests, since adding a member ALSO only adds
+an obligation.** This is the objection to the fix and it deserves an answer
+rather than silence. Every member must independently redden, so by the argument
+in 12.2 an added member is "strictly strengthening" too, and one might conclude
+added members should be exempt from rule (d) as well. They must not be, and the
+distinction is not a matter of degree: **a member IS the thing rule (d) is an
+obligation on, and a test is not.** An added member is a newly declared
+dangerous state, and checking that a declared dangerous state relates to the
+phase's own diff is the rule's entire purpose; exempt added members and rule (d)
+is empty. An added test declares no dangerous state at all, so there is nothing
+for rule (d) to police in it.
+
+**No fifth comparison exists in the ownership computation.** The bound on that
+claim: it is a reading of `phaseOwnedMemberIndices`, `canonicalMember`,
+`claimRePointed` and `ownedMembersOf`, which the round-1 derivation and the
+delta verification independently established are the whole ownership surface
+(`grep -rn "phaseOwnedMembers" src/` has exactly one consumer). Comparisons
+elsewhere in the gate, such as `triggeredStored`'s file-intersection test at
+src/gates/red-witness.ts:332 and rule (g)'s own patch-body comparison at
+src/witness/run.ts:1362, are NOT part of ownership and were not re-derived here;
+the second is a tracked open item.
+
+### 12.4 The witness for the new class
+
+The class is **"a strengthening edit takes an obligation it should not"**, and
+the general shape is an equality test standing in for a directional property.
+
+**RED against the dangerous state, which is fix round 1's own predicate.**
+`claimRePointed`'s body replaced by round 1's exact equality comparison on
+`[...tests].sort()`, everything else at this head, `node --test` on the one
+file:
+
+```
+ok 36 - editing one member of a witness spec imposes rule (d) on that member only, not on the untouched siblings sharing its file
+ok 37 - a member this phase ADDED to an existing witness spec must still intersect the phase diff
+ok 39 - rewriting a witness spec's claim imposes rule (d) on every member, and changing a field that is not the claim imposes nothing
+not ok 40 - ADDING a guarding test to a spec authors nothing, while DROPPING one authors every member
+ok 41 - reordering a spec's named tests authors nothing, because the claim is a set
+```
+
+Row 40 reddens and rows 36, 37, 39 and 41 stay green, which is the point: the
+new test is red against round 1's code and every guard round 1 already had is
+indifferent to the change. That is what makes this a witness for the regression
+rather than for the feature.
+
+**GREEN at this head**: `node --test test/witness.test.ts`, node v26.6.0,
+`dist/` built, **53 tests, 53 pass, 0 fail, 0 SKIPPED**, exit 0.
+
+**Two structurally different members**, at
+`witness/witness-ownership-claim-is-directional.json`, and they fail in
+OPPOSITE directions rather than being two spellings of one mistake:
+
+| member | corruption | which way it is wrong |
+|---|---|---|
+| 0 | the comparison becomes round 1's sorted-array equality | TOO STRICT: extension becomes authorship, the reported defect |
+| 1 | `new Set(headSpec.tests)` becomes `new Set(baselineSpec.tests)` | TOO LAX: the subset is tested in the wrong direction, so DROPPING a test stops being authorship |
+
+A third test, `reordering a spec's named tests authors nothing, because the
+claim is a set`, is separate on purpose: a plausible cheaper narrowing that
+compares the arrays positionally passes both arms of the directional test and
+fails only this one. Its witness is sweep row M20.
+
+### 12.5 The guards this round narrows must still redden, verified not assumed
+
+The instruction required this, because round 2 narrows the same predicate that
+M16 and the re-point test exercise. Measured per member rather than deduced from
+the bundle's green:
+
+| corruption | reddens |
+|---|---|
+| M16, `if (claimRePointed(...))` becomes `if (true)`, the over-correction | **8 tests**, including the two converse guards, the patch-body test, the re-point test and BOTH new tests |
+| M13, becomes `if (false)`, the claim comparison removed | the re-point test and the new directional test |
+| M17, the `behavior` half dropped | the re-point test |
+
+M16 is a stronger guard after this round than before it, not a weaker one: it
+reddened seven tests at `e722f65` and reddens eight here, because the extension
+test is a new way of detecting "everything is always owned".
+
+### 12.6 The corruption sweep, re-run whole
+
+Twenty mutants, one at a time, restored from a copy between each, every row
+reporting `clean=true` and `git status --porcelain` empty on `src/` afterwards.
+Raw output `fr2-sweep.txt`.
+
+**Nineteen of twenty caught. M10 is the equivalent mutant demonstrated in 11.7
+and is still the only survivor.** The four rows this round adds:
+
+| id | corrupts | result |
+|---|---|---|
+| M16 | the claim is ALWAYS re-pointed (the over-correction) | CAUGHT, 8 failing |
+| M17 | the claim ignores the `behavior` half | CAUGHT, 1 failing |
+| M18 | the tests comparison is EQUALITY again (the round-1 regression) | CAUGHT, 1 failing |
+| M19 | the tests subset is tested in the WRONG DIRECTION | CAUGHT, 2 failing |
+| M20 | the tests comparison is POSITIONAL, so a reorder is authorship | CAUGHT, 1 failing |
+
+M13 and M14 were REPOINTED at the new predicate rather than dropped: their round
+1 find texts quoted lines this round deleted, so leaving them would have made
+them silently unappliable, which is the failure mode of a guard that cannot go
+red. M14 is now "the claim ignores the tests half".
+
+**M8 is not a sweep row and never was**, in either round; it is measured
+standalone because its find text lives in `src/witness/run.ts`. Re-measured at
+this head: `not ok 44 - an owned member that mutates a changed file OUTSIDE
+every changed hunk is red naming the hunk`. Stating this because the sweep
+table jumps from M7 to M9 and a reader would otherwise reasonably assume M8 had
+been dropped.
+
+### 12.7 Three witness specs were repaired, and one of them would have gone quiet
+
+This round renamed `specClaim` to `claimRePointed` and replaced its body, so
+every witness member quoting those lines stopped resolving. Found by a
+mechanical check over the whole corpus rather than by the gate:
+
+```
+0 occurrences | witness-ownership-baseline-is-the-merge-base.json | member 1
+0 occurrences | witness-ownership-reads-the-spec-claim.json      | member 0
+0 occurrences | witness-ownership-reads-the-spec-claim.json      | member 1
+```
+
+This is the third time on this branch that editing source has broken a witness
+member's verbatim quotation, and it is worth naming as a property of the design
+rather than as three accidents: **a mutation member is a quotation of a source
+line, so refactoring is a breaking change to the corpus.** Rule (d) makes the
+breakage LOUD when the spec is owned, which it was here. The check that finds it
+without running the 17-second gate is worth keeping:
+
+```
+node -e 'const fs=require("fs");for (const n of fs.readdirSync("witness")){
+  const s=JSON.parse(fs.readFileSync("witness/"+n,"utf8"));
+  for (const [i,m] of s.dangerousStates.entries()){
+    if (m.kind!=="mutation"||!fs.existsSync(m.file)) continue;
+    if (fs.readFileSync(m.file,"utf8").split(m.find).length-1===0) console.log("UNRESOLVED:",n,i);}}'
+```
+
+### 12.8 A process failure in this round, and a wrong diagnosis I published to myself
+
+**TWO CORRUPTION SWEEPS RAN CONCURRENTLY AGAINST ONE WORKING TREE**, and I
+did not notice for about twenty minutes. Recorded because the failure is
+generic, the near-miss was real, and my first explanation of the symptom was
+WRONG in a way this project keeps paying for.
+
+What happened. The sweep takes about fifteen minutes and the foreground command
+cap is ten, so a run was cut off with exit 143. **The shell wrapper died; the
+`node` process did not.** I read the resulting `M src/witness/spec.ts` as a
+leftover from the kill, concluded that the signal handlers I had just added
+could not fire because the sweep spends its time blocked inside `spawnSync`,
+wrote that conclusion into the tool as a comment, and launched a second sweep.
+`pgrep -af sweep.mjs` then showed both alive, mutating and restoring the same
+three files against each other.
+
+**The diagnosis was plausible, it is probably even true in general, and it was
+not what happened here.** The orphan explains the symptom completely on its own,
+and I had not measured the blocked-handler claim at all. This is the shape
+CLAUDE.md records under the suite-count discrepancies: the first plausible cause
+is not the measured cause, and the difference is a `pgrep` away. The comment in
+the tool now says the handlers are unproven rather than asserting the mechanism.
+
+**Nothing downstream is contaminated, and that is checkable rather than
+asserted.** The concurrent window opened when the first sweep was launched and
+closed when both were killed. Every result quoted in 12.4 and 12.5, the
+red-witness gate run, and the 53-test suite run all completed BEFORE it opened;
+the only thing produced inside it was an empty output file. The tree was
+restored file by file from `HEAD` afterwards (`git show HEAD:<path> > <path>`,
+never `git checkout --`, standing warning 8) and verified byte-clean against the
+commit before the final sweep was started, which then ran as a single
+`setsid` process and reported `clean=true` on all twenty rows.
+
+**Three things worth carrying forward:**
+
+1. **A cut-off foreground command is not a stopped program.** Exit 143 means the
+   wrapper was killed. Check `pgrep` before assuming the work stopped, and
+   before starting the same work again.
+2. **Signal handlers do not make a mutation sweep safe.** The durable guard is
+   that the caller restores from git and verifies clean BEFORE trusting any
+   measurement, which is what caught this.
+3. **The sweep violates the T-008 beacon rule and should not.** It accumulates
+   every row and prints them only at the end, so a run in progress is
+   indistinguishable from a hung one for its entire fifteen minutes, and the
+   empty output file is exactly the silence T-008 says a watcher must never
+   have to interpret. It is a scratch tool, not a deliverable, so it is recorded
+   here rather than fixed: it should append each row as it completes.
