@@ -417,7 +417,11 @@ gates: declared 16 applicable 9 verdict 9 green 9 red 0 not-applicable 7 error 0
 gates: required gate(s) not applicable: citations, scope, red-witness
 ```
 
-Exit 21 without `--phase` and **20 with it**. 20 is `EXIT_NOT_APPLICABLE`, and
+**Exit 20**, with `--phase` supplied as above. Both numbers were measured at
+this head: without `--phase` the same command exits 21, because the scope gate
+then reports `error: gate scope requires --phase, which was not supplied`, which
+is the runner's own usage contract and not a property of this branch. 20 is
+`EXIT_NOT_APPLICABLE`, and
 its reason is the line above: three required gates evaluated their preconditions
 and found them unmet. Each printed the evaluation:
 
