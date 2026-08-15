@@ -299,7 +299,8 @@ reason and what the skip costs are in `e1-8-to-e1-10.md`.
 
 ### 21. Dispatch F ends here
 
-Both branches pushed. Nothing merged, nothing published, nothing pushed to
+Both branches pushed: the subject at `095f6ca4` and this bundle on top of
+`fa7c17d`. Nothing merged, nothing published, nothing pushed to
 `main`. E2.1 is the orchestrator's: the two verdicts in this bundle are on the
 PRE-fix-round head and both read FIX-ROUND-NEEDED, so whether the fix-round
 head carries a clean dual review is a question for a re-review and is not
