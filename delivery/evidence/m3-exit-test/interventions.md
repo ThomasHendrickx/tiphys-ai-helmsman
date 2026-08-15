@@ -350,3 +350,64 @@ filed where it will not be read again.
 and doing it from inside the exit test would be a second intervention on an
 artifact this run is supposed to be observing. Recorded as owed, with the owner
 action it blocks allocated as A-8 in `delivery/STATE.md`.
+
+### I-4's RESOLUTION, recorded here rather than in a new entry
+
+**The blocker is fixed, merged, and re-measured by the runner rather than taken
+on report.** `main` is at 7b18144, the subject work was rebased onto it, and
+stage E1.6 was re-run in full.
+
+#### What unblocked it
+
+The harness changed, not the exit test's subject. Ownership in the red-witness
+gate is now scoped per MEMBER instead of per FILE, so an edit to one member of a
+multi-member spec no longer drags its untouched siblings into rule (d)'s
+intersection requirement. The change is in src/gates/red-witness.ts,
+src/witness/run.ts and src/witness/spec.ts.
+
+#### The two arms, re-measured at base 7b18144 with the same branch content
+
+| arm | before the fix | after the fix |
+|---|---|---|
+| A, both M3-P8 specs repaired (what the subject branch carries) | `rule (d)` red on their untouched members | **green**: "every witness red against every declared dangerous state and green at head", exit 0 |
+| B, both left exactly as `main` has them | `error: mutation find text ... does not occur` | **unchanged: the same error**, exit 21 |
+
+**One correction to what the dispatch expected.** It said both escapes should be
+gone. Arm B's is not, and it should not be: a spec whose `find` text no longer
+occurs cannot be applied to anything, so an error is the only honest verdict
+available there, and the fix was never aimed at it. What the fix removes is the
+TRAP BETWEEN the two arms, which is the thing that blocked E1.6: repairing the
+quotation used to be punished by rule (d), so both routes were closed at once.
+Now the repair route is open and the stale route still errors, which leaves
+exactly one correct action for a phase that edits a quoted source line.
+
+#### The fix landed as its own delivery, with its own review evidence on `main`
+
+Not as a hotfix riding on this exit test, and not inside the subject branch.
+Merged as pull request #147 at 7b18144, and every document below is on `main`
+and readable at the head this bundle branch now carries:
+
+| document | what it is |
+|---|---|
+| delivery/review/clean-room-witness-ownership-criteria.md:1 | clean-room review, CRITERIA contract, `produced-by` Claude Sonnet 5, verdict FIX-ROUND-NEEDED, 392 lines |
+| delivery/review/clean-room-witness-ownership-hazard.md:1 | clean-room review, HAZARD contract, `produced-by` Claude Opus 5, 613 lines |
+| delivery/review/verification-witness-ownership-fix-round-1.md:1 | delta verification of the fix round, 329 lines |
+| delivery/review/arbitration-witness-ownership.md:1 | the arbitration that ruled on the pair, 126 lines |
+
+Two contracts, two model families, one fix round with its own verification, and
+an arbitration: the same shape DR-0012 requires of any merge, applied to the
+harness change that the exit test's own finding produced. That matters for what
+this bundle can claim: the exit test found a defect in a shipped gate, and the
+defect was repaired through the ordinary process rather than around it.
+
+#### The E1.6 result after the fix
+
+Recorded in full at `delivery/evidence/m3-exit-test/e1-6.md`, revised in the
+same commit as this entry. In one line: **`red-witness` is GREEN with 7
+witnesses evaluated, zero red, zero error, zero vacuous, and recomputed counts
+equal `summary.json`** at the rebased head. The runner still exits 20, for two
+REQUIRED-and-not-applicable gates, `citations` and `scope`, each carrying its
+precondition id and evaluation. That is a different and much weaker condition
+than the one that blocked the stage, it is structural for a non-phase branch
+that touches no citation-gated document, and it is the orchestrator's to rule on
+rather than the runner's to work around.

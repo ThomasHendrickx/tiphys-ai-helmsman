@@ -186,3 +186,40 @@ Happened:
   delivery/plan/kernel-plan-m3.md:5104 to :5107 because 5104 is not the sentence
   it was cited for, and one claim ("was never planned") was replaced by the
   `git ls-tree` measurement that settles it.
+
+## Dispatch D
+
+### 13. The lease had lapsed, as expected, and takeover is explicit
+
+Happened: at 17:25:18Z `tiphys lock status` reported EXPIRED (holder
+93ef52e9..., expired 14:44:27.515Z), exit 0. A plain
+`tiphys lock acquire --duration 21600` then exited 1 and refused:
+"lease expired ...; acquire refused, takeover is explicit: lock acquire
+--take-over". `lock acquire --take-over --duration 21600` exited 0 and issued
+holder 5dbafe47-04c8-407c-b137-82133d505b0d, expiring 2026-08-15T23:25:43Z.
+The lapse is recorded rather than silently repaired, which is what E2.2 asks
+for, and the refusal of a bare acquire over an expired lease is the fail-closed
+behaviour rather than a nuisance.
+
+### 14. E1.6 re-run at the new base
+
+Happened: the project clone's remote was repointed at the real GitHub origin so
+the pool would fetch the true default branch (it had been the orchestrator's
+local clone, whose `main` was still at d5d87f7). `tiphys spawn --task
+exit-subject-r2` exited 0 with `baseSha` 7b18144. The subject commits rebased on
+top, with `test/behaviors.json` resolved as a union twice.
+
+Re-measured rather than taken on report: arm A (repaired specs) is now GREEN,
+arm B (stale specs) still errors, and the second is correct rather than a gap.
+Full bundle: 10 green, 0 red, 6 not-applicable, 0 error, 0 vacuous, recomputed
+equal to `summary.json`, `red-witness` GREEN with 7 units. Runner exit 20 for
+two required-and-explained not-applicables, `citations` and `scope`.
+
+Subject branch pushed (force, because it was rebased) at
+eb13da6b96137967d4a5b8311f0f044e75758b42.
+
+### 15. E1.7 brief composition
+
+About to: resolve the clean-room checklist with an injected per-phase probe and
+compose both review contracts through the kernel, then hand back. The two
+reviews themselves are the orchestrator's to dispatch, not this runner's.
