@@ -2680,6 +2680,7 @@ test("no ref write in the write-granted job can overwrite what is already there"
   );
 });
 
+
 /* ------------------------------------------------------------------ */
 /* THE MANIFEST FIELD ONLY THE REGISTRY USED TO CHECK                   */
 /* ------------------------------------------------------------------ */
@@ -2704,16 +2705,27 @@ test("no ref write in the write-granted job can overwrite what is already there"
  * observable at the one step in the whole process with no clean undo. This test
  * moves that observation into the suite.
  *
- * THE ORACLE IS THE PROVENANCE EXPRESSION ITSELF, not a constant copied beside
- * it. npm builds the attestation's repository claim as
- * `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}` (libnpmpublish's provenance
- * module, measured in the bundled npm 11.18.0 of the floor toolchain), so in CI
- * this test compares the manifest against the very same two variables the
- * publish will read. Off a runner it falls back to the `origin` remote. With
- * NEITHER available it FAILS rather than skipping: a check that cannot go red
- * is the shape this repository keeps paying for, and a silent skip on the
- * release path is exactly the hole being closed.
+ * TWO ORACLES, AND THEY DO DIFFERENT JOBS. The constant below is the repository
+ * this package is published from; it is a property of the project, it is
+ * available in every environment, and it is what makes the primary assertions
+ * unconditional. The LIVE oracle is `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}`,
+ * which is the exact expression npm uses to build the attestation's repository
+ * claim (measured in the bundled npm 11.18.0 of the floor toolchain), falling
+ * back to the `origin` remote when that parses as a hosted repository. It
+ * cross-checks the constant against reality, and on a CI runner it is REQUIRED
+ * to be present, so it cannot silently stop running where the publish happens.
+ *
+ * WHY THE LIVE ORACLE IS NOT THE ONLY ONE. An oracle that reads `origin` is
+ * absent or wrong in exactly the environments this suite is re-run in for
+ * assurance: the red-witness harness evaluates a spec inside a scratch clone
+ * whose `origin` is a local path. Making that the sole oracle would turn every
+ * member of this witness red for a reason nobody intended, which is the vacuous
+ * witness this repository keeps paying for.
  */
+
+/** The repository this package is published from. Changing it is a deliberate
+    act that must move with `package.json`, which is the point. */
+const PUBLISHING_REPOSITORY = "https://github.com/ThomasHendrickx/tiphys-ai-helmsman";
 
 interface RepositoryIdentity {
   host: string;
@@ -2727,7 +2739,8 @@ interface RepositoryIdentity {
  * URL, a plain https URL, a `git://` URL, an `ssh://` URL and the scp-like
  * `git@host:owner/project.git`. A bare `owner/project` shortcut deliberately
  * does NOT parse here: it names no host, and the raw manifest inside the
- * tarball is read as written.
+ * tarball is read as written. A filesystem path does not parse either, which is
+ * how a scratch clone's `origin` is recognised as no oracle at all.
  */
 function repositoryIdentity(raw: string): RepositoryIdentity | undefined {
   const trimmed = raw.trim();
@@ -2748,7 +2761,7 @@ function repositoryIdentity(raw: string): RepositoryIdentity | undefined {
     } catch {
       return undefined;
     }
-    if (parsed.hostname === "") {
+    if (parsed.hostname === "" || parsed.protocol === "file:") {
       return undefined;
     }
     host = parsed.hostname;
@@ -2769,8 +2782,8 @@ function repositoryIdentity(raw: string): RepositoryIdentity | undefined {
   return { host: host.toLowerCase(), owner, project };
 }
 
-/** The repository the provenance attestation will name, and where it came from. */
-function provenanceRepository(): { url: string; source: string } {
+/** The repository a publish from HERE would attest, when that is establishable. */
+function liveProvenanceRepository(): { url: string; source: string } | undefined {
   const server = process.env["GITHUB_SERVER_URL"];
   const slug = process.env["GITHUB_REPOSITORY"];
   if (server !== undefined && server !== "" && slug !== undefined && slug !== "") {
@@ -2783,15 +2796,10 @@ function provenanceRepository(): { url: string; source: string } {
     encoding: "utf8",
   });
   const printed = (remote.stdout ?? "").trim();
-  if (remote.status === 0 && printed !== "") {
+  if (remote.status === 0 && printed !== "" && repositoryIdentity(printed) !== undefined) {
     return { url: printed, source: "the origin remote" };
   }
-  /* FAIL CLOSED, never skip. */
-  assert.fail(
-    "neither GITHUB_SERVER_URL with GITHUB_REPOSITORY nor an origin remote is readable, " +
-      "so the repository this package would be published from cannot be established; " +
-      `git remote get-url origin exited ${String(remote.status)} with stderr ${JSON.stringify(remote.stderr ?? "")}`,
-  );
+  return undefined;
 }
 
 test("the published manifest names the repository provenance will assert", () => {
@@ -2799,17 +2807,16 @@ test("the published manifest names the repository provenance will assert", () =>
     readFileSync(join(repoRoot, "package.json"), "utf8"),
   ) as { repository?: unknown };
 
-  const oracle = provenanceRepository();
-  const expected = repositoryIdentity(oracle.url);
+  const expected = repositoryIdentity(PUBLISHING_REPOSITORY);
   assert.ok(
     expected !== undefined,
-    `the publishing repository ${JSON.stringify(oracle.url)}, taken from ${oracle.source}, does not parse as a repository reference`,
+    `the publishing repository ${JSON.stringify(PUBLISHING_REPOSITORY)} does not parse as a repository reference`,
   );
 
   /* ONE: present, an object, and carrying a NON-EMPTY string url. The registry
      named `repository.url` and reported it as "", which is what an ABSENT
-     repository field reduces to. Both the absent and the empty state must be
-     red here, so presence is asserted separately from value. */
+     repository field reduces to. Absent and empty are separate dangerous
+     states, so presence is asserted separately from value. */
   assert.equal(
     typeof manifest.repository,
     "object",
@@ -2837,7 +2844,7 @@ test("the published manifest names the repository provenance will assert", () =>
   assert.deepEqual(
     declared,
     expected,
-    `"repository.url" ${JSON.stringify(url)} does not name ${JSON.stringify(oracle.url)}, which is the repository ${oracle.source} says this package publishes from`,
+    `"repository.url" ${JSON.stringify(url)} does not name ${JSON.stringify(PUBLISHING_REPOSITORY)}, which is the repository this package is published from`,
   );
 
   /* THREE, and stricter than the publish strictly requires, deliberately.
@@ -2845,17 +2852,41 @@ test("the published manifest names the repository provenance will assert", () =>
      path runs the manifest through @npmcli/package-json's fixer before sending
      it, and of the accepted spellings exactly one is already a FIXED POINT of
      that fixer, `git+https://<host>/<owner>/<project>.git`. Every other
-     spelling publishes only because a normalization step rewrote it, and the
-     tarball's own package.json is shipped as written, so the two copies differ.
-     Pinning the fixed point makes the authored bytes and the sent manifest the
-     same bytes, and takes that step out of the load-bearing path. A different
-     but still valid spelling reddens here; that is a known and accepted cost,
-     recorded in delivery/work-history/release-manifest-repository-field.md:1. */
+     spelling reaches the registry only because a normalization step rewrote it,
+     while the tarball's own package.json ships as written, so the two copies
+     differ. Pinning the fixed point makes the authored bytes and the sent
+     manifest the same bytes and takes that step off the load-bearing path. A
+     different but still publishable spelling reddens here; that cost is known
+     and accepted, and is recorded in
+     delivery/work-history/release-manifest-repository-field.md:1. */
   assert.equal(
     url,
     `git+https://${expected.host}/${expected.owner}/${expected.project}.git`,
     '"repository.url" must be npm\'s own normalized form, so the authored manifest and the manifest npm sends are identical',
   );
+
+  /* FOUR, the cross-check: the constant above must agree with the repository a
+     publish from HERE would actually attest. On a CI runner the live oracle is
+     REQUIRED, so this arm cannot silently stop running in the environment the
+     publish happens in. Off a runner, and in a scratch clone whose origin is a
+     filesystem path, there is no live oracle and the assertions above stand
+     alone. */
+  const live = liveProvenanceRepository();
+  const onRunner = (process.env["GITHUB_ACTIONS"] ?? "") !== "";
+  if (onRunner) {
+    assert.ok(
+      live !== undefined,
+      "running on a CI runner with neither GITHUB_SERVER_URL and GITHUB_REPOSITORY nor a hosted origin remote, " +
+        "so the repository a publish would attest cannot be established where it matters most",
+    );
+  }
+  if (live !== undefined) {
+    assert.deepEqual(
+      repositoryIdentity(live.url),
+      expected,
+      `${JSON.stringify(PUBLISHING_REPOSITORY)} disagrees with ${JSON.stringify(live.url)}, taken from ${live.source}`,
+    );
+  }
 });
 
 test("the release manifest behavior is registered in test/behaviors.json", () => {

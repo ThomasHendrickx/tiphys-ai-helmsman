@@ -17,14 +17,14 @@
     {
       "kind": "mutation",
       "file": "package.json",
-      "find": "\"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"",
-      "replace": "\"url\": \"git+https://github.com/ThomasHendrickx/some-other-repository.git\""
+      "find": "\"type\": \"git\",\n    \"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"",
+      "replace": "\"type\": \"git\",\n    \"url\": \"\""
     },
     {
       "kind": "mutation",
       "file": "package.json",
-      "find": "\"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"",
-      "replace": "\"url\": \"\""
+      "find": "ThomasHendrickx/tiphys-ai-helmsman.git",
+      "replace": "ThomasHendrickx/some-other-repository.git"
     }
   ]
 }
