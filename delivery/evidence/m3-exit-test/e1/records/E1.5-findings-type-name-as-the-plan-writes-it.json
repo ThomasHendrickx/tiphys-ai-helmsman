@@ -1,0 +1,20 @@
+{
+  "stage": "E1.5",
+  "expectation": "recorded as observed: the plan's stage text names --type finding-set",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "validate",
+    "--type",
+    "finding-set",
+    "delivery/evidence/m3-exit-test/e1/findings-plan-review.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:46:58.022Z",
+  "endedAt": "2026-08-15T08:46:58.259Z",
+  "exitCode": 64,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": "tiphys validate: unknown type finding-set\nusage: tiphys validate --type <assurance-modes | charter | checklist | decision-record | final-report | finding | gate-registry | mechanism-index | plan | report | role-brief | role-model-config | status-line | tuition | verdict | work-history | auto> [--context <dir>] <file>\n"
+}

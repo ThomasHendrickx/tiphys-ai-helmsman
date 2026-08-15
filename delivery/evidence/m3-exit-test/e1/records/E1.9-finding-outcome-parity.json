@@ -1,0 +1,18 @@
+{
+  "stage": "E1.9",
+  "expectation": "exit 0: the M2-P6 coverage checker in finding-to-outcome parity mode, over the final report",
+  "command": [
+    "node",
+    "delivery/evidence/m3-exit-test/e1/e1-9/finding-outcome-parity.mjs",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+    "delivery/evidence/m3-exit-test/e1/e1-9/final-report.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T19:16:46.806Z",
+  "endedAt": "2026-08-15T19:16:46.976Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "{\n  \"ok\": true,\n  \"checked\": 9,\n  \"missing\": [],\n  \"duplicated\": [],\n  \"empty\": [],\n  \"phantom\": []\n}\n",
+  "stderr": ""
+}

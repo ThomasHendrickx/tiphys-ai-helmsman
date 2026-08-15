@@ -1,0 +1,30 @@
+{
+  "stage": "E1.4",
+  "expectation": "the M2-P5 citation linter, invoked as the registry selects it, over the exit branch diff",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "gates",
+    "run",
+    "--registry",
+    "gate-registry.yaml",
+    "--mode",
+    "full",
+    "--only",
+    "citations",
+    "--evidence",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/gate-evidence/citations",
+    "--base",
+    "origin/main",
+    "--head",
+    "HEAD"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:48:37.048Z",
+  "endedAt": "2026-08-15T08:48:37.438Z",
+  "exitCode": 21,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "gates: run 7810bf43d96d97cef17bcc77\ngates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)\ngates: registry gate-registry.yaml mode full\ngates: declared 1 applicable 0 verdict 0 green 0 red 0 not-applicable 1 error 0 vacuous 0\ngates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md\n",
+  "stderr": "gates: no applicable gate\n"
+}

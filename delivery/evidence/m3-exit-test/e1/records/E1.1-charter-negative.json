@@ -1,0 +1,20 @@
+{
+  "stage": "E1.1",
+  "expectation": "exit nonzero: the escalation-contract is removed",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "validate",
+    "--type",
+    "charter",
+    "delivery/evidence/m3-exit-test/e1/charter-no-escalation-contract.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:44:02.656Z",
+  "endedAt": "2026-08-15T08:44:03.006Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "INVALID #/escalation-contract required property escalation-contract is missing\n",
+  "stderr": ""
+}

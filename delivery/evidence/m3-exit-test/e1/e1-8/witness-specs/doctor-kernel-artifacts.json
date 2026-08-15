@@ -1,0 +1,32 @@
+{
+  "id": "doctor-kernel-artifacts",
+  "behavior": "doctor-kernel-artifacts-missing-directory",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL",
+    "a staged install missing AGENTS.md is caught, which is the FILE member of the class"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (missing.length > 0) {\n    return {\n      name: \"kernel-artifacts\",\n      status: \"WARN\",",
+      "replace": "  if (false) {\n    return {\n      name: \"kernel-artifacts\",\n      status: \"WARN\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      condition: \"kernel-artifacts-incomplete\",\n",
+      "replace": ""
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the built tiphys CLI of a staged install: `node <install>/dist/bin/tiphys.js doctor [--for full]`",
+    "captures": [
+      "witness/captures/doctor-kernel-artifacts-staged-install.txt"
+    ],
+    "provenance": "red-witness rule (f) binds this witness because the changed module src/commands/doctor.ts spawns subprocesses, which the spawn grep matches. The cited capture is the output of the program these two behaviours report THROUGH, and its second and third cases are the removed-DIRECTORY arm itself: the same install with roles/ removed under --for full (FAIL, exit 1) and with no profile (WARN, exit 0). Taken 2026-08-15 on node v26.6.0. The named tests assert the recorded contract and reproduce it live against a freshly staged install."
+  }
+}

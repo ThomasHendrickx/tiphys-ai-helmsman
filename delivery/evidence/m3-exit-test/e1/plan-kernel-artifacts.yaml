@@ -1,0 +1,275 @@
+# The DELIVERED plan for the M3 exit test's subject change, written under the
+# brief composed at brief-plan-writer.md by `tiphys brief compose --role
+# plan-writer`. Stage E1.4 of the exit test.
+kind: plan
+status: approved
+baseline-commit: d5d87f7
+binding-rule: >-
+  If it is not written here, it is not being made. Unanswered questions go to
+  the orchestrator.
+process-summary: >-
+  Orchestrated delivery in full mode: plan, adversarial plan review,
+  implementation in a pool worktree, dual clean-room review on two contracts
+  with a decorrelation check, merge on green, and a post-merge push-event
+  witness on the run whose head sha is the new tip.
+standing-context: |
+  M3 made roles/, schemas/, checklists/ and AGENTS.md load-bearing kernel
+  artifacts. The brief composer resolves roles/ and the shared clause include,
+  the validator loads schemas/, the checklist command resolves checklists/,
+  and AGENTS.md is the policy document the briefs point at. package.json's
+  files list publishes them and a pack-listing check asserts the tarball
+  carries them. What nothing checks is the RESOLVED, INSTALLED kernel at the
+  moment a command needs one of them: an install that lost a directory reports
+  nothing wrong until a command fails with a resolution error whose message
+  names a path rather than a cause.
+
+  doctor is the command whose whole job is answering "is this environment fit
+  to run", and its existing checks cover the toolchain, the fleet layout, the
+  remote, the lease, the beacon, the git identity and retention. The kernel's
+  own artifacts are the one input none of them looks at.
+report-code-disagreement:
+  - phase: M3-P13
+    claim: >-
+      The exit test's designation says the check does not exist. Measured on
+      main at d5d87f7, grep -rn "kernel-artifacts" over src/, test/ and
+      schemas/ returns one hit and it is an unrelated behavior id, and
+      doctor's own check names carry no such record.
+    verified: true
+phases:
+  - id: M3-P13
+    branch: claude/m3-p13-doctor-kernel-artifacts
+    intent: >-
+      Add a kernel-artifacts check to tiphys doctor that FAILs when the
+      resolved kernel package is missing any of roles/, schemas/, checklists/
+      or AGENTS.md, promoted to FAIL under the full profile.
+    grounding: >-
+      The subject is designated by the exit test at
+      delivery/plan/kernel-plan-m3.md:5098 and re-measured as unbuilt at
+      d5d87f7. doctor's check shape is established: each check returns a
+      record with a name, a status and a detail, and the full profile promotes
+      named conditions. The promotion TABLE the phase edits is at
+      src/commands/doctor.ts:46, and src/commands/doctor.ts:402 is the
+      precedent for declaring one condition promoted and a sibling condition
+      unpromoted. Amended under finding PR-5, which measured that the
+      original citation pointed at a function signature one paragraph away
+      from the prose it described and at neither edit site.
+    severity: medium
+    verified-root-cause: >-
+      Nothing resolves the kernel root for the purpose of INSPECTING it. The
+      brief composer resolves it to read a role file and the validator to read
+      a schema, so each command discovers a missing artifact only as its own
+      failure, at the moment it needs that one artifact, with a message that
+      names the path it could not open rather than the state of the install.
+      There is no check whose subject is the install itself.
+    steps:
+      - kind: verification-first
+        text: >-
+          Establish how the kernel root is resolved today and capture the
+          observed value before anything depends on it. src/roles.ts exports
+          kernelRoot and the brief command imports it; confirm by execution
+          whether that resolution holds for a doctor invoked from a fleet home
+          rather than from the kernel checkout, and write down what it
+          returned in both cases. If the two disagree, the check must take the
+          resolution as an injected parameter rather than computing it, and
+          the disagreement is the reason.
+      - text: >-
+          Amended under finding PR-1. The check resolves the install root as
+          the directory containing the kernel's own package.json, computed
+          from import.meta.url WITHOUT searching upward, and never through
+          kernelRoot. src/roles.ts:330 defines kernelRoot as an upward walk
+          whose success condition is finding a roles/ directory carrying a
+          .md file, so against a staged install with roles/ removed it walks
+          PAST that install and answers about an ancestor, and where no
+          ancestor carries one it throws (src/roles.ts:347). A check built on
+          it cannot report the state its own criteria name.
+      - text: >-
+          Add checkKernelArtifacts to src/commands/doctor.ts. It reads the
+          resolved kernel root, requires the three directories roles/,
+          schemas/ and checklists/ to exist AND to be non-empty, requires
+          AGENTS.md to exist as a regular file, and returns FAIL naming every
+          missing artifact rather than the first one found. A directory that
+          exists and is empty is a MISSING artifact, because an install that
+          carries an empty roles/ resolves no role.
+      - text: >-
+          Promote the check's condition to FAIL under the full profile, in the
+          same place the existing promoted conditions are declared, and leave
+          it WARN below full. Below full, no command that needs those
+          artifacts is necessarily in the pipeline.
+      - text: >-
+          Write the durable witness spec witness/doctor-kernel-artifacts.json
+          with at least two structurally different dangerousStates members: a
+          removed DIRECTORY and a removed FILE. One witness is not a class,
+          and this check has two shapes of subject.
+      - text: >-
+          Register the behavior in test/behaviors.json by name, and assert it
+          by name in the test rather than by row count, because the registry
+          is append-only and a count is a claim about every future phase.
+      - text: >-
+          Amended under finding PR-3. Before implementing, DERIVE every test
+          that asserts over test/behaviors.json by COUNT or by a specific
+          row's presence, with the command and its full output in the work
+          history, and add each such file to the phase declaration's declared
+          extras. A derivation that returns nothing states the directories it
+          searched, because a search whose scope is wrong returns an empty
+          result indistinguishable from an absence of defects (CLAUDE.md:246).
+      - text: >-
+          Add delivery/plan/phase-declarations/m3-p13.json declaring the
+          branch and the files to touch. M3-P11 shipped the both-sides
+          declaration read, so this declaration may land on the phase branch
+          itself rather than needing its own prior pull request; if the scope
+          gate disagrees at run time, that disagreement is a finding about
+          M3-P11 and is reported rather than worked around.
+    files-to-touch:
+      - src/commands/doctor.ts
+      - test/doctor.test.ts
+      - witness/doctor-kernel-artifacts.json
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m3-p13.json
+      - delivery/work-history/m3-p13.md
+    acceptance:
+      - id: "1"
+        criterion: >-
+          Against a staged install of the kernel with roles/ removed and
+          nothing else changed, tiphys doctor --for full prints a line
+          matching "CHECK kernel-artifacts FAIL" whose detail names roles/,
+          and exits 1.
+      - id: "2"
+        criterion: >-
+          Against the same staged install with AGENTS.md removed and every
+          directory present, the same command prints "CHECK kernel-artifacts
+          FAIL" whose detail names AGENTS.md, and exits 1. This is the second
+          structurally different member of the class and it is a FILE rather
+          than a directory.
+      - id: "3"
+        criterion: >-
+          Against a staged install with roles/ present but EMPTY, the same
+          command prints "CHECK kernel-artifacts FAIL" whose detail names
+          roles/, and exits 1. An empty directory is the arm a check written
+          with existsSync alone reports green on.
+      - id: "4"
+        criterion: >-
+          Against a complete staged install, the same command prints "CHECK
+          kernel-artifacts PASS" and exits 0, and the FAIL count in its output
+          is zero.
+      - id: "5"
+        criterion: >-
+          Against the staged install of criterion 1, tiphys doctor with no
+          --for flag prints "CHECK kernel-artifacts WARN" and exits 0, which
+          is the unpromoted arm.
+      - id: "6"
+        criterion: >-
+          node --test test/doctor.test.ts exits 0 and reports N tests with 0
+          fail, N greater than zero, and the skipped count is quoted alongside
+          the pass count in the work history together with the invocation, the
+          toolchain version and whether dist/ was built.
+      - id: "7"
+        criterion: >-
+          Amended under finding PR-2, which measured that the original wording
+          named no command. The red-witness gate, invoked as the registry
+          selects it, exits 0 on the phase head with units greater than zero,
+          and its witness-records.json carries the behavior id with
+          runs[].exitCode nonzero under each declared dangerousStates member
+          and zero with the check present; both
+          witness/doctor-kernel-artifacts.json and the produced
+          witness-records.json are committed to the evidence bundle.
+      - id: "8"
+        criterion: >-
+          test/behaviors.json carries an entry for the new behavior and the
+          test resolves it BY NAME; grep -c over the test for a hard-coded row
+          count of test/behaviors.json returns 0.
+      - id: "9"
+        criterion: >-
+          Added under finding PR-1. Against a staged install with roles/
+          removed, placed inside a parent directory that DOES carry roles/
+          with a .md file, tiphys doctor --for full prints "CHECK
+          kernel-artifacts FAIL" naming roles/ and exits 1. This is the arm an
+          upward-walking resolver reports PASS on.
+      - id: "10"
+        criterion: >-
+          Added under finding PR-1. Where the install root cannot be resolved
+          at all, the check returns FAIL naming the resolution failure and
+          doctor exits 1 rather than terminating on an uncaught error,
+          asserted by a test that stages the unresolvable case.
+      - id: "11"
+        criterion: >-
+          Added under finding PR-4. A FIFO placed at the AGENTS.md path of a
+          staged install makes the check return FAIL naming the observed entry
+          type in under five seconds, asserted with a timeout, so the class is
+          reached by an instrument rather than by a reviewer's reading.
+    hazard-classes:
+      - id: H1
+        statement: >-
+          A check that passes because it looked at a path that always exists,
+          so a kernel missing an artifact still reports PASS. This is the
+          vacuous-pass shape, and for this check the concrete form is an
+          existsSync on a directory that the install created empty.
+        addressed-by: criterion 3
+      - id: H2
+        statement: >-
+          A check that reports the state of the DEVELOPMENT CHECKOUT rather
+          than of the resolved install, so it is green for every developer and
+          says nothing about any user's environment.
+        addressed-by: criterion 1
+      - id: H3
+        statement: >-
+          A check promoted in the wrong direction, so a missing artifact stops
+          a local-only run that never needed it, which is the failure mode
+          that made a freshly initialized fleet exit nonzero once already.
+        addressed-by: criterion 5
+      - id: H4
+        statement: >-
+          A witness that reddens under one dangerous state and is green under
+          the sibling shape, which is the "one witness is not a class" failure
+          this repository has paid for twice.
+        addressed-by: criterion 7
+      - id: H5
+        statement: >-
+          A doctor that hangs on a named pipe placed at one of the artifact
+          paths, which is the open class this repository tracks against
+          modules that read paths they did not create.
+        addressed-by: criterion 11
+    migrations: none
+    conflicts-with: []
+    parallelizable: false
+    citations:
+      - R-091
+      - T-003
+      - DR-0018
+    fill-in:
+      filled: true
+      root-cause: >-
+        No check takes the resolved kernel install as its subject, so a
+        missing artifact is discovered as a per-command resolution failure
+        rather than as a diagnosis.
+      fix-shape: >-
+        One new check function in the doctor command, returning FAIL naming
+        every missing artifact, promoted to FAIL under the full profile only,
+        with a witness spec carrying a removed directory and a removed file as
+        two dangerous states.
+      files:
+        - src/commands/doctor.ts
+        - test/doctor.test.ts
+        - witness/doctor-kernel-artifacts.json
+decisions:
+  - id: D-1
+    statement: >-
+      An empty directory counts as a MISSING artifact rather than a present
+      one. The check's subject is whether the install can resolve a role, a
+      schema or a checklist, and an empty roles/ resolves none. The cost is
+      that a legitimately empty future artifact directory would report FAIL,
+      and no such directory exists in the shipped package at 0.1.0.
+  - id: D-2
+    statement: >-
+      The check reports every missing artifact rather than the first. A check
+      that names one sends its reader round the loop once per missing item,
+      and the loop here is a reinstall.
+open-questions: []
+parked:
+  - item: >-
+      Checking the CONTENT of the artifacts, for example that every role file
+      in the install carries frontmatter the composer can read.
+    reason: >-
+      That is a different check with a different failure mode, and the exit
+      test's subject is designated as the presence check. Building both here
+      would exceed the one-phase bound E0.4 sets on the subject.

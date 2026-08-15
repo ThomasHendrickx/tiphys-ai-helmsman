@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\"],",
-      "replace": "  full: [\"gh-missing\", \"remote-missing\", \"retention-undeclared\", \"retention-not-applicable\"],"
+      "find": "    \"retention-undeclared\",",
+      "replace": "    \"retention-undeclared\",\n    \"retention-not-applicable\","
     },
     {
       "kind": "mutation",

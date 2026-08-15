@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -59,6 +60,9 @@ const CHECK_NAMES = [
      rather than containment, so a check silently dropped is as red as one
      silently added. */
   "retention",
+  /* M3-P13, the M3 exit test's subject change. Same equality property: this
+     entry is what makes a silently dropped kernel-artifacts check red. */
+  "kernel-artifacts",
 ];
 
 function runCli(
@@ -575,4 +579,393 @@ test("doctor never prints PASS for a charter whose retention declares no usable 
     greenLine[2] as string,
     new RegExp(`^${String(paths.length)} declared retention path\\(s\\) present and tracked$`),
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* M3-P13: the kernel-artifacts check (M3 exit test, stage E1.6)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A STAGED INSTALL is the subject of every test below, never this checkout.
+ * The check's whole claim is about the RESOLVED install, so exercising it
+ * against the development tree would be hazard H2 of the phase plan: green for
+ * every developer and silent about any user's environment.
+ *
+ * The staging copies the four artifacts plus a package.json and the compiled
+ * module path the published package uses, and then removes exactly one thing
+ * per case. `dist/src/commands/doctor.js` is where the published package puts
+ * this module (measured from the pack listing on this head), so a staged
+ * install reproduces the published layout rather than the checkout's.
+ */
+/**
+ * The member each directory must carry for its CONSUMER to resolve anything,
+ * which is the suffix that consumer already filters on (src/roles.ts:335,
+ * src/commands/validate.ts:156, src/checklists.ts:91). Round 0 staged
+ * `placeholder.md` into all three, which is not a member `schemas/` or
+ * `checklists/` resolves; that it passed is the proxy CR-001 names.
+ */
+const STAGED_MEMBERS: Record<string, string> = {
+  roles: "placeholder.md",
+  schemas: "placeholder.schema.json",
+  checklists: "placeholder.yaml",
+};
+
+function stageInstall(
+  t: { after(fn: () => void): void },
+  options: {
+    omit?: string;
+    empty?: string;
+    fifo?: string;
+    noPackageJson?: boolean;
+    /** Stage this directory with one member no consumer would select. */
+    unresolvable?: string;
+    /** Stage this directory with its one member truncated to zero bytes. */
+    hollow?: string;
+    /** Stage this directory with only a subdirectory inside it. */
+    subdirOnly?: string;
+    /** Truncate this file to zero bytes rather than omitting it. */
+    emptyFile?: string;
+  } = {},
+): string {
+  const root = join(makeTempDir(t), "install");
+  mkdirSync(join(root, "dist", "src", "commands"), { recursive: true });
+  if (options.noPackageJson !== true) {
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ name: "@tiphys/kernel", version: "0.0.0-staged" }),
+    );
+  }
+  for (const name of ["roles", "schemas", "checklists"]) {
+    if (options.omit === name) {
+      continue;
+    }
+    mkdirSync(join(root, name), { recursive: true });
+    if (options.empty === name) {
+      continue;
+    }
+    if (options.subdirOnly === name) {
+      mkdirSync(join(root, name, "nested"), { recursive: true });
+      continue;
+    }
+    if (options.unresolvable === name) {
+      writeFileSync(join(root, name, "NOTES.txt"), "not a member any consumer selects\n");
+      continue;
+    }
+    writeFileSync(
+      join(root, name, STAGED_MEMBERS[name] as string),
+      options.hollow === name ? "" : "staged\n",
+    );
+  }
+  if (options.omit !== "AGENTS.md") {
+    if (options.fifo === "AGENTS.md") {
+      const made = spawnSync("mkfifo", [join(root, "AGENTS.md")]);
+      assert.equal(made.status, 0, "mkfifo failed while staging the FIFO case");
+    } else {
+      writeFileSync(join(root, "AGENTS.md"), options.emptyFile === "AGENTS.md" ? "" : "staged\n");
+    }
+  }
+  return root;
+}
+
+const { checkKernelArtifacts, resolveInstalledKernelRoot } = (await import(
+  new URL("../src/commands/doctor.ts", import.meta.url).href
+)) as {
+  checkKernelArtifacts: (resolution?: { ok: true; root: string } | { ok: false; reason: string }) => {
+    name: string;
+    status: string;
+    detail: string;
+    condition?: string;
+  };
+  resolveInstalledKernelRoot: (
+    from?: string,
+  ) => { ok: true; root: string } | { ok: false; reason: string };
+};
+
+/** The check against a staged install, as doctor itself would call it. */
+function checkStaged(root: string) {
+  return checkKernelArtifacts(resolveInstalledKernelRoot(join(root, "dist", "src", "commands")));
+}
+
+/* RENAMED in fix round 1 under hazard finding CR-003 (R-087). The old name
+   was "a staged install missing roles/ is a FAIL naming roles/" and the body
+   asserts WARN: the check returns the CONDITION and the printer promotes it
+   under full, so the old name was a true sentence about the CLI and a false
+   one about this test. The promotion itself is asserted by
+   "kernel-artifacts is promoted to FAIL under full and stays a WARN below it"
+   and by the live capture reproduction, both of which go through the CLI. */
+test("a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL", (t) => {
+  const result = checkStaged(stageInstall(t, { omit: "roles" }));
+  assert.equal(result.status, "WARN");
+  assert.equal(result.condition, "kernel-artifacts-incomplete");
+  assert.match(result.detail, /roles\/ \(absent\)/);
+});
+
+test("a staged install missing AGENTS.md is caught, which is the FILE member of the class", (t) => {
+  const result = checkStaged(stageInstall(t, { omit: "AGENTS.md" }));
+  assert.equal(result.condition, "kernel-artifacts-incomplete");
+  assert.match(result.detail, /AGENTS\.md \(absent\)/);
+  assert.doesNotMatch(result.detail, /roles\//, "no directory should be reported missing here");
+});
+
+test("a staged install whose roles/ exists but is EMPTY is missing it", (t) => {
+  const result = checkStaged(stageInstall(t, { empty: "roles" }));
+  assert.equal(result.condition, "kernel-artifacts-incomplete");
+  assert.match(result.detail, /roles\/ \(present but empty/);
+});
+
+/**
+ * FIX ROUND 1, hazard finding CR-001. The four shapes the reviewer forced
+ * against a real staged install of the built package, every one of them PASS
+ * with FAIL count zero before this round. They are asserted TOGETHER because
+ * the defect is one mechanism (presence standing in for resolvability) and a
+ * mutation that defangs either half of the predicate must redden this test,
+ * which is what witness/doctor-kernel-artifacts-resolvability.json declares.
+ */
+test("presence is not resolvability: the four shapes that used to PASS are each named", (t) => {
+  const unresolvable = checkStaged(stageInstall(t, { unresolvable: "checklists" }));
+  assert.equal(unresolvable.condition, "kernel-artifacts-incomplete");
+  assert.match(
+    unresolvable.detail,
+    /checklists\/ \(present, but no \.yaml member resolves\)/,
+    "a directory carrying one unrelated file resolves nothing",
+  );
+
+  const subdirOnly = checkStaged(stageInstall(t, { subdirOnly: "roles" }));
+  assert.match(
+    subdirOnly.detail,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    "a directory carrying only a subdirectory resolves nothing",
+  );
+
+  const hollow = checkStaged(stageInstall(t, { hollow: "roles" }));
+  assert.match(
+    hollow.detail,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    "a directory whose members are all zero bytes resolves nothing",
+  );
+
+  const emptyFile = checkStaged(stageInstall(t, { emptyFile: "AGENTS.md" }));
+  assert.equal(emptyFile.condition, "kernel-artifacts-incomplete");
+  assert.match(
+    emptyFile.detail,
+    /AGENTS\.md \(present but empty, so it states nothing\)/,
+    "the FILE member of the class, which the emptiness reasoning had never been applied to",
+  );
+});
+
+test("the resolvability capture records the four shapes as the CLI reports them", () => {
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", "doctor-kernel-artifacts-resolvability.txt"),
+    "utf8",
+  );
+  for (const expected of [
+    /checklists\/ \(present, but no \.yaml member resolves\)/,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    /AGENTS\.md \(present but empty, so it states nothing\)/,
+  ]) {
+    assert.match(captured, expected);
+  }
+  const exits = [...captured.matchAll(/^exit=(\d+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(exits, ["1", "1", "1", "1"], "every shape must fail under --for full");
+});
+
+test("a complete staged install PASSes with no condition", (t) => {
+  const result = checkStaged(stageInstall(t));
+  assert.equal(result.status, "PASS");
+  assert.equal(result.condition, undefined);
+  assert.match(result.detail, /carries roles\/, schemas\/, checklists\/ and AGENTS\.md/);
+});
+
+test("every missing artifact is named, not the first one found", (t) => {
+  const root = stageInstall(t, { omit: "roles" });
+  rmSync(join(root, "AGENTS.md"));
+  rmSync(join(root, "checklists"), { recursive: true });
+  const result = checkStaged(root);
+  for (const expected of [/roles\//, /checklists\//, /AGENTS\.md/]) {
+    assert.match(result.detail, expected);
+  }
+});
+
+test("resolution never walks past an install that has lost roles/", (t) => {
+  /* THE ARM AN UPWARD-WALKING RESOLVER REPORTS PASS ON (finding PR-1,
+     criterion 9). The staged install sits inside a parent that DOES carry a
+     roles/ directory with a .md file, which is exactly what src/roles.ts's
+     kernelRoot walks up to find. */
+  const parent = makeTempDir(t);
+  mkdirSync(join(parent, "roles"), { recursive: true });
+  writeFileSync(join(parent, "roles", "implementer.md"), "decoy\n");
+  const root = join(parent, "install");
+  mkdirSync(join(root, "dist", "src", "commands"), { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "staged" }));
+  for (const name of ["schemas", "checklists"]) {
+    mkdirSync(join(root, name), { recursive: true });
+    writeFileSync(join(root, name, "placeholder.md"), "staged\n");
+  }
+  writeFileSync(join(root, "AGENTS.md"), "staged\n");
+  const resolution = resolveInstalledKernelRoot(join(root, "dist", "src", "commands"));
+  assert.equal(resolution.ok, true);
+  assert.equal((resolution as { root: string }).root, root, "resolved past the install");
+  const result = checkKernelArtifacts(resolution);
+  assert.equal(result.condition, "kernel-artifacts-incomplete");
+  assert.match(result.detail, /roles\/ \(absent\)/);
+});
+
+test("an unresolvable install root is a FAIL rather than a thrown error", () => {
+  /* Criterion 10. The success path is total: the resolver returns its reason
+     and the check turns it into a verdict, so removing the explicit failure
+     would be visible rather than being covered by a crash.
+
+     WITNESSED AT THE UNIT LEVEL ONLY, and that is recorded rather than left
+     to be discovered (fix round 1, hazard finding CR-004). The arm is DEAD in
+     the CLI path: an install whose root cannot be resolved has no package.json
+     above it either, so readOwnVersion refuses at src/version.ts:20 and the
+     process exits 1 before any command runs. The criterion's letter is met by
+     that exit 1; the arm this test asserts is never the one that produces it.
+     Deliberately NOT made reachable here: doing so would mean moving or
+     duplicating the startup version read, which is outside this phase's
+     files-to-touch and is the same walk CR-002 tracks. */
+  const resolution = resolveInstalledKernelRoot("/");
+  assert.equal(resolution.ok, false);
+  const result = checkKernelArtifacts(resolution);
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.condition, undefined);
+  assert.match(result.detail, /cannot be resolved/);
+});
+
+test("a FIFO at AGENTS.md is refused in bounded time rather than opened", (t) => {
+  /* Criterion 11. The timeout is the assertion: a check that opened the FIFO
+     would block here forever with no reader. */
+  const root = stageInstall(t, { fifo: "AGENTS.md" });
+  const startedAt = Date.now();
+  const result = checkStaged(root);
+  const elapsed = Date.now() - startedAt;
+  assert.ok(elapsed < 5000, `took ${String(elapsed)}ms`);
+  assert.equal(result.condition, "kernel-artifacts-incomplete");
+  assert.match(result.detail, /AGENTS\.md \(irregular/);
+});
+
+const { PROFILES: doctorProfiles } = (await import(
+  new URL("../src/commands/doctor.ts", import.meta.url).href
+)) as { PROFILES: Record<string, readonly string[]> };
+
+test("kernel-artifacts is promoted to FAIL under full and stays a WARN below it", (t) => {
+  /* Through the CLI rather than the unit, because the promotion lives in the
+     profile table and the exit code is the thing an operator sees. The fleet's
+     own install is complete, so the promotion is asserted on the TABLE, which
+     is what decides the arm. */
+  const fleet = initFleet(t);
+  const result = runCli(["doctor", "--for", "full"], { cwd: fleet });
+  const line = /^CHECK kernel-artifacts (\S+) /m.exec(result.stdout);
+  assert.ok(line !== null, result.stdout);
+  assert.equal(line[1], "PASS", "this checkout's own install is complete");
+  assert.ok(
+    doctorProfiles["full"]?.includes("kernel-artifacts-incomplete"),
+    "full does not promote kernel-artifacts-incomplete",
+  );
+  for (const profile of ["generic", "local-only", "direct-pr"]) {
+    assert.equal(
+      doctorProfiles[profile]?.includes("kernel-artifacts-incomplete"),
+      false,
+      `${profile} promotes kernel-artifacts-incomplete and should not`,
+    );
+  }
+});
+
+test("this phase's new behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "doctor-kernel-artifacts-missing-directory",
+    "doctor-kernel-artifacts-missing-file",
+    "doctor-kernel-artifacts-empty-directory",
+    "doctor-kernel-artifacts-complete-passes",
+    "doctor-kernel-artifacts-names-every-missing",
+    "doctor-kernel-artifacts-resolution-does-not-walk-past",
+    "doctor-kernel-artifacts-unresolvable-root-fails",
+    "doctor-kernel-artifacts-fifo-refused",
+    "doctor-kernel-artifacts-promoted-under-full-only",
+    "doctor-kernel-artifacts-capture-contract",
+    "doctor-kernel-artifacts-capture-reproduced",
+    "doctor-kernel-artifacts-presence-is-not-resolvability",
+    "doctor-kernel-artifacts-resolvability-capture",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/**
+ * THE CAPTURED CONTRACT, and the live reproduction beside it.
+ *
+ * red-witness rule (f) binds this behavior's witness to a real capture because
+ * the changed module spawns subprocesses, and the honest capture for THIS
+ * behavior is the output of the program the check actually reports through:
+ * the built CLI of a STAGED INSTALL. The capture at
+ * witness/captures/doctor-kernel-artifacts-staged-install.txt was taken on
+ * 2026-08-15 against node v26.6.0 and records three cases with their exit
+ * codes: a complete install under `--for full` (PASS, exit 0), the same
+ * install with roles/ removed under `--for full` (FAIL, exit 1), and that same
+ * broken install with no profile (WARN, exit 0).
+ *
+ * The test asserts the recorded contract AND reproduces it live, so the
+ * assertion is anchored to real captured output rather than to a hand-written
+ * string chosen to match the implementation (CLAUDE.md warning 10).
+ */
+const capturePath = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "doctor-kernel-artifacts-staged-install.txt",
+);
+
+test("the staged-install capture records the three-case contract this check ships", () => {
+  const captured = readFileSync(capturePath, "utf8");
+  assert.match(captured, /CHECK kernel-artifacts PASS .* carries roles\/, schemas\/, checklists\/ and AGENTS\.md/);
+  assert.match(captured, /CHECK kernel-artifacts FAIL .* is missing roles\/ \(absent\) \(required for profile full\)/);
+  assert.match(captured, /CHECK kernel-artifacts WARN .* is missing roles\/ \(absent\)/);
+  const exits = [...captured.matchAll(/^exit=(\d+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(exits, ["0", "1", "0"], "the captured exit codes are the contract");
+});
+
+test("a staged install of the built package reproduces the captured contract live", {
+  skip: existsSync(join(repoRoot, "dist", "bin", "tiphys.js"))
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, (t) => {
+  const lab = makeTempDir(t);
+  const install = join(lab, "install");
+  mkdirSync(install, { recursive: true });
+  for (const entry of ["dist", "package.json", "roles", "schemas", "checklists", "AGENTS.md"]) {
+    cpSync(join(repoRoot, entry), join(install, entry), { recursive: true });
+  }
+  const fleet = join(lab, "fleet");
+  const staged = join(install, "dist", "bin", "tiphys.js");
+  assert.equal(spawnSync(process.execPath, [staged, "init", fleet]).status, 0);
+
+  const run = (args: string[]) =>
+    spawnSync(process.execPath, [staged, ...args], { cwd: fleet, encoding: "utf8" });
+
+  const complete = run(["doctor"]);
+  assert.match(complete.stdout, /^CHECK kernel-artifacts PASS /m, complete.stdout);
+
+  rmSync(join(install, "roles"), { recursive: true });
+  const brokenFull = run(["doctor", "--for", "full"]);
+  assert.match(
+    brokenFull.stdout,
+    /^CHECK kernel-artifacts FAIL .* is missing roles\/ \(absent\) \(required for profile full\)$/m,
+    brokenFull.stdout,
+  );
+  assert.equal(brokenFull.status, 1);
+
+  const brokenGeneric = run(["doctor"]);
+  assert.match(
+    brokenGeneric.stdout,
+    /^CHECK kernel-artifacts WARN .* is missing roles\/ \(absent\)$/m,
+    brokenGeneric.stdout,
+  );
+  assert.equal(brokenGeneric.status, 0, "the unpromoted arm must not fail the fleet");
 });

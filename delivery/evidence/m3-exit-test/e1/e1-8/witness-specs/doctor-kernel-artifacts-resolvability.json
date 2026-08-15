@@ -1,0 +1,31 @@
+{
+  "id": "doctor-kernel-artifacts-resolvability",
+  "behavior": "doctor-kernel-artifacts-presence-is-not-resolvability",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "presence is not resolvability: the four shapes that used to PASS are each named"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      !entries.some((entry) => entry.endsWith(suffix) && carriesContent(join(path, entry)))",
+      "replace": "      !entries.some(() => true)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    return statSync(path).size > 0;",
+      "replace": "    return statSync(path).size >= 0;"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the built tiphys CLI of a staged install: `node <install>/dist/bin/tiphys.js doctor --for full`",
+    "captures": [
+      "witness/captures/doctor-kernel-artifacts-resolvability.txt"
+    ],
+    "provenance": "The two halves of the resolvability predicate, mutated one at a time. Member 0 defangs the CONSUMER FILTER, so a directory carrying one unrelated file, a directory carrying only a subdirectory and a directory whose members are all zero bytes all resolve again. Member 1 defangs the CONTENT FLOOR by one comparison, so a zero-byte member and a zero-byte AGENTS.md resolve again. The cited capture is the output of the program this behaviour reports through, taken 2026-08-15 on node v26.6.0 against a real staged install of this head, one fresh copy per shape, with a stub gh on PATH and a remote configured so that kernel-artifacts is the only check able to drive the exit code. It records all four shapes as FAIL with exit 1; the E1.7 hazard review measured the same four as PASS with FAIL count zero against round 0."
+  }
+}

@@ -187,10 +187,24 @@ interface GitResult {
  * message-text classification with no locale pin silently stops matching in
  * a localized environment).
  */
+/* THE DEFAULT maxBuffer IS 1 MiB AND A PHASE DIFF EXCEEDS IT, which turns this
+   helper's ENOBUFS into a gate `error` on exactly the pull requests that carry
+   the most to check. Measured 2026-08-15 on the M3 exit-test bundle:
+   `git diff -U0 --no-renames origin/main...HEAD` produced 9,120,827 bytes and
+   `red-witness` reported
+   `error: ... could not be run: Error: spawnSync git ENOBUFS`.
+
+   A cap is still wanted rather than none, so that a runaway diff fails loudly
+   instead of exhausting memory; 256 MiB is far above any real diff and far
+   below that risk. The failure remains an `error` with its reason, never a
+   green, which is M2-C-3. */
+const GIT_MAX_BUFFER_BYTES = 256 * 1024 * 1024;
+
 export function gitIn(cwd: string, args: string[]): GitResult {
   const result = spawnSync("git", args, {
     cwd,
     encoding: "utf8",
+    maxBuffer: GIT_MAX_BUFFER_BYTES,
     env: { ...process.env, LC_ALL: "C", LANG: "C" },
   });
   if (result.error !== undefined) {

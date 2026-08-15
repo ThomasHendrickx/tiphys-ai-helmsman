@@ -1,0 +1,11 @@
+{
+  "kind": "status-line",
+  "at": "2026-08-15T19:16:17Z",
+  "run": "m3-exit-e1",
+  "project": "tiphys-kernel",
+  "state": "done",
+  "detail": "E1.8 fix-round-verification, E1.9 reporting and E1.10 status are recorded; C1, C2 and C3 are skipped by owner decision",
+  "refs": [
+    "branch:claude/m3-exit-test"
+  ]
+}

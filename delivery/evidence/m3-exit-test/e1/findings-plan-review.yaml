@@ -1,0 +1,128 @@
+# Stage E1.5 of the M3 exit test: the adversarial plan review of
+# plan-kernel-artifacts.yaml, produced under the brief composed at
+# brief-adversarial-plan-reviewer.md with the seven probes
+# `tiphys checklist resolve --checklist plan-review` emitted.
+kind: finding
+verdict: revise
+produced-by: >-
+  claude-opus-5, the same agent that authored the plan under review. This is a
+  DECORRELATION WEAKNESS and it is recorded rather than hidden: stage E1.5 does
+  not require a distinct model family, and the exit test's cross-model
+  requirement is at E1.7 on the clean-room reviews. A review by the plan's own
+  author cannot witness the fresh-eyes property, so this document's value is
+  limited to what the seven probes force it to look at.
+findings:
+  - id: PR-1
+    severity: high
+    analysis: >-
+      The plan's whole subject is "the RESOLVED kernel package is missing
+      roles/", and the only kernel-root resolver the kernel ships makes that
+      state unreachable and, worse, silently wrong. src/roles.ts:330 defines
+      kernelRoot as a walk UPWARD from the module's own directory that returns
+      the first ancestor carrying a roles/ directory with at least one .md
+      file, and throws when eight levels produce none. Two consequences the
+      plan does not survive. A staged install with roles/ REMOVED does not
+      resolve to that install: the walk continues past it and returns any
+      ancestor that happens to carry roles/*.md, so the check reports on the
+      wrong tree and can print PASS. And where no ancestor carries one, the
+      resolver THROWS, so the check reports a crash rather than the FAIL
+      acceptance criterion 1 demands. Criterion 1 is therefore not satisfiable
+      by an implementation built on kernelRoot, and the failure mode is exactly
+      the plan's own hazard H2.
+    evidence:
+      - src/roles.ts:330
+      - src/roles.ts:334
+      - src/roles.ts:347
+    concrete-edit: >-
+      Add to step 2: "the check resolves the install root as the directory
+      containing the kernel's own package.json, computed from import.meta.url
+      without searching upward, and never through kernelRoot, whose success
+      condition is the presence of the artifact under test". Add acceptance
+      criterion 9: "Against a staged install with roles/ removed, placed inside
+      a parent directory that DOES carry roles/ with a .md file, tiphys doctor
+      --for full prints CHECK kernel-artifacts FAIL naming roles/ and exits 1,
+      which is the arm an upward-walking resolver reports PASS on." Add
+      criterion 10: "Where the install root cannot be resolved at all, the
+      check returns FAIL naming the resolution failure and doctor exits 1
+      rather than terminating on an uncaught error; asserted by a test that
+      stages the unresolvable case."
+  - id: PR-2
+    severity: medium
+    analysis: >-
+      Acceptance criterion 7 names no command. It requires that the witness
+      spec "validates under the witness spec the M2-P2 harness loads" and that
+      witness-records.json records the test red under each dangerous state,
+      but a criterion whose verification is "someone confirms it validates" is
+      the shape probe 6 exists to catch: nobody can fail it mechanically. The
+      plan-review checklist's probe 5 is stricter still and this criterion is
+      the one it aims at, because the harness's captured evidence file is the
+      accepted proof and the criterion does not name the invocation that
+      produces it.
+    evidence:
+      - delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:1
+    concrete-edit: >-
+      Replace criterion 7 with: "The red-witness gate, invoked as the registry
+      selects it, exits 0 on the phase head with units greater than zero, and
+      its witness-records.json carries the behavior id with runs[].exitCode
+      nonzero under each declared dangerousStates member and zero with the
+      check present; both witness/doctor-kernel-artifacts.json and the
+      produced witness-records.json are committed to the evidence bundle."
+  - id: PR-3
+    severity: medium
+    analysis: >-
+      The plan touches test/behaviors.json, which is an append-only shared
+      registry, and says only that the behavior is registered and resolved by
+      name. It does not say what happens to tests that ALREADY over-assert on
+      that registry. The binding rule this repository added after measuring
+      the failure is that a phase extending a registry may have to edit the
+      test that over-asserts on it, so that test belongs on the phase's
+      declaration; a plan that omits it produces a scope-audit failure at the
+      moment the phase discovers the edit is forced.
+    evidence:
+      - CLAUDE.md:233
+      - CLAUDE.md:246
+    concrete-edit: >-
+      Add a step: "Before implementing, derive every test that asserts over
+      test/behaviors.json by COUNT or by a specific row's presence, with the
+      command and its full output in the work history, and add each such file
+      to the phase declaration's declared extras. A derivation that returns
+      nothing states the directories it searched."
+  - id: PR-4
+    severity: low
+    analysis: >-
+      Hazard class H5 (a doctor that hangs on a named pipe at one of the
+      artifact paths) is addressed by judgment-property-of-prose, which the
+      schema permits, and its prose asks the clean-room reviewer to confirm by
+      reading rather than by running. Probe 7 asks which instrument reaches
+      each class; for H5 the honest answer is that none does, and "a reviewer
+      reads the call" is not an instrument. This is a low rather than a medium
+      because the class is real, the cost of an instrument is a staged FIFO
+      under a staged install, and the plan states its choice openly rather than
+      claiming coverage.
+    evidence:
+      - delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:1
+    concrete-edit: >-
+      Either add criterion 11, "a FIFO placed at the AGENTS.md path of a staged
+      install makes the check return FAIL naming the observed entry type in
+      under five seconds, asserted with a timeout", or restate H5's
+      addressed-by as "state-not-entered: no shipped code path creates an entry
+      at those paths" and say who could create one anyway.
+  - id: PR-5
+    severity: low
+    analysis: >-
+      The phase grounding cites src/commands/doctor.ts:410 as the place where
+      the retention check "documents its own promoted and unpromoted
+      conditions". Line 410 is the function signature; the documentation the
+      sentence describes is at src/commands/doctor.ts:401 to
+      src/commands/doctor.ts:403, and the promotion TABLE the step must
+      actually edit is elsewhere again, at src/commands/doctor.ts:46. A
+      citation that lands one paragraph away resolves, so no linter reddens,
+      and it sends the implementer to the wrong edit site.
+    evidence:
+      - src/commands/doctor.ts:46
+      - src/commands/doctor.ts:402
+      - src/commands/doctor.ts:410
+    concrete-edit: >-
+      Change the grounding's citation to src/commands/doctor.ts:46 for the
+      promotion table and keep src/commands/doctor.ts:402 for the
+      promoted-versus-unpromoted precedent, naming which is which.

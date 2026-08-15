@@ -1,0 +1,302 @@
+kind: verdict
+phase: M3-P13
+verdict: FIX-ROUND-NEEDED
+produced-by: Claude Opus 5, Anthropic model family
+framing: hazard-contract
+review-contract: hazard
+findings:
+  - id: CR-001
+    severity: medium
+    evidence:
+      - "src/commands/doctor.ts:709 tests readdirSync(path).length, and src/commands/doctor.ts:729 tests classifyEntry(...).kind === regular, while the PASS detail at src/commands/doctor.ts:749 asserts the install carries the artifacts"
+      - "forced: staged install of the built package, checklists/ replaced by a single NOTES.txt, AGENTS.md truncated to 0 bytes, gh stubbed and a remote configured so the check drives the exit code; doctor --for full printed CHECK kernel-artifacts PASS ... carries roles/, schemas/, checklists/ and AGENTS.md with exit=0 and FAIL count 0"
+      - "the same install: tiphys checklist resolve --checklist clean-room printed 'tiphys checklist: no checklist clean-room is shipped; the shipped checklists are' and exit=1"
+      - "two further shapes reported PASS: roles/ containing only an empty subdirectory, and roles/ whose every member was truncated to zero bytes"
+      - "the phase names the mechanism itself at delivery/work-history/exit-subject-doctor-kernel-artifacts.md:122 as 'directory emptiness as a proxy for resolvability' with no mechanism-index entry, then ships the proxy"
+    concrete-fix: >-
+      Replace the count with a resolution predicate per required directory (at
+      least one roles/*.md, one schemas/*.schema.json, one checklists/*.yaml),
+      calling the same predicate the brief composer, validator and checklist
+      command use so the check cannot drift from them; add a size floor
+      (statSync(path).size > 0) for REQUIRED_KERNEL_FILES with the detail
+      "AGENTS.md (present but empty)"; add one staged test per shape and extend
+      witness/doctor-kernel-artifacts-empty-directory.json with a member that
+      defangs the new predicate.
+    analysis: >-
+      This is H1's own statement re-instantiated one level in from criterion 3.
+      Criterion 3 closed the empty-directory instance; the mechanism is
+      "presence stands in for resolvability" and it has three more reachable
+      instances, one of which is the FILE member of the class, where the
+      emptiness reasoning was never applied at all. Reachability under DR-0027:
+      shipped src/commands/doctor.ts, reached by the ordinary CLI with no test
+      harness, on the states this check exists to diagnose (a partial extract,
+      an interrupted sync, a filtered pack). The combined attack makes the whole
+      command exit 0 with FAIL count zero while printing a positive assertion
+      that is false, which is also the R-087 shape.
+  - id: CR-002
+    severity: medium
+    evidence:
+      - "the change cites the mechanism index row reading-a-path-whose-type-is-not-established at src/commands/doctor.ts:724 and satisfies it at its own call site"
+      - "derivation the fix-round contract requires, absent from the change and from the work history, run here: grep -n readdirSync|existsSync src/commands/doctor.ts returns line 72 (readKernelEnginesNode: existsSync then readFileSync) alongside 190, 505, 554 (boolean use, no read), and src/version.ts:15 is the same walk"
+      - "forced: mkfifo at the staged install's package.json, then cd fleet && timeout 15 node install/dist/bin/tiphys.js doctor -> exit 124 with ZERO bytes of output"
+      - "every entry point hangs, which locates the block at startup: version exit=124, --help exit=124, doctor exit=124, status exit=124, so it is readOwnVersion at src/version.ts:20"
+      - "attribution measured, not assumed: the same construction against a build of the BASE commit 7b18144 gives tiphys --help exit=124, so the hang is pre-existing"
+    concrete-fix: >-
+      Route both remaining walks through classifyEntry, which this change
+      already imports into src/commands/doctor.ts, and hoist the duplicated
+      upward walk in src/version.ts and src/commands/doctor.ts into one function
+      so there is one call site rather than three; publish the derivation above
+      with its exclusions in the work history.
+    analysis: >-
+      H5 is genuinely closed for the four paths the check names: six shapes
+      (FIFO at AGENTS.md, FIFO replacing roles/, FIFO inside roles/, symlink to
+      a FIFO, dangling symlink, symlink loop) each produced a named refusal
+      under timeout 10 and none hung. The finding is that the class is wider
+      than the instrumented paths and the change closes the mechanism at one
+      call site while two remain, which is the shape T-009's corollary records
+      (one arm fixed, the sibling twelve lines away left). Reachability under
+      DR-0027: shipped src/, on the code path every tiphys invocation takes.
+      What I did NOT establish is how a FIFO comes to sit at an installed
+      package's package.json non-adversarially; I could not construct such a
+      route and record that as an open question rather than as a clearance.
+  - id: CR-003
+    severity: low
+    evidence:
+      - "test/doctor.test.ts:651 is named 'a staged install missing roles/ is a FAIL naming roles/' and its body asserts result.status equals WARN"
+      - "the promotion that turns it into FAIL lives in the profile table at src/commands/doctor.ts:62 and is exercised by a different test"
+    concrete-fix: >-
+      Rename the test to the condition it asserts, for example "a staged install
+      missing roles/ carries kernel-artifacts-incomplete, which full promotes to
+      FAIL", and update the matching value in test/behaviors.json, which the
+      suite gate resolves against the reported test name.
+    analysis: >-
+      R-087 puts a false claim in a test name in the findings rather than in the
+      notes, because the reported name is what a later reader trusts. Severity
+      low under DR-0027: it reaches test text and no shipped behaviour.
+  - id: CR-004
+    severity: low
+    evidence:
+      - "measured: dist/ copied to a directory with no package.json above it, tiphys doctor -> exit 1 printing 'tiphys: package.json not found above file://.../doctor.js', which is readOwnVersion's handler at src/version.ts:20 and not checkKernelArtifacts"
+      - "the comment at test/doctor.test.ts:713 says 'The success path is total ... so removing the explicit failure would be visible rather than being covered by a crash', which holds of the exported function; I did not find a way to show it through the command"
+    concrete-fix: >-
+      Add one sentence to the source comment above resolveInstalledKernelRoot
+      and to the work history: the unresolvable arm is witnessed at the unit
+      level only, because the CLI refuses earlier in src/version.ts:20.
+    analysis: >-
+      Criterion 10's letter is met (doctor exits 1 rather than terminating on an
+      uncaught error), and the arm inside the check is dead in the CLI path.
+      This is a documentation claim rather than shipped behaviour, so low.
+  - id: CR-005
+    severity: low
+    evidence:
+      - "src/checks.ts:2359 reads work-history.yaml from the context directory and compares deviations[].plan-clause"
+      - "the exit-test bundle carries no work-history.yaml: git ls-tree -r --name-only origin/claude/m3-exit-test lists only delivery/evidence/m3-exit-test/e1/e1-6/work-history-copy.md, which is markdown"
+      - "this reviewer therefore assembled the context work-history.yaml, so the array the check compares against was authored by the same agent as the array being checked"
+    concrete-fix: >-
+      Have stage E1.6 emit work-history.yaml as a validated work-history
+      instance beside the markdown copy, and have the E1.7 dispatch name the
+      context directory rather than leaving each reviewer to assemble one.
+    analysis: >-
+      Scoped to the exit test's stage rather than to the subject change. The
+      check still exits 0, which is precisely the problem: it is vacuous for
+      this stage in the same way the verdict schema's own comment warns
+      hazard-classes-addressed could be. Recorded so the stage's evidence is not
+      read as stronger than it is.
+criteria:
+  - id: "1"
+    quote: >-
+      Against a staged install of the kernel with roles/ removed and nothing
+      else changed, tiphys doctor --for full prints a line matching "CHECK
+      kernel-artifacts FAIL" whose detail names roles/, and exits 1.
+    evidence:
+      - "staged install of the built package, roles/ moved aside: CHECK kernel-artifacts FAIL ... is missing roles/ (absent) (required for profile full), exit=1"
+    met: true
+  - id: "2"
+    quote: >-
+      Against the same staged install with AGENTS.md removed and every directory
+      present, the same command prints "CHECK kernel-artifacts FAIL" whose
+      detail names AGENTS.md, and exits 1.
+    evidence:
+      - "AGENTS.md moved aside: CHECK kernel-artifacts FAIL ... is missing AGENTS.md (absent) (required for profile full), exit=1"
+    met: true
+  - id: "3"
+    quote: >-
+      Against a staged install with roles/ present but EMPTY, the same command
+      prints "CHECK kernel-artifacts FAIL" whose detail names roles/, and exits 1.
+    evidence:
+      - "roles/ replaced by an empty directory: CHECK kernel-artifacts FAIL ... is missing roles/ (present but empty, so it resolves nothing) (required for profile full), exit=1"
+    met: true
+  - id: "4"
+    quote: >-
+      Against a complete staged install, the same command prints "CHECK
+      kernel-artifacts PASS" and exits 0, and the FAIL count in its output is
+      zero.
+    evidence:
+      - "reproduced independently with a stub gh on PATH and a remote configured, since this container has no gh (standing warning 6): CHECK kernel-artifacts PASS ..., exit=0, FAIL count 0"
+      - "this matches case 1 of witness/captures/doctor-kernel-artifacts-staged-install.txt line by line"
+    met: true
+  - id: "5"
+    quote: >-
+      Against the staged install of criterion 1, tiphys doctor with no --for
+      flag prints "CHECK kernel-artifacts WARN" and exits 0, which is the
+      unpromoted arm.
+    evidence:
+      - "same broken install, no --for: CHECK kernel-artifacts WARN ... is missing roles/ (absent), exit=0, and the gh FAIL in the same output did not fail the run because gh-missing is promoted only under full"
+    met: true
+  - id: "6"
+    quote: >-
+      node --test test/doctor.test.ts exits 0 and reports N tests with 0 fail, N
+      greater than zero, and the skipped count is quoted alongside the pass
+      count in the work history together with the invocation, the toolchain
+      version and whether dist/ was built.
+    evidence:
+      - "run here: invocation node --test test/doctor.test.ts, toolchain node v26.6.0 from the scratch prefix, dist/ built; tests 30, pass 30, fail 0, SKIPPED 0, exit 0"
+      - "delivery/work-history/exit-subject-doctor-kernel-artifacts.md:161 quotes invocation npm test, node v26.6.0, dist/ present, 847 tests, 847 pass, 0 fail, skipped 0; the three axes are named, though for the whole-suite invocation rather than for the per-file one the criterion names"
+    met: true
+  - id: "7"
+    quote: >-
+      The red-witness gate, invoked as the registry selects it, exits 0 on the
+      phase head with units greater than zero, and its witness-records.json
+      carries the behavior id with runs[].exitCode nonzero under each declared
+      dangerousStates member and zero with the check present.
+    evidence:
+      - "run here at the review head: tiphys gates run --registry gate-registry.yaml --mode full --only red-witness --base 7b18144 --head HEAD gave 'red-witness: green: 7 witness(es) evaluated (6 own, 1 stored re-evaluated in 20145ms); every witness red against every declared dangerous state and green at head', runner exit 0"
+      - "the produced witness-records.json records base 7b18144 head eb13da6b, and for doctor-kernel-artifacts-fifo member 0 runs are exitCode 1 red, exitCode 1 red, exitCode 0 green, with failedNamedTests naming the guarding test"
+    met: true
+  - id: "8"
+    quote: >-
+      test/behaviors.json carries an entry for the new behavior and the test
+      resolves it BY NAME; grep -c over the test for a hard-coded row count of
+      test/behaviors.json returns 0.
+    evidence:
+      - "eleven ids added to test/behaviors.json in the diff; resolution is Object.hasOwn(behaviors, id) at test/doctor.test.ts:782; my count grep over the test returned 0"
+    met: true
+  - id: "9"
+    quote: >-
+      Against a staged install with roles/ removed, placed inside a parent
+      directory that DOES carry roles/ with a .md file, tiphys doctor --for full
+      prints "CHECK kernel-artifacts FAIL" naming roles/ and exits 1.
+    evidence:
+      - "built through the CLI rather than the unit: parent carrying roles/implementer.md, install below it without roles/; CHECK kernel-artifacts FAIL ... is missing roles/ (absent) (required for profile full), exit=1. The decoy did not shadow it"
+    met: true
+  - id: "10"
+    quote: >-
+      Where the install root cannot be resolved at all, the check returns FAIL
+      naming the resolution failure and doctor exits 1 rather than terminating
+      on an uncaught error, asserted by a test that stages the unresolvable case.
+    evidence:
+      - "the unit arm is asserted at test/doctor.test.ts:712 and passes"
+      - "through the CLI, dist/ copied to a directory with no package.json above it: exit 1 with 'tiphys: package.json not found above ...', so the letter holds; the exit comes from src/version.ts:20 and never from the check, which is CR-004"
+    met: true
+  - id: "11"
+    quote: >-
+      A FIFO placed at the AGENTS.md path of a staged install makes the check
+      return FAIL naming the observed entry type in under five seconds, asserted
+      with a timeout.
+    evidence:
+      - "forced through the built CLI under timeout 10: CHECK kernel-artifacts WARN ... is missing AGENTS.md (irregular: ... is a named pipe, not a regular file, so it was not opened), no hang"
+      - "five further shapes also refused in bounded time: FIFO replacing roles/ (ENOTDIR), FIFO inside roles/, symlink to a FIFO, dangling symlink, symlink loop (ELOOP)"
+    met: true
+deviations-judged:
+  - deviation: computed from import.meta.url WITHOUT searching upward
+    serves-plan-intent: true
+    reasoning: >-
+      The finding PR-1 was protecting one property: the resolver must not search
+      for the artifact under test. A fixed depth cannot satisfy both shipped
+      layouts, and I measured that rather than accepting it: after npm ci and
+      npm run build at the head, ls dist gives bin, node_modules, src and the
+      tsbuildinfo with no dist/package.json, and doctor.js is at
+      dist/src/commands/doctor.js while the checkout runs src/commands/doctor.ts.
+      The delivered walk keys on package.json, which is the package boundary and
+      not a member of the audited set, and I attacked it with the decoy-parent
+      construction of criterion 9 through the CLI and could not make it answer
+      about an ancestor. The deviation serves the intent and the wording did not.
+hazard-classes-addressed:
+  - class-id: H1
+    probed: >-
+      Attacked the vacuous pass beyond criterion 3's empty-directory instance,
+      against a real staged install of the built package with gh stubbed and a
+      remote configured so kernel-artifacts drove the exit code. Four shapes
+      reported PASS: checklists/ carrying one unrelated file (while checklist
+      resolve --checklist clean-room reported no checklist shipped, exit 1),
+      roles/ carrying only an empty subdirectory, roles/ whose members were all
+      truncated to zero bytes, and AGENTS.md present at zero bytes. Under the
+      combined attack doctor --for full exited 0 with FAIL count zero while
+      printing that the install carries all four artifacts. Controls run: a
+      directory replaced by a file or a FIFO is reported as ENOTDIR, and
+      AGENTS.md replaced by a directory is reported irregular, so the type
+      checking is real and it is the CONTENT that is unchecked.
+    finding: CR-001
+  - class-id: H2
+    probed: >-
+      Every measurement in this review was made against a staged install copied
+      out of the built tree, never against the development checkout, and the
+      resolver was exercised through the built CLI from a fleet home rather than
+      by calling the function. The delivered resolver keys on package.json and
+      not on the artifact under test, so the PR-1 arm that would have made it
+      report about an ancestor was attacked directly: a staged install without
+      roles/ placed inside a parent carrying roles/implementer.md still reported
+      FAIL naming roles/ with exit 1. The two layout claims the design rests on
+      were re-measured rather than read (no dist/package.json; the module at
+      dist/src/commands/doctor.js). The phase's own tests stage installs too
+      rather than asserting against this checkout, with one exception that is
+      correct: the promotion test asserts against the PROFILE TABLE because this
+      checkout's install is complete.
+    cleared-because: >-
+      The check reports the resolved install and not the development checkout,
+      demonstrated by execution against staged installs in four separate labs,
+      including the decoy-ancestor construction that is the arm an upward-walking
+      resolver reports PASS on.
+  - class-id: H3
+    probed: >-
+      Ran the unpromoted arm through the CLI: the broken install with no --for
+      printed WARN and exited 0, and it did so with a gh FAIL in the same output,
+      which shows the profile table rather than the check deciding the exit code.
+      Read the promotion table at src/commands/doctor.ts:62 and confirmed
+      kernel-artifacts-incomplete appears under full and under no other profile,
+      which the phase asserts against generic, local-only and direct-pr by name.
+      Then attacked the asymmetry: the resolution-failure arm returns a bare FAIL
+      with no condition, so it is profile-independent and would fail a local-only
+      run. I could not reach that arm through the CLI at all, because the process
+      refuses earlier in src/version.ts:20 with exit 1, so the wrong-direction
+      promotion I was hunting for is unreachable; that is recorded as CR-004 for
+      the claim rather than as an H3 finding for the behaviour.
+    cleared-because: >-
+      The promotion is in the declared direction and was witnessed in both
+      directions through the CLI; the one profile-independent arm is unreachable
+      from any command, so no missing artifact stops a local-only run.
+  - class-id: H4
+    probed: >-
+      Compared the two edited M3-P8 specs' mutation text before and after to
+      test for defanging rather than repair: the first changed from deleting
+      retention-undeclared out of the full array to renaming it
+      retention-undeclared-DEFANGED, which removes it from the array just as
+      effectively, and the second re-quoted the same append against the
+      reformatted array. The find text occurs exactly once in the file (grep -c
+      = 1) so neither mutation is ambiguous. Checked each of the four new specs
+      for two structurally different members and confirmed they differ in kind
+      rather than in wording. Then ran the gate at the review head rather than
+      trusting the table: red-witness green, 7 witnesses (6 own, 1 stored
+      re-evaluated), runner exit 0, and the produced witness-records.json shows
+      per-member runs with exitCode 1 red at both repetitions and exitCode 0
+      green at head, with the guarding test named in failedNamedTests.
+    cleared-because: >-
+      Every witness reddens under both of its structurally different members at
+      two repetitions and is green at head, measured from the produced
+      witness-records.json rather than from a bundle-level green, and the two
+      stored specs this change edits were repaired rather than weakened.
+  - class-id: H5
+    probed: >-
+      Six constructions against a real staged install, each under timeout 10 and
+      each through the built CLI: a FIFO at AGENTS.md, a FIFO replacing the
+      roles/ directory, a FIFO inside roles/, a symlink at AGENTS.md pointing to
+      a FIFO, a dangling symlink, and a symlink loop. None hung; each produced a
+      named refusal (named pipe, ENOTDIR, dangling, ELOOP). classifyEntry was
+      then measured directly against a FIFO and returned kind irregular in
+      bounded time. Having failed to hang the check, I attacked the same
+      MECHANISM one step earlier on the same walk and succeeded: mkfifo at the
+      install's package.json makes tiphys doctor block forever, exit 124 with
+      zero output, and version, --help and status block identically, which
+      locates it at startup in src/version.ts:20. The same construction against a
+      build of the base commit 7b18144 also hangs, so it is pre-existing.
+    finding: CR-002

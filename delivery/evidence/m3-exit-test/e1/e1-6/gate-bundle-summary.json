@@ -1,0 +1,227 @@
+{
+  "runId": "31c88415befa18462f9d33b8",
+  "manifest": "gate-registry.yaml",
+  "registry": true,
+  "mode": "full",
+  "declaredByChecklist": [
+    {
+      "id": "unit-tests-for-changed-service-methods",
+      "probe": "unit-tests-for-changed-service-methods",
+      "applicability": "conditional"
+    },
+    {
+      "id": "fixtures-for-changed-component-states",
+      "probe": "fixtures-for-changed-component-states",
+      "applicability": "conditional"
+    }
+  ],
+  "manifestSha256": "19954055f6aad6bc44e8b4ffa4b0d840c79999e46935e620b14ae65476b1d44b",
+  "startedAt": "2026-08-15T17:34:28.979Z",
+  "endedAt": "2026-08-15T17:40:04.001Z",
+  "parameters": {
+    "base": "7b18144ec7f5588f01110e2affdad3d81c8cab0c",
+    "head": "HEAD",
+    "phase": "exit-subject-r2"
+  },
+  "only": [],
+  "manifestGates": 16,
+  "gates": [
+    {
+      "id": "manifest-self-check",
+      "status": "green",
+      "units": 8,
+      "unitLabel": "schema documents validated",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "validated 8 schema document(s) against the closed keyword set (/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/citation-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/coverage-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/gate-manifest.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/gate-result.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/phase-declaration.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/release-record.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/verifier-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/manifest-self-check/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/manifest-self-check/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/manifest-self-check/stderr.txt"
+    },
+    {
+      "id": "coverage",
+      "status": "green",
+      "units": 115,
+      "unitLabel": "finding ids checked",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/coverage/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/coverage/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/coverage/stderr.txt"
+    },
+    {
+      "id": "credential-scrub",
+      "status": "green",
+      "units": 7,
+      "unitLabel": "credential sources probed",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "no pull-request-capable credential resolvable from any of the 7 probed sources",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/credential-scrub/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/credential-scrub/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/credential-scrub/stderr.txt"
+    },
+    {
+      "id": "credential-token",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "tokens probed",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/credential-token/result.json"
+    },
+    {
+      "id": "suite",
+      "status": "green",
+      "units": 847,
+      "unitLabel": "tests reported",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 847 test(s) from 45 file(s) (pass 847, fail 0, skipped 0, todo 0, did-not-run 0); discovered 45 file(s) walking test for .test.ts; 773 behavior(s) resolve; merge base 7b18144ec7f5",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/suite/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/suite/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/suite/stderr.txt"
+    },
+    {
+      "id": "citations",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "citations resolved",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/citations/result.json"
+    },
+    {
+      "id": "scope",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "changed paths audited",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition scope-branch-is-a-phase-branch evaluated and unmet: branch task/exit-subject-r2 does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/scope/result.json"
+    },
+    {
+      "id": "deploy",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "release verifications satisfied",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/deploy/result.json"
+    },
+    {
+      "id": "migrations",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "migrations compared",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/migrations/result.json"
+    },
+    {
+      "id": "clause-map",
+      "status": "green",
+      "units": 74,
+      "unitLabel": "clause-map rows checked",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "74 rows checked, 0 pending a phase not yet in force",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/clause-map/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/clause-map/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/clause-map/stderr.txt"
+    },
+    {
+      "id": "red-witness",
+      "status": "green",
+      "units": 7,
+      "unitLabel": "witnesses evaluated",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "7 witness(es) evaluated (6 own, 1 stored re-evaluated in 11811ms); every witness red against every declared dangerous state and green at head",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/red-witness/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/red-witness/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/red-witness/stderr.txt"
+    },
+    {
+      "id": "agent-rules-drift",
+      "status": "green",
+      "units": 21,
+      "unitLabel": "rendered gate rows compared",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 18 gate(s))",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/agent-rules-drift/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/agent-rules-drift/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/agent-rules-drift/stderr.txt"
+    },
+    {
+      "id": "brief-drift",
+      "status": "green",
+      "units": 18,
+      "unitLabel": "generated brief gate rows compared",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "roles/implementer.md's full gate block matches gate-registry.yaml row for row (18 row(s) compared)",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/brief-drift/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/brief-drift/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/brief-drift/stderr.txt"
+    },
+    {
+      "id": "check-agents-references",
+      "status": "green",
+      "units": 21,
+      "unitLabel": "references resolved",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "21 references resolved to a path that the package publishes, 21 of them also to an anchor inside it, under root /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/check-agents-references/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/check-agents-references/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/check-agents-references/stderr.txt"
+    },
+    {
+      "id": "check-dual-review",
+      "status": "not-applicable",
+      "units": 0,
+      "unitLabel": "review verdicts examined for decorrelation",
+      "vacuous": false,
+      "applicable": false,
+      "detail": "precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/check-dual-review/result.json"
+    },
+    {
+      "id": "license",
+      "status": "green",
+      "units": 10,
+      "unitLabel": "production packages licensed",
+      "vacuous": false,
+      "applicable": true,
+      "detail": "10 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing",
+      "record": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/license/result.json",
+      "stdout": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/license/stdout.txt",
+      "stderr": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle/license/stderr.txt"
+    }
+  ],
+  "counts": {
+    "declared": 16,
+    "applicable": 10,
+    "verdict": 10,
+    "green": 10,
+    "red": 0,
+    "not-applicable": 6,
+    "error": 0,
+    "vacuous": 0
+  },
+  "requiredNotApplicable": [
+    "citations",
+    "scope"
+  ],
+  "aborted": false,
+  "exitCode": 20,
+  "reason": "required gate(s) not applicable: citations, scope"
+}

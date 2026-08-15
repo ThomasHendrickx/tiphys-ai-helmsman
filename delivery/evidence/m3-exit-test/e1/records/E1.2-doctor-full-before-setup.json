@@ -1,0 +1,19 @@
+{
+  "stage": "E1.2",
+  "expectation": "recorded as observed; this is the fleet as init leaves it, before a remote and a realized project exist",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "doctor",
+    "--for",
+    "full"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T08:44:26.147Z",
+  "endedAt": "2026-08-15T08:44:26.464Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "CHECK node PASS v26.6.0 satisfies kernel engines \">=26\"\nCHECK git PASS git version 2.43.0\nCHECK gh PASS gh version 2.62.0 (2024-11-14)\nCHECK layout PASS all layout entries present\nCHECK remote FAIL no remote configured, fleet state has no push target (SC-002) (required for profile full)\nCHECK lock PASS no lease present\nCHECK beacon WARN watcher not running or not scheduled\nCHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)\nCHECK retention WARN no charter document in /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/charter, so no project is realized here yet and retention is not applicable\n",
+  "stderr": ""
+}

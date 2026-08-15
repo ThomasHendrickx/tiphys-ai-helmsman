@@ -1,0 +1,29 @@
+Captured 2026-08-15, node v26.6.0, from the built CLI of a STAGED INSTALL of
+this head: `node <install>/dist/bin/tiphys.js doctor --for full`, run inside a
+fleet made by that install's own `tiphys init`, with a stub `gh` on PATH and a
+remote configured so that kernel-artifacts is the only check able to drive the
+exit code. The producing script is recorded verbatim in this phase's work
+history. Each case is staged fresh from a pristine copy of the install. Only the `CHECK kernel-artifacts` line is retained, by grep; the exit
+code is the whole command's, taken from a second identical run.
+
+These four shapes are the ones the E1.7 hazard review forced against round 0 of
+this change and measured as PASS with FAIL count zero
+(`delivery/review/clean-room-m3-exit-subject-hazard.md`, the CR-001 table,
+on branch claude/m3-exit-test).
+
+## checklists/ carries one unrelated file (no .yaml member)
+CHECK kernel-artifacts FAIL the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/FR1/lab/c1/install is missing checklists/ (present, but no .yaml member resolves) (required for profile full)
+exit=1
+
+## roles/ carries only a subdirectory
+CHECK kernel-artifacts FAIL the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/FR1/lab/c2/install is missing roles/ (present, but no .md member resolves) (required for profile full)
+exit=1
+
+## every roles/*.md truncated to zero bytes
+CHECK kernel-artifacts FAIL the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/FR1/lab/c3/install is missing roles/ (present, but no .md member resolves) (required for profile full)
+exit=1
+
+## AGENTS.md truncated to zero bytes
+CHECK kernel-artifacts FAIL the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/FR1/lab/c4/install is missing AGENTS.md (present but empty, so it states nothing) (required for profile full)
+exit=1
+

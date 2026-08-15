@@ -1,0 +1,20 @@
+{
+  "stage": "E1.6-rerun",
+  "expectation": "exit 0: re-acquire with an explicit duration covering the work ahead",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "lock",
+    "acquire",
+    "--duration",
+    "21600"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T17:25:32.913Z",
+  "endedAt": "2026-08-15T17:25:33.104Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": "tiphys lock: lease expired (holder 93ef52e9-9707-48cc-bf3c-0ae1a5f579d3, expired 2026-08-15T14:44:27.515Z); acquire refused, takeover is explicit: lock acquire --take-over\n"
+}

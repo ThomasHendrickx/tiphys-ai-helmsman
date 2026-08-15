@@ -1,0 +1,26 @@
+{
+  "stage": "E1.4",
+  "expectation": "exit 0",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "brief",
+    "compose",
+    "--role",
+    "plan-writer",
+    "--phase",
+    "delivery/evidence/m3-exit-test/e1/plan-seed.yaml",
+    "--phase-id",
+    "M3-P13",
+    "--out",
+    "delivery/evidence/m3-exit-test/e1/brief-plan-writer.md"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:44:03.931Z",
+  "endedAt": "2026-08-15T08:44:04.186Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": ""
+}

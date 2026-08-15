@@ -1,0 +1,28 @@
+{
+  "stage": "E1.10",
+  "expectation": "exit 0: a second record supersedes the first in current.json",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "status",
+    "emit",
+    "--run",
+    "m3-exit-e1",
+    "--state",
+    "done",
+    "--project",
+    "tiphys-kernel",
+    "--detail",
+    "E1.8 fix-round-verification, E1.9 reporting and E1.10 status are recorded; C1, C2 and C3 are skipped by owner decision",
+    "--ref",
+    "branch:claude/m3-exit-test"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T19:16:17.013Z",
+  "endedAt": "2026-08-15T19:16:17.361Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "2026-08-15T19:16:17Z done run=m3-exit-e1 project=tiphys-kernel E1.8 fix-round-verification, E1.9 reporting and E1.10 status are recorded; C1, C2 and C3 are skipped by owner decision refs=branch:claude/m3-exit-test\n",
+  "stderr": ""
+}
