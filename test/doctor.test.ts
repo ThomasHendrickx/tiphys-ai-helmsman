@@ -597,9 +597,35 @@ test("doctor never prints PASS for a charter whose retention declares no usable 
  * this module (measured from the pack listing on this head), so a staged
  * install reproduces the published layout rather than the checkout's.
  */
+/**
+ * The member each directory must carry for its CONSUMER to resolve anything,
+ * which is the suffix that consumer already filters on (src/roles.ts:335,
+ * src/commands/validate.ts:156, src/checklists.ts:91). Round 0 staged
+ * `placeholder.md` into all three, which is not a member `schemas/` or
+ * `checklists/` resolves; that it passed is the proxy CR-001 names.
+ */
+const STAGED_MEMBERS: Record<string, string> = {
+  roles: "placeholder.md",
+  schemas: "placeholder.schema.json",
+  checklists: "placeholder.yaml",
+};
+
 function stageInstall(
   t: { after(fn: () => void): void },
-  options: { omit?: string; empty?: string; fifo?: string; noPackageJson?: boolean } = {},
+  options: {
+    omit?: string;
+    empty?: string;
+    fifo?: string;
+    noPackageJson?: boolean;
+    /** Stage this directory with one member no consumer would select. */
+    unresolvable?: string;
+    /** Stage this directory with its one member truncated to zero bytes. */
+    hollow?: string;
+    /** Stage this directory with only a subdirectory inside it. */
+    subdirOnly?: string;
+    /** Truncate this file to zero bytes rather than omitting it. */
+    emptyFile?: string;
+  } = {},
 ): string {
   const root = join(makeTempDir(t), "install");
   mkdirSync(join(root, "dist", "src", "commands"), { recursive: true });
@@ -614,16 +640,28 @@ function stageInstall(
       continue;
     }
     mkdirSync(join(root, name), { recursive: true });
-    if (options.empty !== name) {
-      writeFileSync(join(root, name, "placeholder.md"), "staged\n");
+    if (options.empty === name) {
+      continue;
     }
+    if (options.subdirOnly === name) {
+      mkdirSync(join(root, name, "nested"), { recursive: true });
+      continue;
+    }
+    if (options.unresolvable === name) {
+      writeFileSync(join(root, name, "NOTES.txt"), "not a member any consumer selects\n");
+      continue;
+    }
+    writeFileSync(
+      join(root, name, STAGED_MEMBERS[name] as string),
+      options.hollow === name ? "" : "staged\n",
+    );
   }
   if (options.omit !== "AGENTS.md") {
     if (options.fifo === "AGENTS.md") {
       const made = spawnSync("mkfifo", [join(root, "AGENTS.md")]);
       assert.equal(made.status, 0, "mkfifo failed while staging the FIFO case");
     } else {
-      writeFileSync(join(root, "AGENTS.md"), "staged\n");
+      writeFileSync(join(root, "AGENTS.md"), options.emptyFile === "AGENTS.md" ? "" : "staged\n");
     }
   }
   return root;
@@ -648,7 +686,14 @@ function checkStaged(root: string) {
   return checkKernelArtifacts(resolveInstalledKernelRoot(join(root, "dist", "src", "commands")));
 }
 
-test("a staged install missing roles/ is a FAIL naming roles/", (t) => {
+/* RENAMED in fix round 1 under hazard finding CR-003 (R-087). The old name
+   was "a staged install missing roles/ is a FAIL naming roles/" and the body
+   asserts WARN: the check returns the CONDITION and the printer promotes it
+   under full, so the old name was a true sentence about the CLI and a false
+   one about this test. The promotion itself is asserted by
+   "kernel-artifacts is promoted to FAIL under full and stays a WARN below it"
+   and by the live capture reproduction, both of which go through the CLI. */
+test("a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL", (t) => {
   const result = checkStaged(stageInstall(t, { omit: "roles" }));
   assert.equal(result.status, "WARN");
   assert.equal(result.condition, "kernel-artifacts-incomplete");
@@ -666,6 +711,62 @@ test("a staged install whose roles/ exists but is EMPTY is missing it", (t) => {
   const result = checkStaged(stageInstall(t, { empty: "roles" }));
   assert.equal(result.condition, "kernel-artifacts-incomplete");
   assert.match(result.detail, /roles\/ \(present but empty/);
+});
+
+/**
+ * FIX ROUND 1, hazard finding CR-001. The four shapes the reviewer forced
+ * against a real staged install of the built package, every one of them PASS
+ * with FAIL count zero before this round. They are asserted TOGETHER because
+ * the defect is one mechanism (presence standing in for resolvability) and a
+ * mutation that defangs either half of the predicate must redden this test,
+ * which is what witness/doctor-kernel-artifacts-resolvability.json declares.
+ */
+test("presence is not resolvability: the four shapes that used to PASS are each named", (t) => {
+  const unresolvable = checkStaged(stageInstall(t, { unresolvable: "checklists" }));
+  assert.equal(unresolvable.condition, "kernel-artifacts-incomplete");
+  assert.match(
+    unresolvable.detail,
+    /checklists\/ \(present, but no \.yaml member resolves\)/,
+    "a directory carrying one unrelated file resolves nothing",
+  );
+
+  const subdirOnly = checkStaged(stageInstall(t, { subdirOnly: "roles" }));
+  assert.match(
+    subdirOnly.detail,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    "a directory carrying only a subdirectory resolves nothing",
+  );
+
+  const hollow = checkStaged(stageInstall(t, { hollow: "roles" }));
+  assert.match(
+    hollow.detail,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    "a directory whose members are all zero bytes resolves nothing",
+  );
+
+  const emptyFile = checkStaged(stageInstall(t, { emptyFile: "AGENTS.md" }));
+  assert.equal(emptyFile.condition, "kernel-artifacts-incomplete");
+  assert.match(
+    emptyFile.detail,
+    /AGENTS\.md \(present but empty, so it states nothing\)/,
+    "the FILE member of the class, which the emptiness reasoning had never been applied to",
+  );
+});
+
+test("the resolvability capture records the four shapes as the CLI reports them", () => {
+  const captured = readFileSync(
+    join(repoRoot, "witness", "captures", "doctor-kernel-artifacts-resolvability.txt"),
+    "utf8",
+  );
+  for (const expected of [
+    /checklists\/ \(present, but no \.yaml member resolves\)/,
+    /roles\/ \(present, but no \.md member resolves\)/,
+    /AGENTS\.md \(present but empty, so it states nothing\)/,
+  ]) {
+    assert.match(captured, expected);
+  }
+  const exits = [...captured.matchAll(/^exit=(\d+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(exits, ["1", "1", "1", "1"], "every shape must fail under --for full");
 });
 
 test("a complete staged install PASSes with no condition", (t) => {
@@ -712,7 +813,17 @@ test("resolution never walks past an install that has lost roles/", (t) => {
 test("an unresolvable install root is a FAIL rather than a thrown error", () => {
   /* Criterion 10. The success path is total: the resolver returns its reason
      and the check turns it into a verdict, so removing the explicit failure
-     would be visible rather than being covered by a crash. */
+     would be visible rather than being covered by a crash.
+
+     WITNESSED AT THE UNIT LEVEL ONLY, and that is recorded rather than left
+     to be discovered (fix round 1, hazard finding CR-004). The arm is DEAD in
+     the CLI path: an install whose root cannot be resolved has no package.json
+     above it either, so readOwnVersion refuses at src/version.ts:20 and the
+     process exits 1 before any command runs. The criterion's letter is met by
+     that exit 1; the arm this test asserts is never the one that produces it.
+     Deliberately NOT made reachable here: doing so would mean moving or
+     duplicating the startup version read, which is outside this phase's
+     files-to-touch and is the same walk CR-002 tracks. */
   const resolution = resolveInstalledKernelRoot("/");
   assert.equal(resolution.ok, false);
   const result = checkKernelArtifacts(resolution);
@@ -777,6 +888,8 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "doctor-kernel-artifacts-promoted-under-full-only",
     "doctor-kernel-artifacts-capture-contract",
     "doctor-kernel-artifacts-capture-reproduced",
+    "doctor-kernel-artifacts-presence-is-not-resolvability",
+    "doctor-kernel-artifacts-resolvability-capture",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),

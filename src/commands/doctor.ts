@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
@@ -64,12 +64,19 @@ export const PROFILES: Record<string, readonly string[]> = {
   watch: ["beacon-absent", "beacon-stale"],
 };
 
-/** Locate the kernel's own package.json (same walk as src/version.ts). */
+/**
+ * Locate the kernel's own package.json (same walk as src/version.ts).
+ *
+ * `classifyEntry`, not `existsSync`: this is the second of the three call
+ * sites of the mechanism `reading-a-path-whose-type-is-not-established`, and
+ * it is the one inside this phase's files-to-touch. The derivation over all
+ * three, and the one left open, is published in this phase's work history.
+ */
 function readKernelEnginesNode(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (;;) {
     const candidate = join(dir, "package.json");
-    if (existsSync(candidate)) {
+    if (classifyEntry(candidate).kind === "regular") {
       const parsed: unknown = JSON.parse(readFileSync(candidate, "utf8"));
       const engines = (parsed as { engines?: { node?: unknown } }).engines;
       if (engines === undefined || typeof engines.node !== "string") {
@@ -618,8 +625,63 @@ function isGitIgnored(repository: string, relative: string): boolean {
  * checklist, and an empty `roles/` resolves none. An `existsSync` on a
  * directory the packer created empty is the vacuous pass hazard H1 names.
  */
-const REQUIRED_KERNEL_DIRECTORIES = ["roles", "schemas", "checklists"] as const;
+/**
+ * WHAT "RESOLVES" MEANS, PER ARTIFACT, TAKEN FROM THE CONSUMER (fix round 1,
+ * clean-room finding CR-001 of the hazard contract).
+ *
+ * Round 0 tested that a required path was PRESENT and reported success as
+ * `carries roles/, schemas/, checklists/ and AGENTS.md`, which is a claim
+ * about RESOLVABILITY. Presence is a PROXY for it, and the proxy was reachable
+ * in four measured shapes, every one of them PASS with FAIL count zero: a
+ * directory holding one unrelated file, a directory holding only a
+ * subdirectory, a directory whose members are all zero bytes, and a zero-byte
+ * `AGENTS.md`.
+ *
+ * The suffix below is not invented here. It is the filter the CONSUMING
+ * command already applies, so the check cannot claim more than the consumer
+ * will deliver:
+ *
+ *   roles/       src/roles.ts:335              `.md`
+ *   schemas/     src/commands/validate.ts:156  `.schema.json`
+ *   checklists/  src/checklists.ts:91          `.yaml`
+ *
+ * WHAT THE PREDICATE DOES NOT COVER, stated rather than left to be found. It
+ * asks whether at least ONE member would be selected and carries bytes. It
+ * does not PARSE a member, so a `.yaml` that does not decode, a `.schema.json`
+ * that is not a schema and a `.md` with no frontmatter all resolve. It does
+ * not ask WHICH members are present, so an install carrying one role resolves
+ * `roles/` even if the role a brief names is the missing one. Both are
+ * deliberate: doctor answers "is this install fit to run", and a per-document
+ * decode is the consuming command's own failure, reported by it, with the path
+ * it could not use.
+ */
+const REQUIRED_KERNEL_DIRECTORIES = [
+  { name: "roles", suffix: ".md" },
+  { name: "schemas", suffix: ".schema.json" },
+  { name: "checklists", suffix: ".yaml" },
+] as const;
 const REQUIRED_KERNEL_FILES = ["AGENTS.md"] as const;
+
+/**
+ * A path that is a regular file AND carries bytes.
+ *
+ * `classifyEntry` first, `statSync` second: the type is established before the
+ * size is asked for, so a FIFO here is `false` in bounded time rather than a
+ * blocked open (mechanism index,
+ * `reading-a-path-whose-type-is-not-established`). The `statSync` cannot be
+ * folded into `classifyEntry`, which returns a kind and no size; it is a
+ * second stat of a path already established as a regular file, never an open.
+ */
+function carriesContent(path: string): boolean {
+  if (classifyEntry(path).kind !== "regular") {
+    return false;
+  }
+  try {
+    return statSync(path).size > 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The installed kernel's own package root: the first ancestor of THIS MODULE
@@ -702,7 +764,7 @@ export function checkKernelArtifacts(
   }
   const root = resolution.root;
   const missing: string[] = [];
-  for (const name of REQUIRED_KERNEL_DIRECTORIES) {
+  for (const { name, suffix } of REQUIRED_KERNEL_DIRECTORIES) {
     const path = join(root, name);
     let entries: string[];
     try {
@@ -718,6 +780,12 @@ export function checkKernelArtifacts(
     }
     if (entries.length === 0) {
       missing.push(`${name}/ (present but empty, so it resolves nothing)`);
+      continue;
+    }
+    if (
+      !entries.some((entry) => entry.endsWith(suffix) && carriesContent(join(path, entry)))
+    ) {
+      missing.push(`${name}/ (present, but no ${suffix} member resolves)`);
     }
   }
   for (const name of REQUIRED_KERNEL_FILES) {
@@ -725,15 +793,24 @@ export function checkKernelArtifacts(
        resolves to, and opens only a regular file, so a FIFO at this path is a
        reported refusal in bounded time rather than a doctor that hangs
        (mechanism index, `reading-a-path-whose-type-is-not-established`). */
-    const entry = classifyEntry(join(root, name));
-    if (entry.kind === "regular") {
+    const path = join(root, name);
+    const entry = classifyEntry(path);
+    if (entry.kind !== "regular") {
+      missing.push(
+        entry.kind === "absent"
+          ? `${name} (absent)`
+          : `${name} (${entry.kind}${entry.kind === "dangling" ? "" : `: ${entry.reason}`})`,
+      );
       continue;
     }
-    missing.push(
-      entry.kind === "absent"
-        ? `${name} (absent)`
-        : `${name} (${entry.kind}${entry.kind === "dangling" ? "" : `: ${entry.reason}`})`,
-    );
+    /* The FILE member of the class the emptiness reasoning was written for.
+       The plan's words for the directory member, "an install that carries an
+       empty roles/ resolves no role", are true word for word of a zero-byte
+       AGENTS.md: it is the policy document every role brief points at, and an
+       empty one states no policy. */
+    if (!carriesContent(path)) {
+      missing.push(`${name} (present but empty, so it states nothing)`);
+    }
   }
   if (missing.length > 0) {
     return {

@@ -761,7 +761,7 @@
   "witness-rule-d-hunk-arm": "an owned member that mutates a changed file OUTSIDE every changed hunk is red naming the hunk",
   "witness-ownership-claim-is-directional": "ADDING a guarding test to a spec authors nothing, while DROPPING one authors every member",
   "witness-ownership-claim-is-a-set": "reordering a spec's named tests authors nothing, because the claim is a set",
-  "doctor-kernel-artifacts-missing-directory": "a staged install missing roles/ is a FAIL naming roles/",
+  "doctor-kernel-artifacts-missing-directory": "a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL",
   "doctor-kernel-artifacts-missing-file": "a staged install missing AGENTS.md is caught, which is the FILE member of the class",
   "doctor-kernel-artifacts-empty-directory": "a staged install whose roles/ exists but is EMPTY is missing it",
   "doctor-kernel-artifacts-complete-passes": "a complete staged install PASSes with no condition",
@@ -771,5 +771,7 @@
   "doctor-kernel-artifacts-fifo-refused": "a FIFO at AGENTS.md is refused in bounded time rather than opened",
   "doctor-kernel-artifacts-promoted-under-full-only": "kernel-artifacts is promoted to FAIL under full and stays a WARN below it",
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
-  "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live"
+  "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
+  "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
 }
