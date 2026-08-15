@@ -293,6 +293,40 @@ The stronger form, for whoever needs it next: enumerate the versions that DO
 exist and account for each, rather than asserting the package is absent. An
 absence read from a lagging index is indistinguishable from a lagging index.
 
+## NONDETERMINISTIC IN THE RELEASE PATH: `test/implementer-brief.test.ts`
+
+Found 2026-08-15 while driving the `0.1.0` publish. A rehearsal of `release.yml`
+on `7c0b1e7` failed at `npm test`:
+
+```
+test/implementer-brief.test.ts:1171
+the brief-drift step wired into the gates workflow ... reddens under two structurally different defangs
+  Error: ENOENT, No such file or directory '/tmp/tiphys-impl-wired-XE7crl/src/gates/schemas'
+      at stageKernel (test/implementer-brief.test.ts:96:5)
+```
+
+**Established as a FLAKE by discriminator rather than by argument.** The same
+commit's `npm test` was green in the `gates` workflow twenty minutes earlier,
+and an immediate re-dispatch of the identical rehearsal, same head and same
+inputs, passed. Two outcomes from one configuration is the definition.
+
+**The cause is NOT established, and one plausible story was tested and
+refuted.** The first hypothesis was a sibling test sweeping the `/tmp/tiphys-*`
+namespace, which is the shape M3-P10 reported as a tuition candidate. There is
+no sweeper: no broad `rm` over that namespace and nothing that reads `tmpdir()`
+and deletes. The hypothesis is recorded as dead so the next reader does not
+re-run it.
+
+**Why it did not block the publish**, stated as an argument rather than assumed:
+the flake sits at step 9, BEFORE the publish, so when it fires the run aborts
+and nothing reaches the registry. It costs a retry, never a wrong artifact. That
+is the fail-closed direction.
+
+Reachability under DR-0027: it is in `test/`, which ships nothing, and its
+failure mode is a false RED. It reaches a real path only in the sense that it
+can block a release, which is why it is here rather than nowhere. Same family as
+the `test/watcher.test.ts` flake this repository fixed earlier.
+
 ## UNOWNED AND EXPLOITABLE: `gates.yml` interpolates a branch name into a shell
 
 Found by the M3-P10 round-1 delta verifier as DV-8. It is listed here rather
