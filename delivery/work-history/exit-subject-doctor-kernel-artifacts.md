@@ -403,3 +403,262 @@ two not-applicables that ARE explained, each carrying its precondition id and
 evaluation. Second, that condition is structural for this subject: any branch
 that is not a phase branch and touches no citation-gated document reaches it,
 so no version of this change makes the runner exit 0 while I-3's ruling stands.
+
+## Fix round 1
+
+Round 0's head was `eb13da6`. Both E1.7 clean-room reviews returned
+FIX-ROUND-NEEDED, on the criteria contract's CR-002 and the hazard contract's
+CR-001. This section records what this round changed and the command that
+settles each claim. The findings themselves are not re-derived here: they are
+in `delivery/review/clean-room-m3-exit-subject-criteria.md` and
+`delivery/review/clean-room-m3-exit-subject-hazard.md` on branch
+claude/m3-exit-test, and the four shapes of the hazard finding were measured
+there against a real staged install.
+
+### The MECHANISM, not the instances
+
+**Presence was tested where the property that matters is resolvability.** The
+check asked whether a required path EXISTS (a non-empty `readdirSync` for a
+directory, a `classifyEntry` kind for the file) and reported success as
+`carries roles/, schemas/, checklists/ and AGENTS.md`, which is a claim about
+what the install RESOLVES. Criterion 3 had closed one instance of the gap, the
+empty directory. The hazard review forced three more directory shapes and the
+FILE shape, all PASS with FAIL count zero.
+
+The fix is a predicate, not a redesign of doctor. What "resolves" means is
+taken from the CONSUMER rather than invented, so the check cannot claim more
+than the consumer will deliver:
+
+    roles/       src/roles.ts:335              `.md`
+    schemas/     src/commands/validate.ts:156  `.schema.json`
+    checklists/  src/checklists.ts:91          `.yaml`
+
+plus, for every one of them and for `AGENTS.md`, that the member is a REGULAR
+FILE carrying bytes. One predicate, four instances closed.
+
+**What the derivation does NOT cover**, stated rather than left to be found.
+The predicate asks whether at least ONE member would be selected and carries
+bytes. It does not PARSE a member, so a `.yaml` that does not decode, a
+`.schema.json` that is not a schema and a `.md` with no frontmatter all
+resolve. It does not ask WHICH members are present, so an install carrying one
+role resolves `roles/` even when the role a brief names is the missing one.
+Both are deliberate and are written into the source comment: a per-document
+decode is the consuming command's own failure, reported by it, naming the path
+it could not use.
+
+Measured against the built CLI of a staged install of this head, one fresh copy
+per shape, gh stubbed and a remote configured so `kernel-artifacts` is the only
+check able to drive the exit code. Full output is committed at
+`witness/captures/doctor-kernel-artifacts-resolvability.txt`:
+
+| staged shape | round 0 (the reviews) | this head |
+|---|---|---|
+| `checklists/` = one `NOTES.txt` | PASS, exit 0, FAIL count 0 | FAIL `checklists/ (present, but no .yaml member resolves)`, exit 1 |
+| `roles/` = one empty subdirectory | PASS | FAIL `roles/ (present, but no .md member resolves)`, exit 1 |
+| every `roles/*.md` truncated | PASS | FAIL `roles/ (present, but no .md member resolves)`, exit 1 |
+| `AGENTS.md` truncated to 0 bytes | PASS | FAIL `AGENTS.md (present but empty, so it states nothing)`, exit 1 |
+
+### The two witnesses the class was missing
+
+The criteria review confirmed BY EXECUTION that the removed-DIRECTORY and
+removed-FILE behaviours, the two the plan names most explicitly, appeared in no
+witness's `tests[]` or `failedNamedTests` across all seven evaluations. They do
+now, and so does the new behaviour.
+
+`witness/doctor-kernel-artifacts.json` is the file criterion 7 names literally.
+It carries both central tests and two structurally different members: one
+suppresses the missing report entirely, the other drops the
+`kernel-artifacts-incomplete` condition, so the check can never be promoted to
+FAIL under `full`. `witness/doctor-kernel-artifacts-resolvability.json` mutates
+the two halves of the new predicate one at a time: member 0 defangs the
+consumer filter, member 1 defangs the content floor by one comparison.
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --only red-witness --evidence <dir> --base origin/main --head HEAD
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 9 witness(es) evaluated (8 own, 1 stored re-evaluated
+  in 12177ms); every witness red against every declared dangerous state and
+  green at head
+GATE EXIT=0
+```
+
+Read back out of `witness-records.json` rather than asserted, since a green
+bundle is not evidence about a particular witness. Both members of both new
+specs: 2 red runs at exit 1 and 1 head run at exit 0, and the reddened test
+names are exactly the ones the reviews said were uncovered:
+
+    doctor-kernel-artifacts            member 0 and member 1 both fail
+      "a staged install missing roles/ carries kernel-artifacts-incomplete,
+       which full promotes to FAIL"
+      "a staged install missing AGENTS.md is caught, which is the FILE member
+       of the class"
+    doctor-kernel-artifacts-resolvability   member 0 and member 1 both fail
+      "presence is not resolvability: the four shapes that used to PASS are
+       each named"
+
+**One repair this round had to make, and it is worth naming.**
+`witness/doctor-kernel-artifacts-fifo.json` went RED on rule (d) the first time
+the gate ran, because both its mutations quoted source lines the resolvability
+predicate had rewritten. The mutations were repointed at the new text and the
+same semantic dangerous states preserved. There is a consequence to record
+rather than gloss: with `carriesContent` also calling `classifyEntry` on the
+same path, defanging the FILE branch's own `classifyEntry` no longer reaches an
+open. The witness still reddens, on the DETAIL rather than on a hang. The
+mechanism is now guarded at two sites, which is why a single-site defang is no
+longer sufficient to make it dangerous.
+
+### The derivation debt, published rather than chased
+
+The hazard review's CR-002 is right that round 0 cited the mechanism
+`reading-a-path-whose-type-is-not-established` and published no derivation over
+its call sites. Here it is. The command, and its full output:
+
+```
+grep -rn "existsSync" src/
+```
+
+    src/fleet.ts:1, :65, :71          presence then statSync, type established
+    src/task.ts:2, :386, :408         boolean; :408 statSyncs before readdirSync
+    src/brief.ts:1, :53               PRESENCE THEN readFileSync AT :56
+    src/gates/credentials.ts:2, :413  boolean, HOME as a cwd; no open
+    src/gates/run.ts:868              a comment, not a call
+    src/version.ts:1, :15             PRESENCE, PATH RETURNED, OPENED AT :20
+    src/pool.ts:3, :271, :427, :465, :676, :677, :685   booleans, no open
+    src/commands/doctor.ts:2, :70, :197, :512, :561, :625, :792
+                                      :70 and :792 are comments; the rest are
+                                      booleans; the walk at :72 IS FIXED HERE
+    src/commands/lock.ts:1, :66, :79  booleans over a barrier file
+    src/commands/init.ts:3, :74       presence then statSync
+    src/teardown.ts:2, :348           presence only; nothing opens the report
+
+Twenty call sites in `src/` (thirty-three grep lines, thirteen of them import
+or comment lines). Three establish presence and then OPEN the path:
+
+- **src/commands/doctor.ts:72**, `readKernelEnginesNode`. INSIDE this phase's
+  files-to-touch, and CLOSED this round: it now walks with `classifyEntry`.
+- **src/version.ts:15**, `findOwnPackageJson`, opened by `readOwnVersion`.
+  OUTSIDE files-to-touch and not touched. The hang the review forced is here,
+  and it was measured PRE-EXISTING at the base `7b18144`, so it is tracked
+  rather than fixed in this phase.
+- **src/brief.ts:53**, the fleet warnings file, `readFileSync` at :56. OUTSIDE
+  files-to-touch. Tracked.
+
+**What this derivation does NOT cover, and one of the gaps bit the derivation
+itself.**
+
+1. It enumerates `existsSync` only, so a `readFileSync` with NO presence test
+   at all is invisible to it. One such site turned up incidentally while
+   classifying: `readPoolRecord` at src/pool.ts:171 opens the record path
+   inside a `try` that cannot catch a blocking open. Tracked, not fixed.
+2. It is scoped to `src/`. `scripts/` and `bin/` carry sixteen more matches,
+   which are dev harness rather than shipped runtime and were not classified.
+3. **A five-line window grep is the wrong instrument, and returned one hit
+   where the answer is three.** `grep -rn -A5 "existsSync(" src/ | grep -E
+   "readFileSync|..."` finds only src/brief.ts:56, because src/version.ts
+   returns the path from one function and opens it in another, and doctor.ts's
+   walk opens it inside the loop body past the window. The classification above
+   is per-site by reading, not by window.
+
+**Gap 1 was then closed with a second command, because a derivation that names
+its own hole and leaves it is half a derivation.** Widening from "presence then
+open" to "open at all":
+
+```
+grep -rn "readFileSync(\|openSync(\|createReadStream(" src/ --include=*.ts \
+  | grep -v import | grep -v readRegularFileIfPresent
+```
+
+    src/validate.ts:863     GUARDED: classifyEntry at :855 refuses absent,
+                            dangling, irregular and unexaminable first
+    src/task.ts:189         GUARDED: this IS readRegularFileIfPresent, the guard
+    src/gates/pin.ts:114    GUARDED: classifyEntry above it, then statSync
+    src/commands/doctor.ts:80  GUARDED AS OF THIS ROUND, by the walk at :72
+    src/brief.ts:43         UNGUARDED, no presence test at all
+    src/brief.ts:56         UNGUARDED, presence tested, type not established
+    src/lock.ts:143         UNGUARDED
+    src/lock.ts:164         UNGUARDED
+    src/version.ts:27       UNGUARDED, the site the review's hang comes from
+    src/pool.ts:171         UNGUARDED, inside a try that cannot catch a block
+    src/watcher.ts:591      openSync for APPEND, the write side of the same
+                            hazard (refuseOpenForWrite territory)
+
+Eleven open sites, four guarded and seven not. Three comment lines in
+`src/witness/run.ts` and `src/lock.ts` matched the grep and are not call sites.
+NONE of the seven is inside this phase's files-to-touch, so none is fixed here
+and all seven are tracked. This widening does not change what this round did;
+it changes what the round can honestly say it looked at.
+
+### The three small ones
+
+- **The witness filename (criteria CR-001).** `witness/doctor-kernel-artifacts.json`,
+  the name criterion 7 and files-to-touch both give, now exists and carries the
+  two behaviours the plan's witness step names. **The residual deviation is
+  declared here rather than left undeclared**: five sibling specs
+  (`-empty-directory`, `-fifo`, `-resolution`, `-unresolvable`, `-resolvability`)
+  and two captures sit beside it, none of them on files-to-touch. The reason is
+  the harness rule that every named test of a spec must redden under EVERY
+  member, so one spec per arm is forced; the plan's singular filename could not
+  have held them. That is offered for a reviewer's judgment, not asserted as
+  settled.
+- **The test name that stated an outcome it did not assert (hazard CR-003,
+  R-087).** `a staged install missing roles/ is a FAIL naming roles/` asserted
+  `WARN`. The NAME was wrong, not the assertion: the check returns the
+  condition and the printer promotes it. Renamed to `a staged install missing
+  roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL`, and
+  `test/behaviors.json` updated to match, since the registry value must equal
+  the reported test name.
+- **Criterion 10's dead arm (hazard CR-004).** Recorded truthfully in the
+  test's own comment and NOT made reachable. An install whose root cannot be
+  resolved has no `package.json` above it either, so `readOwnVersion` refuses at
+  src/version.ts:20 and the process exits 1 before any command runs. The
+  criterion's letter is met by that exit 1; the arm the unit test asserts is
+  never the one that produces it. Making it reachable would mean moving or
+  duplicating the startup version read, which is outside files-to-touch and is
+  the same walk tracked above. The measurement behind this is the hazard
+  review's, cited rather than repeated.
+
+### Suite, the complete sentence
+
+**Invocation** `npm test` (which is `node --test "test/**/*.test.ts"`).
+**Toolchain** node v26.6.0 from the scratch prefix, printed by `node --version`
+in the shell that ran it. **Build state** `dist/` built (`npm ci` exit 0,
+`npm run build` exit 0, `git status --porcelain` clean afterwards).
+
+```
+i tests 849
+i suites 0
+i pass 849
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 271230.607159
+SUITE EXIT=0
+```
+
+Round 0 reported 847 at the same invocation, toolchain and build state; the two
+new tests are this round's. **Transliteration, declared:** node's test reporter
+prints U+2139 at the head of each summary line. Eight occurrences are rendered
+`i` above. Nothing else in any captured output in this document was changed.
+
+The doctor file alone, which is criterion 6's own command:
+`node --test test/doctor.test.ts`, same toolchain and build state, **tests 32,
+pass 32, fail 0, SKIPPED 0**, duration 18980ms. Round 0 reported 30.
+
+### The claim grep, run against this document
+
+Line-based binding form over the whole work history: **8 matching lines**
+(93, 214, 269, 270, 471, 583, 587, 628). Wrap-insensitive form: **8
+occurrences**. The gap is zero, so nothing in this document is hidden from the binding grep by
+a line wrap.
+
+Four hits are this round's, the fourth being line 628 inside this very
+paragraph. Line 471 ("the check can never be promoted to FAIL under full")
+describes the effect of witness member 1, and the command that settles it is the red-witness run quoted directly above it: the member is red at
+exit 1 on both named tests. Lines 583 and 587 (criterion 10's dead arm) are not
+settled by anything of mine; they are settled by the E1.7 hazard review, which
+copied `dist/` to a directory with no `package.json` above it and measured
+`tiphys doctor` exit 1 with the message from `readOwnVersion` rather than from
+`checkKernelArtifacts` (its CR-004). That is a citation, not a re-derivation,
+and this round did not reproduce it.
