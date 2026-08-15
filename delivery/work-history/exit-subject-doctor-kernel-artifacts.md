@@ -4,8 +4,9 @@
 - subject: the M3 exit test's designated subject change (stage E1.6). It is NOT
   a phase of the M3 plan, and the section "the branch is not phase-shaped, by
   ruling" is why that sentence is load-bearing rather than pedantic.
-- branch: `task/exit-subject-doctor-kernel-artifacts`, created by the kernel's
-  own pool at the fetched base d5d87f7 (see "how this work was launched")
+- branch: `task/exit-subject-r2`, created by the kernel's own pool at the
+  fetched base 7b18144 (see "how this work was launched"), pushed for review as
+  `claude/exit-subject-doctor-kernel-artifacts`
 - plan: the amended instance the exit test produced at E1.4 and E1.5, which
   lives in the exit-test bundle rather than in `delivery/plan/`, at
   `delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml` on the bundle
@@ -13,9 +14,18 @@
   and a citation that resolves against the wrong tree is worse than none
   (CLAUDE.md:155).
 
-**This phase is NOT complete. One gate is red and the reason is structural
-rather than a defect in this change.** Section "the blocker" states it with both
-arms measured. Everything else in the phase is done and green.
+**REVISED 2026-08-15 after the blocker was fixed and merged.** The first
+delivery of this work was blocked by a red `red-witness` whose cause was a
+harness defect rather than a defect in this change. That defect is fixed on
+`main` at 7b18144, this work was re-based onto it, and **`red-witness` is now
+GREEN with 7 witnesses evaluated and zero red**. The blocker section below is
+kept, with its resolution beside it, because the mechanism it records is the
+reason the harness changed.
+
+One weaker condition remains and it is NOT this change: the gate runner exits 20
+because two REQUIRED gates are not applicable on this branch, `citations` and
+`scope`, each with its precondition id and evaluation recorded. See the
+expected-status section.
 
 ## The branch is not phase-shaped, by orchestrator ruling
 
@@ -146,11 +156,16 @@ an implementer does not edit the plan.
 
 ## Evidence
 
-**Suite, the complete sentence.** Invocation `npm test`, toolchain node
-v26.6.0, build state `dist/` present (built immediately before). Reported:
-tests 836, pass 836, fail 0, **skipped 0**, todo 0, cancelled 0. Exit 0. The
-base at d5d87f7 reported 824 under the identical sentence, so this phase adds
-twelve tests and skips none.
+**Suite, the complete sentence, re-measured after the rebase.** Invocation
+`npm test`, toolchain node v26.6.0, build state `dist/` present (built
+immediately before). Reported: tests 847, pass 847, fail 0, **skipped 0**,
+todo 0, cancelled 0. Exit 0.
+
+The arithmetic across the rebase, since three numbers are now in play: the old
+base d5d87f7 reported 824 and this work made it 836, adding twelve. The new base
+7b18144 carries the witness-ownership fix and its own tests, and the same twelve
+land on top of it for 847, which the `suite` gate reports independently in the
+table below. Nothing here skips a test under any of the three.
 
 **The real capture, and it is the strongest thing in the phase.**
 `witness/captures/doctor-kernel-artifacts-staged-install.txt` is verbatim
@@ -239,6 +254,25 @@ Arm A is what the branch carries, because a repaired spec at least guards the
 new source text; the remaining red is then a judgment about rule (d) rather
 than a stale quotation.
 
+### RESOLVED: both arms re-measured under the fix on `main` at 7b18144
+
+The harness was changed rather than this work: ownership is now per MEMBER
+instead of per FILE. Re-measured here rather than taken on report, at base
+7b18144 with the same branch content:
+
+| arm | before the fix | after the fix |
+|---|---|---|
+| A, both specs repaired (what this branch carries) | `rule (d)` red on their untouched members | **green**, `every witness red against every declared dangerous state and green at head`, runner exit 0 |
+| B, both specs left as `main` has them | `error: mutation find text ... does not occur` | **unchanged: the same error** |
+
+**Arm B is unchanged, and that is correct rather than a gap.** A spec whose
+`find` text no longer occurs cannot be applied to anything, so erroring is the
+only honest verdict available; the fix was never about that arm. What the fix
+removes is the TRAP between the two: repairing the quotation used to be punished
+by rule (d) firing on siblings, so both routes were closed. Now the repair route
+is open and the stale route is still an error, which leaves exactly one correct
+action for a phase that edits a quoted line: repair the quoting spec.
+
 ## Two findings for the reviewers, neither fixed here
 
 - **The plan schema and the kernel's own pool disagree about what a phase
@@ -306,15 +340,10 @@ this work at all**, on either branch name.
 
 ## The gate bundle, as the whole expected-status table
 
-`tiphys gates run --registry gate-registry.yaml --mode full --base d5d87f7
---head HEAD --phase exit-subject-doctor-kernel-artifacts`, node v26.6.0,
-`dist/` built. Runner exit 1. Measured at 74aedeb4ee080e0960badfe369292dbcef8a926b
-and re-measured at 7a51c6072f798bc7438bb6cac84ca044490542a2, the head carrying
-this table. The two runs were compared field by field rather than eyeballed:
-counts equal true, and every row's id, status and units equal true. The only
-commit between the two heads adds this section, so nothing a gate reads about
-the change itself differs; the re-measurement is what establishes that rather
-than an argument that it must be so.
+`tiphys gates run --registry gate-registry.yaml --mode full --base 7b18144
+--head HEAD --phase exit-subject-r2`, node v26.6.0, `dist/` built, at head
+25e9df73bc62d3df2779439aaf8a337ebcc0f7ad. **Runner exit 20**, and the reason is
+stated below rather than left in the exit code.
 
 | gate | status | units | applicable | vacuous |
 |---|---|---|---|---|
@@ -322,43 +351,55 @@ than an argument that it must be so.
 | coverage | green | 115 | true | false |
 | credential-scrub | green | 7 | true | false |
 | credential-token | not-applicable | 0 | false | false |
-| suite | green | 836 | true | false |
+| suite | green | 847 | true | false |
 | citations | not-applicable | 0 | false | false |
 | scope | not-applicable | 0 | false | false |
 | deploy | not-applicable | 0 | false | false |
 | migrations | not-applicable | 0 | false | false |
 | clause-map | green | 74 | true | false |
-| red-witness | **red** | 7 | true | false |
+| red-witness | green | 7 | true | false |
 | agent-rules-drift | green | 21 | true | false |
 | brief-drift | green | 18 | true | false |
 | check-agents-references | green | 21 | true | false |
 | check-dual-review | not-applicable | 0 | false | false |
 | license | green | 10 | true | false |
 
-Recomputed from the rows: green 9, red 1, not-applicable 6, error 0.
-`summary.json` reports declared 16, applicable 10, verdict 10, green 9, red 1,
-not-applicable 6, error 0, vacuous 0. The recomputed counts equal the reported
-ones. Every green gate carries `units` greater than zero, and every
-not-applicable carries its precondition id and evaluation in `summary.json`, so
-none is a silent skip.
+Recomputed from the rows: green 10, not-applicable 6, red 0, error 0.
+`summary.json` reports declared 16, applicable 10, verdict 10, green 10, red 0,
+not-applicable 6, error 0, vacuous 0. **The recomputed counts equal
+`summary.json`.**
 
-Reading the table against DR-0018's expected-status rule, row by row rather than
-as a count:
+Read against E1.6's assertion, clause by clause:
 
-- Every NON-diff-scoped required gate is green with units greater than zero:
-  `manifest-self-check` 8, `coverage` 115, `credential-scrub` 7, `suite` 836,
-  `clause-map` 74, `agent-rules-drift` 21, `brief-drift` 18,
-  `check-agents-references` 21, `license` 10.
-- Every diff-scoped gate is green or not-applicable with a recorded reason, with
-  ONE exception: `red-witness`, which is RED and which the blocker section
-  explains. It is triggered rather than skipped, which is what the exit test
-  requires of it on a head touching `src/commands/doctor.ts`; a not-applicable
-  there would have been the vacuous pass the exit test exists to refuse.
-- `scope` is not-applicable for a reason that is NOT the diff-scoped kind, and
-  the ruling section above says so plainly rather than letting the word
-  not-applicable carry both meanings.
-- Zero `error`, zero `vacuous`.
+- **every non-diff-scoped required gate green with `units` greater than zero**:
+  yes, ten of them, and the units are in the table rather than summarised;
+- **every diff-scoped gate green or not-applicable with a recorded reason**:
+  yes, and every not-applicable carries its precondition id and evaluation in
+  `summary.json`, so none is a silent skip;
+- **`red-witness` GREEN rather than not-applicable**: yes, green with 7
+  witnesses evaluated. Six own and one stored re-evaluated; every own witness is
+  red against every declared dangerous state at 2 of 2 repetitions and green at
+  head. This is the clause the whole stage turns on and it is now met;
+- **zero `error`, zero `vacuous`**: yes;
+- **the runner exits 0**: **NO. It exits 20.**
 
-`red-witness` reports four own witnesses GREEN with 2 of 2 red repetitions on
-each of their two members, and two red on rule (d); the run record carries every
-row.
+### Why the runner exits 20, stated plainly
+
+```
+gates: required gate(s) not applicable: citations, scope
+```
+
+Neither is red and neither is silent. `citations` is not applicable because no
+changed path lies under its six configured trees (this diff's only `delivery/`
+path is a work history, which M2's own scope decision removed from the gate's
+documents). `scope` is not applicable because the branch is not phase-shaped,
+which is the accepted consequence of the orchestrator's branch ruling recorded
+as intervention I-3 in the exit-test bundle.
+
+**Two things follow and both belong to the orchestrator rather than to this
+work.** First, the exit test's own text says the runner "treats an UNEXPLAINED
+required not-applicable as a failure (exit 20)"; measured here, it exits 20 for
+two not-applicables that ARE explained, each carrying its precondition id and
+evaluation. Second, that condition is structural for this subject: any branch
+that is not a phase branch and touches no citation-gated document reaches it,
+so no version of this change makes the runner exit 0 while I-3's ruling stands.
