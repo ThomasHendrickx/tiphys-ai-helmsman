@@ -1,0 +1,28 @@
+{
+  "stage": "E1.7",
+  "expectation": "exit 0: clean-room reviewer, CRITERIA contract",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "brief",
+    "compose",
+    "--role",
+    "clean-room-reviewer",
+    "--phase",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml",
+    "--phase-id",
+    "M3-P13",
+    "--review-contract",
+    "criteria",
+    "--out",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/delivery/evidence/m3-exit-test/e1/e1-7/brief-clean-room-criteria.md"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2",
+  "startedAt": "2026-08-15T17:51:50.952Z",
+  "endedAt": "2026-08-15T17:51:51.218Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": ""
+}

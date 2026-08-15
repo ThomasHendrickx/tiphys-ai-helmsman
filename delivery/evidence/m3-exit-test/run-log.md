@@ -223,3 +223,19 @@ eb13da6b96137967d4a5b8311f0f044e75758b42.
 About to: resolve the clean-room checklist with an injected per-phase probe and
 compose both review contracts through the kernel, then hand back. The two
 reviews themselves are the orchestrator's to dispatch, not this runner's.
+
+Happened (E1.7, the runner's half): the per-phase probe file was authored and
+validates exit 0 under `--context`; `checklist resolve --checklist clean-room
+--extra <file> --framing criteria-contract` exit 0 with 27 probes, all four
+injected probes present by id; `checklist resolve --checklist hazard-review`
+exit 0 with 9 probes; `brief compose --role clean-room-reviewer
+--review-contract criteria` and `--review-contract hazard` both exit 0, 313
+lines each, differing in the contract clause and not only in a label. The pack
+handed to the orchestrator is
+`delivery/evidence/m3-exit-test/e1-7-dispatch-pack.md`.
+
+### 16. Dispatch D ends here
+
+E1.6 re-run and E1.7's composition are done. The two reviews are the
+orchestrator's to dispatch. Nothing published, nothing merged, nothing pushed to
+`main`.
