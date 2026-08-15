@@ -167,26 +167,21 @@ export type WitnessSpecLoad =
   | { ok: true; spec: WitnessSpec; sha256: string; body: string }
   | { ok: false; reason: string; diagnostics: string[] };
 
-/** Load and validate one spec from a path the caller supplied (M2-C-6). */
-export function loadWitnessSpec(path: string): WitnessSpecLoad {
-  const read = readRegularFileIfPresent(path);
-  if (read.kind === "absent") {
-    return {
-      ok: false,
-      reason: `witness spec ${path} does not exist`,
-      diagnostics: [],
-    };
-  }
-  if (read.kind === "refused") {
-    return { ok: false, reason: read.reason, diagnostics: [] };
-  }
+/**
+ * Validate and materialise one spec from its BODY, with `label` naming the
+ * source in any reason. Split out of `loadWitnessSpec` so a spec can also be
+ * materialised from a git object (`git show <ref>:<path>`) rather than only
+ * from a working-tree path: the per-member ownership derivation below needs
+ * the merge-base version of a spec, which has no path.
+ */
+export function parseWitnessSpec(body: string, label: string): WitnessSpecLoad {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(read.body);
+    parsed = JSON.parse(body);
   } catch (error) {
     return {
       ok: false,
-      reason: `witness spec ${path} does not parse as JSON: ${(error as Error).message}`,
+      reason: `witness spec ${label} does not parse as JSON: ${(error as Error).message}`,
       diagnostics: [],
     };
   }
@@ -194,7 +189,7 @@ export function loadWitnessSpec(path: string): WitnessSpecLoad {
   if (diagnostics.length > 0) {
     return {
       ok: false,
-      reason: `witness spec ${path} is not a valid witness spec`,
+      reason: `witness spec ${label} is not a valid witness spec`,
       diagnostics,
     };
   }
@@ -222,9 +217,95 @@ export function loadWitnessSpec(path: string): WitnessSpecLoad {
   return {
     ok: true,
     spec,
-    sha256: createHash("sha256").update(read.body).digest("hex"),
-    body: read.body,
+    sha256: createHash("sha256").update(body).digest("hex"),
+    body,
   };
+}
+
+/** Load and validate one spec from a path the caller supplied (M2-C-6). */
+export function loadWitnessSpec(path: string): WitnessSpecLoad {
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return {
+      ok: false,
+      reason: `witness spec ${path} does not exist`,
+      diagnostics: [],
+    };
+  }
+  if (read.kind === "refused") {
+    return { ok: false, reason: read.reason, diagnostics: [] };
+  }
+  return parseWitnessSpec(read.body, path);
+}
+
+/**
+ * Canonical form of one dangerous-state member: the fields its kind declares,
+ * in a fixed order, JSON-encoded. Two members are the SAME member when their
+ * canonical forms are equal. Field order in the source document is therefore
+ * not significant, which matters because a reformatting of a spec file must
+ * not be readable as authorship of its members.
+ */
+export function canonicalMember(member: DangerousStateMember): string {
+  if (member.kind === "baseline-ref") {
+    return JSON.stringify(["baseline-ref", member.ref]);
+  }
+  if (member.kind === "patch") {
+    return JSON.stringify(["patch", member.patch]);
+  }
+  return JSON.stringify(["mutation", member.file, member.find, member.replace]);
+}
+
+/**
+ * WHICH MEMBERS OF A SPEC THIS PHASE AUTHORED (the ownership scope of rule
+ * (d)).
+ *
+ * Rule (d) requires a declared dangerous state to intersect the phase diff, so
+ * that a phase cannot add a witness about unrelated code and claim coverage.
+ * That obligation is a claim about AUTHORSHIP, and authorship is per MEMBER.
+ * Deriving it from the spec FILE appearing in the diff is one granularity too
+ * coarse: it makes every sibling member of an edited file acquire an
+ * obligation its author never took on. Measured by the M3 exit test at stage
+ * E1.6, where repairing one member's quoted source line reddened two untouched
+ * members of the same file.
+ *
+ * A member is OWNED when no structurally identical member exists in the
+ * spec as of the merge base. Matching is a MULTISET consume, not a set
+ * membership test, so adding a second copy of an existing member is owned
+ * (rule (g) is what refuses that copy, and it must still see it as new).
+ *
+ * `baselineMembers` is `undefined` when the spec did not exist at the merge
+ * base, did not parse there, or could not be read there. All three mean the
+ * phase is answerable for the whole file, so every member is owned. That is
+ * the conservative direction: the failure mode of this derivation is a member
+ * wrongly EXEMPTED, so an unreadable baseline keeps the obligation rather than
+ * dropping it.
+ */
+export function phaseOwnedMemberIndices(
+  headMembers: readonly DangerousStateMember[],
+  baselineMembers: readonly DangerousStateMember[] | undefined,
+): Set<number> {
+  const owned = new Set<number>();
+  if (baselineMembers === undefined) {
+    for (let index = 0; index < headMembers.length; index += 1) {
+      owned.add(index);
+    }
+    return owned;
+  }
+  const remaining = new Map<string, number>();
+  for (const member of baselineMembers) {
+    const key = canonicalMember(member);
+    remaining.set(key, (remaining.get(key) ?? 0) + 1);
+  }
+  for (let index = 0; index < headMembers.length; index += 1) {
+    const key = canonicalMember(headMembers[index] as DangerousStateMember);
+    const left = remaining.get(key) ?? 0;
+    if (left > 0) {
+      remaining.set(key, left - 1);
+      continue;
+    }
+    owned.add(index);
+  }
+  return owned;
 }
 
 export type WitnessSpecListing =

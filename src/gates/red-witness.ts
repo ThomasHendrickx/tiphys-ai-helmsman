@@ -9,6 +9,8 @@ import {
   listWitnessSpecFiles,
   loadWitnessSpec,
   memberTouchedFiles,
+  parseWitnessSpec,
+  phaseOwnedMemberIndices,
 } from "../witness/spec.ts";
 import type { WitnessSpec } from "../witness/spec.ts";
 import {
@@ -276,6 +278,40 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
 
   const own = specs.filter((entry) => diff.files.has(entry.repoRelative));
   const stored = specs.filter((entry) => !diff.files.has(entry.repoRelative));
+
+  /**
+   * The members of an own spec that THIS PHASE AUTHORED, which is rule (d)'s
+   * scope. Membership in `own` is file-granular ("some byte of this spec
+   * changed") and rule (d)'s obligation is member-granular ("this declared
+   * dangerous state must intersect the diff"), so the two are reconciled here
+   * rather than by handing the harness a boolean for the whole file.
+   *
+   * The old side is read at the MERGE BASE, which is the revision the diff
+   * itself is taken against. A baseline that is absent, unreadable or invalid
+   * yields `undefined`, and `phaseOwnedMemberIndices` then owns every member:
+   * an added spec is wholly the phase's, and so is one whose previous version
+   * cannot be established.
+   */
+  const ownedMembersOf = (entry: {
+    spec: WitnessSpec;
+    repoRelative: string;
+  }): Set<number> => {
+    const shown = gitIn(repoRoot, [
+      "show",
+      `${diff.mergeBaseSha}:${entry.repoRelative}`,
+    ]);
+    if (!shown.ok) {
+      return phaseOwnedMemberIndices(entry.spec.dangerousStates, undefined);
+    }
+    const baseline = parseWitnessSpec(
+      shown.stdout,
+      `${diff.mergeBaseSha}:${entry.repoRelative}`,
+    );
+    return phaseOwnedMemberIndices(
+      entry.spec.dangerousStates,
+      baseline.ok ? baseline.spec.dangerousStates : undefined,
+    );
+  };
   const triggeredStored = stored.filter((entry) =>
     entry.spec.dangerousStates.some((member) =>
       memberTouchedFiles(member, readPatchAtHead).some((file) =>
@@ -327,7 +363,10 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
       scratchRoot,
     };
     for (const entry of own) {
-      const inputs: EvaluationInputs = { ...baseInputs, phaseOwn: true };
+      const inputs: EvaluationInputs = {
+        ...baseInputs,
+        phaseOwnedMembers: ownedMembersOf(entry),
+      };
       if (run.hooks !== undefined) {
         inputs.hooks = run.hooks;
       }
@@ -341,7 +380,12 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
     }
     const reEvaluationStart = Date.now();
     for (const entry of triggeredStored) {
-      const inputs: EvaluationInputs = { ...baseInputs, phaseOwn: false };
+      // A stored witness is one the phase diff does not touch at all, so no
+      // member of it is the phase's and rule (d) has nothing to apply to.
+      const inputs: EvaluationInputs = {
+        ...baseInputs,
+        phaseOwnedMembers: new Set<number>(),
+      };
       if (run.hooks !== undefined) {
         inputs.hooks = run.hooks;
       }

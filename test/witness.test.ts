@@ -1578,6 +1578,215 @@ test("a mutation member outside the phase diff is red naming the member and movi
 });
 
 // ---------------------------------------------------------------------------
+// Rule (d)'s SCOPE: the members this phase authored, not the members of a
+// file this phase touched.
+//
+// Ownership used to be derived from the spec FILE appearing in the diff and
+// then gated a PER MEMBER obligation, so editing any one member of a
+// multi-member spec imposed rule (d) on every sibling member of that file,
+// including members the phase never authored. Measured by the M3 exit test at
+// stage E1.6: repairing one member's quoted source line reddened two untouched
+// members twelve lines away.
+//
+// The fixture below is the mechanism rather than that instance. Its spec
+// EXISTS AT THE BASE with four members and the head edits exactly one of them,
+// so three untouched siblings are dragged into the file's diff without being
+// authored by it. The three cover rule (d)'s three distinct arms:
+//
+//   member 1  mutation of a file the diff does not touch  (changedTouched empty)
+//   member 2  mutation of a file the diff DOES touch, at a line outside every
+//             changed hunk                                (insideHunk false)
+//   member 3  patch whose files the diff does not touch   (the non-mutation kind)
+//
+// One witness is not a class, so the untouched siblings are three structurally
+// different members and not three spellings of one.
+// ---------------------------------------------------------------------------
+
+const SIBLING_ADDER_BASE = [
+  "export function add(a, b) {",
+  "  return a + b;",
+  "}",
+  "",
+].join("\n");
+
+const SIBLING_ADDER_HEAD = [
+  "export function add(a, b) {",
+  "  return b + a;",
+  "}",
+  "",
+].join("\n");
+
+const SIBLING_LEGACY = [
+  "export function twice(x) {",
+  "  return x * 2;",
+  "}",
+  "",
+].join("\n");
+
+/** The member's find text sits at line 2; the head edit is at line 5. */
+const SIBLING_SPARE_BASE = [
+  "export function spare(s) {",
+  '  return s + "!";',
+  "}",
+  "",
+  "export const spareVersion = 1;",
+  "",
+].join("\n");
+
+const SIBLING_SPARE_HEAD = [
+  "export function spare(s) {",
+  '  return s + "!";',
+  "}",
+  "",
+  "export const spareVersion = 2;",
+  "",
+].join("\n");
+
+const SIBLING_TEST = [
+  'import test from "node:test";',
+  'import assert from "node:assert/strict";',
+  'import { add } from "../src/adder.ts";',
+  'import { twice } from "../src/legacy.ts";',
+  'import { spare } from "../src/spare.ts";',
+  "",
+  'test("combo works", () => {',
+  "  assert.equal(add(2, 2), 4);",
+  "  assert.equal(twice(3), 6);",
+  '  assert.equal(spare("a"), "a!");',
+  "});",
+  "",
+].join("\n");
+
+const SIBLING_PATCH = [
+  "diff --git a/src/legacy.ts b/src/legacy.ts",
+  "--- a/src/legacy.ts",
+  "+++ b/src/legacy.ts",
+  "@@ -1,3 +1,3 @@",
+  " export function twice(x) {",
+  "-  return x * 2;",
+  "+  return x + x + 1;",
+  " }",
+  "",
+].join("\n");
+
+const SIBLING_TOUCHED_MEMBER_BASE = {
+  kind: "mutation",
+  file: "src/adder.ts",
+  find: "return a + b;",
+  replace: "return a - b;",
+};
+
+/** The same member after the phase repaired its quotation of the edited line. */
+const SIBLING_TOUCHED_MEMBER_HEAD = {
+  kind: "mutation",
+  file: "src/adder.ts",
+  find: "return b + a;",
+  replace: "return a - b;",
+};
+
+const SIBLING_UNTOUCHED_MEMBERS = [
+  {
+    kind: "mutation",
+    file: "src/legacy.ts",
+    find: "return x * 2;",
+    replace: "return x * 3;",
+  },
+  {
+    kind: "mutation",
+    file: "src/spare.ts",
+    find: '  return s + "!";',
+    replace: '  return s + "?";',
+  },
+  { kind: "patch", patch: "patches/legacy-alt.patch" },
+];
+
+function siblingSpec(members: Array<Record<string, unknown>>): string {
+  return fixtureSpec({
+    id: "combo-guard",
+    behavior: "combo-works",
+    tests: ["combo works"],
+    class: "additive",
+    dangerousStates: members,
+    deterministic: true,
+    repeats: 1,
+  });
+}
+
+/**
+ * A fixture whose witness spec EXISTS AT THE BASE. `extraHeadMembers` are
+ * appended to the head spec only, so they are members this phase added.
+ */
+function siblingFixture(extraHeadMembers: Array<Record<string, unknown>> = []): Fixture {
+  return makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": fixtureBehaviors({ "combo-works": "combo works" }),
+      "src/adder.ts": SIBLING_ADDER_BASE,
+      "src/legacy.ts": SIBLING_LEGACY,
+      "src/spare.ts": SIBLING_SPARE_BASE,
+      "test/combo.test.ts": SIBLING_TEST,
+      "patches/legacy-alt.patch": SIBLING_PATCH,
+      "witness/combo-guard.json": siblingSpec([
+        SIBLING_TOUCHED_MEMBER_BASE,
+        ...SIBLING_UNTOUCHED_MEMBERS,
+      ]),
+    },
+    {
+      "src/adder.ts": SIBLING_ADDER_HEAD,
+      "src/spare.ts": SIBLING_SPARE_HEAD,
+      "witness/combo-guard.json": siblingSpec([
+        SIBLING_TOUCHED_MEMBER_HEAD,
+        ...SIBLING_UNTOUCHED_MEMBERS,
+        ...extraHeadMembers,
+      ]),
+    },
+  );
+}
+
+test("editing one member of a witness spec imposes rule (d) on that member only, not on the untouched siblings sharing its file", () => {
+  const fixture = siblingFixture();
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.doesNotMatch(outcome.result.detail, /rule \(d\)/);
+
+  // Named individually so that a fix which merely stops rule (d) firing for
+  // ONE arm cannot pass: each untouched sibling reddened for its own reason
+  // before the ownership scope was corrected.
+  assert.doesNotMatch(outcome.result.detail, /member 1, mutation of src\/legacy\.ts/);
+  assert.doesNotMatch(outcome.result.detail, /member 2, mutation of src\/spare\.ts/);
+  assert.doesNotMatch(outcome.result.detail, /member 3, patch patches\/legacy-alt\.patch/);
+
+  // The edited member was still evaluated rather than skipped: the witness
+  // reports four member records and every one of them was red.
+  const evaluation = outcome.evaluations.find((entry) => entry.witness === "combo-guard");
+  assert.equal(evaluation?.members.length, 4);
+  for (const member of evaluation?.members ?? []) {
+    assert.equal(member.rate?.red, member.rate?.total, JSON.stringify(member.rate));
+  }
+});
+
+test("a member this phase ADDED to an existing witness spec must still intersect the phase diff", () => {
+  const fixture = siblingFixture([
+    {
+      kind: "mutation",
+      file: "src/legacy.ts",
+      find: "return x * 2;",
+      replace: "return x - 2;",
+    },
+  ]);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(
+    outcome.result.detail,
+    /rule \(d\): declared dangerous state does not intersect the phase diff \(member 4, mutation of src\/legacy\.ts\)/,
+  );
+  // ONLY the added member is named. The three untouched siblings, one of which
+  // mutates the very same unchanged file, take no obligation from this rule.
+  assert.doesNotMatch(outcome.result.detail, /member 1, mutation of src\/legacy\.ts/);
+  assert.doesNotMatch(outcome.result.detail, /member 3, patch patches\/legacy-alt\.patch/);
+});
+
+// ---------------------------------------------------------------------------
 // Criterion 7: the pin witness (five fields; mtimeMs named)
 // ---------------------------------------------------------------------------
 
