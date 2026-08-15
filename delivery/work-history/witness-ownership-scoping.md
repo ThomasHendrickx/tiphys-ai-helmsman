@@ -5,8 +5,9 @@
 - not a plan phase: this is a harness defect fix in shipped `src/`, dispatched
   by the orchestrator after the M3 exit test's stage E1.6 hit it
 - files this touches: `src/witness/run.ts`, `src/witness/spec.ts`,
-  `src/gates/red-witness.ts`, `test/witness.test.ts`, `test/behaviors.json`,
-  the two `witness/witness-rule-d-*.json` specs, this file
+  `src/gates/red-witness.ts`, `scripts/m2-exit-test.sh`,
+  `test/witness.test.ts`, `test/behaviors.json`, the two
+  `witness/witness-rule-d-*.json` specs, this file
 
 This file is written incrementally from the first minutes of the round, per the
 T-008 beacon rule. Sections appear in the order they were established, not in
@@ -168,8 +169,8 @@ INDICES rather than a boolean about a file.
    Definition at src/witness/spec.ts:283.
 2. `src/witness/run.ts` replaces `phaseOwn: boolean` with
    `phaseOwnedMembers: ReadonlySet<number>`, and rule (d)'s loop skips any
-   index not in it. Consumer at src/witness/run.ts:1281. `PhaseDiff` also gains
-   `mergeBaseSha` (src/witness/run.ts:85), because the old side has to be read
+   index not in it. Consumer at src/witness/run.ts:1291. `PhaseDiff` also gains
+   `mergeBaseSha` (src/witness/run.ts:95), because the old side has to be read
    at the revision the `base...head` three-dot diff is actually taken against.
    Reading it at `baseSha` instead would reproduce standing warning 13's
    two-dot misreading: on a branch that has fallen behind, `baseSha` carries
@@ -185,11 +186,11 @@ unreadable or invalid yields `undefined`, and every member is then owned. So an
 added spec is wholly the phase's, and so is one whose previous version the gate
 did not establish. The bad outcome of this derivation is a member wrongly
 EXEMPTED, so the unestablished case keeps the obligation rather than dropping
-it. **The added-spec arm is measured** (every existing rule (d) test in
-test/witness.test.ts:1554 runs through it, because `adderFixture` puts the spec
-in the head files only). **The unreadable-baseline and invalid-baseline arms are
-NOT measured**, and section 4 item 5 records that as an open item rather than
-claiming the code path works.
+it. **All three arms are measured.** The added-spec arm runs under every
+existing rule (d) test (test/witness.test.ts:1554; `adderFixture` puts the spec
+in the head files only). The unparseable-baseline and invalid-baseline arms were
+unexercised when this section was first written and are forced in section 10,
+ARMS B and C, against both the pre-change and post-change trees.
 
 ## 4. What my derivation did NOT cover
 
@@ -210,15 +211,15 @@ The reviewer's first check, per CLAUDE.md:362.
    only its callers' granularity rather than its own resolution rules. One
    consequence of its behaviour did surface, in section 7 below, and it surfaced
    by execution rather than by this reading.
-4. **Renames are outside the derivation.** `computePhaseDiff` passes
-   `--no-renames` (src/witness/run.ts:244), so a spec file renamed by the phase
-   appears as an add plus a delete. The added path has no merge-base version,
-   so `phaseOwnedMemberIndices` owns every member of it. I did not construct a
-   rename fixture, so that statement is read from the source rather than
-   measured, and I have not established what the pre-change behaviour was.
-5. **`git merge-base` failing is handled but not exercised.** The fallback to
-   `baseSha` at src/witness/run.ts:240 is unmeasured; I did not build an
-   unrelated-histories fixture.
+4. **Renames.** `computePhaseDiff` passes `--no-renames`
+   (src/witness/run.ts:254), so a renamed spec appears as an add plus a delete
+   and the added path has no merge-base version. When this section was first
+   written that was read from the source; section 10 ARM A now MEASURES it on
+   both trees and finds the behaviour unchanged.
+5. **The fail-safe arms were designed and not exercised when this section was
+   first written.** Section 10 closes that: the rename, invalid-baseline and
+   unparseable-baseline arms are now forced against both trees, and the
+   `git merge-base` fallback is measured to be unreachable.
 
 ## 5. The witness, both directions
 
@@ -392,7 +393,7 @@ That is worth knowing when reading CLAUDE.md:155, which reads as though every
 new `delivery/` document is gated. Its citations are written to the `path:line`
 form anyway.
 
-## 7. THE BLOCKER, which is pre-existing and is reproduced on pristine main
+## 7. THE BLOCKER, found here, reproduced on pristine main, and FIXED here
 
 **The CI-equivalent run, `scripts/m2-exit-test.sh --bundle pr`, FAILS on this
 branch with exit 1. Every gate row in it is green. What fails is its per-phase
@@ -482,27 +483,132 @@ green-path demonstration then reddens.** The repository's red-witness rule
 requires a witness for a new behavior; the repository's own exit test currently
 refuses the only witness that rule admits here.
 
-### 7.5 Two candidate fixes, and why I am not choosing between them
+### 7.5 The escalation, and the orchestrator's refusal of it
 
-I did not fix this, and the reason is not that it is small.
+I raised this under DR-0016 as two comparable options and asked. **The
+orchestrator declined the escalation and gave its reasoning, which is recorded
+here because it corrects my judgement rather than merely overriding it.**
 
-- **Harness side.** Make the green-path demonstration evaluate the spec corpus
-  AS OF the audited head, so the composition is self-consistent. Shipped
-  semantics untouched; the change is to `scripts/m2-exit-test.sh`, which is the
-  exit-test harness and carries its own falsifiability guard.
-- **Kernel side.** A stored witness spec that does not exist at the audited head
-  is not part of the audited state, so re-evaluating it and reporting "no longer
-  guards its behavior" is a claim its evidence does not support, which is
-  T-009's shape one scope down. Skipping it with a recorded reason would fix the
-  class permanently, and it would also be the enabling condition for witnessing
-  anything in this area.
+The two options are NOT comparable, and the harness option is not merely
+cheaper, it is more FAITHFUL. The demonstration replays M2-P2 as
+`--base sha^ --head sha` while walking the present-day working tree for the
+corpus. That configuration is MANUFACTURED BY THE DEMONSTRATION and no real run
+produces it: in CI, and for any ordinary consumer, the working tree IS the head.
+Making the demonstration read the corpus as of the audited head therefore does
+not route around the defect; it makes the demonstration reproduce what that
+phase's CI actually saw, which is the thing it claims to show.
 
-These are genuinely comparable, the consequence is shipped gate semantics, and
-the choice shapes what the kernel promises, so DR-0016's test is met and this
-goes to the orchestrator rather than being decided inside an unbriefed round on
-a branch whose scope gate audits nothing. My own leaning is the kernel side, and
-I would not defend it strongly enough to act on it unasked.
+That is the test DR-0016 states: an analysis yielding a recommendation the
+decider would defend means the options were not comparable and there was nothing
+to ask. My error was treating "two fixes exist in two different files" as
+comparability, when one of them repairs a composition that was never real.
 
+### 7.6 The fix to the demonstration, and its red-green witness
+
+`scripts/m2-exit-test.sh:1073` now creates a detached worktree at the audited
+sha and runs the gate there, so the spec corpus, the sources and the named tests
+are all read at one revision. The worktree path is ABSOLUTE, because
+`git -C <repo>` resolves relative paths against the REPOSITORY and not against
+the calling process (CLAUDE.md:921, standing warning 9), and removal is in a
+`finally` so a throw cannot leave a worktree registered against the caller's
+clone. `git worktree prune` runs on both sides.
+
+**This is on THIS branch and not a separate one.** DR-0031 point 2: the branch's
+unit of self-contained value is the witness-ownership fix IN A MERGEABLE STATE,
+and this change is what makes it mergeable. Splitting it into a second pull
+request is exactly the pattern DR-0031 exists to stop, and it would also produce
+the T-019 mirror the same rule names, a paperwork pull request asserting a green
+CI-equivalent for code that had not landed.
+
+It is `scripts/`, so one round and no full review contract, but the red-witness
+rule still binds and **the C2 fixture of section 7.2 is the red witness.** It is
+promoted from a diagnostic to a guard here, and widened to two structurally
+different members, because one witness is not a class.
+
+The two triggers, both foreign to this change, staged on a worktree at
+`origin/main` (d5d87f7) so nothing about my source edit is involved:
+
+| probe | mutates | named test |
+|---|---|---|
+| `zz-probe-a` | `src/witness/spec.ts` | "a nested test run does not inherit the suite gate reporter NODE_OPTIONS" |
+| `zz-probe-b` | `src/gates/red-witness.ts` | "the scratch clone resolves a dependency that exists only in node_modules, and refuses outright when the audited repository has none" |
+
+Different M2-P2 file, different post-M2-P2 test name. Both arms run the same
+generated `m2-green.mjs` against the same tree with the same `--tiphys` build,
+so the ONLY variable is the demonstration script.
+
+**RED, the pre-fix demonstration**, exit 1, and both members of the class
+redden rather than one:
+
+```
+m2-green: FAIL with 1 finding(s):
+  - [red-witness] green-path demonstration is not a non-vacuous green: status red, units 6
+
+6 witness(es) evaluated (4 own, 2 stored re-evaluated in 1ms); witness zz-probe-a no longer guards its behavior (named test(s) not found in any test file at the audited head: "a nested test run does not inherit the suite gate reporter NODE_OPTIONS"); witness zz-probe-b no longer guards its behavior (named test(s) not found in any test file at the audited head: "the scratch clone resolves a dependency that exists only in node_modules, and refuses outright when the audited repository has none")
+```
+
+**GREEN, the post-fix demonstration**, same tree, same probes, exit 0:
+
+```
+m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history), spec corpus read from a worktree checked out at 1b6f0963b62f
+m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+
+4 witness(es) evaluated (4 own, 0 stored re-evaluated in 0ms); every witness red against every declared dangerous state and green at head
+```
+
+Four own, zero stored, which is the point: at the M2-P2 head the corpus IS the
+four specs M2-P2 added, and the probes are not in it. The probe tree was
+untracked-only afterwards (`?? witness/zz-probe-a.json`, `?? witness/zz-probe-b.json`)
+and no `red-witness-head-tree` worktree remained registered.
+
+### 7.7 TRACKED FINDING, not acted on: the kernel-side reading
+
+Recorded rather than discarded, so a later reader can reopen it on the merits.
+
+**The finding.** `src/gates/red-witness.ts:246` builds the spec corpus by
+walking `witness/` in the tree the gate is RUN FROM, while every other input,
+the diff, the sources, the named tests, is read at the AUDITED HEAD. When those
+two revisions differ, a spec present in the tree and absent from the head is
+re-evaluated as a stored witness and reported "no longer guards its behavior".
+A spec absent from the audited head is not part of that head's state, so that
+sentence is a claim its evidence does not support. It is T-009's shape one scope
+down: a result presented outside the configuration that produced it.
+
+**Why it is TRACKED and not blocking, which is the orchestrator's reason and not
+mine.** Under DR-0027 the question is reachability. It reaches a user only if
+someone deliberately runs the gate with a head that differs from their working
+tree. That is unusual rather than impossible, so it is a real finding and not a
+non-finding, and it does not block.
+
+**What a fix would look like, if it is reopened.** Skip re-evaluation of a
+stored spec that does not exist at the audited head, with the skip RECORDED
+rather than silent. It appears to cost nothing: a spec absent from the head
+cannot be something the head is held to, and a spec DELETED by a branch is
+already invisible because the listing walks the working tree. I did not build
+that and I did not measure it, so both sentences in this paragraph are reasoning
+from the source and not results.
+
+**Not done here**, per the orchestrator's instruction: no shipped semantics in
+`src/gates/red-witness.ts` or `src/witness/spec.ts` were changed for it.
+
+### 7.8 The re-run at the fixed head
+
+Both bundles, quoted, at the head this section produced.
+
+`scripts/m2-exit-test.sh --no-build --bundle pr --base <origin/main> --head
+<HEAD> --phase claude/witness-ownership-scoping`, **exit 0**:
+
+```
+gates: declared 12 applicable 7 verdict 7 green 7 red 0 not-applicable 5 error 0 vacuous 0
+gates: red-witness: green: 6 witness(es) evaluated (2 own, 4 stored re-evaluated in 13957ms); every witness red against every declared dangerous state and green at head
+m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; ... zero red; zero error; zero vacuous.
+m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history), spec corpus read from a worktree checked out at 1b6f0963b62f
+m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+m2-exit-test: OK.
+```
+
+The registry full-mode bundle at the same head is the table in section 6, re-run
+and unchanged.
 ## 8. The claim grep
 
 Both forms, per CLAUDE.md:369 and the wrap-insensitive supplement.
@@ -514,23 +620,32 @@ $ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recover
 Every hit is listed below with what settles it. Nothing in this document claims
 an arm cannot be forced.
 
-Twenty-three occurrences in the line-based form and twenty-three in the
-wrap-insensitive form, so ZERO were hidden by a wrap in this document. Eleven of
-the twenty-three are the grep command's own pattern quoted above, which is why
-the table below has twelve rows rather than twenty-three.
+Forty-two occurrences in the line-based form and forty-two in the
+wrap-insensitive form, so ZERO were hidden by a wrap. Eleven are the grep
+command's own pattern quoted just above, fourteen are inside this table and two
+are the restatement note under it; all three groups QUOTE the phrases rather
+than assert them. That leaves fifteen real occurrences on the thirteen rows below.
 
 | line | phrase | what settles it |
 |---|---|---|
-| 23 | "never authored, never modified and never looked at" | the RED capture in 5.2, which names three untouched members reddening |
-| 160 | "commits the branch never saw" | a restatement of standing warning 13, CLAUDE.md:1002; not a claim about this change |
-| 169 | "the gate did not establish" | restated from "cannot be established" after this grep found it. The added-spec arm is measured; the unreadable and invalid arms are stated as UNMEASURED in section 4 item 5 |
-| 279 | "never `git checkout --`" | a statement about what I did, and `git status --porcelain` was empty after each of the four restores, captured in the 5.4 run |
-| 286 | "baseline never consulted" | the TAP row for that member in 5.4 |
-| 290 | "what catches it" | the quoted `not ok 2` block immediately below it |
-| 354 | "the pull_request arm supplies one" | restated from "the CI workflow always supplies one" after this grep found it. The push arm does not, and I did not measure it |
-| 365 | "form anyway" | a statement about how this file is written, checkable by reading it |
-| 438 | "the spec is never triggered" | measured: the branch's own bundle reports `6 witness(es) evaluated (2 own, 4 stored)` and names the four stored ones, which do not include it |
-| 487 | "an arm cannot be forced" | quoting the rule at CLAUDE.md:378, not asserting anything |
+| 24 | "never authored, never modified and never looked at" | the RED capture in 5.2, which names three untouched members reddening |
+| 177 | "commits the branch never saw" | a restatement of standing warning 13, CLAUDE.md:1002; not a claim about this change |
+| 301 | "never `git checkout --`" | a statement about what I did, and `git status --porcelain` was empty after each restore, captured in the 5.4 and 7.6 runs |
+| 308 | "baseline never consulted" | the TAP row for that member in 5.4 |
+| 312 | "what catches it" | the quoted `not ok 2` block immediately below it |
+| 394 | "form anyway" | a statement about how this file is written, checkable by reading it |
+| 467 | "the spec is never triggered" | measured: the branch's bundle reports `6 witness(es) evaluated (2 own, 4 stored)` and names the four stored ones, which do not include it |
+| 504, 665 | "a composition that was never real" | the orchestrator's reasoning, and it is checkable: in CI the checkout and the audited head are one revision, and 7.2 measures that the manufactured composition is the only state that reddens |
+| 580 | "unusual rather than impossible" | deliberately NOT a claim of impossibility; it is the reachability wording that makes the 7.7 finding tracked rather than dismissed |
+| 586 | "cannot be something the head is held to" | **NOT settled by a command.** It is reasoning about a fix I did not build, and that paragraph says so in its own last sentence |
+| 621 | "an arm cannot be forced" | quoting the rule at CLAUDE.md:378, not asserting anything |
+| 731 | "control never reaches the fallback" | the ARM E capture above it: `git diff A...B` exits 128 before the assignment is reached |
+
+An earlier run of this grep produced two restatements now visible in the
+document: "cannot be established" became "the gate did not establish" at line
+187, and "the CI workflow always supplies one" became a sentence scoped to the
+`pull_request` arm. Neither line matches the pattern any more, which is the
+mechanism working rather than the phrase being hidden.
 
 ## 9. What I could not establish
 
@@ -539,17 +654,83 @@ Collected in one place rather than left in the sections.
 1. **That rule (d) is the only place in the repository with this mechanism.**
    Section 4 scopes the derivation: `src/` only for the rules audit, `scripts/`
    unaudited, and the audit tests for one specific two-ingredient shape.
-2. **The rename case.** `--no-renames` at src/witness/run.ts:244 means a renamed
-   spec has no merge-base version and every member of it is owned. Read from the
-   source, not measured, and I did not establish what the pre-change behaviour
-   was.
-3. **The unreadable and invalid merge-base arms** of `phaseOwnedMemberIndices`,
-   and the `git merge-base` failure fallback at src/witness/run.ts:240.
-4. **Whether the blocker in section 7 should be fixed kernel-side or
-   harness-side.** Both fixes are described; choosing is the orchestrator's.
+2. ~~The rename case.~~ **CLOSED by measurement**, section 10 ARM A: red on
+   both trees with the same reason string, so this change did not alter it.
+3. ~~The unreadable and invalid merge-base arms.~~ **CLOSED by measurement**,
+   section 10 ARMS B and C. The `git merge-base` fallback at
+   src/witness/run.ts:250 is separately established as UNREACHABLE through
+   `computePhaseDiff`, which is a finding rather than a closure.
+4. ~~Whether the blocker in section 7 should be fixed kernel-side or
+   harness-side.~~ **DECIDED by the orchestrator**, section 7.5: the harness
+   fix, because the composition the demonstration made was never real. The
+   kernel-side reading is recorded as a tracked finding at 7.7.
 5. **Anything about the `push` arm of the gates workflow.** Every measurement in
    this document is a local `pull_request`-shaped run. T-009 binds: this document
    is evidence for that configuration and no other.
 6. **Anything about macOS.** The macos-smoke job is genuinely CI-only.
 7. **The post-merge `push` run on the new `main` head**, which cannot exist
    before the merge and which T-009 requires be watched to completion.
+
+## 10. The arms the round designed and did not exercise, now forced
+
+The orchestrator asked for two of section 9's open items to be closed by
+measurement rather than left stated, on the ground that an unexercised
+safe-by-design arm is exactly the shape this project has been bitten by. Both
+are closed here; items 1, 5 and 6 stay open and are NOT given manufactured
+coverage.
+
+One probe drives all of them, and it runs against BOTH trees by importing each
+tree's own gate, so the pre-change and post-change answers are produced by the
+same fixtures and the same command. Node v26.6.0. The pre-change tree is a
+detached worktree at d5d87f7; the post-change tree is this branch.
+
+**ARM D is the control, and it is why the other rows are informative.** It is a
+spec valid at the merge base whose two members BOTH pre-exist, so neither is
+authored by the phase. If the probe could not see the change at all, ARM D would
+read the same on both sides. It does not:
+
+| arm | fixture | PRE-change | POST-change |
+|---|---|---|---|
+| A | spec file RENAMED, `old-name.json` to `new-name.json`, member 1 outside the diff | red, `member 1, mutation of src/legacy.ts` | **red, identical** |
+| B | baseline spec present at the merge base but SCHEMA-INVALID there | red, same reason | **red, identical** |
+| C | baseline spec present at the merge base but UNPARSEABLE (not JSON) | red, same reason | **red, identical** |
+| D | control: baseline valid, both members pre-existing | red, same reason | **GREEN** |
+
+So the probe demonstrably distinguishes the two trees, and A, B and C being
+byte-identical across them is a result rather than a null reading.
+
+**Item 2, the rename case, CLOSED and my change did not alter it.** Section 4
+read from the source that `--no-renames` (src/witness/run.ts:254) makes the new
+path an addition with no merge-base version, so every member is owned. ARM A
+measures that, and measures the pre-change behaviour too: rule (d) reddened the
+non-intersecting member on both sides, with the same reason string. The
+pre-change route is "the spec file is in the diff, so the whole file is owned";
+the post-change route is "`git show <mergeBase>:witness/new-name.json` fails, so
+the baseline is undefined and every member is owned". Different reasoning,
+identical observable behaviour.
+
+**Item 3, the unreadable and invalid baseline arms, CLOSED.** ARMS B and C force
+the two failure paths of `ownedMembersOf` (src/gates/red-witness.ts:295)
+separately: B fails at `parseWitnessSpec` because the document is a valid JSON
+object that is not a valid spec, C fails at the JSON parse. Both yield
+`undefined` and both own every member, so both redden the non-intersecting
+member exactly as the pre-change code did. The fail-safe direction is now
+exercised rather than asserted.
+
+**The `git merge-base` failure fallback is UNREACHABLE through the gate, and
+that is a finding rather than a closure.** ARM E built one repository with two
+orphan roots and asked git directly:
+
+```
+git merge-base A B      -> exit 1 (no output)
+git diff --name-status --no-renames A...B
+                        -> exit 128 (fatal: <A>...<B>: no merge base)
+```
+
+`computePhaseDiff` takes the same three-dot diff immediately after computing the
+merge base, so it returns `ok: false` on the diff and control never reaches the
+fallback assignment at src/witness/run.ts:250. I could not construct an input
+that reaches it. The line stays, because removing it would leave
+`"".trim()` becoming a sha-shaped empty string, which is a worse failure than an
+unreachable line, and the comment at src/witness/run.ts:85 now records the
+measurement so nobody later reads it as a tested path.

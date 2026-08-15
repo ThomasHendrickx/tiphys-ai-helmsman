@@ -79,8 +79,18 @@ export interface PhaseDiff {
    * this phase change" must read the old side HERE and not at `baseSha`: on a
    * branch that has fallen behind, `baseSha` carries commits the branch never
    * saw, and reading them as the branch's own starting point reproduces the
-   * two-dot misreading of standing warning 13. Falls back to `baseSha` when
-   * git cannot compute one.
+   * two-dot misreading of standing warning 13.
+   *
+   * It falls back to `baseSha` when git computes no merge base, and THAT
+   * FALLBACK IS UNREACHABLE THROUGH THIS FUNCTION, which is said here rather
+   * than left for a reader to assume it is a tested path. Measured 2026-08-15
+   * on two orphan roots in one repository: `git merge-base A B` exits 1 with no
+   * output, and `git diff --name-status --no-renames A...B` exits 128 with
+   * `fatal: <A>...<B>: no merge base`. The diff below is the same three-dot
+   * form, so `computePhaseDiff` returns `ok: false` on the diff and never
+   * reaches the assignment. The fallback stays because the alternative is
+   * `"".trim()` silently becoming a sha-shaped empty string, which is a worse
+   * failure than an unreachable line.
    */
   mergeBaseSha: string;
   files: Map<string, DiffFile>;
