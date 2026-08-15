@@ -11,14 +11,14 @@
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    const entry = classifyEntry(join(root, name));",
-      "replace": "    const entry = { kind: existsSync(join(root, name)) ? \"regular\" : \"absent\" } as ReturnType<typeof classifyEntry>;"
+      "find": "    const entry = classifyEntry(path);",
+      "replace": "    const entry = { kind: existsSync(path) ? \"regular\" : \"absent\" } as ReturnType<typeof classifyEntry>;"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    if (entry.kind === \"regular\") {",
-      "replace": "    if (entry.kind !== \"absent\") {"
+      "find": "    if (entry.kind !== \"regular\") {",
+      "replace": "    if (entry.kind === \"absent\") {"
     }
   ],
   "consumesExternalOutput": {
