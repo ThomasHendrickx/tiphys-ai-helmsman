@@ -1,0 +1,24 @@
+{
+  "id": "witness-rule-d-binds-an-added-member",
+  "behavior": "witness-rule-d-binds-an-added-member",
+  "tests": [
+    "a member this phase ADDED to an existing witness spec must still intersect the phase diff"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "    if (left > 0) {",
+      "replace": "    if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "        phaseOwnedMembers: ownedMembersOf(entry),",
+      "replace": "        phaseOwnedMembers: new Set(entry.spec.dangerousStates.map((_m, i) => i)),"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

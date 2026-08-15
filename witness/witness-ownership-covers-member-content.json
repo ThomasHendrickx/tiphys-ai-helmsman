@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-covers-member-content",
+  "behavior": "witness-ownership-covers-member-content",
+  "tests": [
+    "a member whose find or replace text changed is authored here, and a duplicated member is a new member"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "    return JSON.stringify([\"mutation\", member.file, member.find, member.replace]);",
+      "replace": "    return JSON.stringify([\"mutation\", member.file, member.find]);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "      remaining.set(key, left - 1);",
+      "replace": "      remaining.set(key, left);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

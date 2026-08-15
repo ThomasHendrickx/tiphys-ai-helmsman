@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-claim-is-directional",
+  "behavior": "witness-ownership-claim-is-directional",
+  "tests": [
+    "ADDING a guarding test to a spec authors nothing, while DROPPING one authors every member"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  const headTests = new Set(headSpec.tests);\n  return baselineSpec.tests.some((name) => !headTests.has(name));",
+      "replace": "  return (\n    JSON.stringify([...headSpec.tests].sort()) !==\n    JSON.stringify([...baselineSpec.tests].sort())\n  );"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  const headTests = new Set(headSpec.tests);",
+      "replace": "  const headTests = new Set(baselineSpec.tests);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

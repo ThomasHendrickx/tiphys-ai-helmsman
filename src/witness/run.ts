@@ -73,6 +73,26 @@ export interface DiffFile {
 export interface PhaseDiff {
   baseSha: string;
   headSha: string;
+  /**
+   * The merge base of base and head, which is the revision the `base...head`
+   * three-dot diff below is actually taken against. Anything asking "what did
+   * this phase change" must read the old side HERE and not at `baseSha`: on a
+   * branch that has fallen behind, `baseSha` carries commits the branch never
+   * saw, and reading them as the branch's own starting point reproduces the
+   * two-dot misreading of standing warning 13.
+   *
+   * It falls back to `baseSha` when git computes no merge base, and THAT
+   * FALLBACK IS UNREACHABLE THROUGH THIS FUNCTION, which is said here rather
+   * than left for a reader to assume it is a tested path. Measured 2026-08-15
+   * on two orphan roots in one repository: `git merge-base A B` exits 1 with no
+   * output, and `git diff --name-status --no-renames A...B` exits 128 with
+   * `fatal: <A>...<B>: no merge base`. The diff below is the same three-dot
+   * form, so `computePhaseDiff` returns `ok: false` on the diff and never
+   * reaches the assignment. The fallback stays because the alternative is
+   * `"".trim()` silently becoming a sha-shaped empty string, which is a worse
+   * failure than an unreachable line.
+   */
+  mergeBaseSha: string;
   files: Map<string, DiffFile>;
 }
 
@@ -92,8 +112,18 @@ export interface EvaluationInputs {
   /** Changed files the spawn grep matched (rule (f) derivation). */
   spawningChangedFiles: string[];
   scratchRoot: string;
-  /** True for the phase's own witnesses; rule (d) applies only to them. */
-  phaseOwn: boolean;
+  /**
+   * Indices into `spec.dangerousStates` that THIS PHASE AUTHORED, which is
+   * the exact scope of rule (d). Empty for a stored witness the phase did not
+   * touch, and empty is the whole of "rule (d) does not apply here".
+   *
+   * This replaced a file-granular `phaseOwn: boolean`. The boolean was decided
+   * by the spec FILE appearing in the diff and then gated a PER MEMBER
+   * obligation, so any edit to any member imposed rule (d) on every sibling
+   * member of the same file. See `phaseOwnedMemberIndices` in ../witness/spec.ts
+   * for the derivation and for why an unreadable baseline owns everything.
+   */
+  phaseOwnedMembers: ReadonlySet<number>;
   hooks?: WitnessHooks;
 }
 
@@ -216,6 +246,8 @@ export function computePhaseDiff(
   }
   const baseSha = baseResolved.stdout.trim();
   const headSha = headResolved.stdout.trim();
+  const mergeBase = gitIn(repoRoot, ["merge-base", baseSha, headSha]);
+  const mergeBaseSha = mergeBase.ok ? mergeBase.stdout.trim() : baseSha;
   const names = gitIn(repoRoot, [
     "diff",
     "--name-status",
@@ -261,7 +293,7 @@ export function computePhaseDiff(
       }
     }
   }
-  return { ok: true, diff: { baseSha, headSha, files } };
+  return { ok: true, diff: { baseSha, headSha, mergeBaseSha, files } };
 }
 
 /**
@@ -1247,42 +1279,50 @@ function evaluateRefusalRules(
     );
   }
 
-  // (d) diff intersection, for the phase's own witnesses.
-  if (inputs.phaseOwn) {
-    for (let index = 0; index < spec.dangerousStates.length; index += 1) {
-      const member = spec.dangerousStates[index] as DangerousStateMember;
-      if (member.kind === "baseline-ref") {
-        continue;
+  // (d) diff intersection, for the members THIS PHASE AUTHORED.
+  //
+  // The scope is per MEMBER, never per spec file: `inputs.phaseOwnedMembers`
+  // carries the indices the phase added or changed relative to the merge base.
+  // A member a sibling edit dragged into the file's diff is not owned and
+  // takes no obligation from this rule. The property rule (d) protects is
+  // unchanged: a member this phase AUTHORED must intersect this phase's diff,
+  // so a phase still cannot add a dangerous state about unrelated code.
+  for (let index = 0; index < spec.dangerousStates.length; index += 1) {
+    if (!inputs.phaseOwnedMembers.has(index)) {
+      continue;
+    }
+    const member = spec.dangerousStates[index] as DangerousStateMember;
+    if (member.kind === "baseline-ref") {
+      continue;
+    }
+    const files = memberTouchedFiles(member, readPatch);
+    const changedTouched = files.filter((file) => inputs.diff.files.has(file));
+    if (changedTouched.length === 0) {
+      reasons.push(
+        `rule (d): declared dangerous state does not intersect the phase diff ` +
+          `(member ${String(index)}, ${describeMember(member)})`,
+      );
+      continue;
+    }
+    if (member.kind === "mutation") {
+      const diffFile = inputs.diff.files.get(member.file);
+      const shown = gitIn(inputs.repoRoot, [
+        "show",
+        `${inputs.headSha}:${member.file}`,
+      ]);
+      let insideHunk = false;
+      if (diffFile !== undefined && shown.ok) {
+        const occupied = findOccurrenceLines(shown.stdout, member.find);
+        insideHunk = occupied.some((lineNo) =>
+          diffFile.hunks.some(([start, end]) => lineNo >= start && lineNo <= end),
+        );
       }
-      const files = memberTouchedFiles(member, readPatch);
-      const changedTouched = files.filter((file) => inputs.diff.files.has(file));
-      if (changedTouched.length === 0) {
+      if (!insideHunk) {
         reasons.push(
           `rule (d): declared dangerous state does not intersect the phase diff ` +
-            `(member ${String(index)}, ${describeMember(member)})`,
+            `(member ${String(index)}, mutation of ${member.file} touches no ` +
+            `line inside a changed hunk)`,
         );
-        continue;
-      }
-      if (member.kind === "mutation") {
-        const diffFile = inputs.diff.files.get(member.file);
-        const shown = gitIn(inputs.repoRoot, [
-          "show",
-          `${inputs.headSha}:${member.file}`,
-        ]);
-        let insideHunk = false;
-        if (diffFile !== undefined && shown.ok) {
-          const occupied = findOccurrenceLines(shown.stdout, member.find);
-          insideHunk = occupied.some((lineNo) =>
-            diffFile.hunks.some(([start, end]) => lineNo >= start && lineNo <= end),
-          );
-        }
-        if (!insideHunk) {
-          reasons.push(
-            `rule (d): declared dangerous state does not intersect the phase diff ` +
-              `(member ${String(index)}, mutation of ${member.file} touches no ` +
-              `line inside a changed hunk)`,
-          );
-        }
       }
     }
   }

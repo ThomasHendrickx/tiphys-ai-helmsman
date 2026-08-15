@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-reads-the-patch-body",
+  "behavior": "witness-ownership-reads-the-patch-body",
+  "tests": [
+    "rewriting a patch member's body is authorship even though its path is unchanged, and an untouched patch sibling stays unowned"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  return JSON.stringify([\n    \"patch\",\n    member.patch,\n    createHash(\"sha256\").update(body).digest(\"hex\"),\n  ]);",
+      "replace": "  return JSON.stringify([\"patch\", member.patch]);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "    const readers = { head: readPatchAtHead, baseline: readPatchAtMergeBase };",
+      "replace": "    return new Set<number>();\n    const readers = { head: readPatchAtHead, baseline: readPatchAtMergeBase };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
