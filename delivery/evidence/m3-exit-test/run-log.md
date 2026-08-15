@@ -35,3 +35,27 @@ Happened:
 
 About to: write `delivery/evidence/m3-exit-test/supervision-rules.md` and
 commit it BEFORE any E1 evidence record exists.
+
+Happened: `delivery/evidence/m3-exit-test/supervision-rules.md` and
+`delivery/evidence/m3-exit-test/e0-4-subject-designation.md` were committed at
+bb85fea and pushed. That commit is the ordering anchor: no E1 evidence record
+exists in this branch's history before it.
+
+### 3. E0.1
+
+About to: probe REST reachability, then assemble the merged-phase table and run
+the clause-map check.
+
+Happened: probe green with a red witness on two different failure shapes;
+twelve merged phase pull requests found by head-ref pattern plus `merged_at`;
+twelve matching `push`-event `gates` runs on `main`, all completed and success,
+all one job `gates` concluding success; `node scripts/check-clause-map.mjs`
+exit 0 reporting 74 rows, with Appendix A and `clause-map.json` counted as two
+separate sources and set-equal in both directions. Record at
+`delivery/evidence/m3-exit-test/e0-1-preconditions.md`. One deviation recorded:
+M3-P3 landed as a two-parent merge commit rather than a squash.
+
+### 4. E1.1 charter
+
+About to: build, run the suite, then author a charter and validate it, with the
+negative half.
