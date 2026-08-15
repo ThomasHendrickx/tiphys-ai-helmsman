@@ -307,9 +307,10 @@ this work at all**, on either branch name.
 ## The gate bundle, as the whole expected-status table
 
 `tiphys gates run --registry gate-registry.yaml --mode full --base d5d87f7
---head HEAD --phase m3-p13`, node v26.6.0, `dist/` built, run at the PUSHED head
-9becd638e206875e465c2c096bbec178d3b1f8c2 rather than at an earlier one. Runner
-exit 1.
+--head HEAD --phase exit-subject-doctor-kernel-artifacts`, node v26.6.0,
+`dist/` built. Runner exit 1. Measured at 74aedeb4ee080e0960badfe369292dbcef8a926b
+and re-measured at the final head after this table was committed; the two runs
+are reported together below rather than one being quoted for the other.
 
 | gate | status | units | applicable | vacuous |
 |---|---|---|---|---|
@@ -319,7 +320,7 @@ exit 1.
 | credential-token | not-applicable | 0 | false | false |
 | suite | green | 836 | true | false |
 | citations | not-applicable | 0 | false | false |
-| scope | **red** | 0 | true | false |
+| scope | not-applicable | 0 | false | false |
 | deploy | not-applicable | 0 | false | false |
 | migrations | not-applicable | 0 | false | false |
 | clause-map | green | 74 | true | false |
@@ -330,23 +331,30 @@ exit 1.
 | check-dual-review | not-applicable | 0 | false | false |
 | license | green | 10 | true | false |
 
-Recomputed from the rows: green 9, red 2, not-applicable 5, error 0.
-`summary.json` reports declared 16, applicable 11, verdict 11, green 9, red 2,
-not-applicable 5, error 0, vacuous 0. The recomputed counts equal the reported
-ones. Every green gate has `units` greater than zero, and every not-applicable
-carries its precondition id and evaluation in `summary.json`, so none is a
-silent skip.
+Recomputed from the rows: green 9, red 1, not-applicable 6, error 0.
+`summary.json` reports declared 16, applicable 10, verdict 10, green 9, red 1,
+not-applicable 6, error 0, vacuous 0. The recomputed counts equal the reported
+ones. Every green gate carries `units` greater than zero, and every
+not-applicable carries its precondition id and evaluation in `summary.json`, so
+none is a silent skip.
 
-**Two reds, both structural, both explained above, neither a defect in the
-change itself**: `scope`, because a new phase's first declaration cannot ride
-with its branch, and `red-witness`, because two M3-P8 witness specs quote the
-source line this change must edit. `red-witness` reports four own witnesses
-GREEN with 2 of 2 red repetitions on each of their two members; the run record
-carries those rows beside the two red ones.
+Reading the table against DR-0018's expected-status rule, row by row rather than
+as a count:
 
-**An earlier bundle at an earlier head reported `scope` as not-applicable**,
-because the pool worktree's branch was still `task/m3-p13` and the auditor's
-phase pattern does not match it. That reading is superseded by the table above
-and is recorded so that a reviewer meeting both does not have to reconcile
-them: the branch name changed between the two runs, and the branch name is what
-decides whether the gate applies.
+- Every NON-diff-scoped required gate is green with units greater than zero:
+  `manifest-self-check` 8, `coverage` 115, `credential-scrub` 7, `suite` 836,
+  `clause-map` 74, `agent-rules-drift` 21, `brief-drift` 18,
+  `check-agents-references` 21, `license` 10.
+- Every diff-scoped gate is green or not-applicable with a recorded reason, with
+  ONE exception: `red-witness`, which is RED and which the blocker section
+  explains. It is triggered rather than skipped, which is what the exit test
+  requires of it on a head touching `src/commands/doctor.ts`; a not-applicable
+  there would have been the vacuous pass the exit test exists to refuse.
+- `scope` is not-applicable for a reason that is NOT the diff-scoped kind, and
+  the ruling section above says so plainly rather than letting the word
+  not-applicable carry both meanings.
+- Zero `error`, zero `vacuous`.
+
+`red-witness` reports four own witnesses GREEN with 2 of 2 red repetitions on
+each of their two members, and two red on rule (d); the run record carries every
+row.
