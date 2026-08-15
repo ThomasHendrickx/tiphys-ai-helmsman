@@ -749,5 +749,14 @@
   "release-registry-observation-asserted": "the publishing job READS the registry after publishing, under the same guard as the publish and after it",
   "release-tag-step-inventory-pinned": "every step of the job holding the write grant is one of an exact, pinned set",
   "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there",
-  "release-manifest-names-the-provenance-repository": "the published manifest names the repository provenance will assert"
+  "release-manifest-names-the-provenance-repository": "the published manifest names the repository provenance will assert",
+  "doctor-kernel-artifacts-missing-directory": "doctor FAILs when the resolved kernel install has lost a required directory, naming it",
+  "doctor-kernel-artifacts-missing-file": "doctor FAILs when the resolved kernel install has lost AGENTS.md, which is the FILE member of the class",
+  "doctor-kernel-artifacts-empty-directory": "a required directory that exists and is EMPTY counts as missing, because it resolves nothing",
+  "doctor-kernel-artifacts-complete-passes": "a complete staged install PASSes with no promotable condition",
+  "doctor-kernel-artifacts-names-every-missing": "every missing artifact is named in one verdict, never only the first found",
+  "doctor-kernel-artifacts-resolution-does-not-walk-past": "the install root resolves to the package under test even when an ancestor carries roles/, which is the arm an upward-walking resolver reports PASS on",
+  "doctor-kernel-artifacts-unresolvable-root-fails": "an unresolvable install root is a FAIL carrying its reason rather than a thrown error",
+  "doctor-kernel-artifacts-fifo-refused": "a FIFO at a required artifact path is refused in bounded time rather than opened",
+  "doctor-kernel-artifacts-promoted-under-full-only": "kernel-artifacts-incomplete is promoted to FAIL under full and left a WARN under every other profile"
 }

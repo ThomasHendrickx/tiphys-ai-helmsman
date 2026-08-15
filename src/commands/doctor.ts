@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
-import { readRegularFileIfPresent } from "../task.ts";
+import { classifyEntry, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument } from "../validate.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
@@ -50,7 +50,17 @@ export const PROFILES: Record<string, readonly string[]> = {
      NOT promoted, and deliberately: `retention-not-applicable`, the state of a
      fleet that has no charter document at all. See checkRetention's header for
      why the two are separate conditions rather than one. */
-  full: ["gh-missing", "remote-missing", "retention-undeclared"],
+  /* M3-P13: `kernel-artifacts-incomplete` is promoted here, so a fleet whose
+     installed kernel has lost roles/, schemas/, checklists/ or AGENTS.md is not
+     ready for full mode. It is NOT promoted below full, deliberately: the
+     commands that resolve those artifacts are full mode's, and promoting
+     everywhere is how a check fails a fleet that never needed it. */
+  full: [
+    "gh-missing",
+    "remote-missing",
+    "retention-undeclared",
+    "kernel-artifacts-incomplete",
+  ],
   watch: ["beacon-absent", "beacon-stale"],
 };
 
@@ -590,6 +600,156 @@ function isGitIgnored(repository: string, relative: string): boolean {
   return result.error === undefined && result.status === 0;
 }
 
+/**
+ * THE KERNEL ARTIFACTS THIS CHECK REQUIRES, pinned HERE and never read out of
+ * the install being audited.
+ *
+ * The mechanism index's `checking-a-generated-artifact-against-its-own-generator`
+ * row is about a check whose SUBJECT is selected by a value read from the
+ * artifact it audits: that check can be silently narrowed by editing the
+ * artifact. Reading this list out of the install's own `package.json` files
+ * array would be exactly that shape, because an install that dropped `roles/`
+ * from both the tree and the files list would report itself complete. So the
+ * list is a constant in the source, and `package.json` is consulted only to
+ * locate the package root, never to decide what must be in it.
+ *
+ * A DIRECTORY MUST BE NON-EMPTY, which is decision D-1 of the phase plan. The
+ * check's subject is whether the install can resolve a role, a schema or a
+ * checklist, and an empty `roles/` resolves none. An `existsSync` on a
+ * directory the packer created empty is the vacuous pass hazard H1 names.
+ */
+const REQUIRED_KERNEL_DIRECTORIES = ["roles", "schemas", "checklists"] as const;
+const REQUIRED_KERNEL_FILES = ["AGENTS.md"] as const;
+
+/**
+ * The installed kernel's own package root: the first ancestor of THIS MODULE
+ * carrying a `package.json`.
+ *
+ * **This is deliberately NOT `kernelRoot()` from src/roles.ts, and the reason
+ * is the whole point of the check.** That function walks upward looking for a
+ * `roles/` directory containing a `.md` file, which is the very artifact this
+ * check exists to find missing: against an install with `roles/` removed it
+ * walks PAST the install and answers about an ancestor, and where no ancestor
+ * carries one it throws. A check built on it reports on the wrong tree or
+ * crashes on precisely the state its own criteria describe.
+ *
+ * Walking for `package.json` does not have that property. `package.json` is
+ * the package BOUNDARY rather than a member of the set under test, and it is
+ * present in both shipped layouts. Measured on this head: the published
+ * package puts this module at `dist/src/commands/doctor.js` with the artifacts
+ * three levels up at the package root, and the development checkout puts it at
+ * `src/commands/doctor.ts` with the artifacts two levels up, while
+ * `dist/package.json` does not exist in the pack listing. So a FIXED DEPTH
+ * from `import.meta.url` is wrong in one of the two layouts and the first
+ * `package.json` above the module is right in both.
+ *
+ * Returns the reason rather than throwing, because a guard whose correctness
+ * depends on a crash is not a guard (mechanism index,
+ * `a-guard-s-own-failure-path`).
+ */
+export function resolveInstalledKernelRoot(
+  from: string = dirname(fileURLToPath(import.meta.url)),
+): { ok: true; root: string } | { ok: false; reason: string } {
+  let dir = from;
+  for (;;) {
+    const candidate = join(dir, "package.json");
+    if (classifyEntry(candidate).kind === "regular") {
+      return { ok: true, root: dir };
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return {
+        ok: false,
+        reason: `no package.json above ${from}, so the installed kernel root cannot be resolved`,
+      };
+    }
+    dir = parent;
+  }
+}
+
+/**
+ * `kernel-artifacts`: the resolved kernel install carries every artifact M3
+ * made load-bearing (kernel plan M3 section 4, stage E0.4's designated subject;
+ * phase M3-P13).
+ *
+ * WHAT THIS CHECK IS FOR. The brief composer resolves `roles/`, the validator
+ * loads `schemas/`, the checklist command resolves `checklists/`, and
+ * `AGENTS.md` is the policy document every role brief points at. Until now an
+ * install that lost one of them reported nothing wrong: the loss surfaced later
+ * as one command's resolution failure, whose message names the path it could
+ * not open rather than the state of the install. doctor is the command whose
+ * whole job is answering "is this environment fit to run", and the kernel's own
+ * artifacts were the one input none of its checks looked at.
+ *
+ * EVERY missing artifact is named, not the first (decision D-2): a check that
+ * names one sends its reader round the loop once per missing item, and the loop
+ * here is a reinstall.
+ *
+ * The condition is `kernel-artifacts-incomplete`, promoted to FAIL under the
+ * `full` profile and left a WARN below it. Below `full` no command that needs
+ * these artifacts is necessarily in the pipeline, and promoting everywhere is
+ * how a check like this ends up failing a fleet that never needed it.
+ */
+export function checkKernelArtifacts(
+  resolution: ReturnType<typeof resolveInstalledKernelRoot> = resolveInstalledKernelRoot(),
+): CheckResult {
+  if (!resolution.ok) {
+    return {
+      name: "kernel-artifacts",
+      status: "FAIL",
+      detail: resolution.reason,
+    };
+  }
+  const root = resolution.root;
+  const missing: string[] = [];
+  for (const name of REQUIRED_KERNEL_DIRECTORIES) {
+    const path = join(root, name);
+    let entries: string[];
+    try {
+      entries = readdirSync(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      missing.push(
+        code === "ENOENT"
+          ? `${name}/ (absent)`
+          : `${name}/ (${code ?? "unreadable"})`,
+      );
+      continue;
+    }
+    if (entries.length === 0) {
+      missing.push(`${name}/ (present but empty, so it resolves nothing)`);
+    }
+  }
+  for (const name of REQUIRED_KERNEL_FILES) {
+    /* classifyEntry, not existsSync: it lstats the link, stats what it
+       resolves to, and opens only a regular file, so a FIFO at this path is a
+       reported refusal in bounded time rather than a doctor that hangs
+       (mechanism index, `reading-a-path-whose-type-is-not-established`). */
+    const entry = classifyEntry(join(root, name));
+    if (entry.kind === "regular") {
+      continue;
+    }
+    missing.push(
+      entry.kind === "absent"
+        ? `${name} (absent)`
+        : `${name} (${entry.kind}${entry.kind === "dangling" ? "" : `: ${entry.reason}`})`,
+    );
+  }
+  if (missing.length > 0) {
+    return {
+      name: "kernel-artifacts",
+      status: "WARN",
+      detail: `the kernel install at ${root} is missing ${missing.join(", ")}`,
+      condition: "kernel-artifacts-incomplete",
+    };
+  }
+  return {
+    name: "kernel-artifacts",
+    status: "PASS",
+    detail: `the kernel install at ${root} carries roles/, schemas/, checklists/ and AGENTS.md`,
+  };
+}
+
 export function runChecks(root: string): CheckResult[] {
   return [
     checkNode(),
@@ -601,6 +761,7 @@ export function runChecks(root: string): CheckResult[] {
     checkBeacon(root),
     checkIdentity(root),
     checkRetention(root),
+    checkKernelArtifacts(),
   ];
 }
 
