@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/witness/spec.ts",
-      "find": "  if (baselineMembers === undefined) {",
+      "find": "  if (baselineSpec === undefined) {",
       "replace": "  if (true) {"
     }
   ],
