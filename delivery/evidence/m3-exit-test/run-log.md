@@ -136,3 +136,25 @@ measurement was not altered.
 
 About to: read E1.6 in full, then cut the subject branch from origin/main and
 run the implementer through `tiphys spawn` into a pool worktree.
+
+### 11. E1.6 ran, and it is NOT satisfied
+
+Happened: the implementer brief composed (exit 0) and names
+`tuition/mechanism-index.yaml`; `tiphys spawn` created the pool worktree at the
+fetched base d5d87f7 (exit 0); the check, its eleven-criteria test set, four
+durable witness specs with two members each, and a real three-case CLI capture
+were built; `npm test` on node v26.6.0 with `dist/` built reported 836 tests,
+836 pass, 0 fail, 0 skipped, exit 0.
+
+The full-mode bundle at the subject head reports 9 green, 1 red, 6
+not-applicable, 0 error, 0 vacuous, recomputed equal to `summary.json`. The red
+is `red-witness`, which is the one gate this stage says must be green here, and
+the cause is that two M3-P8 witness specs quote the source line the designated
+subject must edit. Both arms measured. Recorded at
+`delivery/evidence/m3-exit-test/e1-6.md`.
+
+Also happened: the orchestrator's branch ruling (I-3), the second spawn under a
+task id that is not phase-shaped, the deletion of the m3-p13 declaration and the
+renaming of the work history off the phase-shaped filename. Deleting the old
+remote branch is refused by the proxy with HTTP 403 on all three routes tried,
+and is recorded as needing access this agent does not hold.

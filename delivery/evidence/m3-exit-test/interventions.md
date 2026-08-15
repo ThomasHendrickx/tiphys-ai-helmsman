@@ -164,3 +164,79 @@ without either party noticing is not recorded, and no check over the record can
 see it. This file inherits that bound exactly: it is a complete list of the
 interventions the runner and the orchestrator each know about, and it is not
 evidence that no other intervention occurred.
+
+## I-3: the orchestrator's ruling on the subject change's branch name
+
+- **Kind: a RULING plus a DECLINED action.** It changed no kernel artifact, ran
+  no gate the registry did not select, and wrote no output by hand. It changed
+  where the subject change's work is named, and it declined to create a phase
+  declaration.
+- **Decided by: the orchestrator**, mid-dispatch, on measuring that
+  `delivery/plan/phase-declarations/m3-p13.json` does not exist on `origin/main`.
+
+### The ruling, in the orchestrator's terms, with its reasoning
+
+Rename the branch so it does NOT match `^claude/m[0-9]+-p[0-9]+-`, and do not
+create an `m3-p13` phase declaration. The declaration route was considered and
+rejected: it would need its own pull request to `main` first, which DR-0031
+permits, but M3 has TWELVE phases in the plan and minting a thirteenth id would
+put a phantom phase into the milestone's accounting permanently. The exit-test
+subject change is not a phase; it is the exit test's subject.
+
+The runner checked the harvesting claim rather than accepting it.
+`.claude/orchestrator-next.mjs:126` reads phase numbers from three sources: the
+`delivery/plan/phase-declarations/` listing on `origin/main`, the
+`delivery/work-history/` listing on `origin/main`, and remote branches matching
+`origin/claude/<milestone>-p*`. So all three of a declaration file, a
+`m3-p13.md` work history and a phase-shaped branch would each have minted the
+phantom. All three were avoided: the declaration was deleted, the work history
+was renamed to `delivery/work-history/exit-subject-doctor-kernel-artifacts.md`,
+and the branch is `claude/exit-subject-doctor-kernel-artifacts`, which the
+pattern one-liner reports false for.
+
+### The consequence the orchestrator is accepting, stated without softening
+
+**On a non-phase branch the scope gate has no phase to audit, so it reports
+not-applicable, and the scope audit therefore asserts NOTHING about the subject
+change.** That is a real reduction in what E1.6's expected-status table
+witnesses, and the orchestrator chose it over a permanent phantom phase.
+
+**This kind of not-applicable is WEAKER than the diff-scoped kind DR-0018's
+table contemplates.** There the trigger is "the head does not touch the gate's
+configured paths", which is a statement about the DIFF and leaves the gate's
+subject genuinely absent. Here the trigger is "this branch is not a phase",
+which is a statement about the BRANCH: the diff it would have audited exists and
+is unexamined. Reading the two as the same word in a table is exactly the
+substitution this exit test keeps finding, so it is named here.
+
+### What the runner measured before complying
+
+The orchestrator asked whether `tiphys spawn` derives the branch name from the
+task id, because a name hand-corrected outside the kernel is a weaker artifact
+than one the kernel produced. Measured: `taskBranchName` at src/pool.ts:52
+returns `task/<id>`, and the first spawn's `meta.json` recorded branch
+`task/m3-p13`, which does NOT match the phase pattern. **The kernel never
+produced the offending name; the runner applied it from the plan's `branch`
+field.** The fix was nevertheless made AT THE TASK ID rather than by a git
+rename: a second `tiphys spawn --task exit-subject-doctor-kernel-artifacts`
+exited 0 and the kernel created `task/exit-subject-doctor-kernel-artifacts`, and
+the eleven commits were carried over with `git merge --ff-only`, so no commit
+was rewritten.
+
+### A-n: deleting the old remote branch needs access this agent does not hold
+
+The ruling's step 3 is to delete `claude/m3-p13-doctor-kernel-artifacts` from
+the remote. **The runner cannot do it, measured three ways:**
+
+| attempt | result |
+|---|---|
+| `git push origin --delete claude/m3-p13-doctor-kernel-artifacts` | `RPC failed; HTTP 403`, remote hung up |
+| `git push <url> ":refs/heads/claude/m3-p13-doctor-kernel-artifacts"` | `RPC failed; HTTP 403` |
+| `DELETE /repos/.../git/refs/heads/claude%2Fm3-p13-doctor-kernel-artifacts` | HTTP 403, `Write access to this GitHub API path is not permitted through this proxy` |
+
+A readback confirms the branch still exists at 4a719d6994877900a4d05ecfc41825f6cd838354.
+**Until it is deleted the ruling is not fully in force**, because the third
+harvesting source is remote branch names: `orchestrator-next.mjs` will read
+`origin/claude/m3-p13-...` and report M3 as having a thirteenth phase. This is
+an owner or orchestrator action item rather than a note, and it is recorded here
+so it is not lost in a handback.

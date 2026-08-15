@@ -1,0 +1,31 @@
+{
+  "id": "doctor-kernel-artifacts-empty-directory",
+  "behavior": "doctor-kernel-artifacts-empty-directory",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a staged install whose roles/ exists but is EMPTY is missing it"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    if (entries.length === 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      entries = readdirSync(path);",
+      "replace": "      entries = [\"assumed-present\"];"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the built tiphys CLI of a staged install: `node <install>/dist/bin/tiphys.js doctor [--for full]`",
+    "captures": [
+      "witness/captures/doctor-kernel-artifacts-staged-install.txt"
+    ],
+    "provenance": "red-witness rule (f) binds this witness because the changed module src/commands/doctor.ts spawns subprocesses (spawnSync for git and gh), which the spawn grep matches. The capture is the output of the program this behavior actually reports THROUGH, the built CLI of a staged install, taken 2026-08-15 on node v26.6.0 and git 2.43.0 with gh on PATH and a push target configured so that kernel-artifacts is the only check able to drive the exit code. It records three cases with their exit codes: complete install under --for full (PASS, 0), roles/ removed under --for full (FAIL, 1), roles/ removed with no profile (WARN, 0). The named test asserts that recorded contract AND reproduces it live against a freshly staged install, so no assertion here is a hand-written string chosen to match the implementation."
+  }
+}
