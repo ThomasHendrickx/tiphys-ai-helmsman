@@ -1208,7 +1208,7 @@ and it holds on BOTH arms:
 | arm | code | consequence of adding a test name |
 |---|---|---|
 | red | src/witness/run.ts:918, `red: exitCode !== 0 && failed.length === tests.length` | a repetition counts as red only when EVERY named test failed, so the added test must ALSO redden against every declared dangerous state |
-| green at head | src/witness/run.ts:1676, `headGreen = greenOutcome.run.exitCode === 0 && greenOutcome.run.passedNamedTests.length === spec.tests.length` | the added test must ALSO pass at head |
+| green at head | src/witness/run.ts:1677, `passedNamedTests.length === spec.tests.length` | the added test must ALSO pass at head |
 
 So an extension adds an obligation on both arms and removes none, and both are
 discharged by EXECUTION rather than accepted on trust. Nothing is certified
@@ -1231,9 +1231,9 @@ establishment tests are a fourth.**
 | # | comparison | site | equality or directional | why |
 |---|---|---|---|---|
 | 1 | the claim | src/witness/spec.ts:381 | **DIRECTIONAL**, and it was wrong | `behavior` has no partial order so it is equality, but `tests` does: extension adds obligations on both executed arms, dropping removes them. This is the round's fix |
-| 2 | the patch body sha256 | src/witness/spec.ts:299 | **EQUALITY, correctly** | there is no partial order on patch bodies. Two patch bodies are not "more" or "less" of each other, so no direction exists to prefer. A rewritten body is a DIFFERENT dangerous state, not a stronger one, and unlike a test name it adds no obligation to any other member: it REPLACES the state being tested. Equality is the only available test and it is the right one |
-| 3 | the member multiset | src/witness/spec.ts:449 | **already asymmetric, and correctly** | this is not equality-versus-direction, because the consume is one-directional by construction: a head member with no baseline counterpart is owned; a baseline member with no head counterpart owns nothing, because it does not exist at head to carry an obligation. The only direction available is the one implemented |
-| 4 | **the establishment tests** (the fourth) | `baselineSpec === undefined` (spec.ts:441), `key === undefined` on the baseline side (spec.ts:454) and on the head side (spec.ts:462) | **DIRECTIONAL, and deliberately asymmetric** | these compare against "could not be established" rather than against a value. All three resolve toward OWNING: an unestablished baseline owns every member, an unreadable baseline member exempts nothing, an unreadable head member is owned. The failure mode of this derivation is a member wrongly EXEMPTED, so the direction is chosen to fail toward the obligation |
+| 2 | the patch body sha256 | src/witness/spec.ts:300 | **EQUALITY, correctly** | there is no partial order on patch bodies. Two patch bodies are not "more" or "less" of each other, so no direction exists to prefer. A rewritten body is a DIFFERENT dangerous state, not a stronger one, and unlike a test name it adds no obligation to any other member: it REPLACES the state being tested. Equality is the only available test and it is the right one |
+| 3 | the member multiset | src/witness/spec.ts:472 | **already asymmetric, and correctly** | this is not equality-versus-direction, because the consume is one-directional by construction: a head member with no baseline counterpart is owned; a baseline member with no head counterpart owns nothing, because it does not exist at head to carry an obligation. The only direction available is the one implemented |
+| 4 | **the establishment tests** (the fourth) | src/witness/spec.ts:443 for an unestablished baseline spec, src/witness/spec.ts:451 for an unreadable baseline member, src/witness/spec.ts:467 for an unreadable head member | **DIRECTIONAL, and deliberately asymmetric** | these compare against "could not be established" rather than against a value. All three resolve toward OWNING: an unestablished baseline owns every member, an unreadable baseline member exempts nothing, an unreadable head member is owned. The failure mode of this derivation is a member wrongly EXEMPTED, so the direction is chosen to fail toward the obligation |
 
 **Why members are not treated like tests, since adding a member ALSO only adds
 an obligation.** This is the objection to the fix and it deserves an answer
@@ -1253,7 +1253,7 @@ claim: it is a reading of `phaseOwnedMemberIndices`, `canonicalMember`,
 delta verification independently established are the whole ownership surface
 (`grep -rn "phaseOwnedMembers" src/` has exactly one consumer). Comparisons
 elsewhere in the gate, such as `triggeredStored`'s file-intersection test at
-src/gates/red-witness.ts:332 and rule (g)'s own patch-body comparison at
+src/gates/red-witness.ts:334 and rule (g)'s own patch-body comparison at
 src/witness/run.ts:1362, are NOT part of ownership and were not re-derived here;
 the second is a tracked open item.
 
@@ -1416,3 +1416,72 @@ commit before the final sweep was started, which then ran as a single
    empty output file is exactly the silence T-008 says a watcher must never
    have to interpret. It is a scratch tool, not a deliverable, so it is recorded
    here rather than fixed: it should append each row as it completes.
+
+### 12.9 Gates at the round-2 head
+
+Toolchain node v26.6.0 from the scratch prefix, npm 11.18.0, `origin/main`
+merged in locally first (already up to date). `npm ci` exit 0, `npm run build`
+exit 0, `git status --porcelain` empty after the build.
+
+**Suite, the complete sentence.** Invocation `npm test`; toolchain node v26.6.0;
+build state `dist/` present; **835 tests, pass 835, fail 0, SKIPPED 0**, todo 0,
+cancelled 0; exit 0. Round 1 reported 833, so round 2 adds two tests and skips
+none. Single file: `node --test test/witness.test.ts` gives 53 tests, 53 pass,
+0 SKIPPED.
+
+**Registry bundle**, `--mode full --phase witness-ownership-scoping`: declared
+16, applicable 10, verdict 10, **green 10, red 0, not-applicable 6, error 0,
+vacuous 0**; exit 20 is `EXIT_NOT_APPLICABLE` from the two required gates that
+are not applicable (`citations`, `scope`), not from any failure.
+
+**The CI-equivalent**, `scripts/m2-exit-test.sh --no-build --bundle pr`, exit 0:
+declared 12, applicable 7, **green 7, red 0, error 0, vacuous 0**; `m2-assert`
+OK on 12 gate records; `m2-green` OK on 3 diff-scoped gates. `red-witness`
+green with **13 witnesses (9 own, 4 stored)**. No `red-witness-head-tree`
+worktree remained registered.
+
+### 12.10 What fix round 2 could not establish
+
+1. **Everything in 11.10 that was not in scope**, unchanged and still open:
+   `consumesExternalOutput.captures` as the same pointer shape one rule over,
+   rule (g)'s own patch-body comparison at src/witness/run.ts:1362, CR-004, the
+   kernel-side stored-spec question, and the other leaked `/tmp` prefixes. All
+   tracked by instruction rather than by my judgement.
+2. **The delta verification's own six uncovered areas**, which I did not
+   independently close, in particular that it did not fuzz the multiset matching
+   and did not build a real landing pull request to exploit any of the three
+   findings. My round-2 fixture is synthetic in exactly the same way.
+3. **Whether a phase can relax the claim through a route that is neither
+   `behavior` nor `tests`.** The derivation in 12.3 says no because the other
+   five fields are read by rules that are not ownership-gated, and both the
+   round-1 derivation and the delta verification reached that independently. It
+   remains a structural argument over four function bodies, not a search.
+4. **Duplicate names inside `tests`.** The schema permits them (no
+   `uniqueItems`), set semantics collapse them, and I argued in
+   `claimRePointed` that this is harmless because both executed arms count the
+   array positionally on each side identically. I did not build a fixture with a
+   duplicated test name to confirm it.
+5. **The `push` CI arm, macOS, and the post-merge push run**, unchanged.
+
+### 12.11 The claim grep for section 12
+
+Both forms over the whole document: **seventy-five occurrences line-based and
+seventy-five wrap-insensitive, so ZERO were hidden by a wrap.** Five of the
+seventy-five are inside this section's own table, which QUOTES each phrase in
+order to settle it, the same accounting 11.11 uses. Section 11.11's
+accounting still holds for everything before section 12 (eleven are the grep
+pattern quoted in section 8, fourteen in section 8's table, ten in 11.11's
+table). The five new occurrences are in section 12:
+
+| line | phrase | what settles it |
+|---|---|---|
+| 1314 | "everything is always owned" | a description of the M16 corruption, settled by the sweep row and by the eight named failures in 12.5 |
+| 1327 | "ALWAYS re-pointed" | the same, quoted from the sweep's own row label |
+| 1338 | "is not a sweep row and never was" | checkable in two commands: the id does not appear in the sweep source, and it is absent from both rounds' raw output. The standalone re-measurement is quoted immediately after it |
+| 1401 | "never `git checkout --`" | a statement about method. The restores are quoted as `git show HEAD:<path> > <path>`, and the tree was verified byte-clean against the commit afterwards |
+| 1416 | "a watcher must never have to interpret" | a restatement of T-008, not a claim about this codebase |
+
+None of the five is an over-claim about behaviour. Section 12 deliberately
+contains no "cannot" sentence about the fix: **the strongest claim it makes is
+that extension adds an obligation on both executed arms, and that is stated as a
+measurement with two line-level citations rather than as an impossibility.**
