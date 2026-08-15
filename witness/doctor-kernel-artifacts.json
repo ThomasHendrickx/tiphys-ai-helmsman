@@ -1,0 +1,40 @@
+{
+  "id": "doctor-kernel-artifacts",
+  "behavior": "doctor-kernel-artifacts-missing-directory",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a staged install missing roles/ is a FAIL naming roles/",
+    "a staged install whose roles/ exists but is EMPTY is missing it",
+    "resolution never walks past an install that has lost roles/",
+    "a FIFO at AGENTS.md is refused in bounded time rather than opened",
+    "an unresolvable install root is a FAIL rather than a thrown error"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    if (entries.length === 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    if (classifyEntry(candidate).kind === \"regular\") {",
+      "replace": "    if (classifyEntry(join(dir, \"roles\")).kind !== \"absent\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    const entry = classifyEntry(join(root, name));",
+      "replace": "    const entry = { kind: existsSync(join(root, name)) ? \"regular\" : \"absent\" } as ReturnType<typeof classifyEntry>;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "        reason: `no package.json above ${from}, so the installed kernel root cannot be resolved`,",
+      "replace": "        reason: (() => { throw new Error(`no package.json above ${from}`); })(),"
+    }
+  ]
+}
