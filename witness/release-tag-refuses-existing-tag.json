@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-refuses-existing-tag",
+  "behavior": "release-tag-refuses-existing-tag",
+  "tests": [
+    "the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "            echo \"tag: ${tag} already exists in this checkout at $(git rev-parse \"refs/tags/${tag}\").\" >&2\n            echo \"tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n",
+      "replace": "            git tag -d \"${tag}\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          probe=0\n          git ls-remote --exit-code --tags origin \"refs/tags/${tag}\" >/dev/null || probe=$?\n          if [ \"$probe\" -eq 0 ]; then\n            echo \"tag: ${tag} already exists on the remote.\" >&2\n            echo \"tag: refusing, and NOT moving, deleting or reusing it. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n          fi\n          if [ \"$probe\" -ne 2 ]; then\n            echo \"tag: could not read the remote's tags; git ls-remote exited ${probe}.\" >&2\n            echo \"tag: refusing rather than assuming ${tag} is absent. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n          fi\n          # ANNOTATED, never lightweight: an annotated tag carries its own\n          # object with an author and a date, which is what makes it a record\n          # rather than a moveable label. The identity is command-scoped\n          # because a CI runner has no git identity and this must never touch\n          # user or global configuration.\n          git -c user.name=\"github-actions[bot]\" \\\n              -c user.email=\"41898282+github-actions[bot]@users.noreply.github.com\" \\\n              tag -a \"${tag}\" -m \"${tag}, published to the npm registry by the release workflow\" \"${SHA}\"\n          git push origin \"refs/tags/${tag}\"\n",
+      "replace": "          # ANNOTATED, never lightweight: an annotated tag carries its own\n          # object with an author and a date, which is what makes it a record\n          # rather than a moveable label. The identity is command-scoped\n          # because a CI runner has no git identity and this must never touch\n          # user or global configuration.\n          git -c user.name=\"github-actions[bot]\" \\\n              -c user.email=\"41898282+github-actions[bot]@users.noreply.github.com\" \\\n              tag -a \"${tag}\" -m \"${tag}, published to the npm registry by the release workflow\" \"${SHA}\"\n          git push --force origin \"refs/tags/${tag}\"\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

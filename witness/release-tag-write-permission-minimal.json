@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-write-permission-minimal",
+  "behavior": "release-tag-write-permission-minimal",
+  "tests": [
+    "exactly one job in any workflow declares a write grant on the repository, and it holds no id-token"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      contents: write\n    steps:\n",
+      "replace": "      contents: write\n      id-token: write\n    steps:\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "    permissions:\n      contents: write\n    steps:\n",
+      "replace": "    permissions: write-all\n    steps:\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

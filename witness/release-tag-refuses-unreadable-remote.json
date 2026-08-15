@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-refuses-unreadable-remote",
+  "behavior": "release-tag-refuses-unreadable-remote",
+  "tests": [
+    "the tagging command refuses rather than assuming, when the remote cannot be read or the version disagrees"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          if [ \"$probe\" -ne 2 ]; then\n            echo \"tag: could not read the remote's tags; git ls-remote exited ${probe}.\" >&2\n            echo \"tag: refusing rather than assuming ${tag} is absent. Recover by hand for ${tag} at ${SHA}.\" >&2\n            exit 1\n          fi\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          if [ \"$declared\" != \"$VERSION\" ]; then\n            echo \"tag: package.json declares ${declared} and this dispatch asked for ${VERSION}.\" >&2\n            echo \"tag: refusing. A tag naming a version that was not published is the anchor pointing at nothing.\" >&2\n            exit 1\n          fi\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

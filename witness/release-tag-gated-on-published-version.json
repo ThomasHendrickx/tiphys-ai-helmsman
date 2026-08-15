@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-gated-on-published-version",
+  "behavior": "release-tag-gated-on-published-version",
+  "tests": [
+    "the job that may write to the repository is gated twice, and both gates are EVALUATED rather than matched as text"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "    needs: release\n    if: ${{ needs.release.outputs.publish == 'yes' }}\n",
+      "replace": "    needs: release\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      publish: ${{ steps.decide.outputs.publish }}\n",
+      "replace": "      publish: 'yes'\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

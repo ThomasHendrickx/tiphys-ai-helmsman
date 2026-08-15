@@ -738,5 +738,15 @@
   "release-publish-guard-exact-complements": "the publish and rehearsal guards are exact complements, and the pre-publish verification is unguarded and earlier",
   "release-publish-decision-executed": "the publish decision script is EXECUTED against a table of inputs, and only an exact confirm publishes",
   "release-publish-identified-uniquely": "exactly one step in any workflow invokes a publish command, and it is the guarded step in the release job",
-  "license-gate-disk-walk-sees-every-container": "the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding"
+  "license-gate-disk-walk-sees-every-container": "the disk walk sees dot-prefixed and nested containers, so a package planted there is a finding",
+  "release-tag-write-permission-minimal": "exactly one job in any workflow declares a write grant on the repository, and it holds no id-token",
+  "release-tag-gated-on-published-version": "the job that may write to the repository is gated twice, and both gates are EVALUATED rather than matched as text",
+  "release-tag-annotated-at-published-commit": "the tagging command, executed against a scratch repository, produces an ANNOTATED tag at the commit it was given",
+  "release-tag-refuses-existing-tag": "the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it",
+  "release-tag-refuses-unreadable-remote": "the tagging command refuses rather than assuming, when the remote cannot be read or the version disagrees",
+  "release-github-release-body-anchors-the-version": "the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run",
+  "release-tag-conclusion-not-decoupled": "no job the write-granted job depends on, and no step of one, may decouple its conclusion from its steps",
+  "release-registry-observation-asserted": "the publishing job READS the registry after publishing, under the same guard as the publish and after it",
+  "release-tag-step-inventory-pinned": "every step of the job holding the write grant is one of an exact, pinned set",
+  "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there"
 }
