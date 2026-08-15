@@ -5,6 +5,33 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-15 early morning, NEWEST BLOCK. Everything below is OLDER.
+- **`@tiphys/kernel@0.1.0` IS PUBLISHED.** Verified independently rather than
+  taken from the job record: the registry carries `0.1.0` at
+  `2026-08-15T06:34:55Z` with `dist-tags.latest` pointing at it, a SLSA v1
+  provenance attestation, and `repository` matching. The annotated tag `v0.1.0`
+  dereferences to commit `7c0b1e7`, which is `main`, and the GitHub release
+  `v0.1.0` exists and is neither draft nor prerelease. **The commit-to-version
+  link now runs BOTH ways**, provenance one direction and the tag the other,
+  which is what DR-0032 was for.
+- **THE FIRST REAL PUBLISH FAILED, AND THE DESIGN HELD.** Run `31861403550` was
+  refused by the registry because `package.json` declared no `repository` while
+  provenance named one. Nothing was published and the tag job SKIPPED, so
+  nothing anchored a version that did not exist. Recorded as
+  delivery/tuition/T-025-the-one-path-that-cannot-be-rehearsed-is-the-one-that-failed.md:1,
+  whose finding is that `npm publish --dry-run --provenance` exits 0 on the
+  broken manifest, so NO rehearsal could have reached it. DR-0033 predicted that
+  asymmetry in writing before the dispatch.
+- **A FLAKE IS TRACKED IN THE RELEASE PATH.** `test/implementer-brief.test.ts`
+  failed a rehearsal and passed an identical re-dispatch on the same head. It
+  sits before the publish, so it fails closed and costs a retry rather than an
+  artifact. The cause is NOT established and one plausible story was tested and
+  refuted; both are in the register.
+- **M3 IS TWELVE OF TWELVE MERGED**, `main` at `7c0b1e7`. What remains of the
+  milestone is criterion 6, the M3 exit test, which was blocked on the publish
+  and is now unblocked.
+- **A-7 IS COMPLETE.** Nothing in M3 waits on the owner.
+
 - as of: 2026-08-14 evening, NEWEST BLOCK. Everything below is OLDER.
 - **ALL ELEVEN M3 PHASES ARE MERGED.** `main` is at `40b70a8`, and both its
   post-merge `push` run and M3-P10's at `a676c80` were read by step and are green
