@@ -98,3 +98,17 @@ select, which E0.3 names as an exit-test failure.
 ### 6. Closing this dispatch
 
 About to: run the local gate bundle over the branch, then hand back.
+
+Happened: the local full-mode registry bundle over this branch reported nine
+green, zero red, zero error, zero vacuous, and three required gates
+not-applicable (citations, scope, red-witness), so the runner exited 20. The
+comparable CI arm, the `pull_request` bundle, is green on documentation-only
+branches; run 31871644955 is the measured instance.
+
+### 7. Dispatch A ends here
+
+Stages E0 (all), E1.1, E1.2, E1.3, E1.4 and E1.5 ran. E1.6 onward, stage E2,
+stage E3, stage E4 and the three falsification controls were NOT run and were
+not in this dispatch. One criterion is reported UNMET rather than passed: the
+M2-P5 citation linter over the plan instance, which the registry does not
+select.
