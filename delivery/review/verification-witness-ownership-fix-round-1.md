@@ -1,9 +1,23 @@
 # Delta verification: witness ownership scoping, fix round 1 (deea501..e722f65)
 
-Status: IN PROGRESS. Written incrementally per T-008.
+Status: COMPLETE. Written incrementally per T-008; the IN PROGRESS marker the
+verifier left is corrected here by the orchestrator at landing time, because the
+document is finished and a stale status marker misleads a later reader.
 
 Scope: the fix round only, deea501..e722f65 on claude/witness-ownership-scoping.
 Not a re-review of the whole branch.
+
+**ALTERATION DECLARED, by the orchestrator, at landing time.** This document as
+written contained EIGHT U+2014 EM DASH characters, which fail this repository's
+pure-ASCII rule (CLAUDE.md binding convention 3). Each was one U+2014 flanked by single spaces (space, em
+dash, space; written here by codepoint rather than literally, because writing
+the character in order to describe it is how this file failed the check a second
+time) in the verifier's own PROSE; none occurred inside captured command
+output, and the count was verified before and after. All eight were replaced
+with `, ` (comma, space). Nothing else in this document was changed, and no
+captured output was touched. The declaration is here rather than silent because
+an undeclared alteration is indistinguishable after the fact from fabricated
+evidence.
 
 ## Setup log
 2026-08-15T14:52:46Z started
@@ -32,7 +46,7 @@ Not a re-review of the whole branch.
   `src/witness/spec.ts` and `src/gates/red-witness.ts`.
 
 ## Finding 1 (candidate): extending a spec's `tests[]` falsely reddens every
-untouched sibling member — MEDIUM, reachable, reproduced end to end
+untouched sibling member, MEDIUM, reachable, reproduced end to end
 
 **Priority-2 question** ("false reds the round introduces that no test
 names, particularly around the claim comparison owning every member").
@@ -89,12 +103,12 @@ CI runs. The triggering action is ordinary and encouraged: a phase
 strengthens an existing multi-member witness spec's coverage by adding one
 more guarding test without touching an unrelated sibling dangerous state.
 That phase gets a false CI red requiring it to either manufacture a touch of
-unrelated legacy code to satisfy rule (d), or split the spec — the exact
+unrelated legacy code to satisfy rule (d), or split the spec, the exact
 cost the work history states is "intended" for a `behavior` re-point, but
 which the code now also applies to plain extension.
 
 **Severity.** MEDIUM. This is an over-strict (safe-direction) defect, not a
-hole that lets a bad witness through — it blocks legitimate work rather than
+hole that lets a bad witness through, it blocks legitimate work rather than
 admitting bad coverage. Per DR-0027, reachability is the test and it reaches
 a real user path (every future phase touching an existing multi-member
 witness spec), so it blocks this round under the stated policy. Whether the
@@ -111,7 +125,7 @@ revision and present at the other, is unreadable, or is a directory or
 symlink?").
 
 `git show <rev>:<path>` does NOT fail (exit 0) when `<path>` resolves to a
-tree (directory) or to a symlink blob — it returns the tree listing text or
+tree (directory) or to a symlink blob, it returns the tree listing text or
 the symlink's target-path text, respectively. Measured directly:
 
 ```
@@ -130,7 +144,7 @@ returns tree-listing or symlink-target text as the "body". This looked, on
 first reading, like it might let a phase point a `patch` member at a
 directory whose file NAMES are stable across revisions while the named
 files' CONTENT changes underneath (the tree listing shown by `git show`
-carries names only, no hashes) — which would defeat the whole point of
+carries names only, no hashes), which would defeat the whole point of
 hashing the body.
 
 **Reproduced end to end on both trees and found NOT exploitable, because the
@@ -154,7 +168,7 @@ Probes: `.../scratchpad/dv-wos/probe-e2e.mjs`, scenarios `patch-directory`
 and `patch-symlink`. No delta between trees, so this is a checked NULL
 result, not a finding. Caveat: in both fixtures the spec document itself was
 unchanged between base and head, so the spec landed in the STORED bucket,
-not `own` (0 own, 1 stored in the detail line) — `ownedMembersOf` was not
+not `own` (0 own, 1 stored in the detail line), `ownedMembersOf` was not
 exercised for these two specific probes. It does not matter for the
 conclusion: whatever ownership verdict `canonicalMember` would compute for a
 directory/symlink path, the spec still cannot pass evaluation (status
@@ -184,7 +198,7 @@ src/witness/run.ts:1291, which is rule (d). `specClaim` reads only
 `spec.behavior` and `spec.tests`; `canonicalMember` reads only the kind's
 own fields. `class`, `id`, `deterministic`, `repeats`, and
 `consumesExternalOutput` are not read anywhere in the ownership computation
-at all (not merely deemed irrelevant by argument in 11.1's table — I
+at all (not merely deemed irrelevant by argument in 11.1's table, I
 re-derived this from the function bodies directly). So a value in any of
 those five fields cannot influence which member indices are matched or
 owned, which forecloses the shape of escape both prior reviews found (some
@@ -222,7 +236,7 @@ search; see "what I did not cover" below for the boundary of this claim.
   them lets a phase change something load-bearing while appearing unowned,
   and could not construct one, because rule (d) is the only ownership
   consumer and none of the rules that DO read these five fields (a, c, e,
-  f, g, and the execution loop) are gated on ownership — they run in full
+  f, g, and the execution loop) are gated on ownership, they run in full
   on every evaluated spec, owned or not. This matches the work history's
   own table and I did not find a counter-example.
 
