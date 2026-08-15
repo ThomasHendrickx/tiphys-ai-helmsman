@@ -428,10 +428,15 @@ These are the positives, and several settle open questions the branch left open.
 $ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/review/clean-room-m3-p12-hazard.md
 ```
 
-36 occurrences, and **22 of them are the two grep COMMAND LINES quoted in this
-section**, which carry every alternative of the pattern once each. Those are the
-tool, not a claim. The remaining 14 are dispositioned here, every one settled by
-a command in this document or restated as an open question:
+40 occurrences, counted with `grep -noEi` and grouped by line with `uniq -c`.
+**22 of them are the two grep COMMAND LINES quoted in this section**, which
+carry every alternative of the pattern once each, 11 apiece. **11 more are the
+disposition bullets immediately below**, which quote the words they are
+disposing of. Those 33 are the tool, not claims. That leaves **7 that are
+claims**, and they are the only ones in the document outside this section and
+its two commands; each is settled by a command in this document or restated as
+an open question. Line numbers are deliberately not pinned here, because every
+edit to this section moves them and a stale number is worse than none:
 
 - `never force` twice in the attack-list row: that is the CLAIM UNDER REVIEW,
   quoted from .github/workflows/release.yml:349, and HRB-3 settles it with
@@ -471,13 +476,13 @@ a command in this document or restated as an open question:
 ```
 $ tr '\n' ' ' < delivery/review/clean-room-m3-p12-hazard.md \
   | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-36
+40
 ```
 
 | form | occurrences |
 |---|---|
-| line-visible | 36 |
-| wrap-insensitive total | 36 |
+| line-visible | 40 |
+| wrap-insensitive total | 40 |
 | **missed by wrap** | **0** |
 
 So the line-based form missed nothing in this document, and the dispositions
