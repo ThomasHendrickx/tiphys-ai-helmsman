@@ -168,3 +168,26 @@ Two prohibitions on this runner, restated because they are the irreversible
 ones: it does not run `npm publish` (the publish is the owner's dispatch of the
 release workflow, and `@tiphys/kernel@0.1.0` is already published), and it does
 not merge anything or push to `main`.
+
+## 5. The ordering, asserted from the bundle rather than promised
+
+Appended after the E1 records existed, which is why it can report a fact rather
+than an intention. The command and its result, run in the exit-test worktree:
+
+```
+$ S=$(git log --diff-filter=A --format=%H -- delivery/evidence/m3-exit-test/supervision-rules.md)
+$ echo $S
+bb85fea6b8c0d279a661425361426d4b60e7995a
+$ for f in $(git ls-files delivery/evidence/m3-exit-test/e1); do
+>   C=$(git log --diff-filter=A --format=%H -- "$f")
+>   git merge-base --is-ancestor "$S" "$C" && [ "$S" != "$C" ] \
+>     && echo "AFTER  $f" || echo "NOT-AFTER  $f"
+> done | cut -d' ' -f1 | sort | uniq -c
+     28 AFTER
+```
+
+Twenty-eight E1 artifacts, every one of them added in a commit that is a strict
+descendant of the commit adding this file, and zero added in that commit or
+before it. The three controls were therefore defined before any E1 evidence
+existed, and this is checkable by anyone rather than taken on the runner's
+word.
