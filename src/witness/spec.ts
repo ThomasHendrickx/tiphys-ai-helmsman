@@ -239,20 +239,106 @@ export function loadWitnessSpec(path: string): WitnessSpecLoad {
 }
 
 /**
- * Canonical form of one dangerous-state member: the fields its kind declares,
- * in a fixed order, JSON-encoded. Two members are the SAME member when their
- * canonical forms are equal. Field order in the source document is therefore
- * not significant, which matters because a reformatting of a spec file must
- * not be readable as authorship of its members.
+ * How a patch member's BODY is read, one reader per revision. A patch member's
+ * `patch` field is a PATH; the dangerous state it declares lives in the file at
+ * that path, so establishing whether the member changed needs the body on BOTH
+ * sides, at the merge base and at the audited head.
  */
-export function canonicalMember(member: DangerousStateMember): string {
+export interface PatchBodyReaders {
+  head: (patchPath: string) => string | undefined;
+  baseline: (patchPath: string) => string | undefined;
+}
+
+/**
+ * CANONICAL FORM OF ONE DANGEROUS-STATE MEMBER: everything that determines the
+ * dangerous state, in a fixed order, JSON-encoded. Two members are the SAME
+ * member when their canonical forms are equal. Field order inside the source
+ * document is not significant, so reformatting a spec is not authorship.
+ *
+ * PER KIND, and the three kinds are NOT alike, which is the correction fix
+ * round 1 makes:
+ *
+ * - `mutation` declares `file`, `find` and `replace`, and all three are INLINE
+ *   in the spec document. The canonical form carries all three, so it is
+ *   complete: nothing outside the document can change what this member does.
+ * - `patch` declares one field, `patch`, and it is a POINTER. The dangerous
+ *   state is the patch FILE'S BODY, which lives outside the spec document
+ *   entirely. Keying on the path alone made a member whose body was rewritten
+ *   top to bottom compare EQUAL to its own previous version, so a phase could
+ *   turn a dangerous state about file X into one about an unrelated file Y and
+ *   be judged not to have authored it. The body's sha256 is therefore part of
+ *   the canonical form. An unreadable body yields `undefined`, which the caller
+ *   treats as "cannot be established", never as "unchanged".
+ * - `baseline-ref` declares `ref`, which is ALSO a pointer: the dangerous state
+ *   is the whole tree at that ref, and a ref moves. It is deliberately NOT
+ *   resolved, for two reasons stated rather than assumed. First, rule (d)
+ *   SKIPS `baseline-ref` members outright (src/witness/run.ts:1295), so a
+ *   baseline-ref member's ownership has no consequence anywhere: ownership is
+ *   read in exactly one place and that place skips this kind. Second, resolving
+ *   the ref would attribute a ref moved by SOMEBODY ELSE to this phase, which
+ *   is the opposite of what an authorship derivation should say. If rule (d)
+ *   ever stops skipping this kind, this decision has to be revisited, and the
+ *   fix would be the patch one: fold the resolved tree, not the ref name.
+ */
+export function canonicalMember(
+  member: DangerousStateMember,
+  readPatchBody: (patchPath: string) => string | undefined,
+): string | undefined {
   if (member.kind === "baseline-ref") {
     return JSON.stringify(["baseline-ref", member.ref]);
   }
-  if (member.kind === "patch") {
-    return JSON.stringify(["patch", member.patch]);
+  if (member.kind === "mutation") {
+    return JSON.stringify(["mutation", member.file, member.find, member.replace]);
   }
-  return JSON.stringify(["mutation", member.file, member.find, member.replace]);
+  const body = readPatchBody(member.patch);
+  if (body === undefined) {
+    return undefined;
+  }
+  return JSON.stringify([
+    "patch",
+    member.patch,
+    createHash("sha256").update(body).digest("hex"),
+  ]);
+}
+
+/**
+ * THE SPEC'S CLAIM: what this document asserts, and about what.
+ *
+ * A witness spec says "these named TESTS guard this BEHAVIOR, and here are the
+ * dangerous states they have been shown red against". `behavior` and `tests`
+ * are that sentence's subject and predicate, and rule (d) is an obligation on
+ * the sentence, not only on its members: it exists so a phase cannot claim
+ * coverage using a dangerous state about code it did not touch.
+ *
+ * WHICH FIELDS ARE IN, AND WHY THE OTHERS ARE NOT. The test applied to every
+ * field of the closed schema was: does changing THIS FIELD ALONE let a phase
+ * assert something new about its own diff while reusing a dangerous state
+ * somebody else authored?
+ *
+ * - `behavior`: YES. Re-point a spec at a behavior this phase just introduced
+ *   and an older phase's dangerous state becomes this phase's evidence. IN.
+ * - `tests`: YES, the same move spelled through the named tests. IN.
+ * - `class`: NO. It selects which refusal rules apply (rules (a), (e), (g)) and
+ *   none of them is ownership-gated, so a class change is evaluated in full on
+ *   every run whether the spec is owned or not. A weakened class is refused by
+ *   rule (e), which DERIVES the class from the named tests' sources rather than
+ *   trusting the declaration. OUT, and including it would buy false reds on
+ *   class fix-ups while closing no attack.
+ * - `id`: NO. It is the handle, checked for collisions at
+ *   src/gates/red-witness.ts:263. Renaming a spec asserts nothing new. OUT.
+ * - `deterministic`, `repeats`: NO. They set the red THRESHOLD in the member
+ *   execution loop (src/witness/run.ts:1517 and src/witness/run.ts:1605), which
+ *   runs for every member of every evaluated spec regardless of ownership. OUT.
+ * - `consumesExternalOutput`: NO. Rules (c) and (f) read it and neither is
+ *   ownership-gated. OUT.
+ *
+ * `tests` is SORTED here. A reorder of the named tests changes nothing about
+ * what is claimed, and treating it as authorship would be the same positional
+ * mistake the member matching avoids by comparing canonical forms rather than
+ * indices.
+ */
+export function specClaim(spec: WitnessSpec): string {
+  return JSON.stringify(["claim", spec.behavior, [...spec.tests].sort()]);
 }
 
 /**
@@ -263,41 +349,75 @@ export function canonicalMember(member: DangerousStateMember): string {
  * that a phase cannot add a witness about unrelated code and claim coverage.
  * That obligation is a claim about AUTHORSHIP, and authorship is per MEMBER.
  * Deriving it from the spec FILE appearing in the diff is one granularity too
- * coarse: it makes every sibling member of an edited file acquire an
- * obligation its author never took on. Measured by the M3 exit test at stage
- * E1.6, where repairing one member's quoted source line reddened two untouched
- * members of the same file.
+ * coarse: it makes every sibling member of an edited file acquire an obligation
+ * its author never took on. Measured by the M3 exit test at stage E1.6, where
+ * repairing one member's quoted source line reddened two untouched members of
+ * the same file.
  *
- * A member is OWNED when no structurally identical member exists in the
- * spec as of the merge base. Matching is a MULTISET consume, not a set
- * membership test, so adding a second copy of an existing member is owned
- * (rule (g) is what refuses that copy, and it must still see it as new).
+ * THREE WAYS A PHASE AUTHORS, and the round-1 reviews found that only the first
+ * was implemented:
  *
- * `baselineMembers` is `undefined` when the spec did not exist at the merge
- * base, did not parse there, or could not be read there. All three mean the
- * phase is answerable for the whole file, so every member is owned. That is
- * the conservative direction: the failure mode of this derivation is a member
- * wrongly EXEMPTED, so an unreadable baseline keeps the obligation rather than
- * dropping it.
+ * 1. A member whose CANONICAL FORM changed, which now includes a patch body.
+ * 2. A member with no counterpart at the merge base. Matching is a MULTISET
+ *    consume rather than a set membership test, so a second copy of an existing
+ *    member is authored (rule (g) is what refuses that copy, and it must still
+ *    see it as new).
+ * 3. THE CLAIM CHANGED. Then every member is authored, because every declared
+ *    dangerous state is now being offered as evidence for a sentence this phase
+ *    wrote. There is no narrower attribution available: a claim change cannot
+ *    be pinned on one member, since the claim is a property of the document.
+ *    This is the ONLY whole-spec trigger, and keeping it that narrow is the
+ *    point. An edit to a sibling member, a `repeats` bump, a reformat or a
+ *    rename still authors nothing, which is what the round's converse test
+ *    holds.
+ *
+ * `baselineSpec` is `undefined` when the spec did not exist at the merge base,
+ * did not parse there, or could not be read there. All three mean the phase is
+ * answerable for the whole file, so every member is owned. That is the
+ * conservative direction, and it is applied identically to an unreadable patch
+ * BODY on either side: the failure mode of this derivation is a member wrongly
+ * EXEMPTED, so anything the derivation cannot establish keeps the obligation
+ * rather than dropping it.
  */
 export function phaseOwnedMemberIndices(
-  headMembers: readonly DangerousStateMember[],
-  baselineMembers: readonly DangerousStateMember[] | undefined,
+  headSpec: WitnessSpec,
+  baselineSpec: WitnessSpec | undefined,
+  readers: PatchBodyReaders,
 ): Set<number> {
   const owned = new Set<number>();
-  if (baselineMembers === undefined) {
-    for (let index = 0; index < headMembers.length; index += 1) {
+  const ownEveryMember = (): Set<number> => {
+    for (let index = 0; index < headSpec.dangerousStates.length; index += 1) {
       owned.add(index);
     }
     return owned;
+  };
+  if (baselineSpec === undefined) {
+    return ownEveryMember();
+  }
+  if (specClaim(headSpec) !== specClaim(baselineSpec)) {
+    return ownEveryMember();
   }
   const remaining = new Map<string, number>();
-  for (const member of baselineMembers) {
-    const key = canonicalMember(member);
+  for (const member of baselineSpec.dangerousStates) {
+    const key = canonicalMember(member, readers.baseline);
+    if (key === undefined) {
+      // A baseline member whose patch body cannot be read is not established,
+      // so it matches nothing and cannot exempt a head member.
+      continue;
+    }
     remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
-  for (let index = 0; index < headMembers.length; index += 1) {
-    const key = canonicalMember(headMembers[index] as DangerousStateMember);
+  for (let index = 0; index < headSpec.dangerousStates.length; index += 1) {
+    const key = canonicalMember(
+      headSpec.dangerousStates[index] as DangerousStateMember,
+      readers.head,
+    );
+    if (key === undefined) {
+      // Same rule on the head side: a member whose body cannot be read is
+      // owned, never assumed unchanged.
+      owned.add(index);
+      continue;
+    }
     const left = remaining.get(key) ?? 0;
     if (left > 0) {
       remaining.set(key, left - 1);

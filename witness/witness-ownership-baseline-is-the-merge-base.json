@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-baseline-is-the-merge-base",
+  "behavior": "witness-ownership-baseline-is-the-merge-base",
+  "tests": [
+    "the ownership baseline is read at the merge base, so a spec another phase changed on the base branch is not authored here"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "      `${diff.mergeBaseSha}:${entry.repoRelative}`,",
+      "replace": "      `${diff.baseSha}:${entry.repoRelative}`,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  if (specClaim(headSpec) !== specClaim(baselineSpec)) {",
+      "replace": "  if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

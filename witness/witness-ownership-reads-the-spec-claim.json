@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-reads-the-spec-claim",
+  "behavior": "witness-ownership-reads-the-spec-claim",
+  "tests": [
+    "rewriting a witness spec's claim imposes rule (d) on every member, and changing a field that is not the claim imposes nothing"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  if (specClaim(headSpec) !== specClaim(baselineSpec)) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  return JSON.stringify([\"claim\", spec.behavior, [...spec.tests].sort()]);",
+      "replace": "  return JSON.stringify([\"claim\", spec.behavior]);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

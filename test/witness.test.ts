@@ -85,11 +85,34 @@ interface Fixture {
   head: string;
 }
 
+/**
+ * Every fixture repository this file creates, removed together when the
+ * process exits.
+ *
+ * UNBRIEFED ADDITION, flagged so a reviewer can strike it. `makeFixture` has
+ * always called `mkdtempSync` and never cleaned up, and the cost of that became
+ * measurable during this round: `/tmp` held 189,180 entries and 18GB of leaked
+ * fixture directories, 28,541 of them this file's own `wfx-` prefix, and the
+ * filesystem filled mid-round and killed a corruption sweep. This round adds
+ * eleven more fixture repositories per suite run, so it makes the leak worse
+ * rather than merely inheriting it. Cleanup at EXIT rather than per test,
+ * because `assertCallerClean` reads the fixture repository after each gate run
+ * and a per-test removal would have to be ordered against it; at exit there is
+ * nothing left to order against, so this cannot change any assertion.
+ */
+const fixtureDirs: string[] = [];
+process.on("exit", () => {
+  for (const dir of fixtureDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function makeFixture(
   baseFiles: Record<string, string>,
   headFiles: Record<string, string>,
 ): Fixture {
   const dir = mkdtempSync(join(tmpdir(), "wfx-"));
+  fixtureDirs.push(dir);
   git(dir, "init", "-q", "-b", "main");
   writeTree(dir, baseFiles);
   git(dir, "add", "-A");
@@ -1784,6 +1807,385 @@ test("a member this phase ADDED to an existing witness spec must still intersect
   // mutates the very same unchanged file, take no obligation from this rule.
   assert.doesNotMatch(outcome.result.detail, /member 1, mutation of src\/legacy\.ts/);
   assert.doesNotMatch(outcome.result.detail, /member 3, patch patches\/legacy-alt\.patch/);
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1: the ownership PROJECTION must cover everything that determines
+// what the spec asserts.
+//
+// Round 1's derivation compared only `dangerousStates`, and within a member
+// only the fields written inline in the document. Two kinds of real authorship
+// lived outside that projection, and both are guarded here:
+//
+//   CR-001  a `patch` member's `patch` field is a POINTER. Rewriting the patch
+//           FILE'S BODY changes the dangerous state completely and left the
+//           canonical form identical, so the member was judged not authored.
+//   CR-002  a spec's CLAIM (`behavior`, `tests`) was not read at all, so a
+//           phase could re-point an older phase's dangerous state at a behavior
+//           and a test it had just introduced and take no rule (d) obligation.
+//
+// The over-correction these must not become is "any edit to the spec file owns
+// every member", which is the defect this whole branch removes. Every test
+// below therefore carries its own negative arm: an untouched patch sibling that
+// must stay unowned, and a `repeats` bump that must author nothing.
+// ---------------------------------------------------------------------------
+
+const OWN_ADDER_BASE = "export function add(a, b) {\n  return a + b;\n}\n";
+const OWN_ADDER_HEAD = "export function add(a, b) {\n  return b + a;\n}\n";
+const OWN_LEGACY = "export function twice(x) {\n  return x * 2;\n}\n";
+
+const OWN_TEST = [
+  'import test from "node:test";',
+  'import assert from "node:assert/strict";',
+  'import { add } from "../src/adder.ts";',
+  'import { twice } from "../src/legacy.ts";',
+  "",
+  'test("combo works", () => {',
+  "  assert.equal(add(2, 2), 4);",
+  "  assert.equal(twice(3), 6);",
+  "});",
+  "",
+  'test("combo still works", () => {',
+  "  assert.equal(add(1, 1), 2);",
+  "  assert.equal(twice(5), 10);",
+  "});",
+  "",
+].join("\n");
+
+/** Two patch bodies, both reddening the named test, structurally different. */
+function ownPatch(replacement: string): string {
+  return [
+    "diff --git a/src/legacy.ts b/src/legacy.ts",
+    "--- a/src/legacy.ts",
+    "+++ b/src/legacy.ts",
+    "@@ -1,3 +1,3 @@",
+    " export function twice(x) {",
+    "-  return x * 2;",
+    `+  ${replacement}`,
+    " }",
+    "",
+  ].join("\n");
+}
+
+const OWN_M_ADDER_BASE = {
+  kind: "mutation",
+  file: "src/adder.ts",
+  find: "return a + b;",
+  replace: "return a - b;",
+};
+const OWN_M_ADDER_HEAD = {
+  kind: "mutation",
+  file: "src/adder.ts",
+  find: "return b + a;",
+  replace: "return a - b;",
+};
+/** Mutates a file the phase diff never touches. */
+const OWN_M_LEGACY = {
+  kind: "mutation",
+  file: "src/legacy.ts",
+  find: "return x * 2;",
+  replace: "return x * 3;",
+};
+
+function ownSpec(overrides: Record<string, unknown>): string {
+  return fixtureSpec({
+    id: "own-guard",
+    behavior: "combo-works",
+    tests: ["combo works"],
+    class: "additive",
+    dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY],
+    deterministic: true,
+    repeats: 1,
+    ...overrides,
+  });
+}
+
+const OWN_BEHAVIORS = fixtureBehaviors({
+  "combo-works": "combo works",
+  "combo-still-works": "combo still works",
+});
+
+/**
+ * A fixture whose spec EXISTS AT THE BASE. `baseSpec` and `headSpec` are the
+ * two versions of it; the head always also edits `src/adder.ts` so the spec's
+ * first member legitimately intersects and the spec is in the diff.
+ */
+function ownershipFixture(
+  baseSpec: string,
+  headSpec: string,
+  extraBase: Record<string, string> = {},
+  extraHead: Record<string, string> = {},
+): Fixture {
+  return makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": OWN_BEHAVIORS,
+      "src/adder.ts": OWN_ADDER_BASE,
+      "src/legacy.ts": OWN_LEGACY,
+      "test/combo.test.ts": OWN_TEST,
+      "witness/own-guard.json": baseSpec,
+      ...extraBase,
+    },
+    {
+      "src/adder.ts": OWN_ADDER_HEAD,
+      "witness/own-guard.json": headSpec,
+      ...extraHead,
+    },
+  );
+}
+
+test("rewriting a patch member's body is authorship even though its path is unchanged, and an untouched patch sibling stays unowned", () => {
+  const members = [
+    OWN_M_ADDER_HEAD,
+    { kind: "patch", patch: "patches/alt.patch" },
+    { kind: "patch", patch: "patches/keep.patch" },
+  ];
+  const baseMembers = [
+    OWN_M_ADDER_BASE,
+    { kind: "patch", patch: "patches/alt.patch" },
+    { kind: "patch", patch: "patches/keep.patch" },
+  ];
+  const patches = {
+    "patches/alt.patch": ownPatch("return x * 3;"),
+    "patches/keep.patch": ownPatch("return x + x + 1;"),
+  };
+
+  // The phase rewrites alt.patch IN PLACE and leaves keep.patch alone. Both
+  // patch members' text in the spec document is byte-identical on both sides.
+  const rewritten = ownershipFixture(
+    ownSpec({ dangerousStates: baseMembers }),
+    ownSpec({ dangerousStates: members }),
+    patches,
+    { "patches/alt.patch": ownPatch("return x - 2;") },
+  );
+  const outcome = runGate(rewritten);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(
+    outcome.result.detail,
+    /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, patch patches\/alt\.patch\)/,
+  );
+  // The sibling whose body did NOT change takes no obligation, and neither
+  // does the member that legitimately intersects.
+  assert.doesNotMatch(outcome.result.detail, /member 2, patch patches\/keep\.patch/);
+  assert.doesNotMatch(outcome.result.detail, /member 0/);
+
+  // Control: same fixture, no patch body rewritten. Nothing is authored beyond
+  // the repaired mutation, so rule (d) says nothing at all.
+  const untouched = ownershipFixture(
+    ownSpec({ dangerousStates: baseMembers }),
+    ownSpec({ dangerousStates: members }),
+    patches,
+  );
+  const control = runGate(untouched);
+  assert.equal(control.result.status, "green", reasonsOf(control));
+  assert.doesNotMatch(control.result.detail, /rule \(d\)/);
+});
+
+test("rewriting a witness spec's claim imposes rule (d) on every member, and changing a field that is not the claim imposes nothing", () => {
+  const base = ownSpec({ dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] });
+
+  // Two structurally different claim edits: the behavior, and the named tests.
+  for (const [label, headSpec] of [
+    ["behavior", ownSpec({ behavior: "combo-still-works" })],
+    ["tests", ownSpec({ tests: ["combo still works"] })],
+  ] as Array<[string, string]>) {
+    const outcome = runGate(ownershipFixture(base, headSpec));
+    assert.equal(outcome.result.status, "red", `${label}: ${reasonsOf(outcome)}`);
+    assert.match(
+      outcome.result.detail,
+      /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, mutation of src\/legacy\.ts\)/,
+      label,
+    );
+  }
+
+  // The negative arm, and it is the one that keeps this from becoming "any
+  // edit to the spec file owns every member". `repeats` is load-bearing for the
+  // red threshold and is NOT part of the claim, so bumping it authors nothing.
+  const bumped = runGate(
+    ownershipFixture(base, ownSpec({ repeats: 2 })),
+  );
+  assert.equal(bumped.result.status, "green", reasonsOf(bumped));
+  assert.doesNotMatch(bumped.result.detail, /rule \(d\)/);
+});
+
+test("a member whose find or replace text changed is authored here, and a duplicated member is a new member", () => {
+  const base = ownSpec({ dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY] });
+  const arms: Array<[string, Array<Record<string, unknown>>, RegExp]> = [
+    [
+      "replace changed",
+      [OWN_M_ADDER_HEAD, { ...OWN_M_LEGACY, replace: "return x * 4;" }],
+      /\(member 1, mutation of src\/legacy\.ts\)/,
+    ],
+    [
+      "find changed",
+      [OWN_M_ADDER_HEAD, { ...OWN_M_LEGACY, find: "return x * 2" }],
+      /\(member 1, mutation of src\/legacy\.ts\)/,
+    ],
+    [
+      "duplicated",
+      [OWN_M_ADDER_HEAD, OWN_M_LEGACY, OWN_M_LEGACY],
+      /\(member 2, mutation of src\/legacy\.ts\)/,
+    ],
+  ];
+  for (const [label, members, expected] of arms) {
+    const outcome = runGate(
+      ownershipFixture(base, ownSpec({ dangerousStates: members })),
+    );
+    assert.equal(outcome.result.status, "red", `${label}: ${reasonsOf(outcome)}`);
+    assert.match(outcome.result.detail, expected, label);
+  }
+
+  // The duplicate arm names ONLY the added copy: the pre-existing member is
+  // consumed by the multiset match, so a set-membership test would exempt both
+  // and a positional test would own both.
+  const duplicated = runGate(
+    ownershipFixture(
+      base,
+      ownSpec({ dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY, OWN_M_LEGACY] }),
+    ),
+  );
+  assert.doesNotMatch(duplicated.result.detail, /\(member 1, mutation of src\/legacy\.ts\)/);
+});
+
+test("the ownership baseline is read at the merge base, so a spec another phase changed on the base branch is not authored here", () => {
+  // Topology: MB is the merge base. `main` then advances and edits member 1 of
+  // the spec. The branch is cut from MB, never sees that edit, and repairs
+  // member 0 only. Reading the old side at the base BRANCH TIP would see main's
+  // member 1 and read this branch's untouched member 1 as newly authored.
+  const dir = mkdtempSync(join(tmpdir(), "wfx-"));
+  fixtureDirs.push(dir);
+  git(dir, "init", "-q", "-b", "main");
+  writeTree(dir, {
+    "gates.manifest.json": fixtureManifest([]),
+    "test/behaviors.json": OWN_BEHAVIORS,
+    "src/adder.ts": OWN_ADDER_BASE,
+    "src/legacy.ts": OWN_LEGACY,
+    "test/combo.test.ts": OWN_TEST,
+    "witness/own-guard.json": ownSpec({
+      dangerousStates: [OWN_M_ADDER_BASE, OWN_M_LEGACY],
+    }),
+  });
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "merge base");
+  const mergeBase = git(dir, "rev-parse", "HEAD");
+
+  // main advances, editing the member this branch does not touch.
+  writeTree(dir, {
+    "witness/own-guard.json": ownSpec({
+      dangerousStates: [OWN_M_ADDER_BASE, { ...OWN_M_LEGACY, replace: "return x * 9;" }],
+    }),
+  });
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "main advances");
+  const baseTip = git(dir, "rev-parse", "HEAD");
+
+  git(dir, "checkout", "-q", "-b", "branch", mergeBase);
+  writeTree(dir, {
+    "src/adder.ts": OWN_ADDER_HEAD,
+    "witness/own-guard.json": ownSpec({
+      dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY],
+    }),
+  });
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "branch head");
+  const head = git(dir, "rev-parse", "HEAD");
+
+  assert.notEqual(baseTip, mergeBase);
+  assert.equal(git(dir, "merge-base", baseTip, head), mergeBase);
+
+  const fixture: Fixture = { dir, base: baseTip, head };
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.doesNotMatch(outcome.result.detail, /rule \(d\)/);
+});
+
+/** The find text sits at line 2; the head edit is at line 5, a different hunk. */
+const OWN_SPARE_BASE =
+  'export function spare(s) {\n  return s + "!";\n}\n\nexport const spareVersion = 1;\n';
+const OWN_SPARE_HEAD =
+  'export function spare(s) {\n  return s + "!";\n}\n\nexport const spareVersion = 2;\n';
+
+test("an owned member that mutates a changed file OUTSIDE every changed hunk is red naming the hunk", () => {
+  // BEYOND THE FIX-ROUND BRIEF, and recorded as such. Rule (d) has two arms:
+  // the file-level "does not intersect the phase diff" arm, and this one, which
+  // is line-level. The round-1 hazard review measured that removing this arm
+  // entirely left the suite green (its M8) and correctly classed that as
+  // PRE-EXISTING rather than a finding against the branch, because the base
+  // tree is equally indifferent. It is closed here because this round is about
+  // rule (d)'s scope and an unwitnessed arm of the rule under repair is the
+  // cheapest thing in this file to leave broken.
+  const spareMember = (replace: string): Record<string, unknown> => ({
+    kind: "mutation",
+    file: "src/spare.ts",
+    find: '  return s + "!";',
+    replace,
+  });
+  const outcome = runGate(
+    ownershipFixture(
+      ownSpec({ dangerousStates: [OWN_M_ADDER_BASE, spareMember('  return s + "?";')] }),
+      // The member is OWNED because its `replace` changed, so the file-level
+      // arm is satisfied (src/spare.ts IS in the diff) and only the hunk arm
+      // can refuse it.
+      ownSpec({ dangerousStates: [OWN_M_ADDER_HEAD, spareMember('  return s + "#";')] }),
+      { "src/spare.ts": OWN_SPARE_BASE },
+      { "src/spare.ts": OWN_SPARE_HEAD },
+    ),
+  );
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(
+    outcome.result.detail,
+    /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, mutation of src\/spare\.ts touches no line inside a changed hunk\)/,
+  );
+});
+
+test("a patch member whose body cannot be read on either revision keeps its obligation rather than being assumed unchanged", () => {
+  // The doc comment on `phaseOwnedMemberIndices` says anything the derivation
+  // cannot ESTABLISH keeps the obligation. For a patch member the establishing
+  // read is the patch file's body, and the case where BOTH reads fail is the
+  // only one where "unreadable" could quietly become "unchanged": the member's
+  // text in the spec document is identical on the two sides, so a comparison
+  // that fell back to the path alone would match it against itself and exempt
+  // it. `patches/ghost.patch` is referenced by the spec and exists at neither
+  // revision.
+  const members = (adder: Record<string, unknown>): Array<Record<string, unknown>> => [
+    adder,
+    { kind: "patch", patch: "patches/ghost.patch" },
+  ];
+  const outcome = runGate(
+    ownershipFixture(
+      ownSpec({ dangerousStates: members(OWN_M_ADDER_BASE) }),
+      ownSpec({ dangerousStates: members(OWN_M_ADDER_HEAD) }),
+    ),
+  );
+  assert.match(
+    outcome.result.detail,
+    /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, patch patches\/ghost\.patch\)/,
+    reasonsOf(outcome),
+  );
+});
+
+test("a baseline spec that cannot be established owns every member, whether it fails to parse or fails to validate", () => {
+  const arms: Array<[string, string]> = [
+    ["unparseable", "{ this is not json\n"],
+    [
+      "schema-invalid",
+      `${JSON.stringify({ id: "own-guard", behavior: "combo-works" }, null, 2)}\n`,
+    ],
+  ];
+  for (const [label, baseBody] of arms) {
+    const outcome = runGate(
+      ownershipFixture(
+        baseBody,
+        ownSpec({ dangerousStates: [OWN_M_ADDER_HEAD, OWN_M_LEGACY] }),
+      ),
+    );
+    assert.equal(outcome.result.status, "red", `${label}: ${reasonsOf(outcome)}`);
+    assert.match(
+      outcome.result.detail,
+      /rule \(d\): declared dangerous state does not intersect the phase diff \(member 1, mutation of src\/legacy\.ts\)/,
+      label,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------

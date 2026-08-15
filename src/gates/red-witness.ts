@@ -280,6 +280,17 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
   const stored = specs.filter((entry) => !diff.files.has(entry.repoRelative));
 
   /**
+   * A patch member's body at the MERGE BASE, the old side of the ownership
+   * comparison. `readPatchAtHead` above is the new side. Two readers rather
+   * than one because the whole point of reading the body is that the same path
+   * can hold different content on the two revisions.
+   */
+  const readPatchAtMergeBase = (patchPath: string): string | undefined => {
+    const shown = gitIn(repoRoot, ["show", `${diff.mergeBaseSha}:${patchPath}`]);
+    return shown.ok ? shown.stdout : undefined;
+  };
+
+  /**
    * The members of an own spec that THIS PHASE AUTHORED, which is rule (d)'s
    * scope. Membership in `own` is file-granular ("some byte of this spec
    * changed") and rule (d)'s obligation is member-granular ("this declared
@@ -291,25 +302,32 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
    * yields `undefined`, and `phaseOwnedMemberIndices` then owns every member:
    * an added spec is wholly the phase's, and so is one whose previous version
    * cannot be established.
+   *
+   * The WHOLE spec goes in, not just its members, because the spec's claim
+   * (`behavior` and `tests`) is part of what rule (d) is an obligation on. See
+   * `specClaim` for which fields are in that set and why the other four are
+   * not.
    */
   const ownedMembersOf = (entry: {
     spec: WitnessSpec;
     repoRelative: string;
   }): Set<number> => {
+    const readers = { head: readPatchAtHead, baseline: readPatchAtMergeBase };
     const shown = gitIn(repoRoot, [
       "show",
       `${diff.mergeBaseSha}:${entry.repoRelative}`,
     ]);
     if (!shown.ok) {
-      return phaseOwnedMemberIndices(entry.spec.dangerousStates, undefined);
+      return phaseOwnedMemberIndices(entry.spec, undefined, readers);
     }
     const baseline = parseWitnessSpec(
       shown.stdout,
       `${diff.mergeBaseSha}:${entry.repoRelative}`,
     );
     return phaseOwnedMemberIndices(
-      entry.spec.dangerousStates,
-      baseline.ok ? baseline.spec.dangerousStates : undefined,
+      entry.spec,
+      baseline.ok ? baseline.spec : undefined,
+      readers,
     );
   };
   const triggeredStored = stored.filter((entry) =>

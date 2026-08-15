@@ -734,3 +734,20 @@ that reaches it. The line stays, because removing it would leave
 `"".trim()` becoming a sha-shaped empty string, which is a worse failure than an
 unreachable line, and the comment at src/witness/run.ts:85 now records the
 measurement so nobody later reads it as a tested path.
+
+## 11. Fix round 1: the ownership PROJECTION omits load-bearing content
+
+Both clean-room reviews returned FIX-ROUND-NEEDED on deea501. This section is
+written as the round runs, not after it.
+
+**THE MECHANISM, and it is one mechanism with several instances.** Ownership is
+computed over a PROJECTION of the spec, and content that determines what the
+spec asserts lives outside that projection. My claim in section 3 was "a member
+a sibling edit dragged into the file's diff is not owned". The delivered
+behaviour was "anything whose `dangerousStates` canonical form is unchanged is
+not owned", and those are not the same sentence. The gap between them is where
+both findings live.
+
+Fixing the two named instances and leaving the projection unexamined is the
+shape CLAUDE.md:333 records twelve times in thirteen re-reviewed fix rounds, so
+section 11.1 derives the projection over the WHOLE schema before any code moves.

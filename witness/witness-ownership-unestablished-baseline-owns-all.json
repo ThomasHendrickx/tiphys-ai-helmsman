@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-unestablished-baseline-owns-all",
+  "behavior": "witness-ownership-unestablished-baseline-owns-all",
+  "tests": [
+    "a baseline spec that cannot be established owns every member, whether it fails to parse or fails to validate"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "      baseline.ok ? baseline.spec : undefined,",
+      "replace": "      baseline.ok ? baseline.spec : entry.spec,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  if (baselineSpec === undefined) {\n    return ownEveryMember();",
+      "replace": "  if (baselineSpec === undefined) {\n    return owned;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
