@@ -2679,3 +2679,194 @@ test("no ref write in the write-granted job can overwrite what is already there"
     "a ref write in the write-granted job can overwrite an existing ref, which is the one operation that can destroy the anchor of a version that really was published",
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* THE MANIFEST FIELD ONLY THE REGISTRY USED TO CHECK                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WHY THIS TEST EXISTS, and it is a defect this repository actually paid for.
+ * The real 0.1.0 dispatch, run 31861403550, reached `npm publish --provenance`
+ * and the registry refused it with E422:
+ *
+ *   Error verifying sigstore provenance bundle: Failed to validate repository
+ *   information: package.json: "repository.url" is "", expected to match
+ *   "https://github.com/ThomasHendrickx/tiphys-ai-helmsman" from provenance
+ *
+ * `package.json` declared no `repository` at all. Nothing was published and the
+ * tag job did not run, which is the workflow failing closed as designed.
+ *
+ * THE MECHANISM, NOT THE INSTANCE. Every other manifest key the release path
+ * depends on already has a local assertion behind it: `version` is compared
+ * against the dispatch input by the `decide` step, `files` is compared against
+ * the built tree by the pack check, `bin` is EXECUTED by
+ * scripts/release-verify.sh. `repository` had none, so its state was first
+ * observable at the one step in the whole process with no clean undo. This test
+ * moves that observation into the suite.
+ *
+ * THE ORACLE IS THE PROVENANCE EXPRESSION ITSELF, not a constant copied beside
+ * it. npm builds the attestation's repository claim as
+ * `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}` (libnpmpublish's provenance
+ * module, measured in the bundled npm 11.18.0 of the floor toolchain), so in CI
+ * this test compares the manifest against the very same two variables the
+ * publish will read. Off a runner it falls back to the `origin` remote. With
+ * NEITHER available it FAILS rather than skipping: a check that cannot go red
+ * is the shape this repository keeps paying for, and a silent skip on the
+ * release path is exactly the hole being closed.
+ */
+
+interface RepositoryIdentity {
+  host: string;
+  owner: string;
+  project: string;
+}
+
+/**
+ * Parse a repository reference into the triple that identifies it. Handles the
+ * forms a package manifest or a git remote actually carries: a `git+` prefixed
+ * URL, a plain https URL, a `git://` URL, an `ssh://` URL and the scp-like
+ * `git@host:owner/project.git`. A bare `owner/project` shortcut deliberately
+ * does NOT parse here: it names no host, and the raw manifest inside the
+ * tarball is read as written.
+ */
+function repositoryIdentity(raw: string): RepositoryIdentity | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return undefined;
+  }
+  const withoutGitPrefix = trimmed.replace(/^git\+/, "");
+  let host: string;
+  let path: string;
+  const scpLike = /^[A-Za-z0-9._-]+@([^:/]+):(.+)$/.exec(withoutGitPrefix);
+  if (scpLike !== null) {
+    host = scpLike[1] as string;
+    path = scpLike[2] as string;
+  } else {
+    let parsed: URL;
+    try {
+      parsed = new URL(withoutGitPrefix);
+    } catch {
+      return undefined;
+    }
+    if (parsed.hostname === "") {
+      return undefined;
+    }
+    host = parsed.hostname;
+    path = parsed.pathname;
+  }
+  const segments = path
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "")
+    .split("/");
+  if (segments.length !== 2) {
+    return undefined;
+  }
+  const [owner, project] = segments;
+  if (owner === undefined || owner === "" || project === undefined || project === "") {
+    return undefined;
+  }
+  return { host: host.toLowerCase(), owner, project };
+}
+
+/** The repository the provenance attestation will name, and where it came from. */
+function provenanceRepository(): { url: string; source: string } {
+  const server = process.env["GITHUB_SERVER_URL"];
+  const slug = process.env["GITHUB_REPOSITORY"];
+  if (server !== undefined && server !== "" && slug !== undefined && slug !== "") {
+    return {
+      url: `${server}/${slug}`,
+      source: "GITHUB_SERVER_URL and GITHUB_REPOSITORY, the two variables npm itself reads",
+    };
+  }
+  const remote = spawnSync("git", ["-C", repoRoot, "remote", "get-url", "origin"], {
+    encoding: "utf8",
+  });
+  const printed = (remote.stdout ?? "").trim();
+  if (remote.status === 0 && printed !== "") {
+    return { url: printed, source: "the origin remote" };
+  }
+  /* FAIL CLOSED, never skip. */
+  assert.fail(
+    "neither GITHUB_SERVER_URL with GITHUB_REPOSITORY nor an origin remote is readable, " +
+      "so the repository this package would be published from cannot be established; " +
+      `git remote get-url origin exited ${String(remote.status)} with stderr ${JSON.stringify(remote.stderr ?? "")}`,
+  );
+}
+
+test("the published manifest names the repository provenance will assert", () => {
+  const manifest = JSON.parse(
+    readFileSync(join(repoRoot, "package.json"), "utf8"),
+  ) as { repository?: unknown };
+
+  const oracle = provenanceRepository();
+  const expected = repositoryIdentity(oracle.url);
+  assert.ok(
+    expected !== undefined,
+    `the publishing repository ${JSON.stringify(oracle.url)}, taken from ${oracle.source}, does not parse as a repository reference`,
+  );
+
+  /* ONE: present, an object, and carrying a NON-EMPTY string url. The registry
+     named `repository.url` and reported it as "", which is what an ABSENT
+     repository field reduces to. Both the absent and the empty state must be
+     red here, so presence is asserted separately from value. */
+  assert.equal(
+    typeof manifest.repository,
+    "object",
+    'package.json must declare a "repository" object; an absent field is what the registry reported as ""',
+  );
+  assert.notEqual(manifest.repository, null, '"repository" must not be null');
+  const repository = manifest.repository as { type?: unknown; url?: unknown };
+  assert.equal(
+    typeof repository.url,
+    "string",
+    '"repository.url" must be a string; the registry reads that exact key',
+  );
+  const url = repository.url as string;
+  assert.notEqual(url.trim(), "", '"repository.url" must not be empty');
+  assert.equal(repository.type, "git", '"repository.type" must be git');
+
+  /* TWO: it must name the SAME repository, not merely some repository. The
+     registry compares VALUES, so a well-formed url naming a different project
+     fails the publish exactly as an absent one does. */
+  const declared = repositoryIdentity(url);
+  assert.ok(
+    declared !== undefined,
+    `"repository.url" ${JSON.stringify(url)} does not parse as an absolute repository reference naming its host`,
+  );
+  assert.deepEqual(
+    declared,
+    expected,
+    `"repository.url" ${JSON.stringify(url)} does not name ${JSON.stringify(oracle.url)}, which is the repository ${oracle.source} says this package publishes from`,
+  );
+
+  /* THREE, and stricter than the publish strictly requires, deliberately.
+     MEASURED against the floor toolchain's bundled npm 11.18.0: the publish
+     path runs the manifest through @npmcli/package-json's fixer before sending
+     it, and of the accepted spellings exactly one is already a FIXED POINT of
+     that fixer, `git+https://<host>/<owner>/<project>.git`. Every other
+     spelling publishes only because a normalization step rewrote it, and the
+     tarball's own package.json is shipped as written, so the two copies differ.
+     Pinning the fixed point makes the authored bytes and the sent manifest the
+     same bytes, and takes that step out of the load-bearing path. A different
+     but still valid spelling reddens here; that is a known and accepted cost,
+     recorded in delivery/work-history/release-manifest-repository-field.md:1. */
+  assert.equal(
+    url,
+    `git+https://${expected.host}/${expected.owner}/${expected.project}.git`,
+    '"repository.url" must be npm\'s own normalized form, so the authored manifest and the manifest npm sends are identical',
+  );
+});
+
+test("the release manifest behavior is registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of ["release-manifest-names-the-provenance-repository"]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});

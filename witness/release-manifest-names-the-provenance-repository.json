@@ -1,0 +1,30 @@
+{
+  "id": "release-manifest-names-the-provenance-repository",
+  "behavior": "release-manifest-names-the-provenance-repository",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "the published manifest names the repository provenance will assert"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "package.json",
+      "find": "  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"\n  },\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "package.json",
+      "find": "\"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"",
+      "replace": "\"url\": \"git+https://github.com/ThomasHendrickx/some-other-repository.git\""
+    },
+    {
+      "kind": "mutation",
+      "file": "package.json",
+      "find": "\"url\": \"git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git\"",
+      "replace": "\"url\": \"\""
+    }
+  ]
+}

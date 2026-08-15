@@ -748,5 +748,6 @@
   "release-tag-conclusion-not-decoupled": "no job the write-granted job depends on, and no step of one, may decouple its conclusion from its steps",
   "release-registry-observation-asserted": "the publishing job READS the registry after publishing, under the same guard as the publish and after it",
   "release-tag-step-inventory-pinned": "every step of the job holding the write grant is one of an exact, pinned set",
-  "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there"
+  "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there",
+  "release-manifest-names-the-provenance-repository": "package.json names the repository the sigstore provenance attestation will assert, in the normalized form npm itself produces"
 }

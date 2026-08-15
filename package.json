@@ -4,6 +4,10 @@
   "description": "Tiphys kernel: the fleet orchestration toolbelt, delivered as an npm package.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ThomasHendrickx/tiphys-ai-helmsman.git"
+  },
   "engines": {
     "node": ">=26"
   },
