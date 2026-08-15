@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -780,4 +781,76 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
       `behavior ${id} does not resolve in test/behaviors.json`,
     );
   }
+});
+
+/**
+ * THE CAPTURED CONTRACT, and the live reproduction beside it.
+ *
+ * red-witness rule (f) binds this behavior's witness to a real capture because
+ * the changed module spawns subprocesses, and the honest capture for THIS
+ * behavior is the output of the program the check actually reports through:
+ * the built CLI of a STAGED INSTALL. The capture at
+ * witness/captures/doctor-kernel-artifacts-staged-install.txt was taken on
+ * 2026-08-15 against node v26.6.0 and records three cases with their exit
+ * codes: a complete install under `--for full` (PASS, exit 0), the same
+ * install with roles/ removed under `--for full` (FAIL, exit 1), and that same
+ * broken install with no profile (WARN, exit 0).
+ *
+ * The test asserts the recorded contract AND reproduces it live, so the
+ * assertion is anchored to real captured output rather than to a hand-written
+ * string chosen to match the implementation (CLAUDE.md warning 10).
+ */
+const capturePath = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "doctor-kernel-artifacts-staged-install.txt",
+);
+
+test("the staged-install capture records the three-case contract this check ships", () => {
+  const captured = readFileSync(capturePath, "utf8");
+  assert.match(captured, /CHECK kernel-artifacts PASS .* carries roles\/, schemas\/, checklists\/ and AGENTS\.md/);
+  assert.match(captured, /CHECK kernel-artifacts FAIL .* is missing roles\/ \(absent\) \(required for profile full\)/);
+  assert.match(captured, /CHECK kernel-artifacts WARN .* is missing roles\/ \(absent\)/);
+  const exits = [...captured.matchAll(/^exit=(\d+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(exits, ["0", "1", "0"], "the captured exit codes are the contract");
+});
+
+test("a staged install of the built package reproduces the captured contract live", {
+  skip: existsSync(join(repoRoot, "dist", "bin", "tiphys.js"))
+    ? false
+    : "dist/ is absent; run npm run build first (CI builds before it tests)",
+}, (t) => {
+  const lab = makeTempDir(t);
+  const install = join(lab, "install");
+  mkdirSync(install, { recursive: true });
+  for (const entry of ["dist", "package.json", "roles", "schemas", "checklists", "AGENTS.md"]) {
+    cpSync(join(repoRoot, entry), join(install, entry), { recursive: true });
+  }
+  const fleet = join(lab, "fleet");
+  const staged = join(install, "dist", "bin", "tiphys.js");
+  assert.equal(spawnSync(process.execPath, [staged, "init", fleet]).status, 0);
+
+  const run = (args: string[]) =>
+    spawnSync(process.execPath, [staged, ...args], { cwd: fleet, encoding: "utf8" });
+
+  const complete = run(["doctor"]);
+  assert.match(complete.stdout, /^CHECK kernel-artifacts PASS /m, complete.stdout);
+
+  rmSync(join(install, "roles"), { recursive: true });
+  const brokenFull = run(["doctor", "--for", "full"]);
+  assert.match(
+    brokenFull.stdout,
+    /^CHECK kernel-artifacts FAIL .* is missing roles\/ \(absent\) \(required for profile full\)$/m,
+    brokenFull.stdout,
+  );
+  assert.equal(brokenFull.status, 1);
+
+  const brokenGeneric = run(["doctor"]);
+  assert.match(
+    brokenGeneric.stdout,
+    /^CHECK kernel-artifacts WARN .* is missing roles\/ \(absent\)$/m,
+    brokenGeneric.stdout,
+  );
+  assert.equal(brokenGeneric.status, 0, "the unpromoted arm must not fail the fleet");
 });

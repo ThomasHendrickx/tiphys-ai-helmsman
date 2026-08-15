@@ -769,5 +769,6 @@
   "doctor-kernel-artifacts-resolution-does-not-walk-past": "the install root resolves to the package under test even when an ancestor carries roles/, which is the arm an upward-walking resolver reports PASS on",
   "doctor-kernel-artifacts-unresolvable-root-fails": "an unresolvable install root is a FAIL carrying its reason rather than a thrown error",
   "doctor-kernel-artifacts-fifo-refused": "a FIFO at a required artifact path is refused in bounded time rather than opened",
-  "doctor-kernel-artifacts-promoted-under-full-only": "kernel-artifacts-incomplete is promoted to FAIL under full and left a WARN under every other profile"
+  "doctor-kernel-artifacts-promoted-under-full-only": "kernel-artifacts-incomplete is promoted to FAIL under full and left a WARN under every other profile",
+  "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract (PASS exit 0, FAIL under full exit 1, WARN with no profile exit 0) and a live staged install reproduces it"
 }
