@@ -1814,6 +1814,30 @@ const joinContinuations = (body: string): string => body.replace(/\\\n[ \t]*/g, 
 const GIT_TAG_COMMAND = /^[ \t]*git[ \t]+(?:-c[ \t]+\S+[ \t]+)*tag\b/m;
 const GH_RELEASE_COMMAND = /^[ \t]*gh[ \t]+release[ \t]+create\b/m;
 
+/**
+ * WHAT THE TWO PREDICATES ABOVE EXCLUDE, published in fix round 1 because
+ * HRB-4's cheapest half is that they published none while the inherited
+ * predicates they were modelled on (`PUBLISH_COMMAND`, `allWorkflowSteps`) both
+ * do. They SELECT BY COMMAND SPELLING, so each is blind to:
+ *
+ *   - a git ref created without the word `tag`: `git push origin
+ *     "$SHA:refs/tags/v9.9.9"`, `git update-ref`, `git push --tags`, or a plain
+ *     `curl` against the refs API with the job's token.
+ *   - a GitHub release created without the word `gh`: any `uses:` action such
+ *     as `softprops/action-gh-release`, or a `curl` POST to the releases API.
+ *   - anything a `run:` body INVOKES rather than contains.
+ *   - a command reached through a shell that this walk does not parse,
+ *     `sh -c "git tag ..."` or `eval`.
+ *
+ * The hazard reviewer executed the first two of those against this head and
+ * neither was seen. **They are not closed by widening the spelling**, which is
+ * an arms race with no end state, but by the ALLOW-LIST over the write-granted
+ * job's steps two tests below: a step of ANY spelling reddens there, because
+ * the set of steps is pinned rather than searched. These two predicates keep
+ * their narrow job, which is to FIND THE BODY TO EXECUTE, and the scope
+ * assertions inside them are now a convenience rather than the net.
+ */
+
 test("exactly one job in any workflow declares a write grant on the repository, and it holds no id-token", () => {
   /* CRITERION 1 AND CRITERION 4. DR-0032:60 decided two jobs so that each grant
      stays minimal: the publisher keeps `contents: read` plus `id-token: write`,
@@ -2113,8 +2137,12 @@ test("the tagging command fails closed on a pre-existing tag, and does not move,
     assert.equal(labGit(local.work, ["tag", "-a", tag, "-m", "a tag that was already here", local.head]).status, 0);
     const before = labGit(local.work, ["rev-parse", tag]).stdout;
     const outcome = runStepScript(local.work, script, { VERSION: LAB_VERSION, SHA: local.target });
+    /* THE SUBSTANTIVE ASSERTIONS COME FIRST AND THE MESSAGE LAST, changed in fix
+       round 1. The hazard reviewer's HRB-5 observed that both members of this
+       class reddened on a MESSAGE REGEXP, so the recorded red reason described
+       the diagnostic rather than the damage. Assertion order is what decides
+       which one a reader sees, and the damage is the one worth seeing. */
     assert.notEqual(outcome.status, 0, `a pre-existing tag must refuse; stdout ${outcome.stdout}`);
-    assert.match(outcome.stderr, /refusing/);
     assert.equal(labGit(local.work, ["rev-parse", tag]).stdout, before, "the pre-existing tag object was replaced");
     assert.equal(
       labGit(local.work, ["rev-parse", `${tag}^{commit}`]).stdout,
@@ -2126,6 +2154,11 @@ test("the tagging command fails closed on a pre-existing tag, and does not move,
       0,
       "a tag reached the remote on a run that refused",
     );
+    /* AND THE DIAGNOSTIC IS THE STEP'S OWN, not git's. This is a real property
+       and not decoration: the step refuses EARLY with a copyable tag-and-commit
+       pair, where git's own refusal arrives late and says `[rejected] ...
+       already exists`. It is asserted last because it is the weaker claim. */
+    assert.match(outcome.stderr, /refusing/);
   } finally {
     rmSync(local.root, { recursive: true, force: true });
   }
@@ -2142,13 +2175,13 @@ test("the tagging command fails closed on a pre-existing tag, and does not move,
 
     const outcome = runStepScript(remote.work, script, { VERSION: LAB_VERSION, SHA: remote.target });
     assert.notEqual(outcome.status, 0, `a tag already on the remote must refuse; stdout ${outcome.stdout}`);
-    assert.match(outcome.stderr, /refusing/);
     assert.equal(labGit(remote.remote, ["rev-parse", `refs/tags/${tag}`]).stdout, before, "the remote tag was moved");
     assert.notEqual(
       labGit(remote.work, ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status,
       0,
       "a local tag was created for a tag the remote already carries, so the refusal came after a write rather than before one",
     );
+    assert.match(outcome.stderr, /refusing/);
   } finally {
     rmSync(remote.root, { recursive: true, force: true });
   }
@@ -2168,7 +2201,6 @@ test("the tagging command refuses rather than assuming, when the remote cannot b
   try {
     const outcome = runStepScript(drift.work, script, { VERSION: "9.9.9", SHA: drift.target });
     assert.notEqual(outcome.status, 0, `a version package.json does not declare must refuse; stdout ${outcome.stdout}`);
-    assert.match(outcome.stderr, /refusing/);
     for (const tag of ["v9.9.9", `v${LAB_VERSION}`]) {
       assert.notEqual(
         labGit(drift.work, ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status,
@@ -2176,6 +2208,7 @@ test("the tagging command refuses rather than assuming, when the remote cannot b
         `${tag} was created on a run whose requested version does not match package.json`,
       );
     }
+    assert.match(outcome.stderr, /refusing/);
   } finally {
     rmSync(drift.root, { recursive: true, force: true });
   }
@@ -2188,12 +2221,12 @@ test("the tagging command refuses rather than assuming, when the remote cannot b
     assert.equal(labGit(unreadable.work, ["remote", "set-url", "origin", nowhere]).status, 0);
     const outcome = runStepScript(unreadable.work, script, { VERSION: LAB_VERSION, SHA: unreadable.target });
     assert.notEqual(outcome.status, 0, `an unreadable remote must refuse; stdout ${outcome.stdout}`);
-    assert.match(outcome.stderr, /ls-remote/);
     assert.notEqual(
       labGit(unreadable.work, ["rev-parse", "-q", "--verify", `refs/tags/v${LAB_VERSION}`]).status,
       0,
       "a tag was created against a remote whose existing tags could not be read",
     );
+    assert.match(outcome.stderr, /ls-remote/);
   } finally {
     rmSync(unreadable.root, { recursive: true, force: true });
   }
@@ -2290,7 +2323,359 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "release-tag-refuses-existing-tag",
     "release-tag-refuses-unreadable-remote",
     "release-github-release-body-anchors-the-version",
+    /* Fix round 1. */
+    "release-tag-conclusion-not-decoupled",
+    "release-registry-observation-asserted",
+    "release-tag-step-inventory-pinned",
+    "release-tag-push-cannot-overwrite",
   ]) {
     assert.ok(Object.hasOwn(behaviors, id), `behavior ${id} does not resolve in test/behaviors.json`);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1: the coupling the gates STAND ON, asserted rather than   */
+/* described (N1, N2, N3)                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM ROUND 1 EXISTS FOR, and it is one sentence: **the tests read
+ * the keys that are PRESENT and constrain none of the keys that are ABSENT.**
+ *
+ * `needs: release` reads a job CONCLUSION and the workflow states, as a fact in
+ * a comment, that the conclusion covers every step "INCLUDING the post-publish
+ * registry verification". Both halves of that sentence were true at the
+ * reviewed head and neither was asserted. GitHub has keys whose entire purpose
+ * is to break the first half (`continue-on-error` at job and at step level) and
+ * nothing stopped the second half from being deleted outright. The hazard
+ * reviewer measured four one-line edits, each invisible to the whole suite,
+ * with controls in the same lab that did redden.
+ *
+ * The three tests below close the mechanism rather than the four instances:
+ *
+ *   1. NO JOB IN THE CHAIN, AND NO STEP OF ONE, MAY DECOUPLE ITS CONCLUSION.
+ *      The chain is DERIVED from the `needs` graph of whichever job holds the
+ *      write grant, not from a list of job names, so a `needs:` that grows
+ *      pulls the new job into the assertion automatically.
+ *   2. THE REGISTRY IS ACTUALLY READ. Both gates are proxies: gate 2 records
+ *      operator INTENT before `npm ci` has run, gate 1 records a runner
+ *      CONCLUSION. The only step anywhere that observes npm is the post-publish
+ *      verification, and nothing required it to exist. It does now.
+ *   3. THE WRITE-GRANTED JOB'S STEPS ARE AN ALLOW-LIST. Selecting an anchor by
+ *      command spelling is an arms race; pinning the step set is not.
+ *
+ * WHY THE TAG JOB DOES NOT SIMPLY READ THE REGISTRY ITSELF, which is the
+ * obvious alternative and is REJECTED for a measured reason rather than a
+ * stylistic one: **the registry lags a successful publish.** delivery/STATE.md
+ * records a packument 404 persisting for at least four minutes after a
+ * successful publish, and a scope search still empty five and a half hours
+ * later. A tag job that gated on `npm view` would therefore fail on exactly the
+ * successful publishes it exists to anchor, and the operator's repair for a
+ * spurious failure is to re-dispatch, which is the one action with no clean
+ * undo. Asserting the chain adds no network dependency to the job holding
+ * `contents: write` and changes no runtime behaviour.
+ */
+
+/** Every job of every workflow, indexed by `<file> <job>`, for graph walking. */
+function workflowJobIndex(): Map<string, JobGrant> {
+  const index = new Map<string, JobGrant>();
+  for (const grant of allWorkflowJobs()) {
+    index.set(`${grant.file} ${grant.job}`, grant);
+  }
+  return index;
+}
+
+/**
+ * The transitive `needs` closure of one job, INCLUDING the job itself.
+ *
+ * Derived rather than listed. A `needs:` naming a job that does not exist in
+ * the same file is an assertion failure, not a silently dropped edge: a gate
+ * that depends on a job nobody can find is not a gate.
+ */
+function needsClosure(start: JobGrant, index: Map<string, JobGrant>): JobGrant[] {
+  const seen = new Map<string, JobGrant>();
+  const queue: JobGrant[] = [start];
+  while (queue.length > 0) {
+    const here = queue.shift() as JobGrant;
+    const key = `${here.file} ${here.job}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.set(key, here);
+    for (const upstream of normalizeNeeds(here.raw.needs, key)) {
+      const found = index.get(`${here.file} ${upstream}`);
+      assert.ok(found !== undefined, `${key} needs ${upstream}, which is not a job in ${here.file}`);
+      queue.push(found);
+    }
+  }
+  return [...seen.values()];
+}
+
+test("no job the write-granted job depends on, and no step of one, may decouple its conclusion from its steps", () => {
+  /* N1. `needs: release` is worth exactly as much as the release job's
+     conclusion is worth, and `continue-on-error` is the key that makes a
+     conclusion stop meaning what the gate reads it as meaning.
+
+     ASSERTED AS AN ABSENCE, never as a value, for the same reason criterion 4
+     asserts `id-token` absent: `continue-on-error: false` is the safe value
+     today and a later edit to `true` is one character.
+
+     THE SCOPE IS DERIVED, NOT LISTED. It is the transitive `needs` closure of
+     whichever job holds the write grant, so this test never mentions the names
+     `release` or `tag`, and a `needs:` that grows covers the new job without an
+     edit here. */
+  const index = workflowJobIndex();
+  const writer = exactlyOne(
+    [...index.values()].filter(grantsRepositoryWrite),
+    "job declaring a write grant on repository contents",
+    describeJob,
+  );
+  const chain = needsClosure(writer, index);
+
+  /* THE CHAIN IS NOT VACUOUS. A closure of one is a write-granted job that
+     depends on nothing, which is the state gate 1 exists to prevent, and it
+     would make every assertion below true and empty. */
+  assert.ok(
+    chain.length >= 2,
+    `the write-granted job's needs closure is ${String(chain.length)} job(s); it does not depend on the publishing job at all`,
+  );
+
+  const decoupled: string[] = [];
+  for (const job of chain) {
+    if (job.raw["continue-on-error" as keyof RawJob] !== undefined) {
+      decoupled.push(`${describeJob(job)} (job level)`);
+    }
+    const steps = (parseWorkflow(join(repoRoot, ".github", "workflows", job.file)) as unknown as WorkflowDocument)
+      .jobs[job.job]?.steps ?? [];
+    steps.forEach((step, position) => {
+      if ((step as Record<string, unknown>)["continue-on-error"] !== undefined) {
+        decoupled.push(`${describeJob(job)} step ${String(position)} ${step.name ?? step.id ?? "<unnamed>"}`);
+      }
+    });
+  }
+  assert.deepEqual(
+    decoupled,
+    [],
+    "a job or step in the chain the write grant depends on can report success over a failed step, " +
+      `so \`needs:\` stops meaning what the tag job reads it as meaning: ${decoupled.join("; ")}`,
+  );
+});
+
+test("the publishing job READS the registry after publishing, under the same guard as the publish and after it", () => {
+  /* N2, and it is the third failure mode delivery/plan/m3-p12-phase-spec.md:86
+     asked the adversarial reviewer to look for. Neither gate observes npm:
+     one records intent, the other records a runner conclusion. They coincide
+     only because one step inside the publishing job installs the published
+     version FROM THE REGISTRY, and until this test nothing required that step
+     to exist, to be guarded, or to run after the publish.
+
+     THE STEP IS SELECTED BY WHAT IT DOES, not by its name. This repository has
+     ONE release-verification interface (DR-0014, scripts/release-verify.sh) and
+     its two arms differ by one flag: with `--tarball` it installs a local
+     artifact, without it it installs `$NAME@$VERSION` from the registry
+     (scripts/release-verify.sh:299). So "reads the registry" is "invokes that
+     script with no --tarball", which is a property of the invocation rather
+     than a word in a step name.
+
+     WHAT THIS SELECTION EXCLUDES, stated here rather than left to be found: a
+     registry read performed some OTHER way (a bare `npm view`, a `curl` to the
+     packument) would not be counted, and a future phase that replaced
+     `release-verify.sh` with something else would redden this test rather than
+     be silently unasserted, which is the direction worth having. It also says
+     nothing about whether the script's registry arm is CORRECT; that is
+     M3-P10's, already reviewed. */
+  const steps = releaseWorkflow().jobs["release"].steps.map((step, index) => ({
+    file: "release.yml",
+    job: "release",
+    index,
+    step,
+  }));
+
+  const verifications = steps.filter((entry) =>
+    /\brelease-verify\.sh\b/.test(joinContinuations(entry.step.run ?? "")),
+  );
+  assert.equal(
+    verifications.length,
+    2,
+    `expected exactly two release-verification invocations in the publishing job, found ${String(verifications.length)}: ` +
+      verifications.map(describeStep).join(" | "),
+  );
+
+  const local = exactlyOne(
+    verifications.filter((entry) => /--tarball\b/.test(joinContinuations(entry.step.run ?? ""))),
+    "release verification against a LOCAL artifact (--tarball)",
+    describeStep,
+  );
+  const registry = exactlyOne(
+    verifications.filter((entry) => !/--tarball\b/.test(joinContinuations(entry.step.run ?? ""))),
+    "release verification against the REGISTRY (no --tarball)",
+    describeStep,
+  );
+
+  const publish = exactlyOne(
+    steps.filter((entry) => PUBLISH_COMMAND.test(joinContinuations(entry.step.run ?? ""))),
+    "publishing step in the release job",
+    describeStep,
+  );
+
+  /* THE REGISTRY READ RUNS ON EXACTLY THE DISPATCHES THAT PUBLISHED. The guard
+     is asserted by exact string equality against the publish step's own, so a
+     rewrite that makes one run without the other reddens. An unguarded registry
+     read would fail every rehearsal, and a differently guarded one would let a
+     publish through unobserved. */
+  assert.equal(String(registry.step.if), String(publish.step.if));
+  assert.equal(String(registry.step.if), "${{ steps.decide.outputs.publish == 'yes' }}");
+
+  /* AND IT COMES AFTER THE PUBLISH. Before it, it would be reading the previous
+     version. This is the mirror image of the pre-publish assertion three tests
+     up, which requires the local arm to be unguarded and EARLIER. */
+  assert.ok(
+    registry.index > publish.index,
+    "the registry verification runs before the publish, so it observes the version that was already there",
+  );
+  assert.ok(
+    local.index < publish.index,
+    "the local-artifact verification runs after the publish, so it can only report the damage",
+  );
+});
+
+test("every step of the job holding the write grant is one of an exact, pinned set", () => {
+  /* N3, and the shape of the fix is the whole point. HRB-4 measured two
+     evasions that no assertion saw: a step running
+     `git push origin "$SHA:refs/tags/v9.9.9"`, which creates a tag without the
+     word `tag`, and a `uses: softprops/action-gh-release` step, which creates a
+     release without the word `gh`. Both sit INSIDE the job holding
+     `contents: write`, and `actions/checkout` persists that write-granted token
+     into `.git/config` for the rest of the job, so any step added there
+     inherits repository write.
+
+     WIDENING THE PREDICATES WOULD NOT CLOSE THIS. There is no finite list of
+     ways to create a ref or a release with a write-granted token, and a search
+     that must enumerate them is a search that is always one spelling behind.
+     An ALLOW-LIST has no such gap: the step set is pinned, so a step of ANY
+     spelling reddens, including one that runs nothing recognisable at all.
+
+     WHAT THE ALLOW-LIST EXCLUDES, which is a real limit and not a small one:
+     it says nothing about what the three pinned steps DO. Their bodies are
+     covered by the four tests that execute them, and a change to a body that
+     keeps the step's name would pass HERE and redden THERE. It also does not
+     constrain jobs that hold no write grant, deliberately: a tag push in a
+     `contents: read` job is inert, which the permission test is what
+     establishes. */
+  const writer = exactlyOne(
+    allWorkflowJobs().filter(grantsRepositoryWrite),
+    "job declaring a write grant on repository contents",
+    describeJob,
+  );
+  const document = parseWorkflow(join(repoRoot, ".github", "workflows", writer.file));
+  const steps = document.jobs[writer.job]?.steps ?? [];
+
+  /* IDENTITY IS `uses:` OR `name:`, and a step carrying neither is itself a
+     finding, because an unnamed step is one this list cannot pin. */
+  const identities = steps.map((step) => {
+    const identity = step.uses ?? step.name;
+    assert.ok(
+      identity !== undefined,
+      `a step of ${describeJob(writer)} carries neither uses: nor name:, so it cannot be pinned`,
+    );
+    return identity as string;
+  });
+
+  assert.deepEqual(identities, [
+    "actions/checkout@v4",
+    "Create the annotated tag at the published commit (DR-0032)",
+    "Create the GitHub release, which is the owner's mental model (DR-0032)",
+  ]);
+
+  /* THE ONLY THIRD-PARTY CODE THE WRITE GRANT RUNS is the checkout, asserted
+     separately from the list above so that the reason survives a rename: every
+     other step is a `run:` body in this repository, reviewable here. */
+  const external = steps.filter((step) => step.uses !== undefined).map((step) => step.uses as string);
+  assert.deepEqual(external, ["actions/checkout@v4"]);
+
+  /* AND `fetch-depth: 0` IS LOAD-BEARING, which the reviewer established from
+     the checkout action's own shipped source and which the workflow's comment
+     did not say: the all-history refspec is the only one that brings tags, so
+     at any positive depth the local `git rev-parse` guard would silently stop
+     seeing anything and the class would be down to one arm. */
+  const checkout = exactlyOne(
+    steps.filter((step) => step.uses === "actions/checkout@v4"),
+    "checkout step in the write-granted job",
+    (step) => step.uses ?? step.name ?? "<unnamed>",
+  );
+  assert.equal(
+    (checkout.with ?? {})["fetch-depth"],
+    0,
+    "the write-granted job checks out at a positive depth, so no tags are fetched and the local pre-existing-tag guard sees nothing",
+  );
+});
+
+test("no ref write in the write-granted job can overwrite what is already there", () => {
+  /* N1's second half, HRB-3. `.github/workflows/release.yml` says "Nothing here
+     retries and nothing here forces" and the work history offered that as the
+     phase's answer to the spec's open question. It was a COMMENT: the reviewer
+     added `--force` to the tag push and no test moved.
+
+     THE PROPERTY, not the instance: no ref-writing command anywhere in the
+     write-granted job may carry a forcing form. Three spellings of forcing are
+     checked because they are three genuinely different ones, and the `+`
+     refspec is the one a reader is least likely to recognise.
+
+     WHAT THIS EXCLUDES. It reads the `run:` bodies of the pinned steps, so a
+     forcing write performed by something a body INVOKES, or by an action, is
+     not seen here; the allow-list above is what makes such a step impossible to
+     add unnoticed. It also does not cover `git push --mirror` or a delete
+     refspec (`:refs/tags/x`), which do not overwrite a tag with a different
+     one; they are named here so the next reader has the list rather than the
+     conclusion. */
+  const writer = exactlyOne(
+    allWorkflowJobs().filter(grantsRepositoryWrite),
+    "job declaring a write grant on repository contents",
+    describeJob,
+  );
+  const document = parseWorkflow(join(repoRoot, ".github", "workflows", writer.file));
+  const steps = document.jobs[writer.job]?.steps ?? [];
+
+  /* A COMMAND DOES NOT ONLY START A LINE, and the derivation for this round is
+     what showed it. An earlier version of this predicate anchored at `^`, so
+     `if git push --force origin "$x"; then` was invisible: the line starts with
+     `if`. The same enumeration missed the workflow's own
+     `if git rev-parse ...; then` for exactly that reason, which is how the hole
+     surfaced. A git command can also follow `;`, `&&`, `||`, `|` or `(`, and
+     all of those are command positions in the bodies this repository writes. */
+  const REF_WRITE = /(?:^|[;&|(]|\b(?:if|then|else|elif|while|until|do)\s)[ \t]*git[ \t]+(?:-c[ \t]+\S+[ \t]+)*(?:push|tag|update-ref)\b/;
+  const refWriting = steps.flatMap((step, position) =>
+    joinContinuations(step.run ?? "")
+      .split("\n")
+      .filter((line) => REF_WRITE.test(line))
+      .map((line) => ({ position, name: step.name ?? step.id ?? "<unnamed>", line: line.trim() })),
+  );
+
+  /* NOT VACUOUS: the job really does write refs, so an empty result would mean
+     the predicate stopped matching rather than that nothing forces. */
+  assert.ok(
+    refWriting.length >= 2,
+    `expected the write-granted job to carry at least a tag creation and a push, found ${String(refWriting.length)}`,
+  );
+
+  /* THE FIRST WRITING OF THIS PREDICATE HAD THE HOLE IT EXISTS TO CLOSE, and
+     its own witness is what found it. `(?:^|\s)\+[^\s]*:` requires whitespace
+     before the `+`, and a refspec in a shell command is QUOTED, so
+     `git push origin "+refs/tags/x:refs/tags/x"` has a double quote there and
+     the member stayed green. Measured, not reasoned about. `--force(?:=|\s|$)`
+     had the sibling hole: it misses `--force-with-lease` and
+     `--force-if-includes`, which overwrite just as thoroughly. Both are the
+     repository's recurring shape, a guard whose condition does not test the
+     property that matters, and both are recorded rather than quietly fixed. */
+  const FORCING = [
+    /(?:^|\s)--force\b/, // --force, --force-with-lease, --force-if-includes
+    /(?:^|\s)-f(?:\s|$)/, // the short form
+    /(?:^|[\s"'])\+[^\s"']*:/, // a leading-plus refspec, quoted or bare
+  ];
+  const forcing = refWriting.filter((entry) => FORCING.some((pattern) => pattern.test(entry.line)));
+  assert.deepEqual(
+    forcing.map((entry) => `step ${String(entry.position)} ${entry.name}: ${entry.line}`),
+    [],
+    "a ref write in the write-granted job can overwrite an existing ref, which is the one operation that can destroy the anchor of a version that really was published",
+  );
 });

@@ -1,0 +1,30 @@
+{
+  "id": "release-tag-push-cannot-overwrite",
+  "behavior": "release-tag-push-cannot-overwrite",
+  "tests": [
+    "no ref write in the write-granted job can overwrite what is already there"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          git push origin \"refs/tags/${tag}\"\n",
+      "replace": "          git push --force origin \"refs/tags/${tag}\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          git push origin \"refs/tags/${tag}\"\n          echo \"tag: created",
+      "replace": "          git push origin \"+refs/tags/${tag}:refs/tags/${tag}\"\n          echo \"tag: created"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          git push origin \"refs/tags/${tag}\"\n          echo \"tag: created annotated",
+      "replace": "          if git push --force origin \"refs/tags/${tag}\"; then :; fi\n          echo \"tag: created annotated"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

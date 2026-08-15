@@ -295,6 +295,19 @@ jobs:
       # one: not "does this artifact work" but "does the artifact the registry
       # now serves work". Both are wanted; only the first can prevent a bad
       # publish.
+      #
+      # M3-P12 FIX ROUND 1 MADE THIS STEP LOAD-BEARING FOR A SECOND REASON, and
+      # it is stated here because the step now carries weight its own comment
+      # did not describe. **This is the ONLY step anywhere in this workflow that
+      # OBSERVES THE REGISTRY.** The tag job's two gates are both proxies: one
+      # reads the operator's intent, recorded before `npm ci` runs, and the other
+      # reads this job's conclusion, which is a statement about the runner. The
+      # property DR-0032 protects is that npm actually serves the version, and
+      # this step is the only place that is ever established. Deleting it, or
+      # giving it `--tarball` so that it verifies a local file instead, would
+      # leave the whole chain modelling what it should read. Both are now
+      # reddened by `test/license-gate.test.ts`, which also requires this step to
+      # carry the publish step's exact guard and to run after it.
       - name: Release verification against the registry, after publishing (SC-011)
         if: ${{ steps.decide.outputs.publish == 'yes' }}
         env:
@@ -331,6 +344,16 @@ jobs:
   #   - `needs: release` means this job does not run if ANY step of the release
   #     job failed, INCLUDING the post-publish registry verification. That is
   #     the "the publish happened and then something was wrong" case.
+  #
+  #     THAT SENTENCE WAS TRUE AND UNASSERTED UNTIL FIX ROUND 1, which is the
+  #     defect the round was dispatched for. A job CONCLUSION only reports its
+  #     steps while nothing decouples the two, and `continue-on-error` at either
+  #     level does exactly that; the registry verification could also simply be
+  #     deleted. Four such one-line edits were measured invisible to the whole
+  #     suite. `test/license-gate.test.ts` now asserts, over the `needs` closure
+  #     of whichever job holds the write grant, that no job and no step in it
+  #     carries `continue-on-error`, and that the registry verification exists,
+  #     carries this job's own guard string, and runs after the publish.
   #   - `if: needs.release.outputs.publish == 'yes'` means it does not run on a
   #     REHEARSAL, which is the ordinary path and which SUCCEEDS. `needs:`
   #     alone is green on every rehearsal, so it would tag a dispatch that
@@ -346,7 +369,12 @@ jobs:
   # at nothing; a MISSING anchor is a visibly missing one, and a red job on the
   # run page is the signal. Every refusal below prints the tag name and the
   # commit so the recovery is a copyable pair of facts rather than an
-  # investigation. Nothing here retries and nothing here forces.
+  # investigation. Nothing here retries and nothing here forces, and as of fix
+  # round 1 that second half is ASSERTED rather than claimed: the reviewer added
+  # `--force` to the tag push and no test moved, so a test now reads every
+  # ref-writing line of this job and refuses `--force`, `-f` and a `+` refspec.
+  # It is the one operation that could destroy the anchor of a version that
+  # really was published.
   tag:
     needs: release
     if: ${{ needs.release.outputs.publish == 'yes' }}
@@ -354,8 +382,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      # fetch-depth: 0 so that `git rev-parse` and the tag target resolve
-      # against real history rather than a one-commit graft.
+      # fetch-depth: 0 IS LOAD-BEARING FOR THE PRE-EXISTING-TAG GUARD, and the
+      # earlier version of this comment did not say so. Established in fix round
+      # 1 by the clean-room hazard reviewer, reading `actions/checkout@v4`'s own
+      # bundled source: the all-history arm fetches `+refs/tags/*:refs/tags/*`,
+      # and any POSITIVE depth takes the targeted refspec instead and brings no
+      # tags at all. So at depth 1 the `git rev-parse --verify` check below
+      # would still run, still pass, and see nothing, which is a guard that
+      # cannot go red. The remote probe would still cover the case, and a
+      # silently one-armed guard is exactly what this repository keeps paying
+      # for. `test/license-gate.test.ts` asserts this value.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-conclusion-not-decoupled",
+  "behavior": "release-tag-conclusion-not-decoupled",
+  "tests": [
+    "no job the write-granted job depends on, and no step of one, may decouple its conclusion from its steps"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      - name: Publish to npmjs over OIDC (DR-0008 registry, DR-0024 authentication)\n        if: ${{ steps.decide.outputs.publish == 'yes' }}\n",
+      "replace": "      - name: Publish to npmjs over OIDC (DR-0008 registry, DR-0024 authentication)\n        continue-on-error: true\n        if: ${{ steps.decide.outputs.publish == 'yes' }}\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "  release:\n    runs-on: ubuntu-latest\n    permissions:\n",
+      "replace": "  release:\n    runs-on: ubuntu-latest\n    continue-on-error: true\n    permissions:\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

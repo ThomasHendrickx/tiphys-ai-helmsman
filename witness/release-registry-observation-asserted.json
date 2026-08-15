@@ -1,0 +1,24 @@
+{
+  "id": "release-registry-observation-asserted",
+  "behavior": "release-registry-observation-asserted",
+  "tests": [
+    "the publishing job READS the registry after publishing, under the same guard as the publish and after it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      # The post-publish run answers a DIFFERENT question from the pre-publish\n      # one: not \"does this artifact work\" but \"does the artifact the registry\n      # now serves work\". Both are wanted; only the first can prevent a bad\n      # publish.\n      #\n      # M3-P12 FIX ROUND 1 MADE THIS STEP LOAD-BEARING FOR A SECOND REASON, and\n      # it is stated here because the step now carries weight its own comment\n      # did not describe. **This is the ONLY step anywhere in this workflow that\n      # OBSERVES THE REGISTRY.** The tag job's two gates are both proxies: one\n      # reads the operator's intent, recorded before `npm ci` runs, and the other\n      # reads this job's conclusion, which is a statement about the runner. The\n      # property DR-0032 protects is that npm actually serves the version, and\n      # this step is the only place that is ever established. Deleting it, or\n      # giving it `--tarball` so that it verifies a local file instead, would\n      # leave the whole chain modelling what it should read. Both are now\n      # reddened by `test/license-gate.test.ts`, which also requires this step to\n      # carry the publish step's exact guard and to run after it.\n      - name: Release verification against the registry, after publishing (SC-011)\n        if: ${{ steps.decide.outputs.publish == 'yes' }}\n        env:\n          REQUESTED: ${{ inputs.version }}\n        run: |\n          set -u\n          name=\"$(node -p 'require(\"./package.json\").name')\"\n          mkdir -p \"$RUNNER_TEMP/verify-registry\"\n          cd \"$RUNNER_TEMP/verify-registry\"\n          bash \"$GITHUB_WORKSPACE/scripts/release-verify.sh\" \"$name\" \"$REQUESTED\" \\\n            --records \"$RUNNER_TEMP/verify-registry/records.json\"\n          cat \"$RUNNER_TEMP/verify-registry/records.json\"\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          bash \"$GITHUB_WORKSPACE/scripts/release-verify.sh\" \"$name\" \"$REQUESTED\" \\\n            --records \"$RUNNER_TEMP/verify-registry/records.json\"\n",
+      "replace": "          bash \"$GITHUB_WORKSPACE/scripts/release-verify.sh\" \"$name\" \"$REQUESTED\" \\\n            --tarball \"$(ls \"$RUNNER_TEMP\"/artifact/*.tgz | head -1)\" \\\n            --records \"$RUNNER_TEMP/verify-registry/records.json\"\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

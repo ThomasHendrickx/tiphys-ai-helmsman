@@ -744,5 +744,9 @@
   "release-tag-annotated-at-published-commit": "the tagging command, executed against a scratch repository, produces an ANNOTATED tag at the commit it was given",
   "release-tag-refuses-existing-tag": "the tagging command fails closed on a pre-existing tag, and does not move, delete or reuse it",
   "release-tag-refuses-unreadable-remote": "the tagging command refuses rather than assuming, when the remote cannot be read or the version disagrees",
-  "release-github-release-body-anchors-the-version": "the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run"
+  "release-github-release-body-anchors-the-version": "the release-creation command, executed with a stub gh, names the version, the commit, the npm package and the run",
+  "release-tag-conclusion-not-decoupled": "no job the write-granted job depends on, and no step of one, may decouple its conclusion from its steps",
+  "release-registry-observation-asserted": "the publishing job READS the registry after publishing, under the same guard as the publish and after it",
+  "release-tag-step-inventory-pinned": "every step of the job holding the write grant is one of an exact, pinned set",
+  "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there"
 }

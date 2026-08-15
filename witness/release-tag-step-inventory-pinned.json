@@ -1,0 +1,24 @@
+{
+  "id": "release-tag-step-inventory-pinned",
+  "behavior": "release-tag-step-inventory-pinned",
+  "tests": [
+    "every step of the job holding the write grant is one of an exact, pinned set"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "          git push origin \"refs/tags/${tag}\"\n          echo \"tag: created annotated ${tag} at ${SHA} and pushed it.\"\n",
+      "replace": "          git push origin \"refs/tags/${tag}\"\n          echo \"tag: created annotated ${tag} at ${SHA} and pushed it.\"\n\n      - name: Housekeeping\n        env:\n          SHA: ${{ github.sha }}\n        run: git push origin \"${SHA}:refs/tags/v9.9.9\"\n"
+    },
+    {
+      "kind": "mutation",
+      "file": ".github/workflows/release.yml",
+      "find": "      - name: Create the GitHub release, which is the owner's mental model (DR-0032)\n",
+      "replace": "      - uses: softprops/action-gh-release@v2\n        with:\n          tag_name: v9.9.9\n\n      - name: Create the GitHub release, which is the owner's mental model (DR-0032)\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
