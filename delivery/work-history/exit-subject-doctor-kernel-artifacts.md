@@ -677,17 +677,25 @@ gates: declared 16 applicable 10 verdict 10 green 10 red 0 not-applicable 6 erro
 BUNDLE2 EXIT=20
 ```
 
-| | round 0 | fix round 1 |
+| | round 0, this branch | fix round 1 |
 |---|---|---|
-| applicable / green / red / error / vacuous | 9 / 9 / 0 / 0 / 0 | 10 / 10 / 0 / 0 / 0 |
+| applicable / green / red / error / vacuous | 10 / 10 / 0 / 0 / 0 | 10 / 10 / 0 / 0 / 0 |
+| not-applicable | 6 | 6 |
 | `suite` | 847 | **849**, 0 skipped |
 | `red-witness` | green, 7 witnesses | green, **9** witnesses |
 | runner exit | 20 | 20 |
+
+**The comparator is round 0's SUBJECT-branch bundle, not the record at
+`e1/records/branch-local-gate-bundle.json`.** That record was taken on the
+BUNDLE branch with `--phase claude/m3-exit-test`, where `red-witness` is
+not-applicable because that branch touches no witness; reading it as this
+change's round-0 arm would compare 9 applicable against 10 and invent a
+difference. Checked rather than assumed: its not-applicable set is
+credential-token, citations, scope, deploy, migrations, **red-witness**,
+check-dual-review, and this round's is the same list without `red-witness`.
 
 The runner still exits 20, for the same two required-and-explained
 not-applicables, `citations` and `scope`. Nothing in this round changes that:
 `scope`'s precondition is that the branch matches `^claude/m[0-9]+-p[0-9]+-`,
 which the orchestrator's I-3 ruling deliberately made false, and `citations`
-has no changed path under its six configured trees. The applicable count rose
-from 9 to 10 because `citations` was applicable in the earlier arm and is not
-here; the honest way to read the pair is gate by gate rather than by count.
+has no changed path under its six configured trees.
