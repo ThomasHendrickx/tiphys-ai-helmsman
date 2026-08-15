@@ -1,9 +1,11 @@
 # M3-P13 work history: the kernel-artifacts check for tiphys doctor
 
 - date: 2026-08-15
-- phase: M3-P13, the subject change of the M3 exit test (stage E1.6)
-- branch: `claude/m3-p13-doctor-kernel-artifacts`, cut from `origin/main` at
-  d5d87f7 through the kernel's own pool (see "how this phase was launched")
+- subject: the M3 exit test's designated subject change (stage E1.6). It is NOT
+  a phase of the M3 plan, and the section "the branch is not phase-shaped, by
+  ruling" is why that sentence is load-bearing rather than pedantic.
+- branch: `task/exit-subject-doctor-kernel-artifacts`, created by the kernel's
+  own pool at the fetched base d5d87f7 (see "how this work was launched")
 - plan: the amended instance the exit test produced at E1.4 and E1.5, which
   lives in the exit-test bundle rather than in `delivery/plan/`, at
   `delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml` on the bundle
@@ -15,23 +17,77 @@
 rather than a defect in this change.** Section "the blocker" states it with both
 arms measured. Everything else in the phase is done and green.
 
-## How this phase was launched, because it is the exit test's subject
+## The branch is not phase-shaped, by orchestrator ruling
+
+**This is the orchestrator's second recorded intervention, I-3 in the exit-test
+bundle's `interventions.md`, and it is recorded there in full with the note that
+the E2 reviewers may judge it wrong.** The short form, because a reader of this
+history should not have to fetch another document to understand the branch name:
+
+The first push of this work used `claude/m3-p13-doctor-kernel-artifacts`, taken
+from the `branch` field of the plan instance, which the plan schema forces to
+match `^claude/m[0-9]+-p[0-9]+-.+$`. That name matches the scope auditor's phase
+pattern, so the auditor derived phase `m3-p13` and required a declaration at the
+merge base that does not exist on `origin/main`. The orchestrator ruled: rename
+the branch so it does not match, and do NOT mint an `m3-p13` phase declaration,
+because `.claude/orchestrator-next.mjs:126` harvests phase numbers from
+declaration filenames, work-history filenames AND remote branch names, so a
+thirteenth id would become a permanent phantom phase in the milestone's
+accounting.
+
+What that cost, stated without softening because the ruling itself insists on
+it: **on a non-phase branch the scope gate has no phase to audit, so it reports
+not-applicable and the scope audit asserts NOTHING about this change.** That is
+a real reduction in what E1.6's expected-status table witnesses, and it is a
+WEAKER not-applicable than the diff-scoped kind DR-0018's table contemplates:
+there the trigger is "the head does not touch the gate's paths", here it is
+"this branch is not a phase", which is a statement about the branch rather than
+about the diff.
+
+Two consequences carried in this history rather than left to be found:
+
+- The plan instance still names phase `M3-P13` in its `id` field, because the
+  plan schema's phase-id pattern requires that shape and an implementer does not
+  edit the plan (R-007). So the plan says M3-P13 and no filename, branch or
+  declaration does. Nothing harvests a plan instance that lives in the exit-test
+  bundle, so no phantom phase results; the mismatch is recorded because a
+  reviewer reading the plan will look for the phase and not find it.
+- The declaration `delivery/plan/phase-declarations/m3-p13.json`, written before
+  the ruling, was DELETED from this branch rather than kept, and the work
+  history was renamed off the `m3-pNN.md` shape for the same harvesting reason.
+
+## How this work was launched, because it is the exit test's subject
 
 `tiphys spawn` created the pool worktree and assembled the brief; the kernel's
 own machinery did it rather than a human simulating it:
 
 ```
-$ tiphys spawn --task m3-p13 --project <fleet>/projects/tiphys-kernel \
+$ tiphys spawn --task exit-subject-doctor-kernel-artifacts \
+    --project <fleet>/projects/tiphys-kernel \
     --brief <bundle>/e1/brief-implementer.md --shape ship --exec "git rev-parse HEAD"
 d5d87f7baf4ad31ab77ab074a5f0b588da189217
-spawned m3-p13 worktree <fleet>/worktrees/m3-p13 exec exited 0
+spawned exit-subject-doctor-kernel-artifacts worktree
+  <fleet>/worktrees/exit-subject-doctor-kernel-artifacts exec exited 0
 ```
 
-Exit 0. `tasks/m3-p13/meta.json` records `baseSha`
+Exit 0. `tasks/exit-subject-doctor-kernel-artifacts/meta.json` records `baseSha`
 d5d87f7baf4ad31ab77ab074a5f0b588da189217, `baseOffline` false and branch
-`task/m3-p13`; the base is the sha the pool FETCHED from the project's remote
-default branch, so the branch is cut from `main` rather than from any local
-state.
+`task/exit-subject-doctor-kernel-artifacts`; the base is the sha the pool
+FETCHED from the project's remote default branch, so the branch is cut from
+`main` rather than from any local state.
+
+**Where the phase-shaped name came from, measured rather than assumed, because
+the ruling asked.** `taskBranchName` at src/pool.ts:52 returns `task/<id>`, so
+the kernel's own output was `task/m3-p13` on the first spawn, which does NOT
+match the phase pattern. The matching name was applied by the runner from the
+plan's `branch` field, outside the kernel. The first spawn was therefore never
+the source of the problem, and the fix was still made AT THE TASK ID rather than
+by a git rename, so that the branch this work is reviewed on is the kernel's own
+output: the second spawn was given a task id that is not phase-shaped and the
+kernel produced `task/exit-subject-doctor-kernel-artifacts` from it. The eleven
+commits were carried across with `git merge --ff-only`, so nothing was
+rewritten and every commit is byte-identical to the one reviewed before the
+rename.
 
 **The implementer is the runner agent working under the composed brief in that
 worktree, and the `--exec` payload is not the implementer.** Stated plainly
@@ -194,19 +250,21 @@ than a stale quotation.
   auditor's phase pattern does not match. The branch pushed for review carries
   the plan's name, so the gate resolves there, but nothing in the kernel maps
   one to the other.
-- **The dispatch brief for this phase asked for a branch name that the plan
-  schema rejects.** The brief said the subject branch must not match
-  `^claude/m[0-9]+-p[0-9]+-`; the schema requires it, and CLAUDE.md:599 permits
-  it for exactly one branch, the phase's own implementation branch, which this
-  is. The plan's name was used and the conflict is reported rather than
-  resolved by the implementer.
+- **The plan schema forces a phase-shaped branch onto work that is not a
+  phase.** `schemas/plan.schema.json` requires every phase's `branch` to match
+  `^claude/m[0-9]+-p[0-9]+-.+$`, so a plan instance CANNOT express the branch
+  this work is actually reviewed on. The dispatch brief said the branch must not
+  match that pattern; the schema says it must; the orchestrator's ruling settled
+  it in favour of the brief and against the plan instance's own field. The
+  residue is that a shipped schema cannot describe a legitimate piece of work,
+  which is a finding about the schema rather than about this change.
 
-## The scope gate: a new phase's declaration still cannot ride with its branch
+## The scope gate, measured on both branch names
 
-The plan's last step said M3-P11 shipped the both-sides declaration read, so
-this phase's declaration could land on the phase branch, and told the
-implementer to report a disagreement rather than work around it. The gate
-disagreed, and the measurement is:
+Both readings are recorded, because between them they say what the gate does and
+what it no longer asserts here.
+
+**On the phase-shaped name, before the ruling**, the gate was APPLICABLE and RED:
 
 ```
 gates: scope: red: branch claude/m3-p13-doctor-kernel-artifacts (phase m3-p13)
@@ -215,18 +273,22 @@ gates: scope: red: branch claude/m3-p13-doctor-kernel-artifacts (phase m3-p13)
   the declaration must be committed to main before the phase branch is created
 ```
 
-Reading M3-P11's own code settles why, and the distinction is finer than the
-sentence in CLAUDE.md that this plan step was built on. src/gates/scope.ts:609
-documents the asymmetry: reading the head alone would let a phase grant itself
-scope, so an ADDITION to an EXISTING declaration is allowed and printed by name
-for a reviewer, and a REMOVAL is hard. Both sides are read, but the merge-base
-side must EXIST. So M3-P11 made an amendment able to ride with its phase; it did
-not make a NEW phase's first declaration able to. A phase that has never been
-declared still needs its declaration on `main` first, which for this phase is an
-orchestrator action rather than an implementer one.
+Reading M3-P11's own code settles why a declaration on the branch would not have
+fixed it, and the distinction is finer than the sentence in CLAUDE.md that this
+work's plan step was built on. src/gates/scope.ts:609 documents the asymmetry:
+reading the head alone would let a phase grant itself scope, so an ADDITION to an
+EXISTING declaration is allowed and printed by name for a reviewer, and a REMOVAL
+stays hard. Both sides are read, but the merge-base side must EXIST. M3-P11 made
+an amendment able to ride with its phase; it did not make a NEW phase's first
+declaration able to.
+
+**On the kernel-created name, after the ruling**, the gate is NOT-APPLICABLE, and
+that is the state this branch is reviewed in. It asserts nothing about this
+change's file set. See the ruling section above for what is being traded for
+what.
 
 **One further measurement, made and then undone, because it nearly became a
-false result.** To isolate whether this phase's FILE SET is within its
+false result.** To isolate whether this change's FILE SET is within a
 declaration, the declaration was committed onto a scratch base and the branch
 rebased onto it. The gate refused that too, and correctly:
 
@@ -236,12 +298,11 @@ gates: scope: error: merge base 1eef3a0... is not an ancestor of the configured
   the branch under audit rather than the true fork point with main
 ```
 
-That is the anti-forgery guard working. The branch was reset back to
-fb28dbc675e3a8a1d25254644025f737cc50c7c1 and the scratch base deleted, so
-nothing of the probe is in what is pushed; `d5d87f7` is an ancestor of the
-pushed head, verified with `git merge-base --is-ancestor`. **The consequence is
-that whether the file set audits clean is NOT established by this phase**, only
-that the ten changed paths are the ones the declaration names.
+That is the anti-forgery guard working. The branch was reset back and the scratch
+base deleted, so nothing of the probe is in what is pushed, and `d5d87f7` is an
+ancestor of the pushed head, verified with `git merge-base --is-ancestor`.
+**The consequence is that whether the file set audits clean is NOT established by
+this work at all**, on either branch name.
 
 ## The gate bundle, as the whole expected-status table
 
