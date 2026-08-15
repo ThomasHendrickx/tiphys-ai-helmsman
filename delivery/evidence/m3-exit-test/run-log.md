@@ -112,3 +112,27 @@ stage E3, stage E4 and the three falsification controls were NOT run and were
 not in this dispatch. One criterion is reported UNMET rather than passed: the
 M2-P5 citation linter over the plan instance, which the registry does not
 select.
+
+## Dispatch B
+
+### 8. Lease check, first, rather than trusting the brief's arithmetic
+
+Happened: at 2026-08-15T09:06:44Z, `tiphys lock status` in the fleet home
+reported held, holder `93ef52e9-9707-48cc-bf3c-0ae1a5f579d3`, acquired
+2026-08-15T08:44:27.515Z, expires 2026-08-15T14:44:27.515Z, exit 0. Live, with
+five hours and thirty-seven minutes remaining. No re-acquisition needed and
+none performed.
+
+### 9. The orchestrator's ruling on E1.4, recorded as an intervention
+
+Happened: `delivery/evidence/m3-exit-test/interventions.md` written. It carries
+I-1 (the ruling), F-1 (the residue, unfixed, with the consumer-reachability
+argument), I-2 (the decision not to re-run E1.5, with the bound it leaves) and
+F-2 (`--type finding-set` does not exist). The line-274 premise was checked
+against the plan in the tree and it says what the ruling quotes. The E1.4
+measurement was not altered.
+
+### 10. E1.6
+
+About to: read E1.6 in full, then cut the subject branch from origin/main and
+run the implementer through `tiphys spawn` into a pool worktree.
