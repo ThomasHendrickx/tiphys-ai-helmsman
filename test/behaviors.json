@@ -749,5 +749,16 @@
   "release-registry-observation-asserted": "the publishing job READS the registry after publishing, under the same guard as the publish and after it",
   "release-tag-step-inventory-pinned": "every step of the job holding the write grant is one of an exact, pinned set",
   "release-tag-push-cannot-overwrite": "no ref write in the write-granted job can overwrite what is already there",
-  "release-manifest-names-the-provenance-repository": "the published manifest names the repository provenance will assert"
+  "release-manifest-names-the-provenance-repository": "the published manifest names the repository provenance will assert",
+  "witness-rule-d-scoped-to-authored-members": "editing one member of a witness spec imposes rule (d) on that member only, not on the untouched siblings sharing its file",
+  "witness-rule-d-binds-an-added-member": "a member this phase ADDED to an existing witness spec must still intersect the phase diff",
+  "witness-ownership-reads-the-patch-body": "rewriting a patch member's body is authorship even though its path is unchanged, and an untouched patch sibling stays unowned",
+  "witness-ownership-reads-the-spec-claim": "rewriting a witness spec's claim imposes rule (d) on every member, and changing a field that is not the claim imposes nothing",
+  "witness-ownership-covers-member-content": "a member whose find or replace text changed is authored here, and a duplicated member is a new member",
+  "witness-ownership-baseline-is-the-merge-base": "the ownership baseline is read at the merge base, so a spec another phase changed on the base branch is not authored here",
+  "witness-ownership-unreadable-body-keeps-the-obligation": "a patch member whose body cannot be read on either revision keeps its obligation rather than being assumed unchanged",
+  "witness-ownership-unestablished-baseline-owns-all": "a baseline spec that cannot be established owns every member, whether it fails to parse or fails to validate",
+  "witness-rule-d-hunk-arm": "an owned member that mutates a changed file OUTSIDE every changed hunk is red naming the hunk",
+  "witness-ownership-claim-is-directional": "ADDING a guarding test to a spec authors nothing, while DROPPING one authors every member",
+  "witness-ownership-claim-is-a-set": "reordering a spec's named tests authors nothing, because the claim is a set"
 }

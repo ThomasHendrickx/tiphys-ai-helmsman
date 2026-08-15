@@ -1,0 +1,24 @@
+{
+  "id": "witness-rule-d-scoped-to-authored-members",
+  "behavior": "witness-rule-d-scoped-to-authored-members",
+  "tests": [
+    "editing one member of a witness spec imposes rule (d) on that member only, not on the untouched siblings sharing its file"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "        phaseOwnedMembers: ownedMembersOf(entry),",
+      "replace": "        phaseOwnedMembers: new Set(entry.spec.dangerousStates.map((_m, i) => i)),"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  if (baselineSpec === undefined) {",
+      "replace": "  if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

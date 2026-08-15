@@ -1071,6 +1071,34 @@ function record(gate, resultPath) {
 mkdirSync(out, { recursive: true });
 
 // -- red-witness: its own merged phase diff (M2-P2), from the object database.
+//
+// THE DEMONSTRATION RUNS IN A WORKTREE CHECKED OUT AT THE AUDITED HEAD, NOT IN
+// THE PRESENT-DAY WORKING TREE, AND THAT IS THE WHOLE POINT OF IT.
+//
+// The gate reads the diff, the sources and the named tests at the audited head,
+// but it builds its SPEC CORPUS by walking `witness/` in whatever tree it is
+// run from. Running it here with `cwd: repo` therefore composed TODAY's witness
+// corpus with a head from M2, a configuration no real run produces: in CI and
+// for any consumer the working tree IS the head. Every spec added after M2-P2
+// whose members touch a file M2-P2 changed became a triggered STORED witness at
+// that head, and its named tests do not exist there, so the gate reported
+// "no longer guards its behavior" about specs that had not been written yet.
+//
+// Measured on 2026-08-15, four runs of this exact command differing only in the
+// tree: pristine `main` green with 4 units and 0 stored; `main` plus one foreign
+// spec whose named test EXISTS at the M2-P2 head green with 5 units and 1
+// stored; the SAME spec with only its `tests[]` changed to a name that postdates
+// M2-P2 RED, naming it. One field apart, so the discriminator is the named
+// test's existence at the audited head and not anything about the spec.
+//
+// Checking out the head fixes it by making the demonstration reproduce what
+// that phase's CI actually saw, which is what it claims to show. This is not a
+// way around the finding: the finding is that the composition was manufactured.
+//
+// The worktree is created with an ABSOLUTE path, because `git -C <repo>`
+// resolves relative paths against the REPOSITORY and not against this process's
+// cwd (CLAUDE.md standing warning 9), and it is removed in a `finally` so a
+// throw cannot leave a stray worktree registered against the caller's clone.
 {
   const gate = "red-witness";
   const log = spawnSync("git", ["-C", repo, "log", "--format=%H %s"], { encoding: "utf8", env: GIT_ENV });
@@ -1081,21 +1109,44 @@ mkdirSync(out, { recursive: true });
     const sha = line.split(" ")[0];
     const runDir = join(out, "red-witness-run");
     rmSync(runDir, { recursive: true, force: true });
-    const r = spawnSync(
-      process.execPath,
-      [tiphys, "gates", "run", "--manifest", manifest, "--evidence", runDir,
-       "--only", "red-witness", "--base", `${sha}^`, "--head", sha, "--phase", "m2-p2"],
-      { cwd: repo, encoding: "utf8", env: GIT_ENV },
+    const headTree = join(scratch, "red-witness-head-tree");
+    rmSync(headTree, { recursive: true, force: true });
+    spawnSync("git", ["-C", repo, "worktree", "prune"], { encoding: "utf8", env: GIT_ENV });
+    const added = spawnSync(
+      "git",
+      ["-C", repo, "worktree", "add", "--detach", "--quiet", headTree, sha],
+      { encoding: "utf8", env: GIT_ENV },
     );
-    const resultPath = join(runDir, "red-witness", "result.json");
-    if (existsSync(resultPath)) {
-      const rec = JSON.parse(readFileSync(resultPath, "utf8"));
-      rec.__state = `M2-P2 merged diff ${sha.slice(0, 12)}^..${sha.slice(0, 12)} (real history)`;
-      writeFileSync(resultPath, JSON.stringify(rec, null, 2) + "\n");
+    if (added.status !== 0) {
+      failures.push(
+        `[${gate}] could not check out the audited head ${sha.slice(0, 12)} into a worktree: ` +
+        `${String(added.stderr ?? "").trim()}`,
+      );
     } else {
-      console.error(r.stdout, r.stderr);
+      try {
+        const r = spawnSync(
+          process.execPath,
+          [tiphys, "gates", "run", "--manifest", manifest, "--evidence", runDir,
+           "--only", "red-witness", "--base", `${sha}^`, "--head", sha, "--phase", "m2-p2"],
+          { cwd: headTree, encoding: "utf8", env: GIT_ENV },
+        );
+        const resultPath = join(runDir, "red-witness", "result.json");
+        if (existsSync(resultPath)) {
+          const rec = JSON.parse(readFileSync(resultPath, "utf8"));
+          rec.__state =
+            `M2-P2 merged diff ${sha.slice(0, 12)}^..${sha.slice(0, 12)} (real history), ` +
+            `spec corpus read from a worktree checked out at ${sha.slice(0, 12)}`;
+          writeFileSync(resultPath, JSON.stringify(rec, null, 2) + "\n");
+        } else {
+          console.error(r.stdout, r.stderr);
+        }
+        record(gate, resultPath);
+      } finally {
+        spawnSync("git", ["-C", repo, "worktree", "remove", "--force", headTree],
+          { encoding: "utf8", env: GIT_ENV });
+        spawnSync("git", ["-C", repo, "worktree", "prune"], { encoding: "utf8", env: GIT_ENV });
+      }
     }
-    record(gate, resultPath);
   }
 }
 

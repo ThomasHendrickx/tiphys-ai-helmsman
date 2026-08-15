@@ -1,0 +1,24 @@
+{
+  "id": "witness-ownership-unreadable-body-keeps-the-obligation",
+  "behavior": "witness-ownership-unreadable-body-keeps-the-obligation",
+  "tests": [
+    "a patch member whose body cannot be read on either revision keeps its obligation rather than being assumed unchanged"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/spec.ts",
+      "find": "  const body = readPatchBody(member.patch);\n  if (body === undefined) {\n    return undefined;\n  }",
+      "replace": "  const body = readPatchBody(member.patch);\n  if (body === undefined) {\n    return JSON.stringify([\"patch\", member.patch]);\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "    const readers = { head: readPatchAtHead, baseline: readPatchAtMergeBase };",
+      "replace": "    return new Set<number>();\n    const readers = { head: readPatchAtHead, baseline: readPatchAtMergeBase };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
