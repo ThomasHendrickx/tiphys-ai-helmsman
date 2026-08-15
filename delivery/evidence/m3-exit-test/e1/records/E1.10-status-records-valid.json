@@ -1,0 +1,20 @@
+{
+  "stage": "E1.10",
+  "expectation": "exit 0: the current record validates against schemas/status-line.schema.json",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "validate",
+    "--type",
+    "status-line",
+    "delivery/evidence/m3-exit-test/e1/e1-10/current.json"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T19:16:47.249Z",
+  "endedAt": "2026-08-15T19:16:47.578Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": ""
+}

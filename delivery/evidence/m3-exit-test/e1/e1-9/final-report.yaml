@@ -1,0 +1,142 @@
+# M3 exit test, stage E1.9: the final report for the E1 subject phase.
+#
+# THE FINAL REPORT IS A PROJECTION, NOT A SUMMARY. Every row below is derived
+# from a record that already exists: the two E1.7 clean-room reviews and their
+# verdicts under delivery/review/, and the E1.8 fix-round-verification report.
+# `inputs` is the finding set those records raised, and each has exactly one
+# outcome row, which is what the M2-P6 coverage checker's finding-to-outcome
+# parity mode is run over.
+#
+# Finding ids are namespaced by the review that raised them, because both
+# reviews number from CR-001 independently and a bare CR-001 would be two
+# different findings under one id.
+
+kind: final-report
+subject: >-
+  M3 exit test stage E1, the designated subject: tiphys doctor's
+  kernel-artifacts check, on branch claude/exit-subject-doctor-kernel-artifacts,
+  round 0 and fix round 1
+
+inputs:
+  - CRIT-CR-001
+  - CRIT-CR-002
+  - HAZ-CR-001
+  - HAZ-CR-002
+  - HAZ-CR-003
+  - HAZ-CR-004
+  - HAZ-CR-005
+  - FRV-V-1
+  - FRV-V-2
+
+input-findings:
+  - id: CRIT-CR-001
+    outcome: >-
+      CLOSED BOTH WAYS. witness/doctor-kernel-artifacts.json, the file
+      criterion 7 names literally, now exists and carries the two behaviours
+      the plan's witness step names, so the criterion's letter is met. The
+      residual split into per-arm siblings is DECLARED as a deviation in the
+      work history, with the harness reason, so verdict-deviations-judged has
+      something to compare a verdict against instead of nothing.
+  - id: CRIT-CR-002
+    outcome: >-
+      CLOSED BY EXECUTION. Both named tests now appear in failedNamedTests
+      under both declared members, at exit 1 on the mutated tree and exit 0 at
+      head; red-witness green with 9 witnesses evaluated, up from 7.
+  - id: HAZ-CR-001
+    outcome: >-
+      CLOSED. A resolution predicate per required directory, taken from the
+      consuming command's own filter, plus a content floor on the file member.
+      The four shapes the review measured as PASS with FAIL count zero are FAIL
+      with exit 1 through the CLI of a staged install, captured at
+      witness/captures/doctor-kernel-artifacts-resolvability.txt.
+  - id: HAZ-CR-002
+    outcome: >-
+      HALF CLOSED, HALF TRACKED, as the review itself proposed. The derivation
+      the fix-round contract requires is published in the work history over
+      eleven open sites in src/, four guarded and seven not. The one site
+      inside this phase's files-to-touch, src/commands/doctor.ts:72, now walks
+      with classifyEntry. The hang itself comes from src/version.ts:20, was
+      measured PRE-EXISTING at the base 7b18144, and is routed as its own item
+      rather than folded into this phase.
+  - id: HAZ-CR-003
+    outcome: >-
+      CLOSED. The test name was wrong, not the assertion; renamed to name the
+      condition it asserts, and test/behaviors.json updated to match, since the
+      registry value must equal the reported test name.
+  - id: HAZ-CR-004
+    outcome: >-
+      RECORDED, NOT MADE REACHABLE, which is the deliberate choice. The dead
+      arm is stated in the test's own comment with the reason: an install whose
+      root cannot be resolved has no package.json above it either, so the CLI
+      refuses earlier. Making it reachable would move the startup version read,
+      which is outside this phase's files-to-touch.
+  - id: HAZ-CR-005
+    outcome: >-
+      PARTLY ANSWERED. The stage now ships a validated work-history instance
+      for the subject phase, so a verdict context assembled from the bundle
+      compares against the implementer's declaration rather than a document the
+      reviewer wrote. The second half, having the E1.7 dispatch name the
+      context directory, is a change to the stage's dispatch and is left to the
+      orchestrator. Recorded here as a fact about the STAGE, not about the
+      change.
+  - id: FRV-V-1
+    outcome: >-
+      TRACKED, NOT FIXED. The mechanism derivation over the file this phase
+      owns finds one further presence-test site, checkRetention at
+      src/commands/doctor.ts:561. It belongs to M3-P8, has its own criteria and
+      witnesses, and its next test already asks a question beyond presence.
+  - id: FRV-V-2
+    outcome: >-
+      CLOSED. The FIFO witness went red on rule (d) because the round rewrote
+      the two lines it quoted; both mutations were repointed with their
+      semantic dangerous states preserved, and the second-order effect (the
+      mechanism is now guarded at two sites, so a single-site defang reddens on
+      the detail rather than on a hang) is written into the work history rather
+      than left to be noticed.
+
+decisions-owed:
+  none: false
+  entries:
+    - id: version-walk-type-establishment
+      statement: >-
+        Seven open sites in src/ establish no type before reading, one of them
+        src/version.ts:27 on the path EVERY tiphys invocation takes, where a
+        FIFO at an installed package's package.json hangs the CLI before any
+        command runs. Measured PRE-EXISTING at 7b18144. Whether to route the
+        startup walk through classifyEntry is a change to a module no phase
+        currently owns.
+      owner: orchestrator
+    - id: exit-test-runner-exit-20
+      statement: >-
+        The gate runner exits 20 for two required-and-explained
+        not-applicables, citations and scope, and that condition is structural
+        for any branch that is not phase-shaped and touches no citation-gated
+        document. Unchanged by this round and restated so it is not read as a
+        fix-round regression.
+      owner: orchestrator
+
+owner-verification:
+  none: true
+
+infrastructure-left:
+  none: true
+
+out-of-band:
+  none: false
+  entries:
+    - id: falsification-controls-cut
+      statement: >-
+        The exit test's three falsification controls C1, C2 and C3 are CUT by
+        owner decision and were NOT run. They are recorded as
+        skipped-by-decision, never as passed, not-applicable or pending. The
+        reason: they prove the exit test MEASURES rather than merely passes,
+        which is a meta-check on a rehearsal, and the kernel is about to be
+        pointed at a real project which tests it harder.
+      owner: owner
+    - id: fix-round-verification-independence
+      statement: >-
+        The E1.8 fix-round-verification report was produced by the same agent
+        that ran the fix round. The stage's contract requires a report, not a
+        second model family, and the decorrelation requirement sits on E1.7 and
+        E2.1. The residue is stated in that report's own header.
+      owner: orchestrator

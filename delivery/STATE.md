@@ -5,6 +5,31 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-15 evening, NEWEST BLOCK. Everything below is OLDER.
+- **THE M3 EXIT TEST IS THROUGH E1.10.** Stage E1 has run end to end: plan,
+  adversarial plan review, implementation, DUAL clean-room review on two model
+  families with two framings and two review contracts, one fix round, the
+  `fix-round-verification` stage `full` mode requires, reporting and status.
+  Evidence is `delivery/evidence/m3-exit-test/`, and the new stages are at
+  `delivery/evidence/m3-exit-test/e1-8-to-e1-10.md`.
+- **BOTH E1.7 REVIEWS RETURNED FIX-ROUND-NEEDED AND FIX ROUND 1 ANSWERED THEM.**
+  The blocking mechanism was presence standing in for resolvability in the
+  subject's `doctor` check; the fix is a resolution predicate whose suffix per
+  directory is read off the consuming command's own filter. `red-witness` went
+  from 7 witnesses to 9, and the two behaviours the criteria review proved
+  UNCOVERED are now red under every declared dangerous state. Suite 849 pass, 0
+  skipped, on node v26.6.0 with `dist/` built.
+- **THE THREE FALSIFICATION CONTROLS C1, C2 AND C3 ARE CUT BY OWNER DECISION.**
+  They were NOT run and are recorded as SKIPPED-BY-DECISION, never as passed,
+  not-applicable or pending. The reason is in `e1-8-to-e1-10.md`: they are a
+  meta-check on a rehearsal, and the kernel is about to be pointed at a real
+  project which tests it harder.
+- **E2.1 IS NOT DISCHARGED AND NOTHING IS MERGED.** The two verdicts in the
+  bundle are on the PRE-fix-round head `eb13da6` and both read
+  FIX-ROUND-NEEDED, so the fix-round head has no clean dual review and no claim
+  is made that it does. Branches `claude/exit-subject-doctor-kernel-artifacts`
+  and `claude/m3-exit-test` are pushed and unmerged.
+
 - as of: 2026-08-15 early morning, NEWEST BLOCK. Everything below is OLDER.
 - **`@tiphys/kernel@0.1.0` IS PUBLISHED.** Verified independently rather than
   taken from the job record: the registry carries `0.1.0` at

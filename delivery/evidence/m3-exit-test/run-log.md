@@ -254,3 +254,53 @@ Claude Sonnet 5, framing criteria-contract) and
 `delivery/review/verdict-m3-exit-subject-hazard.yaml` (302, produced-by Claude
 Opus 5, framing hazard-contract). Both verdicts read FIX-ROUND-NEEDED and the
 two model families and framings differ, which is what E1.7 asks of the pair.
+
+## Dispatch F: the fix round, its verification, E1.9 and E1.10
+
+### 18. Fix round 1 ran on the subject branch
+
+Happened: one round answering both E1.7 reviews. The mechanism named was
+presence standing in for resolvability, not the four instances the hazard
+review listed. `src/commands/doctor.ts` gained a resolution predicate per
+required directory, taken from the consuming command's own filter, and a
+content floor applied to the FILE member of the class as well. The two
+behaviours the criteria review proved uncovered gained
+`witness/doctor-kernel-artifacts.json`, the file the plan names literally, and
+the new behaviour gained `witness/doctor-kernel-artifacts-resolvability.json`.
+
+Measured, not asserted: `red-witness` green with **9** witnesses evaluated, up
+from 7, every witness red against every declared dangerous state and green at
+head, and the reddened test names read back out of `witness-records.json` are
+exactly the pair the reviews said were missing. Suite `npm test` on node
+v26.6.0 with `dist/` built: **849 tests, 849 pass, 0 fail, 0 SKIPPED**, exit 0
+(round 0 reported 847 at the same invocation, toolchain and build state).
+
+One thing went red on the way and is recorded rather than smoothed:
+`witness/doctor-kernel-artifacts-fifo.json` failed rule (d) on the first gate
+run because the round had rewritten the two source lines its mutations quoted.
+Repointed, dangerous states preserved, re-run green.
+
+### 19. E1.8's verification stage, E1.9 and E1.10
+
+Happened: the `fix-round-verification` stage produced its own validated
+`report` instance, and E1.9's three requirements and E1.10's two each ran with
+a recorded command and exit code under `e1/records/`. The finding-to-outcome
+parity mode reported `checked 9` with no orphan, duplicate, empty or phantom
+row, and a negative control with one outcome row removed exited 1, so the green
+is not vacuous. Two status records were emitted and `status show` reported the
+second from `current.json`. The account is
+`delivery/evidence/m3-exit-test/e1-8-to-e1-10.md`.
+
+### 20. The three falsification controls are CUT
+
+Happened: by owner decision, C1, C2 and C3 were NOT run and are recorded as
+**skipped-by-decision**. Not passed, not not-applicable, not pending. The
+reason and what the skip costs are in `e1-8-to-e1-10.md`.
+
+### 21. Dispatch F ends here
+
+Both branches pushed. Nothing merged, nothing published, nothing pushed to
+`main`. E2.1 is the orchestrator's: the two verdicts in this bundle are on the
+PRE-fix-round head and both read FIX-ROUND-NEEDED, so whether the fix-round
+head carries a clean dual review is a question for a re-review and is not
+claimed here.

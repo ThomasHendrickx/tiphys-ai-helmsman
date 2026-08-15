@@ -1,0 +1,18 @@
+{
+  "stage": "E1.9",
+  "expectation": "exit NONZERO: one outcome row removed, so the parity mode is shown to assert",
+  "command": [
+    "node",
+    "delivery/evidence/m3-exit-test/e1/e1-9/finding-outcome-parity.mjs",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/FR1/final-report.NEGCTRL.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T19:16:47.029Z",
+  "endedAt": "2026-08-15T19:16:47.203Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "{\n  \"ok\": false,\n  \"checked\": 9,\n  \"missing\": [\n    \"HAZ-CR-003\"\n  ],\n  \"duplicated\": [],\n  \"empty\": [],\n  \"phantom\": []\n}\n",
+  "stderr": ""
+}

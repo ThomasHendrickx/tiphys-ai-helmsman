@@ -90,7 +90,12 @@ appended as work happens.
     improvised fleet, not of this check - the diff's own capture/live test (see
     below) is the fair reproduction and it passed.
   - Non-ASCII path stress: staged an install under a directory literally named
-    `manual-lab-unicode-é日本`; PASS, no bug.
+    `manual-lab-unicode-<U+00E9><U+65E5><U+672C>`; PASS, no bug.
+    (TRANSLITERATED BY THE ORCHESTRATOR, DECLARED: the reviewer wrote the
+    three codepoints literally, which fails the repository's authored-bytes
+    check. U+00E9 (1 occurrence), U+65E5 (1) and U+672C (1) are rendered as
+    their <U+xxxx> escapes. Nothing else in this document was changed, and
+    the directory the reviewer actually staged carried the literal glyphs.)
   - criterion 8: `grep -cE "behaviors\.json.{0,40}[0-9]{2,}|[0-9]{2,}.{0,40}behaviors\.json" test/doctor.test.ts` = 0.
     No hard-coded row count.
   - criterion 6: `node --test test/doctor.test.ts` (node v26.6.0, dist/ built,
