@@ -159,9 +159,11 @@ header comment. The script's own `parseInventory` was imported and run against
 | in the map and not in the inventory | 0 |
 
 Set equality holds in both directions, which is the property that makes the
-number 74 a statement about the inventory. The reverse direction is the one that
-catches an invented row, and it is checked here rather than inferred from the
-forward one.
+number 74 a statement about the inventory. The reverse direction is the one the
+script's own header calls the catcher of an invented row
+(scripts/check-clause-map.mjs:15), and it is measured here rather than inferred
+from the forward one: the row "in the map and not in the inventory" above is
+that measurement.
 
 ### What this half does NOT establish
 

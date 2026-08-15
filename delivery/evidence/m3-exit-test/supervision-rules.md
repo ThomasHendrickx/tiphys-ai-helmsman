@@ -123,7 +123,9 @@ code and the failing command captured.
   `node scripts/check-dual-review.mjs` must exit nonzero naming the shared
   `review-contract` value.
 - What it reaches that no schema control can: that two DIFFERENT questions were
-  actually asked (T-007). It also catches a `check-dual-review.mjs` invocation
+  actually asked (T-007). The plan claims of it, at
+  delivery/plan/kernel-plan-m3.md:5150, that it also catches a
+  `check-dual-review.mjs` invocation
   whose exit code is captured into the bundle but is not gating anything (a
   `|| true`, or evidence recorded from a run made after the fact rather than
   from the one that produced the merge), because under C3 the script MUST turn

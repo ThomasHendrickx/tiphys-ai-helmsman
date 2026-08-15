@@ -87,3 +87,14 @@ the findings were applied to the plan and the amended plan revalidates exit 0.
 
 About to: commit and push, then run the citations and coverage gates through
 the kernel's own runner as the registry selects them.
+
+Happened: the coverage gate ran green (115 units, exit 0). The citations gate
+reported NOT-APPLICABLE with its precondition reason and the runner exited 21,
+because a YAML plan instance under `delivery/evidence/` matches none of the
+gate's document globs. Recorded as an unmet criterion rather than repaired,
+because repairing it here would be a human running a gate the registry did not
+select, which E0.3 names as an exit-test failure.
+
+### 6. Closing this dispatch
+
+About to: run the local gate bundle over the branch, then hand back.
