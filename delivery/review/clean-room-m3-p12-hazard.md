@@ -5,7 +5,7 @@
 - toolchain node v26.6.0, npm 11.18.0, `dist/` built, invocation `npm test`
 - second reviewer walks the acceptance criteria. This document does not.
 
-## Verdict: APPROVE, with six tracked findings, none blocking
+## Verdict: APPROVE, with seven tracked findings, none blocking
 
 The property under attack is DR-0032's, in the owner's words at
 delivery/decisions/DR-0032-the-github-release-is-the-owners-mental-model.md:46:
