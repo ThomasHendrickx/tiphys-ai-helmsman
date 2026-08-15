@@ -775,6 +775,8 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "doctor-kernel-artifacts-unresolvable-root-fails",
     "doctor-kernel-artifacts-fifo-refused",
     "doctor-kernel-artifacts-promoted-under-full-only",
+    "doctor-kernel-artifacts-capture-contract",
+    "doctor-kernel-artifacts-capture-reproduced",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),
