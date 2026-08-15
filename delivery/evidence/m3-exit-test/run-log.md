@@ -239,3 +239,18 @@ handed to the orchestrator is
 E1.6 re-run and E1.7's composition are done. The two reviews are the
 orchestrator's to dispatch. Nothing published, nothing merged, nothing pushed to
 `main`.
+
+## Dispatch E: fix round 1 of a hard cap of 2
+
+### 17. Both E1.7 reviews returned FIX-ROUND-NEEDED
+
+About to: land the four review documents in the bundle BEFORE starting the
+round, so the evidence survives whatever the round does.
+
+Happened: `delivery/review/clean-room-m3-exit-subject-criteria.md` (556 lines),
+`delivery/review/clean-room-m3-exit-subject-hazard.md` (525),
+`delivery/review/verdict-m3-exit-subject-criteria.yaml` (212, produced-by
+Claude Sonnet 5, framing criteria-contract) and
+`delivery/review/verdict-m3-exit-subject-hazard.yaml` (302, produced-by Claude
+Opus 5, framing hazard-contract). Both verdicts read FIX-ROUND-NEEDED and the
+two model families and framings differ, which is what E1.7 asks of the pair.
