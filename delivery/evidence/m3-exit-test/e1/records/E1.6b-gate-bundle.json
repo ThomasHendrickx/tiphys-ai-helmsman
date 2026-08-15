@@ -1,0 +1,30 @@
+{
+  "stage": "E1.6-rerun",
+  "expectation": "the full-mode bundle at the rebased subject head; the whole DR-0018 table is the assertion",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "gates",
+    "run",
+    "--registry",
+    "gate-registry.yaml",
+    "--mode",
+    "full",
+    "--evidence",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/r2-bundle",
+    "--base",
+    "7b18144ec7f5588f01110e2affdad3d81c8cab0c",
+    "--head",
+    "HEAD",
+    "--phase",
+    "exit-subject-r2"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2",
+  "startedAt": "2026-08-15T17:34:28.784Z",
+  "endedAt": "2026-08-15T17:40:04.016Z",
+  "exitCode": 20,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "gates: run 31c88415befa18462f9d33b8\ngates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)\ngates: registry gate-registry.yaml mode full\ngates: declared 16 applicable 10 verdict 10 green 10 red 0 not-applicable 6 error 0 vacuous 0\ngates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/citation-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/coverage-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/gate-manifest.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/gate-result.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/phase-declaration.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/release-record.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/verifier-config.schema.json, /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json\ngates: coverage: green: 115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1\ngates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources\ngates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1\ngates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 847 test(s) from 45 file(s) (pass 847, fail 0, skipped 0, todo 0, did-not-run 0); discovered 45 file(s) walking test for .test.ts; 773 behavior(s) resolve; merge base 7b18144ec7f5\ngates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md\ngates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch task/exit-subject-r2 does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$\ngates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist\ngates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist\ngates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force\ngates: red-witness: green: 7 witness(es) evaluated (6 own, 1 stored re-evaluated in 11811ms); every witness red against every declared dangerous state and green at head\ngates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 18 gate(s))\ngates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (18 row(s) compared)\ngates: check-agents-references: green: 21 references resolved to a path that the package publishes, 21 of them also to an anchor inside it, under root /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2\ngates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1\ngates: license: green: 10 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing\n",
+  "stderr": "gates: required gate(s) not applicable: citations, scope\n"
+}

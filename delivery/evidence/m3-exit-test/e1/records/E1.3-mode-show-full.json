@@ -1,0 +1,20 @@
+{
+  "stage": "E1.3",
+  "expectation": "exit 0, stage list captured",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "mode",
+    "show",
+    "--mode",
+    "full"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:44:03.049Z",
+  "endedAt": "2026-08-15T08:44:03.473Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "mode: full\nexecution-status: this mode is full, which blueprint section 8 defines by name as the un-downgraded process, and it is the one the tiphys project follows for its own delivery.\nmerge-authority: delegated-under-conditions\ngranted-by: DR-0012\npipeline:\n  intake\n  verification-pass\n  plan\n  adversarial-plan-review\n  implement\n  clean-room-review\n  fix-round\n  fix-round-verification\n  merge-on-green\n  deploy-verify\n  migration-verify\n  final-report\nskips:\n  (none)\ngate-sets:\n  manifest-self-check\n  coverage\n  credential-scrub\n  credential-token\n  suite\n  citations\n  scope\n  deploy\n  migrations\n  clause-map\n  red-witness\n  agent-rules-drift\n  unit-tests-for-changed-service-methods\n  fixtures-for-changed-component-states\nreview-contracts:\n  criteria\n  hazard\nescalation-bounds (data an orchestrator brief cites; nothing in this release counts fix rounds, detects recurrence, or enforces these):\n  max-fix-rounds-after-review: 2\n  on-exceeded: fresh-implementer-and-third-contract\n  recurrence-of-high-in-one-component: 1\nconditions:\n  Two independent clean-room reviews exist for the current head, produced on different model families, each written to `delivery/review/` and committed.\n  Neither review carries an unresolved finding at high or medium severity. Low findings may be merged with, provided each is either fixed or explicitly recorded as a tracked item with a reason.\n  Both reviewers were given the phase's acceptance criteria as their contract, and both walked or executed them. A review that only read is not sufficient for a code phase.\n  CI is green on the exact head being merged, not on an earlier one.\n  The scope audit passes: changed files are on the phase's files-to-touch list plus the two standing pre-authorized extras.\n  Where the reviews disagree, the orchestrator arbitrates with evidence and records the arbitration in the merge commit or in the review file. A disagreement is never resolved by preferring the more convenient verdict.\ndeclared-by: blueprint section 8 (the mode and its pipeline); process doc section 9 item 3 enumerated (R-096); T-003 for the fix-round-verification stage; DR-0012 and DR-0015 for the merge authority actually in force; DR-0016 for the escalation response; T-007 and D-M3-32 for the review contracts.\nlimits: the mode, stage and role vocabularies in the shipped schemas are this repository's own closed enums, so a document naming any other id is rejected and a consuming project cannot extend them at v0.1.0; whether to open them is an M4 question (DR-0020). This command SHOWS a declared mode: nothing in this release resolves a project into a mode, enforces one, or runs one.\n",
+  "stderr": ""
+}

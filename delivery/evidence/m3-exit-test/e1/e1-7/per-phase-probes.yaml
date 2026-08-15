@@ -1,0 +1,63 @@
+# PER-PHASE PROBE INJECTION for the M3 exit test's subject change (R-054).
+#
+# `tiphys checklist resolve --checklist clean-room --extra <this file>` merges
+# these probes into the shipped clean-room list. They exist because this
+# subject change has two properties no general probe reaches: its whole claim
+# is about a RESOLVED INSTALL rather than about the development checkout, and
+# its plan review found a high-severity defect in the resolver the obvious
+# implementation would have used.
+kind: checklist
+id: exit-subject-per-phase
+applies-to: >-
+  the M3 exit test's subject change only: the kernel-artifacts check added to
+  tiphys doctor on `claude/exit-subject-doctor-kernel-artifacts`.
+
+probes:
+  - id: subject-resolver-not-the-artifact-under-test
+    probe: >-
+      The plan review's high finding (PR-1) was that the kernel's only existing
+      root resolver, `kernelRoot` in src/roles.ts, searches upward for the very
+      directory this check exists to find missing, so it answers about an
+      ancestor or throws. Establish BY EXECUTION, not by reading, that the
+      delivered check does not have that property: stage an install with
+      `roles/` removed INSIDE a parent that does carry `roles/` with a `.md`
+      file, run the check against it, and record what it reported. Then say
+      whether any OTHER upward search remains in the delivered code path, and
+      name where you looked.
+    applies-to: criteria-walk
+    evidence-required: true
+
+  - id: subject-staged-install-not-the-checkout
+    probe: >-
+      Every assertion this change makes is about a resolved install. Determine
+      which of its tests exercise a STAGED INSTALL and which exercise this
+      checkout, and say whether any criterion is witnessed only by the second.
+      A test that passes because the developer's own tree is complete is the
+      hazard the phase declares as H2, and it is invisible to a green suite.
+    applies-to: test-honesty
+    evidence-required: true
+
+  - id: subject-capture-is-real-and-reproduced
+    probe: >-
+      The change ships a captured CLI transcript at
+      `witness/captures/doctor-kernel-artifacts-staged-install.txt` and a test
+      that claims to reproduce it live. Verify the capture is real output rather
+      than a hand-written string, and that the reproducing test would fail if
+      the transcript and the program disagreed. State how you established each,
+      and note that the red-witness rule treats a hand-written string here as
+      the failure it exists to prevent.
+    applies-to: test-honesty
+    evidence-required: true
+
+  - id: subject-two-stored-specs-repaired-not-weakened
+    probe: >-
+      This change edits two witness specs it does not own,
+      `witness/doctor-retention-absent-path-and-full-profile.json` and
+      `witness/doctor-retention-not-applicable-without-a-charter.json`, because
+      it edits a source line their mutations quote. Establish that the repair
+      preserves what those witnesses guarded rather than defanging them:
+      compare each edited member against its pre-change form and say what the
+      mutation still proves. A repair that makes a sibling phase's witness
+      easier to satisfy is a finding.
+    applies-to: changed-code
+    evidence-required: true

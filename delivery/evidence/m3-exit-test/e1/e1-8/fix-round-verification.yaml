@@ -1,0 +1,221 @@
+# M3 exit test, stage E1.8: the fix-round-verification report.
+#
+# `full` mode carries a `fix-round-verification` stage (assurance-modes.yaml,
+# T-003), and the exit test says a run whose fix round skips it FAILS. This is
+# that stage's own validated report. It verifies FIX ROUND 1 of the subject
+# branch claude/exit-subject-doctor-kernel-artifacts, and nothing else: it does
+# not re-review the change, which is what E1.7's two clean-room reviews did.
+#
+# INDEPENDENCE LIMIT, stated first because it is the weakest thing here. This
+# report was produced by the same agent that ran the fix round. The stage's
+# contract requires a report, not a second model family; the decorrelation
+# requirement in this pipeline sits on E1.7 and E2.1, both of which were
+# satisfied by two families. A verifier who is also the author cannot find the
+# defects an author is blind to, and that is the residue.
+
+kind: report
+role: fix-round-verification
+task: >-
+  Verify fix round 1 of the M3 exit test's subject change: that it addressed
+  the MECHANISM the two clean-room reviews named rather than the instances
+  they listed, that the round's own new tests are red against the dangerous
+  state rather than against an absent feature, and that nothing the round
+  touched regressed.
+verdict: >-
+  The round is verified. The two blocking findings are closed by execution,
+  the three lows are closed or recorded truthfully, and the round's own
+  derivation names one further instance of the mechanism inside the file it
+  edits which it deliberately did not fix.
+
+findings:
+  - id: V-1
+    severity: low
+    source-pinned: true
+    pinned-evidence: >-
+      branch claude/exit-subject-doctor-kernel-artifacts, fix round 1 head,
+      base origin/main at 7b18144
+    evidence:
+      - path: src/commands/doctor.ts
+        lines: "561"
+        note: >-
+          checkRetention tests a declared retention path with existsSync and
+          reports on presence.
+      - path: src/commands/doctor.ts
+        command: grep -n "readdirSync\\|.length === 0\\|.length > 0" src/commands/doctor.ts
+        exit-code: 0
+        note: >-
+          Twelve hits. The ones inside checkKernelArtifacts are now the
+          resolvability predicate or its report; the one remaining presence
+          test over an artifact whose value is its content is checkRetention's.
+    analysis: |
+      The fix-round contract requires the mechanism, not the instance, and the
+      mechanism here is "a check reports on PRESENCE where the property that
+      matters is what the artifact RESOLVES". The derivation over the file the
+      round edits finds one further site of that shape: checkRetention at
+      src/commands/doctor.ts:561. It is weaker than the shape CR-001 named,
+      because the very next test asks whether the path is git-ignored, which is
+      a question about whether the path survives rather than about whether it
+      is there; so presence is not the whole predicate there.
+    outcome: >-
+      NOT fixed, deliberately and recorded rather than absorbed. checkRetention
+      is M3-P8's check with its own criteria and its own witnesses, and
+      rewriting it inside this round would be a change no review has seen.
+      Tracked for the orchestrator.
+
+  - id: V-2
+    severity: low
+    source-pinned: true
+    pinned-evidence: >-
+      witness/doctor-kernel-artifacts-fifo.json, fix round 1
+    evidence:
+      - path: witness/doctor-kernel-artifacts-fifo.json
+        command: >-
+          node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
+          --only red-witness --evidence <dir> --base origin/main --head HEAD
+        exit-code: 1
+        note: >-
+          First run of the round. red-witness RED, rule (d), both members of
+          doctor-kernel-artifacts-fifo mutate text no longer inside a changed
+          hunk, because the resolvability predicate rewrote both quoted lines.
+    analysis: |
+      An existing witness went red as a consequence of the round rather than
+      as a discovery about it, and a round that repaired it silently would be
+      indistinguishable from one that defanged it. There is a second-order
+      effect worth naming: carriesContent now calls classifyEntry on the same
+      path the FILE branch does, so defanging the FILE branch's own
+      classifyEntry no longer reaches an open. The witness still reddens, on
+      the DETAIL rather than on a hang.
+    outcome: >-
+      Closed. Both mutations were repointed at the rewritten lines with their
+      semantic dangerous states preserved, the second-order effect is written
+      into the work history rather than left for a reader to notice, and the
+      re-run is green with both members red at exit 1 and green at head.
+
+claims:
+  - id: C-1
+    kind: coverage
+    statement: >-
+      The two behaviours the E1.7 criteria review proved uncovered, a removed
+      DIRECTORY and a removed FILE, are now named by a witness spec and appear
+      in failedNamedTests under every declared dangerous state.
+    settled-by:
+      executed-construction:
+        command: >-
+          node -e 'read ev-rw/red-witness/witness-records.json and print, per
+          evaluation of doctor-kernel-artifacts and
+          doctor-kernel-artifacts-resolvability, the red run count, the red
+          exit codes, the head run count and the union of failedNamedTests'
+        exit-code: 0
+        output: |
+          === doctor-kernel-artifacts-resolvability status=green
+            member 0 red=2 exit=1,1 head=1 exit=0
+              failedNamedTests ["presence is not resolvability: the four shapes that used to PASS are each named"]
+            member 1 red=2 exit=1,1 head=1 exit=0
+              failedNamedTests ["presence is not resolvability: the four shapes that used to PASS are each named"]
+          === doctor-kernel-artifacts status=green
+            member 0 red=2 exit=1,1 head=1 exit=0
+              failedNamedTests ["a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL","a staged install missing AGENTS.md is caught, which is the FILE member of the class"]
+            member 1 red=2 exit=1,1 head=1 exit=0
+              failedNamedTests ["a staged install missing roles/ carries kernel-artifacts-incomplete, which full promotes to FAIL","a staged install missing AGENTS.md is caught, which is the FILE member of the class"]
+
+  - id: C-2
+    kind: remedy
+    statement: >-
+      The four shapes the hazard review measured as PASS with FAIL count zero
+      are each FAIL with exit 1 through the CLI of a staged install at this
+      head, not only through the unit.
+    settled-by:
+      executed-construction:
+        command: >-
+          the capture script recorded in the work history, four fresh staged
+          installs, gh stubbed and a remote configured; full output committed
+          at witness/captures/doctor-kernel-artifacts-resolvability.txt
+        exit-code: 0
+        output: |
+          checklists/ (present, but no .yaml member resolves)   exit=1
+          roles/ (present, but no .md member resolves)          exit=1
+          roles/ (present, but no .md member resolves)          exit=1
+          AGENTS.md (present but empty, so it states nothing)   exit=1
+
+  - id: C-3
+    kind: coverage
+    statement: >-
+      The new predicate does not fail a REAL published install, which is the
+      regression the round could most plausibly have introduced.
+    settled-by:
+      executed-construction:
+        command: npm pack --dry-run --json, counting members the predicate selects
+        exit-code: 0
+        output: |
+          roles/ members ending .md: 7
+          schemas/ members ending .schema.json: 16
+          checklists/ members ending .yaml: 5
+          AGENTS.md in pack: 1
+          total files: 181
+
+  - id: C-4
+    kind: open-question
+    statement: >-
+      I did not establish whether the resolvability predicate is right for a
+      consuming project that ships a differently-named artifact set. The
+      suffixes are read off this kernel's own three consumers, and nothing in
+      this release resolves a consuming project's artifacts at all.
+
+  - id: C-5
+    kind: universal
+    statement: >-
+      Every claim in this round's work history that the claim grep matches
+      carries an adjacent captured command or is restated as an open question.
+    settled-by:
+      counter-experiment: >-
+        The falsifying experiment is the binding line-based claim grep plus its
+        wrap-insensitive form over the work history; both were run and their
+        counts are recorded in the work history's fix-round section.
+
+deviations:
+  - plan-clause: M3-P13 files-to-touch and acceptance criterion 7
+    why: >-
+      The plan names one witness file, witness/doctor-kernel-artifacts.json.
+      That file now exists and carries the two behaviours the plan's witness
+      step names. Five sibling specs and two captures sit beside it, none of
+      them on files-to-touch, because the harness requires every named test of
+      a spec to redden under EVERY declared member, which forces one spec per
+      arm. Declared here for a reviewer's judgment rather than asserted as
+      settled.
+
+honest-failures:
+  - cause: >-
+      The round's first red-witness run was RED, on rule (d), because two
+      mutations of an existing witness quoted source lines the round had
+      rewritten.
+    exposure-window: >-
+      One gate run, inside the round. Nothing was pushed or reported green in
+      that window.
+    structural-fix: >-
+      Run the red-witness gate before writing any prose about the round, so a
+      spec whose quoted lines the round moved is found by the gate rather than
+      by a reviewer. That is what happened here.
+
+environmental-claims:
+  - claim: >-
+      The suite must be run on the floor-satisfying toolchain with dist/ built,
+      because nine tests skip themselves when dist/ is absent and the run still
+      exits 0.
+    evidence:
+      - path: package.json
+        command: npm run build
+        exit-code: 0
+        note: >-
+          Run ahead of each suite invocation quoted in this round, on node
+          v26.6.0 from the scratch prefix, with git status clean afterwards.
+
+gate-results:
+  - gate: red-witness
+    result: green
+    wrapper-exit-code: 0
+    discovered: 9
+    passed: 9
+    failed: 0
+    skipped: 0
+    todo: 0
+    did-not-run: 0

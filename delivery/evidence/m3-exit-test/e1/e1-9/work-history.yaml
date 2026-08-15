@@ -1,0 +1,286 @@
+# M3 exit test, stage E1.9: the subject phase's work history in the
+# machine-readable form the contract defines.
+#
+# The prose record is delivery/work-history/exit-subject-doctor-kernel-artifacts.md
+# on branch claude/exit-subject-doctor-kernel-artifacts, and this is the same
+# record in the validated form. It exists for two reasons: E1.9 requires the
+# phase work history to validate against schemas/work-history.schema.json, and
+# the E1.7 hazard review's CR-005 measured that the bundle shipped no
+# work-history.yaml at all, so `verdict-deviations-judged` had nothing but a
+# reviewer-authored document to compare a verdict against. A verdict context
+# assembled from this file is comparing against the implementer's declaration.
+#
+# `phase` is M3-P13 because that is the id every plan, brief, verdict and probe
+# in this stage carries. The BRANCH is not phase-shaped, by the orchestrator
+# ruling recorded as intervention I-3, and that is a fact about the branch
+# rather than about the phase id.
+
+kind: work-history
+phase: M3-P13
+
+prompt: |
+  You are the IMPLEMENTER for the M3 exit test's designated subject: add a
+  kernel-artifacts check to tiphys doctor that reports whether the RESOLVED
+  kernel install carries roles/, schemas/, checklists/ and AGENTS.md. Deliver
+  against the plan instance the exit test produced, with a durable red-witness
+  spec. Do not open a pull request and do not merge. Fix round 1 answers the
+  two clean-room reviews of stage E1.7.
+
+files-touched:
+  - src/commands/doctor.ts
+  - test/doctor.test.ts
+  - test/behaviors.json
+  - witness/doctor-kernel-artifacts.json
+  - witness/doctor-kernel-artifacts-resolvability.json
+  - witness/doctor-kernel-artifacts-empty-directory.json
+  - witness/doctor-kernel-artifacts-fifo.json
+  - witness/doctor-kernel-artifacts-resolution.json
+  - witness/doctor-kernel-artifacts-unresolvable.json
+  - witness/doctor-retention-absent-path-and-full-profile.json
+  - witness/doctor-retention-not-applicable-without-a-charter.json
+  - witness/captures/doctor-kernel-artifacts-staged-install.txt
+  - witness/captures/doctor-kernel-artifacts-resolvability.txt
+  - delivery/work-history/exit-subject-doctor-kernel-artifacts.md
+
+per-step-commits:
+  - sha: "eb13da6"
+    subject: "Rebase onto the witness-ownership fix and re-measure: red-witness is green, and both escapes are re-measured"
+  - sha: "04924b6"
+    subject: "Fix round 1: resolvability rather than presence, and the two witnesses the class was missing"
+
+key-decisions:
+  - decision: >-
+      Derive what "resolves" means for each required directory from the
+      CONSUMING command's own filter rather than inventing a predicate:
+      roles/ .md (src/roles.ts:335), schemas/ .schema.json
+      (src/commands/validate.ts:156), checklists/ .yaml (src/checklists.ts:91),
+      plus a regular-file and non-empty test on the selected member.
+    why: >-
+      A check that claims more than the consumer will deliver is a second
+      source of truth that drifts. Taking the suffix from the consumer means
+      the check and the command it speaks for cannot disagree without one of
+      them being edited.
+  - decision: >-
+      Apply the same content floor to AGENTS.md rather than only to the
+      directories.
+    why: >-
+      The plan's words for the directory member, "an install that carries an
+      empty roles/ resolves no role", are true word for word of a zero-byte
+      AGENTS.md, and the phase's own emptiness reasoning had been applied to
+      the directory member only. That asymmetry is what the hazard review's
+      sharpest instance exploited.
+  - decision: >-
+      Ship witness/doctor-kernel-artifacts.json, the file the plan names, as
+      the spec for the removed-DIRECTORY and removed-FILE pair, and keep the
+      per-arm siblings beside it.
+    why: >-
+      The harness requires every named test of a spec to redden under EVERY
+      declared member, so a single spec cannot carry arms whose mutations kill
+      different tests. The plan's singular filename could not have held them.
+      Declared as a deviation rather than absorbed.
+  - decision: >-
+      Close the mechanism `reading-a-path-whose-type-is-not-established` at
+      src/commands/doctor.ts:72 only, and publish the derivation over the
+      other sites rather than fixing them.
+    why: >-
+      That site is inside this phase's files-to-touch and the others are not.
+      The hang the hazard review forced comes from src/version.ts:20 and was
+      measured PRE-EXISTING at the base 7b18144, so it is another item rather
+      than this round's.
+
+verification-first:
+  - finding: >-
+      The check's success message is a claim about what the install RESOLVES
+      while the test behind it was a claim about what is PRESENT, and the gap
+      was reachable in four staged shapes, three of them directories and one
+      the FILE member of the same class.
+    contradicts-plan: true
+    stopped-and-reported: >-
+      Raised by the E1.7 hazard clean-room review as CR-001 with all four
+      shapes forced against a real staged install, and answered in fix round 1
+      by a resolution predicate rather than by closing the four instances one
+      at a time.
+  - finding: >-
+      The two behaviours the plan names most explicitly, a removed roles/
+      DIRECTORY and a removed AGENTS.md FILE, appeared in no witness spec's
+      tests[] and in no failedNamedTests across the seven evaluations of round
+      0, so neither had been demonstrated red by construction.
+    contradicts-plan: true
+    stopped-and-reported: >-
+      Raised by the E1.7 criteria clean-room review as CR-002, confirmed there
+      by reading witness-records.json rather than by reading the specs, and
+      answered in fix round 1 by witness/doctor-kernel-artifacts.json.
+  - finding: >-
+      A test named "a staged install missing roles/ is a FAIL naming roles/"
+      asserted WARN, so its reported name was a true statement about the CLI
+      and a false one about the test.
+    contradicts-plan: false
+  - finding: >-
+      Criterion 10's unresolvable arm is real at the unit level and dead at
+      the command level, because readOwnVersion refuses at src/version.ts:20
+      before any command runs.
+    contradicts-plan: false
+
+deviations:
+  - plan-clause: >-
+      M3-P13 step, "the root is computed from import.meta.url WITHOUT
+      searching upward"
+    why: >-
+      A fixed depth is wrong in one of the two shipped layouts, measured: the
+      published package puts the module at dist/src/commands/doctor.js with
+      the artifacts three levels up, the development checkout at
+      src/commands/doctor.ts with them two levels up, and dist/package.json is
+      not in the 181-file pack listing. The search key is package.json, the
+      package boundary rather than a member of the audited set, so the class of
+      attack that killed kernelRoot does not apply and criterion 9's test
+      proves it.
+  - plan-clause: >-
+      M3-P13 files-to-touch and acceptance criterion 7, both naming exactly
+      witness/doctor-kernel-artifacts.json
+    why: >-
+      That file now exists and carries the two behaviours the plan's witness
+      step names. Five sibling specs and two captures sit beside it, none of
+      them on files-to-touch, because the harness requires every named test of
+      a spec to redden under EVERY declared member, which forces one spec per
+      arm. Offered for a reviewer's judgment rather than asserted as settled.
+
+gate-evidence:
+  - gate: suite
+    result: green
+    wrapper-exit-code: 0
+    discovered: 849
+    passed: 849
+    failed: 0
+    skipped: 0
+    todo: 0
+    did-not-run: 0
+  - gate: red-witness
+    result: green
+    wrapper-exit-code: 0
+    discovered: 9
+    passed: 9
+    failed: 0
+    skipped: 0
+    todo: 0
+    did-not-run: 0
+
+claims:
+  - id: W-1
+    kind: coverage
+    statement: >-
+      The resolvability predicate does not fail a real published install: the
+      pack of this head carries members every one of the three directories'
+      filters selects.
+    settled-by:
+      executed-construction:
+        command: npm pack --dry-run --json, counting members by suffix per directory
+        exit-code: 0
+        output: |
+          roles/ members ending .md: 7
+          schemas/ members ending .schema.json: 16
+          checklists/ members ending .yaml: 5
+          AGENTS.md in pack: 1
+          total files: 181
+
+  - id: W-2
+    kind: open-question
+    statement: >-
+      I did not establish whether the suffix per directory is right for a
+      consuming project that ships a differently-named artifact set. The three
+      suffixes are read off this kernel's own consumers, and nothing in this
+      release resolves a consuming project's artifacts at all.
+
+  - id: W-3
+    kind: remedy
+    statement: >-
+      The two behaviours the criteria review proved uncovered now redden under
+      both declared members of witness/doctor-kernel-artifacts.json.
+    settled-by:
+      executed-construction:
+        command: >-
+          node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
+          --only red-witness --evidence <dir> --base origin/main --head HEAD
+        exit-code: 0
+        output: |
+          gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+          gates: red-witness: green: 9 witness(es) evaluated (8 own, 1 stored re-evaluated in 12177ms); every witness red against every declared dangerous state and green at head
+
+fix-round:
+  - mechanism: >-
+      A check reporting on PRESENCE where the property that matters is what
+      the artifact RESOLVES, so an install that carries a directory and
+      resolves nothing out of it reads as complete.
+    derivation:
+      command: >-
+        grep -n "readdirSync\\|.length === 0\\|.length > 0" src/commands/doctor.ts
+      output: |
+        2:import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+        186:  if (missing.length > 0) {
+        210:  if (remotes.length === 0) {
+        431:    names = readdirSync(charterDir).sort();
+        517:  if (declarations.length === 0) {
+        547:  const empty = declarations.filter((declaration) => declaration.paths.length === 0);
+        548:  if (empty.length > 0) {
+        562:      if (present.length === 0) {
+        570:      if (kept.length === 0) {
+        771:      entries = readdirSync(path);
+        781:    if (entries.length === 0) {
+        815:  if (missing.length > 0) {
+    not-covered: >-
+      The derivation is scoped to src/commands/doctor.ts, the file this phase
+      owns. It does not cover the other commands, and it finds one further site
+      of the same shape inside its own scope: checkRetention at
+      src/commands/doctor.ts:561 tests a declared retention path with
+      existsSync. That one is NOT fixed here, deliberately: it is M3-P8's check
+      with its own criteria and witnesses, and its next test asks whether the
+      path is git-ignored, which is already a question beyond presence. Tracked
+      rather than closed.
+  - mechanism: >-
+      Reading a path whose type has not been established, cited by name by
+      round 0 at one call site while two others were left unexamined.
+    derivation:
+      command: >-
+        grep -rn "readFileSync(\\|openSync(\\|createReadStream(" src/ --include=*.ts
+        | grep -v import | grep -v readRegularFileIfPresent
+      output: |
+        src/validate.ts:863     GUARDED by classifyEntry at :855
+        src/task.ts:189         GUARDED: this IS readRegularFileIfPresent
+        src/gates/pin.ts:114    GUARDED by classifyEntry above it
+        src/commands/doctor.ts:80  GUARDED AS OF THIS ROUND, by the walk at :72
+        src/brief.ts:43         UNGUARDED, no presence test at all
+        src/brief.ts:56         UNGUARDED, presence tested, type not established
+        src/lock.ts:143         UNGUARDED
+        src/lock.ts:164         UNGUARDED
+        src/version.ts:27       UNGUARDED, the site the hazard review's hang comes from
+        src/pool.ts:171         UNGUARDED, inside a try that cannot catch a block
+        src/watcher.ts:591      openSync for APPEND, the write side of the hazard
+    not-covered: >-
+      Eleven open sites in src/, four guarded and seven not; three further grep
+      hits are comment lines and not call sites. The search covers src/ only:
+      scripts/ and bin/ carry sixteen more existsSync matches, which are dev
+      harness rather than shipped runtime and were not classified. None of the
+      seven unguarded sites is inside this phase's files-to-touch, so none is
+      fixed here and all seven are tracked. A narrower first attempt, a
+      five-line window grep for an open following an existsSync, returned ONE
+      hit where the answer is three, because src/version.ts returns the path
+      from one function and opens it in another; that miss is why the
+      classification above is per-site by reading rather than by window.
+
+environment-warnings:
+  - warning: >-
+      Running the suite without building first silently skips nine tests and
+      still exits 0, so a suite count is only a complete sentence with the
+      invocation, the toolchain and the build state beside it.
+    evidence: >-
+      Every suite number in this record was taken with npm ci exit 0 and npm
+      run build exit 0 first, on node v26.6.0 from the scratch prefix, and
+      reports 0 skipped: npm test gives 849 tests, 849 pass, 0 fail, 0 skipped;
+      node --test test/doctor.test.ts gives 32, 32, 0, 0.
+  - warning: >-
+      The container's default toolchain is below the declared engine floor, so
+      EBADENGINE warnings appear on every npm operation and the floor-gated
+      tests skip there.
+    evidence: >-
+      node --version printed v26.6.0 in the shell that ran each command quoted
+      here, from the scratch prefix put first on PATH rather than from the
+      ambient resolution.

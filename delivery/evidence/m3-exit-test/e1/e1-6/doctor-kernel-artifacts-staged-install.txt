@@ -1,0 +1,44 @@
+REAL CAPTURED OUTPUT, kernel-artifacts check, phase M3-P13.
+Program: the built tiphys CLI of a STAGED INSTALL (dist/bin/tiphys.js),
+run from a fleet home. Captured 2026-08-15, node v26.6.0, git 2.43.0.
+gh is on PATH and a push target is configured, so kernel-artifacts is the
+only check that can drive the exit code.
+
+=== case 1: complete staged install, doctor --for full ===
+CHECK node PASS v26.6.0 satisfies kernel engines ">=26"
+CHECK git PASS git version 2.43.0
+CHECK gh PASS gh version 2.62.0 (2024-11-14)
+CHECK layout PASS all layout entries present
+CHECK remote PASS remote configured (origin)
+CHECK lock PASS no lease present
+CHECK beacon WARN watcher not running or not scheduled
+CHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)
+CHECK retention WARN no charter document in /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/fleet/charter, so no project is realized here yet and retention is not applicable
+CHECK kernel-artifacts PASS the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/staged-complete carries roles/, schemas/, checklists/ and AGENTS.md
+exit=0
+
+=== case 2: same install with roles/ removed, doctor --for full ===
+CHECK node PASS v26.6.0 satisfies kernel engines ">=26"
+CHECK git PASS git version 2.43.0
+CHECK gh PASS gh version 2.62.0 (2024-11-14)
+CHECK layout PASS all layout entries present
+CHECK remote PASS remote configured (origin)
+CHECK lock PASS no lease present
+CHECK beacon WARN watcher not running or not scheduled
+CHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)
+CHECK retention WARN no charter document in /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/fleet/charter, so no project is realized here yet and retention is not applicable
+CHECK kernel-artifacts FAIL the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/staged is missing roles/ (absent) (required for profile full)
+exit=1
+
+=== case 3: same install with roles/ removed, doctor with no profile ===
+CHECK node PASS v26.6.0 satisfies kernel engines ">=26"
+CHECK git PASS git version 2.43.0
+CHECK gh PASS gh version 2.62.0 (2024-11-14)
+CHECK layout PASS all layout entries present
+CHECK remote PASS remote configured (origin)
+CHECK lock PASS no lease present
+CHECK beacon WARN watcher not running or not scheduled
+CHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)
+CHECK retention WARN no charter document in /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/fleet/charter, so no project is realized here yet and retention is not applicable
+CHECK kernel-artifacts WARN the kernel install at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/p13-lab/staged is missing roles/ (absent)
+exit=0

@@ -5,6 +5,31 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+- as of: 2026-08-15 evening, NEWEST BLOCK. Everything below is OLDER.
+- **THE M3 EXIT TEST IS THROUGH E1.10.** Stage E1 has run end to end: plan,
+  adversarial plan review, implementation, DUAL clean-room review on two model
+  families with two framings and two review contracts, one fix round, the
+  `fix-round-verification` stage `full` mode requires, reporting and status.
+  Evidence is `delivery/evidence/m3-exit-test/`, and the new stages are at
+  `delivery/evidence/m3-exit-test/e1-8-to-e1-10.md`.
+- **BOTH E1.7 REVIEWS RETURNED FIX-ROUND-NEEDED AND FIX ROUND 1 ANSWERED THEM.**
+  The blocking mechanism was presence standing in for resolvability in the
+  subject's `doctor` check; the fix is a resolution predicate whose suffix per
+  directory is read off the consuming command's own filter. `red-witness` went
+  from 7 witnesses to 9, and the two behaviours the criteria review proved
+  UNCOVERED are now red under every declared dangerous state. Suite 849 pass, 0
+  skipped, on node v26.6.0 with `dist/` built.
+- **THE THREE FALSIFICATION CONTROLS C1, C2 AND C3 ARE CUT BY OWNER DECISION.**
+  They were NOT run and are recorded as SKIPPED-BY-DECISION, never as passed,
+  not-applicable or pending. The reason is in `e1-8-to-e1-10.md`: they are a
+  meta-check on a rehearsal, and the kernel is about to be pointed at a real
+  project which tests it harder.
+- **E2.1 IS NOT DISCHARGED AND NOTHING IS MERGED.** The two verdicts in the
+  bundle are on the PRE-fix-round head `eb13da6` and both read
+  FIX-ROUND-NEEDED, so the fix-round head has no clean dual review and no claim
+  is made that it does. Branches `claude/exit-subject-doctor-kernel-artifacts`
+  and `claude/m3-exit-test` are pushed and unmerged.
+
 - as of: 2026-08-15 early morning, NEWEST BLOCK. Everything below is OLDER.
 - **`@tiphys/kernel@0.1.0` IS PUBLISHED.** Verified independently rather than
   taken from the job record: the registry carries `0.1.0` at
@@ -1573,6 +1598,54 @@ and `A-3` meant three, one of them a literal string inside
    delivery/plan/kernel-plan-m3.md:2538 (DR-0004 items 2 and 3, branch
    protection). A-5 is recorded here so this register actually holds every
    allocated id, which is the point of naming a sole allocator.
+
+7. **A-8, NEW 2026-08-15, and it is small, mechanical and not urgent.** Delete
+   the remote branch `claude/m3-p13-doctor-kernel-artifacts`, which sits at
+   4a719d6994877900a4d05ecfc41825f6cd838354. It was pushed during the M3 exit
+   test's stage E1.6 and then superseded within the hour by
+   `claude/exit-subject-doctor-kernel-artifacts`, which carries the identical
+   commits (they were moved with `git merge --ff-only`, so nothing was
+   rewritten). Nothing needs it.
+
+   **Why an agent cannot do it: this container's proxy permits ref CREATION and
+   UPDATE and refuses ref DELETION.** Measured today by two parties with three
+   methods, and the two accounts agree:
+
+   | method | result |
+   |---|---|
+   | `git push origin --delete <branch>` (exit-test runner) | `RPC failed; HTTP 403`, remote hung up |
+   | `git push <url> ":refs/heads/<branch>"` (exit-test runner) | `RPC failed; HTTP 403` |
+   | `DELETE /repos/.../git/refs/heads/<branch>` (exit-test runner) | HTTP 403, `Write access to this GitHub API path is not permitted through this proxy` |
+   | `git push origin --delete <branch>` (orchestrator's own clone) | the same 403 |
+
+   Ordinary pushes from the same credentials succeed, which is what makes this
+   an asymmetry rather than a credential problem: the branch being deleted was
+   pushed from this container minutes earlier.
+
+   **This is a REDISCOVERY, not a discovery, and that is the part worth
+   keeping.** Item 5 above records the same refusal measured on 2026-08-07 while
+   closing A-4, in the same words. It was in this register and not in the
+   standing environment warnings, so the next agent to try met it fresh and
+   spent three attempts on it. Recorded in the exit-test bundle as finding F-3
+   at `delivery/evidence/m3-exit-test/interventions.md` with that reasoning.
+
+   **The consequence, stated plainly rather than left as tidiness.** The branch
+   name matches `^claude/m3-p[0-9]+-`, and the stop-condition script harvests
+   phase numbers from three sources, one of which is remote branch names. So
+   while this branch exists, M3 reads as having a THIRTEENTH phase, and the
+   other two sources say it does not exist: `git ls-tree origin/main
+   delivery/plan/phase-declarations/` lists m3-p1 through m3-p12 and no m3-p13,
+   and no `m3-p13.md` work history is on `main` either. The exit
+   test's subject change was deliberately moved off that name for exactly this
+   reason (intervention I-3 in the bundle), and until the branch is deleted the
+   phantom is two-thirds prevented rather than prevented.
+
+   **Id note, so a grep does not mislead the next reader.** `A-8` also appears
+   in delivery/work-history/m3-p4.md:3596 as a local TEST-ARM label in a table
+   of arms named A-1 upward. That is a different namespace inside one document,
+   not an allocation from this register, and it predates this one. A grep for
+   `A-8` therefore returns hits that are not this action.
+
 
 ## Tracked obligations, sequenced
 

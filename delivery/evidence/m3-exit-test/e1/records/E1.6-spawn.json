@@ -1,0 +1,27 @@
+{
+  "stage": "E1.6",
+  "expectation": "exit 0: the kernel creates the pool worktree, assembles the brief and launches the payload",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "spawn",
+    "--task",
+    "m3-p13",
+    "--project",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/projects/tiphys-kernel",
+    "--brief",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/delivery/evidence/m3-exit-test/e1/brief-implementer.md",
+    "--shape",
+    "ship",
+    "--exec",
+    "git rev-parse HEAD"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T09:09:37.397Z",
+  "endedAt": "2026-08-15T09:09:37.957Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "d5d87f7baf4ad31ab77ab074a5f0b588da189217\nspawned m3-p13 worktree /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/m3-p13 exec exited 0\n",
+  "stderr": ""
+}

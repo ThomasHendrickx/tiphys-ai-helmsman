@@ -1,0 +1,27 @@
+{
+  "stage": "E1.6",
+  "expectation": "exit 0: re-spawned with a task id that is not phase-shaped, so the branch is the kernel's own output",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "spawn",
+    "--task",
+    "exit-subject-doctor-kernel-artifacts",
+    "--project",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/projects/tiphys-kernel",
+    "--brief",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/delivery/evidence/m3-exit-test/e1/brief-implementer.md",
+    "--shape",
+    "ship",
+    "--exec",
+    "git rev-parse HEAD"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T09:57:41.893Z",
+  "endedAt": "2026-08-15T09:57:42.322Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "d5d87f7baf4ad31ab77ab074a5f0b588da189217\nspawned exit-subject-doctor-kernel-artifacts worktree /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-doctor-kernel-artifacts exec exited 0\n",
+  "stderr": "watcher stale: 1 open task(s) in flight and no readable beacon at /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/state/watcher.beacon; start \"tiphys watch\" or schedule \"tiphys watch --once\" at least every 1200s\n"
+}

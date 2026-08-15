@@ -1,0 +1,18 @@
+{
+  "stage": "E1.6-rerun",
+  "expectation": "recorded as observed: the lease was due to expire at 14:44:27Z and this is 17:25Z",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "lock",
+    "status"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T17:25:32.664Z",
+  "endedAt": "2026-08-15T17:25:32.863Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "expired holder 93ef52e9-9707-48cc-bf3c-0ae1a5f579d3 acquired 2026-08-15T08:44:27.515Z expires 2026-08-15T14:44:27.515Z\n",
+  "stderr": ""
+}

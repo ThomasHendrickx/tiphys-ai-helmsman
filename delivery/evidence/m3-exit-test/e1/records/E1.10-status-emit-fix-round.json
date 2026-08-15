@@ -1,0 +1,28 @@
+{
+  "stage": "E1.10",
+  "expectation": "exit 0: a status record is emitted, durable first then pointer",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/bin/tiphys.ts",
+    "status",
+    "emit",
+    "--run",
+    "m3-exit-e1",
+    "--state",
+    "phase-change",
+    "--project",
+    "tiphys-kernel",
+    "--detail",
+    "fix round 1 of the E1 subject: resolvability predicate, two new witnesses, derivation published",
+    "--ref",
+    "branch:claude/exit-subject-doctor-kernel-artifacts"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet",
+  "startedAt": "2026-08-15T19:16:16.595Z",
+  "endedAt": "2026-08-15T19:16:16.959Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "2026-08-15T19:16:16Z phase-change run=m3-exit-e1 project=tiphys-kernel fix round 1 of the E1 subject: resolvability predicate, two new witnesses, derivation published refs=branch:claude/exit-subject-doctor-kernel-artifacts\n",
+  "stderr": ""
+}

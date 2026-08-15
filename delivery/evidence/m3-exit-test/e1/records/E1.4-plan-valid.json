@@ -1,0 +1,20 @@
+{
+  "stage": "E1.4",
+  "expectation": "exit 0, dispatchable true",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "validate",
+    "--type",
+    "plan",
+    "delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:44:04.231Z",
+  "endedAt": "2026-08-15T08:44:04.615Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "dispatchable: true\n",
+  "stderr": ""
+}

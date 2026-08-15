@@ -1,0 +1,30 @@
+{
+  "stage": "E1.4",
+  "expectation": "the M2-P6 coverage checker, invoked as the registry selects it: exit 0 with no orphans",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "gates",
+    "run",
+    "--registry",
+    "gate-registry.yaml",
+    "--mode",
+    "full",
+    "--only",
+    "coverage",
+    "--evidence",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/gate-evidence/coverage",
+    "--base",
+    "origin/main",
+    "--head",
+    "HEAD"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt",
+  "startedAt": "2026-08-15T08:48:55.489Z",
+  "endedAt": "2026-08-15T08:48:56.220Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "gates: run 0f437e48cac6bcef5dbf3cc7\ngates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)\ngates: registry gate-registry.yaml mode full\ngates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0\ngates: coverage: green: 115 inventory id(s) checked; per-kind: milestone 104, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1\ngates: every applicable gate is green\n",
+  "stderr": ""
+}

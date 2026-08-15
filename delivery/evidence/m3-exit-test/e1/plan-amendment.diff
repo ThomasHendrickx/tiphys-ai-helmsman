@@ -1,0 +1,103 @@
+--- /tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/plan-before-review.yaml	2026-08-15 08:47:04.639127429 +0000
++++ delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml	2026-08-15 08:47:56.410331744 +0000
+@@ -47,9 +47,12 @@
+       delivery/plan/kernel-plan-m3.md:5098 and re-measured as unbuilt at
+       d5d87f7. doctor's check shape is established: each check returns a
+       record with a name, a status and a detail, and the full profile promotes
+-      named conditions, which is visible at src/commands/doctor.ts:410 where
+-      the retention check documents its own promoted and unpromoted
+-      conditions.
++      named conditions. The promotion TABLE the phase edits is at
++      src/commands/doctor.ts:46, and src/commands/doctor.ts:402 is the
++      precedent for declaring one condition promoted and a sibling condition
++      unpromoted. Amended under finding PR-5, which measured that the
++      original citation pointed at a function signature one paragraph away
++      from the prose it described and at neither edit site.
+     severity: medium
+     verified-root-cause: >-
+       Nothing resolves the kernel root for the purpose of INSPECTING it. The
+@@ -70,6 +73,16 @@
+           resolution as an injected parameter rather than computing it, and
+           the disagreement is the reason.
+       - text: >-
++          Amended under finding PR-1. The check resolves the install root as
++          the directory containing the kernel's own package.json, computed
++          from import.meta.url WITHOUT searching upward, and never through
++          kernelRoot. src/roles.ts:330 defines kernelRoot as an upward walk
++          whose success condition is finding a roles/ directory carrying a
++          .md file, so against a staged install with roles/ removed it walks
++          PAST that install and answers about an ancestor, and where no
++          ancestor carries one it throws (src/roles.ts:347). A check built on
++          it cannot report the state its own criteria name.
++      - text: >-
+           Add checkKernelArtifacts to src/commands/doctor.ts. It reads the
+           resolved kernel root, requires the three directories roles/,
+           schemas/ and checklists/ to exist AND to be non-empty, requires
+@@ -92,6 +105,14 @@
+           by name in the test rather than by row count, because the registry
+           is append-only and a count is a claim about every future phase.
+       - text: >-
++          Amended under finding PR-3. Before implementing, DERIVE every test
++          that asserts over test/behaviors.json by COUNT or by a specific
++          row's presence, with the command and its full output in the work
++          history, and add each such file to the phase declaration's declared
++          extras. A derivation that returns nothing states the directories it
++          searched, because a search whose scope is wrong returns an empty
++          result indistinguishable from an absence of defects (CLAUDE.md:246).
++      - text: >-
+           Add delivery/plan/phase-declarations/m3-p13.json declaring the
+           branch and the files to touch. M3-P11 shipped the both-sides
+           declaration read, so this declaration may land on the phase branch
+@@ -144,16 +165,38 @@
+           toolchain version and whether dist/ was built.
+       - id: "7"
+         criterion: >-
+-          witness/doctor-kernel-artifacts.json exists, validates under the
+-          witness spec the M2-P2 harness loads, and declares at least two
+-          dangerousStates members; the run's witness-records.json records the
+-          test red under each of them and green with the check present, and
+-          both files are in the evidence bundle.
++          Amended under finding PR-2, which measured that the original wording
++          named no command. The red-witness gate, invoked as the registry
++          selects it, exits 0 on the phase head with units greater than zero,
++          and its witness-records.json carries the behavior id with
++          runs[].exitCode nonzero under each declared dangerousStates member
++          and zero with the check present; both
++          witness/doctor-kernel-artifacts.json and the produced
++          witness-records.json are committed to the evidence bundle.
+       - id: "8"
+         criterion: >-
+           test/behaviors.json carries an entry for the new behavior and the
+           test resolves it BY NAME; grep -c over the test for a hard-coded row
+           count of test/behaviors.json returns 0.
++      - id: "9"
++        criterion: >-
++          Added under finding PR-1. Against a staged install with roles/
++          removed, placed inside a parent directory that DOES carry roles/
++          with a .md file, tiphys doctor --for full prints "CHECK
++          kernel-artifacts FAIL" naming roles/ and exits 1. This is the arm an
++          upward-walking resolver reports PASS on.
++      - id: "10"
++        criterion: >-
++          Added under finding PR-1. Where the install root cannot be resolved
++          at all, the check returns FAIL naming the resolution failure and
++          doctor exits 1 rather than terminating on an uncaught error,
++          asserted by a test that stages the unresolvable case.
++      - id: "11"
++        criterion: >-
++          Added under finding PR-4. A FIFO placed at the AGENTS.md path of a
++          staged install makes the check return FAIL naming the observed entry
++          type in under five seconds, asserted with a timeout, so the class is
++          reached by an instrument rather than by a reviewer's reading.
+     hazard-classes:
+       - id: H1
+         statement: >-
+@@ -185,7 +228,7 @@
+           A doctor that hangs on a named pipe placed at one of the artifact
+           paths, which is the open class this repository tracks against
+           modules that read paths they did not create.
+-        addressed-by: "judgment-property-of-prose: the check uses the established classify-then-read helpers in src/task.ts rather than a bare read, and the clean-room reviewer is asked to confirm by reading the call rather than by running it, because staging a pipe under a staged install is a probe the phase does not budget for."
++        addressed-by: criterion 11
+     migrations: none
+     conflicts-with: []
+     parallelizable: false

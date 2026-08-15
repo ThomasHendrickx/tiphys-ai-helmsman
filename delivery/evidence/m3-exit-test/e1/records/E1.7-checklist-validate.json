@@ -1,0 +1,22 @@
+{
+  "stage": "E1.7",
+  "expectation": "exit 0 with --context: the injected per-phase checklist is valid",
+  "command": [
+    "node",
+    "bin/tiphys.ts",
+    "validate",
+    "--type",
+    "checklist",
+    "--context",
+    ".",
+    "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/wt/delivery/evidence/m3-exit-test/e1/e1-7/per-phase-probes.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user-tiphys-ai-helmsman/183bdee0-14ec-5b04-b0a8-ad41df70db46/scratchpad/exit-run/fleet/kernel-fleet/worktrees/exit-subject-r2",
+  "startedAt": "2026-08-15T17:51:50.117Z",
+  "endedAt": "2026-08-15T17:51:50.481Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "",
+  "stderr": ""
+}

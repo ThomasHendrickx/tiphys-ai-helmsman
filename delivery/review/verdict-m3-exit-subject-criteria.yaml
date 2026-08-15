@@ -1,0 +1,212 @@
+kind: verdict
+phase: M3-P13
+verdict: FIX-ROUND-NEEDED
+produced-by: >-
+  Claude, Sonnet 5 (claude-sonnet-5), running as a clean-room reviewer under
+  the criteria contract. Did not read the implementation session; reviewed
+  the diff (git diff origin/main...origin/claude/exit-subject-doctor-kernel-artifacts
+  at head eb13da6b96137967d4a5b8311f0f044e75758b42) and the phase's contract
+  only.
+framing: criteria-contract
+review-contract: criteria
+findings:
+  - id: CR-001
+    severity: medium
+    evidence:
+      - "delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:98-102 and :125 name exactly one witness spec file, witness/doctor-kernel-artifacts.json"
+      - "delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:166-175 (acceptance criterion 7, added verbatim from finding PR-2's concrete-edit in delivery/evidence/m3-exit-test/e1/findings-plan-review.yaml) repeats the same filename"
+      - "git ls-tree -r --name-only origin/claude/exit-subject-doctor-kernel-artifacts -- witness/ | grep kernel-artifacts lists witness/doctor-kernel-artifacts-empty-directory.json, -fifo.json, -resolution.json, -unresolvable.json and a captures/ file, no file named exactly witness/doctor-kernel-artifacts.json"
+      - "delivery/work-history/exit-subject-doctor-kernel-artifacts.md:143 shows the ONE deviation this work history declares (the resolver mechanism) is explicitly labelled a deviation; grep -n -i deviation over the same file returns only that one line, so the witness-filename substitution is never labelled a deviation anywhere"
+      - "src/checks.ts:2383-2394 (verdictDeviationsJudged) compares a verdict's deviations-judged[] only against deviations the work history itself declares, so an undeclared deviation is structurally invisible to the one mechanical check built for this shape"
+    concrete-fix: >-
+      Either rename one of the four delivered witness specs to
+      witness/doctor-kernel-artifacts.json so the plan's literal filename
+      exists, or add an explicit declared deviation to
+      delivery/work-history/exit-subject-doctor-kernel-artifacts.md naming
+      criterion 7's filename clause, arguing why the four-file,
+      per-behavior-id shape (matching kernel-plan-m3.md:5233's own
+      witness/<behavior-id>.json wording and the M3-P8 precedent the work
+      history cites) serves the plan's intent, so a reviewer's verdict can
+      record a real judgement on it rather than the judgement never being
+      asked for.
+    analysis: >-
+      Reachability (DR-0027): does not reach doctor's runtime behaviour
+      (witness specs are gate-time artifacts, never shipped in the npm
+      package), but reaches the evidence bundle DR-0012's delegated merge
+      authority and this exit test's own E2.1 authorization stage are defined
+      against, and it evades the specific mechanical guard
+      (verdict-deviations-judged) built to catch exactly this shape, by never
+      surfacing as a declared deviation for that guard to compare against.
+      The substitution itself may well be defensible (see the concrete-fix
+      reasoning); the defect is that nobody was asked to judge it.
+  - id: CR-002
+    severity: medium
+    evidence:
+      - "delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:98-102: the witness step asks for at least two structurally different dangerousStates members, a removed DIRECTORY and a removed FILE"
+      - "delivery/evidence/m3-exit-test/e1/plan-kernel-artifacts.yaml:141-143 (criterion 2) names AGENTS.md-absent the second structurally different member of the class"
+      - "witness-records.json produced by `node dist/bin/tiphys.js gates run --registry gate-registry.yaml --mode full --only red-witness --evidence <dir> --base origin/main --head HEAD` (node v26.6.0, dist/ built), read directly: across all 7 evaluations' members[].runs[].failedNamedTests, the only test names that ever appear are the tests each spec's own tests[] names; neither 'a staged install missing roles/ is a FAIL naming roles/' (test/doctor.test.ts:95) nor 'a staged install missing AGENTS.md is caught, which is the FILE member of the class' (test/doctor.test.ts:102) appears in any witness's tests[] or in any failedNamedTests list"
+      - "gate run output, same invocation: 'red-witness: green: 7 witness(es) evaluated (6 own, 1 stored re-evaluated in 23941ms); every witness red against every declared dangerous state and green at head' - independently reproduced, not the 6 own map onto: doctor-kernel-artifacts-empty-directory, -fifo, -resolution, -unresolvable, and the two modified retention specs, none of which names either of the two behaviours above"
+      - "CLAUDE.md's top-level red-witness rule: 'a test only counts as guarding a behavior if it has been demonstrated red without the behavior and green with it'"
+    concrete-fix: >-
+      Add a fifth witness spec (a genuinely separate one is likely required,
+      per the harness rule the work history itself records: every named test
+      of a spec must redden under every declared member) whose
+      dangerousStates member removes or defangs the ENOENT-arm missing.push
+      calls for the directory loop and the entry.kind === "regular" branch
+      for the file check, and names 'a staged install missing roles/ is a
+      FAIL naming roles/' and 'a staged install missing AGENTS.md is caught,
+      which is the FILE member of the class' in its tests[].
+    analysis: >-
+      Reachability (DR-0027): reaches shipped src/commands/doctor.ts directly
+      (the plain-missing-directory and plain-missing-file arms are the
+      check's entire reason to exist) and a real user path (any consumer of
+      the published package running doctor --for full against a broken
+      install). The currently shipped behaviour is correct and covered by
+      ordinary node --test assertions, so this is a proof-obligation gap
+      rather than a live defect, but a future edit to the shared
+      try/catch/push logic could defeat exactly these two arms while leaving
+      all four witnessed arms green, and no red-witness gate would notice.
+      Severity calibrated against this repository's own recorded history with
+      the identical shape (CLAUDE.md's account of M1-P6's two consecutive
+      medium findings from "one witness is not a class").
+criteria:
+  - id: "1"
+    quote: >-
+      Against a staged install of the kernel with roles/ removed and nothing
+      else changed, tiphys doctor --for full prints a line matching "CHECK
+      kernel-artifacts FAIL" whose detail names roles/, and exits 1.
+    evidence:
+      - "manual execution against dist/bin/tiphys.js from a from-scratch staged install: CHECK kernel-artifacts FAIL the kernel install at <install> is missing roles/ (absent) (required for profile full), exit 1"
+      - "test/doctor.test.ts:95-100, part of node --test test/doctor.test.ts (node v26.6.0, dist/ built): tests 30, pass 30, fail 0, skipped 0"
+    met: true
+  - id: "2"
+    quote: >-
+      Against the same staged install with AGENTS.md removed and every
+      directory present, the same command prints "CHECK kernel-artifacts
+      FAIL" whose detail names AGENTS.md, and exits 1. This is the second
+      structurally different member of the class and it is a FILE rather
+      than a directory.
+    evidence:
+      - "manual execution: CHECK kernel-artifacts FAIL the kernel install at <install> is missing AGENTS.md (absent) (required for profile full), exit 1"
+      - "test/doctor.test.ts:102-107, part of the 30/30 pass above"
+      - "CR-002: this specific behaviour, despite being named here as the second structurally different class member, carries no red-witness mutation proof (see finding)"
+    met: true
+  - id: "3"
+    quote: >-
+      Against a staged install with roles/ present but EMPTY, the same
+      command prints "CHECK kernel-artifacts FAIL" whose detail names
+      roles/, and exits 1. An empty directory is the arm a check written
+      with existsSync alone reports green on.
+    evidence:
+      - "manual execution: CHECK kernel-artifacts FAIL ... is missing roles/ (present but empty, so it resolves nothing) ..., exit 1"
+      - "test/doctor.test.ts:109-113, part of the 30/30 pass"
+      - "red-witnessed: witness/doctor-kernel-artifacts-empty-directory.json, confirmed green under both members via the gate run described in CR-002's evidence"
+    met: true
+  - id: "4"
+    quote: >-
+      Against a complete staged install, the same command prints "CHECK
+      kernel-artifacts PASS" and exits 0, and the FAIL count in its output
+      is zero.
+    evidence:
+      - "test/doctor.test.ts's live-reproduction test ('a staged install of the built package reproduces the captured contract live'), part of the 30/30 pass, stages gh/remote so kernel-artifacts is the only check able to drive the exit code"
+      - "witness/captures/doctor-kernel-artifacts-staged-install.txt case 1: exit=0, only PASS/WARN lines"
+      - "manual execution: the kernel-artifacts line itself PASSes on every complete install I staged"
+    met: true
+  - id: "5"
+    quote: >-
+      Against the staged install of criterion 1, tiphys doctor with no --for
+      flag prints "CHECK kernel-artifacts WARN" and exits 0, which is the
+      unpromoted arm.
+    evidence:
+      - "manual execution: CHECK kernel-artifacts WARN the kernel install at <install> is missing roles/ (absent), exit 0"
+      - "test/doctor.test.ts:184-205, part of the 30/30 pass"
+    met: true
+  - id: "6"
+    quote: >-
+      node --test test/doctor.test.ts exits 0 and reports N tests with 0
+      fail, N greater than zero, and the skipped count is quoted alongside
+      the pass count in the work history together with the invocation, the
+      toolchain version and whether dist/ was built.
+    evidence:
+      - "independently run: node --test test/doctor.test.ts, node v26.6.0, dist/ built: tests 30, pass 30, fail 0, skipped 0"
+      - "delivery/work-history/exit-subject-doctor-kernel-artifacts.md:159-168 quotes the whole-suite number (npm test, node v26.6.0, dist/ built: 847 pass, 0 fail, 0 skipped), independently reproduced by running npm test myself in the background: tests 847, pass 847, fail 0, cancelled 0, skipped 0, todo 0, duration_ms 670854"
+    met: true
+  - id: "7"
+    quote: >-
+      Amended under finding PR-2. The red-witness gate, invoked as the
+      registry selects it, exits 0 on the phase head with units greater than
+      zero, and its witness-records.json carries the behavior id with
+      runs[].exitCode nonzero under each declared dangerousStates member and
+      zero with the check present; both witness/doctor-kernel-artifacts.json
+      and the produced witness-records.json are committed to the evidence
+      bundle.
+    evidence:
+      - "red-witness gate mechanics ARE satisfied and reproduced: 'green: 7 witness(es) evaluated (6 own, 1 stored re-evaluated)', witness-records.json members[].runs[] show red:true nonzero exitCode under mutation and red:false exitCode 0 at head"
+      - "but no file named exactly witness/doctor-kernel-artifacts.json exists: git ls-tree -r --name-only origin/claude/exit-subject-doctor-kernel-artifacts -- witness/ | grep kernel-artifacts lists 5 differently-named files"
+      - "CR-001 and CR-002 both bear on this criterion"
+    met: false
+  - id: "8"
+    quote: >-
+      test/behaviors.json carries an entry for the new behavior and the test
+      resolves it BY NAME; grep -c over the test for a hard-coded row count
+      of test/behaviors.json returns 0.
+    evidence:
+      - "test/doctor.test.ts:207-230 resolves eleven behavior ids by Object.hasOwn, part of the 30/30 pass"
+      - "grep -cE \"behaviors\\.json.{0,40}[0-9]{2,}|[0-9]{2,}.{0,40}behaviors\\.json\" test/doctor.test.ts run directly against the branch = 0"
+    met: true
+  - id: "9"
+    quote: >-
+      Added under finding PR-1. Against a staged install with roles/
+      removed, placed inside a parent directory that DOES carry roles/ with
+      a .md file, tiphys doctor --for full prints "CHECK kernel-artifacts
+      FAIL" naming roles/ and exits 1.
+    evidence:
+      - "manual execution with a hand-built decoy parent carrying parent/roles/implementer.md and a nested install/ missing its own roles/: CHECK kernel-artifacts FAIL ... is missing roles/ (absent) ... reporting on the install path, not the parent; exit 1"
+      - "test/doctor.test.ts:132-154, part of the 30/30 pass"
+      - "red-witnessed: witness/doctor-kernel-artifacts-resolution.json, confirmed green under both members"
+    met: true
+  - id: "10"
+    quote: >-
+      Added under finding PR-1. Where the install root cannot be resolved
+      at all, the check returns FAIL naming the resolution failure and
+      doctor exits 1 rather than terminating on an uncaught error, asserted
+      by a test that stages the unresolvable case.
+    evidence:
+      - "test/doctor.test.ts:156-166, part of the 30/30 pass: checkKernelArtifacts(resolveInstalledKernelRoot(\"/\")) returns status FAIL, no throw"
+      - "confirmed by execution: find / -maxdepth 1 -name package.json returns nothing in this environment, so the test's premise holds here"
+      - "caveat recorded rather than absorbed: this test exercises the two functions directly, never cmdDoctor's CLI loop, so doctor-exits-1 for this specific arm rests on cmdDoctor's generic FAIL-handling (itself exercised end-to-end by other tests, e.g. the lock-FAIL tests) rather than being demonstrated for this arm specifically; and the test relies on the ambient absence of a package.json at \"/\" rather than staging a hermetic fixture the way every other test in the file does. Both are low-severity observations, not raised as CR- findings: no reachable shipped-behaviour consequence identified."
+    met: true
+  - id: "11"
+    quote: >-
+      Added under finding PR-4. A FIFO placed at the AGENTS.md path of a
+      staged install makes the check return FAIL naming the observed entry
+      type in under five seconds, asserted with a timeout, so the class is
+      reached by an instrument rather than by a reviewer's reading.
+    evidence:
+      - "manual execution with mkfifo at AGENTS.md's path: CHECK kernel-artifacts FAIL ... is missing AGENTS.md (irregular: ... is a named pipe, not a regular file, so it was not opened) ..., exit 1, elapsed 200ms (bound 5000ms)"
+      - "test/doctor.test.ts:168-178, part of the 30/30 pass"
+      - "red-witnessed: witness/doctor-kernel-artifacts-fifo.json, confirmed green under both members"
+      - "additional check I ran: readdirSync on a FIFO placed at a DIRECTORY path throws ENOTDIR immediately (0ms, standalone script), so the untested directory arm of hazard H5 is safe by construction, not merely unproven"
+    met: true
+deviations-judged:
+  - deviation: >-
+      Amended under finding PR-1. The check resolves the install root as the
+      directory containing the kernel's own package.json, computed from
+      import.meta.url WITHOUT searching upward, and never through
+      kernelRoot.
+    serves-plan-intent: true
+    reasoning: >-
+      What PR-1 was protecting is preserved exactly: the search key is
+      package.json (the package boundary) rather than roles/ (the artifact
+      under test), so an install missing roles/ cannot be walked past, which
+      is verified directly by criterion 9's test and my own manual
+      reproduction with a decoy parent. The literal "without searching
+      upward" wording is not followed to the letter (resolveInstalledKernelRoot
+      DOES walk upward, but for package.json rather than for the artifact
+      under test), but the measured reason (npm pack --dry-run puts the
+      compiled module three levels below the package root while the
+      development checkout puts it two levels below, so a fixed depth from
+      import.meta.url is wrong in one of the two shipped layouts) is a real,
+      checkable constraint the plan's literal wording did not anticipate,
+      and the deviation is declared plainly rather than absorbed silently.
+      Judged as serving the plan's intent.
