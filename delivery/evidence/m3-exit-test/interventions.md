@@ -376,8 +376,10 @@ src/witness/run.ts and src/witness/spec.ts.
 gone. Arm B's is not, and it should not be: a spec whose `find` text no longer
 occurs cannot be applied: the harness reported exactly that, `mutation find text
 ... does not occur`, so there is nothing to run and an error is the verdict the
-measurement supports. Measured rather than inferred: arm B's output is
-byte-identical before and after the fix. What the fix removes is the
+measurement supports. Measured rather than inferred, and by comparing the two SAVED gate
+records rather than by eye: the two `doctor-retention-*` reason strings in arm
+B's `result.json` from before the fix and after it compare EQUAL as sorted
+lists, and both runs carry status `error`. What the fix removes is the
 TRAP BETWEEN the two arms, which is the thing that blocked E1.6: repairing the
 quotation used to be punished by rule (d), so both routes were closed at once.
 Now the repair route is open and the stale route still errors, which leaves
