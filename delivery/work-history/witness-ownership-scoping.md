@@ -751,3 +751,421 @@ both findings live.
 Fixing the two named instances and leaving the projection unexamined is the
 shape CLAUDE.md:333 records twelve times in thirteen re-reviewed fix rounds, so
 section 11.1 derives the projection over the WHOLE schema before any code moves.
+
+### 11.1 The derivation, part one: every field a witness spec can carry
+
+Derived from `src/gates/schemas/witness-spec.schema.json` and the parser, not
+from memory. **The schema sets `additionalProperties: false`, so this list is
+COMPLETE rather than a sample**: eight fields, six of them required.
+
+The column that matters is the third. Ownership gates exactly one thing, and
+that is checkable rather than asserted:
+
+```
+$ grep -rn "phaseOwnedMembers" src/
+src/gates/red-witness.ts:368:        phaseOwnedMembers: ownedMembersOf(entry),
+src/gates/red-witness.ts:387:        phaseOwnedMembers: new Set<number>(),
+src/witness/run.ts:126:  phaseOwnedMembers: ReadonlySet<number>;
+src/witness/run.ts:1284:  // The scope is per MEMBER, never per spec file: `inputs.phaseOwnedMembers`
+src/witness/run.ts:1291:    if (!inputs.phaseOwnedMembers.has(index)) {
+```
+
+Two producers, one field, one comment, ONE consumer, and that consumer is rule
+(d). So a field is only a defect of this kind when it determines what rule (d)
+is an obligation ON and ownership does not read it. Everything else is read in
+full on every run, owned or not.
+
+| field | what reads it | does it determine what rule (d) is about? | read by ownership? | verdict |
+|---|---|---|---|---|
+| `behavior` | rule (b), src/witness/run.ts:1194 | **YES.** Re-point a spec at a behavior this phase introduced and an older phase's dangerous state becomes this phase's evidence | was NO, **now YES** | **CR-002, FIXED** |
+| `tests` | resolved and EXECUTED, src/witness/run.ts:1459 | **YES**, the same move spelled through the named tests | was NO, **now YES** | **CR-002, FIXED** |
+| `dangerousStates` | rules (a), (d), (f), (g) and the execution loop | YES, it is the dangerous state itself | yes, through the canonical form, which part two corrects | **CR-001, FIXED** |
+| `class` | rules (a) src/witness/run.ts:1201, (e) src/witness/run.ts:1221, (g) src/witness/run.ts:1331 | no. It selects which refusal rules apply. None is ownership-gated, so a class change is evaluated in full whether the spec is owned or not, and rule (e) DERIVES the class from the named tests' sources rather than trusting the declaration | no, deliberately | not an instance |
+| `id` | duplicate detection, src/gates/red-witness.ts:263 | no. It is the handle; renaming a spec asserts nothing new | no, deliberately | not an instance |
+| `deterministic` | the red threshold, src/witness/run.ts:1517 | no. It sets how many repetitions must be red, for every member of every evaluated spec regardless of ownership | no, deliberately | not an instance |
+| `repeats` | the repetition count, src/witness/run.ts:1605 | no, same reason | no, deliberately | not an instance |
+| `consumesExternalOutput` | rules (c) src/witness/run.ts:1230 and (f) src/witness/run.ts:1273 | no. Neither rule is ownership-gated | no, deliberately | not an instance |
+
+**No third instance was found at the spec level.** That sentence is scoped by
+11.3 rather than offered as a universal.
+
+### 11.2 The derivation, part two: every member kind, and whether its canonical form covers it
+
+`MEMBER_FIELDS_FOR_KIND` at src/witness/spec.ts:101 is the closed list, so this
+table is complete too. The question per kind is whether everything that
+determines the dangerous state is INSIDE the spec document.
+
+| kind | fields | where the meaning lives | canonical form before | after |
+|---|---|---|---|---|
+| `mutation` | `file`, `find`, `replace` | ALL INLINE in the document | all three | unchanged, and it was already complete |
+| `patch` | `patch` | **OUTSIDE.** The field is a PATH; the dangerous state is the patch FILE'S BODY | the path alone | the path **plus the body's sha256**, read separately at the merge base and at the head |
+| `baseline-ref` | `ref` | **OUTSIDE.** A ref names a commit and a ref moves | the ref name alone | unchanged, deliberately, for the two reasons below |
+
+**`baseline-ref` has the same POINTER shape as `patch` and is deliberately left
+alone. The brief asked me to ask, so here is the answer with its evidence.**
+
+First, it is moot. Rule (d) skips `baseline-ref` members outright before any
+ownership question can matter:
+
+```
+    if (!inputs.phaseOwnedMembers.has(index)) {
+      continue;
+    }
+    const member = spec.dangerousStates[index] as DangerousStateMember;
+    if (member.kind === "baseline-ref") {
+      continue;
+    }
+```
+
+src/witness/run.ts:1291. Ownership has exactly one consumer and that consumer
+discards this kind, so a baseline-ref member's ownership has no observable
+effect anywhere today.
+
+Second, and this is the part that would still hold if rule (d) stopped skipping
+them: resolving the ref would make a ref that SOMEBODY ELSE moved read as this
+phase's authorship. An authorship derivation that attributes another person's
+push to the phase under audit is wrong in the direction that produces false
+reds, which is the direction section 3 commits against. The right fix, if the
+rule ever changes, is the patch one: fold the resolved TREE, not the ref name,
+and treat an unresolvable ref as unestablished.
+
+Measured, so nobody has to take the "moot" on trust: the corpus at this head
+carries **zero** `baseline-ref` members.
+
+```
+$ grep -ho '"kind": "[a-z-]*"' witness/*.json | sort | uniq -c
+    313 "kind": "mutation"
+      7 "kind": "patch"
+```
+
+### 11.3 What this derivation did NOT cover
+
+The reviewer's first check, per CLAUDE.md:362.
+
+1. **It is a derivation over the SCHEMA, not over the parser's tolerance.**
+   `parseWitnessSpec` materialises exactly the eight fields and the schema
+   refuses everything else, so a ninth field cannot reach the ownership
+   comparison. I did not test that by fuzzing the parser; I read the schema's
+   `additionalProperties: false` and the field-by-field construction at
+   src/witness/spec.ts:196.
+2. **`tests` names are themselves pointers, and I did not follow them.** A test
+   BODY can be rewritten while its name is unchanged, which changes what the
+   named test asserts without changing the spec document. That is outside rule
+   (d), which is about the dangerous state against the DIFF, and it is caught
+   by execution rather than by any refusal rule, since the harness runs the
+   named tests red and green. I did not build a probe for it.
+3. **`consumesExternalOutput.captures` are pointers too**, and rule (c) reads
+   their content. A capture's body can be rewritten while its path is unchanged,
+   which is CR-001's exact shape one rule over. Rule (c) is not ownership-gated
+   so it is outside this round's mechanism, but I am naming it because the
+   shape is identical and nobody has audited it. **Not fixed, not measured.**
+4. **The three arms of rule (d) itself.** I audited what OWNERSHIP reads. I did
+   not re-audit whether rule (d)'s own file-level and hunk-level arms are
+   correct, beyond adding the hunk-arm witness in 11.7.
+5. **`scripts/` and `.github/`**, unchanged from section 4 item 1.
+6. **Whether the projection mechanism recurs in a rule other than (d).** The
+   `phaseOwnedMembers` grep bounds it for THIS ownership derivation. A different
+   rule computing a different projection of the spec would not appear in it.
+
+### 11.4 The fix, and the decision the brief asked me to justify rather than pick
+
+`specClaim` (src/witness/spec.ts:340) is the new comparison, and
+`canonicalMember` (src/witness/spec.ts:283) now takes a body reader and returns
+`undefined` when the body cannot be read.
+
+**THE CLAIM IS `behavior` AND `tests`, AND NOTHING ELSE. The test I applied to
+every field of the closed schema:** does changing THIS FIELD ALONE let a phase
+assert something new about its own diff while reusing a dangerous state somebody
+else authored? `behavior` yes, `tests` yes, the other six no, with the reason
+per field in 11.1. `class` and `id` were the two real candidates and both were
+EXCLUDED: including them would buy false reds on class fix-ups and renames while
+closing no attack, and neither is unread, since rules (a), (e) and (g) evaluate
+`class` on every run and the duplicate check evaluates `id`.
+
+**A claim change owns EVERY member, and the alternative was considered.** There
+is no narrower attribution available: a claim is a property of the DOCUMENT, so
+it cannot be pinned on one member. If the sentence "these tests guard this
+behavior" is this phase's sentence, then every dangerous state offered under it
+is this phase's evidence. The cost is real and is stated rather than hidden: a
+phase that re-points a spec at a new behavior must make EVERY member of it
+intersect its diff, which may mean splitting a spec rather than re-pointing one.
+That is the intended pressure.
+
+**`tests` is compared SORTED** (src/witness/spec.ts:341). Reordering the named
+tests changes nothing about what is claimed, and treating a reorder as
+authorship would be the same positional mistake the member matching already
+avoids by comparing canonical forms rather than indices. The hazard review's
+FA-2 is the member-level version of that arm and it passed; this keeps the two
+consistent.
+
+**Unreadable bodies keep the obligation, on BOTH sides.** A baseline member
+whose body cannot be read contributes no entry to the multiset, so it cannot
+exempt anything; a head member whose body cannot be read is owned outright. That
+is the same conservative direction section 3 chose for an unreadable baseline
+SPEC, now applied one level down to a member's body.
+
+### 11.5 Not over-correcting, which the brief called the harder half
+
+The naive fix is "any edit to the spec file owns every member", and that is the
+original defect. Three guards, all of them tests rather than intentions:
+
+1. **The round-1 converse witness still reddens.** `a member this phase ADDED to
+   an existing witness spec must still intersect the phase diff` and `editing
+   one member of a witness spec imposes rule (d) on that member only, not on the
+   untouched siblings sharing its file` both pass at this head, and the sweep in
+   11.7 shows M16, which is literally the over-correction (`if (true)` on the
+   claim comparison, so every member is always owned), reddening the
+   merge-base test. Verified rather than assumed, because the brief said that if
+   it did not still redden, that would be a finding about my earlier round.
+2. **Each new test carries its own negative arm.** The patch test asserts that a
+   patch sibling whose body did NOT change stays unowned. The claim test asserts
+   that bumping `repeats` authors nothing. Both would fail under a
+   whole-file-owns-everything fix.
+3. **The one whole-spec trigger is the claim and only the claim.** A sibling
+   member edit, a `repeats` bump, a reformat and a rename all still author
+   nothing.
+
+### 11.6 The witness, both new classes, red and green
+
+**RED against the DANGEROUS state**, which here is the real pre-fix code at
+`deea501`. A detached worktree at deea501 with only `test/witness.test.ts`
+replaced by this round's version, so the tests are new and the source is the
+reviewed one. Node v26.6.0, bare `node --test` on one file, exit 1:
+
+```
+ok 1 - editing one member of a witness spec imposes rule (d) on that member only, not on the untouched siblings sharing its file
+ok 2 - a member this phase ADDED to an existing witness spec must still intersect the phase diff
+not ok 3 - rewriting a patch member's body is authorship even though its path is unchanged, and an untouched patch sibling stays unowned
+not ok 4 - rewriting a witness spec's claim imposes rule (d) on every member, and changing a field that is not the claim imposes nothing
+ok 5 - a member whose find or replace text changed is authored here, and a duplicated member is a new member
+ok 6 - the ownership baseline is read at the merge base, so a spec another phase changed on the base branch is not authored here
+ok 7 - a baseline spec that cannot be established owns every member, whether it fails to parse or fails to validate
+```
+
+**Rows 3 and 4 are CR-001 and CR-002 and they redden. Rows 1 and 2 are the
+converse witness and they stay green, which is the over-correction guard passing
+on the OLD code as well as the new.** Rows 5, 6 and 7 pass on the pre-fix code
+too, and that is correct rather than a defect: they guard properties round 1
+already had and CR-003 said were unwitnessed, so their dangerous state is a
+CORRUPTION of that code, not its absence. That is the sweep in 11.7, and stating
+it here is the difference between a witness and a coincidence.
+
+**GREEN, same tests, this head**, `node --test test/witness.test.ts`, node
+v26.6.0, `dist/` built: **50 tests, 50 pass, 0 fail, 0 SKIPPED, exit 0.**
+
+**One witness is not a class, for each new class:**
+
+- CR-001, "behaviour-determining content outside the canonical form": the patch
+  test carries a body REWRITTEN in place (must be owned) and a sibling patch
+  whose body is untouched (must stay unowned), and a separate test carries the
+  both-sides-unreadable case. Three structurally different positions on the same
+  class, and the derivation in 11.2 explains why `baseline-ref` is not a fourth.
+- CR-002, "the claim changed and no obligation followed": two structurally
+  different claim edits, `behavior` and `tests`, each asserted separately, plus
+  the `repeats` negative arm.
+
+Durable specs, six of them, at `witness/witness-ownership-*.json`, two
+structurally different members each. The gate evaluates them:
+
+```
+gates: red-witness: green: 12 witness(es) evaluated (8 own, 4 stored re-evaluated in 15245ms); every witness red against every declared dangerous state and green at head
+```
+
+**One new behavior has NO durable spec and the reason is mechanical, not an
+oversight.** `witness-rule-d-hunk-arm`'s dangerous state is the removal of rule
+(d)'s hunk arm, which lives in `src/witness/run.ts`. That module matches
+`SPAWN_GREP`, so any spec whose members touch it triggers rule (f)'s capture
+obligation and would need a real captured external output. The behavior is
+registered, the test exists, and its red and green are in the sweep table below.
+
+**This round broke one of its own earlier witness specs, which is worth
+recording because it is the coupling the M3 exit test hit.**
+`witness-rule-d-scoped-to-authored-members` member 1 quoted
+`if (baselineMembers === undefined) {` verbatim, and this round renamed that
+parameter, so the gate reported `member 1, mutation of src/witness/spec.ts
+touches no line inside a changed hunk`. Repairing the quotation makes that member
+OWNED under this round's own rule, and its untouched sibling stays unowned. The
+branch was exercised on itself and behaved as designed.
+
+### 11.7 CR-003 closed: the corruption sweep now catches fifteen of sixteen
+
+The hazard review's method, re-run against this head with its eleven rows plus
+five new ones for the logic this round adds. One corruption at a time, applied
+IN PLACE, `node --test test/witness.test.ts` run, then the ORIGINAL BYTES
+written back from a copy taken first (never `git checkout --`, standing warning
+8). Every row reports `clean=true` afterwards. The sweep is
+`sweep.mjs` in the round's scratch directory and the raw output is
+`fr1-sweep2.txt`.
+
+| id | what it corrupts | round 1 | now |
+|---|---|---|---|
+| M1 | `phaseOwnedMemberIndices` returns the empty set | caught | caught, 7 failing |
+| M2 | `ownedMembersOf` returns the empty set | caught | caught, 7 failing |
+| M3 | set membership instead of the MULTISET consume | **SURVIVED** | **caught** |
+| M4 | `canonicalMember` drops a mutation's `replace` | **SURVIVED** | **caught** |
+| M5 | `canonicalMember` drops a mutation's `find` | **SURVIVED** | **caught** |
+| M6 | `canonicalMember` keys a mutation on its FILE alone | **SURVIVED** | **caught** |
+| M7 | absent baseline owns NOTHING (fail-open) | caught | caught, 2 failing |
+| M8 | rule (d) loses its inside-a-changed-hunk arm | **SURVIVED**, and pre-existing | **caught** |
+| M9 | the baseline is read at `baseSha` not `mergeBaseSha` | **SURVIVED** | **caught** |
+| M10 | unreadable baseline passed as `[]` rather than `undefined` | **SURVIVED** | **SURVIVES, and cannot be caught** |
+| M11 | an unparseable baseline owns nothing | **SURVIVED** | **caught** |
+| M12 | `canonicalMember` drops the patch BODY (the CR-001 regression) | n/a | caught |
+| M13 | the claim comparison is removed (the CR-002 regression) | n/a | caught |
+| M14 | the claim covers `behavior` but not `tests` | n/a | caught |
+| M15 | an unreadable patch body is read as unchanged (fail-open) | n/a | caught |
+| M16 | the claim comparison always fires, so everything is owned | n/a | caught (the over-correction guard) |
+
+**M10 IS AN EQUIVALENT MUTANT AND NO TEST CAN CATCH IT. Demonstrated rather than
+argued**, because "we could not write a test" and "there is nothing to test" are
+very different sentences and only one of them is acceptable here:
+
+```
+M10 equivalence probe
+  baseline undefined      -> [0,1]
+  baseline spec, [] members -> [0,1]
+  identical: true
+```
+
+An empty baseline multiset matches nothing, so every head member is owned, which
+is exactly what the `undefined` arm returns. The two forms are the same
+function. Writing a test for M10 would mean writing a test that cannot fail,
+which is the vacuous-guard shape this project refuses everywhere else.
+
+**M8 is closed even though it was PRE-EXISTING and the reviewer correctly
+classed it as not a finding against this branch.** It survived on the base tree
+too, so no coverage regressed. It is closed here because this round is about
+rule (d)'s scope and an unwitnessed arm of the rule under repair is the cheapest
+thing in the file to leave broken. Measured both ways: before the new test, the
+corruption left `50 pass, 0 fail`; after it, `not ok 42 - an owned member that
+mutates a changed file OUTSIDE every changed hunk is red naming the hunk`.
+Flagged as beyond the fix-round brief.
+
+**Scope of the sweep, stated because a wrong scope reads as an absence of
+defects.** It runs `node --test test/witness.test.ts` only, one file, not the
+full suite. That is the same bound the hazard review declared. A corruption
+caught here is caught; a corruption that survived here might still be caught by
+another test file, and for M10 that question is moot for the reason above.
+
+### 11.8 An unbriefed change, flagged so a reviewer can strike it
+
+**`makeFixture` in `test/witness.test.ts` has always leaked its scratch
+repositories, and this round makes the leak worse.** It became measurable
+because the filesystem filled and killed a corruption sweep mid-run:
+
+```
+$ ls /tmp | wc -l
+189180
+$ ls /tmp | sed -E 's/[0-9A-Za-z]{6,}$/<RAND>/' | sort | uniq -c | sort -rn | head -3
+  46163 tiphys-release-<RAND>
+  28541 wfx-<RAND>
+  21138 tiphys-suite-<RAND>
+$ df -h /   ->  252G size, 20M available, 100% full
+```
+
+`wfx-` is this file's own prefix and 28,541 of the leaked directories are its.
+Removing the recognisable test-fixture prefixes freed **18GB** and took the
+entry count from 189,180 to 4,932. This round adds eleven more fixture
+repositories per suite run, so inheriting the leak silently would have been
+making it worse on purpose.
+
+The change is five lines: `makeFixture` registers each directory and a single
+`process.on("exit")` removes them. **Cleanup at EXIT rather than per test**,
+because `assertCallerClean` reads the fixture repository after each gate run and
+a per-test removal would have to be ordered against it; at exit there is nothing
+left to order against, so it cannot change any assertion. Measured: `wfx-`
+directories in `/tmp` after a full run of the file, 0, where the same run
+previously left about twenty.
+
+It is unbriefed. It is in `test/`, it is revertible in one commit, and the
+prefixes other than `wfx-` are other test files leaking the same way, which is
+NOT fixed here and is a finding rather than a fix.
+
+### 11.9 Gates at the fix-round head
+
+Toolchain node v26.6.0 from the scratch prefix, confirmed in the shell that ran
+each command; npm 11.18.0. `origin/main` merged in locally first, per DR-0031.
+`npm ci` exit 0, `npm run build` exit 0, `git status --porcelain` empty of
+source drift after the build.
+
+**Suite, the complete sentence.** Invocation `npm test`; toolchain node v26.6.0;
+build state `dist/` present; reported tests **833, pass 833, fail 0, SKIPPED 0**,
+todo 0, cancelled 0; exit 0. Round 1 of this branch reported 826, so the fix
+round adds seven tests and skips none. The single-file invocation is quoted
+separately because the invocation is a third axis (standing warning 12):
+`node --test test/witness.test.ts` gives **50 tests, 50 pass, 0 SKIPPED**.
+
+**Registry bundle**, `--mode full --phase witness-ownership-scoping --base
+origin/main --head HEAD`: declared 16, applicable 10, verdict 10, **green 10,
+red 0, not-applicable 6, error 0, vacuous 0**. Exit 20, which is
+`EXIT_NOT_APPLICABLE` and is raised by the two REQUIRED gates that are not
+applicable (`citations`, `scope`), not by any failing gate. Unchanged from
+section 6 in every row except `suite` (826 to 833) and `red-witness` (6
+witnesses to 12, 2 own to 8).
+
+**The CI-equivalent, which is the one that was red before section 7.6 and is the
+one to look at now.** `scripts/m2-exit-test.sh --no-build --bundle pr`, exit 0:
+
+```
+gates: declared 12 applicable 7 verdict 7 green 7 red 0 not-applicable 5 error 0 vacuous 0
+gates: red-witness: green: 12 witness(es) evaluated (8 own, 4 stored re-evaluated in 16518ms); every witness red against every declared dangerous state and green at head
+m2-assert (PR bundle): OK. 12 gate record(s) match section 1.4; ... zero red; zero error; zero vacuous.
+m2-green: red-witness GREEN with 4 unit(s) against M2-P2 merged diff 1b6f0963b62f^..1b6f0963b62f (real history), spec corpus read from a worktree checked out at 1b6f0963b62f
+m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+m2-exit-test: OK.
+```
+
+No `red-witness-head-tree` worktree remained registered afterwards.
+
+### 11.10 What fix round 1 could not establish
+
+Carried forward and added to, rather than restated as closed.
+
+1. **The three items in 11.3**, in particular that
+   `consumesExternalOutput.captures` has CR-001's exact pointer shape one rule
+   over, is unaudited, and is not fixed here.
+2. **Rule (g)'s interaction with the patch-content gap**, which the criteria
+   review raised as its own open item and I did not close. `canonicalMember` is
+   now content-aware, but rule (g)'s own duplicate-refusal logic at
+   src/witness/run.ts:1347 compares patch bodies with its own normalisation and
+   was not re-derived against the change.
+3. **The other leaked `/tmp` prefixes** in 11.8. Only `wfx-` is fixed; the other
+   eleven prefixes belong to test files this round does not touch.
+4. **CR-004 and the kernel-side stored-spec question**, both left TRACKED by
+   instruction, not by my judgement.
+5. **Everything section 9 still lists**: the `push` arm, macOS, and the
+   post-merge push run.
+6. **Whether a real phase branch could exploit CR-001 or CR-002 end to end.**
+   Both reviewers forced them in synthetic fixtures and so did I; nobody built a
+   whole pull request that lands.
+
+### 11.11 The claim grep, re-run over the whole document
+
+Both forms, per CLAUDE.md:369 and the wrap-insensitive supplement.
+**Sixty-five occurrences line-based and sixty-five wrap-insensitive, so ZERO
+were hidden by a wrap.** Eleven are the grep command's own pattern quoted in
+section 8, fourteen are inside section 8's table and ten are inside the table
+below; all three groups QUOTE phrases in order to settle them, which leaves
+thirty real occurrences across the whole document. Section 8's line
+numbers are unchanged, because fix round 1 only APPENDED to this document. The
+new real occurrences are these:
+
+| line | phrase | what settles it |
+|---|---|---|
+| 874, 902, 903 | "when the body cannot be read", "it cannot exempt anything" | the M15 row of the sweep table and the test named at 11.6, which forces the both-sides-unreadable case and requires the obligation to survive it |
+| 887 | "it cannot be pinned on one member" | a property of the document, not a measurement: a claim is a document-level field, so there is no member to attribute it to. Stated as reasoning, and 11.4 says so |
+| 917 | "everything is owned" | the M16 sweep row, which applies exactly that corruption and is caught |
+| 942 | "a baseline spec that cannot be established" | a quoted TEST NAME inside captured output, not a claim |
+| 990 | "catches fifteen of sixteen" | the sweep table immediately below it, row by row |
+| 995 | "never `git checkout --`" | a statement about method; every sweep row reports `clean=true` and `git status --porcelain` on `src/` was empty after the sweep |
+| 1011 | "SURVIVES, and cannot be caught" | **the strongest claim in this document**, and it is settled by the equivalence probe printed two paragraphs below it, which shows the two forms returning identical sets. It is a claim about equivalence, not about difficulty |
+| 1017 | "always fires" | a description of the M16 mutation, quoted from the sweep source |
+| 1052 | "has always leaked" | the `ls /tmp` count and prefix-histogram captures in 11.8 |
+| 769, 1162 | "is covered", "cannot be established" | 769 quotes the derivation's own wording about fields covered by other rules, settled by the 11.1 table; 1162 is this table's own heading text |
+
+The one to check hardest is line 1011, because "cannot be caught" is exactly the
+shape CLAUDE.md:378 refuses when it is a guess. It is not a guess here: the
+probe demonstrates the mutant is behaviourally identical, which is a different
+statement from "I did not find a way to catch it". Had the probe shown any
+difference, the row would have read "I did not find a test that distinguishes
+them".
