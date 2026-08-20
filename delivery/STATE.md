@@ -30,6 +30,48 @@ is wrong: verify against git and the PR list before trusting it.
   is made that it does. Branches `claude/exit-subject-doctor-kernel-artifacts`
   and `claude/m3-exit-test` are pushed and unmerged.
 
+- as of: 2026-08-20, NEWEST BLOCK. Everything below is OLDER.
+- **M3 IS CLOSED.** `main` at `1945d69`. All twelve phases merged, the exit test
+  ran, and its post-merge `push` run `31908047883` was read by step with only
+  the two pull-request-arm-only steps skipped. `@tiphys/kernel@0.1.0` is
+  published, tagged and released.
+- **THE EXIT TEST EARNED ITS COST: three defects in SHIPPED code, all reachable
+  by a real consumer.** Witness ownership was file-granular where the obligation
+  is member-granular; `doctor` tested that a kernel artifact was PRESENT rather
+  than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
+  carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
+  All three are fixed on `main`.
+- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch, no dispatched
+  agent, no armed watchdog. The next unit of work is not yet chosen.
+- **M4's PILOT IS RUNNING, IN A SESSION THIS ORCHESTRATOR DOES NOT OWN.** Both
+  `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` exist, carry a
+  charter, a plan and a delivered M1-P1 with dual review, and deploy to a live
+  Vercel target. DR-0034 describes the pilot as something about to be started;
+  it was already running when that record was written. The correction, measured,
+  is at delivery/verification/dr-0034-premise-check.md:1.
+  **This orchestrator has not touched either repository and should not**, unless
+  the owner says otherwise: two orchestrators against one fleet is the exact
+  contention the session lock exists to prevent.
+- **A-2 IS HALF DONE AND THE OTHER HALF NEEDS ONE OWNER CLICK.** A durable fleet
+  remote exists, which is what A-2 asked for in substance. It is **PUBLIC**, and
+  A-2 asked for private, for a personal finance project. No credential was found
+  in it; what is public is the shape of the system and the delivery paperwork,
+  and the exposure that matters accrues going forward rather than having already
+  happened. Recommendation: make both repositories private now. See the
+  measurement and the reasoning at
+  delivery/verification/dr-0034-premise-check.md:1.
+- **THE PILOT HAS ALREADY PRODUCED THREE KERNEL DEFECTS THAT NO GATE HERE
+  CATCHES**, all found by USE rather than by review: `tiphys spawn` ships no
+  agent adapter so a real payload cannot authenticate under it; `tiphys validate
+  --type verdict --context .` cannot pass in a downstream fleet because it
+  resolves plan, work-history and assurance-mode documents at the context root;
+  and `dual-review-decorrelation` hard-requires two `produced-by` families with
+  no declared override, so a single-family environment can satisfy it only by
+  declaring something false. They are candidates for 0.2.0, not a decided scope.
+- **The three M3 exit-test falsification controls are SKIPPED BY DECISION**, not
+  passed and not pending, per DR-0034. Anyone citing the M3 plan's section 4.5
+  must read that record alongside it.
+
 - as of: 2026-08-15 early morning, NEWEST BLOCK. Everything below is OLDER.
 - **`@tiphys/kernel@0.1.0` IS PUBLISHED.** Verified independently rather than
   taken from the job record: the registry carries `0.1.0` at

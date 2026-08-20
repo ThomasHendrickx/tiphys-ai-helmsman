@@ -1023,6 +1023,37 @@ Each of these bit someone once. Forward them to every implementer.
     thing that was easy to run. Use `git diff main...branch`, three dots, when
     you want the branch's own changes since the merge base.
 
+14. **THIS CONTAINER CANNOT DELETE A REMOTE REF, AND `--dry-run` WILL TELL YOU
+    IT CAN.** The refusal itself is not new: it was measured on 2026-08-07 and
+    recorded in the owner-action register at delivery/STATE.md:1587, where A-4
+    notes that ref deletion is refused with HTTP 403 on both the GitHub API and
+    `git push --delete` while ordinary pushes from the same credentials succeed.
+    It is repeated here because a fact that lives only in one item of a
+    thousand-line register does not survive: the orchestrator rediscovered it
+    from scratch, by three methods, thirteen days later.
+
+    The part that IS new was measured 2026-08-20 and is the trap worth naming.
+    A delete dry-run does not probe the authorization it appears to probe:
+
+    | command | reported |
+    |---|---|
+    | `git push --dry-run origin HEAD:refs/heads/<new>` | `* [new branch]`, exit 0 |
+    | `git push --dry-run --delete origin <existing>` | `- [deleted]`, **exit 0** |
+
+    The second line is a lie of omission, not a permission. Compare A-6 at
+    delivery/STATE.md:1572, where a plain `git push --dry-run` DID surface a 403
+    on `git-receive-pack` against a repository the app was not installed on. So
+    a dry-run catches a handshake-level refusal and does NOT catch this one,
+    which means it cannot distinguish "deletion is allowed" from "deletion is
+    refused". A check that returns the same answer either way is the T-008 shape:
+    a guard that cannot go red.
+
+    **Consequence: branch cleanup is an OWNER action, always, and there is no
+    non-destructive way to confirm that in advance.** Do not spend a round
+    proving it again, do not attempt a real delete to find out, and do not
+    report a green dry-run as evidence that a branch can be removed. Ask for an
+    `A-n` id and put it in the register.
+
 ## The orchestrator does not decide when it is finished (binding)
 
 Measured 2026-08-08 and 2026-08-09: the orchestrator stopped mid-milestone
