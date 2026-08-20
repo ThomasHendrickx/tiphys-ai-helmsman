@@ -41,8 +41,27 @@ is wrong: verify against git and the PR list before trusting it.
   than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
   carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
   All three are fixed on `main`.
-- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch, no dispatched
-  agent, no armed watchdog. The next unit of work is not yet chosen.
+- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch under active
+  work, no dispatched implementer. The next unit of work is not yet chosen.
+- **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND
+  `.claude/orchestrator-next.mjs` READS THAT AS UNMERGED WORK.** The phase's
+  code reached `main` inside the exit test's branch at `1945d69`, carrying a
+  fix on top of it; `origin/claude/m3-p13-doctor-kernel-artifacts` therefore
+  sits 11 commits ahead of `main` forever and the stop-condition script prints
+  "DRIVE M3-P13 TO MERGE" at a head where there is nothing to drive. Checked
+  rather than assumed: all 762 of that branch's registered behaviors are
+  present among `main`'s 775.
+  **A stop condition that cannot go green is the same defect as a guard that
+  cannot go red**, and this one points an orchestrator at work that is done.
+  The script decides merged-ness by branch-ahead-ness alone and has no notion
+  of delivered-elsewhere. Tracked, not assigned.
+- **THE PAPERWORK WAS THE PART THAT WAS ACTUALLY MISSING, AND IT IS LANDED
+  HERE.** `main` carried M3-P13's code, its tests and its four witness specs
+  while carrying neither its work history nor its phase declaration. That is
+  the mirror of the defect CLAUDE.md names under DR-0031, one turn further
+  round: there, `main` asserted review evidence for code it did not contain;
+  here, `main` contained code whose implementer record it did not carry.
+  Neither the scope gate nor any review catches either direction.
 - **M4's PILOT IS RUNNING, IN A SESSION THIS ORCHESTRATOR DOES NOT OWN.** Both
   `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` exist, carry a
   charter, a plan and a delivered M1-P1 with dual review, and deploy to a live
