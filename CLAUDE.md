@@ -999,6 +999,18 @@ Each of these bit someone once. Forward them to every implementer.
     repository has now paid three times for an unexplained suite-count
     difference, and the third time the reviewer refused to average a two-test gap
     and found the cause instead.
+
+    **AND SINCE 2026-08-20 THE DEFAULT TOOLCHAIN DOES NOT MERELY SKIP, IT
+    FAILS.** The numbers above are historical and correct for the head they
+    name; do not read them as today's expectation. At `1945d69`,
+    test/doctor.test.ts:934 is floor-DEPENDENT without being floor-GATED, so
+    the container default reports `846 pass, 1 fail, 2 skipped` at a head whose
+    CI is green. Two interpreters, one head, one test: fail on v22.22.2, pass on
+    v26.6.0. **A red on the default toolchain is therefore no longer proof of a
+    red branch**, which is a worse position than skipping, because it trains a
+    reader to wave a failure through. Establish the base's result before
+    attributing a failure to your change, and quote the interpreter with it.
+
 13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
     fallen behind it reads as though the branch DELETES things.** Measured
     2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported
@@ -1022,6 +1034,37 @@ Each of these bit someone once. Forward them to every implementer.
     the fix was to read the thing that answers the question rather than the
     thing that was easy to run. Use `git diff main...branch`, three dots, when
     you want the branch's own changes since the merge base.
+
+14. **THIS CONTAINER CANNOT DELETE A REMOTE REF, AND `--dry-run` WILL TELL YOU
+    IT CAN.** The refusal itself is not new: it was measured on 2026-08-07 and
+    recorded in the owner-action register at delivery/STATE.md:1587, where A-4
+    notes that ref deletion is refused with HTTP 403 on both the GitHub API and
+    `git push --delete` while ordinary pushes from the same credentials succeed.
+    It is repeated here because a fact that lives only in one item of a
+    thousand-line register does not survive: the orchestrator rediscovered it
+    from scratch, by three methods, thirteen days later.
+
+    The part that IS new was measured 2026-08-20 and is the trap worth naming.
+    A delete dry-run does not probe the authorization it appears to probe:
+
+    | command | reported |
+    |---|---|
+    | `git push --dry-run origin HEAD:refs/heads/<new>` | `* [new branch]`, exit 0 |
+    | `git push --dry-run --delete origin <existing>` | `- [deleted]`, **exit 0** |
+
+    The second line is a lie of omission, not a permission. Compare A-6 at
+    delivery/STATE.md:1572, where a plain `git push --dry-run` DID surface a 403
+    on `git-receive-pack` against a repository the app was not installed on. So
+    a dry-run catches a handshake-level refusal and does NOT catch this one,
+    which means it cannot distinguish "deletion is allowed" from "deletion is
+    refused". A check that returns the same answer either way is the T-008 shape:
+    a guard that cannot go red.
+
+    **Consequence: branch cleanup is an OWNER action, always, and there is no
+    non-destructive way to confirm that in advance.** Do not spend a round
+    proving it again, do not attempt a real delete to find out, and do not
+    report a green dry-run as evidence that a branch can be removed. Ask for an
+    `A-n` id and put it in the register.
 
 ## The orchestrator does not decide when it is finished (binding)
 

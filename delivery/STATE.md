@@ -30,6 +30,78 @@ is wrong: verify against git and the PR list before trusting it.
   is made that it does. Branches `claude/exit-subject-doctor-kernel-artifacts`
   and `claude/m3-exit-test` are pushed and unmerged.
 
+- as of: 2026-08-20, NEWEST BLOCK. Everything below is OLDER.
+- **M3 IS CLOSED.** `main` at `1945d69`. All twelve phases merged, the exit test
+  ran, and its post-merge `push` run `31908047883` was read by step with only
+  the two pull-request-arm-only steps skipped. `@tiphys/kernel@0.1.0` is
+  published, tagged and released.
+- **THE EXIT TEST EARNED ITS COST: three defects in SHIPPED code, all reachable
+  by a real consumer.** Witness ownership was file-granular where the obligation
+  is member-granular; `doctor` tested that a kernel artifact was PRESENT rather
+  than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
+  carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
+  All three are fixed on `main`.
+- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch under active
+  work, no dispatched implementer. The next unit of work is not yet chosen.
+- **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND
+  `.claude/orchestrator-next.mjs` READS THAT AS UNMERGED WORK.** The phase's
+  code reached `main` inside the exit test's branch at `1945d69`, carrying a
+  fix on top of it; `origin/claude/m3-p13-doctor-kernel-artifacts` therefore
+  sits 11 commits ahead of `main` forever and the stop-condition script prints
+  "DRIVE M3-P13 TO MERGE" at a head where there is nothing to drive. Checked
+  rather than assumed: all 762 of that branch's registered behaviors are
+  present among `main`'s 775.
+  **A stop condition that cannot go green is the same defect as a guard that
+  cannot go red**, and this one points an orchestrator at work that is done.
+  The script decides merged-ness by branch-ahead-ness alone and has no notion
+  of delivered-elsewhere. Tracked, not assigned.
+- **THE PAPERWORK WAS THE PART THAT WAS ACTUALLY MISSING, AND IT IS LANDED
+  HERE.** `main` carried M3-P13's code, its tests and its four witness specs
+  while carrying neither its work history nor its phase declaration. That is
+  the mirror of the defect CLAUDE.md names under DR-0031, one turn further
+  round: there, `main` asserted review evidence for code it did not contain;
+  here, `main` contained code whose implementer record it did not carry.
+  Neither the scope gate nor any review catches either direction.
+- **M4's PILOT IS RUNNING, IN A SESSION THIS ORCHESTRATOR DOES NOT OWN.** Both
+  `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` exist, carry a
+  charter, a plan and a delivered M1-P1 with dual review, and deploy to a live
+  Vercel target. DR-0034 describes the pilot as something about to be started;
+  it was already running when that record was written. The correction, measured,
+  is at delivery/verification/dr-0034-premise-check.md:1.
+  **This orchestrator has not touched either repository and should not**, unless
+  the owner says otherwise: two orchestrators against one fleet is the exact
+  contention the session lock exists to prevent.
+- **A-2 IS HALF DONE AND THE OTHER HALF NEEDS ONE OWNER CLICK.** A durable fleet
+  remote exists, which is what A-2 asked for in substance. It is **PUBLIC**, and
+  A-2 asked for private, for a personal finance project. No credential was found
+  in it; what is public is the shape of the system and the delivery paperwork,
+  and the exposure that matters accrues going forward rather than having already
+  happened. Recommendation: make both repositories private now. See the
+  measurement and the reasoning at
+  delivery/verification/dr-0034-premise-check.md:1.
+- **THE PILOT HAS ALREADY PRODUCED THREE KERNEL DEFECTS THAT NO GATE HERE
+  CATCHES**, all found by USE rather than by review: `tiphys spawn` ships no
+  agent adapter so a real payload cannot authenticate under it; `tiphys validate
+  --type verdict --context .` cannot pass in a downstream fleet because it
+  resolves plan, work-history and assurance-mode documents at the context root;
+  and `dual-review-decorrelation` hard-requires two `produced-by` families with
+  no declared override, so a single-family environment can satisfy it only by
+  declaring something false. They are candidates for 0.2.0, not a decided scope.
+- **THE DEFAULT TOOLCHAIN NOW FAILS THE SUITE, AND IT IS NOT THIS BRANCH.**
+  Measured 2026-08-20 at `1945d69`, one test, one head, two interpreters:
+  test/doctor.test.ts:934, "a staged install of the built package reproduces
+  the captured contract live", asserts "the unpromoted arm must not fail the
+  fleet" and gets `1 !== 0` on node v22.22.2, and PASSES on node v26.6.0. It is
+  floor-DEPENDENT without being floor-GATED, unlike the two `doctor` tests that
+  skip themselves. Consequence: anyone running the suite on the container
+  default sees `846 pass, 1 fail, 2 skipped` at a green head, which is how a
+  real red gets ignored. CI is unaffected and remains the authority. Not
+  assigned; a candidate for the next kernel change that touches `doctor`.
+
+- **The three M3 exit-test falsification controls are SKIPPED BY DECISION**, not
+  passed and not pending, per DR-0034. Anyone citing the M3 plan's section 4.5
+  must read that record alongside it.
+
 - as of: 2026-08-15 early morning, NEWEST BLOCK. Everything below is OLDER.
 - **`@tiphys/kernel@0.1.0` IS PUBLISHED.** Verified independently rather than
   taken from the job record: the registry carries `0.1.0` at
