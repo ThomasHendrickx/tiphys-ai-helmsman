@@ -999,6 +999,18 @@ Each of these bit someone once. Forward them to every implementer.
     repository has now paid three times for an unexplained suite-count
     difference, and the third time the reviewer refused to average a two-test gap
     and found the cause instead.
+
+    **AND SINCE 2026-08-20 THE DEFAULT TOOLCHAIN DOES NOT MERELY SKIP, IT
+    FAILS.** The numbers above are historical and correct for the head they
+    name; do not read them as today's expectation. At `1945d69`,
+    test/doctor.test.ts:934 is floor-DEPENDENT without being floor-GATED, so
+    the container default reports `846 pass, 1 fail, 2 skipped` at a head whose
+    CI is green. Two interpreters, one head, one test: fail on v22.22.2, pass on
+    v26.6.0. **A red on the default toolchain is therefore no longer proof of a
+    red branch**, which is a worse position than skipping, because it trains a
+    reader to wave a failure through. Establish the base's result before
+    attributing a failure to your change, and quote the interpreter with it.
+
 13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
     fallen behind it reads as though the branch DELETES things.** Measured
     2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported

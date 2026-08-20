@@ -68,6 +68,17 @@ is wrong: verify against git and the PR list before trusting it.
   and `dual-review-decorrelation` hard-requires two `produced-by` families with
   no declared override, so a single-family environment can satisfy it only by
   declaring something false. They are candidates for 0.2.0, not a decided scope.
+- **THE DEFAULT TOOLCHAIN NOW FAILS THE SUITE, AND IT IS NOT THIS BRANCH.**
+  Measured 2026-08-20 at `1945d69`, one test, one head, two interpreters:
+  test/doctor.test.ts:934, "a staged install of the built package reproduces
+  the captured contract live", asserts "the unpromoted arm must not fail the
+  fleet" and gets `1 !== 0` on node v22.22.2, and PASSES on node v26.6.0. It is
+  floor-DEPENDENT without being floor-GATED, unlike the two `doctor` tests that
+  skip themselves. Consequence: anyone running the suite on the container
+  default sees `846 pass, 1 fail, 2 skipped` at a green head, which is how a
+  real red gets ignored. CI is unaffected and remains the authority. Not
+  assigned; a candidate for the next kernel change that touches `doctor`.
+
 - **The three M3 exit-test falsification controls are SKIPPED BY DECISION**, not
   passed and not pending, per DR-0034. Anyone citing the M3 plan's section 4.5
   must read that record alongside it.
