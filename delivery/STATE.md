@@ -41,6 +41,19 @@ is wrong: verify against git and the PR list before trusting it.
   than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
   carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
   All three are fixed on `main`.
+- **M4 IS DISPATCHED, 2026-09-15. WAVE 1 IS SIX PHASES IN FLIGHT.** D-19's
+  blocker is cleared: delivery/plan/m4-intake.md:1 and
+  delivery/plan/kernel-plan-m4.md:1 both exist, twenty-seven phases across the
+  six required workstreams. The wave-1 conflict pre-pass is
+  delivery/plan/m4-conflict-pre-pass.md:1 and proves the six mutually disjoint
+  pairwise. In flight: M4-P1 remainder (the blocking probe for M4-P9), M4-P2
+  (async launch), M4-P10 (verdict head and medium), M4-P13 (migration-row
+  re-disposition), M4-P16 (fleet resume), M4-P20 (exclusion red witnesses).
+  Held back and why: M4-P3, M4-P4 and M4-P8 all collide with M4-P2 on
+  `src/spawn.ts`; M4-P9 is blocked on a measurement rather than a file.
+  **None has been reviewed and none may merge until it has been.** DR-0035
+  floor is one round.
+
 - **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch under active
   work, no dispatched implementer. The next unit of work is not yet chosen.
 - **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND

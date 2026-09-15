@@ -517,6 +517,30 @@ Answer these three IN WRITING in the dispatch turn, before arming anything:
    One that cannot tell them apart must SAY so rather than print a number
    implying it can.
 
+**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six
+implementers were dispatched; five were given worktree isolation and one was not,
+because its files-to-touch list looked like documents only. Within minutes the
+main clone read `branch: claude/m4-p1-harness-probe`: the unisolated agent had
+checked out its own branch IN THE ORCHESTRATOR'S CLONE. Nothing was lost, and
+only because the orchestrator's work was already pushed.
+
+Two rules follow, both cheap:
+
+1. **Isolate EVERY dispatched implementer, including the ones that only write
+   documents.** An agent told to commit on its own branch will create that
+   branch wherever it is standing.
+2. **The orchestrator takes its own worktree before dispatching**, so its
+   working tree is not the one an agent moves:
+
+   ```
+   git worktree add -f <scratch>/orch <orchestrator-branch>
+   ```
+
+This also breaks the watchdog rule above in a way worth naming: the unisolated
+agent's freshness is NOT visible in `.claude/worktrees/`, so a watchdog watching
+only those directories reads quiet at full speed for that one agent. Either
+isolate it, or watch its path too and say which agents the watchdog covers.
+
 **Exclude the orchestrator's own worktrees from any agent watchdog.** Including
 them keeps it green regardless of the agent, and a watchdog that cannot go red
 is worse than none because it is trusted. Full account in
