@@ -228,14 +228,21 @@ pstack gets free by putting the checklist in the file the agent opens.
 Acceptance: the next two reviews each answer every resolved probe by id, with a
 probe that does not apply answered "not applicable" and a reason.
 
-*Caveat, from a reviewer:* under some framings the checklist resolves 23
-probes, and a per-review floor of 23 evidence-required answers collides with
-DR-0027's tiering. The binding must say which tier the floor applies to. Under
-section 3 the answer falls out: `full` only.
+**The scoping is part of the acceptance, not a caveat.** Under the
+`criteria-contract` framing the checklist resolves 23 probes, each
+evidence-required, and a blanket 23-answer floor would reimpose on cheap phases
+exactly the ceremony DR-0027:42 cut. So the binding names its scope: the floor
+applies to reviews under the `full` tier only, which section 3 selects, and
+DR-0027's own table decides which trees reach it. A review of a `scripts/`-only
+change answers nothing. This is the one item in the plan that could increase
+per-review cost, and the scoping is what stops it.
 
 **3. The reviewer's model.** Costs nothing, and it is what makes section 6's
-question answerable at all. Today the two reviews of one head are never
-comparable after the fact: across 109 clean-room documents, 30 name a model.
+question answerable at all. Today the two reviews of one head are rarely
+comparable after the fact: of 109 clean-room documents, **13 name a model in a
+reviewer or produced-by header**, which is the only place a later reader can
+rely on. (26 mention one anywhere in the body, often inside a quoted grep
+pattern, which is not an assertion. The commands for both are in appendix A.)
 
 **4. The tuition promotion leak.** Found while assessing candidate 14.
 test/tuition.test.ts:173 checks that every delivering-log entry declaring
@@ -267,12 +274,19 @@ orchestrator diff review, fast-forward. Under it, 34 of the last 50 units would
 have had no reviewer, and some of the rest would have had one pass instead of
 two.
 
-**Why it is genuinely yours.** It is a risk-appetite choice, it is high impact,
-and it is expensive to reverse in the direction that matters: a defect that
-ships through a zero tier is found by a user, not by a reviewer. I cannot
-defend a recommendation on your behalf because the thing being traded is your
-exposure, not my correctness. This is the DR-0016 exception rather than a
-failure to decide.
+**Why it is genuinely yours, and it is not only risk appetite.** It is a
+risk-appetite choice, it is high impact, and it is expensive to reverse in the
+direction that matters: a defect that ships through a zero tier is found by a
+user, not by a reviewer. But the governance reason is the stronger one, and an
+adversarial reviewer had to point it out. **The rule amends a condition of the
+DR-0012 grant.** DR-0012:22 makes delegated merge authority conditional on two
+independent clean-room reviews of the current head on different model families.
+A change routed to `local-only` or to no review has no such pair, so adopting
+section 3 narrows the condition under which the owner delegated merge
+authority. DR-0012:40 puts an owner-reserved condition outside what the
+orchestrator may change. That makes this owner-reserved by construction, not by
+my judgement, and whatever you decide is recorded as a NEW record rather than
+as an edit to DR-0012.
 
 **Options.**
 
@@ -308,8 +322,11 @@ rather than staying prose.
   closed the enum and no Tiphys failure is named that grading removes.
 - **check-plan.mjs.** A template linter, not a plan checker: it hardcodes
   pstack's own strings, including a model slug and a fixed ten-lane numbering.
-- **Queue and drain, the in-flight window, the stop line.** No named failure.
-  Phases are not concurrent by default, so the window is unmotivated before M5.
+- **Queue and drain, the in-flight window, the stop line.** No named failure in
+  23 tuition entries or in STATE.md, and that carries the verdict on its own.
+  An earlier draft also said the window was unmotivated because phases are
+  sequential before M5; that reason is deleted, because DR-0011 superseded it
+  and item 1 of section 5 exists to fix the same stale wording elsewhere.
 - **Retry by failure mode.** The turn-end record carries an exit code and no
   reason (src/hooks.ts:13). Every recorded agent death here was session-level,
   where no payload exited, so the reason field would have been empty. The input
@@ -333,8 +350,8 @@ rather than staying prose.
 
 ## 8. Adversarial review outcome
 
-Three reviewers, three lenses, none of whom saw the reasoning. Both completed
-reviews returned FIX-ROUND-NEEDED.
+Three reviewers, three lenses, none of whom saw the reasoning. All three
+returned FIX-ROUND-NEEDED, and the document is better for each of them.
 
 **Acted on.** The plan was sixteen items and is now four. Two owner questions
 became orchestrator decisions. The bucket classification was wrong and the
@@ -363,11 +380,28 @@ be worse; the holes found were in the classification, not the structure.
 Candidate 2's red witness is against the dangerous state rather than the absent
 feature. The checklist binding does not make reviews materially longer.
 
+The third reviewer, on conflicts with decided records, returned after the
+rewrite and found four things the rewrite had not already closed. **The most
+important is in section 6:** the tier rule amends a condition of the DR-0012
+grant, which makes D1 owner-reserved by construction rather than by my
+judgement, and I had justified the escalation on the weaker ground of risk
+appetite alone. It also caught a number that does not reproduce ("30 of 109
+name a model": the reproducible figures are 13 in a header and 26 anywhere in
+the body, and the header one is what matters), an internal contradiction where
+section 7 rejected a candidate using the same stale "sequential until M5"
+wording that section 5 item 1 exists to delete, and a 23-probe floor that
+needed DR-0027 scoping written into the acceptance rather than left as a
+caveat. All four are fixed above.
+
 **Not covered, stated because a review whose scope is wrong returns an empty
-result indistinguishable from an absence of defects.** The third reviewer, on
-conflicts with decided records and internal consistency, had not returned when
-this was written; its findings are not represented here. The cost lens reviewed
-cost only. No reviewer examined the sandbox subject project.
+result indistinguishable from an absence of defects.** The conflicts lens says
+in terms that it judged governance and not engineering: "a proposal could be
+internally coherent, consistent with all 32 records, and still a bad idea, and
+I would not have said so." The cost lens reviewed cost only. No reviewer
+examined the sandbox subject project, and no reviewer saw the final text of
+this document: all three read the sixteen-item draft, so the four-item plan in
+section 5 has had a cost read and a governance read of its parts, and no review
+of its whole.
 
 ## 9. Licence and attribution
 
@@ -402,9 +436,10 @@ git log --format=%H 2a3892b..origin/main | while read c; do \
 for f in delivery/tuition/T-*.md; do \
   grep -qiE 'kernel-relevant:[[:space:]]*yes' "$f" || echo "$f"; done
 
-# every review header naming a model
-grep -rhiE '^[[:space:]]*[-*]?[[:space:]]*(reviewer|produced-by|model)[[:space:]]*:' \
-  delivery/review/clean-room-*.md | grep -iE 'sonnet|opus|gpt|codex|gemini|grok'
+# reviews naming a model in a HEADER (13), and anywhere in the body (26)
+grep -lEi '^[[:space:]]*[-*]?[[:space:]]*(reviewer|produced-by|model)[[:space:]]*:.*(opus|sonnet|gpt-5|codex|gemini|grok)' \
+  delivery/review/clean-room-*.md | wc -l
+grep -liE 'opus|sonnet|gpt-5|codex' delivery/review/clean-room-*.md | wc -l
 
 # counts
 find witness -name '*.json' | wc -l ; ls roles/*.md | wc -l ; ls delivery/review/*.md | wc -l
