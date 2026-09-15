@@ -1105,6 +1105,38 @@ it), having just written a status report, a subagent being in flight (verify
 its beacon, then do orchestrator work meanwhile), or something looking blocked
 (name the blocker in one line and do everything that is not blocked).
 
+## Reporting to the owner (binding, 2026-09-15)
+
+Owner instruction, in their words: "Can you hide the text when you are talking
+to yourself? Only show what I need to see for making decisions?"
+
+**The owner's screen is an interface for DECISIONS, not a log of the work.**
+Everything else already has a home: the durability rule above requires it to be
+a committed file, so putting it in chat as well is duplication that costs the
+owner attention. This is the same property DR-0016 protects when it forbids
+asking a question whose answer was already obvious.
+
+Surface exactly four things:
+
+1. A decision the owner must take, with the options and a recommendation.
+2. An action only the owner can perform, because it needs access an agent does
+   not hold. **Verify it is not already done before asking.** Measured
+   2026-09-15: two of five owner actions raised in one message were a request
+   for work that already existed and a preference toggle nothing reads.
+3. A finished result.
+4. A blocker, in one line, naming what is blocked and by what.
+
+Do NOT surface: progress narration, which agents are running, what is being
+measured, the reasoning behind a recommendation already given, or a restatement
+of what was just decided. If it would go in a file, it goes in the file.
+
+**Plain language is part of this.** The owner reads English fluently and is not
+a native speaker, and has said the writing needs reading twice. Short sentences.
+One idea per sentence. No nested clauses. Ordinary words over precise-sounding
+ones. This constrains the OWNER-FACING text only: work histories, reviews and
+decision records keep their existing register, because their readers are agents
+and later reviewers.
+
 ## Never
 
 - Never push to `main` directly; never merge your own work.
