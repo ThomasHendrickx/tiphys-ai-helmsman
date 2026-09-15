@@ -26,27 +26,30 @@ Seven and a half lines of proof for every line of the thing being proved. That
 is not a process drowning in paperwork; it is a process that reviews everything
 as though everything mattered equally.
 
-**The rule that fixes it: size buys coverage, impact buys depth.** They are
-different axes, and conflating them is what makes a process overreact. A large
-surface can break in a corner nobody looked at, so it needs breadth. A change
-that matters can be three lines and still be expensive to get wrong, so it
-needs depth. Neither substitutes for the other:
+**The rule that fixes it, decided by the owner as DR-0035: every change is
+reviewed, and what tiers is the number of FIX ROUNDS.** A fix round is one
+back-and-forth between the `clean-room-reviewer` and the `implementer`. One is
+the floor and there is no zero:
 
 | | low impact | high impact |
 |---|---|---|
-| **zero subject** | none. It is paperwork. | none. There is no subject. |
-| **small** | `local-only`. A quick pass. | `full`. Depth, not breadth. |
-| **large** | `direct-pr`. The gates ARE the coverage. | `full`. Both contracts, both lenses. |
+| **zero subject** | 1 round | 1 round |
+| **small** | 1 round | 2 rounds |
+| **large** | 2 rounds | 3 rounds |
 
-**Those mode names are not new.** `full`, `direct-pr` and `local-only` are the
-three modes the blueprint declares at
-delivery/intake/orchestrated-delivery-v1.md:148 and `assurance-modes.yaml`
-defines. Tiphys never lacked assurance tiers. It lacked a rule for picking one,
-so everything got `full`.
+Size buys coverage and impact buys depth, but both are spent on ITERATION
+rather than on whether a review happens. **The cap is a cap, not a target**, and
+the number that justifies it is already measured: of sixteen fix rounds in M1,
+thirteen were re-reviewed and TWELVE of those thirteen produced a new finding
+attributable to the round itself (CLAUDE.md:335). A fix round is a change, and
+a change needs reviewing, so round N+1 largely exists to check round N.
+
+At the cap, DR-0016 applies: a fresh implementer and a third review contract,
+not a fourth round.
 
 The selector is built and pushed, in the sandbox repository, with the
 measurement it rests on. Four small things in `.claude/` are worth doing on top
-of it. One question is genuinely yours.
+of it. Nothing is waiting on you.
 
 ## 1. Current state of Tiphys
 
@@ -123,8 +126,8 @@ argument on their own.
 
 ## 3. The rule, and what is already built
 
-`tools/value-ratio/assurance-tier.mjs` in the sandbox repository implements the
-two-by-two:
+`tools/value-ratio/assurance-tier.mjs` in the sandbox repository implements
+DR-0035's table:
 
 ```
 node tools/value-ratio/assurance-tier.mjs --repo <dir> --range <rev> --impact <low|high>
@@ -144,13 +147,17 @@ Four design decisions in it are load-bearing, and each is asserted in the suite:
 4. **The threshold is derived, not chosen.** 500 subject lines sits between the
    kernel's own p75 and p90.
 
-Measured: 17 tests, 17 pass, 0 fail, 0 skipped on node v22.22.2, red under two
-structurally different mutations. Counting overhead in the subject reddens
-three tests; turning the floor refusal into a no-op reddens two.
+5. **The floor and the ceiling are asserted directly**, not left to follow from
+   the table, so a later editor tuning a cell trips a test.
 
-**What it deliberately does not do.** It picks the tier. It does not measure
-whether the review that happened was any good, and the red-witness rule remains
-the only thing separating a `full` review done well from one done badly.
+Measured: 18 tests, 18 pass, 0 fail, 0 skipped on node v22.22.2, red under four
+structurally different mutations. Counting overhead in the subject reddens
+three tests; turning the floor refusal into a no-op reddens two; dropping any
+cell to zero reddens two; raising a cell above three reddens the same two.
+
+**What it deliberately does not do.** It picks the round budget. It does not
+measure whether the review that happened was any good, and the red-witness rule
+remains the only thing separating a round done well from one done badly.
 
 **What adopting it costs.** Nothing in the kernel yet. The selector reads a git
 range and a declaration. The cheapest adoption is to run it at dispatch and
@@ -259,59 +266,34 @@ an entry declaring neither `yes` nor `no`, naming the file; (b) all eleven
 silent entries gain an explicit declaration. What gets promoted falls out of
 (b) rather than being fixed in advance.
 
-## 6. The decision for you
+## 6. The decision, now answered
 
-One. Everything else was decided under DR-0016 and is recorded with its
-reasoning. An earlier draft raised three questions, and two of them carried
-recommendations I said I would defend, which DR-0016 and DR-0023 both say means
-there was no question.
+**DR-0035, decided by the owner 2026-09-15:** every change is reviewed, the
+tiering is on the number of fix rounds, and one round is the bare minimum.
+The record is at
+delivery/decisions/DR-0035-review-is-never-skipped-the-rounds-are-what-tier.md:16.
 
-### D1. Do you accept that some changes ship with no adversarial review?
+That refused the zero tier this document proposed, and it replaced the dial.
+An earlier version tiered which assurance MODE a change earned and could select
+none. Two things were wrong with it, and only the first was obvious:
 
-**The thing.** The rule in section 3 sends zero-subject changes to no review at
-all, and small low-impact changes to `local-only`, which is implement,
-orchestrator diff review, fast-forward. Under it, 34 of the last 50 units would
-have had no reviewer, and some of the rest would have had one pass instead of
-two.
+1. It would have let a change merge unlooked-at.
+2. **It silently narrowed a condition of the DR-0012 grant.** Delegated merge
+   authority is conditional on two independent clean-room reviews of the
+   current head (DR-0012:22), and a change routed to no review has no such
+   pair. DR-0012:40 puts an owner-reserved condition outside what the
+   orchestrator may change. An adversarial reviewer found that; I had justified
+   escalating the question on risk appetite alone.
 
-**Why it is genuinely yours, and it is not only risk appetite.** It is a
-risk-appetite choice, it is high impact, and it is expensive to reverse in the
-direction that matters: a defect that ships through a zero tier is found by a
-user, not by a reviewer. But the governance reason is the stronger one, and an
-adversarial reviewer had to point it out. **The rule amends a condition of the
-DR-0012 grant.** DR-0012:22 makes delegated merge authority conditional on two
-independent clean-room reviews of the current head on different model families.
-A change routed to `local-only` or to no review has no such pair, so adopting
-section 3 narrows the condition under which the owner delegated merge
-authority. DR-0012:40 puts an owner-reserved condition outside what the
-orchestrator may change. That makes this owner-reserved by construction, not by
-my judgement, and whatever you decide is recorded as a NEW record rather than
-as an edit to DR-0012.
+**Tiering the rounds dissolves the governance problem rather than answering
+it.** The first review always happens, so DR-0012's condition is untouched, and
+what varies is only how many times findings go back to the implementer.
 
-**Options.**
-
-1. **Accept as specified.** The zero tier gets the byte and citation gates and
-   no reviewer; small and low gets one pass. This is the version that is built.
-2. **Accept with a floor: never zero.** Every change gets at least
-   `local-only`, so nothing merges unlooked-at. Costs one orchestrator diff
-   review per paperwork commit, which over this history is 34 reviews that
-   would have found, on the evidence, nothing.
-3. **Accept, but review the impact DECLARATION rather than the change.** The
-   declaration is one line and reviewing it is cheap; getting it wrong is the
-   only way the tier comes out wrong.
-
-**What I would say if pushed:** option 3 is what I would build next, because
-the scheme's soundness rests entirely on the impact declaration and nothing
-currently reads it. But the trade between 1 and 2 is yours.
-
-**Blocks:** wiring the selector into dispatch. Not the four items in section 5,
-which are independent of it.
-
-**Decided under DR-0016 and reported, not asked:** the budget is
+Nothing in this plan now waits on the owner. Two further calls were taken under
+DR-0016 and are reported rather than asked: the value-to-overhead budget is
 reporting-only rather than a gate, because a flat ratio penalises exactly the
-cheap `.claude/` fixes this review recommends, which is the wrong incentive;
-and `produced-by` gets a token grammar at the next breaking contract revision
-rather than staying prose.
+cheap `.claude/` fixes section 5 recommends; and `produced-by` gets a token
+grammar at the next breaking contract revision rather than staying prose.
 
 ## 7. Not borrowing, with reasons
 
@@ -482,8 +464,10 @@ claim from one that was always right.
 ## Appendix C: this review's own cost
 
 4,487,517 subagent tokens recorded in the sandbox ledger across five workflows,
-100% of it in the overhead bucket, producing one document, one measurement tool
-and one subject project. Under this document's own rule this change has a zero
-subject in the kernel and would earn no review at all; it got three. Whether
-that was worth it is a judgement the ratio cannot make, which is why the tool
-says so in its own README rather than leaving it to be discovered.
+100% of it in the overhead bucket, producing one document, one measurement
+tool, one subject project and one decision record. Under DR-0035 this change
+has a zero subject in the kernel and earns ONE round; it got three. That is a
+fair summary of the whole problem: the process spent triple its own budget on
+the document arguing for the budget. Whether it was worth it is a judgement the
+ratio cannot make, which is why the tool says so in its own README rather than
+leaving it to be discovered.
