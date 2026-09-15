@@ -124,7 +124,7 @@ the cheapest real item in the review.
 **7 (playbook fidelity).** The borrow is not pstack's copied todo list, which
 is an honour system weaker than what Tiphys already ships. It is the
 CONNECTION: pstack's playbook is the thing the agent opens, so its checklist
-cannot be forgotten. Tiphys's checklist is a shipped artifact its own dispatch
+is harder to skip. Tiphys's checklist is a shipped artifact its own dispatch
 procedure never names. Measured: `checklists/clean-room.yaml` landed on
 2026-08-13 in commit `2a3892b`; of the ten clean-room reviews added since,
 exactly ONE references it. `grep -n checklist .claude/skills/phase-delivery/SKILL.md`
@@ -476,7 +476,9 @@ kernel-relevant ones are promoted. Verify: `npm test`.
   claims to remove are READ failures, not write failures. CLAUDE.md:1043 says
   the fact was written down and still rediscovered thirteen days later. What is
   taken instead is the side mechanism: cross-model review of the orchestrator's
-  own trail, which has never happened across 199 review documents.
+  own trail. There are 198 documents under delivery/review/ and not one takes
+  the orchestrator's decision trail as its subject; the two named
+  `orchestrator-*` are authored BY it about a code finding, not about it.
 - **A third model tier.** role-model-config.yaml deliberately keeps vendor
   product names out of a versioned artifact. The two-tier vocabulary is closed
   by DR-0020 and no failure is named that a third tier removes.
