@@ -53,3 +53,29 @@ M4-P13 re-dispositions migration-table rows, and the per-milestone bucket count
 is pinned in more than one place including a hard-coded test assertion at
 test/coverage-gate.test.ts:160. All the pinned sites move in M4-P13's single
 pull request or the coverage gate reddens. No other wave-1 unit may edit them.
+
+## Wave 1b, added 2026-09-15 while wave 1 is in flight
+
+Three more units, checked against the wave-1 six AND each other.
+
+| unit | files it may touch |
+|---|---|
+| M4-P19 | `src/pool.ts`, `src/teardown.ts`, `src/commands/teardown.ts`, `src/commands/doctor.ts`, `test/pool.test.ts`, `test/teardown.test.ts` |
+| M4-P23 | `delivery/plan/cutover/retirement-inventory.{md,json}` (new), `scripts/check-retirement-inventory.mjs` (new), `test/retirement-inventory.test.ts` (new), **`CLAUDE.md`** |
+| M4-P26 | `delivery/plan/cutover/rollback.md` (new), `src/cutover.ts` (new), `src/commands/cutover.ts` (new), `scripts/rehearse-cutover-rollback.mjs` (new), `test/cutover.test.ts` |
+
+**Pairwise against wave 1.** M4-P19 takes `src/pool.ts`, `src/teardown.ts`,
+`src/commands/teardown.ts` and `src/commands/doctor.ts`; wave 1 holds
+`src/spawn.ts`, `src/task.ts`, `src/watcher.ts` (M4-P2) and `src/cli.ts`,
+`src/commands/init.ts`, `src/fleet.ts`, `src/commands/resume.ts` (M4-P16). No
+overlap. M4-P23 and M4-P26 create files that do not exist. No overlap.
+
+**`CLAUDE.md` IS M4-P23's FOR THE DURATION, AND THAT INCLUDES THE ORCHESTRATOR.**
+This is the one real hazard in wave 1b: the orchestrator has amended `CLAUDE.md`
+four times today, twice in the last hour. From this dispatch until M4-P23 lands,
+the orchestrator does not touch it. A rule recorded mid-wave goes into
+`delivery/tuition/` or waits.
+
+**Not dispatched and why.** M4-P11 collides with M4-P10 on `src/checks.ts`.
+M4-P25 collides with M4-P26 on `src/commands/cutover.ts`. M4-P3, M4-P4 and
+M4-P8 still collide with M4-P2 on `src/spawn.ts`.
