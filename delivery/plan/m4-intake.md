@@ -704,7 +704,7 @@ says so rather than letting a recommendation read as a finding.
 | id | Question | Disposition |
 |---|---|---|
 | M4-D-01 | **DR-0010: does the Claude Code adapter implement `ExecutorAdapter` over the harness's native orchestration primitive, over plain subprocess, or hybrid?** | ORCHESTRATOR, PROTOTYPE-BLOCKED. Recommend option 3, the hybrid DR-0010 itself preliminarily recommends: subprocess for ship phases, primitive-backed for read-only fan-out. Option 1 is refuted ON THE RECORD by DR-0010's own six-item list of what the primitive does not provide. **Two probes must run first** and both are one-day experiments: can a primitive-backed adapter impose the kernel-built child environment, and can it distinguish `launch-failed` from `incomplete`? A NO to either removes option 1 for ship phases entirely. **Also: split the record.** Half (b), whether M3 review-stage fan-out targets the primitive, was answered NO and SHIPPED; the deciding record must state both dispositions or the M3 half gets re-litigated (H6) |
-| M4-D-02 | **Does `@tiphys/claude-code-plugin` live in this repository as an npm workspace, in its own repository, or only as a CLI driver that never implements `ExecutorAdapter`?** | ORCHESTRATOR. Recommend an npm WORKSPACE in this repository, published as its own package. Reason: the adapter requires kernel changes (section 3.3), and DR-0031 requires a pull request to carry all its own evidence; a separate repository splits the adapter's evidence from the kernel edits it depends on, which is the exact defect measured at `bdec27d`. It also requires adding an `exports` map to `@tiphys/kernel`, which is a public API surface decision and a release |
+| M4-D-02 | **Does `@tiphys/claude-code-plugin` live in this repository as an npm workspace, in its own repository, or only as a CLI driver that never implements `ExecutorAdapter`?** | **CLOSED 2026-09-15 by delivery/decisions/DR-0040-the-plugin-is-a-second-package-in-the-kernel-repository.md:1: one repository, two packages.** The reasoning below is what was put to the owner, with the counter-case; the record carries both and names the two triggers that reopen it. ORCHESTRATOR. Recommend an npm WORKSPACE in this repository, published as its own package. Reason: the adapter requires kernel changes (section 3.3), and DR-0031 requires a pull request to carry all its own evidence; a separate repository splits the adapter's evidence from the kernel edits it depends on, which is the exact defect measured at `bdec27d`. It also requires adding an `exports` map to `@tiphys/kernel`, which is a public API surface decision and a release |
 | M4-D-03 | **Where does adapter SELECTION live?** | ORCHESTRATOR. Recommend `--adapter <specifier>` on `tiphys spawn`, with a fleet-home `package.json` field as the default, resolved by Node module resolution FROM THE FLEET HOME and never from the project clone. The fleet home already pins `@tiphys/kernel` exactly and is owner-controlled, which makes it the right trust boundary for loading adapter code |
 | M4-D-04 | **Does `launch` become async?** | ORCHESTRATOR. Recommend YES, in a kernel phase that lands BEFORE any plugin phase. C-3 forbids the kernel AUTO-BACKGROUNDING; awaiting a call is not backgrounding, and delivery/plan/kernel-plan-v1.md:311 already permits the reading that the harness owns the process. This is the largest kernel-side edit the adapter implies and it must be declared, not discovered (H64) |
 | M4-D-05 | **Does `ExecutorRequest` gain a brief path, a role, a declared tier and a phase id, and does `ExecutorRecord` gain a resolved model?** | ORCHESTRATOR. Recommend adding all of them in ONE kernel phase up front rather than per discovered need. An agent payload's whole input is its brief and the request does not carry the path; each later addition is a schema-and-test change, and the fix-round contract's dominant measured waste is fixing the instance when the defect is the mechanism |
@@ -753,7 +753,7 @@ private. The fleet home itself is deliberately NOT initialized, because
 dispatching anything before its plan exists
 (delivery/plan/kernel-plan-v1.md:394).
 
-**Three of the twenty-four open decisions are now closed**, by
+**Four of the twenty-four open decisions are now closed**, by
 delivery/decisions/DR-0037-the-kernel-is-m4s-only-subject-and-tiphys-has-no-opinion-on-project-visibility.md:1,
 delivery/decisions/DR-0038-the-declared-single-family-review-exception.md:1 and
 delivery/decisions/DR-0039-release-verification-may-hold-a-write-capable-credential-the-orchestrator-never-shares.md:1:
@@ -762,6 +762,14 @@ single-family review exception reporting a third status), and M4-D-21 (a
 write-capable release credential held only by the orchestrator, enforced by
 code). **All three were the OWNER-reserved ones**, so every remaining open
 decision in section 6 is the orchestrator's to take.
+
+**M4-D-02 is closed too**, by
+delivery/decisions/DR-0040-the-plugin-is-a-second-package-in-the-kernel-repository.md:1:
+the plugin is a second npm package inside this repository, not a second
+repository. That one was not owner-reserved; the owner asked about it directly,
+was shown the case against, and agreed. The record keeps the counter-case at
+full strength and names the two conditions that reopen it, because the owner's
+words were "for now".
 
 **M4-D-16's answer invalidates parts of this document**, which assumed two
 subjects throughout. Section 4.3, section 9.1 and the exit-test discussion are
