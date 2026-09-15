@@ -1,6 +1,15 @@
 # Tiphys kernel: M4 intake
 
-- status: DRAFT, revision 1, 2026-09-15.
+- status: DRAFT, **revision 2**, 2026-09-15. Revision 1 was written for TWO
+  subjects. DR-0037 leaves one. Revision 2 re-grounds against the four owner
+  decisions taken after revision 1 (DR-0037, DR-0038, DR-0039, DR-0040) and the
+  orchestrator decision they forced (DR-0041). **What changed**: section 4.3
+  loses its pilot half, section 9.1 is withdrawn, section 7 is rewritten against
+  measured state, four of the twenty-four open decisions are closed, and the
+  hazard register's self-hosting entry is sharpened because one of its two
+  mitigations was the pilot. **What did NOT change**: no fact from revision 1 is
+  withdrawn, no `M4-D-nn` id is reused or renumbered, and the eleven-clause
+  decomposition in section 1 stands.
 - discharges: the first half of plan decision D-19
   (delivery/plan/kernel-plan-v1.md:394), which forbids M4 dispatching without
   its own intake AND plan. This is the intake. The plan
@@ -134,14 +143,16 @@ the model-resolution contract; and a hazard register.
 
 **What it did NOT cover, named rather than left to be discovered:**
 
-1. **`pulse` was not re-probed at intake time.** Every statement about `pulse`
-   in this document is second-hand, from
+1. **`pulse` was not probed, and under DR-0037 it never will be.** Revision 1
+   recorded this as a limit of one pass. It is now PERMANENT: DR-0037 puts
+   `pulse` out of this orchestrator's reach, so no claim about `pulse` in this
+   document is ever discharged. Every such claim is second-hand, from
    delivery/verification/dr-0034-premise-check.md:32, whose own clones were two
-   days stale when it was written. `pulse` runs in a session this orchestrator
-   does not own, and delivery/STATE.md:71 instructs it not to touch either
-   repository. Everything here about `pulse` is therefore a claim about a
-   document, not about the repository. The M4 plan must re-probe before any
-   `pulse`-facing phase is written.
+   days stale when it was written. Treat each one as a statement about a
+   document in this repository, not about that repository. **Open, and one owner
+   sentence settles it**: whether READ-ONLY observation of the public `pulse`
+   repositories is inside or outside "stay away". It was treated as forbidden
+   here and nothing was contacted.
 2. **No prototype was run.** Fourteen of the fifty-six open questions are marked
    answerable only by a prototype (can a harness primitive impose the kernel's
    child environment; can it distinguish launch-failed from incomplete; how does
@@ -429,15 +440,23 @@ verdicts that both REFUSE the merge pass it green (H14).
 
 ### 4.3 Pilot bootstrap
 
-**Owns:** clauses 1, 4 and 6, for TWO subjects with different entry conditions.
+**Owns:** clauses 1, 4 and 6, for ONE subject.
 
-**For `pulse`, this is RECONCILIATION, not bootstrap.** The pilot is already
-running, with a charter, a dispatch plan, two of its own decision records, a
-delivered M1-P1 with dual review and a live deployment target
-(delivery/verification/dr-0034-premise-check.md:32). Planning a from-scratch
-charter phase for it would duplicate work another session has done and collide
-with it mid-flight (H51). The first `pulse`-facing act is a re-probe, and
-whether this orchestrator touches `pulse` at all is an owner question (M4-D-16).
+**Revision 2: the pilot half of this workstream is gone.** Revision 1 gave it
+two subjects with different entry conditions. DR-0037 leaves the kernel.
+Section 9.1 records what that costs, item by item with probes, and it is more
+than "greenfield is untested".
+
+**Clause 4 is the casualty and it should be said plainly: it has no subject.**
+The clause names seven project gates. Four of them (i18n parity, analytics
+symmetry, e2e, lint) have nothing in the kernel to point at, established by
+probe in section 9.1. This is not seven gates reporting not-applicable; it is
+an extension point with nothing on the other end. DR-0028 had already moved
+these from kernel deliverables to project declarations
+(delivery/decisions/DR-0028-does-the-kernel-ship-any-project-gates.md:12); what
+DR-0037 removes is the project that would declare them. The plan must
+re-disposition the rows rather than plan work against them, and section 10
+carries the count constraint that makes it one change rather than three.
 
 **For the kernel, the charter is a copy-and-amend job.** One authored kernel
 charter exists, as exit-test evidence, declaring all seven irreversible
@@ -718,13 +737,13 @@ says so rather than letting a recommendation read as a finding.
 | M4-D-13 | **Does status move to a tracked path, or does AGENTS.md stop calling the pipeline-state file durable?** | ORCHESTRATOR. Recommend SPLITTING them: `current.json` (the document that says where the pipeline stands) moves to a tracked path and becomes durable; the append-only stream stays under `state/` and stays rebuilt, because C-1 forbids reading current state from a log tail and committing a per-event stream is a worse shape than the problem |
 | M4-D-14 | **Is there a declared adapter-owned result file?** | ORCHESTRATOR. Recommend YES, `tasks/<id>/result.md`, adapter-owned, optional, never inside the worktree. The gap was filled ad hoc once already by a pilot wrapper writing `implementer-final.md`, which nothing in the kernel writes; each adapter re-inventing it is worse than one declared path |
 | M4-D-15 | **What does "the current pipeline drains" mean?** | ORCHESTRATOR. Recommend a COMPUTED predicate over IN-FLIGHT work only: open pull requests, live worktrees, dispatched agents. All three are currently zero for this repository. Branch cleanup becomes a separate owner action that does not gate cutover, because deletion is refused here and the dry run exits 0 either way, so including it makes cutover block on an owner action with no local pre-check |
-| M4-D-16 | **Does this orchestrator touch `pulse` or `pulse-fleet` at all, and if so how is single-orchestrator exclusion enforced across two sessions?** | **OWNER.** Not a recommendation question: two orchestrators against one fleet is the exact contention the session lock exists to prevent, and the exclusion that would arbitrate it is the thing M4 is building. delivery/STATE.md:71 records the standing instruction not to touch either repository. Three of M4's six workstreams are about `pulse`, so the partition must be stated before any of them is planned |
-| M4-D-17 | **For a project with one model family available, how is DR-0012's dual cross-model review condition satisfied?** | **OWNER.** DR-0012's conditions are owner-reserved and the orchestrator may not narrow them. Measured by use: the check has no exemption arm, and the pilot's only exits were a false `produced-by` value or an out-of-band decision record. Neither is acceptable as designed behaviour. The orchestrator's view, offered rather than decided: a DECLARED and RECORDED single-family arm that the check reports as a distinct status, never as green |
+| M4-D-16 | **Does this orchestrator touch `pulse` or `pulse-fleet` at all?** | **CLOSED 2026-09-15 by DR-0037: no.** One residual, and one owner sentence settles it: whether READ-ONLY observation of the public repositories is inside or outside "stay away". It was treated as forbidden. It is the only thing that decides whether a verify-the-pushed-evidence option exists at cutover. Original framing kept below. **OWNER.** Not a recommendation question: two orchestrators against one fleet is the exact contention the session lock exists to prevent, and the exclusion that would arbitrate it is the thing M4 is building. delivery/STATE.md:71 records the standing instruction not to touch either repository. Three of M4's six workstreams are about `pulse`, so the partition must be stated before any of them is planned |
+| M4-D-17 | **For a project with one model family available, how is DR-0012's dual cross-model review condition satisfied?** | **CLOSED 2026-09-15 by DR-0038: a declared, recorded exception reporting a third status.** The MECHANISM is plan work and three constraints already bind it: fail closed, never green by omission, and the declaration must be falsifiable. **NOTE, revision 2:** DR-0037 removes the genuine subject for this. The kernel has had more than one model name available, so M4 can build the arm and cannot witness it against a real single-family environment. **OWNER.** DR-0012's conditions are owner-reserved and the orchestrator may not narrow them. Measured by use: the check has no exemption arm, and the pilot's only exits were a false `produced-by` value or an out-of-band decision record. Neither is acceptable as designed behaviour. The orchestrator's view, offered rather than decided: a DECLARED and RECORDED single-family arm that the check reports as a distinct status, never as green |
 | M4-D-18 | **Are `checklists/**`, `templates/**`, `witness/**` and root `*.yaml` added to the citation roots?** | ORCHESTRATOR. Recommend YES for those four. Recommend NO for `.claude/**`, for a different reason than the section 0 table might suggest: a dotted path is not extracted as a citation token AT ALL, so adding it as a root would change nothing without also changing the token grammar, and the tree is being retired anyway. Four shipped kernel trees currently produce a red citation from the kernel's own documents, which is the same adoption collision biting the kernel itself |
-| M4-D-19 | **Does `gate-registry.yaml` move to `templates/` before or after the adapter ships?** | ORCHESTRATOR. Recommend AFTER, and not during cutover. The kernel's whole CI runs off that registry; moving it during the milestone that depends on it changes the gate set guarding the change. DR-0029 records that nobody has measured what the move breaks and names `charter-mode-enum-matches-modes` as a known casualty |
+| M4-D-19 | **Does `gate-registry.yaml` move to `templates/` before or after the adapter ships?** | **REVISION 2: the urgency is gone, the question is not.** The move existed to serve a consuming project and DR-0037 leaves none, so nothing in M4 consumes the moved registry. It stays open as owed DR-0029 work with no M4 deadline. ORCHESTRATOR. Recommend AFTER, and not during cutover. The kernel's whole CI runs off that registry; moving it during the milestone that depends on it changes the gate set guarding the change. DR-0029 records that nobody has measured what the move breaks and names `charter-mode-enum-matches-modes` as a known casualty |
 | M4-D-20 | **Which of DR-0020's three closed vocabularies open, and to what?** | ORCHESTRATOR. Recommend opening STAGE ids and ROLE ids to a project-declared extension carrying a recorded reason, and keeping MODE ids closed because they are bound to `assurance-modes.yaml` by a derived check. The kernel's own process has stages outside the thirteen, so the kernel-as-subject is precisely the "real pilot consumer" DR-0020 deferred to |
-| M4-D-21 | **Release-verification credentials where a platform offers no read-only scope: accept a write-capable credential in the orchestrator's environment, or declare that project's verification `none` with a reason?** | **OWNER.** Raised at delivery/plan/kernel-plan-m2.md:626 as "the one genuine owner decision this re-grounding surfaced", explicitly due at M4's pilot. `pulse` deploys to a live target, so it is now live, and no decision record exists for it |
-| M4-D-22 | **Does the kernel keep its `claude/mN-pM-<slug>` branch convention when Tiphys drives it, or does the branch pattern become project-supplied?** | ORCHESTRATOR. Recommend project-supplied, in pilot bootstrap. The pattern is hardcoded in a SHIPPED schema (src/gates/schemas/phase-declaration.schema.json:18) and the branch name is what derives the phase id, so no adopted project can use its own convention. This is the concrete, measurable form of the collision DR-0034 deferred and DR-0036 un-deferred |
+| M4-D-21 | **Release-verification credentials where a platform offers no read-only scope.** | **CLOSED 2026-09-15 by DR-0039: accept it, orchestrator-only, enforced by code.** **NOTE, revision 2:** DR-0037 removes its M4 instance. The kernel publishes to npm under OIDC trusted publishing and carries no long-lived write credential, so there may be nothing for D3 to enforce against during M4. The decision stands; its first application may be M5. **OWNER.** Raised at delivery/plan/kernel-plan-m2.md:626 as "the one genuine owner decision this re-grounding surfaced", explicitly due at M4's pilot. `pulse` deploys to a live target, so it is now live, and no decision record exists for it |
+| M4-D-22 | **Does the kernel keep its `claude/mN-pM-<slug>` branch convention when Tiphys drives it, or does the branch pattern become project-supplied?** | **REVISION 2: loses its M4 witness.** The collision is real and is now unobservable in M4, because the only subject IS the repository whose convention is hardcoded. Parameterising it becomes an untested change. ORCHESTRATOR. Recommend project-supplied, in pilot bootstrap. The pattern is hardcoded in a SHIPPED schema (src/gates/schemas/phase-declaration.schema.json:18) and the branch name is what derives the phase id, so no adopted project can use its own convention. This is the concrete, measurable form of the collision DR-0034 deferred and DR-0036 un-deferred |
 | M4-D-23 | **Is DR-0029 Part 2c (the untrusted-project-content boundary) an M4 deliverable?** | ORCHESTRATOR. Recommend NO for M4, and recommend RESTATING Part 3b item 7's exclusion explicitly in M4's plan rather than letting it go silent. Neither subject has untrusted contributors, and building a prompt-injection boundary with no adversary to witness it against is machinery for a state the milestone never enters |
 | M4-D-24 | **Where does the DR-0035 round counter live, and what happens at the cap?** | ORCHESTRATOR. Recommend DERIVING the count from artifacts (review documents in `delivery/review/`, commits on the phase branch) rather than remembering it, in a named file, because a rule that depends on memory has twice been recorded here as not surviving. At the cap the action is DR-0016's fresh implementer plus a third review contract, written as a command. DR-0029 forbids a threshold in the kernel, so the threshold is the project's declaration and the kernel at most ships the contract for expressing one |
 
@@ -784,7 +803,7 @@ stated as the MECHANISM, not the instance, per the fix-round contract. The
 
 | id | Mechanism | Precedent | Binding mitigation |
 |---|---|---|---|
-| H-A (H8, H15, H22, H33, H47, H52, H59, H68) | **The kernel is both subject and instrument, so a plugin defect and a kernel defect present identically.** Eight of the seventy hazards are this one mechanism | Named in the record that created it: "self-hosting is that shape by construction", and this repository's dominant recorded failure is a guard that cannot go red | Hold DR-0036's retained-authority condition rather than eroding it, AND make the attribution mechanical: every kernel-subject failure is reproduced against the SUBPROCESS adapter, no plugin, before it is attributed. Without that step every red is ambiguous and the round attacks the wrong half. State, in the plan, how anyone would NOTICE the condition eroding |
+| H-A (H8, H15, H22, H33, H47, H52, H59, H68) | **The kernel is both subject and instrument, so a plugin defect and a kernel defect present identically.** Eight of the seventy hazards are this one mechanism. **REVISION 2: this got worse, and by exactly one mitigation.** There are TWO axes and revision 1 conflated them | Named in the record that created it: "self-hosting is that shape by construction", and this repository's dominant recorded failure is a guard that cannot go red | **Axis 1, plugin versus kernel: the mechanical control SURVIVES.** Reproduce every kernel-subject failure against `subprocessAdapter` with no plugin before attributing it. That adapter ships (src/spawn.ts:155) and is the default (src/spawn.ts:463), so the two defects stay discriminable. **Axis 2, subject versus instrument: the control is GONE.** The pilot was it. Every M4 observation is now self-hosted, and the only remaining mitigation on this axis is DR-0036's retained-authority condition, which is a HUMAN control, not a mechanical one. This is a reduction in assurance of the same kind DR-0034 recorded when it cut its three falsification controls, and it is written here so nobody infers that two mechanical mitigations still stand. The plan must state how anyone would NOTICE the condition eroding, because noticing is now the whole defence |
 | H-B (H7, H13, H14, H18, H25, H29, H30, H44, H54, H57, H67) | **A guard whose condition does not test the property that matters.** Eleven instances, each in a different subsystem | Six recorded variants already: the watchdog testing existence; the watchdog including the orchestrator's own worktrees; the expired watchdog; the ASCII check blind to NUL; the delete dry-run; the stop condition that cannot go green | Every M4 acceptance criterion names the DANGEROUS state it reddens against, and a class needs two structurally different members. Specifically: the write-block needs a refused write AND a permitted ref update; the credential witness is observed from inside the agent turn; the exclusion witness is two clones both acquiring against today's code |
 | H-C (H14, H25, H32, H38, H54) | **A green bundle read as a gate-level assertion, on a gate that asserted nothing.** `check-dual-review` has NEVER run non-vacuously: zero verdict documents exist against 199 files in `delivery/review/`, and the registry admits it | T-009 one scope smaller, already documented in the agent rules with a four-fact reading procedure | Quote per-gate units, never a bundle green. For `check-dual-review` additionally quote the verdict COUNT and the verdict VALUES. On a consuming project, enumerate and justify every `not-applicable`, because an all-not-applicable bundle is green and worthless |
 | H-D (H12, H31, H16, H44) | **A guard shipped without its carve-out gets switched off rather than fixed**, and then cannot go red for the rest of the milestone | The migration table itself flags the undesigned infra-hotfix bypass; the pilot already dispatched outside the kernel because the scrub had no agent-shaped path | The bypass ships in the SAME phase as the block, as a first-class declared and logged act, with a red witness on each arm. The credential path is settled by a running prototype BEFORE acceptance criteria are written |
@@ -803,22 +822,46 @@ DR-0036 item 5 requires these separately, "since they are not the same". They
 are not, and the asymmetry runs the opposite way to the intuition: the kernel is
 the CHEAPER subject to start and the HARDER one to trust.
 
-### 9.1 `pulse`
+### 9.1 `pulse`: WITHDRAWN
 
-1. **A-2's remaining half is done**: both repositories private, before any fleet
-   state is pushed. This is the one entry condition with a deadline attached,
-   because a fleet repository accumulates work histories and review evidence
-   about a personal-finance application and flipping visibility later does not
-   unpublish what was already fetched.
-2. **M4-D-16 is answered**: which session owns `pulse`, and how exclusion is
-   enforced across two of them.
-3. **The pilot is RE-PROBED** and its current state written into the plan.
-   Everything this intake says about `pulse` is a claim about a document.
-4. **M4-D-17 is answered**, or `pulse` cannot record a truthful review under the
-   shipped kernel.
-5. **A base suite result is recorded**, since `pulse` has none.
-6. Charter validated, and shown inside DR-0029 Part 3a and outside Part 3b, with
-   any Part 3c degraded property declared in the mode rather than discovered.
+Revision 1 listed six entry conditions for `pulse`. **They are withdrawn, not
+deleted-in-silence**, because DR-0037 puts `pulse` out of this orchestrator's
+reach and a plan author would otherwise try to discharge them.
+
+Two of the six were about repository visibility. DR-0037 part 2 closes those:
+the owner has decided `pulse` is a portfolio project and stays public, and the
+kernel must not require otherwise. The remaining four (re-probe, the
+single-family review question, a base suite result, the DR-0029 Part 3a and 3b
+compliance check) fall to whoever delivers `pulse`, not to this orchestrator.
+
+**What M4 loses by having no pilot subject, each item with its probe.** This is
+the list a later reader needs, and it is longer than "greenfield is untested":
+
+- **The `deploy` and `migrations` gates never run non-vacuously**, and their two
+  adapters stay fixture-only. The kernel has no migrations and no live platform.
+  `git ls-files | grep -iE 'migrations/|prisma|supabase|vercel'` returns two
+  test fixtures and no source tree.
+- **Nine of the thirteen M4 migration-table rows lose their subject**, not the
+  seven revision 1 named. Add R-071 (delivery/requirements/migration-table.md:120)
+  and R-097 (delivery/requirements/migration-table.md:175). Probes against the
+  working tree: `git ls-files | grep -icE 'i18n|locale|messages\.json'` is 0;
+  `... 'e2e|playwright|cypress'` is 0; `... 'analytics|telemetry'` is 0;
+  `... 'eslint|biome'` is 0. R-045, R-046, R-050a and R-042 have nothing to
+  point at. They are not gates that report not-applicable; there is no subject
+  matter.
+- **DR-0028's extension point ships with nothing on the other end.** The kernel
+  ships the gate contract and zero project gates, and there is now no project
+  declaring gates against it.
+- **R-032's enforcement half loses the precondition its deferral named**
+  (delivery/plan/kernel-plan-m2.md:601).
+- **The charter coherence check's deferral reason UN-EXPIRES.** Revision 1
+  declared it expired because the pilot deploys to a live target. It does not,
+  from here.
+- **The downstream-fleet `validate` defect has no subject to re-witness its fix
+  against**, and the single-family review case (DR-0038) has no genuine subject
+  either: the kernel's own reviews have had more than one model name available.
+- **Cross-environment exclusion loses its only second real environment while
+  gaining urgency**, because it is the precondition for the pilot's return.
 
 ### 9.2 The kernel
 
@@ -883,7 +926,37 @@ up into a claim of self-hosting.
 5. **Repairing `delivery/STATE.md`'s decision register**, twenty records stale.
 6. **The fourteen prototype probes.** They are named in section 6 and none has
    been run.
-7. **`pulse`'s actual current state.** Section 2 item 1.
+7. **`pulse`'s actual current state.** Section 2 item 1, now permanent.
+8. **The exit test's subject, which is DEFERRED rather than open.**
+   delivery/decisions/DR-0041-the-exit-test-stays-bound-to-the-pilot-and-the-kernel-is-not-its-subject.md:1
+   decides that the first conjunct stays bound to the pilot, is currently
+   undischargeable here, and falls due at CUTOVER ENTRY on a written trigger.
+   The second conjunct, "the old process is retired", is this repository's own
+   and is not blocked at all. The plan carries the trigger; it is not a thing
+   anyone remembers.
+9. **Re-dispositioning the nine orphaned M4 migration-table rows, as ONE
+   change.** The count is pinned in three sites that must move together: the
+   migration table's milestone column, the plan's Appendix A, and a hard-coded
+   assertion at test/coverage-gate.test.ts:160. Measured: the coverage gate
+   prints `per-milestone: M1 11, M2 16, M3 74, M4 13, M5 1`. Editing any one of
+   the three alone reddens the gate. The clause-map gate asserts the same counts
+   and was not run.
+10. **The kernel's release verification, which is owed work in its own right.**
+    `release-verification.json` is what the deploy gate reads
+    (src/gates/release.ts:67) and is not tracked (`git ls-files | grep -c` returns
+    0), so that gate has never been applicable here. The gate also has no
+    post-merge call site, deferred to M4 by M2-D-11. And the shipped adapter
+    cannot bind an observation to a commit: its observe step tests a static
+    configured value (src/gates/adapters/http-json.ts:320) and its only
+    subject-binding path requires an array where the npm packument gives an
+    object (src/gates/adapters/http-json.ts:245). Doing this work gives the
+    deploy gate its first real green anywhere in this project's history.
+11. **The charter's `release-verification` field.** Its enum admits only `none`
+    and `reserved` (schemas/charter.schema.json:117) and its designed shape was
+    to be settled by "the first real project charter at M4's pilot". That
+    premise is suspended. The plan either designs the field against the kernel's
+    case or records that it stays reserved through M4. Silence leaves a shipped
+    schema permanently reserved.
 
 ## Appendix A: the derivation, reproducible
 
