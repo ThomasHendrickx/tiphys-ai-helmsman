@@ -20,8 +20,8 @@
 
 ## The measured baseline, so the pass has a target rather than a feeling
 
-Taken over the artifacts `package.json` actually ships (`files` at
-package.json:22), on branch `plan/pstack-borrow-review`.
+Taken over the artifacts `package.json` actually ships (the `files` key at
+package.json:17), on branch `plan/pstack-borrow-review`.
 
 **Project names do NOT leak, and that is worth recording as the good half.**
 `grep -rniE 'pulse|hemma|thomashendrickx'` over every shipped tree returns ZERO
@@ -63,11 +63,13 @@ preference.
 2. **The references are load-bearing DURING the build.** They are how a phase
    cites the finding it closes. Removing them mid-build removes the audit trail
    while the audit is running.
-3. **The consumer who would be hurt does not exist yet.** DR-0037 leaves the
-   kernel as M4's only subject, so during M4 the only reader of these artifacts
-   is this repository, for which the references RESOLVE. The cost lands the
-   moment a second project consumes the package, which is post-M4 by
-   construction.
+3. **The consumer who would be hurt is not in this orchestrator's scope.**
+   **Corrected after review**: an earlier version said that consumer "does not
+   exist yet", which delivery/STATE.md:65 refutes. The pilot is already
+   consuming the published kernel in another session. What is true is narrower
+   and still supports the timing: that consumer has not reported the references
+   as a defect, this orchestrator cannot act on its behalf under DR-0037, and
+   the M4 subject is this repository, for which the references RESOLVE.
 
 ## What the pass must do, so it is not "delete the comments"
 

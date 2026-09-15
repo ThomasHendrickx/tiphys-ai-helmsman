@@ -9,10 +9,13 @@
   `none` with a reason?
 - reversibility: reversible, and the direction that costs nothing is
   tightening. Withdrawing it later costs only the verification it enabled.
-- vetoable: no, this is the owner's own instruction
+- vetoable: the DIRECTION is not. The four conditions below are the
+  orchestrator's implementation of it and are vetoable.
 - revert-cost: one configuration change, plus whatever releases went verified
   under it.
-- status: **DECIDED BY THE OWNER, 2026-09-15.**
+- status: **DECIDED BY THE OWNER, 2026-09-15, BY SELECTING ONE OF THREE OPTIONS
+  THE ORCHESTRATOR WROTE.** The four conditions below are the ORCHESTRATOR's
+  implementation of that direction and are VETOABLE.
 - decided: accept the write-capable credential, held ONLY by the orchestrator,
   never passed to an implementer payload, with the boundary enforced by code
   rather than by a promise
@@ -24,10 +27,26 @@ It was raised as "the one genuine owner decision this re-grounding surfaced"
 during M2's re-grounding, and marked as falling due at M4's pilot
 (delivery/plan/kernel-plan-m2.md:626). It is due.
 
+## Provenance
+
+**The owner selected, and did not author.** The option text, verbatim as offered:
+
+> **Accept it, orchestrator only.** The token exists, but only the orchestrator
+> ever holds it. It is never passed to an implementer agent. The kernel already
+> strips credentials from every agent it starts, so this is enforced by code,
+> not by a promise.
+
+The rejected options were turning deploy checking off for that project with a
+recorded reason, and pausing while the owner checked whether a narrower token
+was available.
+
+**"Enforced by code" is in the option text the owner selected, so it is part of
+the decision.** The four conditions in the section below are the orchestrator's
+attempt to make that true and are vetoable; the direction is not.
+
 ## The decision, and the half that is not optional
 
-The credential may exist. The constraint is **who holds it**, and the owner's
-words were that this is enforced by code, not by a promise.
+The credential may exist. The constraint is **who holds it**.
 
 That is the right test and the kernel half-passes it today, which is the part
 worth stating plainly rather than reporting as done:

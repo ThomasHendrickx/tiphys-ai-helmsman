@@ -13,6 +13,13 @@
 - revert-cost: none before cutover entry.
 - status: **DECIDED BY THE ORCHESTRATOR (2026-09-15) under DR-0016**, and
   reported to the owner rather than asked.
+- **SUPERSEDED IN PART, the same day, by
+  delivery/decisions/DR-0042-reading-the-pilot-is-allowed-and-the-pilot-can-be-rebooted.md:1.**
+  The refusal of a kernel-only exit test STANDS and is reinforced. The TRIGGER
+  below is replaced in both clauses: reading the pilot is permitted, and its
+  reachability is an owner action rather than a state of the world. A review
+  noted that this record carried no forward pointer, so a reader arriving here
+  first would have followed a trigger that no longer applies.
 - decided: NO. The exit test is not amended and is not attempted kernel-only.
   The first conjunct stays bound to the pilot and is currently undischargeable
   by this orchestrator. The question falls due at cutover entry, on a written
@@ -137,12 +144,16 @@ It says in the same breath that the kernel "is not a substitute" for the pilot.
 The precise effect on the self-hosting hazard, which is easy to overstate in
 both directions:
 
-- **What SURVIVES.** The control M4's intake actually names is reproducing a
-  failure against the subprocess adapter with no plugin
-  (delivery/plan/m4-intake.md:753 is the section that carries it).
-  `subprocessAdapter` ships (src/spawn.ts:155) and is the default
-  (src/spawn.ts:463), so plugin-defect versus kernel-defect stays
+- **What SURVIVES.** The control M4's intake actually names, in its hazard
+  register under mechanism H-A, is reproducing a failure against the subprocess
+  adapter with no plugin. `subprocessAdapter` ships (src/spawn.ts:155) and is
+  the default (src/spawn.ts:463), so plugin-defect versus kernel-defect stays
   discriminable. That control is unaffected.
+  (`delivery/plan/m4-intake.md` is QUOTED here without a line, deliberately: an
+  earlier version cited a line into a document being edited in the same change,
+  the line moved twice, and both times it resolved SILENTLY to the wrong text.
+  That is the H-H failure the intake itself describes, so the fix is to stop
+  citing a moving target rather than to re-point it again.)
 - **What is LOST.** The control on the OTHER axis, subject versus instrument,
   for which the pilot was the answer. Every M4 observation is now self-hosted,
   and the only remaining mitigation on that axis is DR-0036's retained-authority

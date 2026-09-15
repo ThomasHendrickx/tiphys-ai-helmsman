@@ -76,7 +76,9 @@ is wrong: verify against git and the PR list before trusting it.
   A-2 asked for private, for a personal finance project. No credential was found
   in it; what is public is the shape of the system and the delivery paperwork,
   and the exposure that matters accrues going forward rather than having already
-  happened. Recommendation: make both repositories private now. See the
+  happened. **RECOMMENDATION RETRACTED 2026-09-15 by DR-0037**: the owner has
+  decided `pulse` is a portfolio project and stays open, and that the kernel
+  must not require otherwise. Do not act on the superseded advice below. See the
   measurement and the reasoning at
   delivery/verification/dr-0034-premise-check.md:1.
 - **THE PILOT HAS ALREADY PRODUCED THREE KERNEL DEFECTS THAT NO GATE HERE
@@ -1558,6 +1560,17 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 | DR-0014 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface design investigated, report in `delivery/verification/release-verification-interface.md` |
 | DR-0015 owner out of the merge path | decided: dual clean review is the approval, at milestone boundaries too; exit tests stay hard gates and their evidence still goes to the owner |
 | DR-0016 escalation threshold | decided: recommendation-backed questions are the agent's to take; only genuine high-impact ties reach the owner. A stalled phase gets a fresh implementer and a third contract, not a wait |
+| DR-0017 to DR-0033 | **REGISTER GAP, 2026-09-15.** These seventeen records were decided and never entered here, so this register was twenty records stale and an intake that sourced its open list from it would have been wrong. Read `delivery/decisions/` directly; this row exists so the gap is visible rather than silent |
+| DR-0034 pulse is the pilot, controls cut | decided: `pulse` is the M4 pilot; M3's three falsification controls are skipped by decision, leaving three exit-test stages unfalsified |
+| DR-0035 review is never skipped | decided: every change is reviewed; the FIX-ROUND COUNT is what tiers, floor 1 ceiling 3 |
+| DR-0036 harness adapter leads M4 | decided: the adapter goes first as `@tiphys/claude-code-plugin`; the kernel becomes a subject under the current process's retained authority |
+| DR-0037 the kernel is M4's only subject | decided: this orchestrator stays away from `pulse`; part 2 amends A-2 below, and its GENERALISATION is the orchestrator's and vetoable |
+| DR-0038 single-family review exception | decided by owner SELECTION of an orchestrator-written option: a declared, recorded exception reporting a third status |
+| DR-0039 write-capable release credential | decided by owner SELECTION: accepted, orchestrator-only; the four conditions are the orchestrator's and vetoable |
+| DR-0040 plugin is a second package here | decided: one repository, two packages; two named triggers reopen it |
+| DR-0041 exit test stays bound to the pilot | decided by the ORCHESTRATOR under DR-0016: no kernel-only exit test. SUPERSEDED IN PART by DR-0042 the same day |
+| DR-0042 reading the pilot is allowed | decided: read-only observation permitted; the owner can reboot the pilot at cutover, so the exit test is deferred and not blocked |
+| DR-0043 post-M4 package cleanup | decided: the pass runs after M4, with a measured baseline of 683 build-history references in shipped artifacts |
 
 ## Owner action items
 
@@ -1610,8 +1623,24 @@ and `A-3` meant three, one of them a literal string inside
    settings. What it unblocks: M1-P6 criterion 1's real-repository form, its
    commit-identity assertion, and the idempotence half, plus the M1 exit test's
    FULL mode. Local mode is unaffected and passes.
-4. **A-2, before M4.** Provide or approve a private remote per real fleet
-   home, for fleet-state durability.
+4. **A-2, AMENDED 2026-09-15 by DR-0037 and PARTLY DONE.** Original text:
+   "Provide or approve a private remote per real fleet home, for fleet-state
+   durability." **The PRIVATE requirement is withdrawn.** The kernel needs a
+   DURABLE remote; visibility is the project's declaration and the kernel does
+   not check it.
+   - **`pulse` half: CLOSED.** The owner has decided `pulse` and `pulse-fleet`
+     are a portfolio project and stay public. The recommendation earlier in this
+     file to make them private is SUPERSEDED and must not be acted on.
+   - **Kernel half: remote DONE, fleet home NOT.**
+     `ThomasHendrickx/tiphys-ai-helmsman-fleet` exists and is private. The
+     fleet home itself has not been created, and the remote now carries six
+     branches pushed by this orchestrator's own cross-environment-exclusion
+     probe (`probe-fleet-home`, `probe-lease-a`, `tiphys/lease`,
+     `tiphys/lease-r1`, `tiphys/lease-r2`, `tiphys/lease-r3`). It must be
+     cleaned or re-created before pilot bootstrap, and branch deletion is an
+     owner action.
+   - The GENERALISATION of this amendment beyond `pulse` is the ORCHESTRATOR's
+     inference under DR-0016, not the owner's instruction, and is vetoable.
 5. **A-4: DONE (owner, 2026-08-07).** The stale `claude/*` branches were
    deleted through the `gh` CLI. The orchestrator could not do it: this
    container's credentials are refused ref deletion with HTTP 403 on both the

@@ -79,6 +79,7 @@ anything dropped is dropped silently. It decomposes into ELEVEN clauses:
 | 9 | Owner action A-2 falls due | owner action, not a workstream |
 | 10 | D-19: intake plus plan plus a rollback procedure | this document, plus cutover |
 | 11 | The exit test: the pilot's next phase runs through v1, merged and deploy-verified entirely on v1; the old process is retired | cutover |
+| 12 | **From M4 exit onward the kernel is its own pilot-class project on v1 (SC-013).** Added after review: the paragraph's final sentence was omitted while section 1 claimed the decomposition covered the paragraph. It is the sentence whose TIMING DR-0036 changed and whose "pilot-class" wording DR-0041 relies on | cutover |
 
 **The mapping is not one-to-one and clauses 1, 2 and 9 are the ones a naive
 six-bucket decomposition loses.** Clause 9 has no workstream at all: it is an
@@ -357,9 +358,16 @@ No other file in `tasks/<id>/` has an owner, and the pilot's ad-hoc
    (that half belongs to 4.2), a turn-end hook, and the tier-to-model mapping,
    which must live in the plugin and never in `src/`.
 
-**The zero-vendor-names property is currently TRUE and cheap to keep.** A grep
-over `src/`, `bin/`, `schemas/`, `roles/` and the root YAML files for eleven
-vendor tokens yields four hits and none is a model name. Any tier-to-model or
+**The zero-vendor-NAMES property is NOT currently true, and an earlier version
+of this paragraph said it was.** A review refuted it with two shipped schemas
+that hardcode a vendor-derived branch prefix:
+src/gates/schemas/phase-declaration.schema.json:18 and schemas/plan.schema.json:153
+both carry `"^claude/m[0-9]+-p[0-9]+-.+$"`. This document cites the first of them
+itself, in M4-D-22, while claiming the property holds.
+
+**The property that IS true, stated narrowly enough to be checkable:** no vendor
+MODEL name appears in `src/`, `bin/`, `schemas/` or `roles/`. That is the one
+worth keeping, and it is the one a tier-to-model mapping in `src/` would break. Any tier-to-model or
 model-to-family mapping in `src/` breaks the property that makes a Codex or
 Cursor plugin possible at all (H26).
 
@@ -731,7 +739,7 @@ says so rather than letting a recommendation read as a finding.
 | M4-D-05 | **Does `ExecutorRequest` gain a brief path, a role, a declared tier and a phase id, and does `ExecutorRecord` gain a resolved model?** | ORCHESTRATOR. Recommend adding all of them in ONE kernel phase up front rather than per discovered need. An agent payload's whole input is its brief and the request does not carry the path; each later addition is a schema-and-test change, and the fix-round contract's dominant measured waste is fixing the instance when the defect is the mechanism |
 | M4-D-06 | **The model-resolution contract: what shape, where does the record live, who owns the family vocabulary, and when is it written?** | ORCHESTRATOR, one PROTOTYPE-BLOCKED input. Recommend, in four parts. (a) SHAPE: instantiate src/gates/schemas/release-record.schema.json:26 rather than inventing one, including the verbatim subject echo compared field by field before the outcome is read, which is the misattribution guard. (b) WHEN: at TURN END, not at launch, because a harness that requests one model and is served another under load resolves mid-turn; whether that is real for Claude Code is the prototype. (c) VOCABULARY: the PLUGIN ships the family vocabulary, keeping vendor names out of `src/` as a hard requirement, and the record carries the vocabulary's identity so the kernel refuses to compare records from different vocabularies. (d) LOCATION: adapter-written in the fleet home, with closeout copying the family token into the verdict so the pull request stays self-contained per DR-0031. **An absent record is ERROR, never green and never not-applicable**: copy src/gates/release.ts:609 rather than re-arguing the rule |
 | M4-D-07 | **How does a real agent payload authenticate under the credential scrub, and may the plugin set `allowPrCredentials`?** | ORCHESTRATOR, PROTOTYPE-BLOCKED. Recommend: `extraAllowlist` wired through `spawnTask` (it exists as data at src/exec/env.ts:154 and nothing reaches it), with a WRITTEN per-name reason for every crossing name; `allowPrCredentials` FORBIDDEN for any project payload, as a declared constraint. The red witness must be observed FROM INSIDE the agent turn, because the gate probes the constructed environment and a guard that checks only the object is the cannot-go-red shape this repository keeps paying for (H13, H31, H67) |
-| M4-D-08 | **Does `schemas/verdict.schema.json` gain a `head` property, and does its escalation rule widen from `{high, critical}` to include `medium`?** | ORCHESTRATOR. Recommend BOTH, in one kernel phase, released as 0.2.0. The migration cost is measurably ZERO: `grep -rln '^kind: verdict' delivery/review/` exits 1, so no document validates under the narrower rule today. Without the first, DR-0012 conditions 1 and 4 stay asserted rather than checked; without the second, APPROVE beside an unresolved medium finding passes at exit 0 |
+| M4-D-08 | **Does `schemas/verdict.schema.json` gain a `head` property, and does its escalation rule widen from `{high, critical}` to include `medium`?** | ORCHESTRATOR. Recommend BOTH, in one kernel phase, released as 0.2.0. **THE MIGRATION COST IS NOT ZERO AND AN EARLIER VERSION SAID IT WAS "measurably ZERO".** That claim came from a grep scoped to `delivery/review/`, which is exactly the wrong-scoped-search-read-as-absence shape section 2 names as the reviewer's first check, committed by the author of that sentence. Re-derived tree-wide: `grep -rlE '^kind: verdict' --exclude-dir=node_modules --exclude-dir=.git .` returns **SEVEN** documents, none carrying a `head` field. Two are real verdicts under `delivery/evidence/m3-exit-test/e1/e1-7/`, both reading FIX-ROUND-NEEDED; five are decorrelation fixtures under `witness/fixtures/dual-review/`. A REQUIRED `head` breaks all seven. The plan must therefore decide whether `head` is required or optional, and count what the change touches. Without the first, DR-0012 conditions 1 and 4 stay asserted rather than checked; without the second, APPROVE beside an unresolved medium finding passes at exit 0 |
 | M4-D-09 | **Who opens pull requests and merges after cutover?** | ORCHESTRATOR. Recommend NOT the kernel: it states in its own source that it never opens pull requests and that boundary is deliberate. Recommend the capability lands in the PLUGIN, invoked by the orchestrator which holds the credential, and that under DR-0036's condition it stays with the current process for the whole of M4. It is therefore a CUTOVER deliverable, not an adapter one, and it is the freeze point's most authority-laden switch |
 | M4-D-10 | **Does M4 build a kernel stop condition, or does retirement accept that the false-stop mechanism is lost?** | ORCHESTRATOR. Recommend BUILD IT. The rule it enforces has three recorded violations behind it and no destination in the kernel. The replacement must DERIVE its working directory rather than hard-coding a scratchpad path, must carry a delivered-elsewhere predicate (the existing one cannot go green for a phase whose code landed in another branch), and must exit nonzero while work remains, because a nonzero exit is a fact that cannot be reported around |
 | M4-D-11 | **Does the distributed lease live in the tracked fleet tree, outside git, or on a dedicated git ref?** | ORCHESTRATOR, PROTOTYPE-BLOCKED. Recommend a dedicated ref used as a compare-and-swap register through `git push --force-with-lease`, a shape neither the plan nor DR-0007 considers. It needs no new service, it is a genuine CAS, and its safety does not depend on comparing two machines' wall clocks, which matters because the tolerance today is five seconds and C-2 forbids the obvious escape. The probe is whether the remote honours `--force-with-lease` atomically |
@@ -768,11 +776,16 @@ already exists costs the owner the attention DR-0016 exists to protect.
 | **A-4 (existing).** Remote branch deletion | **BLOCKED, and deliberately off the critical path.** 132 remote branches are pushed and unmerged; `git push --dry-run --delete` exits 0 reporting success regardless, so there is no non-destructive pre-check. M4-D-15 recommends defining drain over in-flight work precisely so this cannot block the milestone |
 
 **What the corrected picture means for the plan.** The kernel's fleet-home
-entry condition (section 9.2 item 1) is DISCHARGED: the remote exists and is
-private. The fleet home itself is deliberately NOT initialized, because
-`tiphys init` against it is pilot-bootstrap work and D-19 forbids M4
+entry condition (section 9.2 item 1) is **HALF discharged, and an earlier
+version of this paragraph wrongly said DISCHARGED.** The REMOTE exists. The
+FLEET HOME does not: entry condition 9.2 item 1 requires a fleet home with the
+kernel clone realized under its `projects/`, and `tiphys init` has deliberately
+not been run, because that is pilot-bootstrap work and D-19 forbids M4
 dispatching anything before its plan exists
-(delivery/plan/kernel-plan-v1.md:394).
+(delivery/plan/kernel-plan-v1.md:394). **And the remote is no longer clean**: a
+cross-environment-exclusion probe dispatched by this orchestrator pushed six
+branches to it. It must be cleaned or re-created before bootstrap, and branch
+deletion is an owner action.
 
 **Four of the twenty-four open decisions are now closed**, by
 delivery/decisions/DR-0037-the-kernel-is-m4s-only-subject-and-tiphys-has-no-opinion-on-project-visibility.md:1,
@@ -807,7 +820,7 @@ stated as the MECHANISM, not the instance, per the fix-round contract. The
 |---|---|---|---|
 | H-A (H8, H15, H22, H33, H47, H52, H59, H68) | **The kernel is both subject and instrument, so a plugin defect and a kernel defect present identically.** Eight of the seventy hazards are this one mechanism. **REVISION 2: this got worse, and by exactly one mitigation.** There are TWO axes and revision 1 conflated them | Named in the record that created it: "self-hosting is that shape by construction", and this repository's dominant recorded failure is a guard that cannot go red | **Axis 1, plugin versus kernel: the mechanical control SURVIVES.** Reproduce every kernel-subject failure against `subprocessAdapter` with no plugin before attributing it. That adapter ships (src/spawn.ts:155) and is the default (src/spawn.ts:463), so the two defects stay discriminable. **Axis 2, subject versus instrument: the control is GONE.** The pilot was it. Every M4 observation is now self-hosted, and the only remaining mitigation on this axis is DR-0036's retained-authority condition, which is a HUMAN control, not a mechanical one. This is a reduction in assurance of the same kind DR-0034 recorded when it cut its three falsification controls, and it is written here so nobody infers that two mechanical mitigations still stand. The plan must state how anyone would NOTICE the condition eroding, because noticing is now the whole defence |
 | H-B (H7, H13, H14, H18, H25, H29, H30, H44, H54, H57, H67) | **A guard whose condition does not test the property that matters.** Eleven instances, each in a different subsystem | Six recorded variants already: the watchdog testing existence; the watchdog including the orchestrator's own worktrees; the expired watchdog; the ASCII check blind to NUL; the delete dry-run; the stop condition that cannot go green | Every M4 acceptance criterion names the DANGEROUS state it reddens against, and a class needs two structurally different members. Specifically: the write-block needs a refused write AND a permitted ref update; the credential witness is observed from inside the agent turn; the exclusion witness is two clones both acquiring against today's code |
-| H-C (H14, H25, H32, H38, H54) | **A green bundle read as a gate-level assertion, on a gate that asserted nothing.** `check-dual-review` has NEVER run non-vacuously: zero verdict documents exist against 199 files in `delivery/review/`, and the registry admits it | T-009 one scope smaller, already documented in the agent rules with a four-fact reading procedure | Quote per-gate units, never a bundle green. For `check-dual-review` additionally quote the verdict COUNT and the verdict VALUES. On a consuming project, enumerate and justify every `not-applicable`, because an all-not-applicable bundle is green and worthless |
+| H-C (H14, H25, H32, H38, H54) | **A green bundle read as a gate-level assertion, on a gate that asserted nothing.** `check-dual-review` has never run non-vacuously ON A REAL PHASE. **Corrected: "zero verdict documents exist" was scoped to `delivery/review/` and is false tree-wide**, where seven exist (two real ones under `delivery/evidence/`, five fixtures under `witness/fixtures/dual-review/`). The gate looks in the directory it is pointed at, so the original observation about `delivery/review/` holds; the ABSENCE claim did not | T-009 one scope smaller, already documented in the agent rules with a four-fact reading procedure | Quote per-gate units, never a bundle green. For `check-dual-review` additionally quote the verdict COUNT and the verdict VALUES. On a consuming project, enumerate and justify every `not-applicable`, because an all-not-applicable bundle is green and worthless |
 | H-D (H12, H31, H16, H44) | **A guard shipped without its carve-out gets switched off rather than fixed**, and then cannot go red for the rest of the milestone | The migration table itself flags the undesigned infra-hotfix bypass; the pilot already dispatched outside the kernel because the scrub had no agent-shaped path | The bypass ships in the SAME phase as the block, as a first-class declared and logged act, with a red witness on each arm. The credential path is settled by a running prototype BEFORE acceptance criteria are written |
 | H-E (H19, H36, H60) | **The path that cannot be rehearsed is the one that fails.** Cutover and reclaim recovery both have this shape | Measured: the first real publish of 0.1.0 was refused by the registry after four dry runs all exited 0 | Each rollback step is individually rehearsable, and the steps that are NOT are NAMED with their unrehearsable property stated. At least one reclaim rehearsal happens in a genuinely fresh container against the real remote, with the residual written down rather than closed |
 | H-F (H43, H63) | **A milestone-closing condition evaluated as a judgment rather than computed.** "Drain", "retired" and "the phase ran on v1" are all this shape | Three recorded false stops, each a judgment presented as a status report; the fix was a script exiting nonzero while work remains | Drain and the retirement criteria are RUNNABLE, exit nonzero while any criterion is unmet, and are demonstrated red BEFORE the first deletion |
@@ -867,8 +880,11 @@ the list a later reader needs, and it is longer than "greenfield is untested":
 
 ### 9.2 The kernel
 
-1. **A fleet home exists for it**, with its own private remote (the requested
-   `A-n`). `tiphys init` refuses a non-empty directory that is not already a
+1. **A fleet home exists for it**, with its own DURABLE remote (per DR-0037's
+   amendment of A-2; an earlier version said "private", which is the project's
+   declaration and not the kernel's requirement). **NOT MET.** The remote exists
+   and carries six probe branches this orchestrator pushed; the fleet home
+   itself has not been created. `tiphys init` refuses a non-empty directory that is not already a
    fleet home, so this is a SEPARATE fleet home with the kernel clone realized
    under its `projects/`, per D-5. Not a conversion of this checkout.
 2. **The charter is copied from the exit-test evidence and amended in two

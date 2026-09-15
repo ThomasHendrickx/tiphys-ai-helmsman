@@ -11,21 +11,45 @@
 - vetoable: no, this narrows nothing the owner did not narrow
 - revert-cost: one enum value, one check arm, and a re-review of anything that
   merged under the exception.
-- status: **DECIDED BY THE OWNER, 2026-09-15.**
+- status: **DECIDED BY THE OWNER, 2026-09-15, BY SELECTING ONE OF THREE OPTIONS
+  THE ORCHESTRATOR WROTE.** See the provenance section below; this line was
+  originally just "DECIDED BY THE OWNER", which an adversarial review found
+  unverifiable from the record alone.
 - decided: the project DECLARES that only one family is available; the check
   reports a THIRD status that is neither green nor red and states the fact
   plainly; no false value is ever written
 - date: 2026-09-15
 
-## The decision, in the owner's terms
+## Provenance, stated exactly, because this record narrows an owner-reserved condition
 
-The owner chose the declared exception over two alternatives: keeping the rule
-strict (which blocks merge entirely in a single-family environment) and
-dropping the family requirement (which keeps two reviews but loses the reason
-they are two).
+**The owner did not write these words. The owner SELECTED them.** A review found
+this record labelled "the decision, in the owner's terms" over text that was
+entirely the orchestrator's, which under the evidence rule makes the owner's
+agreement unverifiable from the record. The correction is to say what happened.
 
-The property the owner protected: **nobody has to write anything false, and
-nobody can hide it.**
+The orchestrator put three options to the owner and the owner chose the first.
+The option text, verbatim as it was offered:
+
+> **Declared exception.** The project writes down that only one family is
+> available. The check then reports a third status, not green and not red. It
+> says clearly: reviewed twice, but not by two families. Nobody has to write
+> anything false, and nobody can hide it.
+
+The two rejected options, also verbatim, so the choice is legible:
+
+> **Keep it strict.** No exception. A project with one AI family cannot merge
+> under delegated authority. It has to fall back to you approving each merge by
+> hand. Safest, but it blocks pulse today.
+
+> **Drop the family rule.** Two reviews are still required, but they may come
+> from the same family. Simplest. Cost: two reviews from one family tend to miss
+> the same things, which is the reason the rule exists.
+
+**Why the distinction matters and is not pedantry.** DR-0012's conditions are
+owner-reserved. An orchestrator that writes an option, has it selected, and then
+records the option as "the owner's terms" has laundered its own recommendation
+into an owner decision. The choice was genuinely the owner's; the framing was
+not, and a later reader must be able to tell which.
 
 ## Why this was the owner's to decide and not the orchestrator's
 

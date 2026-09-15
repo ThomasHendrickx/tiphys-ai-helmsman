@@ -8,7 +8,11 @@
 - reversibility: the scope half is fully reversible and costs a re-plan. The
   visibility half is reversible in principle and irreversible in practice: what
   a public repository has already served cannot be unpublished.
-- vetoable: no, both halves are the owner's own instruction
+- vetoable: **not uniformly, and an earlier version of this line was wrong.**
+  Part 1 and the `pulse` half of part 2 are the owner's and are not vetoable.
+  The GENERALISATION in part 2, amending owner action A-2 for every project, is
+  an ORCHESTRATOR decision under DR-0016 built on one owner sentence about one
+  project, and it IS vetoable.
 - revert-cost: bringing `pulse` back costs whatever M4 phases were planned
   without it, plus the cross-session exclusion that is not built.
 - status: **DECIDED BY THE OWNER, 2026-09-15.**
@@ -29,11 +33,15 @@ DR-0036 made the kernel a SECOND subject alongside `pulse`. This makes it the
 ONLY one. `pulse` keeps running in a session this orchestrator does not own.
 
 **This does not reopen DR-0034.** `pulse` remains the pilot project. What
-changes is who works on it. DR-0034 named the pilot; it did not assign the
-session.
+changes is who works on it. **Corrected after review:** an earlier version said
+DR-0034 "did not assign the session", which overstates the cleanliness of the
+gap. DR-0034 named the pilot and PRESUMED this session would run it, without
+deciding it. This record decides it.
 
 **The reason it is not a close call.** delivery/STATE.md:71 already carried the
-standing instruction not to touch either repository, because two orchestrators
+orchestrator's OWN standing note not to touch either repository (it is the
+orchestrator's note, not an owner instruction, and an earlier version of this
+sentence called it the latter), because two orchestrators
 against one fleet is precisely the contention the session lock exists to
 prevent, and cross-environment exclusion is a thing M4 is BUILDING rather than
 a thing it has. Working `pulse` from here would have meant relying on the
@@ -74,10 +82,23 @@ project owns the PREDICATE"
 (delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:50).
 Durability is process. Visibility is predicate.
 
-**A-2 is amended, not discharged.** Its requirement is now: a DURABLE remote
-per real fleet home. Visibility is declared by the project and the kernel does
-not check it. The `pulse` half of A-2 is CLOSED by this decision rather than
-left open forever against an owner who has said no.
+**A-2 is amended, not discharged, and the amendment has two halves with
+different authority.** A review found this section treating both as the owner's,
+which over-reads one sentence about one project.
+
+- **The `pulse` half is the OWNER's and is closed.** The owner has refused the
+  private requirement for `pulse` and given the reason. Not vetoable.
+- **The generalisation is the ORCHESTRATOR's and is vetoable.** A-2's
+  requirement becomes: a DURABLE remote per real fleet home, with visibility
+  declared by the project and not checked by the kernel. The owner said
+  "Tiphys should not care about pulse anyway"; extending that to every future
+  project is the orchestrator's inference from DR-0029's split, not the owner's
+  instruction, and it is labelled as such.
+
+**The register must move in the same change.** `delivery/STATE.md` is the sole
+allocator of `A-n` ids and still carries the old A-2 text plus a recommendation
+to make `pulse` private, which is now the opposite of what was decided. A stale
+register beats a fresh record in a careless read.
 
 **What this costs, so it is not discovered later.** A public fleet home
 publishes the delivery paperwork of whatever it delivers: work histories,
@@ -88,9 +109,19 @@ declaration.
 
 ## Measured at the time of deciding
 
-- `ThomasHendrickx/tiphys-ai-helmsman-fleet` exists, is PRIVATE, and is empty
-  (`size` 0, no commits). It is the kernel's fleet-home remote, and it
-  discharges the kernel's half of the amended A-2.
+- `ThomasHendrickx/tiphys-ai-helmsman-fleet` exists, is PRIVATE, and WAS empty
+  (`size` 0, no commits) when this record was written. **It is no longer, and
+  this orchestrator caused that.** A cross-environment-exclusion probe it
+  dispatched pushed six branches to it later the same evening:
+  `probe-fleet-home`, `probe-lease-a`, `tiphys/lease`, `tiphys/lease-r1`,
+  `tiphys/lease-r2` and `tiphys/lease-r3`. Recorded here rather than left to be
+  discovered. It does not change the decision. It does mean the fleet home must
+  be cleaned or re-created before pilot bootstrap, and branch deletion is an
+  owner action.
+- The remote discharges the REMOTE half of the kernel's entry condition. It does
+  NOT discharge the entry condition itself, which requires a fleet home with the
+  kernel clone realized under its `projects/`. An earlier version of the intake
+  said "DISCHARGED" and was wrong.
 - The fleet home itself is NOT yet initialized. `tiphys init` has not been run
   against it, deliberately: that is pilot-bootstrap work and D-19 forbids M4
   dispatching anything before its plan exists

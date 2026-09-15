@@ -50,8 +50,14 @@ it, and a deferred one does not.
 
 ## The trigger, restated
 
-DR-0041's trigger is superseded in its second clause only. At **cutover
-entry**:
+**DR-0041's trigger is superseded in BOTH clauses, and an earlier version of
+this line said "the second clause only".** A review caught the inconsistency:
+the restated trigger below carries no cross-environment-exclusion clause at all,
+so claiming the first clause survived was false on its face. Under the narrower
+reading in "What this does not settle" below, the pilot returns only for the
+exit test and not as a working subject, so exclusion is not its precondition.
+
+At **cutover entry**:
 
 1. Re-probe the pilot read-only, which is now permitted, and record its current
    state. This is the first act, because everything below depends on facts that
@@ -88,5 +94,7 @@ Whether the pilot returns as a SUBJECT for the non-cutover workstreams, or only
 for the exit test. This record assumes the narrower reading, because the owner's
 words were "to do the checks". If the pilot were to return as a full subject,
 DR-0037's contention argument comes back and cross-environment exclusion
-becomes its precondition, exactly as
-delivery/plan/m4-intake.md:117 already sequences it.
+becomes its precondition, exactly as `delivery/plan/m4-intake.md` already
+sequences it in section 1.1. (Quoted without a line for the reason DR-0041 now
+records: the intake is being edited and a line citation into it resolves
+silently to the wrong text.)

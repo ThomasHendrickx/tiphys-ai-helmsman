@@ -25,8 +25,10 @@ DR-0008 settled the NAMES: two packages, `@tiphys/kernel` and
 `@tiphys/claude-code-plugin`, published to public npmjs
 (delivery/decisions/DR-0008-release-registry.md:38). It said nothing about
 repository layout, and nothing has since. Measured: `package.json` carries no
-`workspaces` field and `git ls-files | grep -ci plugin` returns 0, so the
-question was open by construction rather than by omission.
+`workspaces` field, and `git ls-files | grep -ci plugin` scoped to `src/ bin/
+test/ package.json` returns 0, so the question was open by construction rather
+than by omission. (Unscoped, that grep now returns 1: this record. A baseline
+that counts itself is not a baseline, which a review caught.)
 
 ## The decision, in the owner's terms
 
@@ -81,6 +83,16 @@ gets revisited and the next reader should not have to reconstruct it:
    work that has nothing to do with the kernel.
 3. **Release cadence is coupled.** A plugin fix cannot ship without the
    repository's whole gate bundle running.
+
+**The split cost, corrected after review.** Saying a later split is
+"mechanical" is too cheap. By the time it happens the plugin's phases have
+produced work histories, reviews and phase declarations under `delivery/`, all
+citing this repository's paths, and its branches were audited by a scope gate
+that derives phase ids from this repository's convention
+(src/gates/schemas/phase-declaration.schema.json:18). A split is a history
+filter PLUS re-homing every one of those artifacts and its citations. The
+asymmetry argument survives that, because merging two repositories is still
+worse, but the number is not zero.
 
 **The answer to all three is the reversibility asymmetry, not a rebuttal.**
 Point 2 is the strongest and it is not yet real: there is one harness adapter
