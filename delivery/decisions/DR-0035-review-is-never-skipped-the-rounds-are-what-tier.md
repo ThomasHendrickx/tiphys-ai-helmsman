@@ -39,8 +39,10 @@ The two roles are named as the shipped vocabulary names them
 schemas/role-brief.schema.json:30 is `clean-room-reviewer` itself):
 `clean-room-reviewer` and `implementer`. The unit is the FIX ROUND, which
 CLAUDE.md already treats as a first-class concept with its own contract at
-CLAUDE.md:333, and which checklists/clean-room.yaml:38 already scopes probes
-to.
+CLAUDE.md:333, and which the clean-room checklist already scopes probes to at
+`checklists/clean-room.yaml:38`. (That path is QUOTED rather than cited because
+`checklists/` is not a declared citation root, which is a real gap recorded in
+delivery/plan/pstack-borrow-review.md:1.)
 
 ## The table
 

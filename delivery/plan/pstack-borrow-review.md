@@ -48,8 +48,8 @@ At the cap, DR-0016 applies: a fresh implementer and a third review contract,
 not a fourth round.
 
 The selector is built and pushed, in the sandbox repository, with the
-measurement it rests on. Four small things in `.claude/` are worth doing on top
-of it. Nothing is waiting on you.
+measurement it rests on. Five small things are worth doing on top of it, four
+of them text edits. Nothing is waiting on you.
 
 ## 1. Current state of Tiphys
 
@@ -203,12 +203,12 @@ string, while Tiphys's `brief compose` genuinely refuses and names the path.
 
 ## 5. The work
 
-**Four items.** An earlier draft had sixteen, and an adversarial reviewer
+**Five items.** An earlier draft had sixteen, and an adversarial reviewer
 pointed out that a sixteen-item plan is the disease this document diagnoses.
 The twelve that were cut are not lost: they are in section 4 with their
-verdicts, and any can be picked up when something makes it worth it. These four
-are text edits in `.claude/`, each closes a measured failure, and together they
-are about an hour.
+verdicts, and any can be picked up when something makes it worth it. Four are text edits in `.claude/`; the fifth is a
+ten-line configuration change in the kernel. Each closes a measured failure,
+and together they are about an hour.
 
 | # | Item | Verify | Measured failure it closes |
 |---|---|---|---|
@@ -216,6 +216,7 @@ are about an hour.
 | 2 | Bind the clean-room checklist to the dispatch step | `node bin/tiphys.ts checklist resolve --checklist clean-room --framing criteria-contract` | 13 of 16 reviews since it shipped never used it |
 | 3 | Record the reviewer's model in every review header | grep the next two review headers | Decorrelation is unauditable across most of the record |
 | 4 | Close the tuition promotion leak | `npm test` | 10 entries never reached the shipped feed |
+| 5 | Add the missing citation roots | re-run the citations gate over a document citing each | 4 shipped trees cannot be cited by line |
 
 **1. Three stale lines.** `.claude/skills/phase-delivery/SKILL.md:8` says a
 phase is "merged by the owner", which DR-0012 delegated. Line 13 says the
@@ -265,6 +266,26 @@ Acceptance, in two parts so no promotion is prejudged: (a) the guard reddens on
 an entry declaring neither `yes` nor `no`, naming the file; (b) all eleven
 silent entries gain an explicit declaration. What gets promoted falls out of
 (b) rather than being fixed in advance.
+
+**5. The missing citation roots.** Found by running the gate rather than by
+reading it: the citations gate reddened twice while this document was being
+written, on `role-model-config.yaml:7` and on `checklists/clean-room.yaml:38`,
+both reported as "matches no declared root". The declared roots at
+src/gates/citations.ts:200 are `src/`, `bin/*.ts`, `test/`, `scripts/`,
+`delivery/`, `schemas/`, `roles/`, `tuition/`, root `*.md` and root `*.json`.
+
+So four shipped trees cannot be cited by line from a `delivery/` document:
+`checklists/`, `templates/`, `witness/`, and root-level `*.yaml`, which is
+`gate-registry.yaml`, `assurance-modes.yaml` and `role-model-config.yaml`.
+Every one is in the `files` array of package.json:20 and therefore ships. The
+red-witness system's 162 specs are among them.
+
+The consequence is quiet rather than loud, which is why it survived: an author
+who hits it does what I did and QUOTES the path in backticks, which the gate
+treats as deliberately non-resolving. The evidence chain degrades one citation
+at a time and nothing reports it. Acceptance: a document citing one line in
+each of the four resolves all four, and the gate's unit count rises by four
+against the same document with them quoted.
 
 ## 6. The decision, now answered
 
