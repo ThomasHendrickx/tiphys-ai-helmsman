@@ -42,6 +42,19 @@ The four reversals, each with its consequence for a phase below:
    implement the line as written. **M4-P9 must carry the restated carve-out,
    and its Bash arm is withdrawn from the hook entirely.**
 
+5. **The resolved model IS observable**, by a hook, at turn end, without
+   trusting the agent. The intake's appendix said it was not. A hook resolved
+   the real model for a subagent that claimed a different vendor's in the same
+   turn. **M4-P7 is therefore designed on OBSERVATION, not self-report**, and
+   the forgeability of a self-written `produced-by` is now demonstrated rather
+   than argued.
+6. **The sha-binding fix was BUILT and red-witnessed** in 74 lines against the
+   real registry, and **the post-merge call site is not missing code**: `deploy`
+   already runs on every push to `main` and reports not-applicable only because
+   the declaration file is absent. **So the binding and the call site are ONE
+   phase, not two**, and any phase entry below that budgets them separately is
+   wrong.
+
 Two questions the intake marked PROTOTYPE-BLOCKED are now CLOSED by measurement:
 M4-D-01 (DR-0010: option 3, the hybrid; option 1 refuted for ship phases) and
 M4-D-11 (a dedicated BRANCH is a real compare-and-swap, with three conditions

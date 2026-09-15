@@ -332,3 +332,206 @@ connection and all three cells read `adapter overran the per-attempt timeout of
 have been exactly the mistake this repository keeps paying for. The rewritten
 harness prints `fixture served N request(s)` so a cell that never reached the
 server cannot be mistaken for one that did.
+
+## 6. TWO structurally different members of the class, plus the misconfiguration arm
+
+The class is "the deploy gate is green for a commit that was not published".
+One witness is not a class, so:
+
+| # | member | mechanism | arm | measured |
+|---|---|---|---|---|
+| 1 | WRONG COMMIT | latest was published from a different commit | real registry, gate entry | `deploy: red`, EXIT 1, names both shas |
+| 2 | NO PROVENANCE AT ALL | the published version carries no gitHead field | real registry `@tiphys/kernel/0.0.0`, adapter | `pending` (red at deadline), detail `/gitHead = (no value)` |
+| 3 | THE BINDING SILENTLY STOPS BINDING | config names both a constant and a subject field | real registry, adapter | `error`, misconfiguration named |
+
+Members 1 and 2 are structurally different: 1 is a value mismatch on a value
+that IS there, 2 is a missing value, and a naive implementation that compares
+`undefined` to `undefined` passes 2 while failing 1. Member 2 needs NO fixture:
+`https://registry.npmjs.org/@tiphys/kernel/0.0.0` really has no gitHead key
+(measured: `has gitHead key? false`). That is what an `npm publish` from a
+directory with no git metadata produces, so it is a real deployment state, not a
+constructed one.
+
+Member 2 measured:
+
+```
+=== m2-real-no-githead ===
+  outcome = pending
+  detail/reason = /gitHead = (no value) (satisfying value "426bad47b9c77463cc05a12817a32fcda73664fe" from subject.mergedSha)
+```
+
+Member 3 measured, and the counterfactual is the interesting half:
+
+```
+=== m3-typo-field (satisfiedSubjectField "mergedsha") ===
+  outcome = error
+  reason = misconfiguration at config.observe.satisfiedSubjectField: "mergedsha" is not a subject field; the bindable fields are repository, integrationRef, mergedSha, mergedAt, phaseId
+
+=== m4-both-sources (satisfiedValue AND satisfiedSubjectField) ===  [PATCHED adapter]
+  outcome = error
+  reason = misconfiguration at config.observe.satisfiedValue: satisfiedValue and satisfiedSubjectField are exclusive; ...
+
+=== m4-both-sources ===  [UNPATCHED adapter, the shipped one at f7576f4]
+  outcome = satisfied
+  detail = /gitHead = "7c0b1e7ee60b36a880d4cd8d0302946d2cab923d"
+```
+
+The last row is why the exclusivity check is not decoration: an adapter that
+does not KNOW about `satisfiedSubjectField` silently uses the constant and
+reports satisfied. A config carrying both would be green on an old kernel and
+bound on a new one, which is the worst possible mixture.
+
+FORWARD COMPATIBILITY, measured on the same unpatched adapter: a
+BOUND-ONLY config (no `satisfiedValue`) on the shipped adapter gives
+`outcome = error`, `misconfiguration at config.observe.satisfiedValue: one
+satisfying value is required`. So an old kernel meeting a new declaration
+FAILS CLOSED. It does not go green.
+
+## 7. Suite, and a scope fact the phase will need
+
+Fix branch, node v26.6.0, `dist/` built, invocation `npm test`, declaration NOT
+present (the repository as shipped):
+
+```
+SUITE EXIT=0
+tests 849 / pass 849 / fail 0 / skipped 0
+```
+
+With the declaration COMMITTED, same branch, same everything:
+
+```
+SUITE EXIT=1
+tests 849 / pass 848 / fail 1 / skipped 0
+failing: test/deploy-gate.test.ts:644
+  "the runner reports both release gates not-applicable on this repository naming the structural reason"
+  actual 'error' / expected 'not-applicable'
+```
+
+So the failure belongs to COMMITTING THE DECLARATION, not to the adapter change.
+It is a real scope fact for whichever phase does this work: that test asserts
+`release-verification.json does not exist` in this repository, and it must be
+rewritten in the same phase that adds the file.
+
+`scripts/m2-exit-test.sh` pins the same expectation TWICE, once per bundle:
+
+```
+$ grep -n '"id": "deploy"' scripts/m2-exit-test.sh
+197:    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true}   (PR_EXPECT_JSON)
+257:    {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true}   (MAIN_EXPECT_JSON)
+```
+
+Both tables move together or CI reddens on the arm that was not edited, which is
+the T-009 shape exactly.
+
+## 8. Is the missing post-merge call site a separate phase? NO, it is the same one
+
+### The derivation
+
+```
+$ grep -rn "gates/deploy" --include=*.ts --include=*.mjs --include=*.json --include=*.yaml --include=*.yml --include=*.sh . \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git | grep -v '^./test/'
+```
+
+Excluding `delivery/evidence/m3-exit-test/**` (captured witness records, paths
+inside temp directories, not call sites) the entire non-test result is THREE
+lines: `gate-registry.yaml:139`, `gates.manifest.json:124`, and
+`delivery/plan/phase-declarations/m2-p7.json:6`. There is no orchestrator-side
+post-merge invocation. That part of `src/gates/deploy.ts:13` is true.
+
+### But the call site already EXISTS, in CI, on the push arm
+
+```
+$ grep -n 'MAIN_ONLY_GATES=' scripts/m2-exit-test.sh
+217:MAIN_ONLY_GATES="manifest-self-check suite coverage credential-scrub deploy migrations"
+```
+
+`deploy` is IN the main bundle. The `gates` workflow runs
+`scripts/m2-exit-test.sh --bundle main` on a push to `main`
+(.github/workflows/gates.yml:238). `run_main_bundle` passes `--base "${base}"`
+and `base` defaults to `main` (scripts/m2-exit-test.sh:302). On a push to main,
+`main` IS the new tip, which IS the merged sha.
+
+**So the post-merge call site is not missing code. It is a gate that already
+runs post-merge on every push to main and reports not-applicable because the
+declaration is absent.**
+
+Measured end to end through the real gate runner, three states, same branch:
+
+| declaration | runner line | exit |
+|---|---|---|
+| absent (as shipped) | `declared 1 applicable 0 ... not-applicable 1`, precondition unmet: `release-verification.json does not exist` | 21 |
+| present but UNTRACKED | `declared 1 applicable 1 ... error 1`: `no release-verification declaration at 330fc3f8...:release-verification.json` | 21 |
+| COMMITTED | `declared 1 applicable 1 verdict 1 green 0 red 1` with the bound reason naming both shas | 1 |
+
+A wiring seam worth naming for the phase: **applicability is a WORKING-TREE
+file-exists (the manifest precondition) while the gate itself reads the
+declaration from a COMMITTED ref.** An untracked declaration therefore turns the
+gate on and then errors. It fails closed, which is right, and the two checks do
+not ask the same question.
+
+### The answer
+
+SAME PHASE. One phase commits `release-verification.json`, lands
+`satisfiedSubjectField`, and moves the three pinned expectations
+(test/deploy-gate.test.ts:644 and the two tables in scripts/m2-exit-test.sh).
+Reasons, in order of weight:
+
+1. **Splitting them produces an interval in which the gate is green and
+   worthless.** Commit the declaration without the binding and `main`'s push run
+   goes green for every commit forever, which is precisely the state DR-0041
+   found. That green would then be cited. Land the binding first and there is
+   nothing to bind until the declaration exists.
+2. **They touch the same three pinned assertions.** Whichever goes first has to
+   edit `test/deploy-gate.test.ts:644` and both expectations tables; the second
+   phase then edits them again. DR-0031 calls a pull request a unit of
+   self-contained value, and "the deploy gate genuinely asserts something" is
+   one such unit.
+3. **There is no separate orchestrator call site to build**, so the thing that
+   sounded like a second phase is one line of configuration.
+
+What WOULD be a separate phase, if wanted: R-032's blocking half, "the next
+dispatch requires a green verdict record for the merged sha"
+(src/gates/release.ts:975 comment block). That is a DISPATCH change, it touches
+different code, and it is not needed for the gate to assert.
+
+## 11. Settling this report's own claims
+
+The claim grep, both forms, run against this file. Line-visible occurrences 16,
+wrap-insensitive occurrences 16, so nothing is hidden by a wrap.
+
+The repeated claim "these subject shas were never published" is settled by
+command, not by assertion:
+
+```
+$ node -e '...compare every probe sha against every published gitHead...'
+published gitHeads: [["0.0.0",null],["0.1.0","7c0b1e7ee60b36a880d4cd8d0302946d2cab923d"]]
+7d6b402a6d43fc3ae0a3bf8152dd5a02dfafcc44 -> published? false
+bcf4fea2e68e18577300c3a311f4de08676eccd7 -> published? false
+f4613063ea5ef2d1ac80973b5da0fa43419de03d -> published? false
+426bad47b9c77463cc05a12817a32fcda73664fe -> published? false
+f9c4a82e9e8dd75c179bdc69ae95ab8d9df9e30f -> published? false
+12a8a93d5838c8be3441e44fb6598f0d14883e7c -> published? false
+exit 0
+```
+
+(`null` for 0.0.0 is JSON.stringify rendering an ABSENT key inside an array; the
+direct probe of `https://registry.npmjs.org/@tiphys/kernel/0.0.0` reported
+`has gitHead key? false`.)
+
+RESTATED AS AN OPEN QUESTION rather than a claim, per the claim grep: section
+5b says a real-registry green "needs an npm publish credential this container
+does not hold". What I actually established is narrower. I did not attempt a
+publish and I did not probe whether one is possible from here. The true
+sentence is: **I did not find a way to produce a real-registry green from this
+container, and I did not try to publish.** The next reader is invited to try.
+
+The repository working tree was not modified:
+
+```
+$ cd /home/user/tiphys-ai-helmsman && git status --porcelain | wc -l
+0
+```
+
+(The repository HEAD moved during this probe, from f7576f4 to c1e12f7, by the
+orchestrator's own work. The scratch clone is pinned at f7576f4 and nothing
+here was re-measured against c1e12f7.)

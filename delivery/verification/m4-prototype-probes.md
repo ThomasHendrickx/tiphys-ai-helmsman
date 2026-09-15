@@ -11,7 +11,8 @@
   bytes before committing. Zero substitutions were required; the check is
   recorded because it ran, not because it found anything.
 
-**Four of these overturn something this repository believed.** Those are first.
+**SIX of these overturn something this repository believed.** Those are first.
+Items 11 and 12 were added after the last two probes returned.
 
 ## 1. The premise of M4-D-07 is FALSE in this container
 
@@ -203,3 +204,85 @@ the environment is not the boundary".
 **Six probes ran and four overturned a belief. That ratio is the argument for
 running the other prototypes before the phases that depend on them, rather than
 planning on desk research.**
+
+
+## 11. The resolved model IS observable, and the intake's appendix was wrong
+
+**Believed:** no plugin hook can read the resolved model after the fact
+(delivery/plan/m4-intake.md:1 appendix B item 1). M4-D-06 was written to survive
+that answer, by separating an observable override CONDITION from a self-reported
+IDENTITY.
+
+**Measured: the conclusion is false, and the premise it rests on is true.** Six
+real hook payloads were captured and their keys enumerated recursively: 28 keys,
+ZERO matching `/model/i`. So no hook field carries the model, exactly as the
+appendix said. But every payload carries `transcript_path`, and `SubagentStop`
+additionally carries `agent_id`, `agent_type` and `agent_transcript_path`. The
+transcript at that path is HARNESS-WRITTEN and records `message.model` on every
+assistant row.
+
+**The demonstration is the part that settles the trust boundary.** A working
+`SubagentStop` hook resolved `claude-haiku-4-5-20251001` for a subagent whose own
+text in that same turn claimed `produced-by: GPT-7 Turbo (OpenAI model family)`.
+
+**So a `produced-by` line written by the reviewing agent is forgeable, the
+forgery is invisible to every gate this repository has, and an observed
+alternative exists.** M4-D-06's "the adapter reports what it actually resolved"
+is satisfiable by OBSERVATION. The design must not collapse the two into one
+self-report.
+
+A second source exists and must not be used alone: the CLI result envelope
+carries a `modelUsage` block naming the served model. It is session-scoped and
+mixes the main model with an auxiliary one, so it is unfit for per-agent
+attribution. It is also demonstrably not an echo of the request: asking for a
+model that does not exist produces an error, and the requested string never
+appears in `modelUsage`.
+
+**The honest limit, and the prober named it as the probe's largest gap:** the
+documentation was deliberately not read, so it cannot be said whether
+`agent_transcript_path` and `message.model` are CONTRACTUAL or incidental to
+this build. A kernel depending on them depends on an observed shape. Also
+untested: transcript tampering by the agent itself, and whether the paths stay
+distinguishable with several subagents in flight.
+
+**And the environment carries nothing.** `CLAUDE_CODE_SUBAGENT_MODEL` and
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` are both UNSET here, and no environment
+variable in the process names a model. So M4-D-06's observable-CONDITION half
+has no carrier in this container. The separation of condition from identity is
+still the right shape; the condition is simply not readable here.
+
+## 12. The sha-binding fix was BUILT, and the post-merge call site is not missing
+
+**DR-0041's measurement reproduced independently**, and its "green for every
+commit forever" is now measured rather than inferred: the shipped adapter drove
+the deploy gate green against the real registry for THREE distinct unpublished
+commits.
+
+**The mechanism is narrower than DR-0041 stated.** It is not that npm's
+`versions` is an object. It is that the observe step has exactly ONE source for
+its satisfying value, configuration, and configuration is constant across
+commits. The only subject comparison in the shipped adapter sits inside the
+`locate` path, which the packument's shape happens to defeat as well.
+
+**The fix is 74 added lines in one file:** an `observe.satisfiedSubjectField`
+that takes the satisfying value from the KERNEL-OWNED subject instead of from
+configuration. Against the real registry, at the exact commit the unpatched
+adapter calls green, the patched gate reports `deploy: red`, exit 1, with a
+reason naming both shas. It still greens when the served value matches. Suite
+849 pass, 0 skipped, exit 0 on node v26.6.0 with `dist/` built via `npm test`.
+Two structurally different class members were exercised plus a misconfiguration
+arm, and a bound-only declaration met by the OLD adapter ERRORS rather than
+greening, which is fail-closed forward compatibility.
+
+**Correction to DR-0041 and to the plan: the post-merge call site is NOT missing
+code.** `deploy` is already in the main bundle and already runs on every push to
+`main`. It reports not-applicable only because `release-verification.json` is
+absent. So the call site and the binding are ONE phase, not two.
+
+**Stated so it is not overstated:** `gitHead` is publisher-asserted, not
+cryptographically bound. The fix is a large improvement and is not attestation.
+
+**Also recorded because its wrong output looked plausible:** the prober's first
+fixture harness blocked its own event loop, so the server never accepted a
+connection and every arm failed for a reason that had nothing to do with the
+subject. They found it and said so.

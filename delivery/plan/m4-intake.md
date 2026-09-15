@@ -1012,8 +1012,14 @@ Stated so a reader can weigh it rather than having to discover it.
 
 1. **The Claude Code plugin surface is documentation-derived.** Sixteen facts
    about hooks, manifests and model resolution come from published
-   documentation. One of them is load-bearing and uncomfortable: **no plugin
-   hook can read the resolved model after the fact.** If that is right, the
+   documentation. One of them was load-bearing and is now
+   **MEASURED FALSE AS A CONCLUSION, 2026-09-15**: it said no plugin hook can
+   read the resolved model after the fact. True of hook FIELDS (28 keys across
+   six captured payloads, zero naming a model) and false of hooks: every payload
+   carries a transcript path, and the harness-written transcript records the
+   served model on every assistant row. A working hook resolved the real model
+   for a subagent that claimed a different vendor's model in the same turn. See
+   delivery/verification/m4-prototype-probes.md:1. If that is right, the
    model-resolution contract's "the adapter reports what it actually resolved"
    cannot be satisfied by observation, and the record's `resolved` block is a
    self-report by the agent or an inference from the resolution ORDER. M4-D-06

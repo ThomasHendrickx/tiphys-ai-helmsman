@@ -109,9 +109,13 @@ question, and it is owed work regardless of which subject the exit test gets.**
 Two supporting absences, each with its probe. `release-verification.json` is
 the declaration the deploy gate reads (src/gates/release.ts:67) and it is NOT
 tracked: `git ls-files | grep -c release-verification.json` returns 0, so the
-deploy gate has never been applicable on the kernel. And the gate has no
-post-merge call site anywhere, which its own source records as deferred to M4
-by M2-D-11 (src/gates/deploy.ts:13, delivery/plan/kernel-plan-m2.md:601).
+deploy gate has never been applicable on the kernel. The gate's own source records a post-merge
+call site as deferred to M4 by M2-D-11 (src/gates/deploy.ts:13,
+delivery/plan/kernel-plan-m2.md:601). **CORRECTED 2026-09-15 by measurement:
+saying the gate "has no post-merge call site anywhere" was wrong.** `deploy` is
+already in the main bundle and already runs on every push to `main`; it reports
+not-applicable only because the declaration file is absent. The binding and the
+call site are one phase. See delivery/verification/m4-prototype-probes.md:1.
 
 ## What is decided
 
