@@ -143,16 +143,15 @@ the model-resolution contract; and a hazard register.
 
 **What it did NOT cover, named rather than left to be discovered:**
 
-1. **`pulse` was not probed, and under DR-0037 it never will be.** Revision 1
-   recorded this as a limit of one pass. It is now PERMANENT: DR-0037 puts
-   `pulse` out of this orchestrator's reach, so no claim about `pulse` in this
-   document is ever discharged. Every such claim is second-hand, from
+1. **`pulse` was not probed while this document was written, and every claim it
+   makes about `pulse` is still second-hand.** The source is
    delivery/verification/dr-0034-premise-check.md:32, whose own clones were two
-   days stale when it was written. Treat each one as a statement about a
-   document in this repository, not about that repository. **Open, and one owner
-   sentence settles it**: whether READ-ONLY observation of the public `pulse`
-   repositories is inside or outside "stay away". It was treated as forbidden
-   here and nothing was contacted.
+   days stale when it was written and are a month older now. Treat each such
+   claim as a statement about a document in this repository, not about that
+   repository. **Revision 2 recorded this as permanent. That was wrong within
+   the hour**: DR-0042 allows read-only observation, so the limit is a limit of
+   THIS PASS after all, and the M4 plan must re-probe rather than inherit.
+   Nothing here has been re-probed yet.
 2. **No prototype was run.** Fourteen of the fifty-six open questions are marked
    answerable only by a prototype (can a harness primitive impose the kernel's
    child environment; can it distinguish launch-failed from incomplete; how does
@@ -442,7 +441,10 @@ verdicts that both REFUSE the merge pass it green (H14).
 
 **Owns:** clauses 1, 4 and 6, for ONE subject.
 
-**Revision 2: the pilot half of this workstream is gone.** Revision 1 gave it
+**Revision 2: the pilot half of this workstream is gone, for the five
+non-cutover workstreams.** DR-0042 brings the pilot back at CUTOVER, on an owner
+reboot, which is where the exit test needs it. It does not bring it back as a
+subject for the work below. Revision 1 gave it
 two subjects with different entry conditions. DR-0037 leaves the kernel.
 Section 9.1 records what that costs, item by item with probes, and it is more
 than "greenfield is untested".
@@ -927,10 +929,16 @@ up into a claim of self-hosting.
 6. **The fourteen prototype probes.** They are named in section 6 and none has
    been run.
 7. **`pulse`'s actual current state.** Section 2 item 1, now permanent.
-8. **The exit test's subject, which is DEFERRED rather than open.**
+8. **The exit test's subject, which is DEFERRED and, since DR-0042, no longer
+   BLOCKED.**
    delivery/decisions/DR-0041-the-exit-test-stays-bound-to-the-pilot-and-the-kernel-is-not-its-subject.md:1
-   decides that the first conjunct stays bound to the pilot, is currently
-   undischargeable here, and falls due at CUTOVER ENTRY on a written trigger.
+   decides that the first conjunct stays bound to the pilot and falls due at
+   CUTOVER ENTRY on a written trigger.
+   delivery/decisions/DR-0042-reading-the-pilot-is-allowed-and-the-pilot-can-be-rebooted.md:1
+   supersedes that trigger's second clause: the pilot's reachability is an owner
+   action, not a state of the world, so the trigger is re-probe read-only, ask
+   the owner to reboot, then run the test as written. The amendment option stays
+   in reserve and its bar goes UP, because the test is dischargeable.
    The second conjunct, "the old process is retired", is this repository's own
    and is not blocked at all. The plan carries the trigger; it is not a thing
    anyone remembers.
