@@ -57,7 +57,7 @@ declared skips against `full` in three directions rather than trusting them.
 A gate that writes green with zero units is rewritten to error.
 
 **What is designed and not built.** The whole of layer 3 and layer 4 binding.
-role-model-config.yaml:7 says so in terms: M3 ships the data and no resolver,
+`role-model-config.yaml:7` says so in terms: M3 ships the data and no resolver,
 and binding is the M4 harness adapter. `grep -rn role-model-config src/ test/`
 resolves only to a schema registration and two comments. The kernel has no
 orchestration loop at all: `tiphys spawn --exec` launches a generic argv
@@ -297,7 +297,7 @@ delivery/review/clean-room-macos-portability-pilot-final-adversarial.md:6).
 Both are one vendor. Non-Anthropic reviewers were genuinely used, which is real
 and worth keeping; they were never used AS THE OTHER HALF OF A PAIR.
 
-Second, **the guard has never run.** gate-registry.yaml:283 says so in the
+Second, **the guard has never run.** `gate-registry.yaml:283` says so in the
 registry's own words: this repository "has never had a verdict document in it",
 so `check-dual-review` has reported not-applicable on every phase merge to
 date. When it does run it will compare `produced-by`, which
