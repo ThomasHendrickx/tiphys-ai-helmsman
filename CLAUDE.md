@@ -1060,6 +1060,31 @@ Each of these bit someone once. Forward them to every implementer.
     refused". A check that returns the same answer either way is the T-008 shape:
     a guard that cannot go red.
 
+    **GENERALISED 2026-09-15, AND THE ORIGINAL ENTRY UNDERSTATED IT.** A
+    cross-environment-exclusion probe measured a SECOND, independent instance
+    that has nothing to do with deletion. Same commit, same clone, four target
+    refs, `--dry-run` versus real:
+
+    | ref | `--dry-run` | real push |
+    |---|---|---|
+    | `refs/heads/tiphys/lease` | `* [new branch]`, exit 0 | exit 0 |
+    | `refs/tags/...` | `* [new tag]`, exit 0 | **exit 1, HTTP 403** |
+    | `refs/notes/...` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
+    | `refs/tiphys-probe/lease` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
+
+    So the rule is not "a dry-run lies about deletion". It is
+    **`git push --dry-run` does not probe push AUTHORIZATION at all**, for any
+    ref namespace, in either direction. It reports what the local side intends,
+    not what the remote will accept. Never accept a dry-run as evidence that a
+    push will succeed.
+
+    Two consequences worth carrying. **Only `refs/heads/*` is pushable from this
+    container**, which matters for any design reaching for a side namespace: a
+    "dedicated ref" must be read as a dedicated BRANCH, and it is then visible
+    in branch listings and subject to any `refs/heads/**` ruleset. And whether
+    the 403 originates at GitHub or at the agent proxy is UNRESOLVED; the two
+    available signals disagree and the control arm cannot be run here.
+
     **Consequence: branch cleanup is an OWNER action, always, and there is no
     non-destructive way to confirm that in advance.** Do not spend a round
     proving it again, do not attempt a real delete to find out, and do not

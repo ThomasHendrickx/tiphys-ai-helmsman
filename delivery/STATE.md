@@ -1641,6 +1641,18 @@ and `A-3` meant three, one of them a literal string inside
      owner action.
    - The GENERALISATION of this amendment beyond `pulse` is the ORCHESTRATOR's
      inference under DR-0016, not the owner's instruction, and is vetoable.
+4b. **A-n REQUESTED, 2026-09-15: clean the kernel fleet remote.** This
+   orchestrator's own cross-environment-exclusion probe pushed six branches to
+   `ThomasHendrickx/tiphys-ai-helmsman-fleet` and, by pushing first, set the
+   repository's DEFAULT BRANCH to a probe branch. The refs are
+   `probe-fleet-home`, `probe-lease-a`, `tiphys/lease`, `tiphys/lease-r1`,
+   `tiphys/lease-r2` and `tiphys/lease-r3`. Ref deletion is refused to this
+   container (A-4 and standing warning 14), so cleaning is an owner action. It
+   must happen before pilot bootstrap runs `tiphys init` against that remote.
+   The kernel repository's own refs were not touched. The probe's measured
+   results are in `delivery/verification/` and are worth keeping; only the refs
+   need removing.
+
 5. **A-4: DONE (owner, 2026-08-07).** The stale `claude/*` branches were
    deleted through the `gh` CLI. The orchestrator could not do it: this
    container's credentials are refused ref deletion with HTTP 403 on both the

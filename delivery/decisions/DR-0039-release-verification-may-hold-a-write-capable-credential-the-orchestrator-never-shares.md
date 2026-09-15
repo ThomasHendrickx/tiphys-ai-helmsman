@@ -73,6 +73,20 @@ scrub is invisible to it.
 unenforced against the path someone would take deliberately.** "Enforced by
 code" is therefore a target of this decision, not a description of today.
 
+**MEASURED 2026-09-15, AND IT IS WEAKER STILL.** A probe established that in
+this container the credential boundary is the UID and the FILESYSTEM, not the
+environment. The kernel's scrub is environment-only and spawns the child at the
+SAME uid, so a payload keeps read access to credential files at absolute paths;
+redirecting `HOME` hides a path from RESOLUTION without removing READ ACCESS.
+Separately, the `credential-scrub` gate's verdict is INVERTED with respect to
+real capability here: it permits the one name that grants GitHub write and
+refuses names that grant only URL rewriting. Full account at
+delivery/verification/m4-prototype-probes.md:1.
+
+**This does not change the decision.** It changes what M4 must build to make the
+fourth condition below true, and it means no M4 evidence may report this
+boundary as enforced on the strength of the existing gate.
+
 ## The conditions, which are part of the decision
 
 1. **`allowPrCredentials` is forbidden for any project payload**, as a declared
