@@ -1105,6 +1105,44 @@ it), having just written a status report, a subagent being in flight (verify
 its beacon, then do orchestrator work meanwhile), or something looking blocked
 (name the blocker in one line and do everything that is not blocked).
 
+## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)
+
+The owner has had to point this out TWICE, which is this project's own signal
+that a rule depending on memory does not survive and needs a mechanism.
+
+**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is
+`min(16, CPUs - 2)`, so ONE workflow runs at most TWO agents at a time.** Ten
+agents passed to a single workflow do not run ten wide; eight of them queue.
+Load average during the run was 0.03, so the cap is a configured limit and not a
+resource constraint: these agents are waiting on model calls, not on CPU.
+
+**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its
+own cap. Five concurrent workflows give ten concurrent agents.
+
+Mechanical form, so it survives a busy session:
+
+1. Write the script ONCE with an args filter, so one script serves every slice:
+
+   ```
+   const wanted = Array.isArray(args) && args.length > 0 ? args : Object.keys(TASKS)
+   const mine = wanted.filter((k) => TASKS[k])
+   ```
+
+2. Launch it inline the first time. The tool result returns a `scriptPath`.
+3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls
+   cost four tool uses and buy four times the throughput.
+
+**Before dispatching any fan-out, state in writing: how many agents, in how many
+workflows, therefore how many run at once.** If that third number is 2, the
+dispatch is wrong. This is the same discipline T-008 requires for watchdogs, one
+level up: the number you intended is not the number the tool used, so read the
+number the tool reports rather than the one you passed.
+
+**Model choice is per agent and costs nothing to set.** `agent(prompt, {model:
+'fable'})` overrides for that call. Review and judgment stages benefit from a
+DIFFERENT family than the stage they review, which is the same decorrelation
+property DR-0012 condition 1 protects, applied to subagents.
+
 ## Reporting to the owner (binding, 2026-09-15)
 
 Owner instruction, in their words: "Can you hide the text when you are talking
