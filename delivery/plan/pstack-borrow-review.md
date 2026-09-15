@@ -48,8 +48,8 @@ At the cap, DR-0016 applies: a fresh implementer and a third review contract,
 not a fourth round.
 
 The selector is built and pushed, in the sandbox repository, with the
-measurement it rests on. Five small things are worth doing on top of it, four
-of them text edits. Nothing is waiting on you.
+measurement it rests on. On top of it, five text edits close defects in how the
+process runs itself, and three changes increase what the kernel can do.
 
 ## 1. Current state of Tiphys
 
@@ -203,6 +203,13 @@ string, while Tiphys's `brief compose` genuinely refuses and names the path.
 
 ## 5. The work
 
+Two groups. The first five close a defect in how the process runs itself and
+cost almost nothing. The last three increase what the kernel can DO, and each
+one carries its round budget under DR-0035 rather than being argued into or out
+of existence.
+
+### Hygiene: five text edits
+
 **Five items.** An earlier draft had sixteen, and an adversarial reviewer
 pointed out that a sixteen-item plan is the disease this document diagnoses.
 The twelve that were cut are not lost: they are in section 4 with their
@@ -217,6 +224,19 @@ and together they are about an hour.
 | 3 | Record the reviewer's model in every review header | grep the next two review headers | Decorrelation is unauditable across most of the record |
 | 4 | Close the tuition promotion leak | `npm test` | 10 entries never reached the shipped feed |
 | 5 | Add the missing citation roots | re-run the citations gate over a document citing each | 4 shipped trees cannot be cited by line |
+
+### Capability: three that change what the kernel can do
+
+These were cut from an earlier draft under a reviewer's finding that sixteen
+items was the wrong shape. The reviewer was right about the SHAPE and the cut
+took the SUBSTANCE with it. They are back, and DR-0035 is what makes that
+defensible: each now carries a cost in rounds instead of a place in a list.
+
+| # | Item | Rounds | Verify | Named failure it closes |
+|---|---|---|---|---|
+| 6 | Head SHA on the verdict | 2 or 3 | `npm ci && npm run build && npm test` | A verdict cannot say which head it read |
+| 7 | Validate the phase half of a composed brief | 2 | `npm test` | A brief can render with no acceptance section and exit 0 |
+| 8 | The prototype gate | 1 | `npm test` | Facts a script settles are found by adversarial review instead |
 
 **1. Three stale lines.** `.claude/skills/phase-delivery/SKILL.md:8` says a
 phase is "merged by the owner", which DR-0012 delegated. Line 13 says the
@@ -286,6 +306,86 @@ treats as deliberately non-resolving. The evidence chain degrades one citation
 at a time and nothing reports it. Acceptance: a document citing one line in
 each of the four resolves all four, and the gate's unit count rises by four
 against the same document with them quoted.
+
+**6. Head SHA on the verdict.** pstack keys a ledger row by pull request plus
+head SHA, so a new head voids the verdict for free
+(`skills/poteto-mode/scripts/orch/store.ts:1331`). Tiphys says the gap in its
+own source at src/checks.ts:3255: "the verdict schema carries no head field, so
+`phase` is the join key and the DIRECTORY is what scopes it". So DR-0012:22's
+"two reviews of the current head" is enforced by which folder the operator
+points the checker at.
+
+**This is the weakest of the three on evidence and it is stated that way.** The
+measured instance, a pair of verdicts on a pre-fix-round head, is recorded at
+delivery/evidence/m3-exit-test/e1/e1-7/verdict-criteria.yaml:8, which carries
+the head in prose inside `produced-by`. It was CAUGHT, by an orchestrator
+reading that prose, and it cost nothing. The argument is that the property is
+currently uncheckable, not that it has already bitten.
+
+The change is three fields (`head`, `base`, `patch-id`), a group key of phase
+plus head, and a `--head` flag on the checker. **The patch-id is not optional
+decoration:** head alone voids both reviews whenever a branch merges its base in
+to stay mergeable, which is ordinary practice. That half is pstack's playbook
+PROSE rather than its implemented store, so it is designed here from scratch
+and costed accordingly. This is a breaking change to a published schema and
+lands with the next contract revision, not before.
+
+The round estimate is 2 or 3 because it straddles the size threshold. **The
+selector decides from the real diff, not the author**, which is the point of
+having one.
+
+**7. Validate the phase half of a composed brief.** The sharpest of the three,
+and it is barely a borrow: pstack's own "missing fields are a refuse-to-spawn
+condition" is prose, because its `--brief` is an unchecked opaque string.
+Checking that claim is what surfaced the Tiphys gap.
+
+`schemas/plan.schema.json` requires fifteen fields on a phase, among them
+`intent`, `files-to-touch` and `acceptance`. `tiphys brief compose` never
+validates the plan against that schema: it YAML-decodes it at
+src/commands/brief.ts:191 and renders. And the renderer at src/roles.ts:855 is
+`if (!(field in phase)) { continue; }`.
+
+**So a plan phase missing `acceptance` composes a brief with no acceptance
+section, and the command exits 0.** The asymmetry is exact and it is the
+finding: the ROLE half IS guarded, by `missingRequiredSections` at
+src/commands/brief.ts:155, which refuses and names what is absent. The kernel
+validates the half it authored and trusts the half the operator supplies.
+
+The same shape has already been paid for once in this command family:
+scripts/check-brief-drift.mjs:36 records the brief gate reporting
+"green (3 generated brief gate rows compared)" over a table holding a header, a
+separator and nothing else.
+
+The change is to call the validator that already exists before rendering.
+Non-breaking, a few lines and their tests.
+
+**8. The prototype gate.** pstack classifies a fork before asking: if the answer
+is observable by running something it is not a question
+(`skills/poteto-mode/SKILL.md:20`), open questions are settled by prototype
+BEFORE the plan is written (`skills/poteto-mode/playbooks/multi-phase-plan.md:6`),
+and its plan linter makes a prototype-evidence appendix mandatory
+(`skills/poteto-mode/scripts/check-plan.mjs:180`).
+
+Tiphys has none of this. `grep -rniE 'prototype|spike|throwaway'` over `roles/`,
+`checklists/`, `schemas/`, `.claude/` and CLAUDE.md returns zero. There is no
+way to settle an empirical question except to write prose about it in a plan
+and have the prose adversarially reviewed.
+
+The named failure is F-02 in the external plan review
+(delivery/review/plan-review-r4-external.md:15): `tiphys init` assumes git
+author configuration. That is a fact a short run on a clean machine settles,
+and it cost a high-severity finding in a review round instead.
+
+**The honest limit, because it decides how much this is worth.** The other
+findings in that round were critiques of the CONTRACT rather than of the world:
+F-05, that monotonically increasing test counts are a weak and gameable
+acceptance rule, and F-06, that M4 packs several architecture-bearing systems
+into one paragraph. No prototype reaches either. This shrinks plan review; it
+does not replace it, and the candidate table's "adapt" verdict says so.
+
+The change is an optional `prototype-evidence` array on the plan schema, a
+clause in `roles/plan-writer.md`, and a derived check that a phase whose
+grounding asserts external tool behaviour cites one. Non-breaking.
 
 ## 6. The decision, now answered
 
