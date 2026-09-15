@@ -2369,18 +2369,18 @@ The source is delivery/evidence/m3-exit-test/e1/charter.yaml, which declares all
 seven irreversible decisions and validates today. The intake names two amendments
 (delivery/plan/m4-intake.md:463). There is a third.
 
-1. **delivery/evidence/m3-exit-test/e1/charter.yaml:40**, the constraint "The
+1. delivery/evidence/m3-exit-test/e1/charter.yaml:40, the constraint "The
    kernel never runs on itself before M4", is overturned by DR-0036 and must be
    replaced by DR-0036's retained-authority condition, quoted rather than
    paraphrased, so the freeze point is readable from the charter.
-2. **delivery/evidence/m3-exit-test/e1/charter.yaml:56**, `release-verification:
+2. delivery/evidence/m3-exit-test/e1/charter.yaml:56, `release-verification:
    mode: reserved`. 0.1.0 is published, so the deferral reason has expired. The
    enum admits only `none` and `reserved` (schemas/charter.schema.json:117), so
    this phase either designs the field or records in writing that it stays
    `reserved` through M4. Silence leaves a shipped schema permanently reserved
    (delivery/plan/m4-intake.md:962 is the obligation; the recommendation is in
    section 3.6 below).
-3. **delivery/evidence/m3-exit-test/e1/charter.yaml:49**, "a phase that needs more
+3. delivery/evidence/m3-exit-test/e1/charter.yaml:49, "a phase that needs more
    than two fix rounds", contradicts DR-0035, whose ceiling is 3. The same number
    is wrong one more place: `assurance-modes.yaml` carries
    `max-fix-rounds-after-review: 2`. Both are one-line edits and they must move
