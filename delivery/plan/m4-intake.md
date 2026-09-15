@@ -730,17 +730,43 @@ says so rather than letting a recommendation read as a finding.
 
 ## 7. Owner actions
 
-`delivery/STATE.md` is the sole allocator of `A-n` ids. This section REQUESTS
-ids rather than picking them, per the identifier-scheme rule, and the register
-entries are written when the ids are granted.
+**Updated 2026-09-15 after the owner answered.** Two of the five below were put
+to the owner and should not have been: one was ALREADY DONE and I had not
+checked, and one was a preference toggle dressed as a requirement. Both are
+recorded as such rather than quietly corrected, because asking for work that
+already exists costs the owner the attention DR-0016 exists to protect.
 
-| Action | State | Why it is the owner's |
-|---|---|---|
-| **A-2 (existing), remaining half.** Make `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` PRIVATE | **HALF DONE.** A durable fleet remote exists, which is what A-2 asked for in substance. It is PUBLIC and A-2 asked for private, for a personal finance project. No credential was found; the exposure accrues going forward | This session's credentials return `permissions.admin` false. No agent can change it. The register at delivery/STATE.md:1613 still reads as though the whole action were outstanding and is stale in the direction that overstates the work |
-| **A-n REQUESTED: a second private fleet remote, for the KERNEL's own fleet home** | NOT STARTED. No kernel fleet home exists anywhere: a probe over `/home/user`, `/home/user/*` and `/root` found none, and this clone is missing seven of the nine layout entries | A-2's text is per-fleet-home, so DR-0036's second subject is a second instance of the same owner action. It gates fleet durability and cross-environment exclusion, both of which need a real remote to test against |
-| **A-n REQUESTED: branch protection and merge configuration** on the kernel repository, `pulse` and `pulse-fleet` (R-064 required checks, R-065a squash-only) | NOT STARTED. Both are repository SETTINGS, not code. The register carries no item for branch protection; A-2 covers only the fleet remote | Elevated access the orchestrator does not hold. The M4 exit test's "merged entirely on v1" conjunct presumes these exist |
-| **A-3 (existing).** A real scoped implementer token and a real orchestrator token, so `credential-token` can derive its assertion from captured responses | NOT STARTED. The gate reports `not-applicable` naming A-3 when the token is absent, and deliberately reports `error` when it is present, refusing to assert against an invented API response shape | Without it the scoped-token half of credential authority ships unverified, and M4's exit evidence must say so rather than let the bundle read green (H17) |
-| **A-4 (existing).** Remote branch deletion | BLOCKED, and there is no non-destructive way to confirm it in advance. 132 remote branches are pushed and unmerged; `git push --dry-run --delete` exits 0 reporting success regardless | Ref deletion is refused with HTTP 403 while ordinary pushes from the same credentials succeed. M4-D-15 recommends keeping this OFF cutover's critical path precisely so it cannot block the milestone |
+`delivery/STATE.md` remains the sole allocator of `A-n` ids.
+
+| Action | State, measured 2026-09-15 |
+|---|---|
+| **A-2, amended by DR-0037.** A DURABLE remote per real fleet home. Visibility is the project's declaration and the kernel does not check it | **KERNEL HALF DONE.** `ThomasHendrickx/tiphys-ai-helmsman-fleet` exists, is private, and is empty. **PULSE HALF CLOSED**: the owner has decided `pulse` is a portfolio project and stays public. The private requirement encoded a project judgment inside a kernel obligation and is withdrawn, per DR-0037 part 2 |
+| **A-n REQUESTED: a second private fleet remote for the kernel** | **WITHDRAWN, because the owner had already done it.** Merged into the amended A-2 above |
+| **Branch protection and merge configuration (R-064, R-065a)** | **R-064 IS ALREADY DONE and I should have checked before asking.** The repository ruleset `main-protection` is `enforcement: active` and carries four rules: `deletion`, `non_fast_forward`, `pull_request`, and `required_status_checks` naming the `gates` check. That IS "merge on CI green only". Only R-065a (squash-only) is outstanding: `allow_squash_merge`, `allow_merge_commit` and `allow_rebase_merge` are all true. **The owner has deferred it and the deferral is right**: it changes the shape of merge commits and nothing else, and no gate, check or contract in this repository reads it. It is recorded as an M4 exit-criteria footnote, not as a blocker |
+| **A-3 (existing).** A real scoped implementer token and a real orchestrator token, so `credential-token` can derive its assertion from captured responses | **DEFERRED BY THE OWNER, correctly.** The gate is `not-applicable` naming A-3 when the token is absent, and deliberately `error` when it is present, because it refuses to assert against an invented API response shape. Deferring changes nothing today: the gate is already not-applicable and already says why. The cost falls due only when the authority-enforcement workstream wants to CLAIM the scoped-token boundary is verified, and M4's exit evidence must then say it is asserted rather than probed (H17) |
+| **A-4 (existing).** Remote branch deletion | **BLOCKED, and deliberately off the critical path.** 132 remote branches are pushed and unmerged; `git push --dry-run --delete` exits 0 reporting success regardless, so there is no non-destructive pre-check. M4-D-15 recommends defining drain over in-flight work precisely so this cannot block the milestone |
+
+**What the corrected picture means for the plan.** The kernel's fleet-home
+entry condition (section 9.2 item 1) is DISCHARGED: the remote exists and is
+private. The fleet home itself is deliberately NOT initialized, because
+`tiphys init` against it is pilot-bootstrap work and D-19 forbids M4
+dispatching anything before its plan exists
+(delivery/plan/kernel-plan-v1.md:394).
+
+**Three of the twenty-four open decisions are now closed**, by
+delivery/decisions/DR-0037-the-kernel-is-m4s-only-subject-and-tiphys-has-no-opinion-on-project-visibility.md:1,
+delivery/decisions/DR-0038-the-declared-single-family-review-exception.md:1 and
+delivery/decisions/DR-0039-release-verification-may-hold-a-write-capable-credential-the-orchestrator-never-shares.md:1:
+M4-D-16 (`pulse` is out of this orchestrator's scope), M4-D-17 (a declared
+single-family review exception reporting a third status), and M4-D-21 (a
+write-capable release credential held only by the orchestrator, enforced by
+code). **All three were the OWNER-reserved ones**, so every remaining open
+decision in section 6 is the orchestrator's to take.
+
+**M4-D-16's answer invalidates parts of this document**, which assumed two
+subjects throughout. Section 4.3, section 9.1 and the exit-test discussion are
+written against a `pulse` that is now out of reach. The revision is in flight
+and is listed in section 10 rather than being claimed as done.
 
 ## 8. Hazard register
 
