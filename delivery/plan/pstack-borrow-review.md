@@ -1,536 +1,454 @@
-# pstack borrow review: what Tiphys should take, adapt, and refuse
+# pstack borrow review: proportioning the making-sure
 
 - date: 2026-09-15
 - author: orchestrator
 - status: PROPOSAL. Nothing here is decided except where it says so.
-- reference: pstack 0.15.2 by Lauren Tan (poteto), MIT, published in Cursor's
-  plugins repository, read at pinned commit
+- reference: pstack 0.15.2 by Lauren Tan (poteto), MIT, in Cursor's plugins
+  repository, read at pinned commit
   `c1c0a32802223f4be824112dd83d33ad29a8b26c`. Cloned outside this repository,
   never vendored, never committed.
-- subject: Tiphys at `main`, `3b40118`, kernel `@tiphys/kernel@0.1.0` published,
+- subject: Tiphys at `main`, `3b40118`, `@tiphys/kernel@0.1.0` published,
   M3 closed, M4 not started.
-- method: nine parallel readers over pstack, nine over Tiphys, one assessor per
-  candidate, then one adversarial reviewer that had not seen the reasoning.
+- method: nine readers over pstack, nine over Tiphys, one assessor per
+  candidate, three adversarial reviewers that had not seen the reasoning. What
+  they found is in section 8 and it changed this document twice.
 
-## How to read this
+## The answer, in one page
 
-The table in section 2 is the answer. Everything below it is the working.
+**Tiphys does not overspend on bureaucracy. It overspends on making sure.**
+Measured across all 50 units ever merged to `main`:
 
-Five things are worth your time and they are section 4's first five rows.
-Three questions are yours and they are in section 3. The rest of this document
-exists so that a later reader can tell a decision from a guess.
-
-**The headline, and it is not a pstack finding.** Measuring this repository to
-answer your token question produced the sharpest number in the review:
-
-| across all 50 units merged to `main` | value | assurance | overhead |
+| | value | assurance | overhead |
 |---|---|---|---|
-| lines changed | 40,825 (9.4%) | 68,140 (15.7%) | **324,933 (74.9%)** |
-| units touching the bucket | 12 (24%) | 15 (30%) | **50 (100%)** |
+| lines changed | 40,825 (9.4%) | **307,082 (70.8%)** | 85,991 (19.8%) |
 
-Every unit that reached `main` carried paperwork. Fewer than a quarter carried
-anything a consumer receives. DR-0027 measured a 24 hour window and found
-2 merges of 29 touching `src/`; that window was not an outlier, it was the
-first time anyone counted. The measurement is now a command with an exit code
-and it is in the sandbox repository, described in section 4 item 1.
+Seven and a half lines of proof for every line of the thing being proved. That
+is not a process drowning in paperwork; it is a process that reviews everything
+as though everything mattered equally.
+
+**The rule that fixes it: size buys coverage, impact buys depth.** They are
+different axes, and conflating them is what makes a process overreact. A large
+surface can break in a corner nobody looked at, so it needs breadth. A change
+that matters can be three lines and still be expensive to get wrong, so it
+needs depth. Neither substitutes for the other:
+
+| | low impact | high impact |
+|---|---|---|
+| **zero subject** | none. It is paperwork. | none. There is no subject. |
+| **small** | `local-only`. A quick pass. | `full`. Depth, not breadth. |
+| **large** | `direct-pr`. The gates ARE the coverage. | `full`. Both contracts, both lenses. |
+
+**Those mode names are not new.** `full`, `direct-pr` and `local-only` are the
+three modes the blueprint declares at
+delivery/intake/orchestrated-delivery-v1.md:148 and `assurance-modes.yaml`
+defines. Tiphys never lacked assurance tiers. It lacked a rule for picking one,
+so everything got `full`.
+
+The selector is built and pushed, in the sandbox repository, with the
+measurement it rests on. Four small things in `.claude/` are worth doing on top
+of it. One question is genuinely yours.
 
 ## 1. Current state of Tiphys
 
-**What it is.** A delivery-process kernel shipped as an npm package. It is
-built BY an orchestrated delivery process, not by itself; nothing runs on
-Tiphys before M4 (delivery/plan/kernel-plan-v1.md:38). M1, M2 and M3 are
-closed, 27 phases shipped, and 0.1.0 is published and tagged.
+A delivery-process kernel shipped as an npm package, built BY an orchestrated
+process rather than by itself; nothing runs on Tiphys before M4
+(delivery/plan/kernel-plan-v1.md:38). M1 to M3 are closed. 28 phases were
+planned and 27 merged through their own branch.
 
-**What is built and ships.** Sixteen CLI subcommands (`init`, `doctor`, `lock`,
-`pool`, `spawn`, `teardown`, `watch`, `status`, `validate`, `brief`,
-`checklist`, `mode`, `plan`, `tuition`, `gates`, `version`), 16 JSON schemas,
-6 role briefs, 5 checklists, a gate registry with 18 gates, a tuition feed, and
-165 red-witness specs under `witness/` that name concrete source mutations as
-dangerous states rather than asserting coverage.
+**Built and shipping.** Sixteen CLI subcommands, 16 JSON schemas, 5 role briefs
+for 6 declared roles, 5 checklists, a gate registry with 18 gates, a tuition
+feed, and 162 witness specs under `witness/` naming concrete source mutations
+as dangerous states.
 
-**The mechanisms that carry the design.** Three constraints do most of the
-work: never read current state from the tail of an append-only log (src/task.ts:22),
-never use pid or process liveness for identity or exclusion (src/liveness.ts:10),
-and never open a path whose type has not been established (src/task.ts:36).
-Assurance is declared, not improvised: assurance-modes.yaml recomputes a mode's
-declared skips against `full` in three directions rather than trusting them.
-A gate that writes green with zero units is rewritten to error.
+**The mechanisms that carry it.** Three constraints do most of the work: never
+read current state from the tail of an append-only log (src/task.ts:24), never
+use pid or process liveness for identity or exclusion (src/liveness.ts:11), and
+never open a path whose type has not been established (src/task.ts:38).
+Assurance modes are declared, not improvised, and a mode's declared skips are
+recomputed against `full` in three directions. A gate writing green over zero
+units is rewritten to error.
 
-**What is designed and not built.** The whole of layer 3 and layer 4 binding.
-`role-model-config.yaml:7` says so in terms: M3 ships the data and no resolver,
-and binding is the M4 harness adapter. `grep -rn role-model-config src/ test/`
-resolves only to a schema registration and two comments. The kernel has no
-orchestration loop at all: `tiphys spawn --exec` launches a generic argv
-subprocess and the dispatching is done by a human-readable skill in `.claude/`.
+**Designed and not built.** Layer 3 and 4 binding. `role-model-config.yaml:7`
+says so: M3 ships the data and no resolver. Inside `src/`, the file is named
+four times and never read to route anything. The kernel has no orchestration
+loop: `tiphys spawn --exec` launches a generic argv subprocess, and the
+dispatching lives in a human-readable skill under `.claude/`.
 
-**What is open.** M4 is cutover: the pilot (DR-0034: `pulse`), the thin
+**Open.** M4 is cutover: the pilot (DR-0034: `pulse`), the thin
 `@tiphys/claude-code-plugin`, the harness adapter, authority enforcement, fleet
 durability, cross-environment exclusion. It may not dispatch without its own
-intake and plan, decomposed into at minimum six workstreams
-(delivery/plan/kernel-plan-v1.md:368).
+intake and plan (delivery/plan/kernel-plan-v1.md:368).
 
-**The governing steers, newest first.** These decide most of section 2:
+**The governing steers, newest first.** These decide most of section 5:
 
-- DR-0034:12, the owner, 2026-08-15: "let's not over engineer adoption. first
-  get this thing working and just use it."
-- DR-0029:19, the owner: the kernel owns orchestration; project checks, skills
-  and definitions of done come from the project and are hooked in. The kernel
-  ships the gate contract and zero project gates.
-- DR-0027:9, the owner: reviews target shipped value, not ceremony. Measured
-  cost of ignoring it at DR-0027:17.
+- DR-0034:12, the owner: "let's not over engineer adoption. first get this
+  thing working and just use it."
+- DR-0029:19 and DR-0028:12, the owner: the kernel owns orchestration and ships
+  the gate CONTRACT and zero project gates; project checks come from the
+  project.
+- DR-0027:9, the owner: reviews target shipped value, not ceremony. Cost of
+  ignoring it at DR-0027:17.
 - DR-0016:26: being asked a question whose answer was already obvious is a
   failure of the system.
 
-## 2. Candidate assessment
+## 2. The finding
 
-Verdict key: **have** (already present, often stronger), **adopt**, **adapt**
-(borrow narrower than proposed), **defer**, **reject**.
+The headline table is the measurement. Three things about it matter more than
+the number.
 
-| # | Candidate | What Tiphys has | Verdict | Where | Code or model |
-|---|---|---|---|---|---|
-| 1 | Standing orders register | Verbatim append at spawn, in CODE (src/brief.ts:24); charter owns the content scope | **adapt** (fix-round brief template only) | `.claude/` | model |
-| 2 | Verification ledger | No head field on a verdict; directory convention scopes a head | **adapt** (take the head-SHA key, refuse the graded verdicts) | M4 kernel | code |
-| 3 | Brief contract | Role half validated and refused; phase half unguarded | **adapt** (validate the phase projection) | M4 kernel | code |
-| 4 | Scale gates | DR-0027 is the collapse rule, and it is homeless | **adapt** (give it a home, fix three stale lines) | `.claude/` | model |
-| 5 | Queue discipline | Lease, beacon, atomic status rewrite, union registries | **reject** (no named failure) | n/a | n/a |
-| 6 | Liveness and failure | Beacon freshness, salvage skill, DR-0016 escalation | **reject** (no named failure; two rules harmful here) | n/a | n/a |
-| 7 | Playbook fidelity | Checklists with framings and evidence flags, stronger than a todo list | **adapt** (bind the checklist to the dispatch procedure) | `.claude/` | model |
-| 8 | Model roles | Tier, rationale, charter override, family policy, no resolver | **adapt** (guard the subagent-model override) | M4 plugin | code |
-| 9 | Reviewer independence | Required, and checked, by comparing free prose | **adapt** (give `produced-by` a token grammar) | M5 kernel | code |
-| 10 | Findings triage | Severity enum, required concrete fix, 49 arbitrations | **have** | n/a | n/a |
-| 11 | Decision log | 32 records, STATE.md, 38 work histories | **adapt** (review the orchestrator's own trail, refuse the TSV) | `.claude/` | model |
-| 12 | Pickup and pause | `orchestrator-next.mjs` exits nonzero while work remains | **adapt** (commit trigger; refuse the pause procedure) | `.claude/` | both |
-| 13 | Verification capability | Gate contract; project supplies the gate | **reject** (DR-0029 decides it) | n/a | n/a |
-| 14 | Setup improvement loop | Tuition flow with a schema and a mechanism index | **reject**, but it surfaced a live defect | `.claude/` | code |
-| 15 | Planning | Plan writer, adversarial reviewer, 5 rounds, 8 revisions | **adapt** + one decision for you | M4 intake | both |
-| 16 | Value-to-overhead accounting | Nothing. Counted once by hand in DR-0027 | **adopt** (built, in the sandbox) | sandbox now, kernel M4 | code |
+**It is recomputable.** DR-0027 counted this once, by hand, after the fact,
+because the owner noticed. A number nobody can re-derive is an anecdote. It is
+now a command with an exit code, and two independent implementations plus an
+adversarial reviewer's third agree on every figure to the line.
 
-Detail follows only where the verdict is not obvious from the row.
+**Assurance, not paperwork, is the bulk.** An earlier draft reported 74.9%
+overhead, because `delivery/review/**`, `delivery/verification/**` and
+`delivery/evidence/**` were classified as paperwork. They are not: a clean-room
+review is a test written in prose. An adversarial reviewer caught the shipped
+classification contradicting its own stated rationale, and the correction moved
+239,000 lines and took the ratio from 7.96 to 2.11. That correction is the
+difference between "stop writing so much" and "proportion the proof to the
+thing proved", and only the second is true.
 
-### 2.1 The three that matter most
+**The per-unit distribution is where the overreaction is visible.** Subject
+size, meaning value plus assurance lines with paperwork excluded, across the 50
+units: p25 0, median 0, p75 338, p90 3408. **Thirty-four of the fifty units
+have a subject size of zero.** They changed no value path and no assurance
+path. Every one of them still went through the process.
 
-**2 (verification ledger).** pstack keys a verdict row by pull request plus
-head SHA, so a new head voids the row for free
-(`skills/poteto-mode/scripts/orch/store.ts:1331`). Tiphys requires the same
-property and implements none of it: schemas/verdict.schema.json:9 has no head
-field, and scripts/check-dual-review.mjs:29 says so in its own source, that
-"THE DIRECTORY IS WHAT SCOPES A SET OF VERDICTS TO ONE HEAD". DR-0012:22
-requires two reviews "for the current head" and the artifact cannot express
-which head it read. Measured instance at delivery/STATE.md:28: two verdicts
-turned out to be on the pre-fix-round head `eb13da6`, caught by an orchestrator
-reading prose. The fix is one required field and one group-key change. It is
-the cheapest real item in the review.
+One honest caveat, from the same reviewer: the row "50 of 50 units touched
+overhead" is process-mandated rather than discovered, because the durability
+rule requires paperwork with every change. The LINE percentages carry the
+argument on their own.
 
-**7 (playbook fidelity).** The borrow is not pstack's copied todo list, which
-is an honour system weaker than what Tiphys already ships. It is the
-CONNECTION: pstack's playbook is the thing the agent opens, so its checklist
-is harder to skip. Tiphys's checklist is a shipped artifact its own dispatch
-procedure never names. Measured: `checklists/clean-room.yaml` landed on
-2026-08-13 in commit `2a3892b`; of the ten clean-room reviews added since,
-exactly ONE references it. `grep -n checklist .claude/skills/phase-delivery/SKILL.md`
-returns zero hits, including at the clean-room dispatch step
-(.claude/skills/phase-delivery/SKILL.md:81). The kernel ships a review contract
-that nine of its own last ten reviews did not use.
+## 3. The rule, and what is already built
 
-**16 (value-to-overhead accounting).** Your question, and it had no mechanism.
-Now it does, in the sandbox repository: a classifier whose rules are data, a
-three-bucket split, a budget with an exit code. The third bucket is the design:
-folding review into overhead would make reviewing less the cheapest way to
-pass, so the budget constrains overhead against value and leaves assurance
-reported but ungated. A range with no value at all is not within budget however
-generous the number.
+`tools/value-ratio/assurance-tier.mjs` in the sandbox repository implements the
+two-by-two:
 
-### 2.2 Eight more, found by sweeping pstack beyond the candidate list
+```
+node tools/value-ratio/assurance-tier.mjs --repo <dir> --range <rev> --impact <low|high>
+```
 
-Ranked. The first three are better value than several of the sixteen above.
+Four design decisions in it are load-bearing, and each is asserted in the suite:
 
-| Item | pstack | Tiphys today | Verdict |
+1. **Size is computed, impact is declared.** Size comes from the diff and
+   cannot be argued with. Impact is a judgement, declared before the work in
+   the phase declaration, where it cannot be retrofitted to justify a review
+   that was skipped.
+2. **The declaration has a floor.** `highImpactPaths` names the paths where
+   being wrong is expensive. A change touching one may not be called low
+   impact; the command refuses and names the path rather than warning.
+3. **Overhead is excluded from size, both ways.** A longer work history cannot
+   buy a heavier review and a shorter plan cannot dodge one.
+4. **The threshold is derived, not chosen.** 500 subject lines sits between the
+   kernel's own p75 and p90.
+
+Measured: 17 tests, 17 pass, 0 fail, 0 skipped on node v22.22.2, red under two
+structurally different mutations. Counting overhead in the subject reddens
+three tests; turning the floor refusal into a no-op reddens two.
+
+**What it deliberately does not do.** It picks the tier. It does not measure
+whether the review that happened was any good, and the red-witness rule remains
+the only thing separating a `full` review done well from one done badly.
+
+**What adopting it costs.** Nothing in the kernel yet. The selector reads a git
+range and a declaration. The cheapest adoption is to run it at dispatch and
+record the answer in the phase declaration, which is a `.claude/` procedure
+change. Wiring it into `assurance-modes.yaml` as a `selection` field belongs in
+M4's pilot-bootstrap workstream, after the pilot has produced evidence about
+whether the thresholds are right.
+
+## 4. Candidate assessment
+
+Verdict key: **have** (present, often stronger), **adopt**, **adapt** (borrow
+narrower than proposed), **reject**.
+
+| # | Candidate | Verdict | Why, in one line |
 |---|---|---|---|
-| A status query that fails is a VERDICT with an exit code, never silence | `skills/poteto-mode/scripts/watch-pr/policy.ts:326` | CLAUDE.md:859: a watcher armed for 1500 seconds reported nothing while the job it watched had finished | **adopt** |
-| Re-check a verdict against the git PATCH-ID, not only the head SHA | `skills/poteto-mode/playbooks/shipping.md:9` | nothing; and this CORRECTS item 6, see below | **adapt** |
-| A parked owner question carries its DEFAULT ON NO ANSWER | `skills/poteto-mode/playbooks/orchestrate.md:30` | schemas/decision-record.schema.json:10 requires twelve fields and has no such field | **adapt** |
-| Five named dismissal shapes for the arbitration step | `skills/interrogate/references/lead-judgment.md:18` | 49 arbitration documents; `grep -c arbitration .claude/skills/phase-delivery/SKILL.md` returns 0 | **adapt** |
-| Account for every spawned child at the rollup | `skills/poteto-mode/playbooks/orchestrate.md:74` | salvage handles a death the orchestrator NOTICED; nothing handles one it forgot (CLAUDE.md:425) | **adapt** |
-| The status page is DERIVED from the tables | `skills/poteto-mode/playbooks/orchestrate.md:32` | delivery/STATE.md is 1952 hand-maintained lines and the A-n namespace collided twice inside it | **adapt**, narrowly |
-| Blind the eval before promoting a brief change | `skills/poteto-mode/playbooks/eval.md:7` | role briefs ship as a deliverable and no edit to one has ever been measured | **adapt** |
-| Every claim carries its evidence or its LABEL in the same sentence | `skills/poteto-mode/SKILL.md:107` | the claim grep, which CLAUDE.md:389 records as blind to a phrase straddling a wrap | **adapt** |
+| 1 | Standing orders register | adapt | Verbatim append at spawn is already CODE (src/brief.ts:24) and the charter owns the content scope; only the fix-round brief has no template. |
+| 2 | Verification ledger | adapt | The head-SHA key is real and cheap; the graded verdict vocabulary is refused under DR-0020. |
+| 3 | Brief contract | adapt | The role half is validated and refused; the phase projection is not. |
+| 4 | Scale gates | **adopt, and it became section 3** | The collapse rule is the ancestor of the two-by-two. |
+| 5 | Queue discipline | reject | No named failure in 23 tuition entries or in STATE.md. |
+| 6 | Liveness and failure | reject | No named failure, and two of the seven rules are actively harmful here. |
+| 7 | Playbook fidelity | adapt | Tiphys ships a review checklist its own dispatch procedure never names. |
+| 8 | Model roles | adapt | `CLAUDE_CODE_SUBAGENT_MODEL` is unmentioned repo-wide and would flatten role routing silently. |
+| 9 | Reviewer independence | adapt | The decorrelation check compares free prose, and has never run. |
+| 10 | Findings triage | have | 49 arbitrations already do it, grouped by mechanism rather than by band. |
+| 11 | Decision log | adapt | Refuse the TSV; take the cross-model review of the orchestrator's own trail. |
+| 12 | Pickup and pause | adapt | `orchestrator-next.mjs` exits nonzero while work remains, which beats a playbook. Refuse the pause procedure: the measured failure here is stopping too early. |
+| 13 | Verification capability | reject | DR-0028 and DR-0029 decide it: a feature map is project content. |
+| 14 | Setup improvement loop | reject | Transcripts are not durable here. It did surface a live defect, section 5 item 4. |
+| 15 | Planning | adapt | Prototype the empirically settleable forks; keep the plan as the owner contract. |
+| 16 | Value-to-overhead accounting | adopt | Built, sections 2 and 3. |
 
-**The patch-id item corrects item 6 and is the reason this sweep earned its
-cost.** A head-SHA key voids a verdict whenever the head changes, and a phase
-branch that merges its base in to stay mergeable changes its head without
-changing a line of the code under review. Under a strict head rule both reviews
-would be voided for nothing. pstack records the base SHA and the stable
-`git patch-id` of the base-to-head diff alongside the head, and compares the
-patch-id before landing: a rebase or a base merge rewrites the SHA and preserves
-the patch-id, while a real edit changes both. **Stated as design reasoning, not
-as measurement:** no Tiphys incident of this shape is recorded, and I looked.
-Item 6 should carry the patch-id from the start anyway, because adding it later
-means a second breaking change to the same published schema.
+**Where Tiphys is already stronger, and pstack should borrow back.** Red
+witness: 162 specs with concrete mutations, against pstack's prose principle.
+Vacuity accounting: a gate green over zero units becomes an error, which pstack
+has no concept of. Declared downgrades recomputed in three directions. The
+three constraints: pstack's own store steals a lock by `process.kill(pid, 0)`
+and treating ESRCH as death, which constraint C-2 forbids outright, so
+borrowing that code would be a regression. Requirement traceability, which
+pstack has none of. And brief refusal: pstack's "missing fields are a
+refuse-to-spawn condition" is prose, since `--brief` is an unchecked opaque
+string, while Tiphys's `brief compose` genuinely refuses and names the path.
 
-Two rejects worth naming so nobody re-litigates them. **PID-based stale-lock
-detection**, which pstack's own store implements and constraint C-2 forbids
-outright; it is listed only because several good items above come out of the
-same two files and a reader passes it on the way. And **arena bakeoffs plus a
-frozen merge frontier**: no Tiphys incident is caused by a serial fix round
-where a bakeoff would have won, and DR-0016's fresh-implementer path is the
-measured answer to a twice-failed phase.
+## 5. The work
 
-### 2.3 Where Tiphys is already stronger, and pstack should borrow back
+**Four items.** An earlier draft had sixteen, and an adversarial reviewer
+pointed out that a sixteen-item plan is the disease this document diagnoses.
+The twelve that were cut are not lost: they are in section 4 with their
+verdicts, and any can be picked up when something makes it worth it. These four
+are text edits in `.claude/`, each closes a measured failure, and together they
+are about an hour.
 
-Stated because the deliverable must not read as a one-way import.
+| # | Item | Verify | Measured failure it closes |
+|---|---|---|---|
+| 1 | Fix three stale lines in the dispatch playbook | `git diff`, then `node scripts/check-authored-bytes.mjs` | The procedure contradicts three decided records |
+| 2 | Bind the clean-room checklist to the dispatch step | `node bin/tiphys.ts checklist resolve --checklist clean-room --framing criteria-contract` | 13 of 16 reviews since it shipped never used it |
+| 3 | Record the reviewer's model in every review header | grep the next two review headers | Decorrelation is unauditable across most of the record |
+| 4 | Close the tuition promotion leak | `npm test` | 10 entries never reached the shipped feed |
 
-- **Red witness.** 165 specs naming concrete source mutations, with captured
-  external output where a behaviour consumes another program. pstack's nearest
-  is `skills/principle-prove-it-works/SKILL.md`, which is prose.
-- **Vacuity accounting.** A gate that writes green over zero units is rewritten
-  to error, and a required gate that was skipped is NAMED. pstack has no
-  equivalent concept.
-- **Declared downgrades.** assurance-modes.yaml recomputes a mode's skips in
-  three directions. pstack's "a skipped step stays with a one-line reason" is
-  an honour system.
-- **The three constraints.** pstack's own store steals a lock by
-  `process.kill(pid, 0)` and treating ESRCH as death
-  (`skills/poteto-mode/scripts/orch/store.ts:368`). Tiphys forbids exactly that
-  and uses lease freshness. This is the clearest case where borrowing the code
-  would be a regression.
-- **Requirement traceability.** A 115-row migration table and a clause map with
-  a check. pstack has none.
-- **Brief refusal.** pstack's "missing fields are a refuse-to-spawn condition"
-  is prose: `--brief` is an unchecked opaque string and `orch` has no spawn
-  concept. Tiphys's `brief compose` genuinely refuses, naming the path.
+**1. Three stale lines.** `.claude/skills/phase-delivery/SKILL.md:8` says a
+phase is "merged by the owner", which DR-0012 delegated. Line 13 says the
+orchestrator never lets a review be skipped, which DR-0027 narrowed. Line 21
+says "Phases are sequential until M5", which DR-0011 superseded. Acceptance:
+each line cites the record that governs it, and a grep for the superseded
+wording returns zero.
 
-## 3. Decisions for me
+**2. The checklist binding.** `checklists/clean-room.yaml` landed on 2026-08-13
+in `2a3892b`. Sixteen clean-room reviews have been added since; three reference
+it, and two of those three are the reviews of M3-P7, the phase that built it.
+Outside its own phase: one in fourteen. `grep -n checklist` over the dispatch
+skill returns zero hits, including at the clean-room dispatch step
+(.claude/skills/phase-delivery/SKILL.md:83). The borrow from pstack is not its
+copied todo list, which is weaker than what Tiphys ships; it is the connection
+pstack gets free by putting the checklist in the file the agent opens.
+Acceptance: the next two reviews each answer every resolved probe by id, with a
+probe that does not apply answered "not applicable" and a reason.
 
-Three. Everything else in this review was decided under DR-0016 and is recorded
-as a recommendation with its reasoning.
+*Caveat, from a reviewer:* under some framings the checklist resolves 23
+probes, and a per-review floor of 23 evidence-required answers collides with
+DR-0027's tiering. The binding must say which tier the floor applies to. Under
+section 3 the answer falls out: `full` only.
 
-### D1. Does a plan still earn five adversarial review rounds?
+**3. The reviewer's model.** Costs nothing, and it is what makes section 6's
+question answerable at all. Today the two reviews of one head are never
+comparable after the fact: across 109 clean-room documents, 30 name a model.
 
-**The thing.** kernel-plan-v1 was written, then reviewed five times (four
-adversarial rounds plus a verification round), producing 40 numbered findings,
-5 of them high, across 8 recorded revisions. All four review rounds are dated
-2026-08-04. pstack takes the opposite position: it ships no planning skill, and
-its rule is that any fork whose answer is observable by running something is
-not a question, it is a prototype.
+**4. The tuition promotion leak.** Found while assessing candidate 14.
+test/tuition.test.ts:173 checks that every delivering-log entry declaring
+`kernel-relevant: yes` resolves in the shipped feed. Twelve of the 23 entries
+declare it and all twelve are promoted, so the guard works. Eleven declare
+nothing, are skipped by `continue` at test/tuition.test.ts:174, and ten of
+those have no shipped counterpart: T-010 to T-014, T-019, T-020, T-023, T-024,
+T-025. The obligation is self-declared, so an entry that says nothing is exempt
+from it. The entry the guard failed hardest to promote is T-010, the record of
+a check that could not see the byte it existed to catch.
 
-**The actual question.** Not "should Tiphys plan" (it must; the plan is the
-owner contract and the scope gate's mechanical input). The question is whether
-the plan-writing stage should be allowed to settle empirical questions by
-PROTOTYPE before review, and whether that lets the review-round count drop.
+Acceptance, in two parts so no promotion is prejudged: (a) the guard reddens on
+an entry declaring neither `yes` nor `no`, naming the file; (b) all eleven
+silent entries gain an explicit declaration. What gets promoted falls out of
+(b) rather than being fixed in advance.
 
-**The evidence, per finding.** I walked the external round
-(delivery/review/plan-review-r4-external.md:12). Its findings split cleanly:
+## 6. The decision for you
 
-- F-02, git identity missing in a clean environment: a sixty-second script on a
-  clean machine settles it. A prototype would have caught it.
-- F-01, the lease renew-versus-takeover race, and F-03, a stale local branch as
-  the worktree base: a prototype catches these only if you already knew to
-  write the concurrent test, which is what the review told them to write.
-- F-05, "monotonically increasing test counts are a weak and gameable
-  acceptance rule", and F-06, "M4 contains several architecture-bearing systems
-  in one paragraph": these are critiques of the CONTRACT. No prototype reaches
-  them.
+One. Everything else was decided under DR-0016 and is recorded with its
+reasoning. An earlier draft raised three questions, and two of them carried
+recommendations I said I would defend, which DR-0016 and DR-0023 both say means
+there was no question.
 
-Roughly a quarter of the forty findings were facts about tool behaviour that a
-short script settles. Three quarters were about the contract or about hazard
-classes, which is what adversarial review is for and what a prototype cannot
-see.
+### D1. Do you accept that some changes ship with no adversarial review?
 
-**Options.**
+**The thing.** The rule in section 3 sends zero-subject changes to no review at
+all, and small low-impact changes to `local-only`, which is implement,
+orchestrator diff review, fast-forward. Under it, 34 of the last 50 units would
+have had no reviewer, and some of the rest would have had one pass instead of
+two.
 
-1. Keep five rounds. Cost: the measured one, paid again at M4.
-2. **Two rounds, with a prototype gate in front of them.** The plan writer may
-   not write prose about an empirically settleable fork; it runs a throwaway
-   and records the result in a prototype-evidence appendix. Review rounds drop
-   to two (one internal, one cross-family) because the class of finding that
-   drove rounds 3 to 5 is the class a prototype removes.
-3. Drop adversarial plan review entirely. Rejected: F-05 and F-06 were both
-   high-value and neither is reachable any other way.
-
-**Recommendation: option 2.** It is the only one that removes a measured cost
-without removing a measured benefit, and Tiphys has no prototype concept today
-(`grep -rniE 'prototype|spike|throwaway'` over `roles/`, `checklists/`,
-`schemas/`, `.claude/` and CLAUDE.md returns only `Object.prototype` and one
-unrelated use). **Blocks:** M4's mandatory intake, which is the next thing to
-be written.
-
-### D2. What is the value-to-overhead budget, and does it gate?
-
-**The thing.** Section 2 item 16 measures the ratio. It does not yet constrain
-anything. The measurement today reads 7.96 overhead lines per value line across
-the whole history.
-
-**The actual question.** Does the ratio become a gate, and at what number?
+**Why it is genuinely yours.** It is a risk-appetite choice, it is high impact,
+and it is expensive to reverse in the direction that matters: a defect that
+ships through a zero tier is found by a user, not by a reviewer. I cannot
+defend a recommendation on your behalf because the thing being traded is your
+exposure, not my correctness. This is the DR-0016 exception rather than a
+failure to decide.
 
 **Options.**
 
-1. Report only. Zero risk, zero effect. This repository's own tuition says
-   twice that a rule which depends on remembering does not survive.
-2. **Gate at the milestone boundary, not the phase.** A single phase can
-   legitimately be almost all paperwork (a plan, an exit test). A MILESTONE that
-   is 8 to 1 against value is the thing worth refusing. Budget at 3.0 to start,
-   which is a real tightening from 7.96 and still loose enough that no
-   individual phase has to argue.
-3. Gate per pull request. Rejected: it would block the plan, the exit test and
-   every decision record, which are the artifacts the process exists to
-   produce.
+1. **Accept as specified.** The zero tier gets the byte and citation gates and
+   no reviewer; small and low gets one pass. This is the version that is built.
+2. **Accept with a floor: never zero.** Every change gets at least
+   `local-only`, so nothing merges unlooked-at. Costs one orchestrator diff
+   review per paperwork commit, which over this history is 34 reviews that
+   would have found, on the evidence, nothing.
+3. **Accept, but review the impact DECLARATION rather than the change.** The
+   declaration is one line and reviewing it is cheap; getting it wrong is the
+   only way the tier comes out wrong.
 
-**Recommendation: option 2, budget 3.0, reviewed at M5.** The number is a
-starting point chosen to be achievable rather than aspirational; the mechanism
-matters more than the threshold and the threshold is one line to change.
-**Blocks:** nothing. It can land after M4.
+**What I would say if pushed:** option 3 is what I would build next, because
+the scheme's soundness rests entirely on the impact declaration and nothing
+currently reads it. But the trade between 1 and 2 is yours.
 
-### D3. Is cross-vendor review a requirement or a preference?
+**Blocks:** wiring the selector into dispatch. Not the four items in section 5,
+which are independent of it.
 
-**The thing.** DR-0012:22 requires the two clean-room reviews of one head to be
-produced on different model families, and T-001 is the measured miss that made
-it a rule. Two facts, both verified, and together they are the sharpest finding
-in this review.
+**Decided under DR-0016 and reported, not asked:** the budget is
+reporting-only rather than a gate, because a flat ratio penalises exactly the
+cheap `.claude/` fixes this review recommends, which is the wrong incentive;
+and `produced-by` gets a token grammar at the next breaking contract revision
+rather than staying prose.
 
-First, **no reviewed head in this repository has ever had a cross-VENDOR pair.**
-Every review header that names a model names one of exactly four: Claude
-Opus 5, Claude Sonnet 5, Codex `gpt-5.6-sol`, Codex `gpt-5.6-terra`. The
-Anthropic pairs are Sonnet 5 against Opus 5. The macOS pilot pair is
-`gpt-5.6-sol` against `gpt-5.6-terra`
-(delivery/review/clean-room-macos-portability-pilot-final-criteria.md:6 and
-delivery/review/clean-room-macos-portability-pilot-final-adversarial.md:6).
-Both are one vendor. Non-Anthropic reviewers were genuinely used, which is real
-and worth keeping; they were never used AS THE OTHER HALF OF A PAIR.
+## 7. Not borrowing, with reasons
 
-Second, **the guard has never run.** `gate-registry.yaml:283` says so in the
-registry's own words: this repository "has never had a verdict document in it",
-so `check-dual-review` has reported not-applicable on every phase merge to
-date. When it does run it will compare `produced-by`, which
-schemas/verdict.schema.json:41 constrains only to a non-whitespace string,
-while the sibling field `framing` next to it at schemas/verdict.schema.json:47
-already carries a real token grammar. Two distinct prose strings pass. The only
-two verdict documents that exist, at
-delivery/evidence/m3-exit-test/e1/e1-7/verdict-criteria.yaml:5 and
-delivery/evidence/m3-exit-test/e1/e1-7/verdict-hazard.yaml:4, are exactly that
-case.
-
-So the decorrelation requirement is real, the check is real, and the property
-has held on zero heads. That is this repository's own named pattern: a guard
-whose condition does not test the property that matters.
-
-**The actual question.** At M4, when the harness adapter can actually route a
-model, is "different family" a hard precondition that refuses to dispatch, or a
-recorded preference the orchestrator may waive?
-
-**Options.**
-
-1. Hard precondition that refuses to dispatch. Strongest, and it makes a
-   capacity outage block a merge. DR-0026 already records one occasion where
-   the family constraint was waived under capacity pressure, so this option
-   would have blocked a phase that in fact shipped.
-2. **Recorded, comparable, and waivable with a reason.** `produced-by` becomes
-   a token a machine can compare, the check reddens on a same-family pair, and a
-   waiver is an explicit declared downgrade in the mode, which
-   assurance-modes.yaml already has the machinery for.
-3. Preference only. Rejected: it is what exists now, and what exists now cannot
-   distinguish two vendors from two Anthropic models.
-
-**Recommendation: option 2**, plus one free thing now:
-.claude/skills/phase-delivery/SKILL.md:83 dispatches a clean-room reviewer with
-no instruction to record its model, and adding that line costs nothing and is
-what makes the question answerable at all. **Blocks:** nothing immediately. The
-grammar wants the next breaking contract revision after 0.1.0, because
-tightening `produced-by` rejects documents that 0.1.0 accepts.
-
-**Cross-vendor EXECUTION is a separate question and I am not asking it.** The
-kernel needs nothing for it: `ExecutorRequest` carries an argv array behind
-`ExecutorAdapter` (src/spawn.ts:106) and the blueprint already anticipates
-cross-vendor pairings at delivery/intake/orchestrated-delivery-v1.md:115. What
-it needs is everything around the kernel, starting with the fact that the child
-environment allowlist carries no model-vendor credential and redirects `HOME`
-and `XDG_CONFIG_HOME` to a scrubbed harness-owned root (src/exec/env.ts:68).
-That is an M4 harness-adapter question, not a borrow.
-
-## 4. Work plan
-
-Ordered: decided and low risk first. Every item names its verify command.
-"Blocked by" means it waits on a decision in section 3.
-
-| # | Item | Where | Tier | Verify | Blocked by |
-|---|---|---|---|---|---|
-| 1 | Value-to-overhead measurement (DONE, sandbox) | sandbox | cheaper | `node --test "tools/value-ratio/test/*.test.js"` | none |
-| 2 | Fix three stale lines in the dispatch playbook | `.claude/` | cheaper | `git diff` review, `node scripts/check-authored-bytes.mjs` | none |
-| 3 | Bind the clean-room checklist to the dispatch step | `.claude/` | cheaper | `node bin/tiphys.ts checklist resolve --checklist clean-room --framing criteria-contract` | none |
-| 4 | Fix-round brief template | `.claude/` | cheaper | `node scripts/check-authored-bytes.mjs` | none |
-| 5 | Close the tuition promotion leak | kernel | cheaper | `npm test` | none |
-| 6 | Head SHA AND patch-id on the verdict, and in the group key | kernel | cheaper | `npm ci && npm run build && npm test` | none |
-| 7 | Validate the phase half of a composed brief | kernel | cheaper | `npm test` | none |
-| 8 | Prototype-evidence appendix in the plan schema | kernel | strongest | `npm test` | D1 |
-| 9 | `CLAUDE_CODE_SUBAGENT_MODEL` guard | M4 plugin | strongest | `npm test` | none |
-| 10 | Token accounting in the kernel, and the milestone budget | kernel | cheaper | `npm test` | D2 |
-| 11 | `produced-by` token grammar | kernel | cheaper | `npm ci && npm run build && npm test` | D3 |
-| 12 | Cross-model review of the orchestrator's own trail | `.claude/` | strongest | `node scripts/check-dual-review.mjs <dir>` | none |
-| 13 | Name the arbitration step in the dispatch procedure | `.claude/` | cheaper | `grep -c arbitration .claude/skills/phase-delivery/SKILL.md` returns non-zero | none |
-| 14 | Record the reviewer's model slug in every review header | `.claude/` | cheaper | grep over the next two review headers | none |
-| 15 | `default-on-no-answer` on the decision record | kernel | cheaper | `npm test` | none |
-| 16 | A CI watcher whose query failure is a verdict with an exit code | `.claude/` | cheaper | run it against a broken endpoint, assert non-zero | none |
-
-### The five with the best value for cost
-
-**1. Value-to-overhead measurement. Already built and pushed.**
-`tools/value-ratio/` in the sandbox repository. Acceptance criteria met: the
-tool classifies from a data file, reports lines, files and units per bucket,
-accepts a token ledger, exits 1 over budget and 2 on usage error, and refuses
-to pass a range that shipped nothing. Ten tests, ten pass, zero skipped, on
-node v22.22.2. The glob matcher was rewritten after the first version matched
-`src/**` against `src/cli.ts` and not `src/commands/doctor.ts`; the suite goes
-five red against the old matcher and five green against the new one.
-
-**2. Fix three stale lines in the dispatch playbook.** The procedure the
-orchestrator actually reads contradicts three decided records.
-.claude/skills/phase-delivery/SKILL.md:8 says a phase is "merged by the owner",
-which DR-0012 delegated. The same file at line 13 says the orchestrator never lets a review
-be skipped, which DR-0027 narrowed, and at line 21 says "Phases are sequential
-until M5", which DR-0011 superseded. Acceptance: each of the three lines cites
-the record that governs it, and a grep for the superseded wording returns zero.
-
-**3. Bind the clean-room checklist to the dispatch step.** Acceptance:
-`.claude/skills/phase-delivery/SKILL.md` section 5 and the clean-room brief
-instruct the reviewer to run `checklist resolve` with a framing and to answer
-every resolved probe by id, with a probe that does not apply answered "not
-applicable" and a reason rather than omitted. Falsifiable: the next two
-clean-room reviews each name every resolved probe id, measured by grep, against
-a baseline of one in ten.
-
-**4. Fix-round brief template.** The one measured resume failure
-(.claude/skills/phase-delivery/SKILL.md:117: six heads in two hours, five
-cancelled CI runs, two hours with no completed gate evidence on a milestone
-critical path) happened because the fix-round brief is hand-typed and the
-correct push wording lives in a procedure document instead of in the artifact.
-Acceptance: the template exists, section 6 points at it, and it carries the
-push clause verbatim and the environment-warnings placeholder that today exists
-only on the initial dispatch at
-.claude/skills/phase-delivery/references/implementer-brief.md:73.
-
-**5. Head SHA and patch-id on the verdict.** Section 2.1, with section 2.2's
-correction: the head alone would void both reviews whenever a phase branch
-merges its base in to stay mergeable, so the verdict records the head, the base
-and the `git patch-id` of the base-to-head diff, and the merge procedure
-compares the patch-id. Acceptance:
-`tiphys validate --type verdict` exits nonzero with pointer `#/head` on a
-verdict with no head; `check-dual-review` reddens when two verdicts for one
-phase carry different heads, and when the group's head differs from a supplied
-`--head`; and it passes on a directory holding four verdicts across two heads
-where the pair matching `--head` is decorrelated. That last case fails on
-`main` today, which is the red witness.
-
-### The one that is not a borrow at all
-
-**5. Close the tuition promotion leak.** Found while assessing candidate 14 and
-it is a live defect. test/tuition.test.ts:173 checks that every delivering-log
-entry declaring `kernel-relevant: yes` resolves in the shipped feed. Twelve of
-the 23 entries declare it and all twelve are promoted, so the guard works. The
-other eleven declare nothing, are skipped by `continue` at
-test/tuition.test.ts:174, and ten of them have no shipped counterpart: T-010 to
-T-014, T-019, T-020, T-023, T-024 and T-025. The promotion obligation is
-self-declared, so an entry that says nothing is exempt from it. The entry the
-guard failed hardest to promote is T-010, which is the record of a check that
-could not see the byte it existed to catch.
-
-Acceptance: an entry declaring neither `yes` nor `no` fails the test naming the
-file; the eleven silent entries each gain an explicit declaration; the ten
-kernel-relevant ones are promoted. Verify: `npm test`.
-
-## 5. Not borrowing, with reasons
-
-- **The orch state CLI as code.** `store.ts` steals a lock by
-  `process.kill(pid, 0)` (`skills/poteto-mode/scripts/orch/store.ts:368`),
-  which constraint C-2 forbids outright. It is also bun. Reimplementing the one
-  good idea in it (the ledger key) is item 6.
-- **Graded verdict vocabulary.** Five verdict grades against Tiphys's two.
-  DR-0020 closed the enum at 0.1.0 and no Tiphys failure is named that grading
-  removes. The head-SHA half of candidate 2 is taken; this half is not.
-- **check-plan.mjs.** A template linter, not a plan checker. It hardcodes
-  pstack's own strings, including a model slug at
-  `skills/poteto-mode/scripts/check-plan.mjs:7` and a fixed ten-lane numbering.
-  Tiphys's plan schema and clause map are the stronger form.
-- **Queue and drain, the in-flight window, the stop line.** No named failure in
-  23 tuition entries or in STATE.md. Phases are not yet concurrent by default,
-  so the window is unmotivated before M5.
+- **The orch state CLI as code.** It steals a lock by `process.kill(pid, 0)`,
+  which constraint C-2 forbids, and it is bun. The one good idea in it, the
+  ledger key, is candidate 2.
+- **Graded verdict vocabulary.** Five grades against Tiphys's two. DR-0020
+  closed the enum and no Tiphys failure is named that grading removes.
+- **check-plan.mjs.** A template linter, not a plan checker: it hardcodes
+  pstack's own strings, including a model slug and a fixed ten-lane numbering.
+- **Queue and drain, the in-flight window, the stop line.** No named failure.
+  Phases are not concurrent by default, so the window is unmotivated before M5.
 - **Retry by failure mode.** The turn-end record carries an exit code and no
-  reason (src/hooks.ts:13), so a cap-hit and a tool error are indistinguishable.
-  Every recorded agent death here was a SESSION-level death where no payload
-  exited, so the reason field would have been empty. The input does not exist
-  until M4's executor adapters can observe it.
-- **The pause-safely procedure.** Tiphys's measured failure is the opposite
-  one: three false stops recorded in CLAUDE.md:1069, with the owner asking for
-  the reverse. A procedure that makes stopping easier is actively harmful here.
-  The one clause worth taking is the per-action commit trigger, item in the
-  table.
-- **The feature map and the generated verify skill.** DR-0029 decides it: a
-  feature map is project content. The kernel ships the gate contract and zero
-  project gates. If Pulse wants a launch-drive-evidence checklist it is Pulse's
+  reason (src/hooks.ts:13). Every recorded agent death here was session-level,
+  where no payload exited, so the reason field would have been empty. The input
+  does not exist until M4's executor adapters can observe it.
+- **The pause-safely procedure.** Tiphys's measured failure is the opposite:
+  three false stops recorded in CLAUDE.md:1069, with the owner asking for the
+  reverse.
+- **The feature map and the generated verify skill.** DR-0028 and DR-0029
+  decide it. If Pulse wants a launch-drive-evidence checklist it is Pulse's
   file, declared as a Pulse gate, needing zero kernel change.
 - **reflect and automate-me.** Their trigger is a transcript, and transcripts
-  are not durable here: exactly one session transcript exists in this container
-  for a build running since 2026-08-05. Tiphys produced 23 tuition entries in
-  about 40 days; discovery is not the failing stage, promotion is, and that is
-  item 5.
-- **The decision-log TSV.** DR-0027 is precisely the shape of objection: a
-  per-decision row file is more non-shipping paperwork, and the failures it
-  claims to remove are READ failures, not write failures. CLAUDE.md:1043 says
-  the fact was written down and still rediscovered thirteen days later. What is
-  taken instead is the side mechanism: cross-model review of the orchestrator's
-  own trail. There are 198 documents under delivery/review/ and not one takes
-  the orchestrator's decision trail as its subject; the two named
-  `orchestrator-*` are authored BY it about a code finding, not about it.
-- **A third model tier.** role-model-config.yaml deliberately keeps vendor
-  product names out of a versioned artifact. The two-tier vocabulary is closed
-  by DR-0020 and no failure is named that a third tier removes.
+  are not durable here: one session transcript exists in this container for a
+  build running since 2026-08-05.
+- **The decision-log TSV.** DR-0027 is the objection: more non-shipping
+  paperwork, and the failures it claims to remove are READ failures, not write
+  failures. CLAUDE.md:1043 records a fact that WAS written down and was still
+  rediscovered thirteen days later.
+- **A third model tier.** `role-model-config.yaml` deliberately keeps vendor
+  product names out of a versioned artifact, and no failure is named that a
+  third tier removes.
 
-## 6. Adversarial review outcome
+## 8. Adversarial review outcome
 
-To be completed: the draft goes to a reviewer that has not seen this reasoning,
-against the ground rules (overengineering, conflicts with decision records,
-items with no named failure, work that will not pay for its tokens at 10 to 20
-concurrent agents). Findings are recorded as act on, consider, noted or
-dismissed, with reasons, and what is dismissed stays visible.
+Three reviewers, three lenses, none of whom saw the reasoning. Both completed
+reviews returned FIX-ROUND-NEEDED.
 
-## 7. Licence and attribution
+**Acted on.** The plan was sixteen items and is now four. Two owner questions
+became orchestrator decisions. The bucket classification was wrong and the
+correction moved 239,000 lines and inverted the headline. The checklist count
+was 10-and-1 and is 16-and-3. "pstack ships no planning skill" was false: it
+ships `skills/poteto-mode/playbooks/multi-phase-plan.md`, `skills/architect/`
+and a plan linter, and the real contrast is that it does not plan BY DEFAULT.
+The red witness for the measurement tool could not be re-run by a reader and
+now can. Counts corrected: 165 witnesses to 162, 6 role briefs to 5, 27 phases
+to 28-planned-27-merged, three constraint citations repointed.
+
+**Considered, not acted on.** Candidate 2's near-miss cost nothing and was
+caught by the process working; that is recorded rather than dressed up. The
+patch-id idea is pstack prose rather than its implemented store, so borrowing
+it means designing from scratch, which is now said. The plan-review derivation
+rested on an unenumerated count and the underlying figure is 47 unique finding
+ids, not 40; the claim is weakened accordingly rather than propped up.
+
+**Dismissed, with reasons, because a dismissal a reader cannot see is
+indistinguishable from an oversight.** The headline measurement survived a
+fully independent re-derivation by a reviewer who wrote their own script and
+derived the classification from `package.json`'s `files` array, and got every
+figure identical. No proposed item introduces a bun dependency. The
+three-bucket structure is right and the obvious two-bucket simplification would
+be worse; the holes found were in the classification, not the structure.
+Candidate 2's red witness is against the dangerous state rather than the absent
+feature. The checklist binding does not make reviews materially longer.
+
+**Not covered, stated because a review whose scope is wrong returns an empty
+result indistinguishable from an absence of defects.** The third reviewer, on
+conflicts with decided records and internal consistency, had not returned when
+this was written; its findings are not represented here. The cost lens reviewed
+cost only. No reviewer examined the sandbox subject project.
+
+## 9. Licence and attribution
 
 pstack is MIT (Lauren Tan, poteto). **No pstack code or text is copied into
-Tiphys by any item in this plan.** Every borrow is an idea or a design shape:
-the ledger key, the mode-selection step, the checklist binding, the prototype
-gate, the bucket split. The pinned checkout lived outside this repository and
-is not vendored.
+Tiphys by any item in this plan.** Every borrow is an idea: the mode-selection
+step, the checklist binding, the ledger key, the prototype gate, the bucket
+split. The pinned checkout lived outside this repository and is not vendored.
 
-Two items would need attribution if they changed shape and they are called out
-so nobody does it accidentally. If item 6 ever reimplements pstack's ledger
-row FORMAT rather than its key, or if a future item ports `watch-pr`'s policy
-engine (which is plain Node apart from its bun bootstrap and is genuinely good
-work), each carries an MIT notice naming the upstream file and commit.
+Two items would need attribution if they changed shape, named so nobody does it
+by accident: reimplementing pstack's ledger row FORMAT rather than its key, or
+porting `watch-pr`'s policy engine, which is plain Node apart from its bun
+bootstrap and is genuinely good work. Each would carry an MIT notice naming the
+upstream file and commit.
 
 ---
 
-## Appendix A: method and what it cost
+## Appendix A: the commands behind every number
 
-Nine agents read pstack, nine mapped Tiphys, seventeen assessed one candidate
-each, one reviewed the draft cold. Every absence claimed in this document was
-probed with a command rather than inferred; the commands are in the working
-notes and the material ones are quoted inline.
+```
+# the headline table and the ratio
+node tools/value-ratio/value-ratio.mjs --repo <kernel> --range origin/main
 
-This review is itself overhead by its own measure, and the number is recorded
-rather than omitted: over 3.3 million subagent tokens, 100% in the overhead
-bucket, producing one document and one sandbox tool. Whether that was worth it
-is a judgement the ratio cannot make, which is stated in
-`tools/value-ratio/README.md` as a limitation rather than discovered later.
+# the tier a range earns
+node tools/value-ratio/assurance-tier.mjs --repo <kernel> --range <sha>~1..<sha> --impact low
 
-## Appendix B: corrections to claims made during the review
+# reviews added after the checklist landed, and those referencing it
+git log --format=%H 2a3892b..origin/main | while read c; do \
+  git show --pretty=format: --name-only --diff-filter=A "$c"; done \
+  | grep '^delivery/review/clean-room-.*\.md$' | sort -u
 
-- An early reading held that Tiphys's dual review was NOMINALLY cross-family.
-  That was wrong and is corrected in section 3 D3: real cross-vendor review
-  happened in nine reviews. What is true is narrower and is the finding that
-  survived: the property is recorded in prose in 30 of 109 documents and is
-  machine-comparable in none.
-- An early reading held that the tuition promotion guard was vacuous. It is
-  not: it fires correctly for the twelve entries that declare the field. The
-  defect is that declaration is optional and eleven entries are silent.
-- The value-ratio tool's first glob matcher was wrong in a way that read
-  plausibly, and the numbers it produced were quoted before the bug was found.
-  Every figure in this document comes from the corrected matcher, which two
-  independent implementations now agree on to the file.
+# the tuition promotion leak
+for f in delivery/tuition/T-*.md; do \
+  grep -qiE 'kernel-relevant:[[:space:]]*yes' "$f" || echo "$f"; done
+
+# every review header naming a model
+grep -rhiE '^[[:space:]]*[-*]?[[:space:]]*(reviewer|produced-by|model)[[:space:]]*:' \
+  delivery/review/clean-room-*.md | grep -iE 'sonnet|opus|gpt|codex|gemini|grok'
+
+# counts
+find witness -name '*.json' | wc -l ; ls roles/*.md | wc -l ; ls delivery/review/*.md | wc -l
+```
+
+Counts as measured: 162 witness spec files; 5 role briefs for 6 declared roles;
+198 documents at the top level of `delivery/review/` and 234 including
+`delivery/review/evidence/`.
+
+## Appendix B: what this document got wrong
+
+Kept rather than deleted, because a reader should be able to tell a corrected
+claim from one that was always right.
+
+- **The bucket classification was wrong and the headline was wrong with it.**
+  Reviews and evidence were counted as paperwork, giving 74.9% overhead. They
+  are assurance. The real figures are 9.4 / 70.8 / 19.8, and the ratio is 2.11.
+- **"No reviewed head has ever had a cross-vendor pair" needed sharpening.**
+  Non-Anthropic reviewers were genuinely used. What is true is that the two
+  reviews OF ONE HEAD were never cross-vendor: the Anthropic pairs are Sonnet 5
+  against Opus 5, and the macOS pilot pair is `gpt-5.6-sol` against
+  `gpt-5.6-terra`, which is one vendor twice.
+- **"Ten clean-room reviews, one referencing the checklist" was a date-windowed
+  count.** Measured from the landing commit it is sixteen and three, two of the
+  three being the checklist's own phase.
+- **"pstack ships no planning skill" was false.** It ships a planning playbook,
+  a design skill and a plan linter. It does not plan by default.
+- **The tuition guard is not vacuous**, as an earlier reading had it. It fires
+  correctly for the twelve entries that declare the field; the defect is that
+  declaration is optional.
+- **The measurement tool's own glob matcher was wrong** in a way that read
+  plausibly, matching `src/**` against `src/cli.ts` but not
+  `src/commands/doctor.ts`, and its numbers were quoted before the bug was
+  found. Two further bugs surfaced while building the witness for it: a
+  replacement string whose `$&` was expanded into the mutant, and a nested
+  `node --test` that Node refuses recursively by warning on stderr and exiting
+  zero. All three are one shape, a later pass that cannot tell what an earlier
+  pass produced, and the last is a guard that could not go red.
+
+## Appendix C: this review's own cost
+
+4,487,517 subagent tokens recorded in the sandbox ledger across five workflows,
+100% of it in the overhead bucket, producing one document, one measurement tool
+and one subject project. Under this document's own rule this change has a zero
+subject in the kernel and would earn no review at all; it got three. Whether
+that was worth it is a judgement the ratio cannot make, which is why the tool
+says so in its own README rather than leaving it to be discovered.
