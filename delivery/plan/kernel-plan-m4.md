@@ -3717,3 +3717,120 @@ probe results that landed after the drafts were written.
 **The assembly did not re-derive the phases.** Every acceptance criterion below
 is as its drafting pass wrote it, with phase ids renumbered and M4-P1 amended.
 A clean-room review of this plan should treat that as its first check.
+
+## 11. Revision 2, 2026-09-16: two phases added for defects found by review
+
+Two defects in SHIPPED code were found on 2026-09-16, both by clean-room review
+of other phases, and neither is owned by any of the twenty-seven phases above.
+The binding rule of this plan is that if it is not written here, it is not being
+made, so they are written here rather than dispatched against nothing.
+
+Both are added as phases rather than folded into an existing one, because the
+fix-round contract forbids widening a phase to carry a defect its branch did not
+introduce, and both belong to `src/gates/`, which no M4 phase declares.
+
+Ids M4-P28 and M4-P29 are freshly allocated. Checked against the whole history,
+not the current tree, per the never-reuse rule. Captured:
+
+```
+$ git log --all --oneline -S'M4-P28'
+$ git log --all --oneline -S'M4-P29'
+$ grep -o '^### M4-P[0-9]*' delivery/plan/kernel-plan-m4.md | grep -o '[0-9]*$' | sort -n | tail -1
+27
+```
+
+Both searches return no commits, and the highest existing id is 27.
+
+### M4-P28: the coverage gate stops measuring machine load
+
+**Branch:** `claude/m4-p28-coverage-instrument`
+
+**The defect.** `src/gates/coverage.ts:235` defines
+`REGEX_EXEC_TIMEOUT_MS = 250` and applies it at src/gates/coverage.ts:257 as a
+WALL-CLOCK budget, reporting at src/gates/coverage.ts:261 that a pattern "did
+not complete within 250ms". The word "complete" presents elapsed time as
+evidence about the regex. It is not. Measured at load 33, one million executions
+of `^(?:R-[0-9]+[a-z]?)$` against a six-character input take 154.2 ms in total,
+0.000154 ms each, so a single execution is roughly 1.6 million times under the
+budget. Both patterns observed failing are anchored with no nested quantifier
+and no alternation over a repeated group, so no catastrophic backtracking is
+available to them at any input length.
+
+**Why it is a phase and not a note.** `coverage` is a REQUIRED gate in `full` and
+`direct-pr` modes, `src/gates/` is inside DR-0027's shipped surface, and the
+path is the user-visible `tiphys gates run`. It fails in the direction that
+costs most, a correct branch reported wrong, and three independent parties have
+now hit it. The second-order cost is an agent trained to wave a required gate
+through.
+
+**Acceptance criteria, falsifiable.**
+
+1. The guard's verdict does not change with machine load. Witness: the two
+   patterns and inputs recorded in
+   delivery/verification/wall-clock-budgets-are-load-dependent.md:1 evaluate to
+   the same verdict at load under 5 and at load over 45, ten runs each, zero
+   differing verdicts.
+2. A genuinely catastrophic pattern is still caught. Witness: a nested-quantifier
+   pattern against an input that forces exponential backtracking is reported,
+   and it is reported at load under 5, where a wall-clock budget would be most
+   likely to let it pass.
+3. The two members of criterion 2's class are structurally different, not one
+   pattern twice.
+4. `node --test test/coverage-gate.test.ts` exits 0 and reports N tests, N > 0,
+   with the SKIPPED count quoted.
+
+**Explicitly NOT in scope.** Raising the constant. That keeps the instrument and
+only moves the load at which it lies, so it is named here as a rejected option
+rather than left available to an implementer in a hurry.
+
+**Files to touch:** `src/gates/coverage.ts`, `test/coverage-gate.test.ts`,
+`test/behaviors.json`, `delivery/work-history/m4-p28.md`.
+
+### M4-P29: three gate CLIs stop truncating their own reports
+
+**Branch:** `claude/m4-p29-gate-cli-exit`
+
+**The defect.** `process.exit(main(...))` at the CLI entry point of three shipped
+modules: src/gates/credentials.ts:691, src/gates/red-witness.ts:574 and
+src/gates/suite.ts:1142. The registry invokes the four gates they serve as
+subprocesses, so their stdout is a PIPE, and `process.stdout.write` to a pipe is
+asynchronous while `process.exit` does not wait for the queue to drain. Measured:
+58,890 bytes arrive intact, 118,890 bytes arrive as 65,466, one pipe buffer. The
+same code to a FILE loses nothing, which is why it survives casual testing.
+
+**Severity, stated honestly.** LATENT. The largest gate stdout in any captured
+evidence is 2,425 bytes, thirty times below the trigger, so nothing is losing
+evidence today. No verdict can change through this path either, because the exit
+code survives; what is lost is the evidence, which for this project is its own
+kind of serious. The plausible future trigger is `suite`, whose subject is
+another program's output and whose suite now reports 846 tests.
+
+**Acceptance criteria, falsifiable.**
+
+1. Each of the three entry points sets `process.exitCode` and does not call
+   `process.exit` with a computed status.
+2. A report larger than one pipe buffer survives. Witness: a gate run producing
+   over 128 KiB of stdout, piped, arrives byte-complete; the same run before the
+   change arrives truncated at approximately 65,536 bytes.
+3. The exit code is unchanged in every arm. Witness: green, red, not-applicable
+   and error each produce the same status before and after.
+4. `node --test` exits 0 and reports N tests, N > 0, with the SKIPPED count.
+
+**Files to touch:** `src/gates/credentials.ts`, `src/gates/red-witness.ts`,
+`src/gates/suite.ts`, their tests, `test/behaviors.json`,
+`delivery/work-history/m4-p29.md`.
+
+### What this revision did NOT cover
+
+- **`scripts/*.mjs`.** Only `src/` and `bin/` were grepped for the
+  `process.exit` pattern. The script gates were not examined and may carry it.
+- **stderr.** Only stdout was measured for truncation.
+- **The other patterns the coverage gate compiles.** Two were timed, the two a
+  reviewer reported. One of the rest may genuinely backtrack, which would be a
+  real finding the current instrument is too noisy to surface.
+- **Whether either defect has ever affected a CI run here.** No run was checked
+  for either signature, so the claim is about the mechanism, not about damage
+  already done.
+- **Sequencing against the other twenty-seven.** Neither phase touches a file on
+  any existing phase's declaration, so the conflict pre-pass is not re-derived
+  here; that check is owed before either is dispatched concurrently.
