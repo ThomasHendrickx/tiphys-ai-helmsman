@@ -401,5 +401,13 @@ node scripts/rehearse-cutover-rollback.mjs --trigger freeze-point-restore-input
 ```
 
 Exit codes: 0 every observation held, 1 an observation did not hold, 2 usage,
-3 REFUSED because the trigger has a step that cannot be rehearsed. The captured
-output of all five is in delivery/work-history/m4-p26.md:1.
+3 REFUSED because the trigger has a step that cannot be rehearsed, 4 the
+script's own assertion helper does not discriminate. The captured output of all
+five is in delivery/work-history/m4-p26.md:1.
+
+**Exit code 4 exists because the gap was measured.** Before it, an assertion
+helper that agreed with everything left all four rehearsal tests green and the
+script exited 0. Every arm now puts a deliberately disagreeing pair through the
+same helper before it runs, and prints `SELF-CHECK OK`. A rehearsal whose
+verdict machinery has stopped working must not be able to report a green, which
+is the same property this whole document exists to give the rollback.
