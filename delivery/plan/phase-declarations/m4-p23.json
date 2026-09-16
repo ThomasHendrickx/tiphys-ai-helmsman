@@ -1,0 +1,22 @@
+{
+  "id": "M4-P23",
+  "branch": "claude/m4-p23-retirement-inventory",
+  "filesToTouch": [
+    "delivery/plan/cutover/retirement-inventory.md",
+    "delivery/plan/cutover/retirement-inventory.json",
+    "scripts/check-retirement-inventory.mjs",
+    "test/retirement-inventory.test.ts",
+    "test/behaviors.json",
+    "CLAUDE.md",
+    "delivery/plan/phase-declarations/m4-p23.json",
+    "delivery/work-history/m4-p23.md"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "DR-0011",
+    "DR-0012",
+    "DR-0029",
+    "DR-0031",
+    "T-008"
+  ]
+}

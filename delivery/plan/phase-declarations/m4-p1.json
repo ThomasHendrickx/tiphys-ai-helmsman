@@ -1,0 +1,19 @@
+{
+  "id": "M4-P1",
+  "branch": "claude/m4-p1-harness-probe",
+  "filesToTouch": [
+    "delivery/verification/m4-prototype-probes.md",
+    "test/fixtures/harness-probe/"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p1.json",
+    "delivery/work-history/m4-p1.md"
+  ],
+  "citations": [
+    "M4-D-01",
+    "M4-D-06",
+    "DR-0010",
+    "T-008"
+  ]
+}
