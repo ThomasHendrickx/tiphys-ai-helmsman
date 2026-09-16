@@ -716,7 +716,7 @@ $ grep -rnE '"(show|cat-file|ls-tree|ls-files|rev-parse)"' src/ --include='*.ts'
 Mixing the two is not the defect, so the filter is FILES CARRYING BOTH, then
 reading each to see whether the two sources feed one paired decision. Three
 files carry both: `src/gates/citations.ts`, `src/gates/suite.ts`,
-`src/witness/run.ts`.
+`src/witness/run.ts`. **All three were read, and all three are sound.**
 
 **`src/gates/citations.ts`: SOUND.** Both halves read git. The document set comes
 from `git diff --name-only --diff-filter=d base...head` at
@@ -731,9 +731,24 @@ from `git ls-tree` and `git show` at the merge base
 src/gates/suite.ts:500 walks declared test roots to ENUMERATE files to run, which
 is a different question from judging committed content.
 
-**What this derivation did NOT cover.** `src/witness/run.ts` carries both and was
-NOT read for this; it is the third file and it is excluded here rather than
-cleared. The filter is also textual: a paired decision split across TWO files,
+**`src/witness/run.ts`: SOUND, and it exposed a false positive in my own filter.**
+Every read of judged content goes through git: `gitIn(repoRoot, ["show",
+"<headSha>:<path>"])` at src/witness/run.ts:1144, src/witness/run.ts:1203,
+src/witness/run.ts:1403 and src/witness/run.ts:1733, plus `ls-tree` at
+src/witness/run.ts:1718 and a `show` inside the clone at src/witness/run.ts:764.
+
+Its four apparent `readFileSync` hits are NOT reads at all. They are at
+src/witness/run.ts:418, :428, :562 and :563, and every one is inside a regex
+literal or a doc comment: this module SEARCHES TEST SOURCES for the text
+`readFileSync(`, so the token appears as data. My filter counted a pattern the
+analyser looks for as a call the analyser makes.
+
+That is worth more than the result it produced. A grep for a call name matches
+the same name quoted, commented, or built into a regex, so a count from it is an
+upper bound and never a finding. The three files it flagged all had to be read
+anyway, which is the only reason the false positive cost nothing.
+
+**What this derivation did NOT cover.** The filter is textual: a paired decision split across TWO files,
 one reading git and one reading disk, is invisible to a per-file test and no
 cross-file analysis was run. And `src/gates/` was the only tree examined at this
 depth; `bin/` and `scripts/` carry their own readers.
