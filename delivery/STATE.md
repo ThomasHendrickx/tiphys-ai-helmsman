@@ -1963,6 +1963,24 @@ fact rather than a memory.
 
 ## Standing reminders
 
+- **ONE WORKFLOW AT A TIME, TWO AGENTS, owner decision 2026-09-16 (DR-0044).**
+  This REVERSES the fan-out rule at CLAUDE.md:1157, which the same owner had
+  asked for twice. Both requests were reasonable when made; what changed is
+  measured, not preference. Fourteen agents drove a four-CPU box to load 69, and
+  in that band a REQUIRED gate lies: four independent parties reported `coverage`
+  false reds on six structurally different patterns, one of which cannot
+  backtrack at all. More parallelism here does not buy more work, it buys work
+  whose measurements are suspect. Full reasoning and what it does NOT settle:
+  delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:1.
+
+- **THREE CLAUDE.md AMENDMENTS ARE QUEUED BEHIND M4-P23**, which owns that file
+  under the conflict pre-pass. Each is already durable somewhere else, so none is
+  lost if the queue stalls: DR-0044 above (the concurrency reversal, binding
+  now); the claim grep's passive-voice gap, seven forms measured missed, in
+  delivery/verification/the-claim-grep-catches-one-passive-assertion-and-misses-seven.md:1;
+  and the fourth suite qualifier, git checkout versus `git archive` copy, in
+  delivery/verification/a-suite-number-needs-a-fourth-qualifier.md:1.
+
 - **PUSH EVERY PHASE BRANCH ON DISPATCH, NOT ON COMPLETION.** Measured
   2026-09-16: twelve M4 branches carrying 141 distinct commits existed only in
   this container and on no remote, for just over two hours of continuous
