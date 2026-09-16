@@ -140,14 +140,42 @@ if (ref !== undefined) {
         whether it APPROVED. Reading the file is the only way to tell, and a
         phase with a FIX-ROUND-NEEDED review on its own branch is not ready
         however many boxes above are ticked. */
+  /* A REVIEW THAT ASKED FOR A FIX ROUND, AND A FIX ROUND THAT HAS SINCE LANDED,
+     ARE DIFFERENT STATES AND IMPLY DIFFERENT ACTIONS. The first check here
+     could not tell them apart and told a reader a round was owed on three
+     phases whose round had already run. What is owed after a fix round is a
+     RE-REVIEW, because the head the reviewers examined is no longer the head.
+
+     The head a review examined is not recorded in the file in a form worth
+     parsing, so the proxy is whether any commit after the review's own commit
+     changes something other than delivery/review/. That is coarse and is
+     labelled as a proxy rather than presented as the fact. */
   for (const path of reviewFiles) {
     const body = git(["show", `${ref}:${path}`]);
-    if (/FIX-ROUND-NEEDED/.test(body)) {
-      unmet.push(`${path} records FIX-ROUND-NEEDED; that round is owed before this merges`);
-    }
+    const needsRound = /FIX-ROUND-NEEDED/.test(body);
     const highs = (body.match(/\[(HIGH|CRITICAL)\]/g) || []).length;
-    if (highs > 0) {
-      unmet.push(`${path} carries ${highs} HIGH/CRITICAL finding(s); DR-0012 bars a merge on an unresolved one`);
+    if (!needsRound && highs === 0) continue;
+
+    /* THE REVIEWED HEAD IS IN THE REVIEW, and using the review FILE's own commit
+       instead gets this backwards whenever the reviews are landed AFTER the fix
+       round, which is the normal order here. Measured: that version reported
+       "the round is owed" on two phases whose round had already run and pushed. */
+    const headMatch = body.match(/\bhead `?([0-9a-f]{7,40})`?/);
+    const reviewedHead = headMatch === null ? "" : headMatch[1];
+    let after = [];
+    if (reviewedHead !== "" && git(["cat-file", "-t", reviewedHead]) === "commit") {
+      after = git(["log", "--format=%h", `${reviewedHead}..${ref}`, "--", ".", ":(exclude)delivery/review"])
+        .split("\n").map((x) => x.trim()).filter(Boolean);
+    }
+    const label = `${path}${needsRound ? " records FIX-ROUND-NEEDED" : ""}` +
+      `${highs > 0 ? `${needsRound ? " and" : " records"} ${String(highs)} HIGH/CRITICAL finding(s)` : ""}`;
+    if (after.length === 0) {
+      unmet.push(`${label}; that round is owed before this merges`);
+    } else {
+      unmet.push(
+        `${label}, and ${String(after.length)} commit(s) since the head it reviewed (${reviewedHead.slice(0, 8)}) changed ` +
+          `the code, so a RE-REVIEW is owed rather than a first round.`,
+      );
     }
   }
 
