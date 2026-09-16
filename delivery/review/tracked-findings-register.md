@@ -421,6 +421,39 @@ These predate the decision and were already unowned. They are listed so that
 `describeDrift` and HRB-4 are the SAME mechanism in two programs, which is the
 observation T-020 records. Anyone picking up either should pick up both.
 
+## M4 wave 1, reviewed 2026-09-16, NOT yet merged
+
+These are recorded BEFORE their phases merge, which is a departure from the
+sections above and is deliberate: the session-limit kill on the same day showed
+that a finding living only in a review document and a chat message is one
+container away from gone. Each names the reviewer's own reachability judgement.
+
+### M4-P20 (exclusion pre-pass) -- one round, verdict APPROVE
+
+| id | what | why not blocking |
+|---|---|---|
+| CR-M4P20-001 | `scripts/probe-cas-ref.mjs` recursively force-deletes its raw argv path operand with NO guard, and the deletion is documented nowhere. The reviewer built a directory holding `.git/HEAD`, a plan file and an uncommitted `WORK.md`, pointed the DOCUMENTED reproduction command at it, and it was gone at exit 0 with no warning | `scripts/` is outside the shipped surface: `package.json` `files` lists `dist`, `LICENSE`, `AGENTS.md`, `gate-registry.yaml` and the manifest, and neither `scripts` nor `test`. **CONTESTED BY THE ORCHESTRATOR**, and recorded as contested rather than flattened: the reachability test is satisfied, and a documented command that destroys uncommitted work is still a hazard to a HUMAN following the documentation. It is queued for a fix round rather than left, and it is in this register in case that round does not happen |
+| CR-M4P20-002 | the probe guard is GREEN against a HAND-WRITTEN refusal line. The reviewer replaced the function with a constant carrying a `deadbeef` object name no git ever produced; the probe printed the fabrication at exit 0 and all five guard tests stayed green | one hop from shipped: the probe is the evidence behind M4-D-11, which governs `src/exclusion.ts`. It is the red-witness rule's own "never hand-written" property (T-003) failing inside a guard whose whole purpose is that property. Tracked, and the reviewer supplied a one-line fix it witnessed red |
+| CR-M4P20-003 | a derivation published as "Full output" is not the full output: 16 lines published against 24 real, with one row silently dropped and no elision marker | prose only, and no gate can see it because the citations gate does not lint work histories. Recorded because a published derivation that is not the full output is the fix-round contract's item 2 failing quietly |
+| CR-M4P20-004 | the disjointness argument is file-level only, and these tests depend on `src/fleet.ts`, which another wave-1 unit owns | `src/fleet.ts` IS shipped, so a FUTURE instance could turn `main` red after both merge with neither branch's own CI able to see it. No instance today |
+
+### M4-P23 (retirement inventory) -- fix round dispatched, not tracked-only
+
+Its HIGH (the C-3 gap row is false, refuted by `AGENTS.md` and a shipped schema)
+and three of its MEDIUMs went to a fix round rather than here. One item is
+tracked because it is not that phase's:
+
+| id | what | why not blocking |
+|---|---|---|
+| CR-M4P23-007 | `process.exit(main(...))` truncates a piped report at one pipe buffer, in three shipped gate modules reached by `tiphys gates run` | **REACHES SHIPPED**, so it is not tracked under the reachability test; it is tracked because it is NOT M4-P23's to fix and no M4 phase owns `src/gates/`. Forced and bounded after the review: 58,890 bytes intact, 118,890 arrive as 65,466, nothing lost to a FILE. LATENT: the largest gate stdout measured anywhere here is 2,425 bytes. Now planned as M4-P29 |
+
+### Found by the orchestrator, not by a review
+
+| id | what | why not blocking |
+|---|---|---|
+| ORCH-2026-09-16-a | the `coverage` gate uses a 250 ms WALL-CLOCK budget as a backtracking proxy, so it reports machine load as a property of the regex | **REACHES SHIPPED and is NOT tracked-because-unreachable.** It is here because no existing phase owns it. Four independent parties, six structurally different patterns, one of them `^(?:parked)$` which cannot backtrack at all; a single execution measured 1.6 to 5.1 million times under budget. Now planned as M4-P28 |
+| ORCH-2026-09-16-b | `check-dual-review` has never asserted anything on this repository, across M1, M2 and all thirteen M3 phases | the gate is honest: it reports not-applicable with a reason, which M2-C-3 requires. What is tracked is that DR-0012 makes dual review the CONDITION of delegated merge authority and the check that would verify it has never run. Needs the root charter (M4-P15) and a conforming verdict document |
+
 ## What this register does NOT establish
 
 - **It is not a completeness claim.** It holds what the reviews reported and
