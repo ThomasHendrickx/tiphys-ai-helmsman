@@ -757,3 +757,61 @@ depth; `bin/` and `scripts/` carry their own readers.
 `Read the verdict corpus from the commit the declaration was read`, which fixes
 the mechanism by making both halves read git, rather than patching either arm the
 reviewer demonstrated.
+
+## CORRECTION: that derivation found none of the four real instances
+
+The entry above concluded "the M4-P11 instance remains the only one" after
+reading three files. The fix round then derived the same mechanism properly and
+found **four sites**, and the fourth is worse than the three the reviews reported.
+
+**Site 4, which neither review nor my derivation reached.**
+`establishDelegatedRegime` decides whether DR-0012's delegated grant applies AT
+ALL. It read `charter.yaml` and `assurance-modes.yaml` off DISK, while
+`readReviewFamilies` read the SAME `charter.yaml` out of the object database.
+Measured at one commit, one uncommitted word changed:
+
+| working tree | result |
+|---|---|
+| committed `delivery-mode: full`, pair sharing `produced-by` | red, exit 1 |
+| `delivery-mode: direct-pr` written to disk, NEVER committed | **green, exit 0** |
+
+The green arm prints "mode direct-pr declares merge-authority owner, which is not
+a delegated grant" about a mode the commit it names does not declare. That is not
+buying the single-family exception; it is switching the entire decorrelation
+requirement OFF, needing no declaration and no second family.
+
+### Why my derivation found nothing, twice over
+
+Both reasons are structural, not carelessness, which is what makes them worth
+writing down.
+
+**One: I searched the wrong trees.** I examined `src/gates/` and `src/witness/`
+and said so. All four sites are in `src/checks.ts`. The gap I named in that entry
+("`src/gates/` was the only tree examined at this depth") is exactly where every
+instance lived.
+
+**Two: my filter could not have flagged it even there.** It required both kinds
+of read IN ONE FILE. Measured on `src/checks.ts` before the fix: 3 filesystem
+reads, **0** git-object reads. The pair was split across a module boundary, which
+is the second gap that entry named ("a paired decision split across TWO files is
+invisible to a per-file test"). After the fix the same file reads 4 and 8, so the
+filter flags it only once it is already correct.
+
+**So the entry named both of its own blind spots, and the defects were in both.**
+Naming a gap is not closing it, and a derivation that reports clean while its
+stated exclusions cover the whole population has reported nothing at all. That is
+the fix-round contract's item 3 turned on its author.
+
+### What the round did that mine did not
+
+It derived the population as an INTERSECTION and by DOCUMENT rather than by file:
+every filesystem read of a governance document (81 hits, 24 files), intersected
+with every git-object read, matched on the document each touches rather than on
+the file each sits in. That crosses module boundaries by construction.
+
+It also refused the reviewers' grouping after testing it. The two reviews treated
+"the corpus is read from disk" and "the corpus is one directory" as one family;
+they are source and extent, and the obvious joint repair is measurably wrong for
+the second, because a whole-tree enumeration finds seven verdict documents of
+which five are this check's own test fixtures, and adopting it turned a green
+test red.
