@@ -790,5 +790,10 @@
   "dual-review-unreadable-sibling-refused": "a sibling that cannot be read at all makes the gate error instead of reporting the pair clean",
   "dual-review-phaseless-sibling-refused": "a verdict sibling that states no phase is reported rather than silently left out of the group",
   "dual-review-unexaminable-candidate-is-applicable": "the precondition reports a directory whose only review document is unexaminable as APPLICABLE",
-  "dual-review-non-verdict-document-still-skipped": "a prose review and a non-verdict document in the same directory are still skipped silently"
+  "dual-review-non-verdict-document-still-skipped": "a prose review and a non-verdict document in the same directory are still skipped silently",
+  "dual-review-unreadable-kind-list-refused": "a sibling whose kind is a one-element list makes the gate error instead of reporting the pair clean",
+  "dual-review-unreadable-kind-invisible-refused": "a sibling whose kind is an invisible character makes the gate error instead of reporting the pair clean",
+  "dual-review-unreadable-kind-members-differ": "the two unreadable-kind members fail through different readers and say so differently",
+  "dual-review-absent-kind-still-skipped": "a sibling that declares no kind at all is still skipped, and the pair still approves",
+  "dual-review-one-selection-rule": "the gate runner and the derived check select the same documents, so a kind differing only in case is counted"
 }

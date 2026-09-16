@@ -1144,6 +1144,140 @@ test("the phase-less sibling is reported through `tiphys validate` too, where on
   );
 });
 
+/* ------------------------------------------------------------------ */
+/* Fix round 2: a candidate whose OWN TYPE could not be read            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The refusing third review with its `kind:` line replaced.
+ *
+ * `kind` is the ONLY field touched, so a member that reddens does so because
+ * its type could not be read and not because anything else about it changed.
+ */
+function refusingThirdWithKind(kindLines: string): string {
+  assert.ok(REFUSING_THIRD.includes("kind: verdict"), "REFUSING_THIRD no longer declares kind");
+  return REFUSING_THIRD.replace("kind: verdict", kindLines);
+}
+
+/**
+ * TWO MEMBERS OF ONE CLASS, AND THEY ARE STRUCTURALLY DIFFERENT RATHER THAN TWO
+ * SPELLINGS OF ONE. The class is "a candidate whose own `kind` could not be
+ * READ is dropped as though it had ANSWERED that it is not a verdict".
+ *
+ *   MEMBER ONE  `kind` is not a scalar at all (a one-element YAML list). It
+ *               leaves `establishField` through the `typeof raw !== "string"`
+ *               arm and the reading reports `a list`.
+ *   MEMBER TWO  `kind` IS a string and carries a character outside printable
+ *               ASCII. It reaches `canonicalScalar` (member one never does) and
+ *               the reading reports the codepoint and its position.
+ *
+ * The two messages are asserted to DIFFER, which is what makes them two members
+ * rather than one defect witnessed twice: this repository has recorded a round
+ * whose two members produced character-identical failures, and a test that
+ * cannot tell them apart would not have caught it.
+ *
+ * MEMBER TWO IS WRITTEN AS AN ESCAPE, NOT AS A LITERAL BYTE. The character
+ * under test is invisible and this repository's authored files are pure ASCII
+ * (CLAUDE.md's binding convention 3), so `\u200B` in the source is both the
+ * rule and the only readable way to write it.
+ */
+/** The literal text a member's reading reports, made safe to put in a RegExp. */
+function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const KIND_MEMBERS: [string, string, string][] = [
+  ["a one-element list", "kind:\n  - verdict", "it is a list"],
+  ["an invisible character", 'kind: "ver\u200Bdict"', "it is U+200B at position 4"],
+];
+
+for (const [label, kindLines, found] of KIND_MEMBERS) {
+  test(`a sibling whose kind is ${label} makes the gate error instead of reporting the pair clean`, () => {
+    /* THE DANGEROUS STATE IS ON DISK IN BOTH ARMS: the third document reads
+       `verdict: FIX-ROUND-NEEDED`, so a green here is a refusing review being
+       uncounted and not merely a feature being absent. Measured at the round-1
+       head `470f788b2a084043b2d46f59867bd47391d9d234` with member one:
+       `check-dual-review: green (2 review verdicts examined for decorrelation)`,
+       exit 0, and the third file named nowhere in the output. */
+    withThirdDocument(refusingThirdWithKind(kindLines), (dir, run) => {
+      assert.equal(run.status, 21, run.output);
+      assert.match(
+        run.output,
+        new RegExp(
+          `third-refusing\\.yaml declares a kind field that could not be read as a word \\(${literal(found)}\\)`,
+        ),
+        run.output,
+      );
+      assert.doesNotMatch(run.output, /the pair approves/, run.output);
+
+      const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
+      for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+        assert.match(
+          validated,
+          new RegExp(
+            `INVALID #/kind .*third-refusing\\.yaml sits under delivery/review and declares a kind ` +
+              `field that could not be read as a word \\(${literal(found)}\\).*\\(check: ${check}\\)`,
+          ),
+          validated,
+        );
+      }
+      assert.doesNotMatch(validated, /REPORT verdict-pair-approves .* read APPROVE/, validated);
+    });
+  });
+}
+
+test("the two unreadable-kind members fail through different readers and say so differently", () => {
+  /* ONE WITNESS IS NOT A CLASS, and two members that print the same sentence
+     are one defect twice. This asserts the property directly rather than
+     leaving it to be inferred from the loop above. */
+  const said = KIND_MEMBERS.map(([, kindLines]) =>
+    withThirdDocument(refusingThirdWithKind(kindLines), (_dir, run) => {
+      const line = /declares a kind field that could not be read as a word \(([^)]*)\)/.exec(
+        run.output,
+      );
+      assert.ok(line !== null, run.output);
+      return line[1] as string;
+    }),
+  );
+  assert.equal(said.length, 2);
+  assert.notEqual(said[0], said[1], `both members reported ${String(said[0])}`);
+});
+
+test("a sibling that declares no kind at all is still skipped, and the pair still approves", () => {
+  /* THE NEGATIVE CONTROL, and it is the half that keeps the fix from becoming
+     "every file under delivery/review is a verdict". A project is entitled to
+     keep other YAML beside its reviews. The line is the PRESENCE OF THE KEY: a
+     document carrying no `kind` has made no claim to be a typed document, while
+     one carrying a `kind` that cannot be read has made a claim that failed.
+     Without this test the two arms above would pass just as well if every
+     non-verdict document errored. */
+  withThirdDocument(
+    REFUSING_THIRD.split("\n")
+      .filter((line) => !line.startsWith("kind: "))
+      .join("\n"),
+    (_dir, run) => {
+      assert.equal(run.status, 0, run.output);
+      assert.match(run.output, /the pair approves/, run.output);
+      assert.doesNotMatch(run.output, /third-refusing/, run.output);
+    },
+  );
+});
+
+test("the gate runner and the derived check select the same documents, so a kind differing only in case is counted", () => {
+  /* THE OTHER HALF OF THE MECHANISM: TWO READERS OF ONE FACT. The runner's own
+     selection rule was a raw `value["kind"] !== "verdict"` while
+     `loadCommittedVerdicts` canonicalises, so `kind: Verdict` was a verdict to
+     the check and not to the runner. The gate reddened anyway, through the
+     check's view of the group, while printing `2 review verdicts examined` over
+     a group of three: a count that is not the set that was compared. This
+     asserts the COUNT, which is the only place the divergence was visible. */
+  withThirdDocument(refusingThirdWithKind("kind: Verdict"), (_dir, run) => {
+    assert.notEqual(run.status, 0, run.output);
+    assert.match(run.output, /\(3 review verdicts examined for decorrelation\)/, run.output);
+    assert.match(run.output, /third-refusing\.yaml reads FIX-ROUND-NEEDED/, run.output);
+  });
+});
+
 test("the precondition reports a directory whose only review document is unexaminable as APPLICABLE", () => {
   /* THE WORST ARM OF THE SAME CLASS, AND IT IS NOT REACHABLE THROUGH THE GATE
      ARM ABOVE. `--precondition` decides whether the gate RUNS. With the only
@@ -1252,6 +1386,11 @@ test("this phase's behaviors are registered in test/behaviors.json and resolve b
     "dual-review-phaseless-sibling-refused",
     "dual-review-unexaminable-candidate-is-applicable",
     "dual-review-non-verdict-document-still-skipped",
+    "dual-review-unreadable-kind-list-refused",
+    "dual-review-unreadable-kind-invisible-refused",
+    "dual-review-unreadable-kind-members-differ",
+    "dual-review-absent-kind-still-skipped",
+    "dual-review-one-selection-rule",
   ]) {
     assert.ok(
       Object.prototype.hasOwnProperty.call(behaviors, id),

@@ -2908,6 +2908,76 @@ interface LoadedVerdict {
 }
 
 /**
+ * What reading a candidate document's own `kind` produced, in the THREE
+ * outcomes that fix round 2 exists to keep apart.
+ *
+ * THE MECHANISM FIX ROUND 2 CLOSES: `establishField` already separates ABSENT
+ * from UNUSABLE from UNCANONICAL, and both selection sites consumed it with a
+ * single `!== "established"`, which folds those outcomes back into one silent
+ * skip. So "this document declares no type" and "this document declares a type
+ * nobody could read" printed as the same fact, and that fact is the determinate
+ * negative "not a verdict". Measured at the round-1 head: a third review
+ * reading `verdict: FIX-ROUND-NEEDED` whose `kind:` was a one-element YAML list
+ * was dropped and `scripts/check-dual-review.mjs` reported that the pair
+ * approves. Eight deformations of one refusing document reached that same
+ * green, and the table is in delivery/work-history/m4-p10.md's section 13.
+ *
+ * WHERE THE LINE IS DRAWN, and it is drawn at the PRESENCE OF THE KEY rather
+ * than at the validity of its value:
+ *
+ *   `verdict`     the key is there and canonicalises to the word. A member.
+ *   `other`       the document ANSWERED and the answer is not `verdict`. That
+ *                 is a mapping carrying no `kind` key at all, a document that
+ *                 is not a mapping (a list, a scalar, an empty file), and a
+ *                 `kind` that reads as some other word. Each is a determinate
+ *                 negative: nothing here claims to be a typed document, or it
+ *                 claims to be a different one.
+ *   `unreadable`  the key IS there and its reading failed: a list, a map, a
+ *                 number, a boolean, null, an empty or whitespace-only string,
+ *                 or a string carrying a character outside printable ASCII.
+ *                 Writing a `kind` key is the claim to be a typed document, so
+ *                 a failed reading of it is a failed claim, not an absent one.
+ *
+ * WHY NOT REFUSE EVERY DOCUMENT THAT IS NOT A VERDICT. Because a project is
+ * entitled to keep other YAML beside its reviews, and a check that errored on
+ * it would be unusable. The property is not that every file is a verdict; it is
+ * that a file which LOOKS LIKE a verdict and could not be read as one is NAMED.
+ *
+ * EXPORTED, and that is the other half of the fix. `scripts/check-dual-review.mjs`
+ * had its OWN selection rule, a raw `value["kind"] !== "verdict"`, which is a
+ * second reader of one fact: it dropped `kind: Verdict` and `kind: "  verdict  "`
+ * that this file's canonicalisation admits. Two readers of one fact is the shape
+ * this repository's fix-round contract calls fixing the INSTANCE rather than the
+ * MECHANISM, and the sibling `establishDelegatedRegime` one screen down was
+ * lifted for exactly that reason. There is now one reader.
+ */
+export type VerdictKindReading =
+  | { kind: "verdict"; record: Record<string, unknown> }
+  | { kind: "other" }
+  | { kind: "unreadable"; found: string };
+
+export function readVerdictKind(value: unknown): VerdictKindReading {
+  const record = asRecord(value);
+  if (record === undefined) {
+    return { kind: "other" };
+  }
+  const reading = establishField(record, "kind");
+  if (reading.kind === "absent") {
+    return { kind: "other" };
+  }
+  if (reading.kind === "unusable" || reading.kind === "uncanonical") {
+    /* The vocabulary is the DOCUMENT's, as it is at `establishField`: a reader
+       looking at their own YAML is helped by "a list" and by the codepoint and
+       position of the character they cannot see, and not by "unestablished". */
+    return { kind: "unreadable", found: reading.found };
+  }
+  if (reading.value !== "verdict") {
+    return { kind: "other" };
+  }
+  return { kind: "verdict", record };
+}
+
+/**
  * Every verdict document committed under `<context>/delivery/review/`.
  *
  * A file that does not carry `kind: verdict` is SKIPPED rather than reported,
@@ -2987,7 +3057,6 @@ function loadCommittedVerdicts(
       });
       continue;
     }
-    const record = asRecord(decoded.value);
     /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
        `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
        over, so a lookalike character in `kind` does not produce a wrong
@@ -3001,22 +3070,25 @@ function loadCommittedVerdicts(
        here: more verdicts in the group means more chances to find a shared
        value, never fewer. A file that is not a verdict at all still fails this
        test, because no canonical form turns a prose review into `verdict`. */
-    /* THESE TWO STAY SKIPS, AND THE LINE THAT SEPARATES THEM FROM THE TWO
-       REFUSALS ABOVE IS WORTH STATING because it is the line the round that
-       added them had to draw. A file that READ and DECODED has ANSWERED: a
-       document that is not a mapping declares no `kind` because it has no
-       fields, and one whose `kind` is anything but `verdict` has said what it
-       is. Those are determinate negatives. Bytes that could not be read or
-       decoded answer nothing, which is why they are diagnostics and these are
-       not. */
-    if (record === undefined) {
+    /* THE ONE READER, AND FIX ROUND 2 IS THAT IT IS ONE READER WITH THREE
+       OUTCOMES RATHER THAN A BOOLEAN. `readVerdictKind` is documented at its
+       own definition; what matters here is that `unreadable` is a DIAGNOSTIC
+       and `other` is a skip, because a document whose `kind` key is present and
+       whose reading FAILED has not said it is not a verdict, it has said
+       nothing that could be read. The skip below is now reached only by a
+       document that answered. */
+    const kindReading = readVerdictKind(decoded.value);
+    if (kindReading.kind === "unreadable") {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and declares a kind field that could not be read as a word (it is ${kindReading.found}), so whether it is a verdict refusing this head could not be established, and a merge check that could not read one document's own type must not report the rest of them clean`,
+      });
       continue;
     }
-    const kindReading = establishField(record, "kind");
-    if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
+    if (kindReading.kind !== "verdict") {
       continue;
     }
-    verdicts.push({ path, record });
+    verdicts.push({ path, record: kindReading.record });
   }
   return { ok: true, verdicts, unexaminable };
 }

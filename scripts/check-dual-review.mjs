@@ -73,7 +73,7 @@ const checksModule = await import(
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
 const { refuseOpenForWrite, classifyEntry } = taskModule;
 const { decodeDocument, readOperatorPath } = validateModule;
-const { registeredChecks } = checksModule;
+const { registeredChecks, readVerdictKind } = checksModule;
 
 const GATE_ID = "check-dual-review";
 const UNIT_LABEL = "review verdicts examined for decorrelation";
@@ -193,16 +193,27 @@ export function committedVerdictPaths(directory) {
       unexaminable.push(`${path} did not decode: ${decoded.reason}`);
       continue;
     }
-    const value = decoded.value;
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      value["kind"] !== "verdict"
-    ) {
+    /* THE SAME READER THE DERIVED CHECK USES, AND FIX ROUND 2 IS THAT IT IS THE
+       SAME ONE. What stood here was this script's OWN selection rule, a raw
+       `value["kind"] !== "verdict"`, and two readers of one fact diverged in
+       both directions at once: it dropped a `kind: Verdict` that
+       `loadCommittedVerdicts` canonicalises and admits, so the `units` this
+       gate printed were not the set the check compared, and it folded a
+       `kind` whose reading FAILED into the determinate answer "not a verdict",
+       so a review refusing this head vanished and the gate printed green.
+       `readVerdictKind` is documented in src/checks.ts; `unreadable` is the
+       outcome that must never be silent here. */
+    const reading = readVerdictKind(decoded.value);
+    if (reading.kind === "unreadable") {
+      unexaminable.push(
+        `${path} declares a kind field that could not be read as a word (it is ${reading.found})`,
+      );
       continue;
     }
-    paths.push({ path, instance: value });
+    if (reading.kind !== "verdict") {
+      continue;
+    }
+    paths.push({ path, instance: reading.record });
   }
   return { ok: true, paths, unexaminable };
 }
