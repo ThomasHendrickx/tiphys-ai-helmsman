@@ -804,5 +804,22 @@
   "pilot-probe-zero-targets-is-a-failure": "zero targets probed is unreachable rather than a clean sweep, and the target verdict vocabulary is a closed set",
   "pilot-probe-usage-error": "the read-only probe exits 64 and names the argument on an unknown argument",
   "cutover-entry-document-states-the-four-steps": "the entry-trigger document states the four steps with their commands, cites DR-0042 for the amendment reserve, and names the residual the trigger does not settle",
-  "cutover-entry-absent-drain-line-is-unreachable": "a cutover status that runs, exits 0 and prints no DRAIN line is unreachable, never satisfied"
+  "cutover-entry-absent-drain-line-is-unreachable": "a cutover status that runs, exits 0 and prints no DRAIN line is unreachable, never satisfied",
+  "cutover-entry-drain-notice-defeats-a-drain-row": "check-cutover-entry: a cutover status printing DRAIN clean alongside a line saying the number is stale is unreachable, never satisfied, because a line about drain that is not a DRAIN row is a shape the arm does not model",
+  "cutover-entry-two-drain-rows-are-unreachable": "check-cutover-entry: more than one DRAIN row is unreachable, because M4-P25 criterion 1 fixes exactly one and the first of several is not an answer",
+  "cutover-entry-exit-zero-contradicting-drain-is-unreachable": "check-cutover-entry: a cutover status exiting 0 under a DRAIN row that is not clean contradicts its own contract, so neither half is believed",
+  "cutover-entry-retirement-summary-line-is-not-a-row": "check-cutover-entry: a line carrying the word ported that is not a PORT row is unreachable, so a summary line cannot defeat the zero-rows guard",
+  "cutover-entry-exit-zero-contradicting-unported-row-is-unreachable": "check-cutover-entry: a retirement report exiting 0 while printing an unported row contradicts M4-P25 criterion 6, so the arm is unreachable",
+  "cutover-entry-ruleset-freshness-ignores-mtime": "check-cutover-entry: arm d is decided by commit order, so touching a stale ruleset with unchanged bytes does not make it fresh",
+  "cutover-entry-ruleset-freshness-survives-a-clone": "check-cutover-entry: arm d is satisfied in a fresh clone whose checkout order writes the ruleset before the inventory, because git preserves commit order and not mtime",
+  "cutover-entry-ruleset-equal-commit-time-is-not-newer": "check-cutover-entry: a ruleset committed together with the inventory is not NEWER than it, which is what the plan asks for",
+  "cutover-entry-ruleset-uncommitted-edit-is-unreachable": "check-cutover-entry: a path whose working tree differs from its last commit cannot be dated by commit order and is unreachable",
+  "cutover-entry-ruleset-without-git-is-unreachable": "check-cutover-entry: a tree with no git repository cannot date arm d and is unreachable, never falling back to mtime",
+  "cutover-entry-json-mode-carries-the-halt": "check-cutover-entry: the --json output carries the step-3 owner-action halt and the step lines, and no member of it means ready",
+  "cutover-entry-root-flag-needs-a-value": "check-cutover-entry: --root with no value is a usage error rather than a silent check of the current directory",
+  "pilot-probe-refuses-to-truncate-existing-evidence": "probe-pilot-readonly: an existing --out file is left intact and the run refuses, so a second run cannot destroy a first run's record",
+  "pilot-probe-refuses-truncation-on-the-success-path": "probe-pilot-readonly: the truncation refusal fires on a run whose sources are all reachable, and the stub server records zero requests, so the guard is on the write",
+  "pilot-probe-target-cannot-inject-an-evidence-row": "probe-pilot-readonly: a --repo value carrying a pipe and a newline cannot add a row to the evidence table",
+  "pilot-probe-unexpected-failure-is-indeterminate": "probe-pilot-readonly: an unexpected throw exits 3, never the real-negative code 1",
+  "pilot-probe-flag-without-a-value-is-usage": "probe-pilot-readonly: every value-taking flag with no value is a usage error rather than a crash"
 }

@@ -43,6 +43,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -69,7 +70,12 @@ const checker = (await import(
   ARM_VERDICTS: string[];
   OVERALL_VERDICTS: string[];
   REQUIRED_EXCLUSION_BEHAVIORS: string[];
-  countRetirementRows: (text: string) => { ported: number; unported: number; rows: number };
+  countRetirementRows: (text: string) => {
+    ported: number;
+    unported: number;
+    rows: number;
+    unrecognised: string[];
+  };
   overallFor: (arms: ArmRecord[]) => string;
 };
 
@@ -121,8 +127,60 @@ interface RootSpec {
   ruleset?: boolean;
   /** Write a retirement inventory. */
   inventory?: boolean;
-  /** Make the ruleset older than the inventory. */
+  /** Commit the ruleset BEFORE the inventory, so it is older by commit order. */
   rulesetStale?: boolean;
+  /** Commit the ruleset and the inventory together, so their commit times are EQUAL. */
+  rulesetSameCommit?: boolean;
+  /** Leave the fixture as a plain directory with no git repository at all. */
+  git?: boolean;
+  /** Leave the ruleset modified after its commit, so the tree differs from it. */
+  rulesetDirty?: boolean;
+}
+
+/**
+ * THE FIXTURE IS A REAL GIT REPOSITORY, AND THAT IS THE FIX-ROUND'S LARGEST
+ * SINGLE CHANGE TO THIS FILE.
+ *
+ * Arm d used to compare file mtimes, so a fixture could force it stale with
+ * `utimesSync`. A clean-room reviewer measured that mtime is the wrong input in
+ * both directions, and the sharpest half is that `utimesSync` back-dating is a
+ * state GIT CANNOT PRODUCE: the old witness reddened against a situation no
+ * clone is ever in, while the situation every clone IS in went unwitnessed.
+ *
+ * So the fixture now commits, and the ORDER of its commits is what the arm
+ * reads. Dates are pinned rather than taken from the clock because `%ct` has
+ * one-second resolution and two commits made in one test would otherwise be
+ * equal by accident rather than by intent. Command-scoped identity only, never
+ * user or global config (CLAUDE.md standing warning 5).
+ */
+const FIXTURE_GIT_ENV = {
+  GIT_AUTHOR_NAME: "tiphys test",
+  GIT_AUTHOR_EMAIL: "tiphys@example.invalid",
+  GIT_COMMITTER_NAME: "tiphys test",
+  GIT_COMMITTER_EMAIL: "tiphys@example.invalid",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+};
+
+const EARLIER = "2026-01-01T00:00:00+0000";
+const LATER = "2026-01-02T00:00:00+0000";
+
+function fixtureGit(cwd: string, args: string[], when?: string): void {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    timeout: 60000,
+    env: {
+      ...process.env,
+      ...FIXTURE_GIT_ENV,
+      ...(when === undefined ? {} : { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when }),
+    },
+  });
+  assert.equal(
+    result.status,
+    0,
+    `fixture git ${args.join(" ")} failed: ${result.stdout ?? ""}${result.stderr ?? ""}`,
+  );
 }
 
 const PASSING_TEST_BODY =
@@ -179,12 +237,35 @@ function makeRoot(spec: RootSpec = {}): string {
       "utf8",
     );
   }
+  const rulesetPath = join(cutoverDir, "pre-freeze-ruleset.json");
   if (spec.ruleset !== false) {
-    const rulesetPath = join(cutoverDir, "pre-freeze-ruleset.json");
     writeFileSync(rulesetPath, JSON.stringify({ capturedAt: "fixture" }, null, 2), "utf8");
-    if (spec.rulesetStale === true) {
-      const old = new Date(Date.now() - 86400000);
-      utimesSync(rulesetPath, old, old);
+  }
+
+  if (spec.git !== false) {
+    fixtureGit(root, ["init", "--quiet", "--initial-branch", "main"]);
+    const rulesetRelative = "delivery/plan/cutover/pre-freeze-ruleset.json";
+    const inventoryRelative = "delivery/plan/cutover/retirement-inventory.json";
+    if (spec.ruleset === false || spec.rulesetSameCommit === true) {
+      fixtureGit(root, ["add", "-A"]);
+      fixtureGit(root, ["commit", "--quiet", "-m", "fixture"], EARLIER);
+    } else if (spec.rulesetStale === true) {
+      // The ruleset lands FIRST and the inventory LAST, so the inventory is the
+      // newer change and the arm must say not-yet.
+      fixtureGit(root, ["add", "-A", ":!" + inventoryRelative]);
+      fixtureGit(root, ["commit", "--quiet", "-m", "fixture, ruleset first"], EARLIER);
+      if (spec.inventory !== false) {
+        fixtureGit(root, ["add", "-A"]);
+        fixtureGit(root, ["commit", "--quiet", "-m", "fixture, inventory later"], LATER);
+      }
+    } else {
+      fixtureGit(root, ["add", "-A", ":!" + rulesetRelative]);
+      fixtureGit(root, ["commit", "--quiet", "-m", "fixture, everything else"], EARLIER);
+      fixtureGit(root, ["add", "-A"]);
+      fixtureGit(root, ["commit", "--quiet", "-m", "fixture, ruleset last"], LATER);
+    }
+    if (spec.rulesetDirty === true) {
+      writeFileSync(rulesetPath, JSON.stringify({ capturedAt: "edited" }, null, 2), "utf8");
     }
   }
   return root;
@@ -234,7 +315,16 @@ test("all four arms satisfied exits 0 and still halts at the owner action", () =
 });
 
 test("the drain arm reddens when cutover status does not report DRAIN clean", () => {
-  const root = makeRoot({ statusText: "SWITCH planning-and-scope kernel\nDRAIN 3 in flight\n" });
+  // `statusExit` was the default 0 here until the fix round, and the fixture
+  // was INCOHERENT with the contract it stands in for: M4-P25 criterion 1 makes
+  // the command exit 0 "only when all five read `kernel` AND drain is clean"
+  // (delivery/plan/kernel-plan-m4.md:3291). The arm now reports that
+  // contradiction as unreachable, so the fixture has to imitate the real
+  // command rather than a command that cannot exist.
+  const root = makeRoot({
+    statusText: "SWITCH planning-and-scope kernel\nDRAIN 3 in flight\n",
+    statusExit: 1,
+  });
   const run = runChecker(root);
   assert.equal(run.status, 1, run.text);
   assert.match(armOf(run.text, "a"), /^not-yet\|.*DRAIN 3 in flight/);
@@ -271,8 +361,15 @@ test("every arm is evaluated: four simultaneous failures are all reported", () =
   // independently forced-false witnesses rather than two.
   const root = makeRoot({
     statusText: "DRAIN 9 in flight\n",
+    statusExit: 1,
     behaviors: [],
     retirementText: "PORT claude-md unported\n",
+    // The exit code was 0 here until the fix round, and that fixture was
+    // INCOHERENT with the contract it stands in for: M4-P25 criterion 6 makes
+    // the command exit nonzero while any row is unported
+    // (delivery/plan/kernel-plan-m4.md:3317). The arm now says so, and a fixture
+    // that contradicts the contract it imitates is not a fixture worth keeping.
+    retirementExit: 1,
     ruleset: false,
   });
   const run = runChecker(root);
@@ -287,7 +384,7 @@ test("an unreachable CLI is unreachable, never satisfied, and exits 3 rather tha
   // THE DANGEROUS STATE: the drain question was never asked. A two-state
   // classifier reports "false" and loses the distinction that matters, and the
   // measured reason it matters is that a transport failure exits nonzero too
-  // (delivery/verification/m4-prototype-probes.md:1).
+  // (delivery/verification/m4-prototype-probes.md:153).
   const root = makeRoot({ statusText: null });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
@@ -364,7 +461,7 @@ test("the checker's overall vocabulary is closed and no member means ready", () 
 
 test("countRetirementRows never counts an unported row as ported", () => {
   const counts = checker.countRetirementRows("PORT a ported\nPORT b unported\nPORT c unported\n");
-  assert.deepEqual(counts, { ported: 1, unported: 2, rows: 3 });
+  assert.deepEqual(counts, { ported: 1, unported: 2, rows: 3, unrecognised: [] });
 });
 
 test("the checker exits 64 on an unknown argument", () => {
@@ -860,6 +957,23 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-entry-overall-vocabulary-has-no-ready",
     "cutover-entry-unported-never-counted-as-ported",
     "cutover-entry-usage-error",
+    "cutover-entry-drain-notice-defeats-a-drain-row",
+    "cutover-entry-two-drain-rows-are-unreachable",
+    "cutover-entry-exit-zero-contradicting-drain-is-unreachable",
+    "cutover-entry-retirement-summary-line-is-not-a-row",
+    "cutover-entry-exit-zero-contradicting-unported-row-is-unreachable",
+    "cutover-entry-ruleset-freshness-ignores-mtime",
+    "cutover-entry-ruleset-freshness-survives-a-clone",
+    "cutover-entry-ruleset-equal-commit-time-is-not-newer",
+    "cutover-entry-ruleset-uncommitted-edit-is-unreachable",
+    "cutover-entry-ruleset-without-git-is-unreachable",
+    "cutover-entry-json-mode-carries-the-halt",
+    "cutover-entry-root-flag-needs-a-value",
+    "pilot-probe-refuses-to-truncate-existing-evidence",
+    "pilot-probe-refuses-truncation-on-the-success-path",
+    "pilot-probe-target-cannot-inject-an-evidence-row",
+    "pilot-probe-unexpected-failure-is-indeterminate",
+    "pilot-probe-flag-without-a-value-is-usage",
     "pilot-probe-git-chokepoint-refuses-mutation",
     "pilot-probe-git-chokepoint-requires-shallow-clone",
     "pilot-probe-git-chokepoint-refuses-malformed-argv",
@@ -882,5 +996,344 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
       Object.prototype.hasOwnProperty.call(behaviors, id),
       `behaviors.json does not register ${id}`,
     );
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1: the shape rule, the commit-order arm, and the writes   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ONE MECHANISM, WITNESSED ACROSS ITS MEMBERS.
+ *
+ * Fix round 1 was opened on eleven clean-room findings. Seven of them are one
+ * mechanism: A WRITE OR A VERDICT WHOSE SCOPE IS WIDER OR NARROWER THAN THE
+ * SENTENCE DESCRIBING IT, WITH NO TEST OVER THE DIFFERENCE. The witnesses below
+ * are grouped by member rather than by finding, because a witness per finding is
+ * what produced a defect per finding the first time.
+ *
+ * Every one of them was demonstrated RED against the state shipped at 4e95204,
+ * by running the same assertion with that version of the script restored into a
+ * mutation lab. The captures are in delivery/work-history/m4-p27.md:1178.
+ */
+
+test("a DRAIN clean line is not believed when the report says it is stale", () => {
+  // THE DANGEROUS STATE, and it is the reviewer's measured one: the command
+  // printed a drain number AND said the number was not to be trusted. The old
+  // arm read the first matching line and ignored the rest, so it answered
+  // `satisfied` on a report the command itself disowned.
+  const root = makeRoot({
+    statusText:
+      "SWITCH planning-and-scope kernel\nDRAIN clean\n" +
+      "ERROR: could not read the drain register, the numbers above are stale\n",
+    statusExit: 1,
+  });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*not a DRAIN row/);
+  assert.doesNotMatch(run.text, /ARM a drain satisfied/, run.text);
+});
+
+test("two DRAIN lines are unreachable, because the first of several is not an answer", () => {
+  // A STRUCTURALLY DIFFERENT MEMBER of the same shape rule: not an extra line
+  // ABOUT drain, but an extra DRAIN ROW that contradicts the first. The old
+  // `/m` exec silently took the first and reported a confident verdict.
+  const root = makeRoot({ statusText: "DRAIN clean\nDRAIN 4 in flight\n", statusExit: 1 });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*2 DRAIN lines/);
+});
+
+test("a cutover status exiting 0 under a DRAIN line that is not clean is unreachable", () => {
+  // The exit code used in the ONE direction it is decisive in. M4-P25
+  // criterion 1 makes exit 0 mean drain is clean, so this input is the command
+  // contradicting itself and neither half may be preferred to the other.
+  const root = makeRoot({ statusText: "DRAIN 3 in flight\n", statusExit: 0 });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*exited 0 while reporting DRAIN 3 in flight/);
+});
+
+test("a retirement SUMMARY line is not a retirement row", () => {
+  // THE DANGEROUS STATE: the zero-rows guard is one of this phase's headline
+  // properties and a single line carrying the word defeated it. Measured by a
+  // clean-room reviewer against 4e95204: `satisfied -- all 1 retirement
+  // row(s) are ported`, exit 0, with no rows printed at all.
+  const root = makeRoot({ retirementText: "RETIREMENT SUMMARY: 12 rows, all ported\n" });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "c"), /^unreachable\|.*not a PORT row/);
+  assert.doesNotMatch(run.text, /ARM c retirement satisfied/, run.text);
+});
+
+test("a retirement report exiting 0 while printing an unported row is unreachable", () => {
+  // The arm c mirror of the arm a exit-coherence witness, and a structurally
+  // different member of it: there the exit code contradicted a state word,
+  // here it contradicts a row count.
+  const root = makeRoot({
+    retirementText: "PORT claude-md ported\nPORT skills unported\n",
+    retirementExit: 0,
+  });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "c"), /^unreachable\|.*exited 0 while printing 1 unported/);
+});
+
+test("arm d reads commit order, so touching the ruleset does not make a stale one fresh", () => {
+  // THE DANGEROUS STATE, MEMBER A: FALSE GREEN. The reviewer's measurement was
+  // that `touch` alone flipped this arm with the file's bytes unchanged. The
+  // fixture is genuinely stale by commit order; the touch makes it the NEWEST
+  // file on disk by mtime, which is exactly the input the old arm believed.
+  const root = makeRoot({ rulesetStale: true });
+  const rulesetPath = join(root, "delivery", "plan", "cutover", "pre-freeze-ruleset.json");
+  const digestBefore = createHash("sha256").update(readFileSync(rulesetPath)).digest("hex");
+  const now = new Date();
+  utimesSync(rulesetPath, now, now);
+  const digestAfter = createHash("sha256").update(readFileSync(rulesetPath)).digest("hex");
+  assert.equal(digestAfter, digestBefore, "the touch must not change the bytes");
+
+  const run = runChecker(root);
+  assert.equal(run.status, 1, run.text);
+  assert.match(armOf(run.text, "d"), /^not-yet\|.*is older than.*by commit order/);
+});
+
+test("arm d survives a clone, where checkout order says the opposite of commit order", () => {
+  // THE DANGEROUS STATE, MEMBER B: FALSE RED, and it is the state EVERY FRESH
+  // CLONE IS IN. git does not preserve mtimes, and `pre-freeze-ruleset.json`
+  // sorts before `retirement-inventory.json`, so the checkout walk writes the
+  // ruleset first and it reads as the older file whatever its content says.
+  // The test asserts the inversion it depends on, so it cannot pass by the
+  // clone happening to come out in the other order.
+  const source = makeRoot();
+  const cloneParent = scratch("tiphys-cutover-clone-");
+  const clone = join(cloneParent, "clone");
+  fixtureGit(cloneParent, ["clone", "--quiet", source, clone]);
+
+  const rulesetMtime = statSync(
+    join(clone, "delivery", "plan", "cutover", "pre-freeze-ruleset.json"),
+  ).mtimeMs;
+  const inventoryMtime = statSync(
+    join(clone, "delivery", "plan", "cutover", "retirement-inventory.json"),
+  ).mtimeMs;
+  assert.ok(
+    rulesetMtime <= inventoryMtime,
+    `this witness needs the clone to write the ruleset no later than the inventory; ` +
+      `got ${rulesetMtime} against ${inventoryMtime}`,
+  );
+
+  const run = runChecker(clone);
+  assert.equal(run.status, 0, run.text);
+  assert.match(armOf(run.text, "d"), /^satisfied\|.*is newer than.*by commit order/);
+});
+
+test("a ruleset committed together with the inventory is not NEWER than it", () => {
+  // The plan says NEWER (delivery/plan/kernel-plan-m4.md:3570). The first
+  // implementation said "not older than", an undeclared relaxation, and equal
+  // timestamps are not rare: `%ct` has one-second resolution and two paths
+  // changed in one commit are always equal.
+  const root = makeRoot({ rulesetSameCommit: true });
+  const run = runChecker(root);
+  assert.equal(run.status, 1, run.text);
+  assert.match(armOf(run.text, "d"), /^not-yet\|.*is committed no later than/);
+});
+
+test("a ruleset edited after its commit cannot be dated by commit order", () => {
+  // Commit order does not describe bytes that were never committed. The
+  // dangerous direction is the inventory's, not the ruleset's: an inventory
+  // edited and left uncommitted would otherwise be dated by an old commit and
+  // read as older than the ruleset. The ruleset arm of it is what a fixture
+  // can force without the arm short-circuiting earlier.
+  const root = makeRoot({ rulesetDirty: true });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "d"), /^unreachable\|.*differs from its last commit/);
+});
+
+test("a tree with no git repository cannot date the ruleset and says so", () => {
+  // The floor of the arm: no commit order available means `unreachable`, never
+  // a fallback to the timestamp a checkout rewrites.
+  const root = makeRoot({ git: false });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "d"), /^unreachable\|.*could not be dated by commit order/);
+});
+
+test("--json carries the owner-action halt and no member of its output means ready", () => {
+  // THE DANGEROUS STATE is the all-satisfied fixture again, through the mode
+  // no test exercised: the commit message and the work history both said the
+  // step-3 HALT prints on EVERY run, and `--json` printed no HALT at all.
+  const root = makeRoot();
+  const run = runChecker(root, ["--json"]);
+  assert.equal(run.status, 0, run.text);
+  const report = JSON.parse(run.text) as {
+    overall: string;
+    arms: ArmRecord[];
+    ownerAction: { step: number; status: string };
+    halt: string;
+    steps: string[];
+  };
+  assert.equal(report.overall, "preconditions-satisfied-owner-action-pending");
+  assert.equal(report.arms.length, 4);
+  assert.deepEqual(report.ownerAction.step, 3);
+  assert.equal(report.ownerAction.status, "blocked");
+  assert.match(report.halt, /STEP 3 owner reboot of the pilot session: HALT, OWNER ACTION\./);
+  assert.match(report.halt, /never reports it done/);
+  assert.ok(
+    report.steps.some((line) => /STEP 4/.test(line)),
+    run.text,
+  );
+  for (const forbidden of [/\bREADY\b/, /\bGO\b/, /\bPROCEED\b/, /cutover may (begin|proceed)/i]) {
+    assert.doesNotMatch(run.text, forbidden, `a ready-token reached the json output:\n${run.text}`);
+  }
+});
+
+test("the checker refuses --root with no value rather than checking the current directory", () => {
+  const result = spawnSync(process.execPath, [checkerPath, "--root"], {
+    encoding: "utf8",
+    timeout: 60000,
+  });
+  assert.equal(result.status, 64);
+  assert.match(`${result.stderr}`, /--root needs a value/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1: the probe's writes                                     */
+/* ------------------------------------------------------------------ */
+
+test("the probe refuses to truncate an existing evidence document, and probes nothing", async () => {
+  // THE DANGEROUS STATE, MEMBER A, and it is the largest data-loss surface the
+  // review found: the beacon header was written BEFORE the first read, so a
+  // run that would go on to establish NOTHING destroyed a run that had
+  // established everything. Measured against 4e95204 with a 37-byte file.
+  const dir = scratch("tiphys-probe-out-");
+  const out = join(dir, "pulse-re-probe.md");
+  const prior = "IMPORTANT PRIOR EVIDENCE\nline2\nline3\n";
+  writeFileSync(out, prior, "utf8");
+
+  const run = await runProbe([
+    "--api-base",
+    "http://127.0.0.1:1",
+    "--git-base",
+    "http://127.0.0.1:1",
+    "--repo",
+    "owner/name",
+    "--out",
+    out,
+  ]);
+  assert.equal(readFileSync(out, "utf8"), prior, "the probe destroyed prior evidence");
+  assert.equal(run.status, 64, run.text);
+  assert.match(run.text, /already exists/);
+});
+
+test("the probe refuses the same write on the path where it would have SUCCEEDED", async () => {
+  // MEMBER B, structurally different: member A refuses on a run that was going
+  // to fail anyway, which leaves open the reading that the guard is really
+  // about failure. Here every source is reachable and the run would have gone
+  // `satisfied`. The refusal is on the WRITE, and the server's record proves
+  // the probe issued nothing before refusing.
+  const received: string[] = [];
+  const server = createServer((request, response) => {
+    received.push(`${request.method} ${request.url}`);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object");
+  const dir = scratch("tiphys-probe-out-b-");
+  const out = join(dir, "pulse-re-probe.md");
+  const prior = "A RUN THAT SUCCEEDED\n";
+  writeFileSync(out, prior, "utf8");
+  try {
+    const run = await runProbe([
+      "--api-base",
+      `http://127.0.0.1:${address.port}`,
+      "--git-base",
+      `http://127.0.0.1:${address.port}`,
+      "--repo",
+      "owner/name",
+      "--out",
+      out,
+    ]);
+    assert.equal(readFileSync(out, "utf8"), prior, "the probe destroyed prior evidence");
+    assert.deepEqual(received, [], `the probe issued requests before refusing: ${received.join(", ")}`);
+    assert.equal(run.status, 64, run.text);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  // THE CONTROL, so the refusal above is the guard and not the absence of a
+  // feature: with --force the same invocation writes, and the prior content is
+  // gone because that is what the operator asked for.
+  const forced = await runProbe([
+    "--api-base",
+    "http://127.0.0.1:1",
+    "--git-base",
+    "http://127.0.0.1:1",
+    "--repo",
+    "owner/name",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(forced.status, 3, forced.text);
+  assert.doesNotMatch(readFileSync(out, "utf8"), /A RUN THAT SUCCEEDED/);
+});
+
+test("a target string cannot inject a row into the evidence table", async () => {
+  // THE DANGEROUS STATE: the injected row's verdict column read `satisfied` in
+  // a run whose real verdict was `unreachable`. `detail` was escaped and
+  // `target` was not, two expressions apart on one line.
+  const dir = scratch("tiphys-probe-inject-");
+  const out = join(dir, "evidence.md");
+  const malicious = "x/y | satisfied | all good |\n| `z/w` | satisfied | fabricated row";
+  const run = await runProbe([
+    "--api-base",
+    "http://127.0.0.1:1",
+    "--git-base",
+    "http://127.0.0.1:1",
+    "--repo",
+    malicious,
+    "--out",
+    out,
+  ]);
+  const document = readFileSync(out, "utf8");
+  const rows = document.split(/\r?\n/).filter((line) => /^\|/.test(line) && !/^\|-/.test(line));
+  // One header row and exactly one target row. Anything more is an injection.
+  assert.equal(rows.length, 2, document);
+  assert.doesNotMatch(document, /\| satisfied \|/, document);
+  assert.equal(run.status, 3, run.text);
+});
+
+test("an unexpected failure in the probe exits indeterminate, not real-negative", async () => {
+  // THE DANGEROUS STATE: EXIT_REAL_NEGATIVE is 1 and an uncaught throw also
+  // exits 1, so a crash was indistinguishable from "the remote answered and
+  // the answer is no". The forced throw is a real one on the shipped path:
+  // --out under a path whose parent is a FILE, so mkdirSync raises ENOTDIR.
+  const dir = scratch("tiphys-probe-throw-");
+  const blocker = join(dir, "not-a-directory");
+  writeFileSync(blocker, "I am a file\n", "utf8");
+  const run = await runProbe([
+    "--api-base",
+    "http://127.0.0.1:1",
+    "--git-base",
+    "http://127.0.0.1:1",
+    "--repo",
+    "owner/name",
+    "--out",
+    join(blocker, "evidence.md"),
+  ]);
+  assert.equal(run.status, 3, run.text);
+  assert.notEqual(run.status, 1);
+  assert.match(run.text, /unexpected failure/);
+});
+
+test("the probe refuses a flag with no value rather than resolving it to a directory", async () => {
+  // `--out` with nothing after it resolved to the current DIRECTORY, and the
+  // EISDIR throw from opening it exited 1, this script's own real-negative.
+  for (const argv of [["--out"], ["--repo"], ["--api-base"], ["--git-base"], ["--timeout-ms"]]) {
+    const run = await runProbe(argv);
+    assert.equal(run.status, 64, `${argv[0]}: ${run.text}`);
+    assert.match(run.text, new RegExp(`${argv[0]} needs a value`), run.text);
   }
 });

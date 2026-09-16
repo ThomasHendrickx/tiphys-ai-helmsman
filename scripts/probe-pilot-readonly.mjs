@@ -31,7 +31,7 @@
  *
  * THE FOUR-ARM CLASSIFIER, AND WHY A TWO-STATE ANSWER IS WRONG HERE.
  * A probe of a remote can land in four genuinely different places, and
- * delivery/verification/m4-prototype-probes.md:1 records the measured reason:
+ * delivery/verification/m4-prototype-probes.md:153 records the measured reason:
  * a nonzero exit does NOT mean the condition is false, because transport
  * failures exit nonzero too. So every target is classified as exactly one of
  *
@@ -63,7 +63,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -459,9 +459,9 @@ function beaconHeader(options, startedAt) {
     "",
     `- started: ${startedAt}`,
     "- produced by: `scripts/probe-pilot-readonly.mjs`",
-    `- api base: \`${options.apiBase}\``,
-    `- git base: \`${options.gitBase}\``,
-    `- targets: ${options.targets.map((t) => `\`${t}\``).join(", ") || "NONE"}`,
+    `- api base: \`${cell(options.apiBase)}\``,
+    `- git base: \`${cell(options.gitBase)}\``,
+    `- targets: ${options.targets.map((t) => `\`${cell(t)}\``).join(", ") || "NONE"}`,
     "- permission: DR-0042 allows reading the pilot. DR-0037 stands and forbids",
     "  every write, so this run performs none and could not perform one.",
     "- status: IN PROGRESS. This header is written before the first read, so an",
@@ -475,6 +475,15 @@ function beaconHeader(options, startedAt) {
   ].join("\n");
 }
 
+/**
+ * EVERY STRING THAT REACHES THE EVIDENCE DOCUMENT GOES THROUGH HERE, and the
+ * rule is "every", not "the ones that looked risky". The first version escaped
+ * `detail` and interpolated `result.target` raw two expressions later. A
+ * clean-room reviewer measured one `--repo` value carrying a pipe and a newline
+ * producing an extra table row whose verdict column read `satisfied`, in a run
+ * whose real verdict was `unreachable`. The escaped call and the raw one were
+ * on the same LINE, which is what a per-site judgment gets you.
+ */
 function cell(text) {
   return String(text).replace(/\|/g, "/").replace(/[\r\n]+/g, " ");
 }
@@ -498,7 +507,7 @@ function targetRow(result) {
     result.verdict === "satisfied"
       ? readPart
       : `${readPart}. sources: ${sourceParts.join(", ") || "none"}. ${result.reason}`;
-  return `| \`${result.target}\` | ${result.verdict} | ${cell(detail)} |\n`;
+  return `| \`${cell(result.target)}\` | ${cell(result.verdict)} | ${cell(detail)} |\n`;
 }
 
 function tail(overall, results, finishedAt) {
@@ -529,7 +538,7 @@ function tail(overall, results, finishedAt) {
     ])
     .concat(
       unsatisfied.map(
-        (r) => `- \`${r.target}\`: ${r.verdict}. ${r.reason}`,
+        (r) => `- \`${cell(r.target)}\`: ${cell(r.verdict)}. ${cell(r.reason)}`,
       ),
     )
     .concat([
@@ -552,25 +561,43 @@ export function parseArgs(argv) {
     targets: [],
     out: resolve(repoRoot, DEFAULT_OUT),
     timeoutMs: 20000,
+    force: false,
   };
+  // EVERY VALUE-TAKING FLAG VALIDATES ITS VALUE POSITION, and that word is
+  // "every" because the first version validated three of five. `--out` with
+  // nothing after it resolved to the current DIRECTORY, and the EISDIR throw
+  // from opening it exited 1, which is this script's own EXIT_REAL_NEGATIVE:
+  // a crash was indistinguishable from "the remote answered and the answer is
+  // no". Measured by a clean-room reviewer, 2026-09-16.
+  const needsValue = (flag) => ({ usage: `${flag} needs a value` });
+  const valueAt = (index) =>
+    typeof argv[index] === "string" && argv[index].length > 0 ? argv[index] : null;
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
     if (arg === "--api-base") {
+      if (valueAt(i + 1) === null) return needsValue("--api-base");
       options.apiBase = argv[i + 1];
       i += 2;
     } else if (arg === "--git-base") {
+      if (valueAt(i + 1) === null) return needsValue("--git-base");
       options.gitBase = argv[i + 1];
       i += 2;
     } else if (arg === "--repo") {
+      if (valueAt(i + 1) === null) return needsValue("--repo");
       options.targets = options.targets.concat([argv[i + 1]]);
       i += 2;
     } else if (arg === "--out") {
-      options.out = resolve(process.cwd(), argv[i + 1] ?? "");
+      if (valueAt(i + 1) === null) return needsValue("--out");
+      options.out = resolve(process.cwd(), argv[i + 1]);
       i += 2;
     } else if (arg === "--timeout-ms") {
+      if (valueAt(i + 1) === null) return needsValue("--timeout-ms");
       options.timeoutMs = Number(argv[i + 1]);
       i += 2;
+    } else if (arg === "--force") {
+      options.force = true;
+      i += 1;
     } else {
       return { usage: `unknown argument: ${arg}` };
     }
@@ -598,6 +625,24 @@ export async function run(argv, streams = {}) {
   }
   const options = parsed.options;
 
+  // THE BEACON IS WRITTEN EARLY. IT IS NOT WRITTEN OVER SOMETHING ELSE.
+  // T-008 rule 1 requires the artifact to exist within the first minutes so a
+  // death leaves salvage rather than nothing. It does not require destroying
+  // the previous run, and the first version did: `writeFileSync` ran before the
+  // first read, unconditionally, with no existence check. A clean-room reviewer
+  // measured a 37-byte file of prior evidence gone after a run that then
+  // REFUSED, exit 3. At the DEFAULT path that is
+  // delivery/verification/pulse-re-probe.md, so a second run that establishes
+  // nothing destroys a first run that established everything, and destroys it
+  // before it knows it will fail.
+  if (!options.force && existsSync(options.out)) {
+    err.write(
+      `probe-pilot-readonly: ${options.out} already exists and this run would ` +
+        "truncate it before its first read. Pass --force to overwrite it, or " +
+        "--out <path> to write elsewhere. Nothing was probed and nothing was written.\n",
+    );
+    return EXIT_USAGE;
+  }
   mkdirSync(dirname(options.out), { recursive: true });
   writeFileSync(options.out, beaconHeader(options, new Date().toISOString()), "utf8");
 
@@ -640,5 +685,14 @@ const invokedDirectly =
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  process.exitCode = await run(process.argv.slice(2));
+  // AN UNEXPECTED THROW IS AN UNKNOWN, NOT A REAL NEGATIVE. Node exits 1 on an
+  // uncaught error and 1 is EXIT_REAL_NEGATIVE here, so a crash read as "the
+  // remote answered and the answer is no". The sibling site in
+  // scripts/check-cutover-entry.mjs carries the identical guard.
+  try {
+    process.exitCode = await run(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`probe-pilot-readonly: unexpected failure: ${singleLine(error)}\n`);
+    process.exitCode = EXIT_INDETERMINATE;
+  }
 }

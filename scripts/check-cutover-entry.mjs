@@ -19,8 +19,8 @@
  *
  * THE FOUR-ARM CLASSIFIER, and why a two-state answer is wrong here. A probe
  * can land in four genuinely different places, and the measured reason is at
- * delivery/verification/m4-prototype-probes.md:1: a nonzero exit does NOT mean
- * the condition is false, because a transport failure exits nonzero too.
+ * delivery/verification/m4-prototype-probes.md:153: a nonzero exit does NOT
+ * mean the condition is false, because a transport failure exits nonzero too.
  *
  *   satisfied     the arm's condition was checked and holds
  *   not-yet       the arm's condition was checked and does not hold
@@ -49,7 +49,9 @@
  *   a  `tiphys cutover status` reports `DRAIN clean`. M4-P25 criterion 1 fixes
  *      that line's shape. An absent DRAIN line is `unreachable`: the command
  *      not saying anything about drain is not the command saying drain is
- *      clean.
+ *      clean. A line that SAYS drain and is not that shape, and more than one
+ *      DRAIN line, are both `unreachable` too, for the reason written above
+ *      `readDrainReport`.
  *   b  the cross-environment exclusion behaviors that M4-P21 and M4-P22
  *      register resolve BY NAME in `test/behaviors.json`, and their tests
  *      pass. A suite that runs ZERO tests exits 0, so the arm also requires a
@@ -57,11 +59,15 @@
  *      version.
  *   c  `tiphys cutover status --retirement` reports zero `unported` rows.
  *      ZERO ROWS ALTOGETHER is `unreachable`, not satisfied, for the same
- *      reason as arm a.
+ *      reason as arm a, and so is a line that says `ported` without being a
+ *      PORT row.
  *   d  `delivery/plan/cutover/pre-freeze-ruleset.json` is present and newer
- *      than the most recent inventory change. With NO inventory present the
- *      comparison is vacuous and the arm is `unreachable`, because "newer than
- *      nothing" is a guard that cannot go red.
+ *      than the most recent inventory change, measured by COMMIT ORDER and
+ *      never by file mtime. With NO inventory present the comparison is vacuous
+ *      and the arm is `unreachable`, because "newer than nothing" is a guard
+ *      that cannot go red; with either path undatable by git it is
+ *      `unreachable` too, rather than falling back to a timestamp a checkout
+ *      rewrites.
  *
  * ARM b's REQUIRED NAMES ARE A CONTRACT THIS PHASE DECLARES, NOT A FACT IT
  * OBSERVED. M4-P21 and M4-P22 had not landed when this was written and the
@@ -194,13 +200,62 @@ function classifyCliFailure(run, what) {
 /* Arm a: drain                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * THE SHAPE RULE, AND IT IS ONE MECHANISM WITH TWO MEMBERS (arm a here, arm c
+ * below).
+ *
+ * A LINE THAT MENTIONS AN ARM'S VOCABULARY AND DOES NOT MATCH THE ROW SHAPE ITS
+ * SOURCE CONTRACT FIXES IS AN UNRECOGNISED SHAPE, AND AN UNRECOGNISED SHAPE
+ * MAKES THE ARM `unreachable`.
+ *
+ * The first version of arm a took the first line matching `DRAIN <anything>`
+ * and ignored every other line. A clean-room reviewer measured the consequence
+ * on 2026-09-16: a stub printing `DRAIN clean` followed by
+ * `ERROR: could not read the drain register, the numbers above are stale` was
+ * read as `satisfied`. The arm's sentence is "cutover status REPORTS DRAIN
+ * clean"; its input was one regex over one line, which is NARROWER than the
+ * sentence. The command had also said the number was not to be trusted, on a
+ * line the arm never looked at.
+ *
+ * The shape is M4-P25 criterion 1's, quoted: one `DRAIN clean|<n> in flight`
+ * line (delivery/plan/kernel-plan-m4.md:3291). Anything else that says the word
+ * is something this arm does not model, and a report this arm cannot model in
+ * full is not a report it may draw a verdict from.
+ *
+ * MORE THAN ONE DRAIN LINE IS ALSO `unreachable`. Criterion 1 fixes exactly
+ * one. The old `/m` exec took the FIRST of any number of them silently, so two
+ * contradicting lines produced a confident answer.
+ */
+export const DRAIN_ROW = /^[ \t]*DRAIN[ \t]+(clean|\d+ in flight)[ \t]*$/;
+
+export function readDrainReport(text) {
+  const rows = [];
+  const unrecognised = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    if (!/drain/i.test(line)) continue;
+    const match = DRAIN_ROW.exec(line);
+    if (match === null) unrecognised.push(line.trim());
+    else rows.push(match[1]);
+  }
+  return { rows, unrecognised };
+}
+
 export function armDrain(root) {
   const run = runCli(root, ["cutover", "status"]);
   const failure = classifyCliFailure(run, "cutover status");
   if (failure) return arm("a", "drain", failure.verdict, failure.reason);
 
-  const match = /^[ \t]*DRAIN[ \t]+(.+?)[ \t]*$/m.exec(run.text);
-  if (match === null) {
+  const report = readDrainReport(run.text);
+  if (report.unrecognised.length > 0) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      "cutover status printed a line about drain that is not a DRAIN row: " +
+        `${singleLine(report.unrecognised[0])}`,
+    );
+  }
+  if (report.rows.length === 0) {
     return arm(
       "a",
       "drain",
@@ -209,7 +264,33 @@ export function armDrain(root) {
         "drain is not a command saying drain is clean",
     );
   }
-  const state = match[1].trim();
+  if (report.rows.length > 1) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      `cutover status printed ${report.rows.length} DRAIN lines and its contract ` +
+        "fixes exactly one; the first of several is not an answer",
+    );
+  }
+  const state = report.rows[0];
+  // THE ONE DIRECTION THE EXIT CODE IS DECISIVE IN. M4-P25 criterion 1: the
+  // command "exits 0 only when all five read `kernel` AND drain is clean"
+  // (delivery/plan/kernel-plan-m4.md:3291). So exit 0 IMPLIES drain clean, and
+  // an exit 0 under a DRAIN line that is not clean is the command contradicting
+  // itself. The converse is NOT available and requiring exit 0 here would be a
+  // defect: at cutover ENTRY the five switches still read `current` by
+  // definition, so a nonzero exit is the EXPECTED state and an arm that demanded
+  // exit 0 could never be satisfied when it matters.
+  if (run.status === 0 && state !== "clean") {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      `cutover status exited 0 while reporting DRAIN ${state}; its own contract ` +
+        "makes exit 0 mean drain is clean, so the two disagree",
+    );
+  }
   if (state === "clean") {
     return arm("a", "drain", "satisfied", "cutover status reports DRAIN clean");
   }
@@ -370,14 +451,38 @@ export function armExclusion(root, requiredNames, testPaths) {
 /* Arm c: the retirement rows                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The second member of the shape rule above. The row shape is M4-P25
+ * criterion 6's: one line per PORT row, each `ported` or `unported`
+ * (delivery/plan/kernel-plan-m4.md:3314).
+ *
+ * The first version counted WORDS: any line containing `unported` was an
+ * unported row and any other line containing `ported` was a ported row. A
+ * clean-room reviewer measured a stub printing ONLY
+ * `RETIREMENT SUMMARY: 12 rows, all ported`, with no rows at all, reading as
+ * `satisfied -- all 1 retirement row(s) are ported`. The input was WIDER than
+ * the sentence "one line per PORT row", and it defeated the zero-rows guard
+ * that is this arm's headline property.
+ *
+ * A line carrying the vocabulary that is not a row is now UNRECOGNISED, which
+ * is `unreachable`. A line carrying none of it is a header and is ignored.
+ */
+export const RETIREMENT_ROW = /^[ \t]*PORT[ \t]+(\S+)[ \t]+(ported|unported)[ \t]*$/;
+
 export function countRetirementRows(text) {
   let ported = 0;
   let unported = 0;
+  const unrecognised = [];
   for (const line of String(text).split(/\r?\n/)) {
-    if (/\bunported\b/.test(line)) unported += 1;
-    else if (/\bported\b/.test(line)) ported += 1;
+    const match = RETIREMENT_ROW.exec(line);
+    if (match !== null) {
+      if (match[2] === "unported") unported += 1;
+      else ported += 1;
+      continue;
+    }
+    if (/\b(un)?ported\b/i.test(line)) unrecognised.push(line.trim());
   }
-  return { ported, unported, rows: ported + unported };
+  return { ported, unported, rows: ported + unported, unrecognised };
 }
 
 export function armRetirement(root) {
@@ -386,6 +491,15 @@ export function armRetirement(root) {
   if (failure) return arm("c", "retirement", failure.verdict, failure.reason);
 
   const counts = countRetirementRows(run.text);
+  if (counts.unrecognised.length > 0) {
+    return arm(
+      "c",
+      "retirement",
+      "unreachable",
+      "the retirement report carries a line about porting that is not a PORT row: " +
+        `${singleLine(counts.unrecognised[0])}`,
+    );
+  }
   if (counts.rows === 0) {
     return arm(
       "c",
@@ -393,6 +507,20 @@ export function armRetirement(root) {
       "unreachable",
       "the retirement report named no PORT rows at all; zero rows is not zero " +
         "unported rows, and an empty result is not a clean one",
+    );
+  }
+  // The decisive direction for this arm, and it is the mirror of arm a's.
+  // M4-P25 criterion 6: the command "exits nonzero while any row is `unported`"
+  // (delivery/plan/kernel-plan-m4.md:3317), so exit 0 IMPLIES zero unported
+  // rows. Exit 0 with an unported row printed is the command contradicting its
+  // own report, and neither half may be believed over the other.
+  if (run.status === 0 && counts.unported > 0) {
+    return arm(
+      "c",
+      "retirement",
+      "unreachable",
+      `the retirement report exited 0 while printing ${counts.unported} unported ` +
+        "row(s); its own contract makes exit 0 mean none are unported, so the two disagree",
     );
   }
   if (counts.unported > 0) {
@@ -410,19 +538,107 @@ export function armRetirement(root) {
 /* Arm d: the pre-freeze ruleset and its freshness                     */
 /* ------------------------------------------------------------------ */
 
-function mtimeOrNull(path) {
+/**
+ * ARM d's INPUT IS COMMIT ORDER, NEVER FILE MTIME, AND THAT IS THE WHOLE POINT
+ * OF THIS BLOCK.
+ *
+ * The first version of this arm compared `statSync(...).mtimeMs`. A clean-room
+ * reviewer measured it wrong in BOTH directions on 2026-09-16 and the
+ * measurements are reproduced in delivery/work-history/m4-p27.md:1178.
+ *
+ *   FALSE GREEN. `touch` on byte-identical content flipped the arm from
+ *   not-yet to satisfied, sha1 unchanged either side.
+ *   FALSE RED. git does not preserve mtimes, so a fresh clone stamps every file
+ *   with checkout time in checkout-walk order. `pre-freeze-ruleset.json` sorts
+ *   before `retirement-inventory.json`, so in EVERY fresh clone the ruleset is
+ *   written first and reads as the older file whatever its content says.
+ *
+ * The plan's sentence is "newer than the most recent inventory CHANGE"
+ * (delivery/plan/kernel-plan-m4.md:3570). A change is a commit, and commit time
+ * is the one timestamp git carries across a clone. So the arm asks git.
+ *
+ * THREE CONSEQUENCES, STATED RATHER THAN LEFT TO BE FOUND.
+ *
+ *   1. `%ct` has ONE-SECOND resolution and two files committed together are
+ *      EQUAL. The plan says NEWER, so equal is `not-yet`. The previous code
+ *      said "not older than", which silently relaxed the plan and is what made
+ *      the coarse-timestamp case green.
+ *   2. A path git cannot date (untracked, no commit in this history, no git, no
+ *      repository) is `unreachable`. It is never dated some other way, because
+ *      a fallback to mtime would reinstate exactly the defect above.
+ *   3. A path whose working tree differs from its last commit is `unreachable`.
+ *      Commit order does not describe bytes that were never committed, and the
+ *      dangerous direction is real: an inventory edited and not committed would
+ *      otherwise be dated by an old commit and read as older than the ruleset.
+ */
+function readOnlyGitRead(root, args) {
+  const result = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 30000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+  });
+  if (result.error) {
+    return { ok: false, reason: `git could not start: ${singleLine(result.error)}` };
+  }
+  if (result.status === null) {
+    return { ok: false, reason: "git was killed before it answered" };
+  }
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      reason: `git exited ${result.status}: ${singleLine(result.stderr ?? "")}`,
+    };
+  }
+  return { ok: true, text: String(result.stdout ?? "") };
+}
+
+/**
+ * The commit seconds of the newest commit touching `relativePath`, or a reason
+ * why the question could not be answered. `--no-optional-locks` and
+ * `GIT_OPTIONAL_LOCKS=0` keep this a read: a checker must not refresh the index
+ * of the tree it is inspecting.
+ */
+export function commitSecondsFor(root, relativePath) {
+  const dirty = readOnlyGitRead(root, [
+    "--no-optional-locks",
+    "status",
+    "--porcelain",
+    "--",
+    relativePath,
+  ]);
+  if (!dirty.ok) return { ok: false, reason: `${relativePath}: ${dirty.reason}` };
+  if (dirty.text.trim().length > 0) {
+    return {
+      ok: false,
+      reason:
+        `${relativePath} differs from its last commit, so commit order does not ` +
+        "describe the bytes on disk",
+    };
+  }
+  const dated = readOnlyGitRead(root, ["log", "-1", "--format=%ct", "--", relativePath]);
+  if (!dated.ok) return { ok: false, reason: `${relativePath}: ${dated.reason}` };
+  const seconds = Number(dated.text.trim());
+  if (!Number.isFinite(seconds) || dated.text.trim().length === 0) {
+    return {
+      ok: false,
+      reason: `no commit in this history records a change to ${relativePath}`,
+    };
+  }
+  return { ok: true, seconds };
+}
+
+function isFile(path) {
   try {
-    const stat = statSync(path);
-    return stat.isFile() ? stat.mtimeMs : null;
+    return statSync(path).isFile();
   } catch {
-    return null;
+    return false;
   }
 }
 
 export function armRuleset(root, rulesetPath = RULESET_PATH, inventoryPaths = INVENTORY_PATHS) {
   const ruleset = join(root, rulesetPath);
-  const rulesetMtime = mtimeOrNull(ruleset);
-  if (rulesetMtime === null) {
+  if (!isFile(ruleset)) {
     return arm("d", "pre-freeze-ruleset", "not-yet", `${rulesetPath} is absent`);
   }
   try {
@@ -436,11 +652,7 @@ export function armRuleset(root, rulesetPath = RULESET_PATH, inventoryPaths = IN
     );
   }
 
-  const present = [];
-  for (const relativePath of inventoryPaths) {
-    const mtime = mtimeOrNull(join(root, relativePath));
-    if (mtime !== null) present.push({ relativePath, mtime });
-  }
+  const present = inventoryPaths.filter((relativePath) => isFile(join(root, relativePath)));
   if (present.length === 0) {
     return arm(
       "d",
@@ -450,21 +662,47 @@ export function armRuleset(root, rulesetPath = RULESET_PATH, inventoryPaths = IN
         "nothing to compare against; newer than nothing is a guard that cannot go red",
     );
   }
-  let newest = present[0];
-  for (const entry of present) if (entry.mtime > newest.mtime) newest = entry;
-  if (rulesetMtime < newest.mtime) {
+
+  const rulesetDate = commitSecondsFor(root, rulesetPath);
+  if (!rulesetDate.ok) {
+    return arm(
+      "d",
+      "pre-freeze-ruleset",
+      "unreachable",
+      `the ruleset could not be dated by commit order: ${rulesetDate.reason}`,
+    );
+  }
+  let newest = null;
+  for (const relativePath of present) {
+    const dated = commitSecondsFor(root, relativePath);
+    if (!dated.ok) {
+      return arm(
+        "d",
+        "pre-freeze-ruleset",
+        "unreachable",
+        `an inventory could not be dated by commit order: ${dated.reason}`,
+      );
+    }
+    if (newest === null || dated.seconds > newest.seconds) {
+      newest = { relativePath, seconds: dated.seconds };
+    }
+  }
+  if (rulesetDate.seconds <= newest.seconds) {
+    const how = rulesetDate.seconds === newest.seconds ? "is committed no later than" : "is older than";
     return arm(
       "d",
       "pre-freeze-ruleset",
       "not-yet",
-      `${rulesetPath} is older than ${newest.relativePath}`,
+      `${rulesetPath} ${how} ${newest.relativePath} by commit order ` +
+        `(${rulesetDate.seconds} against ${newest.seconds})`,
     );
   }
   return arm(
     "d",
     "pre-freeze-ruleset",
     "satisfied",
-    `${rulesetPath} is present and is not older than ${newest.relativePath}`,
+    `${rulesetPath} is present and is newer than ${newest.relativePath} by commit order ` +
+      `(${rulesetDate.seconds} against ${newest.seconds})`,
   );
 }
 
@@ -539,7 +777,14 @@ export function parseArgs(argv) {
   while (i < argv.length) {
     const argument = argv[i];
     if (argument === "--root") {
-      options.root = resolve(process.cwd(), argv[i + 1] ?? "");
+      // A VALUE POSITION THAT IS NOT THERE IS A USAGE ERROR, NOT A DEFAULT.
+      // `resolve(cwd, "")` is the current directory, so the old form turned
+      // `--root` with nothing after it into a silent check of whatever tree the
+      // operator happened to be standing in.
+      if (typeof argv[i + 1] !== "string" || argv[i + 1].length === 0) {
+        return { usage: "--root needs a value" };
+      }
+      options.root = resolve(process.cwd(), argv[i + 1]);
       i += 2;
     } else if (argument === "--require-behavior") {
       if (!behaviorsOverridden) {
@@ -582,6 +827,13 @@ export function run(argv, streams = {}) {
   const arms = evaluate(parsed.options);
   const overall = overallFor(arms);
   if (parsed.options.json) {
+    // THE HALT IS IN BOTH MODES, AND IT WAS IN ONLY ONE.
+    // The commit message and the work history both said the step-3 HALT prints
+    // on EVERY run. A clean-room reviewer measured `--json` printing no HALT,
+    // no STEP 2 and no STEP 4 line at all: the SENTENCE covered both modes and
+    // the CODE covered one. The sentence is the one that was right, so the
+    // machine-readable mode carries the same lines rather than the sentence
+    // being narrowed to match the code.
     out.write(
       `${JSON.stringify(
         {
@@ -592,6 +844,8 @@ export function run(argv, streams = {}) {
             status: "blocked",
             reason: "the pilot reboot is an owner action; this script cannot observe it",
           },
+          halt: STEP_LINES.join("\n"),
+          steps: STEP_LINES,
         },
         null,
         2,
@@ -608,5 +862,17 @@ const invokedDirectly =
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  process.exitCode = run(process.argv.slice(2));
+  // AN UNEXPECTED THROW IS AN UNKNOWN, NOT A REAL NEGATIVE. An uncaught error
+  // exits node with 1, and 1 is EXIT_NOT_SATISFIED here: a crash would have
+  // been read as "the preconditions were checked and one does not hold". That
+  // is the same collapse of the unknown case into the false case that this
+  // whole script exists against, arriving through the process exit code rather
+  // than through a verdict. The sibling site in scripts/probe-pilot-readonly.mjs
+  // carries the identical guard, and it was found by the same derivation.
+  try {
+    process.exitCode = run(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`check-cutover-entry: unexpected failure: ${singleLine(error)}\n`);
+    process.exitCode = EXIT_INDETERMINATE;
+  }
 }

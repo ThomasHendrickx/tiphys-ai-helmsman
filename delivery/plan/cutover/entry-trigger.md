@@ -64,14 +64,24 @@ Exit 0 only when all four arms are `satisfied`. Every arm is evaluated on every
 run: a checker that returns on its first failure is silent about the other
 three. The witness is a fixture with all four arms forced false at once, and it
 was demonstrated red against a deliberately short-circuiting copy of the script
-(delivery/work-history/m4-p27.md:1).
+(delivery/work-history/m4-p27.md:215).
 
 | arm | condition | what makes it NOT satisfied |
 |---|---|---|
-| a `drain` | `tiphys cutover status` reports `DRAIN clean` | any other drain state is `not-yet`; NO `DRAIN` line at all is `unreachable` |
+| a `drain` | `tiphys cutover status` reports `DRAIN clean` | any other drain state is `not-yet`; NO `DRAIN` line at all is `unreachable`, and so is a line that SAYS drain without being a `DRAIN clean` or `DRAIN <n> in flight` row, more than one such row, or an exit 0 under a row that is not clean |
 | b `exclusion` | the cross-environment exclusion behaviors resolve by name in `test/behaviors.json` AND their test files pass with a pass count above zero | a missing name, a missing file, a failing test or a ZERO-test suite is `not-yet`; an unparseable registry or an unreadable run is `unreachable` |
-| c `retirement` | `tiphys cutover status --retirement` reports zero `unported` rows | any `unported` row is `not-yet`; ZERO ROWS ALTOGETHER is `unreachable` |
-| d `pre-freeze-ruleset` | `delivery/plan/cutover/pre-freeze-ruleset.json` is present and not older than the newest retirement inventory file | absent or stale is `not-yet`; NO INVENTORY to compare against is `unreachable` |
+| c `retirement` | `tiphys cutover status --retirement` reports zero `unported` rows | any `unported` row is `not-yet`; ZERO ROWS ALTOGETHER is `unreachable`, and so is a line carrying `ported` that is not a `PORT <name> ported|unported` row, or an exit 0 printed alongside an unported row |
+| d `pre-freeze-ruleset` | `delivery/plan/cutover/pre-freeze-ruleset.json` is present and NEWER, by COMMIT ORDER, than the newest retirement inventory file | absent is `not-yet`, and so is a ruleset committed no later than the inventory, equality included, because the plan says newer; NO INVENTORY to compare against is `unreachable`, and so is either path being undatable by git or differing from its last commit |
+
+**Arm d asks git, not the filesystem, and that is a correction rather than a
+detail.** The first implementation compared `mtime`, which git does not
+preserve: a `touch` on unchanged bytes flipped the arm to satisfied, and every
+fresh clone stamped the ruleset as older because its name sorts before the
+inventory's in the checkout walk. Both directions were measured by a clean-room
+reviewer on 2026-09-16 and both are recorded at
+delivery/work-history/m4-p27.md:215. The comparison is now
+`git log -1 --format=%ct` on each path, which has one-second resolution, so two
+paths committed together are EQUAL and equal is `not-yet`.
 
 Arm b's required behavior names are a **contract this phase declares, not a
 fact it observed.** M4-P21 and M4-P22 had not landed when this was written and
@@ -101,6 +111,15 @@ node scripts/probe-pilot-readonly.mjs
 Writes `delivery/verification/pulse-re-probe.md` and exits 0 only when every
 target was read.
 
+**A second run REFUSES rather than overwriting the first.** The evidence
+document is a beacon: its header is written before the first read so a death
+mid-probe leaves salvage. The first implementation wrote that header
+unconditionally, so a re-run truncated the previous run's record before it knew
+whether it would establish anything, and a run that then went `unreachable`
+destroyed a run that had gone `satisfied`. It now exits 64 and writes nothing if
+the output path exists. Pass `--force` to overwrite deliberately, or `--out
+<path>` to write elsewhere.
+
 This is the first ACT after the preconditions because everything downstream
 rests on facts the intake itself calls stale: the pilot's state is sourced from
 delivery/verification/dr-0034-premise-check.md:25, whose clones were two days
@@ -114,7 +133,7 @@ cannot perform any of those: every child process goes through one allowlist that
 admits only `ls-remote` and a `clone` carrying `--depth 1`, and every request
 goes through one function that hardcodes the GET method and refuses any
 request-shaping option. Both refusals are witnessed against a real pending
-commit and a request-counting server in test/cutover-entry.test.ts:1.
+commit and a request-counting server in test/cutover-entry.test.ts:515.
 
 **The probe reads THREE sources per target and keeps all three verdicts**, and
 that is not decoration. Measured against the real pilot on 2026-09-16: the REST
