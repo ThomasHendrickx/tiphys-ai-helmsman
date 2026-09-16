@@ -86,6 +86,10 @@ function scratchRoot(): string {
   writeFileSync(join(dir, ".claude", "skills", "SKILL.md"), "# Lab skill\n");
   writeFileSync(join(dir, ".claude", "orchestrator-next.mjs"), "export const LAB = 1;\n");
   writeFileSync(join(dir, "src", "victim.txt"), VICTIM);
+  /* One file from WIDENED_SURFACE, so a widening search in this root has
+   * something to search. Its text carries `widget` and deliberately not the
+   * probe the other scratch fixtures use. */
+  writeFileSync(join(dir, "AGENTS.md"), "The kernel brief. It carries the word widget.\n");
   return dir;
 }
 
@@ -260,6 +264,86 @@ for (const [label, command, tool] of [
     assert.equal(readFileSync(join(root, "src", "victim.txt"), "utf8"), VICTIM);
   });
 }
+
+/**
+ * The screen's contract, asserted rather than described. This does NOT check
+ * that each named tool lacks a write option: that is a fact about the tool, not
+ * about the checker, and nothing in this repository can settle it. What it does
+ * is make widening the list fail the suite, so a tenth name has to be argued
+ * for in a diff instead of appearing in one.
+ *
+ * The import is by computed URL because a literal relative path from `test/`
+ * does not survive the project reference (standing warning 4).
+ */
+test("the command allowlist is pinned, so widening it is a deliberate edit", async () => {
+  const mod = (await import(new URL("../scripts/check-retirement-inventory.mjs", import.meta.url).href)) as {
+    ALLOWED_FIRST_TOKENS: Set<string>;
+  };
+  assert.deepEqual(
+    [...mod.ALLOWED_FIRST_TOKENS].sort(),
+    ["cat", "comm", "diff", "grep", "head", "ls", "tail", "test", "wc"],
+  );
+});
+
+/**
+ * The widening grep's own outcome, classified.
+ *
+ * The SPAWN-ERROR arm is forced end to end by the test above. The EXIT-2 arm is
+ * not, and I say so rather than implying otherwise: this container runs the
+ * suite as uid 0, so the obvious forcing move (an unreadable directory on the
+ * search surface) still gives grep exit 1, and a symlink loop gives exit 1 too
+ * because `grep -r` does not follow symlinks. Both measured. So exit 2 is
+ * exercised at the classifier and not along the whole path, which is the weaker
+ * of the two and is the strongest I found.
+ */
+test("an errored widening grep is classified as a non-answer, not as no hits", async () => {
+  const mod = (await import(new URL("../scripts/check-retirement-inventory.mjs", import.meta.url).href)) as {
+    unexpectedGrepStatus: (s: number | null, e?: unknown, sig?: unknown) => string | null;
+  };
+  assert.equal(mod.unexpectedGrepStatus(0, null, null), null, "found is an answer");
+  assert.equal(mod.unexpectedGrepStatus(1, null, null), null, "not found is an answer");
+  assert.match(String(mod.unexpectedGrepStatus(2, null, null)), /exited 2, which is an error/);
+  assert.match(
+    String(mod.unexpectedGrepStatus(null, new Error("ENOENT"), null)),
+    /did not run: ENOENT/,
+  );
+  assert.match(String(mod.unexpectedGrepStatus(null, null, "SIGKILL")), /terminated by signal SIGKILL/);
+});
+
+/**
+ * THE FAIL-OPEN THE FIX ROUND PUT IN ITS OWN NEW CODE, and then took out.
+ *
+ * The first version of the widening read `if (r.status === 0)` and otherwise
+ * left the hit list empty, so a widening grep that ERRORED was
+ * indistinguishable from one that found nothing, and "found nothing" is exactly
+ * the verdict that lets the absence stand. It is the shape this whole round is
+ * about, one level in.
+ *
+ * Forced end to end rather than described: the checker runs with a PATH holding
+ * no `grep`, so `spawnSync` returns an error and never a status.
+ * `process.execPath` is absolute, so node itself still starts. Measured against
+ * the pre-fix variant, the only finding was "verified-by did not run" and the
+ * absence claim passed in silence.
+ */
+test("an absence whose widening grep could not run is UNVERIFIED, not confirmed", () => {
+  const root = scratchRoot();
+  const empty = mkdtempSync(join(tmpdir(), "tiphys-retirement-nobin-"));
+  const rows = scratchRows("grep -c 'widget' AGENTS.md").map((r) => ({
+    ...r,
+    "verified-by": { command: "grep -c 'widget' AGENTS.md", exit: 1, output: "0" },
+  })) as Row[];
+  const path = join(root, "candidate.json");
+  writeFileSync(path, JSON.stringify({ rows }, null, 2));
+  const result = spawnSync(process.execPath, [checker, "--repo", root, "--json", path], {
+    encoding: "utf8",
+    env: { ...process.env, PATH: empty },
+  });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(
+    result.stdout,
+    /verified-by exits 1 \(an absence claim\) and the widening grep did not run: .*, so the absence is UNVERIFIED/,
+  );
+});
 
 test("retirement checker refuses a command outside the allowlist without running it", () => {
   /* `rm` is the plainest member and the one a mistyped row is likeliest to

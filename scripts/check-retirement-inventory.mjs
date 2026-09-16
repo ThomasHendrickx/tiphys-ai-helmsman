@@ -279,8 +279,16 @@ export function extractAnchors(repo) {
  * head are `grep -c`, measured, so the narrowed list refuses none of them. A
  * later row that genuinely needs one of these tools is a change to the screen's
  * contract and belongs in this list with the reason written next to it.
+ *
+ * IT IS EXPORTED AND PINNED BY A TEST, which is the difference between a
+ * contract and a description. Nothing here can check that a named tool has no
+ * write option, because that is a fact about the tool and not about this file.
+ * What the test does check is that the list is exactly these nine names, so
+ * widening it fails the suite and has to be argued for in a diff. That is a
+ * weaker guarantee than the paragraph above and it is the strongest one
+ * available, so it is stated as what it is.
  */
-const ALLOWED_FIRST_TOKENS = new Set([
+export const ALLOWED_FIRST_TOKENS = new Set([
   "grep",
   "test",
   "ls",
@@ -534,7 +542,7 @@ function widenedHitPaths(pattern, repo, cache, extra = []) {
   const key = `${pattern}\u0000${[...extra].sort().join("\u0000")}`;
   if (cache.has(key)) return cache.get(key);
   const present = [...new Set([...WIDENED_SURFACE, ...extra])].filter((p) => existsSync(join(repo, p)));
-  let paths = [];
+  let result = { paths: [], error: null };
   if (present.length > 0) {
     const r = spawnSync("grep", ["-rlniF", "--", pattern, ...present], {
       cwd: repo,
@@ -543,12 +551,38 @@ function widenedHitPaths(pattern, repo, cache, extra = []) {
       maxBuffer: 8 * 1024 * 1024,
       env: { ...process.env, LC_ALL: "C" },
     });
-    if (r.status === 0) {
-      paths = [...new Set((r.stdout ?? "").split("\n").filter((l) => l !== ""))].sort();
+    const bad = unexpectedGrepStatus(r.status, r.error, r.signal);
+    if (bad !== null) result = { paths: [], error: bad };
+    else if (r.status === 0) {
+      result = {
+        paths: [...new Set((r.stdout ?? "").split("\n").filter((l) => l !== ""))].sort(),
+        error: null,
+      };
     }
   }
-  cache.set(key, paths);
-  return paths;
+  cache.set(key, result);
+  return result;
+}
+
+/**
+ * Why the widening grep's outcome is NOT an answer, or null if it is one.
+ *
+ * THIS EXISTS BECAUSE THE FIRST VERSION OF THE WIDENING HAD THE DEFECT IT WAS
+ * WRITTEN TO CATCH. It read `if (r.status === 0)` and otherwise left the hit
+ * list empty, so a grep that ERRORED was indistinguishable from a grep that
+ * found nothing, and "found nothing" is exactly the verdict that lets an
+ * absence claim stand. A guard that fails open when its own tool fails is the
+ * shape this whole round is about, and it was in the round's own new code.
+ *
+ * Only 0 (found) and 1 (not found) are answers. Anything else, plus a spawn
+ * error and a signal death, makes the row's absence UNVERIFIED rather than
+ * confirmed.
+ */
+export function unexpectedGrepStatus(status, error, signal) {
+  if (error !== undefined && error !== null) return `the widening grep did not run: ${String(error.message ?? error)}`;
+  if (status === null) return `the widening grep was terminated by signal ${String(signal)}`;
+  if (status === 0 || status === 1) return null;
+  return `the widening grep exited ${status}, which is an error and not a search result`;
 }
 
 /**
@@ -574,7 +608,14 @@ function checkRowWidenedAbsence(row, repo, cache, findings) {
     return;
   }
 
-  const hits = widenedHitPaths(pattern, repo, cache, argumentPathsNamed(vb.command, repo));
+  const widenedResult = widenedHitPaths(pattern, repo, cache, argumentPathsNamed(vb.command, repo));
+  if (widenedResult.error !== null) {
+    /* FAIL CLOSED. The absence could not be re-established, which is not the
+     * same as it holding. */
+    fail(`verified-by exits ${vb.exit} (an absence claim) and ${widenedResult.error}, so the absence is UNVERIFIED`);
+    return;
+  }
+  const hits = widenedResult.paths;
   if (hits.length === 0) return;
 
   if (declared === undefined || declared === null || typeof declared !== "object") {

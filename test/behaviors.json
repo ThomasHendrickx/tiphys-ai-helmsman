@@ -797,5 +797,8 @@
   "retirement-inventory-absence-needs-a-widened-block": "retirement checker reddens on an absence row with no widened block when the token is carried",
   "retirement-inventory-widened-hit-paths-are-a-superset": "retirement checker reddens on a widened block whose hit-paths omit a carrying file",
   "retirement-inventory-absence-by-spelling-only": "retirement checker reddens on an absence that is only an absence of that spelling",
-  "retirement-inventory-fenced-blocks-are-not-rules": "retirement extraction does not read rules out of fenced code blocks"
+  "retirement-inventory-fenced-blocks-are-not-rules": "retirement extraction does not read rules out of fenced code blocks",
+  "retirement-inventory-allowlist-is-pinned": "the command allowlist is pinned, so widening it is a deliberate edit",
+  "retirement-inventory-widening-grep-error-is-not-no-hits": "an errored widening grep is classified as a non-answer, not as no hits",
+  "retirement-inventory-widening-that-could-not-run-is-unverified": "an absence whose widening grep could not run is UNVERIFIED, not confirmed"
 }
