@@ -227,3 +227,66 @@ family itself and to TEST any grouping a review offers rather than adopt it.
 **The general rule, which this project keeps arriving at from new directions:**
 a template may carry PROCEDURE and must not carry FINDINGS. Procedure is true
 every time it is sent; a finding is true once.
+
+## The guard in the correction above is INSUFFICIENT, and here is the one that works
+
+Written hours after the correction, and it matters because the guard I proposed
+would have passed the very case it was written for.
+
+The correction says to compare the worktree's HEAD against the branch tip and
+treat a difference as staleness. Measured against a real stale worktree today:
+
+```
+its HEAD: c7402b1   branch tip: c7402b1   uncommitted there: 6
+```
+
+**HEAD and the tip are EQUAL and the working tree is stale anyway.** The reason
+is a property of git that the proposed guard walks straight past: when two
+worktrees have the SAME BRANCH checked out, `rev-parse HEAD` in either one
+resolves through the branch ref. One worktree commits, the ref moves, and the
+OTHER worktree's HEAD now reads the new tip while its index and files are still
+the old content. Those 6 "uncommitted changes" were not work. They were the
+REVERSE of the fix round, waiting to be committed by anyone who trusted
+`git status`.
+
+### What actually detects it
+
+Ask git which branches are checked out more than once:
+
+```
+git worktree list --porcelain \
+  | awk '/^worktree /{w=$2} /^branch /{print $2, w}' \
+  | sort | awk '{c[$1]++; l[$1]=l[$1]" "$2} END {for (k in c) if (c[k]>1) print k, l[k]}'
+```
+
+Run today it printed three, each with a LIVE agent in one worktree and one or
+two dead ones holding the same branch:
+
+| branch | worktrees sharing it |
+|---|---|
+| `claude/m4-p26-rollback` | 3 |
+| `claude/m4-p23-retirement-inventory` | 3 |
+| `claude/m4-p2-async-launch` | 2 |
+
+**This closes the M4-P26 incident completely.** Two worktrees held that branch,
+`wf_2b81e806-d59-1` and `wf_a1849252-b71-1`, and my salvage sweep read the older
+one. It was not bad luck and it was not a subtle judgement call: it was a
+detectable configuration that nothing was looking for.
+
+### The rule, third and final form
+
+Before salvaging ANY worktree:
+
+1. **Enumerate branches checked out more than once.** A worktree sharing its
+   branch with another is presumed stale until shown otherwise, whatever its
+   HEAD says.
+2. **Read the direction of `git diff --shortstat`.** A salvage that is mostly
+   deletions is a reversal. This is the check that would have caught it on the
+   day, and it remains the cheapest.
+3. **HEAD against the branch tip is NOT a sufficient test** and this entry now
+   exists partly to retract it.
+
+A worktree whose branch is shared and whose diff is mostly deletions should be
+REMOVED rather than committed, which is the opposite of preserve-never-reclaim
+and is not a contradiction of it: the rule protects WORK, and a stale checkout
+holds none.
