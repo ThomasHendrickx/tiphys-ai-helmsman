@@ -2796,7 +2796,10 @@ function spawnSpec(members: Array<Record<string, unknown>>): string {
  * `extraHeadMembers` are appended to the head spec only, so they are the
  * members this phase added.
  */
-function spawnFixture(extraHeadMembers: Array<Record<string, unknown>> = []): Fixture {
+function spawnFixture(
+  extraHeadMembers: Array<Record<string, unknown>> = [],
+  headMembers: Array<Record<string, unknown>> = SPAWN_UNOWNED_MEMBERS,
+): Fixture {
   return makeFixture(
     {
       "gates.manifest.json": fixtureManifest([]),
@@ -2808,7 +2811,7 @@ function spawnFixture(extraHeadMembers: Array<Record<string, unknown>> = []): Fi
     },
     {
       "src/spare.ts": SPAWN_SPARE_HEAD,
-      "witness/spare-guard.json": spawnSpec([...SPAWN_UNOWNED_MEMBERS, ...extraHeadMembers]),
+      "witness/spare-guard.json": spawnSpec([...headMembers, ...extraHeadMembers]),
     },
   );
 }
@@ -2846,6 +2849,23 @@ test("a member this phase ADDED that touches a spawning changed file still owes 
       replace: '  const run = { stdout: "not-spare" };',
     },
   ]);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /rule \(f\): the phase diff touches src\/spare\.ts/);
+});
+
+test("a member this phase EDITED that touches a spawning changed file still owes a capture", () => {
+  /* THE LAUNDERING ARM. Without it, "a member this phase authored" could be
+     read as "a member this phase ADDED", and an implementer facing rule (f)
+     could rewrite an existing member instead of adding one and take no
+     obligation. `ownedMembersOf` derives ownership from added-OR-CHANGED, and
+     this is the measurement of the second half of that rather than a reading
+     of it: the head spec's first member differs from the base's in its
+     `replace` only. */
+  const edited = SPAWN_UNOWNED_MEMBERS.map((member, index) =>
+    index === 0 ? { ...member, replace: '  return s + "@";' } : member,
+  );
+  const fixture = spawnFixture([], edited);
   const outcome = runGate(fixture);
   assert.equal(outcome.result.status, "red", reasonsOf(outcome));
   assert.match(outcome.result.detail, /rule \(f\): the phase diff touches src\/spare\.ts/);
