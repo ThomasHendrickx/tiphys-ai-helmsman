@@ -384,7 +384,7 @@ M5 (scale-out), one paragraph: parallelism turns ON. The conflict pre-pass scrip
 - D-9: R-002 (review never skipped): L2 AGENTS.md clause with an L1 migration ticket (mode-aware branch protection), per the scout's provisional placement.
 - D-10: R-040 (push before long validation): L2 brief clause plus a tuition-tracked migration ticket, per the scout's provisional placement.
 - D-11: R-043 and R-044 (tests/fixtures for every changed method/state): L2 gate-registry entries checked by the L3 clean-room reviewer, with an optional later L1 coverage floor, per the scout's provisional placement.
-- D-12: R-046 (analytics doc symmetry): L1 name-symmetry script for the stated rule; semantic accuracy stays with the R-059 blast-radius probe, per the scout's provisional placement.
+- D-12: R-046 (analytics doc symmetry): L1 name-symmetry script for the stated rule; semantic accuracy stays with the R-059 blast-radius probe, per the scout's provisional placement. M4-P13 supersedes the L1 half of this decision: under DR-0028 and DR-0029 the kernel ships no analytics-symmetry script, the project declares that predicate, and R-046 moves to the DR-0029 bucket; the semantic-accuracy residue named here is untouched.
 - D-13: R-067 (three reds = fix the flake): L2 policy clause; an L1 flake-signature counter is deferred to v1.1 telemetry, per the scout's provisional placement.
 - D-14: Where the blueprint deliberately deviates from the process doc's letter, this plan follows the blueprint: the adversarial plan reviewer also reads the input report (R-006), and the event watcher replaces the hourly cron heartbeat (R-078). Scout observation 3.
 - D-15: The kernel repo's own CI gets a per-ref concurrency group in M1-P1, because the current process's adoption checklist requires it before the first merge; the productized form of R-072/R-097 (bootstrap checks for onboarded projects) remains M4.
@@ -432,7 +432,7 @@ Per SC-009's disposition (plan decision D-7), every open question is a decision 
 
 ## Appendix A: Requirements coverage
 
-Every migration-table row (115 rows: R-001 to R-098 with lettered variants) mapped to exactly one bucket: an M1 phase id, M2 or M3 (outline-level coverage, detailed in that milestone's plan), M4 or M5 (deferred by milestone design, one-paragraph coverage in section 7), or parked with a reason. Buckets follow the migration table's milestone column; the six resist-placement rules carry their plan decision. Counts: M1 = 11, M2 = 16, M3 = 74, M4 = 13, M5 = 1, parked = 0.
+Every migration-table row (115 rows: R-001 to R-098 with lettered variants) mapped to exactly one bucket: an M1 phase id, M2 or M3 (outline-level coverage, detailed in that milestone's plan), M4 or M5 (deferred by milestone design, one-paragraph coverage in section 7), an owner decision record that discharges the row outright, or parked with a reason. Buckets follow the migration table's milestone column, and since M4-P13 that sentence is a checked invariant rather than a convention: test/coverage-gate.test.ts compares every bare-milestone bucket here against the Milestone cell there and names every row where they differ, with the decision-bucketed rows carried as a declared exemption list rather than skipped. The six resist-placement rules carry their plan decision. Counts: M1 = 11, M2 = 16, M3 = 74, M4 = 5, M5 = 3, DR-0029 = 6, parked = 0.
 
 | Row | Bucket | Note |
 |---|---|---|
@@ -484,18 +484,18 @@ Every migration-table row (115 rows: R-001 to R-098 with lettered variants) mapp
 | R-038 | M3 | implementer brief clause |
 | R-039 | M3 | implementer brief clause |
 | R-040 | M3 | plan decision D-10 |
-| R-041 | M4 | typecheck gate wiring for pilot |
-| R-042 | M4 | lint gate wiring |
+| R-041 | M4 | gate CLASS declared by the kernel; the kernel's own registry names the command (tsc -b), which is DR-0029's dogfooding case. Re-dispositioned by M4-P13 |
+| R-042 | DR-0029 | no linter in the only M4 subject; what lint, format and style mean is the project's. Re-dispositioned by M4-P13 |
 | R-043 | M3 | plan decision D-11 |
 | R-044 | M3 | plan decision D-11 |
-| R-045 | M4 | i18n parity script |
-| R-046 | M4 | analytics symmetry script, plan decision D-12 |
-| R-047 | M4 | manifest regen gate |
+| R-045 | DR-0029 | zero i18n files in the only M4 subject; the kernel ships no i18n command at any milestone. Re-dispositioned by M4-P13 |
+| R-046 | DR-0029 | zero analytics files in the only M4 subject; supersedes the L1 half of plan decision D-12, whose semantic-accuracy residue is untouched. Re-dispositioned by M4-P13 |
+| R-047 | M4 | gate CLASS declared by the kernel; already green in the kernel as agent-rules-drift and brief-drift. Re-dispositioned by M4-P13 |
 | R-048 | M2 | full-suite wrapper (M2-P2; runner ground in M1-P1) |
 | R-049 | M3 | report contract clause |
-| R-050a | M4 | e2e gate wiring |
+| R-050a | DR-0029 | zero e2e files in the only M4 subject; same reasoning as R-045. Re-dispositioned by M4-P13 |
 | R-050b | M3 | env-failure diagnosis checklist |
-| R-051 | M4 | docs-grep gate |
+| R-051 | DR-0029 | the kernel's usage: strings are a copy surface and a gate could be built, but nothing in M4 consumes one and the predicate is the project's. Re-dispositioned by M4-P13 |
 | R-052a | M3 | work-history template |
 | R-052b | M1-P4 | teardown guard |
 | R-053 | M3 | clean-room checklist + verdict schema |
@@ -511,16 +511,16 @@ Every migration-table row (115 rows: R-001 to R-098 with lettered variants) mapp
 | R-061 | M3 | AGENTS.md clause |
 | R-062 | M3 | AGENTS.md + brief clauses |
 | R-063 | M3 | decision record reversibility field |
-| R-064 | M4 | branch protection required checks (CI groundwork M1-P1) |
-| R-065a | M4 | squash-only merge config |
+| R-064 | M4 | branch protection required checks (CI groundwork M1-P1); already active on the kernel repository, M4 records the evidence. Bucket confirmed by M4-P13 |
+| R-065a | M4 | squash-only merge config; owner-deferred and carried as an M4 exit-criteria footnote. Bucket confirmed by M4-P13 |
 | R-065b | M3 | AGENTS.md clause |
 | R-066 | M3 | flake playbook checklist |
 | R-067 | M3 | plan decision D-13 |
 | R-068 | M2 | migration verifier (M2-P6, precondition-gated per SC-011) |
 | R-069 | M2 | deploy verifier (M2-P6, precondition-gated per SC-011) |
 | R-070 | M3 | tuition flow |
-| R-071 | M4 | CI config pattern |
-| R-072 | M4 | productized; kernel repo instance in M1-P1 per D-15 |
+| R-071 | DR-0029 | the kernel has no migrations; a project's CI design rule and the clearest case of a predicate the project declares. Re-dispositioned by M4-P13 |
+| R-072 | M5 | productized bootstrap check; kernel repo instance already in M1-P1 per D-15, and productizing it needs a second project. Re-dispositioned by M4-P13 |
 | R-073 | M3 | AGENTS.md policy clause |
 | R-074 | M3 | implementer brief clause |
 | R-075 | M3 | role-to-model config |
@@ -549,7 +549,7 @@ Every migration-table row (115 rows: R-001 to R-098 with lettered variants) mapp
 | R-094 | M3 | canonical gate registry (M3-P3; manifest seed M2-P5; scout observation 1) |
 | R-095 | M1-P2 | init + doctor (beacon check completed M1-P5) |
 | R-096 | M3 | full-mode definition |
-| R-097 | M4 | productized bootstrap check; kernel repo instance M1-P1 per D-15 |
+| R-097 | M5 | productized bootstrap check; kernel repo instance M1-P1 per D-15; same artifact as R-072 and the greenfield bootstrap path is M5. Re-dispositioned by M4-P13 |
 | R-098 | M3 | repo layout convention + tuition flow |
 
 Scout handling check: the 6 resist-placement rules are decided in D-9 (R-002), D-10 (R-040), D-11 (R-043, R-044), D-12 (R-046), D-13 (R-067); the 4 observations are handled at observation 1 (gate registry M3-P3 with M2-P5 seed, report contract and status line M3-P1, tuition directory M1-P1 with flow M3, and no M1 criterion depends on any of them), observation 2 (M2-P5 generic-versus-project split), observation 3 (D-14), observation 4 (D-2 and section 7's M5 paragraph).
