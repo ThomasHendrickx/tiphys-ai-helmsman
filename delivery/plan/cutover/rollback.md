@@ -321,8 +321,12 @@ exits 0 with `--port`.
 
 #### Step 3.4: repeat from 3.1, or flip back
 
-- command: repeat step 3.1 until exit 0. If a row cannot be ported within its
-  round budget, flip the switches back under trigger 2.
+- command: repeat step 3.1 until exit 0. If a row is not ported within its
+  round budget, flip the switches back under trigger 2. The budget is the one
+  at
+  delivery/decisions/DR-0035-review-is-never-skipped-the-rounds-are-what-tier.md:77,
+  which records that rounds are not monotonically improving and a budget is not
+  stinginess.
 - observation: exit 0 from step 3.1, or a trigger 2 record. A row that consumes
   its budget gets a fresh implementer, and is not an owner question.
 - rehearsable: the repeat is; the flip-back inherits step 2.3's unrehearsable
