@@ -35,6 +35,17 @@
  *     ABSENCE claim, and the absence is re-established on a WIDER surface than
  *     the row itself named. See the widened-absence section below.
  *
+ * A ROW THAT LEAVES SHOULD NOT SIMPLY BE DELETED: it moves to the document's
+ * `retired` array with a reason and, where the rule survived in another shape, a
+ * `superseded-by` pointing at the row that now carries it.
+ *
+ * SAY WHICH HALF OF THAT IS ENFORCED, because the two are easy to read as one.
+ * This script has NO MEMORY of the previous inventory, so a row deleted along
+ * with its anchor leaves both sides consistent and nothing here notices. Moving
+ * it rather than dropping it is a convention, and the reviewer of the diff is
+ * what checks it. What IS enforced is the register's own integrity once an entry
+ * exists: see `checkRetiredEntry`.
+ *
  * THE COMMANDS ARE DATA FROM A FILE AND ARE TREATED AS SUCH. They run through
  * `sh -c` with a timeout, in the repository root, with a per-segment first-token
  * allowlist and a refusal of redirection and command substitution.
@@ -145,8 +156,25 @@ const MARKDOWN_ANCHORS = [
   { kind: "bold-lead", re: /^\*\*(.+?)\s*$/ },
 ];
 
-/** A column-zero run of three or more backticks or tildes opens or closes a fence. */
-const FENCE_RE = /^(`{3,}|~{3,})/;
+/**
+ * A run of three or more backticks or tildes, indented by AT MOST THREE SPACES,
+ * opens or closes a fence.
+ *
+ * THE THREE SPACES ARE THE FIX FOR V-2 AND THEY ARE NOT A TASTE DECISION.
+ * This regexp was anchored at column zero until 2026-09-16. CommonMark allows an
+ * opening fence indented by up to three spaces, and this repository uses that
+ * form inside numbered list items: measured on `CLAUDE.md` at the merged head,
+ * 10 fence lines sit at column zero and 12 sit one to three spaces in, so the
+ * recognised half was the minority. A delta verifier forced three phantom
+ * anchors out of a scratch root carrying one three-space fence. Four or more
+ * spaces is an INDENTED CODE BLOCK in CommonMark rather than a fence, so it is
+ * deliberately still not matched here.
+ *
+ * It failed CLOSED (a phantom anchor reddens as a rule with no row), which is
+ * why this was LOW and why the fix is a widening of the recogniser rather than
+ * a new mechanism.
+ */
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 
 const JS_ANCHORS = [
   { kind: "function", re: /^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/ },
@@ -225,8 +253,11 @@ export function extractAnchors(repo) {
       if (isMarkdown) {
         const m = FENCE_RE.exec(line);
         if (m !== null) {
+          /* A closing fence is a run of the SAME character, at least as long as
+           * the one that opened it. Comparing the runs rather than the whole
+           * line is what lets an indented fence close a fence at all. */
           if (fence === null) fence = m[1];
-          else if (line.startsWith(fence[0].repeat(fence.length))) fence = null;
+          else if (m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
           continue;
         }
         if (fence !== null) continue;
@@ -542,8 +573,24 @@ function widenedHitPaths(pattern, repo, cache, extra = []) {
   const key = `${pattern}\u0000${[...extra].sort().join("\u0000")}`;
   if (cache.has(key)) return cache.get(key);
   const present = [...new Set([...WIDENED_SURFACE, ...extra])].filter((p) => existsSync(join(repo, p)));
+  /* FAIL CLOSED ON AN EMPTY SURFACE (V-4). There is nothing to search, so the
+   * absence cannot be re-established, and `{paths: [], error: null}` is the
+   * CONFIRM-THE-ABSENCE verdict. That is the same fail-open the S1 fix removed
+   * from the errored-grep arm, reached by a different door: a surface that is
+   * not THERE was treated better than a grep that could not RUN. The narrower
+   * case, a surface member that MOVES while others remain, is not reachable
+   * from here because this function cannot tell a deliberately absent tree from
+   * a renamed one; it is caught one level out, by the suite assertion that every
+   * declared member of WIDENED_SURFACE exists in this repository. */
   let result = { paths: [], error: null };
-  if (present.length > 0) {
+  if (present.length === 0) {
+    result = {
+      paths: [],
+      error:
+        "no member of the widened surface exists in this checkout, so there was nothing to search " +
+        "and the absence could not be re-established",
+    };
+  } else {
     const r = spawnSync("grep", ["-rlniF", "--", pattern, ...present], {
       cwd: repo,
       encoding: "utf8",
@@ -802,6 +849,56 @@ function checkRowExecution(row, repo, findings) {
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * THE RETIREMENT REGISTER, and why a deleted row does not simply vanish.
+ *
+ * A rule anchor can stop being extractable for two opposite reasons: the rule
+ * was REMOVED from the root, or the rule was REWRITTEN and now anchors under a
+ * different id. The set-equality check cannot tell those apart, and the honest
+ * answer to both is the same one this repository gives everywhere else: write
+ * it down. `next-script:scratch` is the worked example. It tracked a hard-coded
+ * scratchpad path; a harness change replaced that constant with a derivation
+ * and the row went stale. Deleting the row silently would have lost the fact
+ * that the gap it named was closed and by what.
+ *
+ * So a removed row moves to `retired`, and the register is CHECKED in two
+ * directions rather than merely stored:
+ *
+ *   - a retired id whose anchor is EXTRACTABLE AGAIN is red. The rule came
+ *     back and it owes a row; a retirement entry must not be a way to keep a
+ *     live rule out of the inventory. That is the arm that makes this a guard.
+ *   - `superseded-by`, when present, must name a row that EXISTS. A pointer to
+ *     a row somebody later deleted is worse than no pointer, because it reads
+ *     as a settled hand-off.
+ *
+ * `superseded-by` is optional because a rule can genuinely just die. What is
+ * NOT optional is `reason`: an entry that does not say why is the judgment
+ * dressed as a status that this whole checker exists against.
+ */
+function checkRetiredEntry(entry, anchorsById, rowIds, findings) {
+  const id = nonEmptyString(entry?.id) ? entry.id : "<retired entry with no id>";
+  const fail = (msg) => findings.push(`retired ${id}: ${msg}`);
+  if (!nonEmptyString(entry?.id)) {
+    fail("retired entry has no id");
+    return;
+  }
+  if (!nonEmptyString(entry["retired-on"])) fail("retired entry has no retired-on date");
+  if (!nonEmptyString(entry.reason)) fail("retired entry has no reason saying why the rule is gone");
+  if (anchorsById.has(entry.id)) {
+    fail(
+      "this id IS extractable from the three roots again, so the rule is live and owes a row. " +
+        "A retirement entry is not a way to keep a rule out of the inventory.",
+    );
+  }
+  if (rowIds.has(entry.id)) fail("this id is also a live row, so the inventory says both things at once");
+  const sup = entry["superseded-by"];
+  if (sup !== undefined && sup !== null) {
+    if (!nonEmptyString(sup)) fail("superseded-by is present and is not a row id");
+    else if (!rowIds.has(sup)) fail(`superseded-by names ${sup}, which is not a row in this inventory`);
+  }
+}
+
+
 export function checkInventory({ repo, jsonPath, execute }) {
   const findings = [];
   let doc;
@@ -843,6 +940,9 @@ export function checkInventory({ repo, jsonPath, execute }) {
     }
   }
 
+  const retired = Array.isArray(doc.retired) ? doc.retired : [];
+  for (const entry of retired) checkRetiredEntry(entry, anchorsById, seen, findings);
+
   if (!rows.some((r) => r.status === "FALSE")) {
     findings.push(
       "no row is marked FALSE. The phase section requires at least one, and one is measured: " +
@@ -861,7 +961,7 @@ export function checkInventory({ repo, jsonPath, execute }) {
   return {
     ok: findings.length === 0,
     findings,
-    counts: { anchors: anchors.length, rows: rows.length, executed: execute },
+    counts: { anchors: anchors.length, rows: rows.length, retired: retired.length, executed: execute },
   };
 }
 
@@ -903,9 +1003,10 @@ function main(argv) {
     process.stderr.write(`retirement-inventory: ${result.fatal}\n`);
     return 2;
   }
-  const { anchors, rows } = result.counts;
+  const { anchors, rows, retired } = result.counts;
   process.stdout.write(
     `retirement-inventory: ${rows} row(s) against ${anchors} derived rule anchor(s), ` +
+      `${retired} retired, ` +
       `${result.counts.executed ? "commands EXECUTED" : "structure only, commands NOT executed"}\n`,
   );
   for (const f of result.findings) process.stdout.write(`  UNRESOLVED ${f}\n`);

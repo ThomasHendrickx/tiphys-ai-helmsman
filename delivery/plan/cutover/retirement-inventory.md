@@ -39,8 +39,18 @@ Measured at this head:
 |---|---|
 | `CLAUDE.md` | 133 |
 | `.claude/skills` (6 files) | 131 |
-| `.claude/orchestrator-next.mjs` | 16 |
-| total | 280 |
+| `.claude/orchestrator-next.mjs` | 24 |
+| total | 288 |
+
+**The JavaScript root moved from 16 anchors to 24 while this phase was in
+review, and that is the checker doing its job rather than failing.** A harness
+pull request rewrote `.claude/orchestrator-next.mjs` on the default branch: it
+added `deriveMilestone`, `worktreesByBranch`, `gitTry`, `gitCount`,
+`branchNames`, `WORKTREES`, `hardErrors`, `unreplicated` and `watched`, and it
+removed the `SCRATCH` constant. The checker went red with nine orphaned rules
+and one stale row, which is exactly the pair of directions the set-equality
+check exists to report. The nine are classified in the section below and the
+stale row is retired rather than deleted.
 
 The checker requires SET EQUALITY by id, in both directions, between that
 extraction and the JSON rows. A count comparison would be weaker: it would pass
@@ -70,13 +80,25 @@ makes them non-redundant:
   `verified-by` command is the REFUTATION: it demonstrates that the world
   contradicts the rule.
 
-Totals: 188 PORTED, 88 GAP, 4 FALSE. Dispositions: 188 PORT, 75 KEEP, 17
+Totals: 196 PORTED, 88 GAP, 4 FALSE. Dispositions: 196 PORT, 75 KEEP, 17
 DELETE. Of the KEEP rows, 46 are process-side and 29 predicate-side.
 
-Those totals moved by one in the fix round, and the move is the correction
-below: the C-3 row was a GAP/KEEP and is a PORTED/PORT. Every number in this
-paragraph is derived by reading the JSON rather than counted by hand, and the
-checker refuses the document if any row's two axes disagree.
+Those totals moved by one in the fix round (the C-3 row was a GAP/KEEP and is a
+PORTED/PORT) and by eight more in the harness-change pass: eight of the nine new
+JavaScript anchors are PORTED/PORT and the ninth is a GAP/DELETE, while the
+retired `SCRATCH` row takes a GAP/DELETE away, so GAP and DELETE both hold
+still at 88 and 17. Every number in this paragraph is derived by reading the
+JSON rather than counted by hand, and the checker refuses the document if any
+row's two axes disagree.
+
+**NOTHING DERIVES THESE NUMBERS AT CHECK TIME, AND THAT IS WHY THEY KEEP GOING
+STALE.** The fix round updated six of them and missed two, in this file, which a
+delta verifier then measured (finding V-3). This pass recomputed EVERY number in
+this document from the JSON rather than adjusting the ones it expected to have
+moved, and the ones that moved are named where they sit. The checker reddens on
+a stale ROW and says nothing about a stale SENTENCE, so the recompute is a
+procedure a reader has to run, not a guard. Running it is one command against
+the JSON and it belongs in any future round that touches a row.
 
 ## The four FALSE rows
 
@@ -117,19 +139,28 @@ carrying, and neither is true.
 
 ## Where the ported rules go
 
-187 rows PORT, and the destinations concentrate rather than scatter:
+196 rows PORT, and the destinations concentrate rather than scatter:
 
-| destination | rows |
+| destination artifact | rows |
 |---|---|
-| `AGENTS.md` (orchestrator brief) | 63 |
-| `roles/implementer.md` | 55 |
-| `checklists/clean-room.yaml` | 11 |
+| `AGENTS.md` (orchestrator brief) | 68 |
+| `roles/implementer.md` | 56 |
+| `checklists/clean-room.yaml` | 14 |
+| `roles/investigator.md` | 10 |
 | `checklists/hazard-review.yaml` | 9 |
 | `templates/warnings.md` | 7 |
-| `roles/investigator.md` | 7 |
 | `src/gates/scope.ts` | 6 |
 | `assurance-modes.yaml` | 4 |
 | everything else (14 artifacts) | 25 |
+
+**The column is counted per ARTIFACT and it sums to 199, not 196.** Three rows
+(the `gitTry` family) name two destinations, `roles/investigator.md` and
+`checklists/clean-room.yaml`, because the rule is carried by a brief clause and
+by the checklist probe that tests for it, and neither alone is the whole port.
+Counting per destination STRING instead would give those three a row of their
+own and hide them from both artifact totals, which is worse. The earlier version
+of this table could count either way because every destination then named one
+artifact.
 
 The shape is worth stating: the supervision and merge rules are the
 orchestrator brief's, the working rules are the implementer brief's, the review
@@ -143,9 +174,10 @@ over the kernel's prose trees found all three.
 
 ## The gaps, which are the part a migration would have lost
 
-Twenty-five groups of rules have no kernel destination. The three the intake
-predicted are confirmed by command, and the pass found more. (Twenty-six before
-the fix round, which moved the C-3 group out of this list.)
+Twenty-four groups of rules have no kernel destination. The three the intake
+predicted are confirmed by command, and the pass found more. (Twenty-six before the fix round, which moved
+the C-3 group out; twenty-five until the harness change retired the
+`next-hardcoded-scratch` group with the constant it named.)
 
 **The three loop gaps.** Open the pull request, merge, and the stop condition.
 `grep -c 'pr create' src/cli.ts src/commands/spawn.ts src/commands/gates.ts`
@@ -169,7 +201,7 @@ The mechanism, which is why this is written up rather than quietly edited: a
 nonzero exit proves that A TOKEN is absent from THE FILES THAT COMMAND NAMED,
 and the prose beside it claimed the rule was absent from the kernel. Nothing
 compared the two scopes. The checker now does, at
-scripts/check-retirement-inventory.mjs:559: every absence claim is re-run
+scripts/check-retirement-inventory.mjs:652: every absence claim is re-run
 case-insensitively over a declared wider surface AND over the row's own files,
 and a hit must be named and read before the row can stand. C-3 is now a
 PORTED/PORT row with `AGENTS.md` as its destination.
@@ -212,6 +244,78 @@ and three are the retired script's merged-ness predicate, which must NOT be
 ported: it reports a branch whose commits landed inside another branch's pull
 request as OPEN forever.
 
+## The harness change: nine new rules, and one row retired
+
+**The question this forced, and the answer, because a reader will ask why.**
+Nine of the ten unresolved items were ordinary JavaScript declarations in a
+harness script that ships in no package and is in no gate registry. The cheap
+move is to narrow the extraction so a function declaration in that root is not a
+rule. It is refused, for four reasons, and the fourth is the one that decides it.
+
+1. **The inventory already carries this class, with a written reason.** `git`,
+   `onMain`, `done`, `pushedNotMerged`, `notStarted`, `lines`, `next` and
+   `exitCode` are rows today, GAP/DELETE, under "carried as rows because the
+   grammar covers every top-level declaration". Narrowing would have to delete
+   eight rows to stay consistent with itself.
+2. **"Not a kernel deliverable" does not separate anything.** It is equally true
+   of `CLAUDE.md` and of the `.claude/skills` tree. All three roots are harness;
+   retiring harness into kernel artifacts is the whole job.
+3. **The redness IS the mechanism.** "Every future edit to that file reddens the
+   checker until someone updates the catalogue" is the guarantee, not the cost.
+   It is how this stale catalogue was found at all, and the cost measured here is
+   nine JSON rows.
+4. **No syntactic predicate separates a rule from plumbing in that root.**
+   `const MILESTONE`, `const STALE_SECONDS`, `newestMtime` and
+   `derivePhaseNumbers` are rules, three of them PORTED with kernel
+   destinations, and they are indistinguishable as SYNTAX from `gitTry`. Any
+   narrowing that drops the second set drops the first. The separation is a
+   reading, so it belongs in the row's `disposition` and `reason`, which is
+   where it already is. A guard narrowed until its condition no longer tests
+   the property it claims is this repository's most-repeated defect, and
+   narrowing here would be an instance of it.
+
+How the nine landed: eight PORTED/PORT and one GAP/DELETE.
+
+| anchor | disposition | destination or reason |
+|---|---|---|
+| `deriveMilestone` | PORT | `roles/implementer.md`, the derive-never-pin rule; the script's own comment says it is the same rule as `derivePhaseNumbers` |
+| `worktreesByBranch` | PORT | `AGENTS.md`, T-014's measure-do-not-predict clause |
+| `WORKTREES` | PORT | same clause; it is the call site |
+| `gitTry` | PORT | `roles/investigator.md` and `checklists/clean-room.yaml`: a count that could not be taken is not a zero |
+| `gitCount` | PORT | same |
+| `hardErrors` | PORT | same; this binding is the register of counts that failed |
+| `unreplicated` | PORT | `AGENTS.md`, the pushed half of the durability rule |
+| `watched` | PORT | `AGENTS.md`, an empty watch set is an absence of evidence, not health |
+| `branchNames` | DELETE | plumbing, a branch listing; the rule its comment states is carried by the `gitTry` row rather than double-counted here |
+
+### The retired row, and why a register rather than a deletion
+
+`next-script:scratch` tracked `const SCRATCH =`, a hard-coded scratchpad path.
+The harness change replaced it with `worktreesByBranch()`, which reads
+`git worktree list`, so the anchor is gone and the row is unresolvable. Deleting
+it silently would lose two things: that the row existed, and that the defect it
+named was closed and by what.
+
+So the JSON gained a `retired` array and the checker gained
+`checkRetiredEntry`. A retired entry carries the id, the anchor text that is
+gone, the date, a reason, and an optional `superseded-by`. **The register is
+checked in two directions rather than stored.** A retired id whose anchor
+becomes extractable AGAIN is red, so retirement cannot be used to keep a live
+rule out of the inventory; and a `superseded-by` that names a row which is not
+in the inventory is red, because a dangling pointer reads as a settled hand-off.
+
+**What is NOT enforced, said here so nobody reads the register as stronger than
+it is.** The checker has no memory of the previous inventory, so a row deleted
+along with its anchor leaves rows and anchors consistent and nothing reddens.
+Moving a row into `retired` instead of dropping it is a CONVENTION whose check
+is the reviewer reading the diff. Everything above is about an entry that
+already exists.
+
+Stated exactly, because the row's gap is easy to over-read as closed: the
+SCRIPT no longer predicts a working directory, and the KERNEL still does not
+derive one. `grep -c 'scratchpad' src/fleet.ts src/cli.ts` still exits 1. The
+gap moved to `next-script:worktreesbybranch` and M4-P24 still owns it.
+
 ## What the checker enforces, and what it does not
 
 Enforced, by execution, on every run:
@@ -227,7 +331,9 @@ Enforced, by execution, on every run:
 5. every PORT row's `negative-witness` RE-RUN, required to exit nonzero, to
    carry the same probe as the verified-by command, and not to be a copy of it;
 6. at least one row marked FALSE;
-7. a crash or an unreadable input exits 2 and is never rendered as a pass.
+7. a crash or an unreadable input exits 2 and is never rendered as a pass;
+8. every `retired` entry, in both directions: its rule must not be extractable
+   again, and its `superseded-by` must name a row that exists.
 
 Criterion 7 of the phase section (nothing is deleted from the three roots in
 this phase) needs no separate mechanism: a deletion removes an anchor, and the
@@ -249,12 +355,42 @@ Where several rows share a clause they share its probe, so the row-level claim
 is "this rule's destination is that clause" and the command-level claim is
 "that clause exists and says the thing".
 
+**THE WIDENED SURFACE, AND WHAT IS OFF IT.** The delta verification's V-4 found
+that the not-covered statement named `delivery/` as the one exclusion when there
+were ten. The full list of trees and files that the widening does NOT search:
+`delivery/`, `test/`, `scripts/`, `.github/`, `sandbox/`, `witness/`,
+`assurance-modes.yaml`, `gates.manifest.json`, `package.json` and
+`role-model-config.yaml`. The verifier widened into every one of them and found
+no false row, so the omission cost nothing here; it is written out because an
+unnamed exclusion is what makes an empty result unreadable.
+
+A surface member that MOVES used to make every absence claim quieter rather than
+louder, which is the opposite of how the errored-grep arm is treated. Two changes
+close it. A survivor set that is EMPTY is now a non-answer: the absence is
+reported UNVERIFIED rather than confirmed, which is the errored-grep rule reached
+through the other door. And the narrower case, one member renamed while others
+survive, is caught a level out, by a suite assertion that every declared member
+of `WIDENED_SURFACE` exists in this repository. That split is deliberate: the
+checker also runs against scratch roots that hold almost none of the surface, so
+it cannot tell a renamed tree from a deliberately absent one, and the repository
+can.
+
 ## Re-running it
 
 ```
 node scripts/check-retirement-inventory.mjs            # check, commands executed
 node scripts/check-retirement-inventory.mjs --extract  # the derivation
 node --test test/retirement-inventory.test.ts          # the checker's own witnesses
+```
+
+Recomputing the derived numbers in this document, which nothing does for you:
+
+```
+node -e 'const r=require("./delivery/plan/cutover/retirement-inventory.json").rows;
+const c=f=>r.filter(f).length;
+console.log("PORTED",c(x=>x.status==="PORTED"),"GAP",c(x=>x.status==="GAP"),"FALSE",c(x=>x.status==="FALSE"));
+console.log("PORT",c(x=>x.disposition==="PORT"),"KEEP",c(x=>x.disposition==="KEEP"),"DELETE",c(x=>x.disposition==="DELETE"));
+console.log("GAP groups",new Set(r.filter(x=>x.status==="GAP").map(x=>x.group)).size);'
 ```
 
 The inventory is a description and changes nothing in the three roots except the

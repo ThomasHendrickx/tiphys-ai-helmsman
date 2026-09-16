@@ -5899,9 +5899,33 @@
       }
     },
     {
+      "id": "next-script:derivemilestone",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:53",
+      "kind": "function",
+      "text": "function deriveMilestone() {",
+      "group": "next-derived-set",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/implementer.md",
+      "note": "The same rule as derivePhaseNumbers, and the script's own comment says so: a constant is a claim about every future milestone. It read `: \"m3\"` until 2026-09-16, by which time M3 was complete, so the default invocation printed NOTHING LEFT and exited 0 forever while M4 ran twelve branches past it.",
+      "probe": "ASSERT BY NAME, NEVER BY COUNT",
+      "verified-by": {
+        "command": "grep -c 'ASSERT BY NAME, NEVER BY COUNT' roles/implementer.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'ASSERT BY NAME, NEVER BY COUNT' roles/investigator.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "next-script:milestone",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:38",
+      "rule": ".claude/orchestrator-next.mjs:70",
       "kind": "binding",
       "text": "const MILESTONE = (() => {",
       "group": "next-exit-nonzero",
@@ -5919,7 +5943,7 @@
     {
       "id": "next-script:stale-seconds",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:43",
+      "rule": ".claude/orchestrator-next.mjs:85",
       "kind": "binding",
       "text": "const STALE_SECONDS = 420;",
       "group": "next-mtime-freshness",
@@ -5941,26 +5965,33 @@
       }
     },
     {
-      "id": "next-script:scratch",
+      "id": "next-script:worktreesbybranch",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:44",
-      "kind": "binding",
-      "text": "const SCRATCH =",
-      "group": "next-hardcoded-scratch",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "A hard-coded absolute path for one session is not portable to any other session, let alone to the kernel. M4-P24 criterion 2 makes deriving it a test.",
-      "gap": "the replacement must DERIVE its working directory from the fleet home; the script being retired hard-codes one session's scratchpad path as a string constant",
+      "rule": ".claude/orchestrator-next.mjs:99",
+      "kind": "function",
+      "text": "function worktreesByBranch() {",
+      "group": "next-measure-where-agents-write",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "AGENTS.md",
+      "note": "T-014's rule, and the successor to the retired next-script:scratch row. The script used to hard-code one session's scratchpad path; it now reads git worktree list. AGENTS.md:536 states the obligation for an orchestrator arming a watchdog, which is the same rule stated as process rather than as code.",
+      "probe": "measure it, do not predict it",
       "verified-by": {
-        "command": "grep -c 'scratchpad' src/fleet.ts src/cli.ts",
+        "command": "grep -c 'measure it, do not predict it' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'measure it, do not predict it' roles/implementer.md",
         "exit": 1,
-        "output": "src/fleet.ts:0 / src/cli.ts:0"
+        "output": "0"
       }
     },
     {
       "id": "next-script:git",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:47",
+      "rule": ".claude/orchestrator-next.mjs:113",
       "kind": "function",
       "text": "function git(args) {",
       "group": "next-plumbing",
@@ -5975,9 +6006,75 @@
       }
     },
     {
+      "id": "next-script:gittry",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:144",
+      "kind": "function",
+      "text": "function gitTry(args) {",
+      "group": "next-failed-measurement",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/investigator.md, checklists/clean-room.yaml",
+      "note": "A count that could NOT be taken must not be rendered as zero. The kernel carries the rule as one of the three recorded instances of a wrong-scoped derivation, in the investigator brief and in the clean-room checklist's matching probe. Recorded as the weaker half of the pair the document's residue section describes: the destination states the mechanism as a reviewer obligation, not as an exit code.",
+      "probe": "a usage error",
+      "verified-by": {
+        "command": "grep -c 'a usage error' roles/investigator.md checklists/clean-room.yaml",
+        "exit": 0,
+        "output": "roles/investigator.md:1 / checklists/clean-room.yaml:1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'a usage error' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "next-script:gitcount",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:154",
+      "kind": "function",
+      "text": "function gitCount(args) {",
+      "group": "next-failed-measurement",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/investigator.md, checklists/clean-room.yaml",
+      "note": "A count that could NOT be taken must not be rendered as zero. The kernel carries the rule as one of the three recorded instances of a wrong-scoped derivation, in the investigator brief and in the clean-room checklist's matching probe. Recorded as the weaker half of the pair the document's residue section describes: the destination states the mechanism as a reviewer obligation, not as an exit code.",
+      "probe": "a usage error",
+      "verified-by": {
+        "command": "grep -c 'a usage error' roles/investigator.md checklists/clean-room.yaml",
+        "exit": 0,
+        "output": "roles/investigator.md:1 / checklists/clean-room.yaml:1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'a usage error' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "next-script:branchnames",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:169",
+      "kind": "function",
+      "text": "function branchNames(pattern, remote) {",
+      "group": "next-plumbing",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Carried as rows because the grammar covers every top-level declaration. Their disposition is DELETE with the script.",
+      "gap": "these are the retired script's internal helpers; the kernel has its own git and filesystem plumbing and nothing here is a rule",
+      "note": "The declaration is plumbing, a branch listing that uses --format to avoid the color.branch escape sequences. The RULE its comment states, that closing one door is not closing the mechanism, is carried by next-script:gittry, which is the arm that covers the general case. Split deliberately rather than double-counted.",
+      "verified-by": {
+        "command": "grep -c 'execFileSync' src/fleet.ts src/status.ts",
+        "exit": 1,
+        "output": "src/fleet.ts:0 / src/status.ts:0"
+      }
+    },
+    {
       "id": "next-script:onmain",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:55",
+      "rule": ".claude/orchestrator-next.mjs:176",
       "kind": "function",
       "text": "function onMain(path) {",
       "group": "next-plumbing",
@@ -5994,7 +6091,7 @@
     {
       "id": "next-script:newestmtime",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:65",
+      "rule": ".claude/orchestrator-next.mjs:186",
       "kind": "function",
       "text": "function newestMtime(dir) {",
       "group": "next-mtime-freshness",
@@ -6018,7 +6115,7 @@
     {
       "id": "next-script:derivephasenumbers",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:117",
+      "rule": ".claude/orchestrator-next.mjs:237",
       "kind": "function",
       "text": "function derivePhaseNumbers() {",
       "group": "next-derived-set",
@@ -6042,7 +6139,7 @@
     {
       "id": "next-script:phasenumbers",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:140",
+      "rule": ".claude/orchestrator-next.mjs:272",
       "kind": "binding",
       "text": "const phaseNumbers = derivePhaseNumbers();",
       "group": "next-empty-derivation",
@@ -6060,7 +6157,7 @@
     {
       "id": "next-script:phase-count",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:150",
+      "rule": ".claude/orchestrator-next.mjs:282",
       "kind": "binding",
       "text": "const PHASE_COUNT = phaseNumbers.length;",
       "group": "next-derived-set",
@@ -6082,9 +6179,33 @@
       }
     },
     {
+      "id": "next-script:worktrees",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:284",
+      "kind": "binding",
+      "text": "const WORKTREES = worktreesByBranch();",
+      "group": "next-measure-where-agents-write",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "AGENTS.md",
+      "note": "T-014's rule, and the successor to the retired next-script:scratch row. The script used to hard-code one session's scratchpad path; it now reads git worktree list. AGENTS.md:536 states the obligation for an orchestrator arming a watchdog, which is the same rule stated as process rather than as code.",
+      "probe": "measure it, do not predict it",
+      "verified-by": {
+        "command": "grep -c 'measure it, do not predict it' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'measure it, do not predict it' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "next-script:phases",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:152",
+      "rule": ".claude/orchestrator-next.mjs:285",
       "kind": "binding",
       "text": "const phases = [];",
       "group": "next-derived-set",
@@ -6106,9 +6227,33 @@
       }
     },
     {
+      "id": "next-script:harderrors",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:287",
+      "kind": "binding",
+      "text": "const hardErrors = [];",
+      "group": "next-failed-measurement",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/investigator.md, checklists/clean-room.yaml",
+      "note": "A count that could NOT be taken must not be rendered as zero. The kernel carries the rule as one of the three recorded instances of a wrong-scoped derivation, in the investigator brief and in the clean-room checklist's matching probe. Recorded as the weaker half of the pair the document's residue section describes: the destination states the mechanism as a reviewer obligation, not as an exit code. This binding is the register itself: counts that could not be taken, never silently zero.",
+      "probe": "a usage error",
+      "verified-by": {
+        "command": "grep -c 'a usage error' roles/investigator.md checklists/clean-room.yaml",
+        "exit": 0,
+        "output": "roles/investigator.md:1 / checklists/clean-room.yaml:1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'a usage error' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "next-script:done",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:176",
+      "rule": ".claude/orchestrator-next.mjs:381",
       "kind": "binding",
       "text": "const done = phases.filter((p) => p.merged);",
       "group": "next-merged-predicate",
@@ -6125,7 +6270,7 @@
     {
       "id": "next-script:pushednotmerged",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:177",
+      "rule": ".claude/orchestrator-next.mjs:382",
       "kind": "binding",
       "text": "const pushedNotMerged = phases.filter((p) => !p.merged && p.ahead > 0);",
       "group": "next-merged-predicate",
@@ -6142,7 +6287,7 @@
     {
       "id": "next-script:notstarted",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:178",
+      "rule": ".claude/orchestrator-next.mjs:383",
       "kind": "binding",
       "text": "const notStarted = phases.filter((p) => !p.merged && p.ahead === 0);",
       "group": "next-merged-predicate",
@@ -6157,9 +6302,33 @@
       }
     },
     {
+      "id": "next-script:unreplicated",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:384",
+      "kind": "binding",
+      "text": "const unreplicated = phases.filter((p) => p.unreplicated > 0);",
+      "group": "next-unreplicated-work",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "AGENTS.md",
+      "note": "A commit is not durable; a PUSHED commit is. AGENTS.md:248 carries that as the half of the durability rule that gets dropped, and this binding is the script's detector for it.",
+      "probe": "AND PUSHED, WHICH IS THE HALF THAT GETS DROPPED",
+      "verified-by": {
+        "command": "grep -c 'AND PUSHED, WHICH IS THE HALF THAT GETS DROPPED' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'AND PUSHED, WHICH IS THE HALF THAT GETS DROPPED' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "next-script:lines",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:180",
+      "rule": ".claude/orchestrator-next.mjs:386",
       "kind": "binding",
       "text": "const lines = [];",
       "group": "next-cannot-see",
@@ -6194,7 +6363,7 @@
     {
       "id": "next-script:next",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:200",
+      "rule": ".claude/orchestrator-next.mjs:412",
       "kind": "binding",
       "text": "let next;",
       "group": "next-exit-nonzero",
@@ -6212,7 +6381,7 @@
     {
       "id": "next-script:exitcode",
       "root": ".claude/orchestrator-next.mjs",
-      "rule": ".claude/orchestrator-next.mjs:201",
+      "rule": ".claude/orchestrator-next.mjs:413",
       "kind": "binding",
       "text": "let exitCode;",
       "group": "next-exit-nonzero",
@@ -6225,6 +6394,45 @@
         "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:watched",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:461",
+      "kind": "binding",
+      "text": "const watched = phases.filter((p) => p.worktree !== null);",
+      "group": "next-empty-watch-set",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "AGENTS.md",
+      "note": "An EMPTY watch set is an absence of evidence about liveness, not evidence of health. AGENTS.md:543 states the same failure for a watchdog that has expired or is pointed at the wrong place, which is where this script's warning sends its reader.",
+      "probe": "watching the wrong place",
+      "verified-by": {
+        "command": "grep -c 'watching the wrong place' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'watching the wrong place' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    }
+  ],
+  "retired": [
+    {
+      "id": "next-script:scratch",
+      "root": ".claude/orchestrator-next.mjs",
+      "was-rule": "const SCRATCH =",
+      "retired-on": "2026-09-16",
+      "superseded-by": "next-script:worktreesbybranch",
+      "reason": "The constant is gone from the root. A harness change on main replaced the hard-coded scratchpad path with worktreesByBranch(), which reads git worktree list, so the rule this row tracked (the script locates an agent's working directory by a path it PREDICTS) no longer exists in the shape the row named. The gap the row recorded is NOT closed and has moved to the successor row: it was about the KERNEL deriving a working directory, and src/fleet.ts and src/cli.ts still carry nothing of the kind. The row is retired rather than deleted because the id is cited by the work history and by delivery/plan/cutover/retirement-inventory.md, and because a row that vanishes silently is indistinguishable from a row nobody noticed.",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'scratchpad' src/fleet.ts src/cli.ts",
+        "exit": 1,
+        "output": "src/fleet.ts:0 / src/cli.ts:0"
       }
     }
   ]

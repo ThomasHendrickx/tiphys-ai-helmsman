@@ -881,5 +881,12 @@
   "resume-usage-error": "resume with more than one operand exits 64",
   "resume-accepts-a-directory-operand": "resume accepts an explicit directory operand and rehydrates that one",
   "resume-command-registered": "resume is registered in the command table and is reachable by name",
-  "init-remedy-names-resume": "init in a cloned fleet home still exits 1 and names tiphys resume as the remedy"
+  "init-remedy-names-resume": "init in a cloned fleet home still exits 1 and names tiphys resume as the remedy",
+  "retirement-inventory-absence-refuted-by-the-rows-own-file": "an absence refuted only by the row's OWN file is caught",
+  "retirement-inventory-retired-rule-that-returns-reddens": "a retired rule that is extractable again reddens",
+  "retirement-inventory-retired-successor-must-be-a-row": "a retired entry whose successor is not a row reddens",
+  "retirement-inventory-retired-entries-are-checked": "the live inventory's retired entries are checked, not merely stored",
+  "retirement-inventory-indented-fenced-blocks-are-not-rules": "retirement extraction does not read rules out of an INDENTED fenced block",
+  "retirement-inventory-widened-surface-members-exist": "every member of the widened surface exists in this repository",
+  "retirement-inventory-nothing-to-search-is-unverified": "an absence with nothing to search is UNVERIFIED, not confirmed"
 }
