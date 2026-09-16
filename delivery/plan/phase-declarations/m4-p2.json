@@ -36,7 +36,10 @@
     "witness/patches/m4-p2-canonicalise-the-caller-argument-instead.patch",
     "witness/captures/git-worktree-list-canonicalises-paths.txt",
     "witness/coverage-gate-main-module-guard-survives-a-symlink.json",
-    "witness/patches/m4-p2-normalise-but-still-compare-strings.patch"
+    "witness/patches/m4-p2-normalise-but-still-compare-strings.patch",
+    "test/suite-gate.test.ts",
+    "test/citation-gate.test.ts",
+    "test/witness.test.ts"
   ],
   "citations": [
     "C-3",

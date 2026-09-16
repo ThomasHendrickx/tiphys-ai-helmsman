@@ -1267,6 +1267,7 @@ const M4_P2_BEHAVIORS = [
   "spawn-unparseable-turn-end-is-incomplete",
   "spawn-rejected-launch-rolls-nothing-back",
   "spawn-returns-after-payload-sentinel",
+  "spawn-launch-failed-rolls-back-through-a-symlink",
 ];
 
 test("every spawn behavior resolves by name to a test in this file", () => {

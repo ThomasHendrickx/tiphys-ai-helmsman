@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -306,6 +306,39 @@ test("a witness spec missing deterministic is rejected naming the field", () => 
     true,
     lines.join("\n"),
   );
+});
+
+test("red-witness direct entry runs through an aliased path and still writes its result (DV2-3)", () => {
+  // The main-module guard at src/gates/red-witness.ts:561 (an IIFE) compares
+  // `fileURLToPath(import.meta.url)` against `process.argv[1]` via
+  // `pathsIdentifySameObject`. Before the M4-P2 fix round this compared the
+  // two as plain strings, which silently never ran the gate when the
+  // invocation named this file through a symlink: the process exits 0
+  // having done nothing and writes no result file at all. Reproduced red
+  // against that pre-fix form by hand (work history, DV2-3); this test
+  // guards the fixed form going forward, mirroring the pre-existing
+  // aliased-path tests for scope.ts, credentials.ts and suite.ts.
+  const dir = mkdtempSync(join(tmpdir(), "gate-alias-"));
+  const alias = join(dir, "red-witness-alias.ts");
+  symlinkSync(gateEntryPath, alias);
+  const resultPath = join(dir, "result.json");
+  const child = spawnSync(
+    process.execPath,
+    [alias, "--result", resultPath],
+    { cwd: dir, encoding: "utf8" },
+  );
+  // The no-base invocation is an ERROR record (status 21), not a green
+  // one; what this test asserts is that the guard RAN at all, i.e. that a
+  // result was written, which is the property the pre-fix string
+  // comparison silently defeated.
+  assert.equal(child.status, 21, child.stderr);
+  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
+    status: string;
+    detail: string;
+  };
+  assert.equal(record.status, "error");
+  assert.match(record.detail, /--base was not supplied/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("the red-witness gate without base writes an error record naming the missing base", () => {

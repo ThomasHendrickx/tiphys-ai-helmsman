@@ -1018,6 +1018,19 @@ export function runSuiteGate(argv: string[]): number {
   }
 
   // Discovery parity, both directions (step 3).
+  //
+  // NOT Set membership on the raw strings (DV2-1): `discoveredFiles` is
+  // composed by this gate's own walk from `resolve(cwd, root)`, which does
+  // not resolve a symlinked ANCESTOR of the declared root, while
+  // `reportedFiles` comes from node's own test reporter, which is canonical
+  // whatever spelling node was invoked with (the same reason
+  // `isFileWrapperPhantom` above already compares by identity rather than by
+  // string). A `--test-root` that reaches its target through a symlinked
+  // ancestor then produces one file discovered once and reported once,
+  // reported as BOTH "discovered but absent from the reporter" and
+  // "reported but outside the declared roots", because the two strings
+  // differ even though they name the same object. `pathsNameSameObject`
+  // (src/path-identity.ts) is the round's own primitive for exactly this.
   const reportedFiles = [
     ...new Set(
       points
@@ -1025,18 +1038,16 @@ export function runSuiteGate(argv: string[]): number {
         .map((point) => point.file),
     ),
   ].sort();
-  const discoveredSet = new Set(discoveredFiles);
-  const reportedSet = new Set(reportedFiles);
   const findings: string[] = [];
   for (const file of discoveredFiles) {
-    if (!reportedSet.has(file)) {
+    if (!reportedFiles.some((other) => pathsNameSameObject(other, file))) {
       findings.push(
         `test file discovered by the walk but absent from the reporter: ${relative(cwd, file)}`,
       );
     }
   }
   for (const file of reportedFiles) {
-    if (!discoveredSet.has(file)) {
+    if (!discoveredFiles.some((other) => pathsNameSameObject(other, file))) {
       findings.push(
         `test file reported but outside the declared roots and suffix: ${relative(cwd, file)}`,
       );

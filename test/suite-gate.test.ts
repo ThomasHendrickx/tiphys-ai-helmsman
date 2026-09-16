@@ -303,6 +303,31 @@ test("suite gate names a reported test file outside the declared roots", () => {
   );
 });
 
+test("a --test-root reached through a symlinked ancestor does not falsely redden discovery parity (DV2-1)", () => {
+  // The discovery-parity check composes `discoveredFiles` via
+  // `resolve(cwd, root)`, which does not resolve a symlinked ANCESTOR of
+  // the declared root, while `reportedFiles` comes from node's own test
+  // reporter, which is canonical whatever spelling node was invoked with.
+  // When `--test-root` is an absolute path that reaches the SAME on-disk
+  // directory through an extra symlink hop, the Set-membership check
+  // reported the one file discovered and reported exactly once as BOTH
+  // "discovered but absent from the reporter" and "reported but outside
+  // the declared roots", because the two strings differ even though they
+  // name the same object. Reachable through a consumer registry that
+  // declares an absolute test root (this repository's own registry does
+  // not, which is why this shipped defect went unnoticed here).
+  const { dir, base } = greenFixture();
+  const parent = mkdtempSync(join(tmpdir(), "tiphys-suite-symlink-"));
+  const alias = join(parent, "link");
+  symlinkSync(dir, alias);
+  const aliasedRoot = join(alias, "test");
+  const run = runGate(dir, base, ["--test-root", aliasedRoot]);
+  assert.equal(run.status, 0, run.record.detail);
+  assert.equal(run.record.status, "green");
+  assert.doesNotMatch(run.record.detail, /discovered by the walk but absent from the reporter/);
+  assert.doesNotMatch(run.record.detail, /reported but outside the declared roots and suffix/);
+});
+
 test("suite gate names a behavior whose test was renamed and passes when the name is restored", () => {
   // The CR-002 shape (section 1.5 row 5): the registry rots silently while
   // the bare runner stays green.
