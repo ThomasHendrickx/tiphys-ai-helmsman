@@ -129,7 +129,8 @@ different in-flight items.
 - rehearsable: FULLY.
 - note: the enumeration is taken FIRST because it is the thing a crash would
   lose. The plan's step order writes the switches first; the observation is
-  identical either way and this order cannot lose the list.
+  identical either way, and taking the list before the write keeps it when the
+  write fails.
 
 #### Step 1.2: set all five switches to `current` in ONE atomic rewrite
 
