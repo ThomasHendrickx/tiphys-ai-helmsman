@@ -223,6 +223,8 @@
   "coverage-regex-malformed-pattern-is-error": "a malformed config pattern is a named config error with a written result record, never an uncaught exception",
   "coverage-regex-redos-bounded": "a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging",
   "coverage-ambiguous-bucket-kind": "a bucket value matching more than one declared kind is red naming every match, never a silent first match",
+  "coverage-appendix-bucket-agrees-with-migration-table": "every Appendix A bucket agrees with the migration table's milestone cell for the row, and the decision-bucketed rows agree verbatim",
+  "coverage-bucket-milestone-drift-named-under-a-green-gate": "a migration-table cell that disagrees with its Appendix A bucket is named, for a row this phase moved and for one it never touched, while the coverage gate stays green under both",
   "gate-self-check-schema-enumeration": "manifest-self-check picks up a schema document dropped into the directory after the fact",
   "gate-bundle-steps-only-survives-parameterized-gate": "both bundle steps' --only shape survives a required gate that its own step cannot evaluate",
   "spawn-child-env-scrubbed": "spawn scrubs the payload child environment and redirects the credential-store pointers into the task directory",
