@@ -773,5 +773,20 @@
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
-  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
+  "resume-layout-sets-partition": "the layout constants partition the fleet directories into ephemeral and durable",
+  "resume-fixture-preconditions-can-fail": "the fixture preconditions go red on fixtures that violate them",
+  "resume-rehydrates-a-clone": "resume rebuilds the three ephemeral directories in a fleet clone and doctor then reports CHECK layout PASS",
+  "resume-refuses-a-non-git-directory": "resume in a directory that is not a git repository exits 1, names .git and creates nothing",
+  "resume-refuses-a-decapitated-fleet": "resume refuses a complete fleet layout whose .git is gone, and creates nothing",
+  "resume-refuses-a-stranger-repository": "resume in a git repository that is not a fleet home exits 1, names the missing durable entries and creates nothing",
+  "resume-refusal-is-a-class": "resume refuses every directory that is not a rehydratable fleet clone, and creates nothing in any of them",
+  "resume-is-idempotent-on-a-complete-fleet": "resume on a complete fleet home prints no REBUILT line, and a second consecutive run prints none either",
+  "resume-leaves-a-live-fleet-untouched": "resume leaves a live worktree file and an unexpired lease byte-identical",
+  "resume-rebuilds-only-what-is-absent": "resume rebuilds only the absent ephemeral directory and leaves the present ones untouched",
+  "resume-refuses-a-blocked-ephemeral-path": "resume refuses an ephemeral path that exists and is not a directory, and creates nothing",
+  "resume-usage-error": "resume with more than one operand exits 64",
+  "resume-accepts-a-directory-operand": "resume accepts an explicit directory operand and rehydrates that one",
+  "resume-command-registered": "resume is registered in the command table and is reachable by name",
+  "init-remedy-names-resume": "init in a cloned fleet home still exits 1 and names tiphys resume as the remedy"
 }
