@@ -613,3 +613,47 @@ it does so silently: nothing distinguishes 40 of 40 from 4 of 39 in its output.
 files: resolve each id to a `test()` title in the sources and assert set equality
 by NAME in both directions, never by count. It is a candidate for a small phase
 of its own alongside M4-P28 and M4-P29, and is not allocated one yet.
+
+## M4-P1's HIGH is discharged by sequencing, not by a code change
+
+Recorded BEFORE dispatching that phase's fix round, because the round would
+otherwise spend itself on a finding that is already answered, and the fix-round
+contract's whole subject is not confusing an instance for a mechanism.
+
+**The finding.** The M4-P1 reviewer reported the `scope` gate red "twice over":
+the declaration absent from the merge base, and, once it had put a declaration
+on a simulated trunk to clear that, **27 undeclared paths** behind it.
+
+**Both halves are real and both are discharged by the merge sequence**, which
+was simulated end to end afterwards in a clone with `origin/main` moved to its
+post-paperwork state. At that state, with the branch merged forward:
+
+```
+scope: green: 48 changed path(s) audited against declaration
+  delivery/plan/phase-declarations/m4-p1.json at merge base e3ddbff
+  (2 declared path(s) not touched: ...)
+```
+
+The 27 were the orchestrator's own paperwork, inherited because every phase
+branch was cut from the unmerged plan branch. They stop being M4-P1's changes the
+moment that paperwork is on `main` and the branch merges forward. The reviewer
+could not have known this: it measured only the first step, putting the
+declaration on a trunk, and not the second, merging that trunk forward. Its
+finding is correct about the state it measured.
+
+**So M4-P1's fix round owes the MEDIUM and three LOWs, not the HIGH.** In
+particular it owes the stale fixture count, which is separately confirmed here:
+the work history says THIRTY-EIGHT counted with `git ls-files`, and that exact
+command returns 44 today.
+
+**What is NOT discharged, and the distinction matters.** The sequencing answers
+whether those 27 paths are M4-P1's to declare. It says nothing about the
+transliteration half of the same reviewer's MEDIUM, which remains unverified in
+either direction for the reason recorded above: the act destroys its own
+evidence.
+
+**Generalises to every phase.** The same 26-to-28 inherited paths sit on all
+twelve branches, so any reviewer measuring scope before the sequence will report
+the same class of red, and it will be correct and not the phase's defect. A
+reviewer's scope finding on an M4 branch should be read against which of the two
+steps it measured.
