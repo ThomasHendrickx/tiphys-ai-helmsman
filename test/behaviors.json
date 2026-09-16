@@ -785,5 +785,19 @@
   "dual-review-prints-verdict-values": "check-dual-review prints each verdict's value, head and produced-by alongside the count of verdicts examined",
   "verdict-pair-verdict-vocabulary-exact": "a committed verdict spelled Approve rather than APPROVE is refused rather than read as an authorisation, because here a canonical match is the permissive direction",
   "verdict-pair-severity-vocabulary-closed": "a committed finding ranked outside the four-word severity vocabulary is refused rather than treated as non-blocking",
-  "verdict-pair-low-finding-mergeable": "a committed pair carrying only a low finding stays green, which is the control the two vocabulary refusals need"
+  "verdict-pair-low-finding-mergeable": "a committed pair carrying only a low finding stays green, which is the control the two vocabulary refusals need",
+  "single-family-declaration-read-from-the-commit": "the review-families declaration is read from the object database with its ref, ref sha and blob sha256, so a working-tree edit after the commit does not change what the check read",
+  "single-family-declaration-uncommitted-is-error": "a review-families declaration present only in the working tree is error, because an exception that cannot be attributed to a commit is not permission",
+  "single-family-falsifier-corpus-contradiction": "a one-family declaration is red when the project's own committed verdicts carry two or more distinct produced-by values, and the reason names them",
+  "single-family-falsifier-name-mismatch": "a one-family declaration is red when a committed verdict carries a produced-by that is not the declared family, and the reason names both",
+  "single-family-absent-declaration-is-not-permission": "with no review-families declaration, two same-family verdicts stay red and the produced-by comparison runs unchanged",
+  "single-family-permissive-arm-precondition-id": "the permissive arm reports not-applicable carrying precondition id single-family-declared with met false, never the existing verdicts-present precondition",
+  "single-family-no-arm-reports-green": "no arm of the declared single-family exception reports green, asserted over the whole declared arm set",
+  "single-family-narrows-produced-by-only": "a one-family declaration leaves framing and review-contract required to differ, and the decorrelation report names only the dimensions actually compared",
+  "single-family-declared-exception-named-in-the-bundle": "the gate runner names every gate whose not-applicable carries a declaration, in the aggregate reason line and in summary.json, on the green arm and on the red arm alike",
+  "single-family-declaration-marker-shared-by-name": "the declaration marker the gate writes into precondition evidence is the same exported constant the runner reads",
+  "single-family-exception-refused-below-two-reviews": "a declared exception reported over fewer than two verdicts is error, because DR-0038 relaxes which families produced the reviews and not how many reviews there are",
+  "single-family-exception-refused-when-the-falsifiers-did-not-run": "a declared exception reported while the check carrying the two falsifiers did not run is error rather than not-applicable",
+  "single-family-duplicate-declared-family-is-error": "a review-families list naming one family twice once canonicalised is error, because collapsing it would turn a two-entry document into a single-family declaration",
+  "single-family-two-declared-families-is-not-the-exception": "a review-families declaration listing two genuinely different families leaves the cross-family requirement applying unchanged"
 }

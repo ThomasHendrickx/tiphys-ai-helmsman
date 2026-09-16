@@ -914,6 +914,36 @@ test("a declaration listing one family twice once canonicalised is error rather 
   );
 });
 
+test("this phase's new behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). `test/behaviors.json` is
+     append-only and union-resolved, so a count here would be a claim about
+     every future phase and false the moment the next one appends. */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "single-family-declaration-read-from-the-commit",
+    "single-family-declaration-uncommitted-is-error",
+    "single-family-falsifier-corpus-contradiction",
+    "single-family-falsifier-name-mismatch",
+    "single-family-absent-declaration-is-not-permission",
+    "single-family-permissive-arm-precondition-id",
+    "single-family-no-arm-reports-green",
+    "single-family-narrows-produced-by-only",
+    "single-family-declared-exception-named-in-the-bundle",
+    "single-family-declaration-marker-shared-by-name",
+    "single-family-exception-refused-below-two-reviews",
+    "single-family-exception-refused-when-the-falsifiers-did-not-run",
+    "single-family-duplicate-declared-family-is-error",
+    "single-family-two-declared-families-is-not-the-exception",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
 test("a declaration of two genuinely different families is not this exception, and the cross-family requirement still applies", () => {
   const dir = stage({
     declare: ["family-a", "family-b"],
