@@ -69,7 +69,13 @@ import { fileURLToPath } from "node:url";
  * sends a signal, or reads /proc. Every observation is a file on disk, a
  * git exit code, or a value returned by `lock.ts`.
  *
- * Standing warning 9 (CLAUDE.md): every path handed to git is absolute.
+ * Standing warning 9 (CLAUDE.md): `-C` changes where git RESOLVES, not where
+ * the shell stands. Every FILESYSTEM path handed to git here is absolute. The
+ * two relative strings below, `state/orchestrator.lock` and
+ * `charter/divergence.md`, are repository-relative PATHSPECS, which is the
+ * form `check-ignore` and `add` want, and they are correct precisely because
+ * git resolves them against the repository the `-C` names.
+ *
  * Standing warning 5: git identity is command-scoped, never global.
  */
 

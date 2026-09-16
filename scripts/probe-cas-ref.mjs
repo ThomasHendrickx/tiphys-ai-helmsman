@@ -16,7 +16,9 @@
  *
  * STANDING WARNING 9 (CLAUDE.md): `git -C <repo> <cmd> <path>` resolves
  * <path> against the REPOSITORY, not against the shell's directory. Every
- * path this file hands to git is absolute, built with resolve() and join().
+ * FILESYSTEM path this file hands to git (the bare repository, every clone,
+ * every push destination) is absolute, built with resolve() and join(). Ref
+ * names are not filesystem paths and are passed as written.
  *
  * THE THREE MODES.
  *
