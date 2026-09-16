@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -588,6 +589,43 @@ test("a FIFO placed in the working tree at a diff-named path is IGNORED: content
     // so it reads head's real blob content and is GREEN, exactly like the
     // run before the FIFO was staged.
     assert.equal(recordTwo.status, "green", JSON.stringify(recordTwo));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("citations direct entry runs through an aliased path and still writes its result (DV2-3)", () => {
+  // The main-module guard at src/gates/citations.ts:1547 compares
+  // `fileURLToPath(import.meta.url)` (canonical) against `process.argv[1]`
+  // (the caller's own spelling, unresolved) via `pathsIdentifySameObject`.
+  // Before the M4-P2 fix round this was a bare `resolve(...) === ...`
+  // string comparison, which silently never ran when the invocation
+  // named this file through a symlink: the process would exit 0 having
+  // done nothing, and no result file would be written. Reproduced red
+  // against that pre-fix form by hand (work history, DV2-3); this test
+  // guards the fixed form going forward, mirroring the pre-existing
+  // aliased-path tests for scope.ts, credentials.ts and suite.ts.
+  const dir = scratch();
+  const evidence = mkdtempSync(join(tmpdir(), "tiphys-citations-alias-ev-"));
+  const alias = join(evidence, "citations-alias.ts");
+  symlinkSync(citationsEntry, alias);
+  try {
+    initRepo(dir);
+    mkdirSync(join(dir, "delivery", "plan"), { recursive: true });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "target.ts"), "a\nb\nc\n");
+    const base = commit(dir, "base");
+    writeFileSync(join(dir, "delivery", "plan", "fixture.md"), "cites src/target.ts:1\n");
+    const head = commit(dir, "head");
+
+    const resultPath = join(evidence, "result.json");
+    const result = spawnSync(
+      process.execPath,
+      [alias, "--result", resultPath, "--evidence", evidence, "--base", base, "--head", head],
+      { cwd: dir, encoding: "utf8", timeout: 15_000 },
+    );
+    assert.equal(result.signal, null);
+    assert.equal(readResult(resultPath).status, "green", JSON.stringify(result));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

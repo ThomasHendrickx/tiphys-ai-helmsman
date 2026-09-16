@@ -1,0 +1,31 @@
+{
+  "id": "cutover-restore-to-required",
+  "behavior": "cutover-rollback-refuses-switch-without-restore-to",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a switch record with no restore-to is refused and nothing is written"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    if (!isSwitchState(row[\"restoreTo\"])) {\n      reasons.push(`switch ${name} has no restoreTo of current or kernel`);\n    }",
+      "replace": "    if (!isSwitchState(row[\"restoreTo\"])) {\n      row[\"restoreTo\"] = \"current\";\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const reasons = validateCutoverDocument(parsed);\n  if (reasons.length > 0) {",
+      "replace": "  const reasons = validateCutoverDocument(parsed);\n  if (reasons.length > 99) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "remote / status --porcelain / push",
+    "captures": [
+      "witness/captures/cutover-git-contracts.txt"
+    ],
+    "provenance": "src/cutover.ts spawns the version-control program and parses what it prints: `remote` decides whether a fleet has an origin, `status --porcelain` decides whether a tree is dirty, and `push` decides whether the rolled-back state landed. Red-witness rule (f) therefore binds every witness over that file. The cited capture is a real run, taken 2026-09-16 against version 2.43.0, and the named test `the captured git contract this module parses is reproduced live` reproduces each contract in a live scratch repository and requires the live result to match the capture, so nothing here is a hand-written string chosen to match the implementation. Two recorded facts earn their place: an empty stdout with exit 0 is what makes no-origin and clean-tree decidable, and a push to a path that is not a repository exits 128 rather than 1, which is why syncFleetState tests for non-zero rather than for 1."
+  }
+}
