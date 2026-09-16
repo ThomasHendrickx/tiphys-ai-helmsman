@@ -308,3 +308,24 @@ This is the strongest argument yet for the conforming verdict document. The
 markdown review is where a reviewer does its thinking; the schema is what stops
 a review contradicting itself. Running one without the other is how the contra-
 diction reached me, and on a busier day it is how it would have reached `main`.
+
+## Re-verified at M4-P15's delivered head, 2026-09-16
+
+The chain walk above used an in-progress worktree. Repeated against the phase's
+committed head `d3a173d`, in a detached checkout of the branch, with the same
+command and the control alongside:
+
+| subject | status | exit |
+|---|---|---|
+| `claude/m4-p15-kernel-charter` at `d3a173d` | not-applicable, "no verdict document exists" | **20** |
+| this repository, no root charter (control) | error, "charter.yaml does not exist" | **21** |
+
+Both regime documents are present on that branch. So M4-P15 as DELIVERED clears
+the refusal, and the next state is the one the sections above describe: the gate
+waits for a conforming verdict document, of which there are none anywhere.
+
+**And that ordering is now load-bearing rather than tidy.** Creating verdict
+documents BEFORE the charter reaches `main` would arm the gate against a tree
+that still lacks the charter, turning a dormant gate into a hard CI error on
+every phase at once. The verdicts are owed AFTER the charter lands, not before,
+and that is why none has been authored yet despite eleven completed reviews.
