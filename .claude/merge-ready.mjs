@@ -82,9 +82,29 @@ const ref = remoteBranch ?? localBranch;
 if (ref !== undefined) {
   const bare = ref.replace(/^origin\//, "");
   const declPath = `delivery/plan/phase-declarations/${PHASE}.json`;
-  const declRef = exists("origin/main", declPath) ? "origin/main" : ref;
+
+  /* THE SCOPE GATE READS THE MERGE BASE, AND NOTHING ELSE WILL DO. Measured
+     2026-09-16: the declaration being on the BRANCH is what every M4 phase had,
+     and the gate was red for all twelve. It is red until the declaration is in
+     the merge base of --base and --head, which committing it to main does NOT
+     achieve on its own: a commit added to main after a branch was cut is not in
+     that branch's merge base. The branch must then merge main in.
+
+     This check read the declaration from the branch when main lacked it, and so
+     passed a phase whose scope gate could not go green. That is the shape this
+     whole script exists against, one level in. */
+  const mergeBase = git(["merge-base", "origin/main", ref]);
+  const inMergeBase = mergeBase !== "" && exists(mergeBase, declPath);
+  if (!inMergeBase) {
+    const where = exists(ref, declPath) ? "on the branch only" : "nowhere";
+    unmet.push(
+      `${declPath} is ${where}, NOT in the merge base ${mergeBase.slice(0, 8)}; the scope gate reads it from there, so it is RED. ` +
+        `Two steps: land the declarations on main, THEN merge main into this branch so its merge base moves past that commit.`,
+    );
+  }
+  const declRef = inMergeBase ? mergeBase : exists("origin/main", declPath) ? "origin/main" : ref;
   if (!exists(declRef, declPath)) {
-    unmet.push(`${declPath} exists on neither origin/main nor the branch; the scope gate reads it from the MERGE BASE`);
+    unmet.push(`${declPath} exists on neither origin/main nor the branch`);
   } else {
     try {
       const decl = JSON.parse(git(["show", `${declRef}:${declPath}`]));
@@ -113,6 +133,22 @@ if (ref !== undefined) {
     unmet.push(`no file under delivery/review/ on ${ref} names ${PHASE}; DR-0031 requires the reviews to ride this pull request`);
   } else {
     notes.push(`${reviewFiles.length} review file(s) naming ${PHASE} on the branch`);
+  }
+
+  /* 4b. WHAT DO THE LANDED REVIEWS ACTUALLY SAY? A review file on the branch
+        satisfies DR-0031's "carries all its evidence" and says nothing about
+        whether it APPROVED. Reading the file is the only way to tell, and a
+        phase with a FIX-ROUND-NEEDED review on its own branch is not ready
+        however many boxes above are ticked. */
+  for (const path of reviewFiles) {
+    const body = git(["show", `${ref}:${path}`]);
+    if (/FIX-ROUND-NEEDED/.test(body)) {
+      unmet.push(`${path} records FIX-ROUND-NEEDED; that round is owed before this merges`);
+    }
+    const highs = (body.match(/\[(HIGH|CRITICAL)\]/g) || []).length;
+    if (highs > 0) {
+      unmet.push(`${path} carries ${highs} HIGH/CRITICAL finding(s); DR-0012 bars a merge on an unresolved one`);
+    }
   }
 
   /* 5. A CONFORMING VERDICT, WHICH IS WHAT ARMS THE MERGE CHECK. Measured
