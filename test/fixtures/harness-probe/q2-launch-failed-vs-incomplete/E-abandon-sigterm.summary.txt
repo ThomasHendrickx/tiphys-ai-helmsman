@@ -1,0 +1,12 @@
+arm: E-abandon-sigterm
+command: timeout -s TERM 8 claude -p Count from 1 to 400, printing one number per line and nothing else. --output-format json --permission-mode acceptEdits
+exit-code: 124
+wall-seconds: 9
+stdout bytes: 4070
+stderr bytes: 0
+new transcript files: 1
+  transcript lines: 18  path-basename: 49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+--- stdout (first 1200 bytes) ---
+{"duration_api_ms":6988,"stop_reason":"end_turn","session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","total_cost_usd":0.042197,"usage":{"input_tokens":2,"cache_creation_input_tokens":6809,"cache_read_input_tokens":28660,"output_tokens":824,"output_tokens_details":{"thinking_tokens":23},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":6809,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[{"input_tokens":2,"output_tokens":824,"cache_read_input_tokens":28660,"cache_creation_input_tokens":6809,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":6809},"type":"message"}],"speed":"standard"},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":910,"outputTokens":15,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.000985,"contextWindow":200000,"maxOutputTokens":32000,"thinkingTokens":0,"canonicalModel":"claude-haiku-4-5","provider":"firstParty","costBasis":"list"},"claude-sonnet-5":{"inputTokens":2,"outputTokens":824,"cacheReadInputTokens":28660,"cacheCreationInputTokens":6809,"webSearchRequests":0,"costUSD"
+--- stderr (first 600 bytes) ---
+

@@ -1,0 +1,36 @@
+#!/bin/bash
+# One arm of the Q2 matrix: force a launch failure or a mid-turn abandonment
+# through the SUBPROCESS form of the Claude Code primitive, and record every
+# observable a caller could read.
+LAB="$(cd "$(dirname "$0")" && pwd)"
+ARM="$1"; shift
+OUT="$LAB/log/$ARM"; rm -rf "$OUT"; mkdir -p "$OUT"
+export CLAUDE_CONFIG_DIR_UNUSED=1
+TDIR="$HOME/.claude/projects"
+# transcript census BEFORE, so a new transcript is attributable to this arm
+find "$TDIR" -name '*.jsonl' -newermt '-1 second' 2>/dev/null | wc -l > /dev/null
+find "$TDIR" -name '*.jsonl' 2>/dev/null | sort > "$OUT/transcripts.before"
+START=$(date +%s)
+mkdir -p "$LAB/work/$ARM"
+cd "$LAB/work/$ARM"
+set +e
+"$@" > "$OUT/stdout.txt" 2> "$OUT/stderr.txt"
+RC=$?
+set -e
+END=$(date +%s)
+find "$TDIR" -name '*.jsonl' 2>/dev/null | sort > "$OUT/transcripts.after"
+comm -13 "$OUT/transcripts.before" "$OUT/transcripts.after" > "$OUT/transcripts.new"
+{
+  echo "arm: $ARM"
+  echo "command: $*"
+  echo "exit-code: $RC"
+  echo "wall-seconds: $((END-START))"
+  echo "stdout bytes: $(wc -c < "$OUT/stdout.txt")"
+  echo "stderr bytes: $(wc -c < "$OUT/stderr.txt")"
+  echo "new transcript files: $(wc -l < "$OUT/transcripts.new")"
+  while read -r t; do
+    [ -n "$t" ] && echo "  transcript lines: $(wc -l < "$t")  path-basename: $(basename "$t")"
+  done < "$OUT/transcripts.new"
+  echo "--- stdout (first 1200 bytes) ---"; head -c 1200 "$OUT/stdout.txt"; echo
+  echo "--- stderr (first 600 bytes) ---"; head -c 600 "$OUT/stderr.txt"; echo
+} | tee "$OUT/summary.txt"

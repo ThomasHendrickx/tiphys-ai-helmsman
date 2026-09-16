@@ -1,0 +1,12 @@
+arm: E2-abandon-sigterm
+command: timeout -s TERM 5 claude -p Count from 1 to 400, printing one number per line and nothing else. --output-format json --permission-mode acceptEdits
+exit-code: 124
+wall-seconds: 5
+stdout bytes: 0
+stderr bytes: 0
+new transcript files: 1
+  transcript lines: 18  path-basename: 49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+--- stdout (first 1200 bytes) ---
+
+--- stderr (first 600 bytes) ---
+

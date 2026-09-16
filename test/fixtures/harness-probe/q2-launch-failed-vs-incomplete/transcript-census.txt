@@ -1,0 +1,36 @@
+# Census of the transcript each Q2 arm produced.
+# Command, run from the Q2 scratch directory:
+#   python3 -c '<the census script below>' "$(head -1 log/<arm>/transcripts.new)"
+# The script prints the row count, a Counter over row 'type', and the set
+# of message.model values present.
+
+=== A-healthy-control
+transcript: /root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q2-work/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+rows: 42
+types: {'ai-title': 4, 'queue-operation': 4, 'user': 2, 'attachment': 21, 'atis-latch': 5, 'last-prompt': 4, 'assistant': 2}
+message.model values: ['<synthetic>', 'claude-sonnet-5']
+
+=== B2-launch-fail-bad-model-freshcwd
+transcript: /root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q2-work-B2-launch-fail-bad-model-freshcwd/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+rows: 20
+types: {'ai-title': 2, 'queue-operation': 2, 'user': 1, 'attachment': 10, 'atis-latch': 2, 'last-prompt': 2, 'assistant': 1}
+message.model values: ['<synthetic>']
+
+=== C-launch-fail-bad-plugin-dir
+transcript: /root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q2-work-C-launch-fail-bad-plugin-dir/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+rows: 23
+types: {'ai-title': 3, 'queue-operation': 2, 'user': 1, 'attachment': 11, 'atis-latch': 3, 'last-prompt': 2, 'assistant': 1}
+message.model values: ['claude-sonnet-5']
+
+=== D2-abandon-sigkill
+transcript: /root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q2-work-D2-abandon-sigkill/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+rows: 18
+types: {'ai-title': 2, 'queue-operation': 2, 'user': 1, 'attachment': 10, 'atis-latch': 2, 'last-prompt': 1}
+message.model values: []
+
+=== E2-abandon-sigterm
+transcript: /root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q2-work-E2-abandon-sigterm/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+rows: 18
+types: {'ai-title': 2, 'queue-operation': 2, 'user': 1, 'attachment': 10, 'atis-latch': 2, 'last-prompt': 1}
+message.model values: []
+
