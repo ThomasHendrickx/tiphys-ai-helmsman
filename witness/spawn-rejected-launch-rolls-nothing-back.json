@@ -1,0 +1,26 @@
+{
+  "id": "spawn-rejected-launch-rolls-nothing-back",
+  "behavior": "spawn-rejected-launch-rolls-nothing-back",
+  "tests": [
+    "a rejected launch promise rolls nothing back, while a returned launch-failed still rolls everything back",
+    "spawnTask returns only after a payload the adapter awaited has written its sentinel",
+    "a launch outcome resolved on a later event-loop turn is read as an outcome, not as a pending promise"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const launched = await runStepAsync(\n    `launching the payload through the ${adapter.name} adapter`,\n    async () =>\n",
+      "replace": "  const launched = runStep(\n    `launching the payload through the ${adapter.name} adapter`,\n    () =>\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/task.ts",
+      "find": "  try {\n    return { ok: true, value: await step() };\n  } catch (error) {\n    const detail = error instanceof Error ? error.message : String(error);\n    return { ok: false, reason: `${what} failed: ${detail}` };\n  }\n",
+      "replace": "  try {\n    return { ok: true, value: await step() };\n  } catch (error) {\n    throw error;\n  }\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

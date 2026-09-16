@@ -1,0 +1,25 @@
+{
+  "id": "spawn-completed-without-turn-end-is-incomplete",
+  "behavior": "spawn-completed-without-turn-end-is-incomplete",
+  "tests": [
+    "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds",
+    "a turn-end record that is present but does not parse is refused just as an absent one is"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const evidence = turnEndEvidence(fleet, taskId);\n",
+      "replace": "  const evidence = { ok: true, reason: \"\" };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  let parsed: unknown;\n  try {\n    parsed = JSON.parse(read.body);\n",
+      "replace": "  let parsed: unknown;\n  return { ok: true };\n  try {\n    parsed = JSON.parse(read.body);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
