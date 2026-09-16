@@ -824,6 +824,9 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-port-verdict-refuses-an-unreadable-row-or-a-killed-witness",
     "cutover-restore-request-refuses-a-present-non-list",
     "cutover-restore-request-out-refuses-a-non-regular-path",
+    "cutover-inventory-refuses-the-malformed",
+    "cutover-port-witness-command-is-a-string-list",
+    "cutover-behaviors-resolve-by-name",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),
@@ -1595,5 +1598,101 @@ test("a PORT row whose negative-witness command is not a list of strings is unpo
     assert.equal(cutover.evaluatePortRow(weaker, root).verdict, "unported");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/* ==================================================================== */
+/* FIX ROUND 2. THE REGISTRY SAID REGISTERED AND MEANT PRESENT.         */
+/* ==================================================================== */
+
+/**
+ * CLASS: every behavior this phase registers RESOLVES BY NAME to a test that
+ * actually runs.
+ *
+ * THE GUARD THAT COULD NOT GO RED, AND IT GUARDED THIS PHASE'S OWN REGISTRY.
+ * The registration test above asserts `Object.hasOwn(behaviors, id)` and
+ * nothing else, so it is green whenever the KEY exists, whatever its VALUE
+ * says. Measured by running the required `suite` gate, which nobody had run on
+ * this branch: at the reviewed head `7dcce83`, 23 of 27 cutover behaviors did
+ * not resolve; at fix round 1's head, 35 of 39. The registration test was green
+ * throughout, and so was every full `node --test` run in this work history.
+ *
+ * `test/behaviors.json` maps an id to the EXACT NAME of the test that guards
+ * it. A near-miss ("a failure part way through A rollback ... with no partial
+ * switch state" against the real "a failure part way through THE rollback ...")
+ * reads as registered to a human and resolves to nothing for the gate.
+ *
+ * This test asserts the property the registration test only appeared to: every
+ * cutover behavior's registered name is a test() name somewhere under `test/`.
+ * It reads the sources rather than the running suite because a test cannot
+ * enumerate its own run, and the suite gate does the runtime half.
+ *
+ * MEMBER A of the class is a behavior whose name matches no test. MEMBER B is
+ * the weaker predicate itself: an assertion over ids rather than over names.
+ */
+test("every cutover behavior resolves by name to a test that exists", () => {
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+
+  const testNames = new Set<string>();
+  const testDir = join(repoRoot, "test");
+  for (const entry of readdirSync(testDir)) {
+    if (!entry.endsWith(".test.ts")) continue;
+    const body = readFileSync(join(testDir, entry), "utf8");
+    for (const match of body.matchAll(/\btest\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) {
+      testNames.add(match[2] as string);
+    }
+  }
+  assert.ok(
+    testNames.size > 100,
+    `the test-name scan found only ${testNames.size} names, so it is not reading the suite`,
+  );
+
+  const unresolved: string[] = [];
+  let checked = 0;
+  for (const [id, name] of Object.entries(behaviors)) {
+    if (!id.startsWith("cutover-")) continue;
+    checked += 1;
+    if (!testNames.has(name)) unresolved.push(`${id} -> ${JSON.stringify(name)}`);
+  }
+  assert.ok(checked > 0, "no cutover behavior was checked, so this test proves nothing");
+  assert.deepEqual(
+    unresolved,
+    [],
+    `${unresolved.length} of ${checked} cutover behaviors name no test:\n  ${unresolved.join("\n  ")}`,
+  );
+});
+
+/**
+ * Criterion 7's helper, given its own test rather than riding on four others.
+ *
+ * `cutover-rehearsal-self-check-discriminates` was registered against a
+ * sentence that was nobody's test name, because the property is asserted by
+ * `assertSelfChecked` INSIDE the four rehearsal tests. A behavior with no test
+ * of its own is how it came to name nothing, so it gets one here: all four arms
+ * in one place, and the self-check line required BEFORE any OBSERVED line, so
+ * a script that printed its verdict first and its self-check afterwards is red.
+ */
+test("every rehearsal arm prints its own self-check before any OBSERVED line", () => {
+  const arms: Array<[string, string[]]> = [
+    ["drain-reversal", ["--trigger", "drain-reversal"]],
+    ["retirement-unmet", ["--trigger", "retirement-unmet"]],
+    ["retirement-unmet --port", ["--trigger", "retirement-unmet", "--port"]],
+    ["freeze-point-restore", ["--trigger", "freeze-point-restore"]],
+    ["freeze-point-restore-input", ["--trigger", "freeze-point-restore-input"]],
+  ];
+  for (const [label, args] of arms) {
+    const result = runRehearsal(args);
+    const lines = result.stdout.split("\n");
+    const selfCheck = lines.findIndex((line) => line.startsWith("SELF-CHECK OK: observe() discriminates"));
+    assert.notEqual(selfCheck, -1, `${label}: no self-check line\n${result.stdout}${result.stderr}`);
+    const firstObserved = lines.findIndex((line) => line.startsWith("OBSERVED "));
+    if (firstObserved !== -1) {
+      assert.ok(
+        selfCheck < firstObserved,
+        `${label}: the self-check must be printed before the first OBSERVED line`,
+      );
+    }
   }
 });
