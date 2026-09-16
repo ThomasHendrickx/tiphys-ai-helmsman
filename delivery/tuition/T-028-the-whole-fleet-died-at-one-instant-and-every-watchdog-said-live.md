@@ -186,3 +186,44 @@ this was not a guard, it was an agent told to **verify rather than trust** an
 artifact handed to it. The resume brief said a `WIP-UNREVIEWED` commit is
 unreviewed, may stop mid-sentence, and must be verified rather than trusted or
 discarded. It was, and the instruction earned its place in one round.
+
+## Postscript: my dispatch brief asserted findings the reviews did not contain
+
+Found 2026-09-16 by the M4-P2 fix-round implementer, and it belongs with this
+entry because it is the same root as the salvage error above: **an artifact
+handed to an agent was trusted by its author and not by its reader, and the
+reader was right.**
+
+The brief `m4-fix.js` carried two hard-coded sentences about the phase's reviews:
+
+- "Both clean-room reviewers returned FIX-ROUND-NEEDED."
+- "One reviewer already did half of this for you: it grouped five separate
+  defects as one family, 'a write or a verdict whose scope is wider or narrower
+  than the sentence describing it, with no test over the difference'."
+
+Both were written while dispatching ONE phase and then sent to EVERY phase the
+script was used for. The implementer checked rather than accepted:
+
+> "The dispatch attributed a five-defect grouping to a reviewer; that sentence is
+> in neither review of this phase (grep over all three review files, exit 1), so
+> I derived the family from the findings that are actually present."
+
+The first sentence was false for every single-round phase under DR-0027, which
+has one reviewer, and for any phase whose reviewers split. The second was a
+fabricated attribution: a quotation put in a reviewer's mouth by a template.
+
+**This is more serious than a stale template**, because of what the brief is for.
+It tells an implementer what the reviewers found, and the implementer has no
+independent reason to doubt it. A brief that invents a finding is indistinguish-
+able, from inside the round, from a review that contains one. This one cost the
+implementer effort on a grouping that did not exist; a less careful round would
+have "fixed" a mechanism nobody reported and written a work history saying so.
+
+The fix is to remove the claim rather than to correct it. The brief now says
+plainly that it does not know what the reviews say and will not pretend to, names
+this incident as the reason, and tells the implementer to derive the mechanism
+family itself and to TEST any grouping a review offers rather than adopt it.
+
+**The general rule, which this project keeps arriving at from new directions:**
+a template may carry PROCEDURE and must not carry FINDINGS. Procedure is true
+every time it is sent; a finding is true once.
