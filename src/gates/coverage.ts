@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import { Script, createContext } from "node:vm";
 import {
   readRegularFileIfPresent,
@@ -1007,7 +1008,17 @@ function emit(resultPath: string, fields: EmitFields): number {
  * functions through the computed-URL pattern and must not trigger a CLI
  * run as a side effect of that import.
  */
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). Measured:
+// through a symlinked directory in the invocation path, or through a
+// symlink to this file, argv[1] carries the caller's spelling while
+// import.meta.url carries the canonical one, so the bare comparison is
+// false and this gate silently does nothing and exits 0. That is a guard
+// that cannot go red (T-008), and six sibling gates already compare by
+// identity.
+if (
+  process.argv[1] !== undefined &&
+  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1])
+) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

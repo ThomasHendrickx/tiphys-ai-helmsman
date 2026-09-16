@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import { refuseOpenForWrite, singleLine } from "../task.ts";
 import { loadManifest } from "./manifest.ts";
 import { exitCodeForStatus, makeGateResult, renderGateResult } from "./result.ts";
@@ -563,11 +564,11 @@ const invokedDirectly = (() => {
   if (entry === undefined) {
     return false;
   }
-  try {
-    return import.meta.url === pathToFileURL(resolve(entry)).href;
-  } catch {
-    return false;
-  }
+  // IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). Going
+  // through a URL does not change what is compared: `resolve` leaves the
+  // caller's spelling intact while `import.meta.url` is canonical, so an
+  // invocation through a symlink leaves this gate silently not running.
+  return pathsIdentifySameObject(fileURLToPath(import.meta.url), entry);
 })();
 
 if (invokedDirectly) {

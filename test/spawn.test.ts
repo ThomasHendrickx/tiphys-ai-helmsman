@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -1311,3 +1312,146 @@ test("every spawn behavior resolves by name to a test in this file", () => {
     );
   }
 });
+
+test(
+  "a launch-failed rolls the worktree back through a symlinked fleet root and through a symlinked worktrees directory",
+  async (t) => {
+    // DANGEROUS STATE: a launch-failed that LEAVES THE WORKTREE BEHIND,
+    // which is the state the macOS smoke job of pull request #155 measured
+    // and which every Linux run of the same head reported green. It is not
+    // "the feature is absent": the rollback runs, reaches pool destroy, and
+    // pool destroy REFUSES, because it decides whether some other worktree
+    // holds the task branch by comparing a path git printed against a path
+    // the kernel composed. Two spellings of one directory are two strings.
+    //
+    // WHAT DECIDES IT IS ANOTHER PROGRAM'S OUTPUT, so it is anchored on that
+    // program's real output before either arm is asserted, and then
+    // reproduced live so a change in git cannot leave the capture asserting
+    // a contract git no longer honours.
+    const canonicalCapture = "git-worktree-list-canonicalises-paths.txt";
+    const captured = readCapture(canonicalCapture);
+    assert.match(captured, /asked-for-worktree: \$R\/link\/wt/, canonicalCapture);
+    assert.match(captured, /reported-worktree: {2}\$R\/real\/wt/, canonicalCapture);
+    assert.match(captured, /^worktree \$R\/real\/wt$/mu, canonicalCapture);
+    assert.doesNotMatch(captured, /^worktree \$R\/link\/wt$/mu, canonicalCapture);
+
+    const live = makeScratch(t);
+    {
+      // The captured contract, re-measured here on this machine's git.
+      const realDir = join(live.tmp, "canonical-probe");
+      mkdirSync(realDir);
+      const linkDir = join(live.tmp, "canonical-probe-link");
+      symlinkSync(realDir, linkDir);
+      const probeClone = join(linkDir, "clone");
+      gitOk(live.tmp, ["clone", "--quiet", live.upstream, probeClone]);
+      const probeTree = join(linkDir, "wt");
+      gitOk(probeClone, ["worktree", "add", "--quiet", "-b", "probe/x", probeTree]);
+      const listed = gitOk(probeClone, ["worktree", "list", "--porcelain"]);
+      assert.ok(
+        listed.includes(`worktree ${join(realDir, "wt")}\n`),
+        `captured contract: git reports the canonical worktree path, got:\n${listed}`,
+      );
+      assert.ok(
+        !listed.includes(`worktree ${probeTree}\n`),
+        `captured contract: git does not echo the spelling it was given, got:\n${listed}`,
+      );
+      assert.notEqual(
+        probeTree,
+        join(realDir, "wt"),
+        "captured contract: the two spellings are different strings",
+      );
+    }
+
+    const failing: TestAdapter = {
+      name: "launch-failing-test-adapter",
+      launch: async () => ({ kind: "launch-failed", reason: "the program is not on PATH" }),
+    };
+
+    // ARM A. The SPELLING THE CALLER HANDS IN carries the symlink. This is
+    // the macOS case and it needs no unusual setup there: os.tmpdir() sits
+    // under /var/folders and /var is a symlink to /private/var, so every
+    // scratch fleet is reached through one. The CLI is accidentally immune
+    // because process.cwd() is canonical already (src/commands/spawn.ts:129
+    // passes it), so only a library consumer reaches this.
+    const rootLink = join(live.tmp, "fleet-through-a-link");
+    symlinkSync(live.fleet, rootLink);
+    assert.notEqual(rootLink, live.fleet, "precondition: two different strings");
+    assert.equal(
+      realpathSync(rootLink),
+      realpathSync(live.fleet),
+      "precondition: and one directory",
+    );
+    const viaRootLink: Scratch = {
+      ...live,
+      fleet: rootLink,
+      clone: join(rootLink, "projects", "demo"),
+    };
+    const failedA = await spawnWithAdapter(viaRootLink, "t-linkedroot", failing);
+    const reasonA = reasonOf(failedA);
+    assert.match(reasonA, /executor launch failed/, reasonA);
+    assert.match(reasonA, /the program is not on PATH/, reasonA);
+    // THE ASSERTION THE OLD TEST DID NOT MAKE, and the reason the defect
+    // reached a pull request wearing the wrong label. A refused rollback
+    // reports itself in a SUFFIX to the same reason, so both matches above
+    // stay green through it and only the state assertions move. Asserting
+    // the suffix is absent names the cause in the failure message instead
+    // of leaving the next reader to derive it from a bare true !== false.
+    assert.doesNotMatch(reasonA, /rollback of the worktree did not complete/u, reasonA);
+    assert.equal(
+      existsSync(worktreeOf(live, "t-linkedroot")),
+      false,
+      "a symlinked fleet root stopped the launch-failed rollback removing the worktree",
+    );
+    assert.equal(existsSync(taskDirOf(live, "t-linkedroot")), false);
+    assert.equal(existsSync(join(live.fleet, "worktrees", "t-linkedroot.pool.json")), false);
+    assert.notEqual(
+      git(live.clone, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "refs/heads/task/t-linkedroot",
+      ]).status,
+      0,
+      "a symlinked fleet root left the task branch behind",
+    );
+
+    // ARM B, AND IT IS STRUCTURALLY DIFFERENT RATHER THAN THE SAME ARM
+    // TWICE. Here the fleet root the caller names is ALREADY canonical and
+    // the symlink is INSIDE the layout: worktrees/ is a link to a directory
+    // elsewhere. Canonicalising the caller's argument, which is the obvious
+    // fix for arm A and is what loadFleet would have to do, does nothing at
+    // all for this one. The two arms therefore fail under different repairs,
+    // which is what stops a single-site patch passing for a class fix.
+    const second = makeScratch(t);
+    const elsewhere = join(second.tmp, "worktrees-somewhere-else");
+    mkdirSync(elsewhere);
+    rmSync(join(second.fleet, "worktrees"), { recursive: true });
+    symlinkSync(elsewhere, join(second.fleet, "worktrees"));
+    assert.equal(
+      realpathSync(second.fleet),
+      second.fleet,
+      "precondition: this arm's fleet root is already canonical",
+    );
+    const failedB = await spawnWithAdapter(second, "t-linkedworktrees", failing);
+    const reasonB = reasonOf(failedB);
+    assert.match(reasonB, /executor launch failed/, reasonB);
+    assert.doesNotMatch(reasonB, /rollback of the worktree did not complete/u, reasonB);
+    assert.equal(
+      existsSync(join(elsewhere, "t-linkedworktrees")),
+      false,
+      "a symlinked worktrees directory stopped the launch-failed rollback removing the worktree",
+    );
+    assert.equal(existsSync(taskDirOf(second, "t-linkedworktrees")), false);
+    assert.equal(existsSync(join(elsewhere, "t-linkedworktrees.pool.json")), false);
+    assert.notEqual(
+      git(second.clone, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "refs/heads/task/t-linkedworktrees",
+      ]).status,
+      0,
+      "a symlinked worktrees directory left the task branch behind",
+    );
+  },
+);

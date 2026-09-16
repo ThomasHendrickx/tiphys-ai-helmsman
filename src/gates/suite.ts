@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pathsIdentifySameObject } from "../path-identity.ts";
+import { pathsIdentifySameObject, pathsNameSameObject } from "../path-identity.ts";
 import {
   classifyEntry,
   readRegularFileIfPresent,
@@ -405,7 +405,20 @@ export function isFileWrapperPhantom(point: SuitePoint, cwd: string): boolean {
   return (
     point.entityType === "test" &&
     point.nesting === 0 &&
-    resolve(cwd, point.name) === point.file
+    // IDENTITY, NOT STRING EQUALITY, and the paragraph above claims more
+    // than `===` delivers. "Invariant across every spelling node produces
+    // it in, by construction" is false for one spelling: `resolve` does not
+    // resolve SYMLINKS, and node reports the CANONICAL path in its
+    // reporter's `file` field whatever spelling it was invoked with.
+    // Measured 2026-09-16 on node v26.6.0: invoked as
+    // <link>/test/a.test.js, `data.file` came back as <real>/test/a.test.js,
+    // so `resolve(cwd, point.name)` and `point.file` were two strings for
+    // one file and the phantom was counted as a real test again, which is
+    // the CR-1306 defect through the one spelling the enumeration missed.
+    // The string comparison is kept and tried first (it answers without
+    // touching the filesystem and is the common case); the identity check
+    // only ever turns a false "different" into a true "same".
+    pathsNameSameObject(resolve(cwd, point.name), point.file)
   );
 }
 

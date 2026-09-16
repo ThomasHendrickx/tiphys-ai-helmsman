@@ -1,0 +1,30 @@
+diff --git a/src/fleet.ts b/src/fleet.ts
+--- a/src/fleet.ts
++++ b/src/fleet.ts
+@@ -1,4 +1,4 @@
+-import { existsSync, statSync } from "node:fs";
++import { existsSync, realpathSync, statSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ 
+ /**
+@@ -80,7 +80,7 @@
+  * naming every missing entry when the layout is incomplete.
+  */
+ export function loadFleet(dir: string): Fleet {
+-  const root = resolve(dir);
++  const root = (() => { try { return realpathSync(resolve(dir)); } catch { return resolve(dir); } })();
+   const missing = missingLayoutEntries(root);
+   if (missing.length > 0) {
+     throw new Error(
+diff --git a/src/pool.ts b/src/pool.ts
+--- a/src/pool.ts
++++ b/src/pool.ts
+@@ -756,7 +756,7 @@
+         // the pool record and the branch behind after a launch that never
+         // started. On macOS no unusual setup is needed to reach it: the
+         // platform puts `os.tmpdir()` behind `/var -> /private/var`.
+-        if (currentPath !== undefined && !pathsNameSameObject(currentPath, worktree)) {
++        if (currentPath !== undefined && resolve(currentPath) !== resolve(worktree)) {
+           branchCheckedOutAt = currentPath;
+         }
+       }

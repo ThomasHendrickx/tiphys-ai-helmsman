@@ -8,7 +8,18 @@
     "test/spawn.test.ts",
     "test/watcher.test.ts",
     "test/behaviors.json",
-    "delivery/plan/phase-declarations/m4-p2.json"
+    "delivery/plan/phase-declarations/m4-p2.json",
+    "src/pool.ts",
+    "src/path-identity.ts",
+    "src/gates/suite.ts",
+    "src/gates/citations.ts",
+    "src/gates/coverage.ts",
+    "src/gates/red-witness.ts",
+    "scripts/check-agents-references.mjs",
+    "scripts/check-authored-bytes.mjs",
+    "scripts/check-clause-map.mjs",
+    "scripts/check-dual-review.mjs",
+    "scripts/license-gate.mjs"
   ],
   "declaredExtras": [
     "test/credentials-gate.test.ts",
@@ -19,7 +30,10 @@
     "witness/spawn-rejected-launch-rolls-nothing-back.json",
     "witness/spawn-returns-after-payload-sentinel.json",
     "witness/spawn-unparseable-turn-end-is-incomplete.json",
-    "witness/watcher-signal-surfaced-once.json"
+    "witness/watcher-signal-surfaced-once.json",
+    "witness/spawn-launch-failed-rolls-back-through-a-symlink.json",
+    "witness/patches/m4-p2-canonicalise-the-caller-argument-instead.patch",
+    "witness/captures/git-worktree-list-canonicalises-paths.txt"
   ],
   "citations": [
     "C-3",
