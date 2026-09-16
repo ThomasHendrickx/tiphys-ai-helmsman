@@ -798,5 +798,6 @@
   "cutover-document-file-half-cheap-authority-half-owner": "the rollback document says the file half is cheap and the authority half carries owner latency",
   "cutover-document-five-switches-flip-and-verify": "the rollback document names all five switches with how each is flipped back and how the flip is verified",
   "cutover-document-pilot-as-second-subject": "the rollback document carries the pilot as a second subject with read-only steps",
-  "cutover-rehearsal-self-check-discriminates": "every rehearsal arm proves its own assertion helper discriminates before reporting a verdict"
+  "cutover-rehearsal-self-check-discriminates": "every rehearsal arm proves its own assertion helper discriminates before reporting a verdict",
+  "cutover-no-remote-refuses-by-default": "a fleet with no origin remote refuses the rollback publish by default and prints the reason when the refusal is waived"
 }

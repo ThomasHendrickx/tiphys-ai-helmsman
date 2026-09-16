@@ -471,6 +471,47 @@ test("cutover rollback exits nonzero when the fleet state cannot be published", 
   }
 });
 
+/**
+ * A fleet with no remote is a REFUSAL by default, and the escape hatch is
+ * LOUD.
+ *
+ * The dangerous state is not "the push failed". It is a local-only write being
+ * indistinguishable from a published one, which is what leaves every other
+ * environment believing the switches are still `kernel`. So the default is
+ * nonzero, and `--allow-no-remote` still prints the reason on a `SYNC
+ * not-pushed` line rather than falling silent.
+ */
+test("a fleet with no remote refuses by default and says so out loud when allowed", () => {
+  const scratch = scratchFleet();
+  try {
+    const refused = commandModule.cmdCutover([
+      "rollback",
+      "--trigger",
+      "drain-reversal",
+      "--fleet",
+      scratch.fleetRoot,
+    ]);
+    assert.notEqual(refused, 0, "a fleet with no remote must not exit 0 by default");
+
+    const outcome = cutover.syncFleetState(scratch.fleetRoot, {
+      allowNoRemote: true,
+      message: "test",
+    });
+    assert.equal(outcome.ok, true);
+    if (outcome.ok) {
+      assert.equal(outcome.pushed, false);
+      assert.match(
+        (outcome as { reason: string }).reason,
+        /has no origin remote, so the rollback is committed locally and NOT published/,
+      );
+    }
+    const strict = cutover.syncFleetState(scratch.fleetRoot, { message: "test" });
+    assert.equal(strict.ok, false, "without the flag the same fleet is a refusal");
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
 test("cutover rollback refuses freeze-point-restore as a single command", () => {
   const scratch = scratchFleet();
   try {
@@ -666,6 +707,7 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-rehearsal-refuses-unrehearsable-step",
     "cutover-rehearsal-covers-the-restore-request-input",
     "cutover-rehearsal-self-check-discriminates",
+    "cutover-no-remote-refuses-by-default",
     "cutover-document-carries-three-triggers",
     "cutover-document-every-step-has-command-and-observation",
     "cutover-document-names-unrehearsable-steps",
