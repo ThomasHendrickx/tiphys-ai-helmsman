@@ -1,0 +1,37 @@
+{
+  "id": "spawn-rejected-launch-rolls-nothing-back",
+  "behavior": "spawn-rejected-launch-rolls-nothing-back",
+  "tests": [
+    "a rejected launch promise rolls nothing back, while a returned launch-failed still rolls everything back"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const launched = await runStepAsync(\n    `launching the payload through the ${adapter.name} adapter`,\n    async () =>\n",
+      "replace": "  const launched = runStep(\n    `launching the payload through the ${adapter.name} adapter`,\n    () =>\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/task.ts",
+      "find": "  try {\n    return { ok: true, value: await step() };\n  } catch (error) {\n    const detail = error instanceof Error ? error.message : String(error);\n    return { ok: false, reason: `${what} failed: ${detail}` };\n  }\n",
+      "replace": "  try {\n    return { ok: true, value: await step() };\n  } catch (error) {\n    throw error;\n  }\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "    //\n    // Since M4-P2 this arm also covers a REJECTED promise, and it covers\n    // it for the same reason and with the same words: a rejection is an\n    // adapter failing to report, and WHEN it rejects tells us nothing,\n    // because an adapter that rejects before the payload starts and one\n    // that rejects after it dies are indistinguishable from here. An\n    // adapter that actually knows the payload never started says so, by\n    // RETURNING launch-failed, and that arm rolls back.\n    return {\n      ok: false,\n      reason:\n        `${launched.reason}; the ${adapter.name} adapter did not report whether the ` +\n        `payload started, so nothing was rolled back: the worktree ${worktree}, its ` +\n        `task directory and the pool record are left in place for inspection; when ` +\n        `you have inspected them, close the task with \"tiphys teardown --task ${taskId}\"`,\n    };\n",
+      "replace": "    // DANGEROUS STATE: the rejection arm rolls back.\n    return rollback(\n      `${launched.reason}; the ${adapter.name} adapter did not report whether the ` +\n        `payload started`,\n    );\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "spawnSync(<payload program>, <args>)",
+    "captures": [
+      "witness/captures/spawn-launch-failure-vs-payload-exit.txt"
+    ],
+    "provenance": "src/spawn.ts imports spawnSync from node:child_process, so red-witness rule (f) binds this witness, and what the members are about IS that program's output: src/spawn.ts:220 reads spawnSync's `error` field as \"the payload never started\" and returns launch-failed, the one outcome allowed to destroy the task's records at src/spawn.ts:612, while anything carrying an exit status ran and may not be rolled back. The capture at witness/captures/spawn-launch-failure-vs-payload-exit.txt:1 is real spawnSync output taken 2026-09-16 on node v26.6.0 for all three states (never-started: ENOENT error, status null; ran-and-failed: no error, status 3; ran-and-succeeded: no error, status 0), and the named test reproduces it live before asserting which arm rolls back. Member 2 is the rollback-shaped dangerous state a clean-room reviewer noted the spec did not carry: the rejection arm rolls back instead of refusing, which is the state that unlinks meta.json, brief.md and the generated hook. It was demonstrated by hand as lab DS-D and the gate therefore never re-verified that the residue assertions are non-vacuous."
+  }
+}

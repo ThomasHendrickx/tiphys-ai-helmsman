@@ -80,6 +80,13 @@ interface CredentialsModule {
 interface SpawnModule {
   subprocessAdapter: {
     name: string;
+    /**
+     * A PROMISE since M4-P2 (src/spawn.ts:108). This structural view is
+     * hand-written and is cast onto a computed-URL dynamic import, so
+     * TypeScript cannot catch it drifting from the real signature: an
+     * `await` missing here is a test that reads `.kind` off a pending
+     * promise, gets undefined, and asserts nothing.
+     */
     launch: (request: {
       taskId: string;
       worktree: string;
@@ -88,10 +95,11 @@ interface SpawnModule {
       recordPath: string;
       deadlineSeconds: number | undefined;
       env: Record<string, string> | undefined;
-    }) =>
+    }) => Promise<
       | { kind: "completed"; exitCode: number }
       | { kind: "launch-failed"; reason: string }
-      | { kind: "incomplete"; reason: string };
+      | { kind: "incomplete"; reason: string }
+    >;
   };
   spawnTask: (
     fleet: unknown,
@@ -370,7 +378,10 @@ test("spawn --allow-pr-credentials passes the parent environment through unchang
   assert.equal(existsSync(envModule.scrubRoot(taskDir)), false);
 });
 
-test("the turn-end hook child receives the same scrubbed environment as the payload", (t) => {
+// `async` since M4-P2: `subprocessAdapter.launch` returns a promise now,
+// and a synchronous test body here would read `.kind` off the promise
+// object, get undefined, and assert against a value that is not an outcome.
+test("the turn-end hook child receives the same scrubbed environment as the payload", async (t) => {
   const tmp = makeTempDir(t);
   const worktree = join(tmp, "worktree");
   mkdirSync(worktree);
@@ -394,7 +405,7 @@ test("the turn-end hook child receives the same scrubbed environment as the payl
   try {
     // Scrubbed direction: the SECOND spawnSync (the hook child) gets
     // request.env, witnessed separately from the payload (criterion 4).
-    const outcome = spawnModule.subprocessAdapter.launch({
+    const outcome = await spawnModule.subprocessAdapter.launch({
       taskId: "hook-scrub",
       worktree,
       command: [process.execPath, "-e", "process.exit(0)"],
@@ -412,7 +423,7 @@ test("the turn-end hook child receives the same scrubbed environment as the payl
     // Inherit direction: env undefined is the documented escape hatch and
     // the hook child then sees the parent environment.
     rmSync(hookDump, { force: true });
-    const inherited = spawnModule.subprocessAdapter.launch({
+    const inherited = await spawnModule.subprocessAdapter.launch({
       taskId: "hook-inherit",
       worktree,
       command: [process.execPath, "-e", "process.exit(0)"],

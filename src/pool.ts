@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { metaPath, readTaskMeta } from "./task.ts";
 import type { Fleet } from "./fleet.ts";
+import { pathsNameSameObject } from "./path-identity.ts";
 
 /**
  * Worktree pool over a project clone (kernel plan v1, M1-P3 step 3).
@@ -1081,7 +1082,19 @@ async function resolveDestroy(
       if (line.startsWith("worktree ")) {
         currentPath = line.slice("worktree ".length).trim();
       } else if (line.trim() === `branch refs/heads/${branchName}`) {
-        if (currentPath !== undefined && resolve(currentPath) !== resolve(worktree)) {
+        // IDENTITY, NOT STRING EQUALITY, and the difference is a shipped
+        // defect this comparison had until 2026-09-16 (macOS smoke job of
+        // pull request #155). `currentPath` is GIT'S spelling and `worktree`
+        // is THIS KERNEL'S: git canonicalizes every worktree path it records,
+        // so a fleet reached through a symlink makes the two sides different
+        // strings for one directory. `resolve` does not resolve symlinks, so
+        // the old comparison then reported the task's OWN worktree as a
+        // foreign worktree holding the branch, stage 2 refused the destroy
+        // that was never in danger, and spawn's rollback left the worktree,
+        // the pool record and the branch behind after a launch that never
+        // started. On macOS no unusual setup is needed to reach it: the
+        // platform puts `os.tmpdir()` behind `/var -> /private/var`.
+        if (currentPath !== undefined && !pathsNameSameObject(currentPath, worktree)) {
           branchCheckedOutAt = currentPath;
         }
       }
