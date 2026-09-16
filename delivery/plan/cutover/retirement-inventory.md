@@ -26,20 +26,21 @@ node scripts/check-retirement-inventory.mjs --extract
 A rule anchor is a line at COLUMN ZERO that is one of: a markdown heading, a
 top-level enumerated item (`1.`, `3b.`), a top-level bullet, a bolded lead-in
 paragraph, or, in the JavaScript root, a top-level function or binding. Four
-markdown kinds with no exceptions, because a grammar covering only headings
-drops 82 of CLAUDE.md's rules silently, and one covering headings and numbers
-drops the seven `## Never` bullets, which are the most binding lines in the
-file. Every line of every root falls inside exactly one anchor's span, so a
+markdown kinds with no exceptions. Measured over the six markdown roots: a
+headings-only grammar finds 59 rules where the shipped one finds 264, and in
+`CLAUDE.md` alone it finds 24 of 133. A grammar of headings and numbers still
+drops every bolded lead-in and the seven `## Never` bullets, which are the most
+binding lines in the file. Every line of every root falls inside exactly one anchor's span, so a
 rule cannot hide between two anchors.
 
 Measured at this head:
 
 | root | rule anchors |
 |---|---|
-| `CLAUDE.md` | 132 |
+| `CLAUDE.md` | 133 |
 | `.claude/skills` (6 files) | 131 |
 | `.claude/orchestrator-next.mjs` | 16 |
-| total | 279 |
+| total | 280 |
 
 The checker requires SET EQUALITY by id, in both directions, between that
 extraction and the JSON rows. A count comparison would be weaker: it would pass
@@ -69,7 +70,7 @@ makes them non-redundant:
   `verified-by` command is the REFUTATION: it demonstrates that the world
   contradicts the rule.
 
-Totals: 185 PORTED, 90 GAP, 4 FALSE. Dispositions: 185 PORT, 77 KEEP, 17
+Totals: 186 PORTED, 90 GAP, 4 FALSE. Dispositions: 186 PORT, 77 KEEP, 17
 DELETE. Of the KEEP rows, 48 are process-side and 29 predicate-side.
 
 ## The four FALSE rows
@@ -111,7 +112,7 @@ carrying, and neither is true.
 
 ## Where the ported rules go
 
-185 rows PORT, and the destinations concentrate rather than scatter:
+186 rows PORT, and the destinations concentrate rather than scatter:
 
 | destination | rows |
 |---|---|
@@ -121,7 +122,7 @@ carrying, and neither is true.
 | `checklists/hazard-review.yaml` | 9 |
 | `templates/warnings.md` | 7 |
 | `roles/investigator.md` | 7 |
-| `src/gates/scope.ts` | 5 |
+| `src/gates/scope.ts` | 6 |
 | `assurance-modes.yaml` | 4 |
 | everything else (11 artifacts) | 24 |
 
@@ -134,7 +135,7 @@ rules file did not help the three authors who got it wrong.
 
 ## The gaps, which are the part a migration would have lost
 
-Twenty-eight groups of rules have no kernel destination. The three the intake
+Twenty-seven groups of rules have no kernel destination. The three the intake
 predicted are confirmed by command, and the pass found more.
 
 **The three loop gaps.** Open the pull request, merge, and the stop condition.

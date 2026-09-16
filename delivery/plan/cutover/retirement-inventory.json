@@ -1854,9 +1854,33 @@
       }
     },
     {
+      "id": "claude-md:be-exact-about-what-changed-because-the-correcti",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:806",
+      "kind": "bold-lead",
+      "text": "**BE EXACT ABOUT WHAT CHANGED, because the correction is easy to over-read and",
+      "group": "scope-declaration-file-on-main",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "src/gates/scope.ts",
+      "note": "The precision half of the corrected rule, authored in this phase: a declaration GRANT lands with the phase, and the declaration FILE must still exist at the merge base. The kernel carries it as the gate's own refusal text.",
+      "probe": "the declaration must be committed to main before the phase branch is created",
+      "verified-by": {
+        "command": "grep -c 'the declaration must be committed to main before the phase branch is created' src/gates/scope.ts",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'the declaration must be committed to main before the phase branch is created' src/gates/citations.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "claude-md:standing-environment-warnings",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:810",
+      "rule": "CLAUDE.md:821",
       "kind": "heading",
       "text": "## Standing environment warnings",
       "group": "warning-toolchain",
@@ -1880,7 +1904,7 @@
     {
       "id": "claude-md:three-node-versions-are-installed-and-which-one",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:814",
+      "rule": "CLAUDE.md:825",
       "kind": "numbered",
       "text": "1. THREE Node versions are installed and which one you get depends on how",
       "group": "warning-toolchain",
@@ -1904,7 +1928,7 @@
     {
       "id": "claude-md:typescript-is-pinned-exact-do-not-remove-types-n",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:873",
+      "rule": "CLAUDE.md:884",
       "kind": "numbered",
       "text": "2. `typescript` is pinned exact. Do not remove `\"types\": [\"node\"]` from",
       "group": "warning-project-specific",
@@ -1922,7 +1946,7 @@
     {
       "id": "claude-md:tsbuildinfo-is-gitignored-deliberately-tsc-b-wri",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:875",
+      "rule": "CLAUDE.md:886",
       "kind": "numbered",
       "text": "3. `*.tsbuildinfo` is gitignored deliberately; `tsc -b` writes one at the",
       "group": "warning-project-specific",
@@ -1940,7 +1964,7 @@
     {
       "id": "claude-md:importing-a-src-module-from-test-with-a-literal",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:878",
+      "rule": "CLAUDE.md:889",
       "kind": "numbered",
       "text": "4. Importing a `src` module from `test/` with a literal relative path fails",
       "group": "warning-project-specific",
@@ -1958,7 +1982,7 @@
     {
       "id": "claude-md:tests-that-create-scratch-git-repositories-must",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:882",
+      "rule": "CLAUDE.md:893",
       "kind": "numbered",
       "text": "5. Tests that create scratch git repositories must set command-scoped",
       "group": "warning-git-identity",
@@ -1982,7 +2006,7 @@
     {
       "id": "claude-md:gh-is-absent-locally-and-present-in-ci-use-a-det",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:886",
+      "rule": "CLAUDE.md:897",
       "kind": "numbered",
       "text": "6. `gh` is absent locally and present in CI. Use a deterministic gh-free",
       "group": "warning-tool-absent",
@@ -2006,7 +2030,7 @@
     {
       "id": "claude-md:test-name-pattern-must-precede-the-positional-te",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:951",
+      "rule": "CLAUDE.md:962",
       "kind": "numbered",
       "text": "7. `--test-name-pattern` must precede the positional test path, or it is",
       "group": "warning-project-specific",
@@ -2024,7 +2048,7 @@
     {
       "id": "claude-md:git-checkout-wipes-uncommitted-sibling-edits-cop",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:953",
+      "rule": "CLAUDE.md:964",
       "kind": "numbered",
       "text": "8. `git checkout --` wipes uncommitted sibling edits. Copy before",
       "group": "warning-checkout-destructive",
@@ -2048,7 +2072,7 @@
     {
       "id": "claude-md:git-remote-set-url-resolves-relative-paths-again",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:960",
+      "rule": "CLAUDE.md:971",
       "kind": "numbered",
       "text": "9. `git remote set-url` resolves relative paths against the repository, not",
       "group": "warning-project-specific",
@@ -2066,7 +2090,7 @@
     {
       "id": "claude-md:concurrent-git-operations-against-one-clone-cont",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:974",
+      "rule": "CLAUDE.md:985",
       "kind": "numbered",
       "text": "10. Concurrent git operations against one clone contend on ref locks, and",
       "group": "warning-ref-locks",
@@ -2090,7 +2114,7 @@
     {
       "id": "claude-md:suite-wall-time-grows-with-real-clock-lease-wait",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:978",
+      "rule": "CLAUDE.md:989",
       "kind": "numbered",
       "text": "11. Suite wall time grows with real-clock lease waits. Budget harness",
       "group": "warning-project-specific",
@@ -2108,7 +2132,7 @@
     {
       "id": "claude-md:running-the-suite-without-building-first-silentl",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:980",
+      "rule": "CLAUDE.md:991",
       "kind": "numbered",
       "text": "12. **Running the suite without building first SILENTLY SKIPS NINE TESTS, and",
       "group": "warning-suite-axes",
@@ -2132,7 +2156,7 @@
     {
       "id": "claude-md:git-diff-main-branch-is-not-a-merge-preview-and",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1053",
+      "rule": "CLAUDE.md:1064",
       "kind": "numbered",
       "text": "13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has",
       "group": "warning-project-specific",
@@ -2150,7 +2174,7 @@
     {
       "id": "claude-md:this-container-cannot-delete-a-remote-ref-and-dr",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1077",
+      "rule": "CLAUDE.md:1088",
       "kind": "numbered",
       "text": "14. **THIS CONTAINER CANNOT DELETE A REMOTE REF, AND `--dry-run` WILL TELL YOU",
       "group": "warning-project-specific",
@@ -2168,7 +2192,7 @@
     {
       "id": "claude-md:the-orchestrator-does-not-decide-when-it-is-fini",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1133",
+      "rule": "CLAUDE.md:1144",
       "kind": "heading",
       "text": "## The orchestrator does not decide when it is finished (binding)",
       "group": "stop-condition",
@@ -2186,7 +2210,7 @@
     {
       "id": "claude-md:the-keep-going-mechanism-was-not-durable-croncre",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1143",
+      "rule": "CLAUDE.md:1154",
       "kind": "numbered",
       "text": "1. **The keep-going mechanism was not durable.** `CronCreate` jobs are",
       "group": "harness-tool-rules",
@@ -2203,7 +2227,7 @@
     {
       "id": "claude-md:even-when-the-kick-fired-the-orchestrator-decide",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1147",
+      "rule": "CLAUDE.md:1158",
       "kind": "numbered",
       "text": "2. **Even when the kick fired, the orchestrator decided whether work existed.**",
       "group": "harness-tool-rules",
@@ -2220,7 +2244,7 @@
     {
       "id": "claude-md:the-mechanism-and-it-is-two-layers-because-one-i",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1151",
+      "rule": "CLAUDE.md:1162",
       "kind": "bold-lead",
       "text": "**The mechanism, and it is two layers because one is not enough:**",
       "group": "stop-condition",
@@ -2238,7 +2262,7 @@
     {
       "id": "claude-md:claude-orchestrator-next-mjs-computes-the-stop-c",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1153",
+      "rule": "CLAUDE.md:1164",
       "kind": "bullet",
       "text": "- `.claude/orchestrator-next.mjs` computes the stop condition from git and",
       "group": "stop-condition",
@@ -2256,7 +2280,7 @@
     {
       "id": "claude-md:a-server-side-routine-create-trigger-hourly-the",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1160",
+      "rule": "CLAUDE.md:1171",
       "kind": "bullet",
       "text": "- A server-side Routine (`create_trigger`, hourly, the durable floor) whose",
       "group": "stop-condition",
@@ -2274,7 +2298,7 @@
     {
       "id": "claude-md:none-of-these-is-a-reason-to-stop-and-every-one",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1166",
+      "rule": "CLAUDE.md:1177",
       "kind": "bold-lead",
       "text": "**None of these is a reason to stop, and every one has been used:** having just",
       "group": "stop-condition",
@@ -2292,7 +2316,7 @@
     {
       "id": "claude-md:agent-concurrency-is-per-workflow-and-the-fix-is",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1172",
+      "rule": "CLAUDE.md:1183",
       "kind": "heading",
       "text": "## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)",
       "group": "harness-tool-rules",
@@ -2309,7 +2333,7 @@
     {
       "id": "claude-md:measured-2026-09-15-nproc-returns-4-and-the-work",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1177",
+      "rule": "CLAUDE.md:1188",
       "kind": "bold-lead",
       "text": "**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is",
       "group": "harness-tool-rules",
@@ -2326,7 +2350,7 @@
     {
       "id": "claude-md:the-fix-is-n-workflows-of-2-not-one-workflow-of",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1183",
+      "rule": "CLAUDE.md:1194",
       "kind": "bold-lead",
       "text": "**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its",
       "group": "harness-tool-rules",
@@ -2343,7 +2367,7 @@
     {
       "id": "claude-md:write-the-script-once-with-an-args-filter-so-one",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1188",
+      "rule": "CLAUDE.md:1199",
       "kind": "numbered",
       "text": "1. Write the script ONCE with an args filter, so one script serves every slice:",
       "group": "harness-tool-rules",
@@ -2360,7 +2384,7 @@
     {
       "id": "claude-md:launch-it-inline-the-first-time-the-tool-result",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1195",
+      "rule": "CLAUDE.md:1206",
       "kind": "numbered",
       "text": "2. Launch it inline the first time. The tool result returns a `scriptPath`.",
       "group": "harness-tool-rules",
@@ -2377,7 +2401,7 @@
     {
       "id": "claude-md:re-invoke-with-scriptpath-args-once-per-pair-fou",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1196",
+      "rule": "CLAUDE.md:1207",
       "kind": "numbered",
       "text": "3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls",
       "group": "harness-tool-rules",
@@ -2394,7 +2418,7 @@
     {
       "id": "claude-md:before-dispatching-any-fan-out-state-in-writing",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1199",
+      "rule": "CLAUDE.md:1210",
       "kind": "bold-lead",
       "text": "**Before dispatching any fan-out, state in writing: how many agents, in how many",
       "group": "harness-tool-rules",
@@ -2411,7 +2435,7 @@
     {
       "id": "claude-md:model-choice-is-per-agent-and-costs-nothing-to-s",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1205",
+      "rule": "CLAUDE.md:1216",
       "kind": "bold-lead",
       "text": "**Model choice is per agent and costs nothing to set.** `agent(prompt, {model:",
       "group": "harness-tool-rules",
@@ -2428,7 +2452,7 @@
     {
       "id": "claude-md:reporting-to-the-owner-binding-2026-09-15",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1210",
+      "rule": "CLAUDE.md:1221",
       "kind": "heading",
       "text": "## Reporting to the owner (binding, 2026-09-15)",
       "group": "owner-reporting",
@@ -2446,7 +2470,7 @@
     {
       "id": "claude-md:the-owner-s-screen-is-an-interface-for-decisions",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1215",
+      "rule": "CLAUDE.md:1226",
       "kind": "bold-lead",
       "text": "**The owner's screen is an interface for DECISIONS, not a log of the work.**",
       "group": "owner-reporting",
@@ -2464,7 +2488,7 @@
     {
       "id": "claude-md:a-decision-the-owner-must-take-with-the-options",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1223",
+      "rule": "CLAUDE.md:1234",
       "kind": "numbered",
       "text": "1. A decision the owner must take, with the options and a recommendation.",
       "group": "owner-reporting",
@@ -2482,7 +2506,7 @@
     {
       "id": "claude-md:an-action-only-the-owner-can-perform-because-it",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1224",
+      "rule": "CLAUDE.md:1235",
       "kind": "numbered",
       "text": "2. An action only the owner can perform, because it needs access an agent does",
       "group": "owner-reporting",
@@ -2500,7 +2524,7 @@
     {
       "id": "claude-md:a-finished-result",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1228",
+      "rule": "CLAUDE.md:1239",
       "kind": "numbered",
       "text": "3. A finished result.",
       "group": "owner-reporting",
@@ -2518,7 +2542,7 @@
     {
       "id": "claude-md:a-blocker-in-one-line-naming-what-is-blocked-and",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1229",
+      "rule": "CLAUDE.md:1240",
       "kind": "numbered",
       "text": "4. A blocker, in one line, naming what is blocked and by what.",
       "group": "owner-reporting",
@@ -2536,7 +2560,7 @@
     {
       "id": "claude-md:plain-language-is-part-of-this-the-owner-reads-e",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1235",
+      "rule": "CLAUDE.md:1246",
       "kind": "bold-lead",
       "text": "**Plain language is part of this.** The owner reads English fluently and is not",
       "group": "owner-reporting",
@@ -2554,7 +2578,7 @@
     {
       "id": "claude-md:never",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1242",
+      "rule": "CLAUDE.md:1253",
       "kind": "heading",
       "text": "## Never",
       "group": "never-push-main",
@@ -2578,7 +2602,7 @@
     {
       "id": "claude-md:never-push-to-main-directly-never-merge-your-own",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1244",
+      "rule": "CLAUDE.md:1255",
       "kind": "bullet",
       "text": "- Never push to `main` directly; never merge your own work.",
       "group": "never-push-main",
@@ -2602,7 +2626,7 @@
     {
       "id": "claude-md:never-reopen-a-decided-owner-decision-record-rai",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1245",
+      "rule": "CLAUDE.md:1256",
       "kind": "bullet",
       "text": "- Never reopen a decided owner decision record; raise a new one instead.",
       "group": "never-reopen",
@@ -2626,7 +2650,7 @@
     {
       "id": "claude-md:never-improvise-an-irreversible-choice-the-plan",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1246",
+      "rule": "CLAUDE.md:1257",
       "kind": "bullet",
       "text": "- Never improvise an irreversible choice the plan is silent on. Stop and",
       "group": "never-improvise",
@@ -2650,7 +2674,7 @@
     {
       "id": "claude-md:never-use-pid-process-liveness-signals-or-proc-f",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1248",
+      "rule": "CLAUDE.md:1259",
       "kind": "bullet",
       "text": "- Never use pid, process liveness, signals, or `/proc` for identity or",
       "group": "never-pid-liveness",
@@ -2674,7 +2698,7 @@
     {
       "id": "claude-md:never-read-current-state-from-the-tail-of-an-app",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1250",
+      "rule": "CLAUDE.md:1261",
       "kind": "bullet",
       "text": "- Never read current state from the tail of an append-only log (C-1).",
       "group": "never-log-tail",
@@ -2692,7 +2716,7 @@
     {
       "id": "claude-md:never-auto-background-a-long-running-process-c-3",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1251",
+      "rule": "CLAUDE.md:1262",
       "kind": "bullet",
       "text": "- Never auto-background a long-running process (C-3).",
       "group": "never-auto-background",
@@ -2709,7 +2733,7 @@
     {
       "id": "claude-md:never-soften-a-work-history-it-is-the-artifact-a",
       "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1252",
+      "rule": "CLAUDE.md:1263",
       "kind": "bullet",
       "text": "- Never soften a work history. It is the artifact a later reviewer trusts,",
       "group": "never-soften",

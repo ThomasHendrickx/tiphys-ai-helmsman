@@ -800,12 +800,23 @@ head, an entry ADDED on the head is allowed, and the protection against it is
 that the addition is PRINTED BY NAME for a reviewer to sign off. A removal is
 still refused outright, so the grant is additive only.
 
-So a declaration amendment lands WITH the phase that needs it. The three extra
-pull requests that rule cost in a single day are not owed again. This is the
-worked example of why a retirement re-verifies every rule against `src/` rather
-than carrying it across: an uncorrected rule here would have become a false
-constraint in a kernel brief, where nobody would have a scope gate to check it
-against.
+So a declaration GRANT lands WITH the phase that needs it. The three extra pull
+requests that rule cost in a single day are not owed again.
+
+**BE EXACT ABOUT WHAT CHANGED, because the correction is easy to over-read and
+the over-reading is a second false rule.** The relaxation is about ENTRIES
+inside a declaration. The declaration FILE itself must still exist at the merge
+base: src/gates/scope.ts:877 reddens a phase branch whose
+`delivery/plan/phase-declarations/<phase-id>.json` is absent there, with "the
+declaration must be committed to main before the phase branch is created".
+Measured 2026-09-16 against this phase's own branch: scope red, exactly that
+reason. So a NEW phase still needs its declaration on `main` first, and only the
+amendment stopped costing a pull request.
+
+This is the worked example of why a retirement re-verifies every rule against
+`src/` rather than carrying it across: an uncorrected rule here would have become
+a false constraint in a kernel brief, where nobody would have a scope gate to
+check it against.
 
 ## Standing environment warnings
 

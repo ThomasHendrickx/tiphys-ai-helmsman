@@ -83,10 +83,11 @@ export const ROOTS = [
  *   javascript `function name(`   a top-level declaration
  *   javascript `const NAME =`     a top-level binding
  *
- * FOUR markdown kinds rather than one, and no exceptions, because a grammar
- * covering only headings drops 82 CLAUDE.md rules silently and one covering
- * only headings and numbers drops the seven `## Never` bullets, which are the
- * most binding lines in the file. The bolded-lead-in kind is not decoration
+ * FOUR markdown kinds rather than one, and no exceptions. Measured over the six
+ * markdown roots: headings alone find 59 rules where these four find 264, and
+ * in `CLAUDE.md` alone headings find 24 of 133. Headings and numbers together
+ * still drop every bolded lead-in and the seven `## Never` bullets, which are
+ * the most binding lines in that file. The bolded-lead-in kind is not decoration
  * either: `CLAUDE.md` states the measured-false rule this phase corrects in
  * exactly that shape. Every line of every root falls inside exactly one
  * anchor's span, so a rule cannot hide between two anchors.
