@@ -694,3 +694,51 @@ with the plan branch as `--base`, not `origin/main`, because the inherited
 paperwork would otherwise dominate the diff. That is the right question for "does
 this phase's witness set satisfy the rules" and it is not the invocation CI will
 use. Nothing here says what CI will report after the merge sequence.
+
+## The git-versus-filesystem disagreement: derived across shipped code, one instance
+
+The M4-P11 HIGH is a mechanism, not an instance: **a paired decision where one
+half reads the git object database and the other reads the working tree, so the
+two can disagree and the actor being guarded against controls the uncommitted
+half.** Its own round will derive it within that phase. This is the complementary
+half no single-phase agent will do: whether it appears anywhere else in shipped
+code.
+
+Derived, and the derivation is stated so its gaps are visible:
+
+```
+$ grep -rnE 'readdirSync|readFileSync|existsSync|statSync|lstatSync' src/ --include='*.ts' | wc -l
+84
+$ grep -rnE '"(show|cat-file|ls-tree|ls-files|rev-parse)"' src/ --include='*.ts' | wc -l
+43
+```
+
+Mixing the two is not the defect, so the filter is FILES CARRYING BOTH, then
+reading each to see whether the two sources feed one paired decision. Three
+files carry both: `src/gates/citations.ts`, `src/gates/suite.ts`,
+`src/witness/run.ts`.
+
+**`src/gates/citations.ts`: SOUND.** Both halves read git. The document set comes
+from `git diff --name-only --diff-filter=d base...head` at
+src/gates/citations.ts:1076 and citation targets from `git cat-file -t` and
+`-p` at src/gates/citations.ts:696 and src/gates/citations.ts:733. Its one
+`readdirSync` at src/gates/citations.ts:987 walks a configuration directory, not
+the corpus being judged. An uncommitted edit changes neither side.
+
+**`src/gates/suite.ts`: SOUND on the same test.** The registry it compares comes
+from `git ls-tree` and `git show` at the merge base
+(src/gates/suite.ts:802 and src/gates/suite.ts:809); its `readdirSync` at
+src/gates/suite.ts:500 walks declared test roots to ENUMERATE files to run, which
+is a different question from judging committed content.
+
+**What this derivation did NOT cover.** `src/witness/run.ts` carries both and was
+NOT read for this; it is the third file and it is excluded here rather than
+cleared. The filter is also textual: a paired decision split across TWO files,
+one reading git and one reading disk, is invisible to a per-file test and no
+cross-file analysis was run. And `src/gates/` was the only tree examined at this
+depth; `bin/` and `scripts/` carry their own readers.
+
+**Status of the instance itself: being fixed.** The round pushed
+`Read the verdict corpus from the commit the declaration was read`, which fixes
+the mechanism by making both halves read git, rather than patching either arm the
+reviewer demonstrated.
