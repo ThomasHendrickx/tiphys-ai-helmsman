@@ -2,12 +2,12 @@ diff --git a/src/fleet.ts b/src/fleet.ts
 --- a/src/fleet.ts
 +++ b/src/fleet.ts
 @@ -1,4 +1,4 @@
--import { existsSync, statSync } from "node:fs";
-+import { existsSync, realpathSync, statSync } from "node:fs";
+-import { existsSync, lstatSync, statSync } from "node:fs";
++import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
+ import type { Stats } from "node:fs";
  import { join, resolve } from "node:path";
  
- /**
-@@ -80,7 +80,7 @@
+@@ -81,7 +81,7 @@
   * naming every missing entry when the layout is incomplete.
   */
  export function loadFleet(dir: string): Fleet {
@@ -19,7 +19,7 @@ diff --git a/src/fleet.ts b/src/fleet.ts
 diff --git a/src/pool.ts b/src/pool.ts
 --- a/src/pool.ts
 +++ b/src/pool.ts
-@@ -756,7 +756,7 @@
+@@ -1094,7 +1094,7 @@
          // the pool record and the branch behind after a launch that never
          // started. On macOS no unusual setup is needed to reach it: the
          // platform puts `os.tmpdir()` behind `/var -> /private/var`.
