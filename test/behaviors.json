@@ -773,5 +773,20 @@
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
-  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
+  "retirement-inventory-resolves": "retirement inventory resolves every rule in the three roots",
+  "retirement-inventory-missing-verified-by": "retirement checker reddens on a row with no verified-by block",
+  "retirement-inventory-vacuous-negative-witness": "retirement checker reddens on a negative witness that exits 0",
+  "retirement-inventory-negative-witness-runs-the-same-probe": "retirement checker reddens on a negative witness that runs a different probe",
+  "retirement-inventory-rule-without-a-row": "retirement checker reddens on a rule with no row",
+  "retirement-inventory-stale-row": "retirement checker reddens on a row whose rule is not extractable",
+  "retirement-inventory-verified-by-names-a-kernel-path": "retirement checker reddens when verified-by names no kernel path",
+  "retirement-inventory-recorded-exit-reproduces": "retirement checker reddens when a recorded exit code no longer reproduces",
+  "retirement-inventory-command-allowlist": "retirement checker refuses a command outside the allowlist without running it",
+  "retirement-inventory-requires-a-false-row": "retirement checker reddens when no row is marked FALSE",
+  "retirement-inventory-port-requires-ported": "retirement checker reddens when a PORT row claims a status other than PORTED",
+  "retirement-inventory-unreadable-input-exits-two": "retirement checker exits 2 rather than green on an unreadable inventory",
+  "retirement-inventory-empty-derivation-exits-two": "retirement checker exits 2 rather than green when the derivation finds no rules",
+  "retirement-inventory-extraction-deterministic": "retirement extraction is deterministic and covers all three roots",
+  "retirement-inventory-roots-still-present": "retirement inventory deletes nothing from the three roots in this phase"
 }
