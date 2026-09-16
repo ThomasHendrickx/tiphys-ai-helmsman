@@ -2110,3 +2110,82 @@ fact rather than a memory.
   superseded rather than verified. An intermediate head's content is contained
   in the final head, so nothing is unverified; what is missing is a per-head
   claim, and the fix is to stop making one.
+
+## M4 delivery, as of 2026-09-16
+
+This block replaces any earlier M4 status. It records what is ON main, what is
+open, and what each remaining phase is waiting on. It is written to survive this
+session ending, per the durability rule: a thing reported only in chat is lost.
+
+### On main
+
+| what | pull request | main head after | post-merge push run |
+|---|---|---|---|
+| M4 paperwork, the plan at revision 3, twelve phase declarations | #150 | 85deb36 | observed GREEN |
+| M4-P13, migration-table redisposition | #152 | e8d9874 | observed GREEN |
+
+Both post-merge `push` runs were watched to completion, which is what T-009
+requires and is not the same as the pull-request check being green.
+
+### Open pull requests
+
+| phase | pull request | state |
+|---|---|---|
+| M4-P15, kernel charter | #151 | gates and macos-smoke green; behind main |
+| M4-P16, fleet rehydration | #153 | rebased onto e8d9874, CI running |
+| M4-P20, exclusion pre-pass | #154 | gates and macos-smoke green; behind main |
+| M4-P2, async launch | #155 | gates green, **macos-smoke RED**, fix round dispatched |
+
+### Waiting on a fix round
+
+| phase | why | severity |
+|---|---|---|
+| M4-P2 | macOS-only: a launch-failed leaves the worktree behind. Linux green on every gate, so no local run can see it. | blocking, reaches src/spawn.ts |
+| M4-P10 | a verdict document whose `kind:` is a non-scalar is silently dropped and the gate reports green | blocking, reaches src/checks.ts and scripts/check-dual-review.mjs |
+| M4-P11 | an UNCOMMITTED charter.yaml buys a green where it used to buy a red; and listCommittedDirectory lists nothing when the context is not the repository root | two HIGH, both blocking, both shipped |
+
+### Waiting on a delta verification
+
+M4-P23, M4-P26, M4-P27. Each has had its fix round and owes an independent
+verification of it before merge.
+
+### Verified and cleared
+
+M4-P19's delta verification returns APPROVE; its one remaining finding was the
+scope gate, which the declarations landing in #150 closes.
+
+### The constraint that sets the pace
+
+The repository ruleset requires a branch to be up to date with `main` before it
+merges. That was established by measurement, not assumed: merging #151 while it
+was one commit behind was refused with `405 Repository rule violations found,
+Required status check "gates" is expected`. So phases merge strictly one at a
+time, each costing a merge-forward, a CI cycle of roughly seventeen minutes, and
+a post-merge push run.
+
+Agent concurrency is capped at two by owner instruction (DR-0044), so the review
+and fix queue, not CI, is the critical path.
+
+### Two things that cost a cycle each and are recorded so they do not recur
+
+**PR #150 was SQUASHED, and that changed what every child branch sees.** A squash
+keeps the content and discards the history, so `plan/pstack-borrow-review` is not
+an ancestor of `main` and the merge base of `main` and every phase branch is
+still the OLD main. Both sides then appear to have independently added the whole
+inherited corpus, and git reports add/add on all of it. Measured on M4-P15: five
+conflicts, all paperwork, none of which the phase touched. The resolution needs
+no hand-editing: merge the STACK BASE into the branch first, where the common
+ancestor is the real fork point, THEN merge `main`, whose tree for those paths is
+byte-identical to the stack tip's.
+
+A simulation run before the merge reported CLEAN and was wrong, for one reason
+worth keeping: it modelled a MERGE commit and the merge performed was a SQUASH.
+
+**The gate bundle makes its own load, and the `suite` gate is wall-clock
+sensitive.** `red-witness` runs mutation labs concurrently with `suite`. Measured
+on M4-P16 at one head: `suite` RED inside the full bundle, GREEN when the suite
+gate was run alone at the same head. The underlying defect is a 250ms WALL CLOCK
+budget used as a catastrophic-backtracking proxy at src/gates/coverage.ts:235,
+which trips on `^(?:M([0-9]+))$` against a two-character value. The message
+refutes itself. Never attribute such a red to load by judgement: re-run, and
+check whether the failing test is even in the branch's changed set.
