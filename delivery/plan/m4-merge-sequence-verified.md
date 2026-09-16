@@ -87,3 +87,42 @@ repository with a different working directory.
 - **M4-P11's red was the only one found, not the only one possible.** The other
   eleven were audited against their own declarations at one head each. A phase
   whose branch changes again can acquire a new undeclared path.
+
+## Landing evidence onto a branch breaks an `--is-ancestor` dependency check
+
+A false alarm worth recording, because the check that raised it is the obvious
+one and it will mislead the same way again.
+
+The conflict pre-pass requires M4-P11 to branch FROM M4-P10 rather than from the
+base, and records the reason: they collide on `src/checks.ts`. Testing that:
+
+```
+$ git merge-base --is-ancestor <P10> <P11>
+  (exit 1: NO)
+```
+
+Read literally: the dependency the pre-pass mandates is not honoured, and two
+independent branches are both editing one file. That would be a real problem.
+
+It is not what happened:
+
+```
+merge-base(P10, P11) = 6a5e5af     <- P10's head BEFORE I landed its reviews
+commits on P10 not in P11: 1       <- "Land the 2 clean-room review(s) for M4-P10"
+commits on P11 not in P10: 14
+git merge-tree --write-tree P10 P11 -> CLEAN
+```
+
+M4-P11 does descend from M4-P10. It simply predates the evidence commit the
+ORCHESTRATOR added to M4-P10 an hour ago, under DR-0031 clause 2. The alarm was
+self-inflicted.
+
+**The general shape**: `--is-ancestor` asks whether the tip is contained, and
+landing anything onto the ancestor branch makes that false immediately, for every
+descendant, forever. It is the wrong question for "was this branch cut from that
+one". The right ones are the merge base, which still names the real fork point,
+and `merge-tree`, which answers whether the two can be combined at all.
+
+This will recur: every phase gets its reviews landed, so every
+ancestor-descendant pair in M4 will fail `--is-ancestor` from the moment the
+ancestor's evidence lands. Nothing is wrong when it does.
