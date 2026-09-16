@@ -10,6 +10,9 @@
     "witness/fixtures/dual-review/"
   ],
   "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p10.json",
+    "delivery/work-history/m4-p10.md",
     "test/verdict-schema.test.ts",
     "test/dual-review.test.ts"
   ],
