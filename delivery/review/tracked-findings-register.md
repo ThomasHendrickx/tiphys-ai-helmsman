@@ -815,3 +815,51 @@ they are source and extent, and the obvious joint repair is measurably wrong for
 the second, because a whole-tree enumeration finds seven verdict documents of
 which five are this check's own test fixtures, and adopting it turned a green
 test red.
+
+## Four witness members on `main` are BLUNTED: they match two sites, silently
+
+Found by M4-P10 fix round 1 as a by-product of fixing the broken ones, and
+confirmed here independently. It is the more dangerous half of a two-sided
+failure and neither review reached it.
+
+**The mechanism.** A stored witness member is a POINTER INTO SOURCE TEXT: a find
+string the gate replaces to create the dangerous state. An edit to the target
+file can do two things to it:
+
+- **BREAK it**, so the string occurs ZERO times. The gate errors loudly. This is
+  the half the M4-P10 review reported, and loud failures get fixed.
+- **BLUNT it**, so the string occurs MORE THAN ONCE. The mutation lands on
+  whichever site comes first, the named test may still redden, and the witness
+  reads as working while no longer testing the line it names. Nothing is printed.
+
+**Measured at `origin/main`**, over 163 specs and 327 mutation members:
+
+```
+specs=163 mutation-members=327 broken=0 blunted=4
+   BLUNTED-2 checklist-duplicate-probe-id-guard.json          -> src/checks.ts
+   BLUNTED-2 doctor-kernel-artifacts-resolution.json          -> src/commands/doctor.ts
+   BLUNTED-2 role-brief-set-derived-not-listed.json           -> test/roles.test.ts
+   BLUNTED-2 witness-ownership-baseline-is-the-merge-base.json -> src/gates/red-witness.ts
+```
+
+All four are pre-existing and none belongs to an M4 phase. Two are in SHIPPED
+files (`src/checks.ts`, `src/commands/doctor.ts`, `src/gates/red-witness.ts`).
+
+**The checker was witnessed before its zero was believed**, which is the rule
+this register has had to apply to itself twice today. Run against M4-P10's
+reviewed head it reports `broken=5 blunted=5` and names each; against that
+phase's fixed head, `broken=0 blunted=4`. It goes red and it goes green, and its
+counts reproduce the fix round's independently.
+
+**Why it is LATENT rather than live.** A blunted member still mutates something
+and its named test still has to redden, so the gate is not passing on nothing.
+What is lost is the guarantee that the mutation lands where the spec says. Whether
+any of these four currently mutates the wrong site was NOT measured and is the
+open question.
+
+**What closing it needs.** The witness spec schema has no way to declare an
+expected occurrence count, so there is nothing for a gate to assert against.
+Adding one, and asserting exactly-one by default, is a small change to
+`schemas/witness-spec.schema.json` and `src/witness/run.ts`. That is another
+phase's file, which is why this round correctly did not widen into it, and it is
+a candidate for a small phase alongside M4-P28 and M4-P29. Not allocated one yet.
