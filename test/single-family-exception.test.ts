@@ -233,6 +233,18 @@ interface StageOptions {
    * path. The same dangerous state from the DELETION side.
    */
   deleteAfterCommit?: string[];
+  /**
+   * Rewrite `delivery-mode` in the WORKING TREE charter after the commit. The
+   * same dangerous state aimed at the REGIME rather than at the corpus: the
+   * commit still declares the delegated mode and the file on disk does not.
+   */
+  modeAfterCommit?: string;
+  /**
+   * Rewrite the delegated `merge-authority` in the WORKING TREE
+   * `assurance-modes.yaml` after the commit. The regime again, reached through
+   * the OTHER of the two documents it reads.
+   */
+  authorityAfterCommit?: string;
 }
 
 /**
@@ -291,6 +303,24 @@ function stage(options: StageOptions): string {
   }
   for (const relative of options.deleteAfterCommit ?? []) {
     rmSync(join(dir, relative));
+  }
+  if (options.authorityAfterCommit !== undefined) {
+    const onDisk = readFileSync(join(dir, "assurance-modes.yaml"), "utf8");
+    const rewritten = onDisk.replace(
+      /^(\s*)merge-authority: delegated-under-conditions$/m,
+      `$1merge-authority: ${options.authorityAfterCommit}`,
+    );
+    assert.notEqual(rewritten, onDisk, "no delegated merge-authority line to rewrite");
+    writeFileSync(join(dir, "assurance-modes.yaml"), rewritten);
+  }
+  if (options.modeAfterCommit !== undefined) {
+    const onDisk = readFileSync(join(dir, "charter.yaml"), "utf8");
+    const rewritten = onDisk.replace(
+      /^delivery-mode: .*$/m,
+      `delivery-mode: ${options.modeAfterCommit}`,
+    );
+    assert.notEqual(rewritten, onDisk, "the charter has no single-line delivery-mode to rewrite");
+    writeFileSync(join(dir, "charter.yaml"), rewritten);
   }
   return dir;
 }
@@ -1090,6 +1120,82 @@ test("a corpus-scoped refusal names the source that corpus was read from, on bot
   assert.doesNotMatch(fromTree.stdout, /read from commit/);
 });
 
+/* ------------------------------------------------------------------ */
+/* FIX ROUND 1, THE FOURTH SITE: the REGIME is a document too.         */
+/*                                                                     */
+/* The reviewers found the mechanism at the corpus. Deriving it rather */
+/* than fixing the instance found it one document further out, where   */
+/* it is worse: `establishDelegatedRegime` decides whether DR-0012's   */
+/* grant applies at all, and it read `charter.yaml` off disk while     */
+/* `readReviewFamilies` read THE SAME FILE out of the object database. */
+/* Against the pre-fix code an uncommitted one-word edit turned a red  */
+/* correlated pair into GREEN at exit 0, which is not the exception    */
+/* being bought but the whole decorrelation requirement switched off.  */
+/*                                                                     */
+/* TWO STRUCTURALLY DIFFERENT MEMBERS: an uncommitted EDIT of the mode */
+/* (the regime is read and answers differently) and an uncommitted     */
+/* DELETION of the charter (the regime is not read at all and the      */
+/* check reports that no mode is declared). They take different arms   */
+/* of the function, and both were fail-OPEN.                           */
+/* ------------------------------------------------------------------ */
+
+test("an UNCOMMITTED delivery-mode does not switch off the decorrelation requirement", () => {
+  const committedIsDelegated = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+  });
+  /* THE CONTROL ARM: with nothing edited this pair is red, so a red below is
+     not a fixture that was going to be red whatever the regime said. */
+  assert.equal(runScript(committedIsDelegated).record.status, "red");
+
+  const edited = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+    modeAfterCommit: "direct-pr",
+  });
+  /* `direct-pr` is a real mode of the shipped assurance-modes.yaml whose
+     merge-authority is `owner`, which is NOT a delegated grant, so the pre-fix
+     code reported that nothing was required of these reviews. */
+  assert.match(readFileSync(join(edited, "charter.yaml"), "utf8"), /^delivery-mode: direct-pr$/m);
+  const run = runScript(edited);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.doesNotMatch(run.stdout, /which is not a delegated grant/);
+});
+
+test("an UNCOMMITTED merge-authority does not switch off the decorrelation requirement", () => {
+  /* THE SECOND MEMBER, through the OTHER document the regime reads. The first
+     rewrites which mode the charter names; this one leaves the charter alone
+     and rewrites what that mode's authority IS. Different file, different
+     field, same fail-open before the fix.
+
+     A THIRD member was written and then deleted rather than weakened: an
+     uncommitted DELETION of `charter.yaml` is refused by
+     `scripts/check-dual-review.mjs` before the check runs, with gate status
+     error, so that arm is already fail-CLOSED on the shipped path and a test
+     over it would have guarded nothing this round changed. Recorded here
+     because a deleted test leaves no trace otherwise. */
+  const edited = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+    authorityAfterCommit: "owner",
+  });
+  assert.match(
+    readFileSync(join(edited, "assurance-modes.yaml"), "utf8"),
+    /^\s*merge-authority: owner$/m,
+  );
+  const run = runScript(edited);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.doesNotMatch(run.stdout, /which is not a delegated grant/);
+});
+
 test("this phase's new behaviors are registered in test/behaviors.json", () => {
   /* BY NAME, NEVER BY COUNT (binding convention 5). `test/behaviors.json` is
      append-only and union-resolved, so a count here would be a claim about
@@ -1116,6 +1222,8 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "single-family-pair-corpus-read-from-the-commit-not-the-worktree",
     "single-family-falsifier-corpus-spans-the-paperwork-root",
     "single-family-corpus-source-named-on-both-arms",
+    "single-family-regime-read-from-the-commit-not-the-worktree",
+    "single-family-regime-authority-read-from-the-commit",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),

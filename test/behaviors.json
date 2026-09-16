@@ -805,5 +805,7 @@
   "single-family-falsifier-corpus-spans-the-paperwork-root": "a COMMITTED second-family verdict outside delivery/review still contradicts the declaration",
   "single-family-corpus-source-named-on-both-arms": "a corpus-scoped refusal names the source that corpus was read from, on both arms",
   "witness-rule-f-scoped-to-authored-members": "giving a file its first subprocess call imposes rule (f) on no member this phase did not author",
-  "witness-rule-f-binds-an-added-member": "a member this phase ADDED that touches a spawning changed file still owes a capture"
+  "witness-rule-f-binds-an-added-member": "a member this phase ADDED that touches a spawning changed file still owes a capture",
+  "single-family-regime-read-from-the-commit-not-the-worktree": "an UNCOMMITTED delivery-mode does not switch off the decorrelation requirement",
+  "single-family-regime-authority-read-from-the-commit": "an UNCOMMITTED merge-authority does not switch off the decorrelation requirement"
 }

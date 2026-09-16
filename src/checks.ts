@@ -3031,19 +3031,12 @@ export function describeVerdictCorpusSource(source: VerdictCorpusSource): string
  */
 export function loadCommittedVerdicts(
   contextDirectory: string,
-  ref = "HEAD",
+  source: VerdictCorpusSource = resolveCorpusSource(contextDirectory),
 ): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
-  const resolved = gitIn(["rev-parse", `${ref}^{commit}`], contextDirectory);
-  if (!resolved.ok) {
-    return loadVerdictsFromWorktree(contextDirectory, resolved.reason);
+  if (source.kind !== "commit") {
+    return loadVerdictsFromWorktree(contextDirectory, source.reason);
   }
-  const refSha = resolved.stdout.trim();
-  const source: VerdictCorpusSource = {
-    kind: "commit",
-    ref,
-    refSha,
-    scope: REVIEW_DIRECTORY,
-  };
+  const refSha = source.refSha;
   const listed = listCommittedDirectory(contextDirectory, refSha, REVIEW_DIRECTORY);
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
@@ -3195,6 +3188,99 @@ function readCommittedVerdicts(
     documents.push({ path: join(contextDirectory, path), body: shown.stdout });
   }
   return { ok: true, verdicts: selectVerdicts(documents), source };
+}
+
+/**
+ * Read a context document AT THE SOURCE THE DECISION IS BEING MADE FROM.
+ *
+ * FIX ROUND 1, AND IT IS THE FOURTH SITE OF THE MECHANISM the reviewers found
+ * at the first. Their finding was that the CORPUS was read from disk while the
+ * declaration was read from a commit. The derivation for it (D2 and D3 in the
+ * work history) turned up the same split one document further out and WORSE:
+ * `establishDelegatedRegime` decides whether a delegated merge grant is in
+ * force at all, and it read `charter.yaml` and `assurance-modes.yaml` off
+ * DISK, while `readReviewFamilies` read THE SAME `charter.yaml` out of the
+ * object database.
+ *
+ * Measured, one commit, one working-tree edit of one word:
+ *
+ *   committed `delivery-mode: full` (merge-authority delegated-under-conditions)
+ *   with a pair sharing produced-by         -> red, exit 1
+ *   the SAME commit, `delivery-mode: direct-pr` written into the working tree
+ *   and never committed                     -> GREEN, exit 0, and the record
+ *                                              prints "mode direct-pr declares
+ *                                              merge-authority owner, which is
+ *                                              not a delegated grant"
+ *
+ * That is not the exception being bought, it is the ENTIRE decorrelation
+ * requirement being switched off, by an edit no commit records and no diff
+ * shows. It is the same mechanism as CR-M4P11-001 and it is why this round
+ * fixes the mechanism rather than the corpus.
+ *
+ * The worktree arm is the pre-existing behaviour and is unchanged: with no
+ * resolvable ref there is one source of truth and nothing to disagree.
+ */
+function readContextDocumentAt(
+  contextDirectory: string,
+  relativePath: string,
+  source: VerdictCorpusSource,
+): { ok: true; value: unknown; path: string } | { ok: false; reason: string } {
+  if (source.kind !== "commit") {
+    return readContextDocument(contextDirectory, relativePath);
+  }
+  const path = join(contextDirectory, relativePath);
+  const shown = gitIn(["show", `${source.refSha}:./${relativePath}`], contextDirectory);
+  if (!shown.ok) {
+    return {
+      ok: false,
+      reason: `${source.refSha}:./${relativePath} could not be read: ${shown.reason}`,
+    };
+  }
+  const decoded = decodeDocument(shown.stdout, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  return { ok: true, value: decoded.value, path };
+}
+
+/**
+ * Is a context document present AT THE SOURCE the decision is read from?
+ *
+ * SEPARATE FROM READING IT, because "absent" and "present and unreadable" are
+ * different facts with different verdicts one screen down, exactly as
+ * `classifyEntry` keeps them apart on the worktree arm.
+ */
+function contextDocumentPresentAt(
+  contextDirectory: string,
+  relativePath: string,
+  source: VerdictCorpusSource,
+): boolean {
+  if (source.kind !== "commit") {
+    return classifyEntry(join(contextDirectory, relativePath)).kind !== "absent";
+  }
+  const typed = gitIn(
+    ["cat-file", "-t", `${source.refSha}:./${relativePath}`],
+    contextDirectory,
+  );
+  return typed.ok && typed.stdout.trim() === "blob";
+}
+
+/**
+ * Resolve, ONCE, the source every document of one decision is read from.
+ *
+ * EXPORTED because the two merge-precondition checks each resolve it at the
+ * top of their own run and hand the SAME value to the regime reader, the
+ * declaration reader and both corpus loaders. One resolution is what makes
+ * "the halves disagree" unrepresentable rather than merely unlikely.
+ */
+export function resolveCorpusSource(
+  contextDirectory: string,
+  ref = "HEAD",
+): VerdictCorpusSource {
+  const resolved = gitIn(["rev-parse", `${ref}^{commit}`], contextDirectory);
+  return resolved.ok
+    ? { kind: "commit", ref, refSha: resolved.stdout.trim(), scope: REVIEW_DIRECTORY }
+    : { kind: "worktree", reason: resolved.reason, scope: REVIEW_DIRECTORY };
 }
 
 /**
@@ -3672,9 +3758,9 @@ function establishDelegatedRegime(
   checkId: string,
   contextDirectory: string,
   phase: string,
+  source: VerdictCorpusSource,
 ): RegimeOutcome {
-  const charterPresent =
-    classifyEntry(join(contextDirectory, "charter.yaml")).kind !== "absent";
+  const charterPresent = contextDocumentPresentAt(contextDirectory, "charter.yaml", source);
   if (!charterPresent) {
     return {
       kind: "report",
@@ -3685,7 +3771,7 @@ function establishDelegatedRegime(
       ],
     };
   }
-  const charter = readContextDocument(contextDirectory, "charter.yaml");
+  const charter = readContextDocumentAt(contextDirectory, "charter.yaml", source);
   if (!charter.ok) {
     return {
       kind: "violation",
@@ -3711,7 +3797,7 @@ function establishDelegatedRegime(
     };
   }
   const modeId = modeReading.value;
-  const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
+  const modesDocument = readContextDocumentAt(contextDirectory, MODES_DOCUMENT, source);
   if (!modesDocument.ok) {
     return {
       kind: "violation",
@@ -4299,10 +4385,18 @@ export const dualReviewDecorrelation: DerivedCheck = {
        `error`. That is the path DR-0012's grant runs through, and it must never
        report green without knowing the regime. Imposing the same refusal here
        imposed it on a path the grant has nothing to do with. */
+    /* ONE RESOLUTION FOR THE WHOLE DECISION (M4-P11 fix round 1). The regime,
+       the declaration and both corpora are read from THIS value, so no two of
+       them can describe different trees. Resolved before the regime rather
+       than after it because the regime is the first thing that can end the
+       run, and a regime read from an uncommitted charter was measured turning
+       a red correlated pair green at exit 0. */
+    const source = resolveCorpusSource(contextDirectory);
     const regime = establishDelegatedRegime(
       "dual-review-decorrelation",
       contextDirectory,
       phase,
+      source,
     );
     if (regime.kind === "report") {
       return { violations: [], reports: regime.lines };
@@ -4313,7 +4407,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const committed = loadCommittedVerdicts(contextDirectory);
+    const committed = loadCommittedVerdicts(contextDirectory, source);
     if (!committed.ok) {
       return {
         violations: [{ pointer: "#/produced-by", message: committed.reason }],
@@ -4600,7 +4694,13 @@ export const verdictPairApproves: DerivedCheck = {
     const phaseKey = phaseReading.value;
     const phase = verdict?.["phase"] as string;
 
-    const regime = establishDelegatedRegime("verdict-pair-approves", contextDirectory, phase);
+    const source = resolveCorpusSource(contextDirectory);
+    const regime = establishDelegatedRegime(
+      "verdict-pair-approves",
+      contextDirectory,
+      phase,
+      source,
+    );
     if (regime.kind === "report") {
       return { violations: [], reports: regime.lines };
     }
@@ -4620,7 +4720,7 @@ export const verdictPairApproves: DerivedCheck = {
     }
     const headKey = ownHead.value;
 
-    const committed = loadCommittedVerdicts(contextDirectory);
+    const committed = loadCommittedVerdicts(contextDirectory, source);
     if (!committed.ok) {
       return {
         violations: [{ pointer: "#/verdict", message: committed.reason }],
