@@ -777,6 +777,68 @@ test("a verdict carrying a blocking finding reddens the pair predicate even thou
   });
 });
 
+test("a verdict spelled Approve is refused rather than read as an authorisation", () => {
+  /* THE FAIL-OPEN THE CANONICAL READING WOULD HAVE OPENED, and it is the
+     mirror image of the rule the decorrelation check follows. That check
+     REFUSES when two values match, so folding case produces more refusals.
+     This one APPROVES when a value matches, so folding case would produce more
+     APPROVALS. `schemas/verdict.schema.json` forbids `Approve`, and nothing on
+     this gate's path validates the committed siblings, so the schema is not the
+     guard here. */
+  const documents = {
+    "decorrelated-criteria.yaml": fixture("decorrelated-criteria.yaml", [
+      ["verdict: APPROVE", "verdict: Approve"],
+    ]),
+    "decorrelated-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+  };
+  withContext("full", documents, (dir) => {
+    const run = runGate(dir);
+    assert.notEqual(run.status, 0, run.output);
+    assert.match(
+      run.output,
+      /declares verdict Approve, which is not one of the two words the closed vocabulary admits \(APPROVE, FIX-ROUND-NEEDED\)/,
+      run.output,
+    );
+    assert.match(run.output, /\(check: verdict-pair-approves\)/, run.output);
+  });
+});
+
+test("a severity outside the four-word vocabulary is refused rather than treated as non-blocking", () => {
+  /* THE SECOND FAIL-OPEN OF THE SAME SHAPE, one field along. Asking "is this
+     one of the three blocking severities" answers NO for `blocker`, and no is
+     the permissive answer. Two structurally different members of the class
+     "a value the check does not recognise is treated as safe": this one and
+     the `Approve` arm above. */
+  const documents = {
+    "decorrelated-criteria.yaml": mediumFindingBody("blocker"),
+    "decorrelated-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+  };
+  withContext("full", documents, (dir) => {
+    const run = runGate(dir);
+    assert.notEqual(run.status, 0, run.output);
+    assert.match(
+      run.output,
+      /ranks finding CR-001 blocker, which is not one of the four severities the kernel's vocabulary admits \(low, medium, high, critical\)/,
+      run.output,
+    );
+  });
+});
+
+test("a low finding does NOT redden the pair predicate, which is the control the two refusals need", () => {
+  /* Without this, every one of the arms above would also pass a check that
+     reddened on any finding at all, and the vocabulary work would be
+     unmeasured. DR-0012 permits merging with a low finding. */
+  const documents = {
+    "decorrelated-criteria.yaml": mediumFindingBody("low"),
+    "decorrelated-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+  };
+  withContext("full", documents, (dir) => {
+    const run = runGate(dir);
+    assert.equal(run.status, 0, run.output);
+    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
+  });
+});
+
 test("deregistering verdict-pair-approves makes the one-refusing pair pass, and restoring it makes it fail again", () => {
   /* THE KIND B FALSIFICATION (section 2.3 rule 3), and the same shape the
      sibling check's witness has. The script's own `evaluate` is called rather
@@ -923,6 +985,9 @@ test("this phase's behaviors are registered in test/behaviors.json and resolve b
     "verdict-pair-must-approve",
     "verdict-pair-blocking-finding-refused",
     "verdict-pair-approves-registered",
+    "verdict-pair-verdict-vocabulary-exact",
+    "verdict-pair-severity-vocabulary-closed",
+    "verdict-pair-low-finding-mergeable",
     "dual-review-prints-verdict-values",
   ]) {
     assert.ok(

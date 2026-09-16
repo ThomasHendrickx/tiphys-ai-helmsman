@@ -782,5 +782,8 @@
   "verdict-pair-must-approve": "a committed pair in which one verdict reads FIX-ROUND-NEEDED reddens verdict-pair-approves naming that verdict",
   "verdict-pair-blocking-finding-refused": "a committed verdict carrying a finding at medium or above reddens verdict-pair-approves even though no schema validation ran over it",
   "verdict-pair-approves-registered": "verdict-pair-approves resolves by name in the shipped registry for the verdict type and requires a context",
-  "dual-review-prints-verdict-values": "check-dual-review prints each verdict's value, head and produced-by alongside the count of verdicts examined"
+  "dual-review-prints-verdict-values": "check-dual-review prints each verdict's value, head and produced-by alongside the count of verdicts examined",
+  "verdict-pair-verdict-vocabulary-exact": "a committed verdict spelled Approve rather than APPROVE is refused rather than read as an authorisation, because here a canonical match is the permissive direction",
+  "verdict-pair-severity-vocabulary-closed": "a committed finding ranked outside the four-word severity vocabulary is refused rather than treated as non-blocking",
+  "verdict-pair-low-finding-mergeable": "a committed pair carrying only a low finding stays green, which is the control the two vocabulary refusals need"
 }

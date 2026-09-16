@@ -3720,8 +3720,41 @@ export const dualReviewDecorrelation: DerivedCheck = {
  */
 export const BLOCKING_SEVERITIES: readonly string[] = ["medium", "high", "critical"];
 
-/** The verdict word that authorises a merge, canonicalised as `establishField` returns it. */
-const APPROVING_VERDICT = "approve";
+/**
+ * The whole severity vocabulary, canonicalised, and the reason it exists BESIDE
+ * the blocking list rather than being inferred from it.
+ *
+ * WITHOUT IT, AN UNRECOGNISED SEVERITY IS SILENTLY NON-BLOCKING. `includes` over
+ * the blocking three answers "is this one of the three", and a review ranking a
+ * defect `blocker`, `sev1` or `showstopper` gets `false` from that question and
+ * sails through. The verdict schema forbids those words, and nothing on this
+ * gate's path validates the committed siblings, so the schema is not the guard
+ * here. Under a delegated grant an unrecognised severity has not been shown
+ * non-blocking, and unshown must be refused; the four words are the ones
+ * `schemas/verdict.schema.json` and `schemas/finding.schema.json` share.
+ */
+const SEVERITY_VOCABULARY: readonly string[] = ["low", "medium", "high", "critical"];
+
+/**
+ * The closed verdict vocabulary, exactly as `schemas/verdict.schema.json` spells
+ * it, and the one word in it that authorises a merge.
+ *
+ * WHY THE RAW SPELLING IS CHECKED HERE AND CANONICALISATION IS NOT ENOUGH, which
+ * is the opposite of the rule the decorrelation check follows one screen up and
+ * is opposite for a reason that is worth stating rather than looking like an
+ * inconsistency. THAT check REFUSES when two values are the same, so collapsing
+ * more spellings onto one value produces MORE refusals and is fail-CLOSED. THIS
+ * check APPROVES when a value equals one particular word, so collapsing produces
+ * more APPROVALS and is fail-OPEN: a sibling reading `Approve`, which
+ * `schemas/verdict.schema.json` forbids and which nothing on this path
+ * validates, would canonicalise to `approve` and be read as an authorisation.
+ * The direction of the comparison decides the direction of the collapse.
+ *
+ * So the canonical reading is still used to ESTABLISH that a value is there and
+ * is comparable, and the RAW string then has to be one of the two words.
+ */
+const VERDICT_VOCABULARY: readonly string[] = ["APPROVE", "FIX-ROUND-NEEDED"];
+const APPROVING_VERDICT = "APPROVE";
 
 /**
  * DR-0012 CONDITION 2, MADE INTO A PREDICATE
@@ -3837,11 +3870,19 @@ export const verdictPairApproves: DerivedCheck = {
           pointer: "#/verdict",
           message: `${candidate.path} ${unestablishedReason(reading, "verdict") as string}, so whether this review approves the merge could not be established, and a merge check that cannot read a verdict must not report the pair clean`,
         });
-      } else if (reading.value !== APPROVING_VERDICT) {
-        violations.push({
-          pointer: "#/verdict",
-          message: `${candidate.path} reads ${candidate.record["verdict"] as string} for phase ${phase} at head ${headKey}, so the pair does not approve this head and the delegated grant's condition 2 is not met`,
-        });
+      } else {
+        const raw = candidate.record["verdict"] as string;
+        if (!VERDICT_VOCABULARY.includes(raw)) {
+          violations.push({
+            pointer: "#/verdict",
+            message: `${candidate.path} declares verdict ${raw}, which is not one of the two words the closed vocabulary admits (${VERDICT_VOCABULARY.join(", ")}), so it cannot be read as an authorisation however it is spelled`,
+          });
+        } else if (raw !== APPROVING_VERDICT) {
+          violations.push({
+            pointer: "#/verdict",
+            message: `${candidate.path} reads ${raw} for phase ${phase} at head ${headKey}, so the pair does not approve this head and the delegated grant's condition 2 is not met`,
+          });
+        }
       }
       violations.push(...blockingFindings(candidate, phase, headKey));
     }
@@ -3908,9 +3949,16 @@ function blockingFindings(
       });
       continue;
     }
+    const id = establishField(finding, "id");
+    const named = id.kind === "established" ? (finding["id"] as string) : `at index ${String(index)}`;
+    if (!SEVERITY_VOCABULARY.includes(severity.value)) {
+      out.push({
+        pointer: `#/findings/${String(index)}/severity`,
+        message: `${candidate.path} ranks finding ${named} ${severity.value}, which is not one of the four severities the kernel's vocabulary admits (${SEVERITY_VOCABULARY.join(", ")}), so whether it blocks the merge could not be established`,
+      });
+      continue;
+    }
     if (BLOCKING_SEVERITIES.includes(severity.value)) {
-      const id = establishField(finding, "id");
-      const named = id.kind === "established" ? (finding["id"] as string) : `at index ${String(index)}`;
       out.push({
         pointer: `#/findings/${String(index)}/severity`,
         message: `${candidate.path} carries finding ${named} at severity ${severity.value} for phase ${phase} at head ${headKey}, and a delegated grant is not satisfied while a review carries an unresolved finding at ${BLOCKING_SEVERITIES.join(", ")}`,
