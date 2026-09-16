@@ -1,24 +1,36 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
+  "id": "cutover-drain-counts-the-undecidable",
+  "behavior": "cutover-drain-counts-the-undecidable",
   "class": "classification",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "drain counts the entries it cannot decide rather than reading them as finished"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "    if (metaRead.kind === \"refused\") {",
+      "replace": "    if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "    if (turnEnd.kind === \"regular\") {\n      continue;\n    }\n    items.push({",
+      "replace": "    if (turnEnd.kind !== \"absent\" && turnEnd.kind !== \"dangling\") {\n      continue;\n    }\n    items.push({"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    if (status === \"closed\") {\n      continue;\n    }\n    if (status !== \"open\") {",
+      "replace": "    if (status !== \"open\") {\n      continue;\n    }\n    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (probe.kind === \"other\") {\n    return {\n      kind: \"unexaminable\",\n      reason: `${path} is not a directory, so its contents could not be enumerated`,\n    };\n  }",
+      "replace": "  if (probe.kind === \"other\") {\n    return { kind: \"listed\", names: [] };\n  }"
     }
   ],
   "consumesExternalOutput": {

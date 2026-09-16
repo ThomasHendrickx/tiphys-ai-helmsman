@@ -1,24 +1,24 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
-  "class": "classification",
+  "id": "cutover-unmoved-switch-untouched",
+  "behavior": "cutover-rollback-leaves-an-unmoved-switch-byte-identical",
+  "class": "destructive",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "a switch the rollback does not move is left byte-identical"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "    if (change.from === change.to) {",
+      "replace": "    if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "      nextSwitches[name] = record;",
+      "replace": "      nextSwitches[name] = { ...record, flippedAt: options.now, flippedBy: options.by };"
     }
   ],
   "consumesExternalOutput": {

@@ -1,24 +1,24 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
-  "class": "classification",
+  "id": "cutover-request-out-guarded",
+  "behavior": "cutover-restore-request-out-refuses-a-non-regular-path",
+  "class": "destructive",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "the owner restore request refuses to write to a path that is not a regular file"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "file": "src/commands/cutover.ts",
+      "find": "    const refusal = refuseOpenForWrite(target);\n    if (refusal !== undefined) {\n      return fail(refusal, 1);\n    }",
+      "replace": ""
     },
     {
       "kind": "mutation",
-      "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "file": "src/commands/cutover.ts",
+      "find": "    const target = resolve(out);\n",
+      "replace": "    const target = resolve(out);\n    writeFileSync(target, outcome.text);\n"
     }
   ],
   "consumesExternalOutput": {

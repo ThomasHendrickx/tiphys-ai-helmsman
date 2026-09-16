@@ -37,7 +37,7 @@ import {
   syncFleetState,
   type RollbackTrigger,
 } from "../cutover.ts";
-import { readRegularFileIfPresent } from "../task.ts";
+import { readRegularFileIfPresent, refuseOpenForWrite } from "../task.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
 export const EX_USAGE = 64;
@@ -174,6 +174,11 @@ function cmdRollback(parsed: ParsedArgs): number {
   const sync = syncFleetState(fleet.root, {
     allowNoRemote: parsed.flags.has("--allow-no-remote"),
     message: `cutover rollback: ${triggerValue}`,
+    /* The ONE file this command changed. Trigger 1 fires precisely when
+       in-flight work exists, so the fleet is dirty by construction and a
+       rollback that staged everything would commit somebody else's half-done
+       work under the rollback's message. */
+    paths: ["cutover.json"],
   });
   const lines: string[] = [];
   /* Iterate the CLOSED list rather than the object's keys: the five names and
@@ -232,7 +237,15 @@ function cmdRestoreFiles(parsed: ParsedArgs): number {
   if (!outcome.ok) {
     return fail(outcome.reason, 1);
   }
-  process.stdout.write(`RESTORED ${from} ${outcome.roots.join(" ")}\n`);
+  /* The removals are printed rather than folded into RESTORED. A restore that
+     deleted files is a different event from one that only rewrote them, and a
+     reader who cannot tell them apart cannot check the result. */
+  for (const path of outcome.removed) {
+    process.stdout.write(`REMOVED-AFTER-FREEZE ${path}\n`);
+  }
+  process.stdout.write(
+    `RESTORED ${from} ${outcome.roots.join(" ")} (${String(outcome.removed.length)} post-freeze addition(s) removed)\n`,
+  );
   return 0;
 }
 
@@ -269,7 +282,16 @@ function cmdRestoreRequest(parsed: ParsedArgs): number {
   if (out === undefined) {
     process.stdout.write(outcome.text);
   } else {
-    writeFileSync(resolve(out), outcome.text);
+    const target = resolve(out);
+    /* THE ONE ANSWER TO "may this path be opened" applies to this write too.
+       `--out` is an operator-supplied path, and opening a named pipe for
+       writing blocks exactly as reading one does (src/task.ts:152). This was
+       the only write in the phase that went straight to an unprobed path. */
+    const refusal = refuseOpenForWrite(target);
+    if (refusal !== undefined) {
+      return fail(refusal, 1);
+    }
+    writeFileSync(target, outcome.text);
     process.stdout.write(`REQUEST ${out} ${String(outcome.fields)} field(s)\n`);
   }
   return 0;

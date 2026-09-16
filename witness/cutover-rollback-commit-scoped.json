@@ -1,24 +1,24 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
-  "class": "classification",
+  "id": "cutover-rollback-commit-scoped",
+  "behavior": "cutover-rollback-commit-is-scoped-to-the-switch-file",
+  "class": "destructive",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "the rollback commit carries cutover.json and nothing else"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "  const add = runGit(fleetRoot, [\"add\", \"--\", ...options.paths]);",
+      "replace": "  const add = runGit(fleetRoot, [\"add\", \"-A\"]);"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "  if (already.length > 0) {",
+      "replace": "  if (already.length > 99) {"
     }
   ],
   "consumesExternalOutput": {

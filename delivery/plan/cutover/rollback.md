@@ -58,8 +58,30 @@ published by one rename, so a failure part way through leaves the file holding
 the five values it held before. A per-switch write would leave three switches
 saying `kernel` and two saying `current`, which describes a process with no
 owner for three of its five authorities. The implementation is at
-src/cutover.ts:220 and the two witnesses are at test/cutover.test.ts:135 and
-test/cutover.test.ts:177.
+src/cutover.ts:253 and the witnesses are at test/cutover.test.ts:215,
+test/cutover.test.ts:257 and test/cutover.test.ts:1022.
+
+**Three witnesses rather than two, and the third was added in the fix round
+because the first two did not assert the rename.** Both original witnesses
+exercise the ORDER of operations: one throws part way through the in-memory
+assembly, the other refuses a bad input before the assembly. A clean-room
+reviewer measured that replacing the whole publish with an ordinary in-place
+write left `node --test test/cutover.test.ts` at 27 tests, 27 pass, 0 fail,
+exit 0, so the ATOMIC sentence above was carried by prose and not by a test.
+The third witness puts a symlink at the destination and requires the published
+file to be a REGULAR file with a new inode and the symlink's target
+byte-identical, which an in-place write cannot satisfy.
+
+**The rollback never moves a switch toward `kernel`.** Running the same trigger
+twice reports no change the second time rather than flipping the switches
+forward, and a switch this rollback does not move comes out of it
+byte-identical. Both are asserted at test/cutover.test.ts:875 and
+test/cutover.test.ts:920.
+
+**The commit this step makes carries `cutover.json` and nothing else.** Trigger
+1 fires when in-flight work exists, so the fleet is dirty by construction and a
+rollback that staged everything would publish an operator's half-written work
+under the rollback's name. Asserted at test/cutover.test.ts:1168.
 
 ## Two subjects, not one
 

@@ -1,24 +1,30 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
-  "class": "classification",
+  "id": "cutover-restore-is-verified",
+  "behavior": "cutover-restore-removes-post-freeze-additions-and-verifies",
+  "class": "destructive",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "restoring a retirement root removes what was added after the freeze and verifies the result"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "  if (postFreeze.length > 0) {",
+      "replace": "  if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "  return { ok: true, roots, removed: postFreeze };",
+      "replace": "  return { ok: true, roots, removed: [] };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    \"--no-renames\",\n    sha,",
+      "replace": "    sha,"
     }
   ],
   "consumesExternalOutput": {
