@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (group.length < 2) {\n      violations.push({\n        pointer: \"#/phase\",",
-      "replace": "    if (false) {\n      violations.push({\n        pointer: \"#/phase\","
+      "find": "    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];\n    if (group.length < 2) {\n      violations.push({\n        pointer: \"#/phase\",",
+      "replace": "    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];\n    if (false) {\n      violations.push({\n        pointer: \"#/phase\","
     },
     {
       "kind": "mutation",
