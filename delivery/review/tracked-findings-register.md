@@ -465,3 +465,39 @@ tracked because it is not that phase's:
 - **The reachability judgements are the orchestrator's**, made from the
   reviewers' own descriptions rather than by re-deriving each finding. A wrong
   description produces a wrong judgement here and this file would not show it.
+
+## A finding partially verified, and the half that could not be
+
+### M4-P1 CR-002, re-measured by the orchestrator 2026-09-16
+
+The reviewer reported two things in one MEDIUM. They have different evidential
+status and flattening them would be wrong.
+
+**CONFIRMED.** The fixture count is stale. The work history says "THIRTY-EIGHT
+fixture files ... counted with `git ls-files test/fixtures/harness-probe | wc -l`"
+at delivery/work-history/m4-p1.md:671. Run today, that exact command returns
+**44**. `find` agrees at 44, untracked is 0 and ignored is 0, so this is not a
+tracked-versus-on-disk artifact, which was my first hypothesis and was wrong.
+The tree grew after the sentence was written. That is binding convention 5's own
+defect, a count pinned over a growing set, inside the criterion whose subject is
+evidence integrity.
+
+**NOT CONFIRMED BY ME.** The reviewer also reported that six of those fixtures
+carry 73 UNDECLARED glyph substitutions. I could not verify it and I state why
+rather than repeating it as established: every tracked fixture under that tree is
+pure ASCII, measured, zero files with a byte above 127. That result is equally
+consistent with "nothing needed transliterating" and with "six files were
+transliterated and not declared".
+
+**The reason it is unverifiable from the committed bytes is the rule's own
+point.** CLAUDE.md says silent transliteration is "after the fact
+indistinguishable from fabricated evidence". This is that sentence being true in
+practice: the act destroys its own evidence, so a later reader with only the
+repository cannot tell. The reviewer presumably compared against source captures
+it could still reach; whatever it compared against is not in the tree.
+
+**What the fix round is owed, therefore, is different for the two halves.** The
+count is a one-line correction. The substitution claim needs the reviewer's
+comparison reproduced, or the fixtures re-derived from their sources with the
+declaration regenerated. Treating the second as settled because the first is
+would be the error this entry exists to prevent.
