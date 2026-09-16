@@ -156,6 +156,25 @@ one command.
    pattern ^(?:M([0-9]+)-P[0-9]+)$ did not complete within 250ms against a value of length 5
    ```
 
+4. The M4-P13 clean-room reviewer, load 55 to 67 on nproc 4, hitting **two more
+   patterns, different again from both**, and reporting that both tests pass IN
+   ISOLATION on the same tree, interpreter and build state at load 67:
+
+   ```
+   ^(?:DR-[0-9]{4}|D-[0-9]+|M2-D-[0-9]+)$   against a 2-character value
+   ^(?:parked)$                             against a 5-character value
+   ```
+
+   **`^(?:parked)$` is the member that ends the argument.** It is a literal
+   string, anchored at both ends, with no quantifier, no character class and no
+   alternation. There is no input on which it can backtrack, because there is
+   nothing to backtrack over. A 250 ms budget cannot be exceeded by matching a
+   six-character literal against a five-character value except by the process
+   not running.
+
+   Four witnesses, six structurally different patterns, three different agents
+   and one orchestrator, on three occasions. The class rule asks for two.
+
 ### Those two patterns cannot backtrack, so the red is false BY CONSTRUCTION
 
 The budget at src/gates/coverage.ts:235 is `REGEX_EXEC_TIMEOUT_MS = 250`,
@@ -165,10 +184,19 @@ applied as a wall-clock `timeout` at src/gates/coverage.ts:257 and reported as
 
 Measured, on this box, at load average 33:
 
-| pattern | input | 1,000,000 executions | per execution |
-|---|---|---|---|
-| `^(?:R-[0-9]+[a-z]?)$` | `R-094a` | 154.2 ms | **0.000154 ms** |
-| `^(?:M([0-9]+)-P[0-9]+)$` | `M3-P1` | 49.3 ms | **0.000049 ms** |
+| pattern | input | 1,000,000 executions | per execution | budget / this |
+|---|---|---|---|---|
+| `^(?:R-[0-9]+[a-z]?)$` | `R-094a` | 154.2 ms | **0.000154 ms** | 1,621,000x |
+| `^(?:M([0-9]+)-P[0-9]+)$` | `M3-P1` | 49.3 ms | **0.000049 ms** | 5,071,000x |
+| `^(?:parked)$` | `parked` | 93.8 ms | **0.000094 ms** | 2,665,000x |
+| `^(?:DR-[0-9]{4}\|D-[0-9]+\|M2-D-[0-9]+)$` | `D-15` | 69.4 ms | **0.000069 ms** | 3,602,000x |
+
+The per-execution column is the total divided by 1,000,000. That is stated
+because the throwaway script that produced these first printed the total divided
+by 1,000 and labelled it "each", which would have understated the margin by
+three orders of magnitude in the direction that makes the gate look defensible.
+The figures above are recomputed; the script's label was wrong and its totals
+were not.
 
 A MILLION executions of the first fit inside the budget meant for ONE. A single
 execution is roughly 1.6 million times under it. Both patterns are anchored,
