@@ -25,6 +25,8 @@
  * PLAN DEFECT to escalate, not a script to add quietly.
  */
 
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -2902,7 +2904,7 @@ export const DECORRELATION_DIMENSIONS: readonly string[] = [
 /** The merge-authority value that makes decorrelation a precondition of merge. */
 export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
 
-interface LoadedVerdict {
+export interface LoadedVerdict {
   path: string;
   record: Record<string, unknown>;
 }
@@ -3453,6 +3455,366 @@ function establishDelegatedRegime(
   return { kind: "delegated" };
 }
 
+/* ------------------------------------------------------------------ */
+/* review-families: DR-0038's declared single-family exception (M4-P11) */
+/* ------------------------------------------------------------------ */
+
+/** The charter field DR-0038's declaration lives in (M4-D-28). */
+export const REVIEW_FAMILIES_FIELD = "review-families";
+
+/** The document that carries it. */
+export const CHARTER_DOCUMENT = "charter.yaml";
+
+/**
+ * Where a declaration was read from, so a claim nobody can refute is at least
+ * ATTRIBUTABLE AND DATED.
+ *
+ * This is the honest half of DR-0038's third constraint. Two falsifiers below
+ * catch a project whose own record contradicts the declaration. NEITHER of
+ * them catches a project that HAS a second family available and has simply
+ * never used it, and nothing inside the record can: the record holds what was
+ * used, not what was reachable. So the countermeasure for that residue is
+ * provenance rather than detection, on the src/gates/release.ts:1028 pattern,
+ * and the gap is stated here rather than left to be found.
+ */
+export interface ReviewFamiliesProvenance {
+  /** The path inside the commit, as `git show` was asked for it. */
+  path: string;
+  /** The ref the declaration was read from, as the caller spelled it. */
+  ref: string;
+  /** That ref resolved to a commit sha. */
+  refSha: string;
+  /** sha256 of the exact blob bytes the declaration was decoded from. */
+  sha256: string;
+}
+
+/**
+ * What reading `review-families` produced.
+ *
+ * THREE OUTCOMES AND NOT TWO, for the reason `RegimeOutcome` gives one screen
+ * up: "no declaration" and "a declaration that could not be established" are
+ * different facts. The first leaves DR-0012 condition 1 applying unchanged,
+ * which is a REPORT-nothing. The second is an ERROR, because a check that
+ * cannot establish whether an exception applies must never decide that it does
+ * not apply and carry on (M2-C-3).
+ */
+export type ReviewFamiliesReading =
+  | { kind: "absent" }
+  | { kind: "error"; reason: string }
+  | {
+      kind: "declared";
+      /** Canonicalised, deduplicated by construction, sorted. Compared. */
+      families: string[];
+      /** The operator's own spelling, in document order. Printed. */
+      declaredAs: string[];
+      reason: string;
+      provenance: ReviewFamiliesProvenance;
+    };
+
+function gitIn(
+  args: string[],
+  cwd: string,
+): { ok: true; stdout: string } | { ok: false; reason: string } {
+  /* The buffer is raised because a charter is an operator document with no
+     declared size bound, and a truncated read would decode as a DIFFERENT
+     document rather than as a failure. */
+  const run = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (run.error !== undefined) {
+    return { ok: false, reason: `git ${args.join(" ")} could not be run: ${String(run.error)}` };
+  }
+  if (run.status !== 0) {
+    return {
+      ok: false,
+      reason: `git ${args.join(" ")} exited ${String(run.status)}: ${(run.stderr ?? "").replace(/\s+/g, " ").trim()}`,
+    };
+  }
+  return { ok: true, stdout: run.stdout ?? "" };
+}
+
+/**
+ * Is a `review-families` key present in the WORKING TREE's charter?
+ *
+ * Asked for exactly one purpose: to tell "this project makes no declaration"
+ * apart from "this project makes a declaration that is not committed". The
+ * first is absence and changes nothing. The second is an ERROR, because the
+ * whole value of the exception over a silent one is that a reader can check
+ * it, and an uncommitted claim is one nothing can be checked against.
+ */
+function treeDeclaresReviewFamilies(contextDirectory: string): boolean {
+  const tree = readContextDocument(contextDirectory, CHARTER_DOCUMENT);
+  if (!tree.ok) {
+    return false;
+  }
+  const record = asRecord(tree.value);
+  return record !== undefined && REVIEW_FAMILIES_FIELD in record;
+}
+
+/**
+ * Read DR-0038's declaration OUT OF THE GIT OBJECT DATABASE, never out of the
+ * working tree.
+ *
+ * WHY THE COMMITTED BLOB IS THE ONLY ONE THAT COUNTS. This is the anti-widening
+ * rule the scope auditor and `loadDeclaration` (src/gates/release.ts:812) both
+ * already apply, one condition along: a phase must not be able to switch off,
+ * inside its own working tree, the condition that would otherwise have refused
+ * its merge. A declaration read from disk is one an implementer can add,
+ * merge under, and delete, leaving a merged head whose record says the
+ * cross-family requirement was met.
+ *
+ * `HEAD:./charter.yaml` AND NOT `HEAD:charter.yaml`, and the difference is not
+ * cosmetic. A path without the leading `./` is resolved against the repository
+ * ROOT, so a context directory that happens to sit inside a larger repository
+ * (which every fixture staged under a checkout does) would silently read that
+ * repository's charter instead of its own. With `./` git resolves relative to
+ * the directory it was run in, which is the one the caller named.
+ */
+export function readReviewFamilies(
+  contextDirectory: string,
+  ref = "HEAD",
+): ReviewFamiliesReading {
+  const resolved = gitIn(["rev-parse", `${ref}^{commit}`], contextDirectory);
+  const relativePath = `./${CHARTER_DOCUMENT}`;
+  if (!resolved.ok) {
+    if (treeDeclaresReviewFamilies(contextDirectory)) {
+      return {
+        kind: "error",
+        reason:
+          `${join(contextDirectory, CHARTER_DOCUMENT)} declares ${REVIEW_FAMILIES_FIELD} in the working tree and ` +
+          `${contextDirectory} has no resolvable git ref ${ref}, so the declaration cannot be attributed to a ` +
+          `commit; an exception read from an uncommitted file is error, never permission (${resolved.reason})`,
+      };
+    }
+    return { kind: "absent" };
+  }
+  const refSha = resolved.stdout.trim();
+  const shown = gitIn(["show", `${refSha}:${relativePath}`], contextDirectory);
+  if (!shown.ok) {
+    if (treeDeclaresReviewFamilies(contextDirectory)) {
+      return {
+        kind: "error",
+        reason:
+          `${join(contextDirectory, CHARTER_DOCUMENT)} declares ${REVIEW_FAMILIES_FIELD} in the working tree and ` +
+          `${refSha}:${relativePath} could not be read, so the declaration is not committed and cannot be ` +
+          `attributed; an exception read from an uncommitted file is error, never permission (${shown.reason})`,
+      };
+    }
+    return { kind: "absent" };
+  }
+  const body = shown.stdout;
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  const provenance: ReviewFamiliesProvenance = {
+    path: CHARTER_DOCUMENT,
+    ref,
+    refSha,
+    sha256,
+  };
+  const decoded = decodeDocument(body, join(contextDirectory, CHARTER_DOCUMENT));
+  if (!decoded.ok) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} does not decode, so whether it declares ${REVIEW_FAMILIES_FIELD} could not be established: ${decoded.reason}`,
+    };
+  }
+  const charter = asRecord(decoded.value);
+  if (charter === undefined || !(REVIEW_FAMILIES_FIELD in charter)) {
+    return { kind: "absent" };
+  }
+  const declaration = asRecord(charter[REVIEW_FAMILIES_FIELD]);
+  if (declaration === undefined) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} carries ${REVIEW_FAMILIES_FIELD} and it is not a map, so no declared family set can be read from it`,
+    };
+  }
+  const reasonReading = establishField(declaration, "reason");
+  if (reasonReading.kind !== "established") {
+    return {
+      kind: "error",
+      reason:
+        `${refSha}:${relativePath} ${unestablishedReason(reasonReading, `${REVIEW_FAMILIES_FIELD}.reason`) as string}; ` +
+        `narrowing an owner-reserved merge condition costs a stated reason, so a declaration without one is error`,
+    };
+  }
+  const available = declaration["available"];
+  if (!Array.isArray(available) || available.length === 0) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} declares ${REVIEW_FAMILIES_FIELD}.available as ${Array.isArray(available) ? "an empty list" : "not a list"}, so no family set can be read from it`,
+    };
+  }
+  const families: string[] = [];
+  const declaredAs: string[] = [];
+  for (let index = 0; index < available.length; index += 1) {
+    const entry = available[index];
+    /* Each entry goes through the SAME canonical form a verdict's
+       `produced-by` goes through, because the two are compared to each other
+       below. A declaration canonicalised one way and an observation
+       canonicalised another is the fix-round-2 mechanism with two documents
+       instead of one. */
+    const reading = establishField({ entry }, "entry");
+    if (reading.kind !== "established") {
+      return {
+        kind: "error",
+        reason: `${refSha}:${relativePath} ${unestablishedReason(reading, `${REVIEW_FAMILIES_FIELD}.available[${String(index)}]`) as string}, so the declared family set cannot be compared with what the verdicts carry`,
+      };
+    }
+    if (families.includes(reading.value)) {
+      /* REFUSED RATHER THAN DEDUPLICATED, and the direction is why. The
+         exception applies when exactly ONE family is declared, so collapsing
+         `[Anthropic, anthropic]` to one entry would turn a document that reads
+         as two families into a single-family declaration. That is the only
+         canonicalisation in this file that would be fail-OPEN, so it is a
+         refusal instead. */
+      return {
+        kind: "error",
+        reason: `${refSha}:${relativePath} lists ${String(entry)} in ${REVIEW_FAMILIES_FIELD}.available more than once once canonicalised, so how many families it declares cannot be established`,
+      };
+    }
+    families.push(reading.value);
+    declaredAs.push(String(entry));
+  }
+  return {
+    kind: "declared",
+    families: [...families].sort(),
+    declaredAs,
+    reason: declaration["reason"] as string,
+    provenance,
+  };
+}
+
+/** One line naming where a declaration came from, for a detail or a report. */
+export function reviewFamiliesProvenanceLine(provenance: ReviewFamiliesProvenance): string {
+  return (
+    `declaration ${provenance.path} read from ${provenance.ref} ` +
+    `(${provenance.refSha}), blob sha256 ${provenance.sha256}`
+  );
+}
+
+/** What the single-family arm concluded about one committed corpus. */
+export type SingleFamilyOutcome =
+  | { kind: "not-declared" }
+  | { kind: "error"; reason: string }
+  | { kind: "refused"; violations: Diagnostic[] }
+  | {
+      kind: "exempt";
+      family: string;
+      reading: Extract<ReviewFamiliesReading, { kind: "declared" }>;
+      reports: string[];
+    };
+
+/**
+ * DR-0038's exception, and its two falsifiers, over one committed corpus.
+ *
+ * THE EXCEPTION NARROWS EXACTLY ONE DIMENSION. `produced-by` stops being
+ * required to differ. `framing` and `review-contract` are untouched, because
+ * T-007's whole finding is that model decorrelation and CONTRACT decorrelation
+ * are different properties: a single-family environment still has two framings
+ * and two contracts available to it, so relaxing those would be relaxing
+ * something the environment does not force.
+ *
+ * FALSIFIER 1, CONTRADICTION BY THE CORPUS. If the project's own committed
+ * verdicts carry two or more distinct canonicalised `produced-by` values, the
+ * declaration is contradicted by the project's own record and this is RED. A
+ * project that has demonstrably used two cannot claim one.
+ *
+ * FALSIFIER 2, THE NAME MUST MATCH. A verdict whose `produced-by` canonicalises
+ * to anything other than the declared family is RED. Without this, a
+ * declaration could name a family nothing in the record uses and still buy the
+ * relaxation.
+ *
+ * THE SCOPE IS THE WHOLE COMMITTED CORPUS, NOT THE ONE (phase, head) GROUP,
+ * and that is deliberate. "This project has one family available" is a claim
+ * about the project, so the widest set of its own verdicts is what can refute
+ * it. Scoping the falsifiers to the group under review would let a project
+ * whose history carries three families declare one, provided the two reviews
+ * in front of the check happened to agree.
+ *
+ * WHAT IT DOES NOT CATCH, said here and not only in the plan: a project with a
+ * second family AVAILABLE that has simply never used it. Nothing in a record of
+ * what WAS used reaches what COULD have been used. `readReviewFamilies` answers
+ * that with provenance rather than detection: the claim is attributable to a
+ * commit and a blob, so it is dated and signed even where it is not refutable.
+ */
+export function singleFamilyException(
+  contextDirectory: string,
+  corpus: readonly LoadedVerdict[],
+): SingleFamilyOutcome {
+  const reading = readReviewFamilies(contextDirectory);
+  if (reading.kind === "error") {
+    return { kind: "error", reason: reading.reason };
+  }
+  if (reading.kind === "absent") {
+    /* AN ABSENT DECLARATION IS NOT PERMISSION. src/gates/release.ts:1037 states
+       the rule for the sibling case; here it means the cross-family requirement
+       applies unchanged, so a same-family pair stays red. */
+    return { kind: "not-declared" };
+  }
+  if (reading.families.length !== 1) {
+    /* A declaration of TWO OR MORE families is a valid declaration and it is
+       not this exception. The environment says it has more than one, so
+       DR-0012 condition 1 is satisfiable honestly and nothing is narrowed. */
+    return { kind: "not-declared" };
+  }
+  const declared = reading.families[0] as string;
+  const provenance = reviewFamiliesProvenanceLine(reading.provenance);
+  const violations: Diagnostic[] = [];
+  const observed = new Map<string, string[]>();
+  for (const candidate of corpus) {
+    const value = establishField(candidate.record, "produced-by");
+    if (value.kind !== "established") {
+      violations.push({
+        pointer: "#/produced-by",
+        message: `${candidate.path} ${unestablishedReason(value, "produced-by") as string}, so it cannot be compared with the single family ${REVIEW_FAMILIES_FIELD} declares, and an exception cannot rest on a verdict that does not say what produced it; ${provenance}`,
+      });
+      continue;
+    }
+    observed.set(value.value, [...(observed.get(value.value) ?? []), candidate.path]);
+  }
+  const distinct = [...observed.keys()].sort();
+  if (distinct.length > 1) {
+    violations.push({
+      pointer: "#/produced-by",
+      message:
+        `${CHARTER_DOCUMENT} declares the single review family ${reading.declaredAs.join(", ")} and the ` +
+        `${String(corpus.length)} verdict(s) committed under ${REVIEW_DIRECTORY} carry ${String(distinct.length)} ` +
+        `distinct produced-by value(s) (${distinct.join(", ")}), so the declaration is contradicted by this ` +
+        `project's own record and the exception does not apply; ${provenance}`,
+    });
+  }
+  for (const value of distinct) {
+    if (value === declared) {
+      continue;
+    }
+    violations.push({
+      pointer: "#/produced-by",
+      /* BOTH SPELLINGS OF THE DECLARED NAME, for the reason the `phase` label
+         one screen down already gives: the canonical form is what was
+         COMPARED and the operator's form is what is in the file they are
+         holding. Printing only the canonical form tells someone whose charter
+         says `Family-A` about a family called `family-a`. */
+      message:
+        `${CHARTER_DOCUMENT} declares the single review family ${reading.declaredAs.join(", ")} ` +
+        `(canonically ${declared}) and ` +
+        `${(observed.get(value) as string[]).sort().join(", ")} carr${(observed.get(value) as string[]).length === 1 ? "ies" : "y"} ` +
+        `produced-by ${value}, which is not the declared family, so the exception does not apply to it; ${provenance}`,
+    });
+  }
+  if (violations.length > 0) {
+    return { kind: "refused", violations };
+  }
+  return {
+    kind: "exempt",
+    family: declared,
+    reading,
+    reports: [
+      `REPORT single-family-declared ${CHARTER_DOCUMENT} declares exactly one review family ` +
+        `(${reading.declaredAs.join(", ")}) and all ${String(corpus.length)} committed verdict(s) carry it, so ` +
+        `produced-by is NOT required to differ; framing and review-contract still are; reason: ${reading.reason}; ` +
+        provenance,
+    ],
+  };
+}
+
 /**
  * DR-0012's merge precondition, made into a comparison a command can make
  * against the verdict FILES rather than against a session's memory (M3R-004).
@@ -3598,6 +3960,37 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
+    /* DR-0038's EXCEPTION IS DECIDED HERE, BEFORE THE GROUP IS ASSEMBLED, AND
+       THE POSITION IS LOAD-BEARING (M4-P11). Both falsifiers are claims about
+       the project's WHOLE committed corpus, not about the pair in front of the
+       check, so they are answerable without a head and they are answered first.
+       Putting them after the head resolution would have made a contradicted
+       declaration invisible on exactly the corpus that contradicts it: this
+       repository's own two real review verdicts predate M4-P10's required
+       `head` field, so the head arm returns before any of this would run.
+
+       A CONTRADICTED DECLARATION RETURNS IMMEDIATELY. It is red either way, so
+       nothing is authorised by the early return, and what a reader needs first
+       is that the project's declaration is false rather than a list of
+       downstream consequences of believing it. */
+    const exception = singleFamilyException(contextDirectory, committed.verdicts);
+    if (exception.kind === "error") {
+      /* M2-C-3. A check that cannot establish whether an exception applies must
+         not decide that it does not and carry on: that would silently impose
+         the strict rule on a project that may have declared honestly, and,
+         worse, would report a normal red that hides an unreadable declaration. */
+      return {
+        violations: [{ pointer: "#/produced-by", message: exception.reason }],
+        reports: [],
+      };
+    }
+    if (exception.kind === "refused") {
+      return { violations: exception.violations, reports: [] };
+    }
+    const exemptDimensions =
+      exception.kind === "exempt" ? new Set<string>(["produced-by"]) : new Set<string>();
+    const exceptionReports = exception.kind === "exempt" ? exception.reports : [];
+
     /* THE JOIN KEY IS NOW (phase, head), WHICH IS M4-P10's FIRST CHANGE. Until
        this line the key was `phase` alone and the DIRECTORY was what scoped a
        set of verdicts to one head, a convention declared in
@@ -3650,6 +4043,16 @@ export const dualReviewDecorrelation: DerivedCheck = {
     }
 
     for (const dimension of DECORRELATION_DIMENSIONS) {
+      if (exemptDimensions.has(dimension)) {
+        /* THE ONE NARROWED DIMENSION (DR-0038, M4-P11). `continue` skips the
+           DISTINCTNESS requirement only, and it is reached only after both
+           falsifiers passed, which means every committed verdict has already
+           been read and found to carry the one declared family. So this is not
+           a dimension that stopped being looked at: it is one that was looked
+           at against a different rule. The two dimensions below are untouched,
+           which is what stops the exception relaxing the whole check. */
+        continue;
+      }
       /* SITE ONE, THE ONE CR-001 REPORTS. ABSENCE IS ITS OWN VERDICT AND IT IS A
          FAIL, and the choice was deliberate rather than inherited.
 
@@ -3691,13 +4094,25 @@ export const dualReviewDecorrelation: DerivedCheck = {
       }
     }
 
+    /* THE REPORT NAMES THE DIMENSIONS ACTUALLY COMPARED, never the constant.
+       Printing the full triple while one of its members was exempt is the
+       sentence DR-0038 exists to stop being written: "distinct on produced-by"
+       about a pair that was not required to be. */
+    const compared = DECORRELATION_DIMENSIONS.filter(
+      (dimension) => !exemptDimensions.has(dimension),
+    );
     return {
       violations,
       reports:
         violations.length > 0
-          ? []
+          ? /* THE EXCEPTION IS PRINTED EVEN ON A RED, because the owner's whole
+               requirement is that nobody can hide it. A red run whose reader
+               cannot see that produced-by was exempt is one where the exception
+               is invisible exactly when the record is being read most closely. */
+            [...exceptionReports]
           : [
-              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${DECORRELATION_DIMENSIONS.join(", ")}`,
+              ...exceptionReports,
+              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}`,
             ],
     };
   },
