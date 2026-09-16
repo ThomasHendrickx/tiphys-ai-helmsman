@@ -8,9 +8,11 @@ A third arm was found while fixing them.
 ## Why this one matters more than its severity says
 
 `.claude/orchestrator-next.mjs` is the mechanism that answers "is there
-unreplicated work in this container", and it exists because of T-027: four
-hundred commits once lived only in a container and nothing noticed. It is the
-guard against the single state no later session can recover from.
+unreplicated work in this container", and it exists because of
+delivery/tuition/T-027-four-hundred-commits-lived-only-in-the-container.md:1,
+where four hundred commits lived only in a container and the stop condition
+reported NOTHING LEFT. It is the guard against the single state no later session
+can recover from.
 
 So a guard that reports "nothing unreplicated" when it could not look is worth
 LESS than no guard, because it is trusted. That is this project's most-recorded
@@ -31,9 +33,10 @@ while the delivered branch is `claude/m4-p15-kernel-charter`, and the first sort
 BEFORE the second, so creating the declared branch would have made the branch
 under review the unwatched one. The worktree watch set carried the identical
 truncation, and the script's own "WORKTREE WATCH SET IS EMPTY" warning fires only
-at ZERO, so a PARTIAL watch set was silent. That is T-014's shape: a watchdog
-pointed at one of several paths is not weak, it is false, because it reports
-quiet at full speed.
+at ZERO, so a PARTIAL watch set was silent. That is the shape recorded at
+delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1: a
+watchdog pointed at one of several paths is not weak, it is false, because it
+reports quiet at full speed.
 
 Member 2, the swallowed failure. `git()` returns the empty string on ANY error
 and `Number.parseInt("") || 0` is 0. The reviewer forced it with one config
@@ -78,7 +81,12 @@ the unreplicated check itself, because it is the state in which the script does
 not KNOW.
 
 The full account of why `git` and `gitTry` both exist is in the source comment
-at .claude/orchestrator-next.mjs:121.
+above `gitTry` in `.claude/orchestrator-next.mjs`, quoted rather than cited for
+a reason worth recording: **no file under `.claude/` can ever be a citation.**
+The gate's own pattern at src/gates/citations.ts:453 requires a path to begin
+with `[A-Za-z0-9_]`, so a leading-dot directory does not match by construction.
+Harness documentation therefore cannot carry a resolving citation to the harness
+it documents, and must reach for something else or be quoted.
 
 ## What this does NOT establish
 
