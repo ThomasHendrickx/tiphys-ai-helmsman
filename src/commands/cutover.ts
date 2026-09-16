@@ -25,6 +25,7 @@ import { resolve } from "node:path";
 import { loadFleet } from "../fleet.ts";
 import {
   CANNOT_SEE,
+  CUTOVER_SWITCHES,
   ROLLBACK_TRIGGERS,
   UNREHEARSABLE_REASON,
   applyRollback,
@@ -175,8 +176,11 @@ function cmdRollback(parsed: ParsedArgs): number {
     message: `cutover rollback: ${triggerValue}`,
   });
   const lines: string[] = [];
-  for (const name of Object.keys(outcome.next.switches)) {
-    lines.push(`SWITCH ${name} ${outcome.next.switches[name as never].state}`);
+  /* Iterate the CLOSED list rather than the object's keys: the five names and
+     their order are the contract, and `Object.keys` would print whatever
+     happened to be in the file. */
+  for (const name of CUTOVER_SWITCHES) {
+    lines.push(`SWITCH ${name} ${outcome.next.switches[name].state}`);
   }
   lines.push(
     items.length === 0 ? "DRAIN clean" : `DRAIN ${String(items.length)} in flight`,
