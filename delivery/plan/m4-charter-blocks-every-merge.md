@@ -224,3 +224,44 @@ conforming verdicts arrive on that pass. A phase that returns APPROVE on the
 first pass is the case to watch: it would merge having never produced the
 artifact, and it is the one that must be sent back for the verdict document
 rather than waved through.
+
+## The chain, walked end to end rather than reasoned about
+
+Measured 2026-09-16 against three real directories, one variable changed each
+time. Exit codes captured directly, NOT through a pipe (see the note below):
+
+| directory | status | exit |
+|---|---|---|
+| this repository, no root charter | **error**, "charter.yaml does not exist" | 21 |
+| the M4-P15 worktree, charter present | **not-applicable**, "no verdict document exists" | 20 |
+| a lab dir with a conforming verdict and no charter | **error**, charter again | 21 |
+
+Three things this settles.
+
+First, M4-P15's charter really does clear the regime refusal: the same command
+that errors against this repository reports not-applicable against a tree that
+has it. The blocker is a blocker and the fix is the fix.
+
+Second, the regime requirement is TWO documents, not one.
+`REGIME_DOCUMENTS` at scripts/check-dual-review.mjs:198 is
+`["charter.yaml", "assurance-modes.yaml"]` and the loop errors on the FIRST one
+absent. This document named only the charter. `assurance-modes.yaml` is already
+on `main`, so nothing is owed, but a reader taking the earlier wording literally
+would have delivered half the prerequisite.
+
+Third, the third row is the one worth keeping: a conforming verdict WITHOUT a
+charter still errors. So the two prerequisites are independent rather than
+sequential, and delivering the verdict documents first buys nothing.
+
+### A note on how the first reading of this was wrong
+
+The first run of the table above reported exit 0 for every row, which would have
+meant a gate reporting `error` and passing. It did not. `$?` was reading the
+exit status of the `tail` at the end of a pipe, not of the gate. The same trap
+misread `scripts/check-authored-bytes.mjs` earlier the same morning.
+
+It is the "usage error read as a clean result" that the fix-round contract's
+item 3 names as one of three things that have bitten this project, and the cost
+here would have been a fabricated defect report against a sound gate. Capture
+the exit code from the command itself, or use `PIPESTATUS`, and never from the
+tail of a pipeline.
