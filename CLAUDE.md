@@ -58,8 +58,12 @@ artifact behind it is treated as unknown.
 - `delivery/` is the build's own paperwork. It is not shipped in the npm
   package and is not a kernel deliverable.
 - `src/`, `bin/`, `test/` are the kernel itself.
-- `schemas/`, `roles/`, `tuition/` at the repository root are reserved for
-  M3 kernel deliverables. Do not populate them early; placeholders only.
+- `schemas/`, `roles/`, `tuition/` at the repository root are SHIPPED M3
+  kernel deliverables. The do-not-populate-early instruction that stood here
+  until 2026-09-16 was FALSE from the day M3 landed, and M4-P23's re-verification
+  pass removed it rather than carrying it into the kernel briefs. Measured:
+  `roles/` holds 7 entries, `schemas/` 17 and `tuition/` 17, none of them
+  placeholders. Extend them through the phase that owns them, never casually.
   The root `tuition/` directory is the future cross-project tuition feed
   and is not the same thing as `delivery/tuition/`, which is this build's
   own failure log.
@@ -787,10 +791,21 @@ Genuinely CI-only, measured, and it is a short list: the macOS smoke job
 here, standing warning 6). Everything else in the bundle runs locally on the
 floor-satisfying toolchain.
 
-**Not yet fully available, stated so nobody reports the rule as met.** Scope
-declaration grants still need their own pull request until M3-P11 ships the
-both-declarations read, because the scope gate reads the declaration from the
-MERGE BASE only. Three of the day's ten pull requests existed for nothing else.
+**CORRECTED 2026-09-16 BY MEASUREMENT (M4-P23): the rule that stood here was
+FALSE and is withdrawn.** It said scope declaration grants still need their own
+pull request, because the scope gate reads the declaration from the MERGE BASE
+only. M3-P11 shipped the both-declarations read. src/gates/scope.ts:110 records
+it: from that phase on the declaration is read from BOTH the merge base and the
+head, an entry ADDED on the head is allowed, and the protection against it is
+that the addition is PRINTED BY NAME for a reviewer to sign off. A removal is
+still refused outright, so the grant is additive only.
+
+So a declaration amendment lands WITH the phase that needs it. The three extra
+pull requests that rule cost in a single day are not owed again. This is the
+worked example of why a retirement re-verifies every rule against `src/` rather
+than carrying it across: an uncorrected rule here would have become a false
+constraint in a kernel brief, where nobody would have a scope gate to check it
+against.
 
 ## Standing environment warnings
 
