@@ -1,0 +1,28 @@
+# HEAD, full suite, node v26.6.0, dist built, invocation: npm test, SECOND run.
+# The container was under load average ~45 on 4 CPUs. The run was SIGTERMed (exit 143)
+# and 27 test FILES aborted with the event-loop message.
+
+x test/watcher.test.ts
+x test/witness.test.ts
+x test/work-history.test.ts
+i tests 351
+i suites 0
+i pass 322
+i fail 2
+i cancelled 27
+i skipped 0
+i todo 0
+i duration_ms 346547.462817
+
+x failing tests:
+
+# a sample of the aborted files:
+test at test/coverage-gate.test.ts:476:1
+x a duplicated inventory id is red naming it, and units count distinct ids rather than occurrences (525.834297ms)
+--
+test at test/coverage-gate.test.ts:516:1
+x a row deleted from both real documents is red against the expected-units floor, and restoring it is green (2094.841338ms)
+--
+test at test/gates.test.ts:1:1
+x test/gates.test.ts (100713.911835ms)
+--

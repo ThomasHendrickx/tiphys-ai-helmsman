@@ -1,0 +1,17 @@
+# BASE commit 6961186, full suite, node v26.6.0, dist built, invocation: npm test.
+# Same collapse shape as HEAD run 2, with NONE of this branch's commits present.
+
+x test/witness.test.ts
+x test/work-history.test.ts
+i tests 376
+i suites 0
+i pass 349
+i fail 0
+i cancelled 27
+i skipped 0
+i todo 0
+i duration_ms 468503.71976
+
+
+# aborted test FILES in this run:
+count: 27
