@@ -1503,3 +1503,97 @@ test("a malformed retirement inventory is refused with a reason rather than thro
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * CLASS: a PORT row's negative-witness command is a LIST OF NON-EMPTY STRINGS
+ * before it is destructured or spawned, and any other shape is a verdict rather
+ * than a throw.
+ *
+ * SECOND DEFECT FOUND BY FIX ROUND 2, AND IT IS THE SAME MECHANISM AS THE
+ * INVENTORY READER. `destination` one line above is tested with
+ * `nonEmptyString`; `negativeWitness` was tested with `.length`, which is a
+ * property read off a value nobody typed. Measured at the fix-round-1 head,
+ * with `evaluatePortRow`'s interface being a `PortResult`:
+ *
+ *   negativeWitness number                  -> THREW TypeError: number 42 is not iterable
+ *   negativeWitness object                  -> THREW TypeError: object is not iterable
+ *   negativeWitness null                    -> THREW TypeError: Cannot read properties of null (reading 'length')
+ *   negativeWitness array of one non-string -> THREW TypeError: The "file" argument must be of type string
+ *
+ * Four throws where a verdict was owed. A retirement inventory is another
+ * phase's file, so its fields are unknown in exactly the way a parsed
+ * document's are, and a throw carries no reason a caller can print.
+ *
+ * MEMBER A is the type test on the command itself (the not-iterable throws).
+ * MEMBER B is the per-element test (the array that is a list, but of the wrong
+ * thing, which reaches spawnSync and throws there instead). Different lines,
+ * different failure, different arm.
+ */
+test("a PORT row whose negative-witness command is not a list of strings is unported, not a throw", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-port-witness-"));
+  try {
+    writeFileSync(join(root, "dest.md"), "the new artifact\n");
+    const shapes: Array<[string, unknown]> = [
+      ["a number", 42],
+      ["an object", { cmd: "true" }],
+      ["null", null],
+      ["a bare string", "true"],
+      ["an empty string", ""],
+      ["an empty list", []],
+      ["a list holding a number", [42]],
+      ["a list whose program is null", [null]],
+      ["a list holding an empty string", ["", "-c", "exit 3"]],
+    ];
+    for (const [label, witness] of shapes) {
+      const row = {
+        id: "R-1",
+        disposition: "PORT",
+        destination: "dest.md",
+        negativeWitness: witness,
+      } as unknown as Parameters<typeof cutover.evaluatePortRow>[0];
+      let result: ReturnType<typeof cutover.evaluatePortRow>;
+      try {
+        result = cutover.evaluatePortRow(row, root);
+      } catch (error) {
+        assert.fail(
+          `negativeWitness ${label}: evaluatePortRow threw instead of returning a verdict: ${
+            error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+          }`,
+        );
+      }
+      assert.equal(
+        result.verdict,
+        "unported",
+        `negativeWitness ${label} must be unported`,
+      );
+      assert.ok(
+        result.reason.length > 0,
+        `negativeWitness ${label}: the refusal must carry a reason`,
+      );
+    }
+
+    /* Control: a real list of strings still runs and still decides, so the
+       refusals above are the type test and not the function being broken. */
+    const good = {
+      id: "R-2",
+      disposition: "PORT",
+      destination: "dest.md",
+      negativeWitness: ["/bin/sh", "-c", "exit 3"],
+    } as unknown as Parameters<typeof cutover.evaluatePortRow>[0];
+    const ported = cutover.evaluatePortRow(good, root);
+    assert.equal(ported.verdict, "ported");
+    assert.match(ported.reason, /exits 3/);
+
+    /* Control: the same real list exiting 0 is still the WEAKER verdict, so the
+       new guard has not swallowed the check it sits in front of. */
+    const weaker = {
+      id: "R-3",
+      disposition: "PORT",
+      destination: "dest.md",
+      negativeWitness: ["/bin/sh", "-c", "exit 0"],
+    } as unknown as Parameters<typeof cutover.evaluatePortRow>[0];
+    assert.equal(cutover.evaluatePortRow(weaker, root).verdict, "unported");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -1196,11 +1196,30 @@ export function evaluatePortRow(
       reason: `destination ${row.destination} does not exist as a file`,
     };
   }
-  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {
+  /* THE COMMAND'S TYPE IS ESTABLISHED BEFORE IT IS DESTRUCTURED OR SPAWNED,
+     and `destination` one line up is why this line looks the way it does: that
+     field is tested with `nonEmptyString`, this one was tested with `.length`,
+     and `.length` is a property read off a value nobody typed. `42` and `{}`
+     are not iterable, so the destructuring below threw
+     `TypeError: ... is not iterable` out of a function whose interface is a
+     PortResult; `null` threw on `.length` before reaching it; and an ARRAY
+     holding a non-string threw inside spawnSync on the "file" argument. Four
+     throws where a verdict was owed. An inventory row is data supplied by
+     another phase's file, so its fields are unknown in the same way a parsed
+     document's are, and a throw carries no reason for the refusal. */
+  if (!Array.isArray(row.negativeWitness) || row.negativeWitness.length === 0) {
     return {
       id,
       verdict: "unported",
       reason: "PORT row carries no negative-witness command",
+    };
+  }
+  if (!row.negativeWitness.every((part) => nonEmptyString(part))) {
+    return {
+      id,
+      verdict: "unported",
+      reason:
+        "PORT row's negative-witness command is not a list of non-empty strings, so it could not be run",
     };
   }
   const [program, ...args] = row.negativeWitness as [string, ...string[]];
