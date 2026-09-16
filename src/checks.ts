@@ -3174,7 +3174,7 @@ function readCommittedVerdicts(
   paths: readonly string[],
   source: VerdictCorpusSource,
 ): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
-  const verdicts: LoadedVerdict[] = [];
+  const documents: CorpusDocument[] = [];
   for (const path of [...paths].sort()) {
     if (!VERDICT_FILE_PATTERN.test(path)) {
       continue;
@@ -3192,47 +3192,66 @@ function readCommittedVerdicts(
           `incomplete and no merge precondition can be decided over it: ${shown.reason}`,
       };
     }
-    keepIfVerdict(verdicts, shown.stdout, join(contextDirectory, path));
+    documents.push({ path: join(contextDirectory, path), body: shown.stdout });
   }
-  return { ok: true, verdicts, source };
+  return { ok: true, verdicts: selectVerdicts(documents), source };
 }
 
 /**
- * The one selection rule, applied to a document body however it was obtained.
+ * One document read out of a corpus, however it was obtained.
  *
- * SHARED BY EVERY ARM ON PURPOSE. Two copies of a selection rule is how the
- * halves of one decision drift apart, which is the mechanism this whole
- * section exists to remove; a third copy lived in
- * `scripts/check-dual-review.mjs` and has been deleted in favour of calling
- * `loadCommittedVerdicts` itself.
+ * THE TWO ARMS CONVERGE HERE AND NOT LATER. Reading is what differs between a
+ * commit and a working tree; SELECTING what counts as a verdict is one rule,
+ * and two copies of a selection rule is how the halves of one decision drift
+ * apart, which is the mechanism this whole section exists to remove. A third
+ * copy lived in `scripts/check-dual-review.mjs` and has been deleted in favour
+ * of calling `loadCommittedVerdicts` itself.
  */
-function keepIfVerdict(verdicts: LoadedVerdict[], body: string, path: string): void {
-  const decoded = decodeDocument(body, path);
-  if (!decoded.ok) {
-    return;
-  }
-  const record = asRecord(decoded.value);
-  /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
-     `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
-     over, so a lookalike character in `kind` does not produce a wrong
-     comparison, it silently removes a document from the comparison. With
-     three verdicts, two of them sharing a model family, dropping one of the
-     correlated pair leaves two distinct ones and a green run. That is the
-     same fail-open outcome as the reported finding, reached by making the
-     check look at less rather than by making it compare wrongly.
+interface CorpusDocument {
+  path: string;
+  body: string;
+}
 
-     Canonicalising ADMITS more documents, which is the fail-closed direction
-     here: more verdicts in the group means more chances to find a shared
-     value, never fewer. A file that is not a verdict at all still fails this
-     test, because no canonical form turns a prose review into `verdict`. */
-  if (record === undefined) {
-    return;
+/**
+ * The one selection rule, applied to every document an arm produced.
+ *
+ * MATERIALISED RATHER THAN STREAMED, and the bound is stated rather than left
+ * to be discovered: the widest corpus is the candidate `.yaml`, `.yml` and
+ * `.json` blobs under `delivery/`, measured at 103 files and 8953667 bytes in
+ * this repository at `79ce63b`, and it is read only when a single-family
+ * declaration has already been established.
+ */
+function selectVerdicts(documents: readonly CorpusDocument[]): LoadedVerdict[] {
+  const verdicts: LoadedVerdict[] = [];
+  for (const { path, body } of documents) {
+    const decoded = decodeDocument(body, path);
+    if (!decoded.ok) {
+      continue;
+    }
+    const record = asRecord(decoded.value);
+    /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
+       `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
+       over, so a lookalike character in `kind` does not produce a wrong
+       comparison, it silently removes a document from the comparison. With
+       three verdicts, two of them sharing a model family, dropping one of the
+       correlated pair leaves two distinct ones and a green run. That is the
+       same fail-open outcome as the reported finding, reached by making the
+       check look at less rather than by making it compare wrongly.
+
+       Canonicalising ADMITS more documents, which is the fail-closed direction
+       here: more verdicts in the group means more chances to find a shared
+       value, never fewer. A file that is not a verdict at all still fails this
+       test, because no canonical form turns a prose review into `verdict`. */
+    if (record === undefined) {
+      continue;
+    }
+    const kindReading = establishField(record, "kind");
+    if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
+      continue;
+    }
+    verdicts.push({ path, record });
   }
-  const kindReading = establishField(record, "kind");
-  if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
-    return;
-  }
-  verdicts.push({ path, record });
+  return verdicts;
 }
 
 /** The pre-existing arm, for a context that is not a git repository. */
@@ -3271,7 +3290,7 @@ function loadVerdictsFromWorktree(
     }
     return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
   }
-  const verdicts: LoadedVerdict[] = [];
+  const documents: CorpusDocument[] = [];
   for (const name of names.sort()) {
     if (!VERDICT_FILE_PATTERN.test(name)) {
       continue;
@@ -3281,9 +3300,9 @@ function loadVerdictsFromWorktree(
     if (!read.ok) {
       continue;
     }
-    keepIfVerdict(verdicts, read.body, path);
+    documents.push({ path, body: read.body });
   }
-  return { ok: true, verdicts, source };
+  return { ok: true, verdicts: selectVerdicts(documents), source };
 }
 
 /**
