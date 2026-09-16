@@ -1,0 +1,24 @@
+{
+  "id": "resume-layout-sets-partition",
+  "behavior": "resume-layout-sets-partition",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "the layout constants partition the fleet directories into ephemeral and durable"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/fleet.ts",
+      "find": "  entry.endsWith(\"/\") ? entry.slice(0, -1) : entry,",
+      "replace": "  entry,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/fleet.ts",
+      "find": "  (name) => !EPHEMERAL_DIRS.includes(name),",
+      "replace": "  () => true,"
+    }
+  ]
+}

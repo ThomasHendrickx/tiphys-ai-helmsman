@@ -1,0 +1,22 @@
+{
+  "id": "resume-leaves-a-live-fleet-untouched",
+  "behavior": "resume-leaves-a-live-fleet-untouched",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "resume leaves a live worktree file and an unexpired lease byte-identical"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/resume-destroy-and-recreate.patch"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/resume.ts",
+      "find": "      steps.push({ name, rebuild: false });",
+      "replace": "      steps.push({ name, rebuild: true });"
+    }
+  ]
+}
