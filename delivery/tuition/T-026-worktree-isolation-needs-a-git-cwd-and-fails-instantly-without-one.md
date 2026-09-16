@@ -267,3 +267,112 @@ entire bill for three repetitions of the same defect is eleven confusing lines
 in a log and a few wasted `git bundle` calls. That is the second postscript
 earning its keep, and it is the argument for fixing the RESPONSE before the
 DETECTOR, one more time.
+
+## Postscript 5: the watchdog that printed only on transitions, so its silence was unreadable
+
+2026-09-16. The watchdog armed after postscript 4 ran for hours and produced
+**zero bytes**. Not a partial log, not a stale log: an output file that did not
+exist on disk while the task status read `running`.
+
+It was doing what it was written to do. It printed on a TRANSITION only, and
+nothing transitioned, so it said nothing. That is defensible logging and it is
+a broken guard, because the reader cannot tell it apart from the two states
+that matter:
+
+| the watchdog is | what it prints |
+|---|---|
+| alive, everything healthy | nothing |
+| dead | nothing |
+
+A guard whose healthy output and whose absence are byte-identical has no
+information content at all. This is the same defect as the four before it, and
+the novel part is that this one could not go red **because it could not go
+anything**: it had no output channel that was ever exercised.
+
+The fix is one line of policy: **print every cycle.** A heartbeat carrying the
+full per-subject table makes silence mean exactly one thing, that the watchdog
+itself has died, and that is a state the reader can act on. The replacement
+also exits with a stated reason when its watch set empties, rather than looping
+silently over nothing, for the same reason.
+
+## Postscript 6: it was also watching the wrong place again, and I nearly assumed otherwise
+
+Found in the same minute, and it is T-014's mistake for the seventh time.
+
+The dead watchdog iterated `<repo>/.claude/worktrees/wf_*` and derived its
+subjects from them. Three review workflows dispatched at 02:11 were measured
+immediately afterwards:
+
+```
+$ ls -d /home/user/tiphys-ai-helmsman/.claude/worktrees/wf_16d43c4d* ...
+ls: cannot access ...: No such file or directory   (all three)
+```
+
+**No worktree, for any of them.** Six reviewers, and a worktree-keyed watchdog
+would have watched none of them while reporting healthily on the older runs
+that did have one. I was about to conclude it covered them, on the reasoning
+that new workflows create worktrees there, which is a PREDICTION and is exactly
+what T-014 says not to do. One `ls` refuted it.
+
+The keying is the lesson. A worktree is something an agent MAY create; a
+transcript is something every dispatched agent HAS, because the harness writes
+it. Key the watch set on the artifact the harness guarantees, not on the one
+the agent might produce. The replacement derives its subjects from
+`<workflows>/wf_*/journal.jsonl` where `started > result`, and its beacon from
+the newest `agent-*.jsonl` mtime in that run.
+
+## Postscript 7: the fourth instance, and the mechanical rule that prevents it
+
+2026-09-16, 02:38. A fix-round workflow for M4-P2 died in **1,302 ms** with the
+same error this entry opens with: "Cannot create agent worktree: not in a git
+repository". Fourth occurrence.
+
+The cause is now precisely stated, because "remember to cd" has demonstrably
+not worked four times:
+
+**The shell working directory RESETS between tool calls.** A `cd` inside one
+Bash call does not persist to the next call, and it does not persist to a
+`Workflow` call either. `Workflow` with `isolation: 'worktree'` reads the
+SESSION working directory, which had reverted to `/home/user`, a directory that
+is not a git repository.
+
+So the rule is not "work in the repository". It is:
+
+> **A Bash `cd` to the repository root must immediately precede any worktree-
+> isolated dispatch, in the same assistant turn, with nothing between them.**
+
+The check costs one line and answers the actual question:
+
+```
+cd /home/user/tiphys-ai-helmsman && pwd && git rev-parse --is-inside-work-tree
+```
+
+The relaunch after that check succeeded. The cost of the failure was small
+because it fails FAST and LOUD, which is the one good property here: 1.3
+seconds and an explicit error, rather than an agent that runs for twenty minutes
+in the wrong place. A failure mode that announces itself is cheap to repeat and
+therefore easy to leave unfixed, which is probably why this is the fourth time.
+
+## Postscript 8: a reviewer's environmental claim, checked and not reproduced
+
+The M4-P2 reviewer explained that it could execute the `red-witness` gate where
+the implementer could not, because "my clone of this repository is NOT shallow
+(the implementer's worktree was)". Its finding stands on its own evidence, which
+is an executed gate run, and nothing below weakens it.
+
+The environmental half did not reproduce here:
+
+```
+main clone shallow?      false
+agent worktree shallow?  false
+orchestrator worktree?   false
+commits reachable from origin/main: 295
+```
+
+Nothing in this container is a shallow clone. Either the implementer made its
+own clone with `--depth`, which is invisible from here, or the reviewer inferred
+the cause of a failure it saw rather than measuring it. This is recorded because
+the difference matters for the next implementer: if worktrees WERE shallow, then
+`red-witness` would be unrunnable for every implementer and that would be a
+systemic gap worth a phase. Measured, it is not. Whatever stopped that
+implementer running the gate, it was not the depth of this repository.

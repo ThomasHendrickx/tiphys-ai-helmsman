@@ -90,3 +90,211 @@ the tests say.
 - The actual complexity of the patterns involved. Nobody has shown that they are
   well-behaved; the isolation runs show only that they finish inside 250ms on an
   idle machine, which is the same weak evidence the budget itself provides.
+
+## Recurrence, 2026-09-16: I did it again, with a number
+
+The entry above was written after my own fan-out reddened a gate. That did not
+stop it happening a second time, eight days later, which is the shape tuition
+T-005 and T-006 both record: a rule that depends on remembering does not survive
+a busy session.
+
+Measured. Eleven clean-room reviewers were dispatched at 02:11 across eight
+workflows: dual rounds for M4-P2, M4-P10 and M4-P16, single rounds for M4-P1,
+M4-P13, M4-P20, M4-P23 and M4-P27. Load before dispatch was 10.08 on four CPUs.
+Eight minutes later:
+
+```
+$ cat /proc/loadavg
+45.96 29.43 20.98 55/739 11671
+```
+
+**45.96 is inside the 46 to 57 band this document already names as the band that
+reddens `coverage`.** Every one of those eleven reviewers is instructed to
+re-run the suite and the gates itself, which is the right instruction, and each
+one is doing it on a machine that eleven reviewers have loaded.
+
+So a red reported by any of them is ambiguous at the moment it is written, and
+the ambiguity is mine rather than theirs.
+
+## What I did about it, which is not what I should have done
+
+I did not reduce the concurrency, because stopping a workflow mid-review
+destroys work in progress and the reviewers were already several minutes in.
+Instead I started a one-line-per-minute load log at 02:19 so that any red a
+reviewer reports can be CORRELATED with the load at that minute, rather than
+argued about afterwards from memory.
+
+That is a mitigation and not a fix. **The fix is to treat dispatch concurrency
+as a variable of the test environment, in the same class as the interpreter, the
+build state, the invocation and whether the tree is a git checkout.** This
+repository now has five such axes and four of them were found the same way:
+two honest agents reported different numbers for one head and somebody refused
+to average them.
+
+The operational rule, stated so the next dispatch can follow it mechanically:
+read `/proc/loadavg` BEFORE dispatching a wave, and if the wave will put the
+one-minute figure above roughly 40 on this four-CPU box, either stage it or
+instruct every agent in it to record the load alongside every timing-sensitive
+result it reports. The second is cheaper and loses nothing.
+
+## Settled 2026-09-16: the instrument cannot measure what it claims to measure
+
+Everything above treats this as a load-dependent FLAKE to be worked around. It
+is not. It is a defect in shipped code, and the measurement that settles it is
+one command.
+
+**Three independent witnesses now exist, and they satisfy the two-member rule.**
+
+1. My own fan-out, load 46 to 57, against 17 tests that pass 17/17 solo.
+2. The M4-P2 implementer, recorded in its work history.
+3. The M4-P2 clean-room reviewer, load 53 to 66, hitting **two tests that are
+   different from the implementer's**, which is what makes this a class rather
+   than one flaky test seen three times:
+
+   ```
+   pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 6
+   pattern ^(?:M([0-9]+)-P[0-9]+)$ did not complete within 250ms against a value of length 5
+   ```
+
+4. The M4-P13 clean-room reviewer, load 55 to 67 on nproc 4, hitting **two more
+   patterns, different again from both**, and reporting that both tests pass IN
+   ISOLATION on the same tree, interpreter and build state at load 67:
+
+   ```
+   ^(?:DR-[0-9]{4}|D-[0-9]+|M2-D-[0-9]+)$   against a 2-character value
+   ^(?:parked)$                             against a 5-character value
+   ```
+
+   **`^(?:parked)$` is the member that ends the argument.** It is a literal
+   string, anchored at both ends, with no quantifier, no character class and no
+   alternation. There is no input on which it can backtrack, because there is
+   nothing to backtrack over. A 250 ms budget cannot be exceeded by matching a
+   six-character literal against a five-character value except by the process
+   not running.
+
+   Four witnesses, six structurally different patterns, three different agents
+   and one orchestrator, on three occasions. The class rule asks for two.
+
+### Those two patterns cannot backtrack, so the red is false BY CONSTRUCTION
+
+The budget at src/gates/coverage.ts:235 is `REGEX_EXEC_TIMEOUT_MS = 250`,
+applied as a wall-clock `timeout` at src/gates/coverage.ts:257 and reported as
+"did not complete within 250ms" at src/gates/coverage.ts:261. The word
+"complete" is the claim: it presents elapsed time as evidence about the regex.
+
+Measured, on this box, at load average 33:
+
+| pattern | input | 1,000,000 executions | per execution | budget / this |
+|---|---|---|---|---|
+| `^(?:R-[0-9]+[a-z]?)$` | `R-094a` | 154.2 ms | **0.000154 ms** | 1,621,000x |
+| `^(?:M([0-9]+)-P[0-9]+)$` | `M3-P1` | 49.3 ms | **0.000049 ms** | 5,071,000x |
+| `^(?:parked)$` | `parked` | 93.8 ms | **0.000094 ms** | 2,665,000x |
+| `^(?:DR-[0-9]{4}\|D-[0-9]+\|M2-D-[0-9]+)$` | `D-15` | 69.4 ms | **0.000069 ms** | 3,602,000x |
+
+The per-execution column is the total divided by 1,000,000. That is stated
+because the throwaway script that produced these first printed the total divided
+by 1,000 and labelled it "each", which would have understated the margin by
+three orders of magnitude in the direction that makes the gate look defensible.
+The figures above are recomputed; the script's label was wrong and its totals
+were not.
+
+A MILLION executions of the first fit inside the budget meant for ONE. A single
+execution is roughly 1.6 million times under it. Both patterns are anchored,
+have no nested quantifier and no alternation over a repeated group, so there is
+no catastrophic backtracking available to them at any input length; the inputs
+here are six and five characters.
+
+For one of those executions to exceed 250 ms, the process must be descheduled
+for a quarter of a second. **That is a fact about the machine, and the gate
+reports it as a fact about the regex.**
+
+### Why this is worse than a flake
+
+- It is in SHIPPED code, `src/gates/coverage.ts`, reached by the user-visible
+  `tiphys gates run`, so it is inside DR-0027's blocking surface rather than
+  outside it.
+- `coverage` is a REQUIRED gate in `full` and `direct-pr` modes, so a false red
+  blocks a merge.
+- CI runners are shared and loaded. This repository has been treating the
+  failure as local noise because it was first seen locally.
+- It fails in the direction that costs most: a correct branch reported wrong.
+  An agent trained by three of these to wave the gate through is the second-order
+  cost, and CLAUDE.md already names that pattern for the default-toolchain red.
+
+### The fix, and what it owes
+
+Wall clock is the wrong instrument for backtracking. The property being guarded
+is complexity of the match, and the honest ways to reach it are a step-bounded
+engine, a static analysis of the pattern for the nested-quantifier shapes, or a
+budget expressed in work rather than time. Any of those is a real change, not a
+constant bump: RAISING 250 ms to a larger number keeps the same instrument and
+only moves the load at which it lies.
+
+Its red witness is already written above, and it has the two structurally
+different members the class rule requires. Its GREEN witness is the table in
+this section: the same patterns, unloaded, at six orders of magnitude under
+budget.
+
+**What this derivation did NOT cover.** Only two patterns were timed, the two
+the reviewer reported. The other patterns the gate compiles were not examined
+and one of them may genuinely backtrack, which would be a real finding the
+current instrument is too noisy to surface. Nor was the gate run under
+controlled load to find the threshold at which it starts lying; the three
+observations are 46-57, 53-66 and an unrecorded load, which bracket nothing
+precisely. And no CI run has been checked for this signature, so whether it has
+ever reddened a real pull request here is unknown.
+
+## A FIFTH witness, mine, and it LOWERS the threshold
+
+Measured 2026-09-16 on the orchestrator's own paperwork branch, which is the
+first time this defect has been observed outside a phase branch.
+
+Full suite, head `f7a51f7`, interpreter node v26.6.0 at
+`/home/user/n26-review/bin`, `dist/` built with `git status` clean afterwards,
+invocation `npm test`, tree a git CHECKOUT deliberately placed OUTSIDE
+`/tmp/claude-0` so standing warning 1's traversal trap could not contribute:
+
+```
+tests 849
+pass 848
+fail 1
+skipped 0
+duration_ms 895444.622876
+NPM_TEST_EXIT=1
+
+test at test/coverage-gate.test.ts:476:1
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a
+  value of length 5 (possible catastrophic backtracking)
+      at boundedExec (src/gates/coverage.ts:260:11)
+```
+
+**One failure in 849, and it is this defect.** The branch is otherwise green.
+
+The control, same tree, same interpreter, same build state, the same test run
+alone rather than inside the suite:
+
+```
+ALONE_EXIT=0
+```
+
+### The number that matters: load 33, not 46
+
+Every prior observation was in the 46 to 67 band, and this document has been
+quoting "46 to 57" as where the gate starts lying. The load at the start of this
+run was **33.06** and at the end **29.99**. The one-minute figure never reached
+the previously recorded band.
+
+So the threshold is LOWER than recorded, and the honest form of the claim is
+weaker than the one written above: nobody has found the load at which this
+starts, only successive lower values at which it has already happened. Each new
+observation has moved the floor down, and none has established it.
+
+That matters for DR-0044, which cites this defect as part of its reasoning for
+capping concurrency at two agents. The cap is still right; the specific band it
+was argued from is not a floor.
+
+**What this observation does NOT cover.** It is one run. The load figures are
+one-minute averages sampled at the start and end of a fifteen-minute run, so the
+load AT THE MOMENT the test ran is unknown and could have been higher than
+either sample. A run under controlled, sustained load is still the experiment
+nobody has done.

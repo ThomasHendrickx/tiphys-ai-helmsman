@@ -88,3 +88,244 @@ erroring.
   a precondition that M4 is about to satisfy. Only this one was found, by
   following a finding rather than by a systematic sweep of the registry's
   conditional entries. That sweep has not been run and should be.
+
+## Correction, 2026-09-16: the trigger is a CONFORMING verdict, not a review
+
+The section above says every M4 phase must commit two verdict documents and
+that the first to do so arms the gate. The obligation half is right and the
+trigger half was stated too widely. Measured in three arms, same command, one
+variable changed:
+
+| the review directory contains | precondition exit |
+|---|---|
+| one markdown clean-room review | **1**, "0 verdict document(s)" |
+| this repository's own 234 committed review files | **1**, "0 verdict document(s)" |
+| one schema-conforming JSON verdict | **0**, "1 verdict document(s)" |
+
+`committedVerdictPaths` filters to `.yaml`, `.yml` and `.json`, decodes each,
+and keeps only what validates as a verdict. A markdown review is skipped before
+it is ever read. The trigger is therefore not "a phase commits its reviews", it
+is "a phase commits a document conforming to schemas/verdict.schema.json:1".
+
+## What that measurement actually exposed, which is worse than the blocker
+
+`check-dual-review` has **never once asserted anything on this repository.**
+
+Not on any M1 phase, not on any M2 phase, not on any of M3's thirteen. Measured
+against origin/main: 234 files under `delivery/review/`, of which ten are
+`.yaml` or `.json`, and all ten are gate EVIDENCE captures sitting in
+subdirectories. The listing is non-recursive, so even those are invisible to
+it. At the top level, where the gate looks, there has never been a verdict
+document at all.
+
+Both halves captured, against origin/main:
+
+```
+$ git ls-tree -r --name-only origin/main delivery/review/ | wc -l
+234
+$ git ls-tree -r --name-only origin/main delivery/review/ | grep -Ec '\.(ya?ml|json)$'
+10
+$ git ls-tree -r --name-only origin/main delivery/review/ | grep -E '\.(ya?ml|json)$'
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-full-mode.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-red-witness.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-scope.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/red-witness-evaluations.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/units-baseline-18c335a.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/units-head-108eed0.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/red-witness-evaluations-summary.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/red-witness-result.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/units-baseline-18c335a.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/units-head-b5c01f0.json
+$ git ls-tree --name-only origin/main delivery/review/ | grep -E '\.(ya?ml|json)$'
+$ echo $?
+1
+```
+
+Every one of the ten is a gate-evidence capture under `evidence/`, and the
+last command, the non-recursive one that matches what `readdirSync` sees,
+returns nothing.
+
+**What this derivation does NOT cover.** It reads `origin/main` only, so a
+verdict document that existed on a branch and was never merged would not
+appear; the claim is about what reached `main`, which is the tree CI lints. It
+also does not read the twelve unmerged M4 branches. And it counts by path and
+extension rather than by validation, so a top-level `.json` that failed to
+decode would have been counted here and still skipped by the gate; since the
+top-level count is zero, that distinction does not arise.
+
+The gate is not lying about this. It reports not-applicable with a reason,
+which is exactly what M2-C-3 and SC-011 require of a gate that cannot reach its
+subject, and it is the honest behaviour. The problem is one level up:
+
+**DR-0012 makes dual cross-model clean review the CONDITION of delegated merge
+authority, and the check that would verify that condition has never run.** Every
+merge under the delegation has been made on the orchestrator's own assertion
+that the condition held. That assertion has been true as far as anyone can
+tell, and it has never been machine-checked, which are two different things and
+this project's whole method is to insist on the difference.
+
+This is not the "guard that cannot go red" shape, because the gate says
+not-applicable rather than green. It is the shape one step before it: a guard
+whose subject is never produced, so its honesty costs nothing and buys nothing.
+Thirty markdown reviews satisfy a human reading of DR-0012 and leave the
+machine check asleep.
+
+## What changes, stated as sequence rather than as a complaint
+
+1. M4-P15's root charter is **not** on the critical path for the first merge,
+   because a phase committing only markdown reviews leaves the gate dormant and
+   unblocked. It IS on the critical path for the gate ever asserting anything.
+2. Leaving it dormant is not an option this project may take. Choosing not to
+   emit the artifact a check consumes, in order to keep the check quiet, is the
+   same move as deleting the check, with better manners.
+3. So the order is: M4-P15 lands the charter, then M4 phases commit a
+   conforming verdict document ALONGSIDE their markdown review, and the gate
+   arms for the first time in the repository's history.
+4. M4-P11 matters exactly at step 3 and not before. The decorrelation check
+   compares `produced-by`, and this orchestrator's two reviewers are both
+   Claude models, so the first real run of this gate is also the first time
+   DR-0038's declared single-family exception has to hold up.
+
+Step 3 is the one that has never been rehearsed, which by T-025's title is
+precisely the one to expect trouble from.
+
+## The eleven reviews running on 2026-09-16 do NOT produce verdict documents
+
+Stated here rather than left to be discovered, because the gap is mine and it
+is cheap to say now and expensive to find later.
+
+Eleven clean-room reviews were dispatched that morning: dual cross-model rounds
+for M4-P2, M4-P10 and M4-P16, the three phases that change shipped artifacts,
+and one recorded round each for M4-P1, M4-P13, M4-P20, M4-P23 and M4-P27 under
+DR-0027, which change none. Their brief asks for a markdown review and a
+structured result, and neither is a document conforming to
+schemas/verdict.schema.json:1.
+
+Two fields are why a converter cannot close this after the fact, and they are
+the substantive ones. `criteria[]` wants one entry per acceptance criterion in
+the phase's plan section, each carrying the evidence the reviewer actually
+gathered for it, and `deviations-judged[]` wants one entry per deviation the
+work history declares. Neither is recoverable from a review that did not
+collect them. Filling them from the plan text alone would be a fabricated
+criterion walk, which is exactly what `met: true` beside no evidence means and
+exactly what the schema's own comment says the document exists to prevent.
+
+So these eleven satisfy DR-0012 as a PROCESS (two independent reviews of one
+head, different framings, and for the three shipped-surface phases different
+model families) and they leave the machine check asleep, which is the state
+this document has just finished arguing is not acceptable to stay in.
+
+The fix is already in the dispatch scripts rather than in a plan: both now
+require the reviewer to write a conforming verdict and to report, as a required
+field, how many criteria it walked out of how many the plan declares and which
+it could not reach. Since most of these eleven are expected to return
+FIX-ROUND-NEEDED, and a fix round is followed by a re-review, the first
+conforming verdicts arrive on that pass. A phase that returns APPROVE on the
+first pass is the case to watch: it would merge having never produced the
+artifact, and it is the one that must be sent back for the verdict document
+rather than waved through.
+
+## The chain, walked end to end rather than reasoned about
+
+Measured 2026-09-16 against three real directories, one variable changed each
+time. Exit codes captured directly, NOT through a pipe (see the note below):
+
+| directory | status | exit |
+|---|---|---|
+| this repository, no root charter | **error**, "charter.yaml does not exist" | 21 |
+| the M4-P15 worktree, charter present | **not-applicable**, "no verdict document exists" | 20 |
+| a lab dir with a conforming verdict and no charter | **error**, charter again | 21 |
+
+Three things this settles.
+
+First, M4-P15's charter really does clear the regime refusal: the same command
+that errors against this repository reports not-applicable against a tree that
+has it. The blocker is a blocker and the fix is the fix.
+
+Second, the regime requirement is TWO documents, not one.
+`REGIME_DOCUMENTS` at scripts/check-dual-review.mjs:198 is
+`["charter.yaml", "assurance-modes.yaml"]` and the loop errors on the FIRST one
+absent. This document named only the charter. `assurance-modes.yaml` is already
+on `main`, so nothing is owed, but a reader taking the earlier wording literally
+would have delivered half the prerequisite.
+
+Third, the third row is the one worth keeping: a conforming verdict WITHOUT a
+charter still errors. So the two prerequisites are independent rather than
+sequential, and delivering the verdict documents first buys nothing.
+
+### A note on how the first reading of this was wrong
+
+The first run of the table above reported exit 0 for every row, which would have
+meant a gate reporting `error` and passing. It did not. `$?` was reading the
+exit status of the `tail` at the end of a pipe, not of the gate. The same trap
+misread `scripts/check-authored-bytes.mjs` earlier the same morning.
+
+It is the "usage error read as a clean result" that the fix-round contract's
+item 3 names as one of three things that have bitten this project, and the cost
+here would have been a fabricated defect report against a sound gate. Capture
+the exit code from the command itself, or use `PIPESTATUS`, and never from the
+tail of a pipeline.
+
+## The hazard the verdict schema exists against fired, in this very round
+
+Written the same day the sections above argued that leaving `check-dual-review`
+asleep is not an option. It stopped being an argument about principle within
+the hour.
+
+**An M4-P27 clean-room review returned APPROVE while carrying a HIGH finding it
+had measured in both directions.** Its own summary is unambiguous: arm d of the
+cutover-entry trigger decides by filesystem mtime, `touch` alone flips it from
+`not-yet` to `satisfied` with the file's sha1 identical before and after, and a
+fresh `git clone` puts it in the false-RED state because git does not preserve
+mtimes and the two files were written 0.57 milliseconds apart in name order.
+That is a guard whose verdict is decided by checkout order. The review reported
+it, ranked it HIGH, and said APPROVE.
+
+`schemas/verdict.schema.json` refuses exactly that pair. Its own comment names
+it as the first thing the document exists against: "APPROVE beside a finding the
+review itself ranked high or critical, which is a review saying yes while
+recording a reason to say no, and is how a fix round gets skipped". The refusal
+is an `if`/`then` at the schema root, so it is mechanical and unarguable.
+
+**My review schema did not carry that rule, so nothing objected.** The reviewer
+was not being dishonest; it recorded the finding in full, with evidence, and
+then chose a verdict the document it was not writing would have refused. The
+only thing standing between that APPROVE and a skipped fix round was me reading
+the findings rather than the verdict field.
+
+Two changes, both made rather than noted:
+
+1. Both dispatch scripts now COERCE the verdict in post-processing. A returned
+   APPROVE beside any HIGH or CRITICAL becomes FIX-ROUND-NEEDED, the original is
+   preserved as `verdict_as_returned` so nothing is hidden, and the coercion is
+   logged naming the schema rule that requires it.
+2. The brief now states the rule, cites the schema, and tells the reviewer to
+   grade findings first and let the verdict follow mechanically.
+
+The M4-P27 fix round was dispatched on the findings, not the verdict.
+
+This is the strongest argument yet for the conforming verdict document. The
+markdown review is where a reviewer does its thinking; the schema is what stops
+a review contradicting itself. Running one without the other is how the contra-
+diction reached me, and on a busier day it is how it would have reached `main`.
+
+## Re-verified at M4-P15's delivered head, 2026-09-16
+
+The chain walk above used an in-progress worktree. Repeated against the phase's
+committed head `d3a173d`, in a detached checkout of the branch, with the same
+command and the control alongside:
+
+| subject | status | exit |
+|---|---|---|
+| `claude/m4-p15-kernel-charter` at `d3a173d` | not-applicable, "no verdict document exists" | **20** |
+| this repository, no root charter (control) | error, "charter.yaml does not exist" | **21** |
+
+Both regime documents are present on that branch. So M4-P15 as DELIVERED clears
+the refusal, and the next state is the one the sections above describe: the gate
+waits for a conforming verdict document, of which there are none anywhere.
+
+**And that ordering is now load-bearing rather than tidy.** Creating verdict
+documents BEFORE the charter reaches `main` would arm the gate against a tree
+that still lacks the charter, turning a dormant gate into a hard CI error on
+every phase at once. The verdicts are owed AFTER the charter lands, not before,
+and that is why none has been authored yet despite eleven completed reviews.
