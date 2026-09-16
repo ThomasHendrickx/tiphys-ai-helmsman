@@ -14,7 +14,9 @@
     "test/credentials-gate.test.ts",
     "witness/spawn-completed-without-turn-end-is-incomplete.json",
     "witness/spawn-rejected-launch-rolls-nothing-back.json",
-    "witness/watcher-signal-surfaced-once.json"
+    "witness/watcher-signal-surfaced-once.json",
+    "witness/captures/spawn-turn-end-hook-record.txt",
+    "witness/captures/spawn-launch-failure-vs-payload-exit.txt"
   ],
   "citations": [
     "C-3",

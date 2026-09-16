@@ -843,6 +843,28 @@ const REDIRECT_TARGETS = [
   "gitconfig-system",
 ];
 
+/**
+ * Real captured output from the programs these behaviours consume, read out
+ * of witness/captures/ rather than retyped.
+ *
+ * Both spawn witnesses mutate src/spawn.ts, which imports spawnSync from
+ * node:child_process, so red-witness rule (f) (src/witness/run.ts:1287)
+ * requires each of them to declare `consumesExternalOutput`, and rule (c)
+ * (src/witness/run.ts:1243) then requires a cited capture's BASENAME to be
+ * referenced from this file's own source. That is the mechanical half. The
+ * substantive half is CLAUDE.md's red-witness rule: where a behavior consumes
+ * another program's output, the assertions must include that program's REAL
+ * output rather than a string chosen to match the implementation. So each
+ * test below asserts the recorded contract AND reproduces it live, and a
+ * divergence between the two reddens rather than passing silently.
+ */
+function readCapture(name: string): string {
+  return readFileSync(
+    fileURLToPath(new URL(`../witness/captures/${name}`, import.meta.url)),
+    "utf8",
+  );
+}
+
 /** Invoke the generated turn-end hook the way an honest adapter must. */
 function invokeHook(request: TestRequest, exitCode: number): void {
   const hooked = spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
@@ -863,6 +885,48 @@ test(
     // the turn-end record itself; an async launch removes both guarantees
     // at once, and nothing else in the kernel looks.
     const scratch = makeScratch(t);
+
+    // FIRST, anchor the thing the precondition reads to the REAL output of
+    // the program that writes it. tasks/<id>/turn-end is produced by the
+    // GENERATED hook, which spawn runs as a child (src/spawn.ts:232), so the
+    // capture is that hook's output and not a description of it. Two arms
+    // matter here: an integer argument exits 0 and writes a two-key record,
+    // and a NON-integer argument exits 64 and writes NOTHING. The second is
+    // the shipped route to the absent record this test is about, so an
+    // adapter that invoked the hook and ignored its exit code reaches
+    // `completed` with no record, exactly like the fabricating adapter below.
+    const captureName = "spawn-turn-end-hook-record.txt";
+    const captured = readCapture(captureName);
+    assert.match(captured, /bad-argument:[^]*?exit 64/, captureName);
+    assert.match(captured, /expected one integer exit-code argument/, captureName);
+    assert.match(captured, /integer-argument:[^]*?exit 0/, captureName);
+    assert.match(captured, /turn-end file: NOT WRITTEN/, captureName);
+    {
+      const hooksLib = (await import(new URL("../src/hooks.ts", import.meta.url).href)) as {
+        renderTurnEndHook(turnEndFile: string): string;
+      };
+      const probeTurnEnd = join(scratch.tmp, "capture-probe-turn-end");
+      const probeHook = join(scratch.tmp, "capture-probe-hook.mjs");
+      writeFileSync(probeHook, hooksLib.renderTurnEndHook(probeTurnEnd), { mode: 0o755 });
+      const bad = spawnSync(process.execPath, [probeHook, "not-an-integer"], {
+        encoding: "utf8",
+      });
+      assert.equal(bad.status, 64, `captured contract: bad argument exits 64, got ${bad.stderr}`);
+      assert.match(bad.stderr, /expected one integer exit-code argument/, bad.stderr);
+      assert.equal(
+        existsSync(probeTurnEnd),
+        false,
+        "captured contract: a refused hook invocation writes no turn-end record",
+      );
+      const good = spawnSync(process.execPath, [probeHook, "0"], { encoding: "utf8" });
+      assert.equal(good.status, 0, `captured contract: integer argument exits 0, got ${good.stderr}`);
+      const record = JSON.parse(readFileSync(probeTurnEnd, "utf8")) as {
+        endedAt: unknown;
+        exitCode: unknown;
+      };
+      assert.equal(typeof record.endedAt, "string", "captured contract: endedAt is a string");
+      assert.equal(record.exitCode, 0, "captured contract: exitCode is the argument");
+    }
 
     const fabricating: TestAdapter = {
       name: "fabricating-test-adapter",
@@ -968,6 +1032,38 @@ test(
     // the rollback is authorized). Two differently-timed rejections would
     // be the same arm asserted twice.
     const scratch = makeScratch(t);
+
+    // WHAT DECIDES WHICH ARM IS WHICH is another program's output, so it is
+    // anchored on that program before either arm is asserted. The shipped
+    // adapter reads spawnSync's `error` field as "the payload never started"
+    // (src/spawn.ts:220) and only that state returns launch-failed, the one
+    // outcome allowed to destroy the task's records (src/spawn.ts:612). A
+    // check written on `status !== 0` instead would fold a payload that never
+    // started together with one that ran and failed, which is the whole
+    // distinction this test rests on.
+    const launchCaptureName = "spawn-launch-failure-vs-payload-exit.txt";
+    const launchCaptured = readCapture(launchCaptureName);
+    assert.match(launchCaptured, /never-started:[^]*?error\.code: ENOENT/, launchCaptureName);
+    assert.match(launchCaptured, /never-started:[^]*?status: null/, launchCaptureName);
+    assert.match(launchCaptured, /ran-and-failed:[^]*?error: undefined/, launchCaptureName);
+    assert.match(launchCaptured, /ran-and-failed:[^]*?status: 3/, launchCaptureName);
+    {
+      const missing = spawnSync(join(scratch.tmp, "definitely-not-on-path"), ["--version"], {
+        encoding: "utf8",
+      });
+      assert.notEqual(missing.error, undefined, "captured contract: a missing program errors");
+      assert.equal(
+        (missing.error as NodeJS.ErrnoException).code,
+        "ENOENT",
+        "captured contract: the missing-program errno is ENOENT",
+      );
+      assert.equal(missing.status, null, "captured contract: a program that never ran has no status");
+      const ranAndFailed = spawnSync(process.execPath, ["-e", "process.exit(3)"], {
+        encoding: "utf8",
+      });
+      assert.equal(ranAndFailed.error, undefined, "captured contract: a payload that ran does not error");
+      assert.equal(ranAndFailed.status, 3, "captured contract: a payload that ran carries its status");
+    }
 
     const rejecting: TestAdapter = {
       name: "rejecting-test-adapter",

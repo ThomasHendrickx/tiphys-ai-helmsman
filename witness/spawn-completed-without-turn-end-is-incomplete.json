@@ -21,5 +21,12 @@
     }
   ],
   "deterministic": true,
-  "repeats": 2
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "The completion precondition (src/spawn.ts:299) reads the file the GENERATED turn-end hook writes, and the hook is run as a child process with spawnSync (src/spawn.ts:232), so red-witness rule (f) binds this witness: SPAWN_GREP matches src/spawn.ts, which every member here mutates. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is real output of that hook, taken 2026-09-16 on node v26.6.0 against a hook rendered by src/hooks.ts renderTurnEndHook(): an integer argument exits 0 and writes a two-key JSON record, and a non-integer argument exits 64, writes NOTHING and prints \"tiphys turn-end hook: expected one integer exit-code argument\". The bad-argument arm is the shipped route to the absent record this witness is about, so the named test reproduces the recorded contract against a live hook before exercising the refusal, and the refusal is anchored on that program's real behaviour rather than on a hand-written string (CLAUDE.md warning 10). Added in the M4-P2 fix round after the gate refused this spec under rule (f); the round's mistake was deducing the gate's verdict from a hand-listed subset of its rules instead of running it."
+  }
 }

@@ -1,0 +1,44 @@
+Real spawnSync results for the three payload states the subprocess adapter
+classifies: the external-program contract that decides whether a rollback is
+authorized at all.
+
+src/spawn.ts:220 reads `result.error !== undefined` as "the payload never
+started" and returns `launch-failed`, which is the ONE outcome that lets
+spawnTask destroy the task's records (src/spawn.ts:612). Anything with an
+exit status ran, and the adapter reports it as `completed` instead. The
+distinction is a property of Node's spawnSync, not of the kernel, so the
+witness for "a rejected launch rolls nothing back" is anchored here rather
+than on a hand-written string.
+
+Captured 2026-09-16, node v26.6.0, with no shell (the adapter runs shell-less
+on purpose: under a shell a missing binary arrives as an ordinary exit 127 and
+is indistinguishable from a payload that ran and failed, src/spawn.ts:179).
+
+never-started: spawnSync("/definitely/not/on/path", ["--version"])
+  error: Error: spawnSync /definitely/not/on/path ENOENT
+  error.code: ENOENT
+  status: null
+  signal: null
+
+ran-and-failed: spawnSync("<node>", ["-e","process.exit(3)"])
+  error: undefined
+  error.code: (no error)
+  status: 3
+  signal: null
+
+ran-and-succeeded: spawnSync("<node>", ["-e","process.exit(0)"])
+  error: undefined
+  error.code: (no error)
+  status: 0
+  signal: null
+
+The two middle and last rows are what make the first row informative. A check
+that read only `status !== 0` would fold never-started together with
+ran-and-failed, and the rollback rule turns on exactly that difference: one of
+them may destroy the worktree and the other may not.
+
+WHAT THIS CAPTURE DOES NOT COVER: a payload killed by a signal (status null
+with signal set, the arm payloadExitCode handles at src/spawn.ts:155); EACCES
+on a present-but-not-executable program, which is a different errno on the
+same never-started arm; and any Windows behaviour, which this repository does
+not target.

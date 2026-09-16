@@ -1,0 +1,58 @@
+Real output of the GENERATED turn-end hook, run as a child process: the exact
+external-program contract the M4-P2 completion precondition consumes.
+
+src/spawn.ts runs the hook with spawnSync (src/spawn.ts:232) and then reads the
+file the hook wrote (turnEndEvidence, src/spawn.ts:299). The record is the
+payload's own account of ending, and the precondition parses it. Rule (f) of
+the red-witness gate therefore binds the two spawn witnesses, and their
+assertions must be anchored on THIS output rather than on a hand-written
+string (CLAUDE.md warning 10, the red-witness rule).
+
+Captured 2026-09-16, node v26.6.0, in a scratch directory whose hook was
+rendered by src/hooks.ts renderTurnEndHook() and then invoked directly:
+
+  node <task>/turn-end-hook.mjs <argv[2]>
+
+The endedAt instant varies per run, so the STABLE contract is recorded here,
+not the timestamp; the witness tests assert a live hook reproduces it.
+
+bad-argument: node <task>/turn-end-hook.mjs "not-an-integer"
+  exit 64
+  stdout: (empty)
+  stderr: "tiphys turn-end hook: expected one integer exit-code argument\n"
+  turn-end file: NOT WRITTEN (the path does not exist)
+
+integer-argument: node <task>/turn-end-hook.mjs "0"
+  exit 0
+  stdout: (empty)
+  stderr: (empty)
+  turn-end file: WRITTEN, 61 bytes
+    | {
+    |   "endedAt": "2026-09-16T04:45:37.587Z",
+    |   "exitCode": 0
+    | }
+    |
+
+nonzero-argument: node <task>/turn-end-hook.mjs "7"
+  exit 0
+  stdout: (empty)
+  stderr: (empty)
+  turn-end file: WRITTEN, 61 bytes
+    | {
+    |   "endedAt": "2026-09-16T04:45:37.633Z",
+    |   "exitCode": 7
+    | }
+    |
+
+WHAT THE bad-argument ARM IS FOR, since it is the one a reader would call
+decorative. It is the only shipped way a hook INVOCATION leaves no record: the
+hook exits 64 and writes nothing, so an adapter that called it and did not
+check the exit code can reach `completed` with the turn-end path absent. That
+is exactly the state the completion precondition refuses, reached through the
+shipped program rather than through a test adapter that simply declined to
+call anything.
+
+WHAT THIS CAPTURE DOES NOT COVER: a hook whose write FAILS (a full disk, a
+read-only task directory); the record's bytes under a non-UTF-8 locale; and
+any behaviour of the payload process itself, which the hook never observes
+beyond the single integer argument it is handed.
