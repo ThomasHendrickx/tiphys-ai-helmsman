@@ -19,7 +19,8 @@
     "scripts/check-authored-bytes.mjs",
     "scripts/check-clause-map.mjs",
     "scripts/check-dual-review.mjs",
-    "scripts/license-gate.mjs"
+    "scripts/license-gate.mjs",
+    "test/coverage-gate.test.ts"
   ],
   "declaredExtras": [
     "test/credentials-gate.test.ts",
@@ -33,7 +34,9 @@
     "witness/watcher-signal-surfaced-once.json",
     "witness/spawn-launch-failed-rolls-back-through-a-symlink.json",
     "witness/patches/m4-p2-canonicalise-the-caller-argument-instead.patch",
-    "witness/captures/git-worktree-list-canonicalises-paths.txt"
+    "witness/captures/git-worktree-list-canonicalises-paths.txt",
+    "witness/coverage-gate-main-module-guard-survives-a-symlink.json",
+    "witness/patches/m4-p2-normalise-but-still-compare-strings.patch"
   ],
   "citations": [
     "C-3",

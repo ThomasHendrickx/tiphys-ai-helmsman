@@ -779,5 +779,6 @@
   "spawn-unparseable-turn-end-is-incomplete": "a turn-end record that is present but does not parse is refused just as an absent one is",
   "spawn-rejected-launch-rolls-nothing-back": "a rejected launch promise rolls nothing back, while a returned launch-failed still rolls everything back",
   "spawn-returns-after-payload-sentinel": "spawnTask returns only after a payload the adapter awaited has written its sentinel",
-  "spawn-launch-failed-rolls-back-through-a-symlink": "a launch-failed rolls the worktree back through a symlinked fleet root and through a symlinked worktrees directory"
+  "spawn-launch-failed-rolls-back-through-a-symlink": "a launch-failed rolls the worktree back through a symlinked fleet root and through a symlinked worktrees directory",
+  "coverage-gate-main-module-guard-survives-a-symlink": "the coverage gate still runs when it is invoked through a symlinked directory"
 }
