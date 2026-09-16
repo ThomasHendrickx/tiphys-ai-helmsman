@@ -2,8 +2,7 @@
   "id": "spawn-completed-without-turn-end-is-incomplete",
   "behavior": "spawn-completed-without-turn-end-is-incomplete",
   "tests": [
-    "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds",
-    "a turn-end record that is present but does not parse is refused just as an absent one is"
+    "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds"
   ],
   "class": "destructive",
   "dangerousStates": [
@@ -16,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/spawn.ts",
-      "find": "  let parsed: unknown;\n  try {\n    parsed = JSON.parse(read.body);\n",
-      "replace": "  let parsed: unknown;\n  return { ok: true };\n  try {\n    parsed = JSON.parse(read.body);\n"
+      "find": "  const read = readRegularFileIfPresent(path);\n",
+      "replace": "  const read = {\n    kind: \"present\" as const,\n    body: '{\"endedAt\":\"1970-01-01T00:00:00.000Z\",\"exitCode\":0}',\n  };\n"
     }
   ],
   "deterministic": true,
@@ -27,6 +26,6 @@
     "captures": [
       "witness/captures/spawn-turn-end-hook-record.txt"
     ],
-    "provenance": "The completion precondition (src/spawn.ts:299) reads the file the GENERATED turn-end hook writes, and the hook is run as a child process with spawnSync (src/spawn.ts:232), so red-witness rule (f) binds this witness: SPAWN_GREP matches src/spawn.ts, which every member here mutates. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is real output of that hook, taken 2026-09-16 on node v26.6.0 against a hook rendered by src/hooks.ts renderTurnEndHook(): an integer argument exits 0 and writes a two-key JSON record, and a non-integer argument exits 64, writes NOTHING and prints \"tiphys turn-end hook: expected one integer exit-code argument\". The bad-argument arm is the shipped route to the absent record this witness is about, so the named test reproduces the recorded contract against a live hook before exercising the refusal, and the refusal is anchored on that program's real behaviour rather than on a hand-written string (CLAUDE.md warning 10). Added in the M4-P2 fix round after the gate refused this spec under rule (f); the round's mistake was deducing the gate's verdict from a hand-listed subset of its rules instead of running it."
+    "provenance": "The completion precondition (src/spawn.ts:299) reads the file the GENERATED turn-end hook writes, and spawn runs that hook as a child process with spawnSync (src/spawn.ts:232), so red-witness rule (f) binds every witness whose members mutate src/spawn.ts. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is that hook's real output, taken 2026-09-16 on node v26.6.0 against a hook rendered by src/hooks.ts renderTurnEndHook(): an integer argument exits 0 and writes a two-key JSON record, and a NON-integer argument exits 64, writes nothing and prints \"tiphys turn-end hook: expected one integer exit-code argument\". The bad-argument arm is the shipped route to the absent record, so the named test reproduces both arms against a live hook before exercising the refusal. The two members are structurally different: member 0 never computes the evidence at all, and member 1 computes it from a stand-in record instead of the artifact, which is the guard running and looking at the wrong thing."
   }
 }

@@ -865,6 +865,32 @@ function readCapture(name: string): string {
   );
 }
 
+/** The basename every turn-end witness cites, named once. */
+const HOOK_CAPTURE = "spawn-turn-end-hook-record.txt";
+
+/**
+ * The shape the capture records for a record the hook ACTUALLY wrote: a string
+ * endedAt that parses as an instant, and an integer exitCode. Read out of the
+ * capture rather than restated, so a test cannot assert a contract the capture
+ * does not carry.
+ */
+function assertTurnEndMatchesCapture(turnEndFile: string, expectedExitCode: number): void {
+  const captured = readCapture(HOOK_CAPTURE);
+  assert.match(captured, /"endedAt": "[0-9]{4}-[0-9]{2}-[0-9]{2}T/, HOOK_CAPTURE);
+  assert.match(captured, /"exitCode": [0-9]+/, HOOK_CAPTURE);
+  const record = JSON.parse(readFileSync(turnEndFile, "utf8")) as {
+    endedAt: unknown;
+    exitCode: unknown;
+  };
+  assert.equal(typeof record.endedAt, "string", "captured contract: endedAt is a string");
+  assert.equal(
+    Number.isNaN(Date.parse(record.endedAt as string)),
+    false,
+    "captured contract: endedAt parses as an instant",
+  );
+  assert.equal(record.exitCode, expectedExitCode, "captured contract: exitCode is the argument");
+}
+
 /** Invoke the generated turn-end hook the way an honest adapter must. */
 function invokeHook(request: TestRequest, exitCode: number): void {
   const hooked = spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
@@ -895,7 +921,7 @@ test(
     // the shipped route to the absent record this test is about, so an
     // adapter that invoked the hook and ignored its exit code reaches
     // `completed` with no record, exactly like the fabricating adapter below.
-    const captureName = "spawn-turn-end-hook-record.txt";
+    const captureName = HOOK_CAPTURE;
     const captured = readCapture(captureName);
     assert.match(captured, /bad-argument:[^]*?exit 64/, captureName);
     assert.match(captured, /expected one integer exit-code argument/, captureName);
@@ -987,6 +1013,15 @@ test(
     // JSON and are not a turn-end record, which a JSON.parse-only check
     // would also pass green.
     const scratch = makeScratch(t);
+
+    // The wrong-shape fixture below is not invented: it INVERTS the two field
+    // types the capture shows the real hook writing, a string endedAt and an
+    // integer exitCode. Asserting that against the capture is what keeps the
+    // fixture anchored to the program's output, so a later change to the
+    // hook's record makes this test wrong loudly rather than quietly.
+    const shapeCaptured = readCapture(HOOK_CAPTURE);
+    assert.match(shapeCaptured, /"endedAt": "[0-9]{4}-[0-9]{2}-[0-9]{2}T/, HOOK_CAPTURE);
+    assert.match(shapeCaptured, /"exitCode": [0-9]+/, HOOK_CAPTURE);
 
     const garbage: TestAdapter = {
       name: "garbage-writing-test-adapter",
@@ -1177,6 +1212,10 @@ test(
       "spawnTask returned before the payload the adapter awaited had finished",
     );
     assert.equal(result.ok, true, result.ok ? "" : result.reason);
+    // The adapter invoked the real hook as a child, so the record spawn read
+    // is that child's output; check it against the captured contract rather
+    // than against the adapter's report.
+    assertTurnEndMatchesCapture(join(taskDirOf(scratch, "t-sentinel"), "turn-end"), 0);
   },
 );
 
@@ -1205,12 +1244,10 @@ test(
     assert.equal(typeof value.exitCode, "number", "the exit code was not read from the outcome");
     assert.equal(value.exitCode, 7);
     // And the turn-end record the hook wrote carries the same code, so the
-    // evidence the kernel checked is the payload's own, not the report's.
-    const turnEnd = JSON.parse(
-      readFileSync(join(taskDirOf(scratch, "t-deferred"), "turn-end"), "utf8"),
-    ) as { endedAt: string; exitCode: number };
-    assert.equal(turnEnd.exitCode, 7);
-    assert.equal(Number.isNaN(Date.parse(turnEnd.endedAt)), false);
+    // evidence the kernel checked is the payload's own, not the report's. The
+    // record is compared against the CAPTURED contract of the hook that wrote
+    // it, so the shape asserted here is the one that program really produces.
+    assertTurnEndMatchesCapture(join(taskDirOf(scratch, "t-deferred"), "turn-end"), 7);
   },
 );
 

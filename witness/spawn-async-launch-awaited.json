@@ -1,0 +1,31 @@
+{
+  "id": "spawn-async-launch-awaited",
+  "behavior": "spawn-async-launch-awaited",
+  "tests": [
+    "a launch outcome resolved on a later event-loop turn is read as an outcome, not as a pending promise"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const launched = await runStepAsync(\n    `launching the payload through the ${adapter.name} adapter`,\n    async () =>\n",
+      "replace": "  const launched = runStep(\n    `launching the payload through the ${adapter.name} adapter`,\n    () =>\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/task.ts",
+      "find": "    return { ok: true, value: await step() };\n",
+      "replace": "    return { ok: true, value: step() as unknown as T };\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "The completion precondition (src/spawn.ts:299) reads the file the GENERATED turn-end hook writes, and spawn runs that hook as a child process with spawnSync (src/spawn.ts:232), so red-witness rule (f) binds every witness whose members mutate src/spawn.ts. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is that hook's real output, taken 2026-09-16 on node v26.6.0 against a hook rendered by src/hooks.ts renderTurnEndHook(): an integer argument exits 0 and writes a two-key JSON record, and a NON-integer argument exits 64, writes nothing and prints \"tiphys turn-end hook: expected one integer exit-code argument\". The bad-argument arm is the shipped route to the absent record, so the named test reproduces both arms against a live hook before exercising the refusal. The named test reads the record the hook wrote and asserts its exit code, so the value it checks comes from that child process rather than from the adapter's report. Member 0 uses the synchronous helper at the call site and member 1 leaves the asynchronous helper in place and drops its await, so one is a wrong helper and the other is a correct helper with the await removed. The two members are the same pair this phase's other await witnesses use, and that is a fact about the defect rather than duplication: one missing await has several consequences, and each consequence is a separate registered behavior with its own named test."
+  }
+}
