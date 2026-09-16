@@ -919,9 +919,12 @@ test(
     // capture is that hook's output and not a description of it. Two arms
     // matter here: an integer argument exits 0 and writes a two-key record,
     // and a NON-integer argument exits 64 and writes NOTHING. The second is
-    // the shipped route to the absent record this test is about, so an
-    // adapter that invoked the hook and ignored its exit code reaches
-    // `completed` with no record, exactly like the fabricating adapter below.
+    // the shipped route to the absent record this test is about: an adapter
+    // that invoked the hook and ignored its exit code lands in the same state
+    // as the fabricating adapter below, `completed` with no record. The
+    // SHIPPED adapter does check that status (src/spawn.ts:252) and returns
+    // `incomplete`; an adapter the kernel did not write need not, which is
+    // the whole reason this precondition exists.
     const captureName = HOOK_CAPTURE;
     const captured = readCapture(captureName);
     assert.match(captured, /bad-argument:[^]*?exit 64/, captureName);
