@@ -217,3 +217,53 @@ is what made all of this cheap: every alert triggered a non-destructive copy and
 nothing else, so three false positives cost three wasted `git bundle` calls and
 no work. A correct response makes a wrong detector survivable, which is the
 argument for fixing the response before fixing the detector.
+
+
+## Fourth postscript: I wrote the same bug three times, and the third time I had already fixed it twice
+
+A state-change detector must not treat "no prior state" as a change. I wrote
+that bug three times in one session, in three successive versions of the same
+watchdog:
+
+1. **First version:** no guard at all. Every agent reported "alive again" on the
+   first poll, having never been silent. Nine false messages.
+2. **Second version:** a global `FIRST=1` flag, skipped on the opening pass.
+   Correct for the agents present at that moment.
+3. **Third version:** the same global flag, and two agents dispatched LATER
+   arrived mid-run. For them the opening pass was long past, so their first
+   observation was compared against an unset value and reported as a transition.
+   Two more false messages.
+
+**The global flag answers the wrong question.** It asks "is this the first
+iteration of the loop", when the property that matters is "is this the first
+observation of THIS subject". Those coincide only while the set of subjects is
+fixed, which is exactly the assumption a long-running fan-out breaks.
+
+The correct form is per subject and is one line:
+
+```
+prev="${SEEN[$b]}"
+SEEN[$b]="$st"
+[ -z "$prev" ] && continue     # first observation of THIS subject, not a change
+```
+
+**The uncomfortable part is not the bug, it is the repetition.** By version
+three the fix was written down, committed, and in a file I had authored myself
+about this exact watchdog. It did not survive a rewrite of the thing it
+governed. That is precisely what T-005 and T-006 record and what the agent-rules
+file says twice: a rule that depends on remembering does not survive, and the
+answer is a mechanism.
+
+**The mechanism that would have caught it** is not another rule. It is that a
+change-detector deserves the same treatment as any other guard in this
+repository: a red witness. Arm it against a subject that appears mid-run and
+confirm it stays silent. I did not, three times, because a monitor felt like
+infrastructure rather than code. It is code, and it is code that decides whether
+work gets thrown away.
+
+**Cost, stated honestly: near zero.** Every false alert triggered a
+non-destructive copy and nothing else, by the rule in the second postscript. The
+entire bill for three repetitions of the same defect is eleven confusing lines
+in a log and a few wasted `git bundle` calls. That is the second postscript
+earning its keep, and it is the argument for fixing the RESPONSE before the
+DETECTOR, one more time.
