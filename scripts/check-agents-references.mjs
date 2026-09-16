@@ -43,7 +43,7 @@
  * `vacuous: true` rather than a green that examined nothing.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -692,7 +692,26 @@ function main(argv) {
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). Measured on
+// node v26.6.0: invoked through a symlinked directory in the path, or
+// through a symlink to this file, process.argv[1] carries the caller's
+// spelling while import.meta.url carries the canonical one, so the bare
+// comparison is false and this gate silently does nothing and exits 0. A
+// guard that cannot go red is the T-008 shape. This is the same form
+// src/gates/deploy.ts:27 already uses, not a second dialect.
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (entry === undefined) {
+    return false;
+  }
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

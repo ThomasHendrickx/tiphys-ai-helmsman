@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pathsIdentifySameObject } from "../path-identity.ts";
+import { pathsIdentifySameObject, pathsNameSameObject } from "../path-identity.ts";
 import {
   classifyEntry,
   readRegularFileIfPresent,
@@ -405,7 +405,20 @@ export function isFileWrapperPhantom(point: SuitePoint, cwd: string): boolean {
   return (
     point.entityType === "test" &&
     point.nesting === 0 &&
-    resolve(cwd, point.name) === point.file
+    // IDENTITY, NOT STRING EQUALITY, and the paragraph above claims more
+    // than `===` delivers. "Invariant across every spelling node produces
+    // it in, by construction" is false for one spelling: `resolve` does not
+    // resolve SYMLINKS, and node reports the CANONICAL path in its
+    // reporter's `file` field whatever spelling it was invoked with.
+    // Measured 2026-09-16 on node v26.6.0: invoked as
+    // <link>/test/a.test.js, `data.file` came back as <real>/test/a.test.js,
+    // so `resolve(cwd, point.name)` and `point.file` were two strings for
+    // one file and the phantom was counted as a real test again, which is
+    // the CR-1306 defect through the one spelling the enumeration missed.
+    // The string comparison is kept and tried first (it answers without
+    // touching the filesystem and is the common case); the identity check
+    // only ever turns a false "different" into a true "same".
+    pathsNameSameObject(resolve(cwd, point.name), point.file)
   );
 }
 
@@ -1005,6 +1018,19 @@ export function runSuiteGate(argv: string[]): number {
   }
 
   // Discovery parity, both directions (step 3).
+  //
+  // NOT Set membership on the raw strings (DV2-1): `discoveredFiles` is
+  // composed by this gate's own walk from `resolve(cwd, root)`, which does
+  // not resolve a symlinked ANCESTOR of the declared root, while
+  // `reportedFiles` comes from node's own test reporter, which is canonical
+  // whatever spelling node was invoked with (the same reason
+  // `isFileWrapperPhantom` above already compares by identity rather than by
+  // string). A `--test-root` that reaches its target through a symlinked
+  // ancestor then produces one file discovered once and reported once,
+  // reported as BOTH "discovered but absent from the reporter" and
+  // "reported but outside the declared roots", because the two strings
+  // differ even though they name the same object. `pathsNameSameObject`
+  // (src/path-identity.ts) is the round's own primitive for exactly this.
   const reportedFiles = [
     ...new Set(
       points
@@ -1012,18 +1038,16 @@ export function runSuiteGate(argv: string[]): number {
         .map((point) => point.file),
     ),
   ].sort();
-  const discoveredSet = new Set(discoveredFiles);
-  const reportedSet = new Set(reportedFiles);
   const findings: string[] = [];
   for (const file of discoveredFiles) {
-    if (!reportedSet.has(file)) {
+    if (!reportedFiles.some((other) => pathsNameSameObject(other, file))) {
       findings.push(
         `test file discovered by the walk but absent from the reporter: ${relative(cwd, file)}`,
       );
     }
   }
   for (const file of reportedFiles) {
-    if (!discoveredSet.has(file)) {
+    if (!discoveredFiles.some((other) => pathsNameSameObject(other, file))) {
       findings.push(
         `test file reported but outside the declared roots and suffix: ${relative(cwd, file)}`,
       );
