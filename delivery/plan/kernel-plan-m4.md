@@ -3834,3 +3834,65 @@ another program's output and whose suite now reports 846 tests.
 - **Sequencing against the other twenty-seven.** Neither phase touches a file on
   any existing phase's declaration, so the conflict pre-pass is not re-derived
   here; that check is owed before either is dispatched concurrently.
+
+## 12. Revision 3, 2026-09-16: M4-P15 was split in delivery and not in the plan
+
+Found by the agent dispatched to verify M4-P15, which read the plan section
+carrying that id and reported that it declares a DIFFERENT unit from the one
+delivered. It is right, and the defect is the orchestrator's.
+
+**What the plan says at section 3.4:** M4-P15 is "the kernel's fleet-home
+bring-up", branch `claude/m4-p15-fleet-bringup`, kind mixed, two units, depending
+on M4-P13 for merge order.
+
+**What was delivered:** branch `claude/m4-p15-kernel-charter`, whose declaration
+lists `charter.yaml`, `test/kernel-charter.test.ts` and `test/behaviors.json`.
+The root charter, and nothing else.
+
+The wave-1 pre-pass carved the charter out under the existing id because it had
+become the merge-path blocker, and the plan was never amended to match. Nothing
+caught it: the scope gate compares the declaration's `branch` field against the
+actual branch, and those two agree; the PLAN is not an input to any gate.
+
+### The resolution, and why this way round
+
+**M4-P15 now means the charter**, as delivered. The alternative, renaming the
+delivered branch, is worse for a reason this repository already records: a branch
+matching `^claude/m[0-9]+-p[0-9]+-` IS that phase's branch to the scope auditor,
+so `claude/m4-p15-kernel-charter` already claims the id whatever the plan says,
+and renaming means a new branch, a new declaration and a fresh push of work that
+is finished and verified.
+
+**The fleet-home bring-up becomes M4-P30**, a fresh id checked against the whole
+history rather than the current tree (`git log --all -S'M4-P30'` returns nothing;
+zero occurrences in this file). Its content is unchanged: section 3.4's body
+still describes it, and only the id and branch at its head move.
+
+### M4-P30: the kernel's fleet-home bring-up
+
+**Branch:** `claude/m4-p30-fleet-bringup`
+
+**Everything else is section 3.4 as written**, including its dependency on
+M4-P13 for merge order and the forced bring-up order that section says costs a
+round to get wrong. This entry does not restate it, because restating a
+specification is how two versions of it come to exist.
+
+**It is UNDISPATCHED and was briefly UNOWNED**, which is the part worth
+remembering: for as long as the charter held the id, the bring-up had no id at
+all, and it would have been found missing only when someone went looking for
+M4-P15 and found a charter.
+
+### What this revision did NOT check
+
+- **Whether any other phase was split the same way.** Only M4-P15 was examined,
+  because only M4-P15 was flagged. The wave pre-passes carved several units out
+  of plan sections and this is the only one checked against its section.
+- **Whether M4-P13's dependency still makes sense** now that the id has moved.
+  Section 3.4 says M4-P15 depends on M4-P13 for merge order; that sentence now
+  refers to M4-P30 and nobody has re-derived whether the ordering still holds.
+- **The other two contradictions the same agent reported.** Its brief asserted
+  that the charter unblocks every M4 merge, which the correction in
+  delivery/plan/m4-charter-blocks-every-merge.md:1 already withdrew, and that a
+  probe had measured the `release-verification` shape when it measured a
+  different artifact. Both are dispatch-brief defects rather than plan defects
+  and are recorded with the brief.
