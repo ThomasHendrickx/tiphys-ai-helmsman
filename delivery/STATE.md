@@ -74,70 +74,40 @@ is wrong: verify against git and the PR list before trusting it.
   than the sixteen a per-phase rule would have spent, and DR-0027 exists
   because 1.66 million subagent tokens once went to two files that ship nothing.
 
-- **M4-P19 AND M4-P26 ARE IN FIX ROUNDS.** M4-P19's reviews are at
-  `delivery/review/M4-P19-opus5-correctness` and
-  `delivery/review/M4-P19-fable-evidence` on its branch; the HIGH findings were
-  that the canonical post-reclaim fleet makes the new check inert, that the
-  scout arm of teardown passes `discard: true` unconditionally and so destroys
-  uncommitted work, that `red-witness` is red with four changed source files
-  carrying no witness spec, and that three asserted facts in section 6 of the
-  work history measured FALSE.
-- **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND
-  `.claude/orchestrator-next.mjs` READS THAT AS UNMERGED WORK.** The phase's
-  code reached `main` inside the exit test's branch at `1945d69`, carrying a
-  fix on top of it; `origin/claude/m3-p13-doctor-kernel-artifacts` therefore
-  sits 11 commits ahead of `main` forever and the stop-condition script prints
-  "DRIVE M3-P13 TO MERGE" at a head where there is nothing to drive. Checked
-  rather than assumed: all 762 of that branch's registered behaviors are
-  present among `main`'s 775.
-  **A stop condition that cannot go green is the same defect as a guard that
-  cannot go red**, and this one points an orchestrator at work that is done.
-  The script decides merged-ness by branch-ahead-ness alone and has no notion
-  of delivered-elsewhere. Tracked, not assigned.
-- **THE PAPERWORK WAS THE PART THAT WAS ACTUALLY MISSING, AND IT IS LANDED
-  HERE.** `main` carried M3-P13's code, its tests and its four witness specs
-  while carrying neither its work history nor its phase declaration. That is
-  the mirror of the defect CLAUDE.md names under DR-0031, one turn further
-  round: there, `main` asserted review evidence for code it did not contain;
-  here, `main` contained code whose implementer record it did not carry.
-  Neither the scope gate nor any review catches either direction.
-- **M4's PILOT IS RUNNING, IN A SESSION THIS ORCHESTRATOR DOES NOT OWN.** Both
-  `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` exist, carry a
-  charter, a plan and a delivered M1-P1 with dual review, and deploy to a live
-  Vercel target. DR-0034 describes the pilot as something about to be started;
-  it was already running when that record was written. The correction, measured,
-  is at delivery/verification/dr-0034-premise-check.md:1.
-  **This orchestrator has not touched either repository and should not**, unless
-  the owner says otherwise: two orchestrators against one fleet is the exact
-  contention the session lock exists to prevent.
-- **A-2 IS HALF DONE AND THE OTHER HALF NEEDS ONE OWNER CLICK.** A durable fleet
-  remote exists, which is what A-2 asked for in substance. It is **PUBLIC**, and
-  A-2 asked for private, for a personal finance project. No credential was found
-  in it; what is public is the shape of the system and the delivery paperwork,
-  and the exposure that matters accrues going forward rather than having already
-  happened. **RECOMMENDATION RETRACTED 2026-09-15 by DR-0037**: the owner has
-  decided `pulse` is a portfolio project and stays open, and that the kernel
-  must not require otherwise. Do not act on the superseded advice below. See the
-  measurement and the reasoning at
-  delivery/verification/dr-0034-premise-check.md:1.
-- **THE PILOT HAS ALREADY PRODUCED THREE KERNEL DEFECTS THAT NO GATE HERE
-  CATCHES**, all found by USE rather than by review: `tiphys spawn` ships no
-  agent adapter so a real payload cannot authenticate under it; `tiphys validate
-  --type verdict --context .` cannot pass in a downstream fleet because it
-  resolves plan, work-history and assurance-mode documents at the context root;
-  and `dual-review-decorrelation` hard-requires two `produced-by` families with
-  no declared override, so a single-family environment can satisfy it only by
-  declaring something false. They are candidates for 0.2.0, not a decided scope.
-- **THE DEFAULT TOOLCHAIN NOW FAILS THE SUITE, AND IT IS NOT THIS BRANCH.**
-  Measured 2026-08-20 at `1945d69`, one test, one head, two interpreters:
-  test/doctor.test.ts:934, "a staged install of the built package reproduces
-  the captured contract live", asserts "the unpromoted arm must not fail the
-  fleet" and gets `1 !== 0` on node v22.22.2, and PASSES on node v26.6.0. It is
-  floor-DEPENDENT without being floor-GATED, unlike the two `doctor` tests that
-  skip themselves. Consequence: anyone running the suite on the container
-  default sees `846 pass, 1 fail, 2 skipped` at a green head, which is how a
-  real red gets ignored. CI is unaffected and remains the authority. Not
-  assigned; a candidate for the next kernel change that touches `doctor`.
+- **ALL SEVEN FIX ROUNDS ARE DONE, 2026-09-16.** M4-P2, P10, P11, P19, P23, P26
+  and P27 have each had a round; M4-P26 has had two, which is DR-0027's hard
+  limit, so it merges with its remaining LOW findings recorded rather than fixed.
+  Every branch is pushed and the replicator re-checks every five minutes.
+
+  **The board, from `.claude/merge-ready.mjs`:**
+
+  | state | phases |
+  |---|---|
+  | only the shared declaration blocker | M4-P13, M4-P16, M4-P20 |
+  | first review outstanding | M4-P15 (running) |
+  | fix round outstanding | M4-P1 |
+  | re-review owed after its fix | M4-P2, P10, P11, P19, P23, P26, P27 |
+
+- **THE MERGE SEQUENCE IS VERIFIED END TO END** and is the one thing every phase
+  waits on: delivery/plan/m4-merge-sequence-verified.md:1. Eleven of twelve pass
+  the scope gate once the paperwork lands and each branch merges `main` forward;
+  the twelfth passes once M4-P10 merges before M4-P11, which binding convention
+  5 already requires. It needs a pull request and nothing else.
+
+- **THE MERGE-AUTHORITY BYPASS IS FOUND AND CLOSED, AND IT WAS THE MOST SERIOUS
+  DEFECT OF THE MILESTONE.** `establishDelegatedRegime` read `charter.yaml` off
+  DISK while its sibling read the same file from the git object database, so an
+  UNCOMMITTED one-word edit of `delivery-mode` turned a refusal into an approval
+  and switched the decorrelation requirement off entirely. Four sites, all in
+  `src/checks.ts`, three reported by the reviews and the worst found by the fix
+  round's own derivation. Verified closed independently by the orchestrator in
+  three arms: delivery/verification/m4-p11-bypass-is-closed.md:1.
+
+- **THE FIRST CONFORMING VERDICT DOCUMENTS IN THIS REPOSITORY'S HISTORY EXIST.**
+  Both M4-P11 reviewers wrote one. `check-dual-review` has reported
+  not-applicable on every phase of M1, M2 and all of M3 because 234 committed
+  review files contain zero verdict documents. These carry the `head` field
+  M4-P10 adds to the schema, so they cannot land until M4-P10 merges.
 
 - **The three M3 exit-test falsification controls are SKIPPED BY DECISION**, not
   passed and not pending, per DR-0034. Anyone citing the M3 plan's section 4.5
