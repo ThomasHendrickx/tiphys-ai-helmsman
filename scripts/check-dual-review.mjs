@@ -424,7 +424,6 @@ function main(argv) {
       ...(run.read ?? []).map(
         (entry) => `  ${entry.path}: verdict ${entry.verdict}, head ${entry.head}, produced-by ${entry.producedBy}`,
       ),
-      ...(run.verdicts ?? []).map((path) => `  ${path}`),
       ...run.lines,
     ],
   });
