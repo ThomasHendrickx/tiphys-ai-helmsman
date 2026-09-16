@@ -1,0 +1,28 @@
+{
+  "id": "M4-P15",
+  "branch": "claude/m4-p15-kernel-charter",
+  "filesToTouch": [
+    "charter.yaml",
+    "test/kernel-charter.test.ts",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [
+    "delivery/plan/phase-declarations/m4-p15.json",
+    "delivery/work-history/m4-p15.md"
+  ],
+  "citations": [
+    "DR-0012",
+    "DR-0014",
+    "DR-0016",
+    "DR-0020",
+    "DR-0035",
+    "DR-0036",
+    "DR-0037",
+    "DR-0039",
+    "DR-0040",
+    "DR-0041",
+    "DR-0043",
+    "T-008",
+    "T-009"
+  ]
+}
