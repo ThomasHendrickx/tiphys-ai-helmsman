@@ -657,3 +657,40 @@ twelve branches, so any reviewer measuring scope before the sequence will report
 the same class of red, and it will be correct and not the phase's defect. A
 reviewer's scope finding on an M4 branch should be read against which of the two
 steps it measured.
+
+## The red-witness gate is NOT systemically red, measured
+
+A hypothesis worth recording because it was WRONG, and because the cost of not
+testing it would have been dispatching six rounds for one imagined cause.
+
+Two phases failed the `red-witness` gate for a similar reason (M4-P2 on rule (f),
+M4-P11 on an enumeration short by one), which looked like a shared defect in how
+implementers reason about that gate. Six phases add witness specs, so the
+question was whether all six are red.
+
+Measured, one gate run per phase against its own diff, in a throwaway clone:
+
+| phase | red-witness | note |
+|---|---|---|
+| m4-p16 | **green** | 10 witnesses, 5 own, 5 stored re-evaluated |
+| m4-p19 | **green** | 18 witnesses, 9 own, 9 stored |
+| m4-p26 | **green** | 22 witnesses, 22 own |
+| m4-p10 | **error** | stored witnesses cannot find their mutation text |
+| m4-p2 | was red | fixed by its round; green at the shipping head |
+| m4-p11 | red | this phase's round owes it |
+
+**So it is not systemic and there is no shared fix.** Three phases satisfy the
+gate without trouble. The two reds are genuine, independent, per-phase defects.
+
+M4-P10's error is a THIRD kind and was already reported by its own reviewer: it
+lifted a block of `src/checks.ts` to a top-level function, so the stored witness
+specs that mutate that block by exact source text can no longer find it. The gate
+reports `mutation find text "    if (authority !== DELEGATED_MERGE_AUTHORITY) {"
+does not occur in src/checks.ts`. That is the gate working: a stored witness
+whose target has moved is unverifiable, and it errors rather than passing.
+
+**What this measurement did NOT cover.** Each run used the phase's own merge base
+with the plan branch as `--base`, not `origin/main`, because the inherited
+paperwork would otherwise dominate the diff. That is the right question for "does
+this phase's witness set satisfy the rules" and it is not the invocation CI will
+use. Nothing here says what CI will report after the merge sequence.
