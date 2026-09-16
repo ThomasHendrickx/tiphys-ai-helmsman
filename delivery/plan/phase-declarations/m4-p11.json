@@ -1,0 +1,40 @@
+{
+  "id": "M4-P11",
+  "branch": "claude/m4-p11-single-family-exception",
+  "filesToTouch": [
+    "schemas/charter.schema.json",
+    "scripts/check-dual-review.mjs",
+    "src/checks.ts",
+    "src/gates/run.ts",
+    "src/witness/run.ts",
+    "test/single-family-exception.test.ts",
+    "test/witness.test.ts",
+    "test/dual-review.test.ts",
+    "test/kernel-charter.test.ts",
+    "test/verdict-head.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p11.json",
+    "delivery/work-history/m4-p11.md",
+    "delivery/plan/cutover/retirement-inventory.json"
+  ],
+  "citations": [
+    "DR-0012",
+    "DR-0020",
+    "DR-0029",
+    "DR-0031",
+    "DR-0037",
+    "DR-0038",
+    "M4-D-17",
+    "M4-D-28",
+    "M2-C-2",
+    "M2-C-3",
+    "SC-011",
+    "T-007",
+    "T-009",
+    "C-1",
+    "C-2",
+    "C-3"
+  ]
+}

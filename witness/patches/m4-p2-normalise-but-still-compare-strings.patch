@@ -1,0 +1,19 @@
+diff --git a/src/gates/coverage.ts b/src/gates/coverage.ts
+--- a/src/gates/coverage.ts
++++ b/src/gates/coverage.ts
+@@ -1,5 +1,5 @@
+ import { writeFileSync } from "node:fs";
+-import { join } from "node:path";
++import { join, resolve } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { pathsIdentifySameObject } from "../path-identity.ts";
+ import { Script, createContext } from "node:vm";
+@@ -1017,7 +1017,7 @@
+ // identity.
+ if (
+   process.argv[1] !== undefined &&
+-  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1])
++  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+ ) {
+   try {
+     process.exitCode = main(process.argv.slice(2));

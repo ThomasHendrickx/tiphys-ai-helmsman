@@ -230,9 +230,28 @@ test("one verdict for a head exits nonzero saying a delegated grant needs two", 
   withContext("full", [DECORRELATED[0] as string], (dir) => {
     const run = runScript(dir);
     assert.equal(run.status, 1, run.output);
+    /* THE CHECK IS NAMED, AND THAT IS NOT DECORATION. M4-P10 added a SECOND
+       pair-size rule, in `verdict-pair-approves`, whose message opens with the
+       same twelve words. A regex stopping at the shared prefix therefore passed
+       on EITHER guard, so the sibling MASKED this one: its stored witness,
+       which defangs the decorrelation size rule alone, left this test green.
+       Measured by running that witness, which is what found it. Asserting the
+       tail and the attribution is what makes this test about the rule it
+       claims to guard.
+
+       THE PROVENANCE TAIL SITS BETWEEN THEM SINCE M4-P11 (stack integration,
+       2026-09-16), so the two halves are matched across it rather than
+       adjacently. M4-P11 makes every sentence about a corpus end with the
+       source it was actually read from, which is SC-011 applied to the corpus,
+       and that parenthetical carries nested parentheses of its own, so it is
+       crossed with `.*` rather than enumerated. The property this assertion
+       exists for is unchanged: the DISTINGUISHING TAIL and the ATTRIBUTION are
+       both required, and `.` does not cross a newline, so both must still be on
+       ONE line of output. */
     assert.match(
       run.output,
-      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9/,
+      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9 at head [0-9a-f]{40}, and a delegated grant requires two independent clean-room reviews of the exact head .*\(check: dual-review-decorrelation\)/,
+      run.output,
     );
   });
 });
@@ -283,7 +302,22 @@ test("deregistering dual-review-decorrelation makes the shared-family fixture pa
       const during = scriptModule.evaluate(dir);
       assert.equal(during.status, "green");
       assert.equal(during.checksRun, 0);
-      assert.deepEqual(during.lines, []);
+      /* M4-P10: a SECOND check now runs in this gate, so "no lines at all" is
+         no longer the right assertion and replacing it with one is not a
+         weakening. What this witness is about is that nothing OBJECTS once
+         `dual-review-decorrelation` is gone, and an objection is an INVALID
+         line. `verdict-pair-approves` is still registered here and still
+         REPORTS, which is the correct behaviour: the shared-family pair both
+         approve and carry no blocking finding, so condition 2 is met while
+         condition 1 is no longer being checked at all. */
+      assert.deepEqual(
+        during.lines.filter((line) => line.startsWith("INVALID")),
+        [],
+      );
+      assert.deepEqual(
+        during.lines.filter((line) => line.includes("dual-review-decorrelation")),
+        [],
+      );
     } finally {
       checksModule.registerCheck(checksModule.dualReviewDecorrelation);
     }
@@ -779,6 +813,12 @@ test("a verdict that is not among the committed reviews cannot be cleared by the
     const stray = {
       kind: "verdict",
       phase: "M3-P9",
+      /* M4-P10 made `head` required and made it half the join key, so the stray
+         must name the SAME head as the committed pair or it would be refused
+         for the wrong reason: a stray for a different head is out of the group
+         by construction, which would not exercise the membership rule this
+         test is about. */
+      head: "dcbe6704813e861736c8d394dca35f7dc31b4f93",
       verdict: "APPROVE",
       "produced-by": "family-c",
       framing: "fix-round",

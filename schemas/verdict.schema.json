@@ -9,6 +9,7 @@
   "required": [
     "kind",
     "phase",
+    "head",
     "verdict",
     "produced-by",
     "framing",
@@ -28,6 +29,11 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"
+    },
+    "head": {
+      "$comment": "M4-P10, discharging DR-0012 condition 1's head clause (delivery/decisions/DR-0012-delegated-merge-authority.md:22): two independent clean-room reviews exist FOR THE CURRENT HEAD. WHY IT IS REQUIRED RATHER THAN OPTIONAL, decided here because the plan left the choice open and the migration cost is not zero. Before this field the only thing scoping a set of verdicts to one head was the DIRECTORY the operator pointed the gate at, a convention recorded as a declared reading in delivery/work-history/m3-p9.md and enforced by nothing. An OPTIONAL head leaves that convention in place for every document that omits it, which is the whole existing population, so the gate would keep grouping by directory and the clause would stay asserted by a human while reading as checked. Required is the only spelling that removes the convention. WHY FORTY LOWERCASE HEX AND NOT AN ABBREVIATION. A short sha and a full sha are two spellings of ONE fact, and no canonical form reconciles them: nothing here can know that a seven-character value is a prefix of a forty-character sibling without resolving both against a repository this schema is never given. Two spellings of one head would then form two groups of one, which is the fail-open direction, because a group of one is never compared to anything. The pattern refuses the abbreviation at the document boundary instead. Case is refused here and ALSO folded downstream by the derived check's `establishField`, so the two layers agree rather than one relying on the other. WHAT IT DOES NOT BUY, stated rather than left to be found. Nothing here checks that the value names a commit that exists, or that it is the commit the reviewer actually read; the field makes the CLAIM explicit and comparable between two documents, it does not make it true. And a verdict cannot carry the sha of the commit that CONTAINS it, because committing the verdict changes the tree and therefore the sha. `head` names the commit that was REVIEWED, which is an ancestor of the commit carrying the verdict.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
     },
     "verdict": {
       "$comment": "R-060's closed vocabulary, exactly two values. A third value such as 'approve with comments' is the shape that lets a fix round be skipped by wording, so the enum is the whole point of the field.",
@@ -82,7 +88,7 @@
     }
   },
   "if": {
-    "$comment": "THE DANGEROUS INSTANCE, criterion 4(a), inverted into the closed vocabulary's reach. The rule wanted is APPROVE implies no high finding, and the direct spelling needs `not`, which schemas/README.md does not permit. `contains` matches the NON-empty case, which is the polarity that works here: a set that CONTAINS a finding the review itself ranked high or critical is a set whose verdict must be FIX-ROUND-NEEDED. `type: array` is restated inside because ajv 8.20.0 under `strict: true` refuses `contains` in a subschema that has not declared its type at the same level.",
+    "$comment": "WIDENED TO `medium` BY M4-P10, AND THAT WIDENING IS THE POINT OF THE FIELD LIST BELOW. As shipped by M3-P7 this enum read [high, critical] while DR-0012 condition 2 (delivery/decisions/DR-0012-delegated-merge-authority.md:23) bars an unresolved finding at high OR MEDIUM. So a verdict reading APPROVE beside a finding the review itself ranked `medium` validated at exit 0, and the merge precondition the schema exists to carry was one severity wider than the schema. `low` is deliberately still mergeable, which is what that same line of DR-0012 says. THE DANGEROUS INSTANCE, criterion 4(a), inverted into the closed vocabulary's reach. The rule wanted is APPROVE implies no high finding, and the direct spelling needs `not`, which schemas/README.md does not permit. `contains` matches the NON-empty case, which is the polarity that works here: a set that CONTAINS a finding the review itself ranked high or critical is a set whose verdict must be FIX-ROUND-NEEDED. `type: array` is restated inside because ajv 8.20.0 under `strict: true` refuses `contains` in a subschema that has not declared its type at the same level.",
     "properties": {
       "findings": {
         "type": "array",
@@ -92,7 +98,7 @@
           "properties": {
             "severity": {
               "type": "string",
-              "enum": ["high", "critical"]
+              "enum": ["medium", "high", "critical"]
             }
           }
         }
@@ -100,7 +106,7 @@
     }
   },
   "then": {
-    "$comment": "So APPROVE beside a high or critical finding fails HERE, naming the verdict field. Restated in `properties` at this level because a bare `enum` under a name ajv cannot see declared is a compilation error under strictTypes.",
+    "$comment": "So APPROVE beside a medium, high or critical finding fails HERE, naming the verdict field (widened from high by M4-P10). Restated in `properties` at this level because a bare `enum` under a name ajv cannot see declared is a compilation error under strictTypes.",
     "properties": {
       "verdict": {
         "type": "string",

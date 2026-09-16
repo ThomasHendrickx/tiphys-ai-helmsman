@@ -1275,8 +1275,31 @@ function evaluateRefusalRules(
   }
 
   // (f) derived capture obligation from the spawn grep over changed files.
+  //
+  // THE SCOPE IS PER MEMBER, exactly as rule (d)'s is eleven lines down, and
+  // for the same reason. `7b18144` fixed that scope for rule (d) and left its
+  // sibling reading EVERY member of the spec, so an obligation derived from a
+  // file THIS PHASE changed was imposed on members the phase never authored,
+  // and could not have been discharged when they were written.
+  //
+  // MEASURED, M4-P11 at `a7d007f`: giving `src/checks.ts` its first subprocess
+  // call turned it into a spawning changed file and reddened THIRTY-NINE
+  // pre-existing witness specs over checklist parsing, verdict vocabulary,
+  // mode enums and hazard resolution. None of them had anything to do with git
+  // output; none of them could have declared a capture, because `src/checks.ts`
+  // spawned nothing when they were written. A required gate went red for every
+  // spec in a file's neighbourhood because one unrelated line was added.
+  //
+  // WHAT THE RULE STILL BINDS, so this is a scope correction and not a defang:
+  // a member THIS PHASE added or changed that touches a spawning changed file
+  // takes the capture obligation in full. Editing a member makes it owned, so
+  // a phase cannot launder an old member into an exemption by rewriting it.
   const touched = new Set<string>();
-  for (const member of spec.dangerousStates) {
+  for (let index = 0; index < spec.dangerousStates.length; index += 1) {
+    if (!inputs.phaseOwnedMembers.has(index)) {
+      continue;
+    }
+    const member = spec.dangerousStates[index] as DangerousStateMember;
     for (const file of memberTouchedFiles(member, readPatch)) {
       touched.add(file);
     }

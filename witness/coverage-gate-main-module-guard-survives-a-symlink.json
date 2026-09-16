@@ -1,0 +1,22 @@
+{
+  "id": "coverage-gate-main-module-guard-survives-a-symlink",
+  "behavior": "coverage-gate-main-module-guard-survives-a-symlink",
+  "tests": [
+    "the coverage gate still runs when it is invoked through a symlinked directory"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/coverage.ts",
+      "find": "if (\n  process.argv[1] !== undefined &&\n  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1])\n) {\n",
+      "replace": "if (process.argv[1] === fileURLToPath(import.meta.url)) {\n"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/m4-p2-normalise-but-still-compare-strings.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

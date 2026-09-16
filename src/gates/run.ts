@@ -191,6 +191,13 @@ export interface GateSummaryRow {
   unitLabel: string;
   vacuous: boolean;
   applicable: boolean;
+  /**
+   * M4-P11, DR-0038. True when this gate's `not-applicable` carries a
+   * declaration in its precondition evidence. Present on the ROW as well as in
+   * the reason line, because the reason line is one line and a reader auditing
+   * the bundle needs to reach the gate that declared without parsing prose.
+   */
+  declaredNotApplicable?: boolean;
   detail: string;
   record?: string;
   stdout?: string;
@@ -233,6 +240,13 @@ export interface RunSummary {
   };
   /** Named here as well as in the rows, because the reason line is one line. */
   requiredNotApplicable: string[];
+  /**
+   * M4-P11, DR-0038. Every gate whose `not-applicable` carries a declaration,
+   * sorted. Always present, EMPTY when there are none, so a consumer can tell
+   * "this run declared nothing" from "this run is from before the field
+   * existed"; an absent field would be the silence that reads as permission.
+   */
+  declaredNotApplicable: string[];
   /** True when a throw escaped the run and this summary is a partial record. */
   aborted: boolean;
   exitCode: number;
@@ -267,6 +281,50 @@ export interface RunOutcome {
 }
 
 export const NO_APPLICABLE_GATE = "no applicable gate";
+
+/**
+ * THE EVIDENCE ENTRY THAT MARKS A NOT-APPLICABLE AS DECLARED (M4-P11, DR-0038).
+ *
+ * `src/gates/release.ts:1050` already writes this exact string into
+ * `precondition.evidence` when a release verification is declared `none`, and
+ * `scripts/check-dual-review.mjs` now writes it for the declared single-family
+ * review exception. The owner's requirement for that exception is that nobody
+ * can hide it; it is stated here as a runner-level property because the place
+ * an exception hides is the AGGREGATE, not the gate's own record.
+ *
+ * WHY AN ARRAY ELEMENT AND NOT A FIELD. A boolean on `PreconditionRecord` would
+ * be the right home, and `src/gates/schemas/gate-result.schema.json` is
+ * `additionalProperties: false` on that object, so adding one is a schema
+ * change outside M4-P11's files-to-touch list. What is done instead is the
+ * narrowest available thing that is still structural: an EXACT element of a
+ * structured array, compared with `===`, never a pattern over the detail prose.
+ * MECHANISMS.md's row about deciding what another program will do by
+ * pattern-matching the text of a file it wrote is the failure this avoids, and
+ * matching one whole array element is on the safe side of it because the
+ * producer writes the element for this purpose and nothing else.
+ */
+export const DECLARED_PRECONDITION_EVIDENCE = "declared: true";
+
+/**
+ * Does this record's precondition carry a declaration?
+ *
+ * A not-applicable with NO precondition is not declared, and neither is one
+ * whose precondition carries no evidence: silence is never permission, and it
+ * is never a declaration either.
+ */
+export function isDeclaredNotApplicable(result: {
+  status: GateStatus;
+  precondition?: PreconditionRecord;
+}): boolean {
+  if (result.status !== "not-applicable") {
+    return false;
+  }
+  const evidence = result.precondition?.evidence;
+  if (!Array.isArray(evidence)) {
+    return false;
+  }
+  return evidence.some((entry) => entry === DECLARED_PRECONDITION_EVIDENCE);
+}
 
 /** The default assurance mode when `--registry` is given without `--mode`. */
 export const DEFAULT_MODE = "full";
@@ -1692,8 +1750,35 @@ export interface AggregateCounts {
 export function decideAggregate(
   counts: AggregateCounts,
   requiredNotApplicable: string[],
-  rows: { id: string; status: GateStatus }[],
+  rows: { id: string; status: GateStatus; declaredNotApplicable?: boolean }[],
 ): { exitCode: number; reason: string } {
+  /* M4-P11, DR-0038. THE ONE THING A DECLARED EXCEPTION MUST NEVER BE IS
+     INVISIBLE, AND THE AGGREGATE IS WHERE IT WOULD BE.
+     `scripts/check-dual-review.mjs` is a CONDITIONAL gate, so its
+     not-applicable never reaches `requiredNotApplicable` and never appears in
+     the reason line. Before this clause, a bundle carrying a gate that had
+     declined DR-0012's cross-family requirement by declaration printed "every
+     applicable gate is green" and exited 0, and the exception appeared nowhere
+     a reader of the bundle would look. That is the same substitution T-009
+     names, one scope smaller: a bundle-level green standing in for a
+     gate-level fact.
+
+     IT IS APPENDED TO EVERY ARM, not only the success path. A declaration is
+     equally worth seeing beside a red, and an arm that reported it on one
+     branch and not another would be a guard that goes quiet exactly when
+     something else is also wrong. */
+  const declared = rows
+    .filter((row) => row.status === "not-applicable" && row.declaredNotApplicable === true)
+    .map((row) => row.id)
+    .sort();
+  const declaredClause =
+    declared.length === 0
+      ? ""
+      : `; ${String(declared.length)} gate(s) not applicable by declaration: ${declared.join(", ")}`;
+  const decided = (verdict: { exitCode: number; reason: string }): {
+    exitCode: number;
+    reason: string;
+  } => ({ exitCode: verdict.exitCode, reason: `${verdict.reason}${declaredClause}` });
   let exitCode = EXIT_GREEN;
   let reason = "every applicable gate is green";
   if (counts.error > 0) {
@@ -1738,12 +1823,12 @@ export function decideAggregate(
     .map(([name]) => name)
     .sort();
   if (badCounts.length > 0) {
-    return {
+    return decided({
       exitCode: EXIT_GATE_ERROR,
       reason:
         "internal inconsistency: count(s) that are not non-negative integers: " +
         `${badCounts.join(", ")} (${JSON.stringify(counts)})`,
-    };
+    });
   }
   for (const name of [
     "declared",
@@ -1756,10 +1841,10 @@ export function decideAggregate(
     "vacuous",
   ]) {
     if (!Object.prototype.hasOwnProperty.call(counts, name)) {
-      return {
+      return decided({
         exitCode: EXIT_GATE_ERROR,
         reason: `internal inconsistency: the count ${name} is missing (${JSON.stringify(counts)})`,
-      };
+      });
     }
   }
 
@@ -1797,7 +1882,7 @@ export function decideAggregate(
       `internal inconsistency: vacuous ${String(counts.vacuous)} exceeds ` +
       `error ${String(counts.error)}, and vacuous is a strict subset of error`;
   }
-  return { exitCode, reason };
+  return decided({ exitCode, reason });
 }
 
 export const RUN_CLAIM_FILE = ".tiphys-gate-run.json";
@@ -2011,6 +2096,11 @@ function writeAbortedSummary(
       vacuous: 0,
     },
     requiredNotApplicable: [],
+    /* An aborted run ran no gate, so nothing declared anything. EMPTY rather
+       than omitted, for the reason the field's own comment gives: an absent
+       field would be indistinguishable from an older summary that could not
+       have carried one. */
+    declaredNotApplicable: [],
     aborted: true,
     exitCode: EXIT_GATE_ERROR,
     reason,
@@ -2122,6 +2212,7 @@ function runClaimedBundle(
     vacuous: 0,
   };
   const requiredNotApplicable: string[] = [];
+  const declaredNotApplicable: string[] = [];
 
   for (const entry of selected) {
     const outcome = runOneGate(entry, options, cwd, options.evidenceDir, runId);
@@ -2138,6 +2229,14 @@ function runClaimedBundle(
     }
     if (result.status === "not-applicable" && entry.applicability === "required") {
       requiredNotApplicable.push(entry.id);
+    }
+    /* M4-P11. READ OFF THE INGESTED RECORD, not off the manifest and not off
+       the gate's own claim about itself: `ingestGateRun` has already refused a
+       record whose status and exit code disagree, so by here the precondition
+       belongs to a record the runner accepted. */
+    const declaredHere = isDeclaredNotApplicable(result);
+    if (declaredHere) {
+      declaredNotApplicable.push(entry.id);
     }
     // The runner owns the record on disk whenever it produced or changed
     // one: a not-applicable gate never ran and wrote nothing, and a rewritten
@@ -2164,6 +2263,7 @@ function runClaimedBundle(
       unitLabel: result.unitLabel,
       vacuous: result.vacuous === true,
       applicable: outcome.applicable,
+      declaredNotApplicable: declaredHere,
       detail: result.detail,
       record: dirRefusalForGate === undefined ? recordPath : undefined,
       stdout: outcome.stdoutPath,
@@ -2205,6 +2305,7 @@ function runClaimedBundle(
     gates: rows,
     counts,
     requiredNotApplicable,
+    declaredNotApplicable: [...declaredNotApplicable].sort(),
     aborted: false,
     exitCode,
     reason,

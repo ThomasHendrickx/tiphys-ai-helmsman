@@ -66,6 +66,49 @@ test("init on an initialized fleet exits nonzero and reports already initialized
   assert.match(second.stderr, /already initialized/);
 });
 
+test("init in a cloned fleet home still exits 1 and names tiphys resume as the remedy", (t) => {
+  /* M4-P16 criterion 6, and it asserts on the REMEDY TOKEN rather than on the
+     exit code. The exit code was already 1 before this phase existed
+     (src/commands/init.ts:84 tests a `some()` over a marker set containing
+     `.git`, which a clone satisfies), so an exit-code assertion here is green
+     against the dangerous state and proves nothing. What was missing is that
+     the reader was told to stop without being told what to do instead, and
+     `tiphys resume` is what they should run. */
+  const root = makeTempDir(t);
+  const origin = join(root, "origin-fleet");
+  assert.equal(runCli(["init", origin]).status, 0);
+  const clone = join(root, "clone");
+  const cloned = gitIn(root, ["clone", "--quiet", origin, clone], {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Tiphys Test",
+    GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+    GIT_COMMITTER_NAME: "Tiphys Test",
+    GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+  });
+  assert.equal(cloned.status, 0, cloned.stderr);
+
+  /* PRECONDITION, asserted rather than assumed: the clone really is missing
+     the ephemeral directories, which is what makes it the case criterion 6 is
+     about rather than an ordinary re-init. */
+  for (const name of ["state", "worktrees", "projects"]) {
+    assert.equal(
+      existsSync(join(clone, name)),
+      false,
+      `precondition violated: ${name}/ came across in the clone`,
+    );
+  }
+
+  const result = runCli(["init", clone]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /already initialized/);
+  assert.match(result.stderr, /tiphys resume/);
+  /* And it still refuses to write: a remedy in the message is not a licence to
+     act on the directory it just declined. */
+  for (const name of ["state", "worktrees", "projects"]) {
+    assert.equal(existsSync(join(clone, name)), false, `init created ${name}/ after refusing`);
+  }
+});
+
 test("init refuses a non-empty directory that is not a fleet home", (t) => {
   const dir = join(makeTempDir(t), "occupied");
   mkdirSync(dir);

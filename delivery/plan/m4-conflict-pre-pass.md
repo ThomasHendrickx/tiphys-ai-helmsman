@@ -131,3 +131,38 @@ brief rows (`brief-drift`). Check for others before assuming those are all.
 
 **M4-P27 only.** All new files plus `test/behaviors.json`, which is append-only
 and union-resolved. No overlap with anything live, and no generator couples it.
+
+## Wave 3: the two merge blockers, 2026-09-16
+
+All ten wave-1 and wave-1b units have returned with commits. Two things block
+every merge and neither is a phase anyone scheduled first:
+
+1. **No root `charter.yaml`**, so `check-dual-review` errors the moment any
+   phase commits its two verdicts (delivery/plan/m4-charter-blocks-every-merge.md:1).
+2. **No single-family exception mechanism**, so DR-0012 condition 1 cannot be
+   met by this orchestrator at all
+   (delivery/verification/my-own-dual-review-does-not-satisfy-dr-0012.md:1).
+
+| unit | branches FROM | files |
+|---|---|---|
+| M4-P15 (kernel charter) | `plan/pstack-borrow-review` | `charter.yaml` (new at root), `delivery/plan/phase-declarations/m4-p15.json`, `delivery/work-history/m4-p15.md` |
+| M4-P11 (single-family exception) | **`claude/m4-p10-verdict-head-and-medium`** | `src/checks.ts`, `src/gates/result.ts`, `src/gates/run.ts`, `test/single-family.test.ts`, `witness/` |
+
+**M4-P11 branches from M4-P10, not from the base, and that is a DEPENDENCY
+rather than a conflict.** M4-P10 holds `src/checks.ts` and its schema changes
+are what M4-P11 extends. Building it on the base would mean re-deriving the
+verdict-pair checks M4-P10 just wrote, and then merging two divergent versions
+of one file. Its merge order is therefore strictly after M4-P10's.
+
+**The risk this creates, stated rather than discovered:** M4-P10 is in review
+with a FIX-ROUND-NEEDED verdict already returned, so its head will MOVE. M4-P11
+must rebase onto the fixed head before it merges, and its review is only valid
+against the head it was reviewed on. That is a real cost of stacking and it is
+accepted here because the alternative is a merge path that cannot be computed
+at all.
+
+**Disjoint from each other and from the two running reviews**: M4-P15 creates
+one root file and its own paperwork; M4-P11 touches three source files none of
+which M4-P15 names. No generator couples them (`charter.yaml` is not rendered
+from anything and nothing renders from it; the `agent-rules-drift` chain runs
+`gate-registry.yaml` to `CLAUDE.md` and neither is touched here).

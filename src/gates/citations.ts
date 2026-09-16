@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
   classifyEntry,
   readRegularFileIfPresent,
@@ -1538,9 +1539,14 @@ export function main(argv: string[]): number {
   }
 }
 
+// IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). `resolve`
+// normalizes relative segments and does NOT resolve symlinks, so an
+// invocation reached through a symlinked directory or through a symlink to
+// this file leaves the two sides as different spellings of one file and
+// this gate silently does nothing. Measured; see src/path-identity.ts:13.
 const invokedDirectly =
   process.argv[1] !== undefined &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1]);
 
 if (invokedDirectly) {
   process.exitCode = main(process.argv.slice(2));

@@ -83,7 +83,16 @@ export function cmdInit(args: string[]): number {
       const fleetMarkers = new Set<string>([...FLEET_DIRS, "backlog.md", ".git"]);
       const looksInitialized = entries.some((entry) => fleetMarkers.has(entry));
       if (looksInitialized) {
-        process.stderr.write(`tiphys init: ${root} is already initialized\n`);
+        /* THE REMEDY TOKEN IS THE POINT OF THIS LINE (M4-P16 criterion 6).
+           The exit code was already 1 and already correct, so a reader who
+           got here learned only that init refused. A CLONE of a fleet home
+           lands here too, because the marker set contains `.git`, and that
+           reader's actual next step is `tiphys resume`, which rebuilds the
+           three gitignored directories the clone does not carry. Naming it
+           here is the difference between a refusal and an instruction. */
+        process.stderr.write(
+          `tiphys init: ${root} is already initialized; run tiphys resume to rebuild the ephemeral directories a clone does not carry\n`,
+        );
       } else {
         process.stderr.write(
           `tiphys init: ${root} is not empty and not a fleet home, refusing\n`,

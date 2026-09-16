@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -31,7 +31,7 @@ const gateModule = (await import(
   new URL("../src/gates/red-witness.ts", import.meta.url).href
 )) as typeof import("../src/gates/red-witness.ts");
 
-const { deriveTextAssertions, parseTapStream, makeClone } = runModule;
+const { deriveTextAssertions, parseTapStream, makeClone, SPAWN_GREP } = runModule;
 const { validateWitnessSpecDocument } = specModule;
 const { runRedWitnessGate } = gateModule;
 
@@ -306,6 +306,39 @@ test("a witness spec missing deterministic is rejected naming the field", () => 
     true,
     lines.join("\n"),
   );
+});
+
+test("red-witness direct entry runs through an aliased path and still writes its result (DV2-3)", () => {
+  // The main-module guard at src/gates/red-witness.ts:561 (an IIFE) compares
+  // `fileURLToPath(import.meta.url)` against `process.argv[1]` via
+  // `pathsIdentifySameObject`. Before the M4-P2 fix round this compared the
+  // two as plain strings, which silently never ran the gate when the
+  // invocation named this file through a symlink: the process exits 0
+  // having done nothing and writes no result file at all. Reproduced red
+  // against that pre-fix form by hand (work history, DV2-3); this test
+  // guards the fixed form going forward, mirroring the pre-existing
+  // aliased-path tests for scope.ts, credentials.ts and suite.ts.
+  const dir = mkdtempSync(join(tmpdir(), "gate-alias-"));
+  const alias = join(dir, "red-witness-alias.ts");
+  symlinkSync(gateEntryPath, alias);
+  const resultPath = join(dir, "result.json");
+  const child = spawnSync(
+    process.execPath,
+    [alias, "--result", resultPath],
+    { cwd: dir, encoding: "utf8" },
+  );
+  // The no-base invocation is an ERROR record (status 21), not a green
+  // one; what this test asserts is that the guard RAN at all, i.e. that a
+  // result was written, which is the property the pre-fix string
+  // comparison silently defeated.
+  assert.equal(child.status, 21, child.stderr);
+  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
+    status: string;
+    detail: string;
+  };
+  assert.equal(record.status, "error");
+  assert.match(record.detail, /--base was not supplied/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("the red-witness gate without base writes an error record naming the missing base", () => {
@@ -2678,4 +2711,195 @@ test("the scratch clone resolves a dependency that exists only in node_modules, 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Rule (f)'s SCOPE, and it is the same correction `7b18144` made to rule (d).
+//
+// THE MECHANISM: an obligation DERIVED FROM THE PHASE DIFF was imposed on
+// members the phase did not author. Rule (f) reads the spawn grep over the
+// files this phase CHANGED and then asks, for every member of every stored
+// spec, whether that member touches one of them. A phase that gives an
+// existing module its first subprocess call therefore imposes a capture
+// obligation, retroactively, on every stored witness whose dangerous state
+// happens to mutate that module, including witnesses about behavior that has
+// nothing to do with another program's output and that could not have
+// declared a capture when they were written.
+//
+// Measured on M4-P11 at `a7d007f`: `src/checks.ts` gained its first
+// `spawnSync` and THIRTY-NINE pre-existing specs reddened, over checklist
+// parsing, verdict vocabulary, mode enums and hazard resolution.
+//
+// TWO STRUCTURALLY DIFFERENT UNOWNED MEMBERS, because one witness is not a
+// class: a MUTATION of the spawning file, and a PATCH whose body touches it.
+// They reach `memberTouchedFiles` by different arms (the inline `file` field
+// and a patch body read off disk), which is where the old code collected them.
+//
+// AND A NEGATIVE ARM, so this is a scope correction rather than a defang: a
+// member this phase ADDED that touches the spawning changed file still takes
+// the obligation, and the spec is red until it declares a capture.
+// ---------------------------------------------------------------------------
+
+/** No subprocess at the base. `spareTag` is what the head rewrites. */
+const SPAWN_SPARE_BASE = [
+  "export function spare(s) {",
+  '  return s + "!";',
+  "}",
+  "",
+  "export function spareTag() {",
+  '  return "spare";',
+  "}",
+  "",
+].join("\n");
+
+/**
+ * The head spawns AND PARSES, which is the property rule (f) is about rather
+ * than the four tokens that detect it. `spare` is untouched between the two,
+ * so a stored member quoting its body applies at both revisions.
+ */
+const SPAWN_SPARE_HEAD = [
+  'import { spawnSync } from "node:child_process";',
+  "",
+  "export function spare(s) {",
+  '  return s + "!";',
+  "}",
+  "",
+  "export function spareTag() {",
+  '  const run = spawnSync("echo", ["spare"], { encoding: "utf8" });',
+  '  return (run.stdout ?? "spare").trim();',
+  "}",
+  "",
+].join("\n");
+
+const SPAWN_TEST = [
+  'import test from "node:test";',
+  'import assert from "node:assert/strict";',
+  'import { spare, spareTag } from "../src/spare.ts";',
+  "",
+  'test("spare works", () => {',
+  '  assert.equal(spare("a"), "a!");',
+  '  assert.equal(spareTag(), "spare");',
+  "});",
+  "",
+].join("\n");
+
+/** The PATCH-kind unowned member. Reaches the same file by a different arm. */
+const SPAWN_PATCH = [
+  "diff --git a/src/spare.ts b/src/spare.ts",
+  "--- a/src/spare.ts",
+  "+++ b/src/spare.ts",
+  "@@ -3,3 +3,3 @@",
+  " export function spare(s) {",
+  '-  return s + "!";',
+  '+  return s + "#";',
+  " }",
+  "",
+].join("\n");
+
+/**
+ * Two unowned members, both touching `src/spare.ts`, structurally different.
+ * They are byte-identical in the base spec and the head spec, so the ownership
+ * derivation cannot claim them however the file's diff falls.
+ */
+const SPAWN_UNOWNED_MEMBERS = [
+  {
+    kind: "mutation",
+    file: "src/spare.ts",
+    find: '  return s + "!";',
+    replace: '  return s + "?";',
+  },
+  { kind: "patch", patch: "patches/spare-alt.patch" },
+];
+
+function spawnSpec(members: Array<Record<string, unknown>>): string {
+  return fixtureSpec({
+    id: "spare-guard",
+    behavior: "spare-works",
+    tests: ["spare works"],
+    class: "additive",
+    dangerousStates: members,
+    deterministic: true,
+    repeats: 1,
+  });
+}
+
+/**
+ * A fixture whose spec EXISTS AT THE BASE with the two unowned members, and
+ * whose head turns `src/spare.ts` into a spawning changed file.
+ * `extraHeadMembers` are appended to the head spec only, so they are the
+ * members this phase added.
+ */
+function spawnFixture(
+  extraHeadMembers: Array<Record<string, unknown>> = [],
+  headMembers: Array<Record<string, unknown>> = SPAWN_UNOWNED_MEMBERS,
+): Fixture {
+  return makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": fixtureBehaviors({ "spare-works": "spare works" }),
+      "src/spare.ts": SPAWN_SPARE_BASE,
+      "test/spare.test.ts": SPAWN_TEST,
+      "patches/spare-alt.patch": SPAWN_PATCH,
+      "witness/spare-guard.json": spawnSpec(SPAWN_UNOWNED_MEMBERS),
+    },
+    {
+      "src/spare.ts": SPAWN_SPARE_HEAD,
+      "witness/spare-guard.json": spawnSpec([...headMembers, ...extraHeadMembers]),
+    },
+  );
+}
+
+test("giving a file its first subprocess call imposes rule (f) on no member this phase did not author", () => {
+  const fixture = spawnFixture();
+
+  /* THE CONTROL ARM FIRST, so a green below cannot be a fixture that never
+     reached rule (f)'s precondition. The head really does match the spawn
+     grep and the base really does not, which is what makes `src/spare.ts` a
+     SPAWNING CHANGED FILE for this phase. */
+  assert.match(SPAWN_SPARE_HEAD, SPAWN_GREP);
+  assert.doesNotMatch(SPAWN_SPARE_BASE, SPAWN_GREP);
+
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.doesNotMatch(outcome.result.detail, /rule \(f\)/);
+
+  /* Both unowned members were EVALUATED rather than skipped, and both were
+     red. A fix that silently dropped them from the run would also produce a
+     detail with no `rule (f)` in it. */
+  const evaluation = outcome.evaluations.find((entry) => entry.witness === "spare-guard");
+  assert.equal(evaluation?.members.length, 2);
+  for (const member of evaluation?.members ?? []) {
+    assert.equal(member.rate?.red, member.rate?.total, JSON.stringify(member.rate));
+  }
+});
+
+test("a member this phase ADDED that touches a spawning changed file still owes a capture", () => {
+  const fixture = spawnFixture([
+    {
+      kind: "mutation",
+      file: "src/spare.ts",
+      find: '  const run = spawnSync("echo", ["spare"], { encoding: "utf8" });',
+      replace: '  const run = { stdout: "not-spare" };',
+    },
+  ]);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /rule \(f\): the phase diff touches src\/spare\.ts/);
+});
+
+test("a member this phase EDITED that touches a spawning changed file still owes a capture", () => {
+  /* THE LAUNDERING ARM. Without it, "a member this phase authored" could be
+     read as "a member this phase ADDED", and an implementer facing rule (f)
+     could rewrite an existing member instead of adding one and take no
+     obligation. `ownedMembersOf` derives ownership from added-OR-CHANGED, and
+     this is the measurement of the second half of that rather than a reading
+     of it: the head spec's first member differs from the base's in its
+     `replace` only. */
+  const edited = SPAWN_UNOWNED_MEMBERS.map((member, index) =>
+    index === 0 ? { ...member, replace: '  return s + "@";' } : member,
+  );
+  const fixture = spawnFixture([], edited);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "red", reasonsOf(outcome));
+  assert.match(outcome.result.detail, /rule \(f\): the phase diff touches src\/spare\.ts/);
 });
