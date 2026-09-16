@@ -1,0 +1,24 @@
+{
+  "id": "pool-list-marks-reconstructed",
+  "behavior": "pool-list-marks-reconstructed",
+  "tests": [
+    "pool list marks an entry whose record did not survive a reclaim"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/pool.ts",
+      "find": "          marker = \" reconstructed\";",
+      "replace": "          marker = \"\";"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/pool.ts",
+      "find": "        process.stdout.write(`${entry.taskId} ${entry.headSha}${marker}\\n`);",
+      "replace": "        process.stdout.write(`${entry.taskId} ${entry.headSha}`.trim() + \"\\n\");"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

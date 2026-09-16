@@ -2,7 +2,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { MACHINE_IDENTITY_EMAIL, MACHINE_IDENTITY_NAME } from "./commands/init.ts";
 import type { Fleet } from "./fleet.ts";
-import { poolDestroy, readPoolRecord, worktreePath } from "./pool.ts";
+import {
+  poolDestroy,
+  readPoolRecord,
+  reconstructPoolRecord,
+  worktreePath,
+} from "./pool.ts";
 import type { PoolRecord } from "./pool.ts";
 import {
   checkHoldership,
@@ -168,11 +173,70 @@ export function landedness(
 export interface TeardownOptions {
   taskId: string;
   salvage: boolean;
+  /**
+   * Proceed on a pool record RECONSTRUCTED from tasks/<id>/meta.json and
+   * git, when worktrees/<id>.pool.json did not survive a reclaim
+   * (M4-P19, M4-D-12). See the FROM-RECONSTRUCTED header below for what
+   * this flag does and, more importantly, what it does NOT do.
+   */
+  fromReconstructed: boolean;
 }
 
+/**
+ * FROM-RECONSTRUCTED: WHAT THE FLAG AUTHORIZES, AND WHAT IT DOES NOT.
+ *
+ * It authorizes exactly ONE thing: deriving the two fields meta.json does
+ * not carry, `remote` and `branch`, from git instead of reading them from
+ * a pool record that no longer exists. That is all.
+ *
+ * IT IS NOT A DESTRUCTION OVERRIDE, and this sentence is here because the
+ * two flags it sits beside ARE ones. `--discard` overrides the dirty-tree
+ * refusal and `--delete-branch-force` overrides the unlanded-branch
+ * refusal, so "mirrors the existing explicit-destruction pattern" reads
+ * as an invitation to pass both of them through on this path, with the
+ * reasoning that there is no record so nothing can be checked. That
+ * reasoning is exactly wrong, and it is the dangerous state this phase's
+ * red witnesses redden against: the record is the ONE input that was
+ * lost, every other input to every refusal survives, and a reconstructed
+ * record makes the gates MORE able to judge, not less. So no refusal that
+ * applies to a task with an original record is weakened here, and the
+ * refusals are enumerated PER SHAPE rather than as one sentence about
+ * "a task", because the two shapes do not have the same refusal set and
+ * an earlier revision of this header said they did (M4-P19 fix round,
+ * finding F-5: it claimed "a dirty worktree is refused without --salvage,
+ * as ever", which was true of a ship and false of a scout, and the scout
+ * arm below discarded the tree):
+ *
+ *   ship
+ *     - a dirty worktree is refused without --salvage, as on the
+ *       with-record path;
+ *     - an unlanded branch is refused, as on the with-record path, and
+ *       the refusal names the branch tip so the operator has the
+ *       recovery handle (V-1).
+ *   scout
+ *     - a dirty worktree is refused OUTRIGHT, with no --salvage escape,
+ *       which is STRICTER than the with-record path rather than equal to
+ *       it. The reasoning is at the check itself, in the scout arm of
+ *       `teardownTask`, not summarised here.
+ *     - commits on the scratch branch are refused naming tip and base,
+ *       as on the with-record path.
+ *   both shapes
+ *     - a field git cannot answer for is named and the command refuses,
+ *       rather than being filled with "origin" and "main".
+ *
+ * A SHAPE ADDED TO `TaskShape` LATER TAKES NO REFUSAL FROM THIS LIST. It
+ * gets whichever arm of `teardownTask` it falls into, and this comment
+ * is not a specification that would give it one.
+ *
+ * A reconstruction is also never persisted. It is passed to pool destroy
+ * in memory (DestroyOptions.reconstructed) and no file is created, so a
+ * later reader cannot mistake it for an original record.
+ */
 interface TeardownContext {
   meta: TaskMeta;
   record: PoolRecord;
+  /** True when `record` was rebuilt rather than read from disk (M4-P19). */
+  reconstructed: boolean;
   worktree: string;
   defaultRef: string;
 }
@@ -185,6 +249,7 @@ interface TeardownContext {
 function resolveContext(
   fleet: Fleet,
   taskId: string,
+  fromReconstructed: boolean,
 ): { ok: true; value: TeardownContext } | { ok: false; reason: string } {
   const meta = readTaskMeta(fleet, taskId);
   if (meta === undefined) {
@@ -193,14 +258,47 @@ function resolveContext(
       reason: `no readable task meta for task id ${taskId}; teardown needs tasks/${taskId}/meta.json`,
     };
   }
-  const record = readPoolRecord(fleet, taskId);
+  let record = readPoolRecord(fleet, taskId);
+  let reconstructed = false;
   if (record === undefined) {
-    return {
-      ok: false,
-      reason:
-        `no readable pool record for task id ${taskId}; teardown needs it for the ` +
-        `project remote and default branch, and refuses rather than guessing them`,
-    };
+    if (!fromReconstructed) {
+      return {
+        ok: false,
+        reason:
+          `no readable pool record for task id ${taskId}; teardown needs it for the ` +
+          `project remote and default branch, and refuses rather than guessing them; ` +
+          `pass --from-reconstructed to rebuild them from tasks/${taskId}/meta.json ` +
+          `and git, which keeps every other refusal in force`,
+      };
+    }
+    // NETWORK ALLOWED here and nowhere else in this kernel's
+    // reconstruction (M4-P19 fix round). Teardown is a command the
+    // operator invoked in order to destroy something, it is about to
+    // fetch from this remote on the next line regardless, and it is
+    // allowed to take as long as that fetch takes. `pool list` and
+    // doctor are not, and they pass `{ network: false }`.
+    const rebuilt = reconstructPoolRecord(fleet, taskId, { network: true });
+    if (rebuilt.kind === "absent") {
+      return {
+        ok: false,
+        reason: `cannot reconstruct the pool record for task id ${taskId}: ${rebuilt.reason}`,
+      };
+    }
+    if (rebuilt.kind === "incomplete") {
+      // The missing FIELD is named, not merely the failure, because the
+      // remedy differs per field: `remote` is a git configuration repair
+      // in the clone, `branch` is usually an origin/HEAD that was never
+      // set or a remote that cannot be reached to advertise it.
+      return {
+        ok: false,
+        reason:
+          `cannot reconstruct the pool record for task id ${taskId}: unresolved ` +
+          `field(s) ${rebuilt.unresolved.join(", ")} (${rebuilt.detail}); teardown ` +
+          `refuses rather than guessing them`,
+      };
+    }
+    record = rebuilt.record;
+    reconstructed = true;
   }
   const worktree = worktreePath(fleet, taskId);
   const defaultRef = `refs/remotes/${record.remote}/${record.branch}`;
@@ -218,7 +316,7 @@ function resolveContext(
         `be judged against fresh remote state: ${singleLine(fetched.stderr)}`,
     };
   }
-  return { ok: true, value: { meta, record, worktree, defaultRef } };
+  return { ok: true, value: { meta, record, reconstructed, worktree, defaultRef } };
 }
 
 /** Uncommitted changes or untracked files in the task worktree. */
@@ -286,6 +384,11 @@ async function finish(
     taskId: context.meta.id,
     discard: options.discard,
     deleteBranchForce: options.deleteBranchForce,
+    // M4-P19: in memory only, and only when the record was rebuilt. This
+    // makes the destroy's own base-sha gate ABLE to judge instead of
+    // abstaining with its "pool record missing" refusal; it does not
+    // create a file and it does not relax a gate.
+    ...(context.reconstructed ? { reconstructed: context.record } : {}),
   });
   if (!destroyed.ok) {
     // The destroy's own reason distinguishes a stage-2 refusal (a true
@@ -336,7 +439,7 @@ export async function teardownTask(
     return { ok: false, reason: holdership.reason };
   }
 
-  const resolved = resolveContext(fleet, options.taskId);
+  const resolved = resolveContext(fleet, options.taskId, options.fromReconstructed);
   if (!resolved.ok) {
     return resolved;
   }
@@ -344,6 +447,50 @@ export async function teardownTask(
   const { meta, record, worktree } = context;
 
   if (meta.shape === "scout") {
+    // M4-P19 FIX ROUND, finding F-5. THE RECONSTRUCTED PATH IS STRICTER
+    // THAN THE WITH-RECORD PATH FOR A SCOUT, DELIBERATELY.
+    //
+    // The scout arm below discards a dirty scratch tree by design
+    // (PR-010: a scout is judged by its report and never pushes), and it
+    // reaches `finish` without ever probing cleanliness. That was
+    // reachable only by an operator who had the pool record in front of
+    // them. This phase made it reachable from a RECLAIM, where the
+    // record is the one thing that did not survive, and measured at head
+    // abde402: `teardown --task s1 --from-reconstructed` against a scout
+    // worktree holding ` M readme.md` and `?? important.md` exited 0 and
+    // removed the worktree, where the same fixture on the phase base
+    // exited 1 and left it standing. Plan criterion 4 states the refusal
+    // with no shape qualifier, so the plan is what is followed here.
+    //
+    // WHY NOT INSTEAD MAKE THE WITH-RECORD SCOUT PATH REFUSE TOO. That
+    // is a change to a decided scout policy (PR-010) which this phase
+    // does not own and which the plan does not ask for. The asymmetry is
+    // therefore REAL and is stated rather than smoothed over: the
+    // difference in force is the difference in what the operator knows.
+    // With the record present they are tearing down a scout they are
+    // tracking; arriving here from a reclaim they are recovering a fleet
+    // whose bookkeeping is already known to be incomplete, and the
+    // leavings in that tree may be the only copy.
+    //
+    // --salvage is NOT the escape, because salvage pushes (PR-010: a
+    // scout never pushes), so the remedy named is the one that works.
+    if (context.reconstructed) {
+      const scoutDirty = worktreeDirty(worktree);
+      if (!scoutDirty.ok) {
+        return { ok: false, reason: scoutDirty.reason };
+      }
+      if (scoutDirty.dirty) {
+        return {
+          ok: false,
+          reason:
+            `scout worktree ${worktree} has uncommitted changes or untracked ` +
+            `files and its pool record did not survive, so teardown is running ` +
+            `on a reconstruction and refuses to discard them: copy anything ` +
+            `worth keeping out of ${worktree}, then re-run once ` +
+            `"git -C ${worktree} status --porcelain" is empty`,
+        };
+      }
+    }
     // (a) A scout is judged by its report, never by its scratch tree.
     if (!existsSync(reportPath(fleet, options.taskId))) {
       return {
@@ -417,11 +564,25 @@ export async function teardownTask(
     };
   }
   if (landed.kind === "unlanded") {
+    // M4-P19 criterion 5: the refusal NAMES THE TIP. That sha is the
+    // operator's recovery handle, exactly as the deleted-branch sha is on
+    // the success path (V-1), and it is the one fact that makes this
+    // refusal actionable: it says which commit is at risk, not merely
+    // that something is. It is named on every unlanded refusal rather
+    // than only the reconstructed one, so there is one message and not
+    // two that can drift apart.
+    const tip = runGit(record.project, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${branchRef}^{commit}`,
+    ]);
+    const tipSha = tip.status === 0 ? tip.stdout.trim() : "unresolvable";
     return {
       ok: false,
       reason:
-        `branch ${record.branchName} is not landed on ${record.remote}/${record.branch}; ` +
-        `land it before tearing the task down` +
+        `branch ${record.branchName} (tip ${tipSha}) is not landed on ` +
+        `${record.remote}/${record.branch}; land it before tearing the task down` +
         (options.salvage ? " (--salvage rescues leavings, it never lands work)" : ""),
     };
   }

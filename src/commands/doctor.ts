@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
+import { poolList } from "../pool.ts";
 import { classifyEntry, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument } from "../validate.ts";
 import {
@@ -827,6 +828,75 @@ export function checkKernelArtifacts(
   };
 }
 
+/**
+ * CHECK worktrees (M4-P19): every entry in the worktree pool, and whether a
+ * pool record still exists beside it.
+ *
+ * THE STATE THIS REPORTS IS THE POST-RECLAIM ONE. `worktrees/` is
+ * gitignored (src/fleet.ts:28) and `tasks/` is tracked, so a reclaim takes
+ * every worktrees/<id>.pool.json with it and leaves the task records
+ * standing. Before this check, nothing in the kernel said so: `pool list`
+ * enumerated records, and a task whose record was gone was invisible to
+ * every reporting path.
+ *
+ * WARN AND NEVER FAIL, AND NOT PROMOTED BY ANY PROFILE. The condition is
+ * named (`worktree-record-missing`) so a later profile CAN promote it, and
+ * none does, deliberately: a fleet that has just been rehydrated from its
+ * remote is EXPECTED to be in exactly this state, so promoting it would
+ * make `doctor --for full` unpassable on the one fleet the remedy exists
+ * for, and an unpassable check is a check that gets switched off (hazard
+ * H-D). The number is printed; the exit code does not move.
+ *
+ * It reads tasks/<id>/meta.json and git, never a log tail (C-1), and
+ * probes no process (C-2).
+ */
+export function checkWorktrees(root: string): CheckResult {
+  let fleet;
+  try {
+    fleet = loadFleet(root);
+  } catch {
+    // Not a fleet home. CHECK layout is what reports that, and an
+    // advisory must not be the thing that says so.
+    return {
+      name: "worktrees",
+      status: "WARN",
+      detail: `${root} is not a fleet home, so there is no worktree pool to report`,
+    };
+  }
+  const entries = poolList(fleet);
+  if (entries.length === 0) {
+    return {
+      name: "worktrees",
+      status: "PASS",
+      detail: "no pool worktrees",
+    };
+  }
+  const withoutRecord = entries.filter((entry) => entry.origin !== "record");
+  if (withoutRecord.length === 0) {
+    return {
+      name: "worktrees",
+      status: "PASS",
+      detail: `${String(entries.length)} pool entr(ies), each with a pool record beside it`,
+    };
+  }
+  // BY ID, because "1 of 3" tells an operator nothing they can act on.
+  const named = withoutRecord
+    .map((entry) =>
+      entry.origin === "reconstructed"
+        ? `${entry.taskId} (reconstructed)`
+        : `${entry.taskId} (unreconstructable: ${(entry.unresolved ?? []).join(", ")})`,
+    )
+    .join(", ");
+  return {
+    name: "worktrees",
+    status: "WARN",
+    detail:
+      `${String(withoutRecord.length)} of ${String(entries.length)} pool ` +
+      `entr(ies) have no pool record beside them: ${named}`,
+    condition: "worktree-record-missing",
+  };
+}
+
 export function runChecks(root: string): CheckResult[] {
   return [
     checkNode(),
@@ -838,6 +908,7 @@ export function runChecks(root: string): CheckResult[] {
     checkBeacon(root),
     checkIdentity(root),
     checkRetention(root),
+    checkWorktrees(root),
     checkKernelArtifacts(),
   ];
 }

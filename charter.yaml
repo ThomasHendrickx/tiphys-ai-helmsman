@@ -1,0 +1,160 @@
+# THE TIPHYS KERNEL'S OWN CHARTER (M4-P15).
+#
+# WHY IT IS AT THE REPOSITORY ROOT AND NOT SOMEWHERE TIDIER. This is the
+# document `scripts/check-dual-review.mjs` resolves, and the gate registry
+# invokes that script as `node scripts/check-dual-review.mjs .` with the
+# repository root as its context directory. The script refuses, with exit 21,
+# any context whose `charter.yaml` or `assurance-modes.yaml` is absent, because
+# a merge check that cannot determine the merge-authority regime must never
+# report green. Until this file existed, that refusal was invisible: the gate is
+# conditional on at least one verdict document existing under `delivery/review/`
+# and this repository had never had one. The first phase to commit its two
+# clean-room verdicts would have turned a dormant gate into a hard CI error for
+# every M4 merge. See delivery/plan/m4-charter-blocks-every-merge.md:1.
+#
+# IT IS AUTHORED, NOT COPIED. delivery/evidence/m3-exit-test/e1/charter.yaml:1
+# is a kernel charter that validates, and it is EXIT-TEST EVIDENCE for a run
+# that is finished. Copying it would carry forward a constraint DR-0036 has
+# overturned and a product-intent sentence M4 has falsified. Every departure is
+# recorded field by field in delivery/work-history/m4-p15.md.
+#
+# WHAT VALIDATES IT: `node bin/tiphys.ts validate --type charter charter.yaml`
+# against schemas/charter.schema.json, which requires all eleven top-level
+# fields, forbids any twelfth, and requires all seven irreversible decisions.
+kind: charter
+
+identity:
+  name: tiphys-kernel
+  repo: git@github.com:ThomasHendrickx/tiphys-ai-helmsman.git
+  # An EXACT version, never a range: the schema's own $comment says a range
+  # makes the delivery process a moving target. 0.1.0 is the version in
+  # package.json on this branch and the version published to the registry.
+  kernel-version-pin: 0.1.0
+
+# CLOSED VOCABULARY AT v0.1.0 (DR-0020). Both fields draw on the same three ids,
+# and the derived check `charter-mode-enum-matches-modes` holds the schema's
+# enums equal to the ids declared in `assurance-modes.yaml`. `full` is the
+# honest value: it is the mode this project actually runs, and it is the mode
+# whose `merge-authority` is `delegated-under-conditions`, which is the regime
+# DR-0012 granted and DR-0015 left in place. Declaring anything else here would
+# make `check-dual-review` report that no decorrelation is required of reviews
+# that DR-0012 requires to be decorrelated, which is the fail-open direction.
+delivery-mode: full
+assurance-tier: full
+
+yolo-permissions:
+  enabled: false
+  scope: []
+
+irreversible-decisions:
+  stack: Node 26, TypeScript, no runtime database
+  language: TypeScript
+  framework: none, a Node CLI run natively through type stripping
+  core-data-model: >-
+    Files and git are the only durable state. Every artifact is a file in the
+    repository, and current state is read from a current-state document rather
+    than from the tail of an append-only log.
+  tenancy: single repository, single fleet, no multi-tenancy
+  auth: >-
+    GitHub through the session's own credentials for reads and pushes; npm
+    publication through the trusted publisher configured as owner action A-7.
+    No credential value is stored in this repository, and release verification
+    may hold a write-capable credential the orchestrator never shares (DR-0039).
+  deployment-topology: >-
+    An npm package published from a GitHub Actions release workflow, with the
+    Claude Code plugin shipping as a second package in this same repository
+    (DR-0040). No server and no runtime environment of its own.
+
+product-intent: |
+  A delivery-process kernel: a versioned npm package that runs orchestrated
+  delivery for other projects. Success is that another project's phase runs end
+  to end on the kernel, with its evidence, gates and reviews produced by the
+  kernel rather than by a human procedure.
+
+  M4 builds the harness adapter first and makes this kernel the second subject
+  it drives (DR-0036), with the kernel as M4's only subject (DR-0037). The
+  milestone exit test stays bound to the pilot rather than to this repository
+  (DR-0041).
+
+  Not in scope in M4: a second project onboarding from charter alone, which is
+  what M5 is; and the shipped package's cleanup, which DR-0043 schedules for
+  after M4.
+
+constraints:
+  # DR-0036 REPLACES THE CONSTRAINT THE EXIT-TEST CHARTER CARRIED. That charter
+  # said "The kernel never runs on itself before M4, with the M3 exit test as
+  # the one controlled exception". M4 has started, so that sentence is spent.
+  # What replaces it is DR-0036's condition, QUOTED rather than paraphrased so
+  # the freeze point is readable from the charter itself
+  # (delivery/decisions/DR-0036-the-harness-adapter-leads-m4-and-the-kernel-is-the-second-subject.md:75).
+  - >-
+    The current process retains planning, review, credentials, pull request,
+    merge, recovery and closeout authority for every kernel phase delivered
+    this way, until the cutover workstream says otherwise. Tiphys owns the
+    bounded local lifecycle and nothing else.
+  - >-
+    Falsifiable acceptance criteria only; a criterion that cannot go red is not
+    a criterion.
+  - >-
+    Liveness is lease freshness, never process liveness, pid or signals.
+  - >-
+    Current state is never read from the tail of an append-only log.
+  - >-
+    A gate result is evidence only for the configuration that produced it: the
+    CI event and the head sha are part of the sentence, never omitted from it.
+
+escalation-contract:
+  stop-for:
+    # The two SHIPPED DEFAULTS, kept verbatim from templates/charter.example.yaml
+    # so this charter does not quietly drop a default the kernel ships. The
+    # second is what makes turning release verification off an owner decision
+    # rather than an implementer's edit.
+    - any irreversible choice the charter is silent on
+    - a change from a declared release verification to `none`
+    # NO BARE NUMBER HERE, AND THE OMISSION IS DELIBERATE. The exit-test charter
+    # said "more than two fix rounds", which is DR-0012's limit. DR-0035 has
+    # since made the ceiling a function of declared subject size and impact,
+    # from one round to three, so any single number written here would be wrong
+    # for some phases. `assurance-modes.yaml` still carries
+    # `max-fix-rounds-after-review: 2`, which is DR-0012's number and is not
+    # this phase's file to change; the disagreement between that value and
+    # DR-0035 is recorded as an open item in delivery/work-history/m4-p15.md
+    # rather than silently resolved from here.
+    - >-
+      a phase that exceeds the fix-round budget DR-0035 sets for its declared
+      subject size and impact, or a high-severity finding that recurs in one
+      component
+  route: >-
+    The orchestrator records a decision record with its recommendation and
+    notifies the owner asynchronously; the phase does not wait on the owner
+    unless a third round also fails (DR-0016). Escalation is for a choice that
+    is genuinely comparable and costly to reverse, or for access an agent does
+    not hold; a question whose answer is already obvious is not escalated.
+
+release-verification:
+  # RESERVED THROUGH M4, WITH THE REASON WRITTEN DOWN RATHER THAN LEFT AS
+  # SILENCE. The schema admits only `none` and `reserved` here, and `none`
+  # would be a false statement about this project: the kernel's 0.1.0 release
+  # was verified. So `reserved` is the only honest value the vocabulary offers,
+  # and what would otherwise be missing is WHY it is still reserved now that
+  # DR-0014's stated deferral reason (nothing published yet) has expired.
+  mode: reserved
+  note: >-
+    Reserved per DR-0014 and D-M3-29, and it stays reserved through M4 by a
+    fresh decision rather than by inertia. Two facts, and neither one settles
+    the field's shape. First, the deploy gate's own declaration file, which is
+    a DIFFERENT artifact from this charter field, has since been measured and
+    repaired: delivery/verification/m4-prototype-probes.md:254 records a
+    sha-binding fix that takes the satisfying value from the kernel-owned
+    subject instead of from configuration. Second, this kernel publishes
+    through a trusted publisher with no long-lived credential, so designing the
+    charter field against it would be designing against a degenerate case with
+    one adapter and one outcome. The designed shape therefore falls due at
+    cutover, with the kernel's own npm publication as its first real case, and
+    a change from a declared verification to `none` is on the stop-for list
+    above.
+
+retention:
+  work-history: delivery/work-history/
+  evidence: delivery/evidence/
+  tuition: delivery/tuition/

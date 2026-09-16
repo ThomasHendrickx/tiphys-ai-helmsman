@@ -1,0 +1,31 @@
+{
+  "id": "teardown-from-reconstructed-bounds-the-remote-probe",
+  "behavior": "teardown-from-reconstructed-bounds-the-remote-probe",
+  "tests": [
+    "teardown --from-reconstructed gives up on a remote that never answers"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n    networkTimeoutMs(),",
+      "replace": "    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n    undefined,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "    const timedOut =\n      timeoutMs !== undefined &&",
+      "replace": "    const timedOut =\n      false &&"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git ls-remote --symref <remote> HEAD, against a TCP listener that accepts and never speaks",
+    "captures": [
+      "witness/captures/m4-p19-git-ls-remote-silent-listener.txt"
+    ],
+    "provenance": "src/pool.ts spawns this command, so SPAWN_GREP matches and rule (f) binds, and the property the bound exists for is a property of git rather than of this kernel: git imposes no wait of its own. The capture records that measured at two different waits on 2026-09-16 against git 2.43.0, exit 124 and empty output both times, so the reader can see the second is not a longer version of a timeout that had already fired. The named test reads the capture and asserts it still shows the unbounded wait before exercising the bound. The two dangerous states are structurally different: the first removes the BOUND so the command runs unbounded again, the second leaves the bound and removes the DIAGNOSIS, so the refusal arrives but says `Error: spawnSync git ETIMEDOUT` instead of naming the wait, which is the version an operator cannot act on."
+  }
+}
