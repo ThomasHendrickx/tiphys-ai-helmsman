@@ -62,7 +62,7 @@ interface CliResult {
 
 function runCli(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {},
 ): CliResult {
   const result = spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
@@ -1256,6 +1256,190 @@ test("this phase's new pool behaviors are registered in test/behaviors.json", ()
     "pool-list-excludes-closed-tasks",
     "doctor-check-worktrees-names-reconstructed",
     "doctor-check-worktrees-no-process-probe",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19 FIX ROUND: A REPORTING PATH DOES NOT OPEN A SOCKET.
+ *
+ * THE MECHANISM, not the finding. The reconstruction rebuilds `branch`
+ * through the same `resolveDefaultBranch` that `poolCreate` uses, and
+ * that resolver falls back to `git ls-remote` when `<remote>/HEAD` is
+ * unset locally. `poolCreate` is a write the operator invoked and may
+ * wait; `pool list` and `doctor` are reports and may not. The helper was
+ * reused on the new callers with the old caller's licence, and nothing
+ * tested the difference.
+ *
+ * `<remote>/HEAD` unset is the NORMAL state of a clone built by
+ * `git init` + `git remote add` + `git fetch`, so this is not an exotic
+ * arm. Measured at head abde402 with the remote pointed at a TCP
+ * listener that accepts and never speaks: `tiphys pool list` and
+ * `tiphys doctor` were still running when killed at 25s, exit 124, where
+ * the phase base exited 0 in about a second.
+ *
+ * The first two fixtures DELETE `refs/remotes/origin/HEAD` and leave
+ * origin pointing at a remote that WOULD answer. That is deliberate and
+ * it is the whole strength of the witness: a refusal in a fixture where
+ * the network could not have answered proves nothing about whether the
+ * network was consulted. Here it could, and the control asserts it
+ * could, so the refusal is a policy and not an inability.
+ * ------------------------------------------------------------------ */
+
+/** Drop the clone's local default-branch pointer, leaving origin usable. */
+function unsetOriginHead(scratch: Scratch): void {
+  gitOk(scratch.clone, ["symbolic-ref", "-d", "refs/remotes/origin/HEAD"]);
+}
+
+test("pool list does not consult the network to reconstruct, even when it would answer", (t) => {
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-nonet").status, 0);
+  reclaimRecord(scratch, "t-nonet");
+  unsetOriginHead(scratch);
+
+  // THE CONTROL. The network is reachable and does advertise a default
+  // branch, so "unresolved: branch" below is a decision not to ask.
+  //
+  // The expected shape is not written here by hand. It is read from
+  // witness/captures/m4-p19-git-default-branch-resolution.txt, a real
+  // `git ls-remote --symref` run recorded against git 2.43.0, and the
+  // live run is asserted to reproduce a line that capture contains. The
+  // separator in that line is a TAB, which is exactly the kind of byte a
+  // hand-written expectation gets wrong (CLAUDE.md warning 10).
+  const capture = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../witness/captures/m4-p19-git-default-branch-resolution.txt",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+  const advertised = gitOk(scratch.clone, ["ls-remote", "--symref", "origin", "HEAD"]);
+  const refLine = advertised.split("\n")[0] ?? "";
+  assert.ok(
+    capture.includes(refLine) && /^ref:/.test(refLine),
+    `live ls-remote said ${JSON.stringify(refLine)}, which the recorded capture does not contain`,
+  );
+
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.match(
+    listed.stdout,
+    /^t-nonet \S+ unreconstructable \(unresolved: branch\)$/m,
+    listed.stdout,
+  );
+  assert.doesNotMatch(
+    listed.stdout,
+    /t-nonet \S+ reconstructed/,
+    "pool list resolved the default branch off the remote; reporting reached the network",
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("doctor's worktrees check does not consult the network either", (t) => {
+  // The SECOND reporting caller. `checkWorktrees` reaches the same
+  // reconstruction through `poolList`, so a fix applied at one caller and
+  // not the other is exactly the shape this round exists to close.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-docnet").status, 0);
+  reclaimRecord(scratch, "t-docnet");
+  unsetOriginHead(scratch);
+
+  const reclaimed = runCli(["doctor"], { cwd: scratch.fleet });
+  const line = reclaimed.stdout
+    .split("\n")
+    .find((entry) => entry.startsWith("CHECK worktrees "));
+  assert.ok(line !== undefined, reclaimed.stdout);
+  assert.match(line, /^CHECK worktrees WARN /, line);
+  assert.match(line, /t-docnet \(unreconstructable: branch\)/, line);
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+/**
+ * A TCP listener that accepts a connection and then says nothing, ever.
+ * This is the shape that hangs `git ls-remote` over the git:// protocol:
+ * the client completes the connection, sends its request and waits for
+ * an advertisement that never comes. A CLOSED port fails fast instead
+ * and would leave this test green against the dangerous state, which is
+ * why the listener is real rather than a made-up address.
+ */
+async function silentListener(t: {
+  after(fn: () => void | Promise<void>): void;
+}): Promise<number> {
+  const net = await import("node:net");
+  const sockets: Array<{ destroy(): void }> = [];
+  const server = net.createServer((socket) => {
+    sockets.push(socket);
+  });
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      done();
+    });
+  });
+  t.after(
+    () =>
+      new Promise<void>((done) => {
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+        server.close(() => {
+          done();
+        });
+      }),
+  );
+  const address = server.address();
+  assert.ok(
+    address !== null && typeof address === "object",
+    "the silent listener reported no address",
+  );
+  return address.port;
+}
+
+test("pool list returns against a remote that accepts and never answers", async (t) => {
+  // The measured hang itself, as a witness. The child is given a spawn
+  // timeout, so the DANGEROUS state shows up as a killed child with a
+  // null status rather than as a test run that never ends.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-hang").status, 0);
+  reclaimRecord(scratch, "t-hang");
+  unsetOriginHead(scratch);
+  const port = await silentListener(t);
+  gitOk(scratch.clone, [
+    "remote",
+    "set-url",
+    "origin",
+    `git://127.0.0.1:${String(port)}/nope.git`,
+  ]);
+
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet, timeout: 20_000 });
+  assert.equal(
+    listed.status,
+    0,
+    `pool list did not return against a silent remote (status ${String(listed.status)})`,
+  );
+  assert.match(
+    listed.stdout,
+    /^t-hang \S+ unreconstructable \(unresolved: branch\)$/m,
+    listed.stdout,
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("this fix round's new pool behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-list-reconstruction-is-network-free",
+    "doctor-check-worktrees-is-network-free",
+    "pool-list-returns-against-a-silent-remote",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),

@@ -1,0 +1,29 @@
+M4-P19 fix round: real output of the two git commands src/pool.ts's
+resolveDefaultBranch consumes, captured 2026-09-16 against git 2.43.0 on a
+clone made by `git clone` from a local upstream whose initial branch is main.
+
+The point of this capture is the SECOND command. The first, symbolic-ref,
+answers from the clone with no network. The second, ls-remote, is the one
+that opens a socket, and reconstruction reaching it from a reporting path is
+the defect this fix round closes: the reporting path must refuse rather than
+run it, which means a test has to know what running it would have returned.
+
+git --version:
+git version 2.43.0
+
+$ git -C <clone> symbolic-ref refs/remotes/origin/HEAD
+refs/remotes/origin/main
+exit: 0
+
+$ git -C <clone> symbolic-ref --quiet refs/remotes/origin/HEAD   # after -d
+exit: 1
+
+$ git -C <clone> ls-remote --symref origin HEAD
+ref: refs/heads/main	HEAD
+fe405be8d3272be12281f2eacd4d8241d8f73578	HEAD
+exit: 0
+
+The separator between `refs/heads/main` and `HEAD` on the ls-remote ref line
+is a single TAB (0x09), not spaces. src/pool.ts parses that line with
+/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m, which is why \s and not a literal
+space is what appears there.

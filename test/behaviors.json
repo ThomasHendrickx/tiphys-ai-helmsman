@@ -785,5 +785,12 @@
   "teardown-from-reconstructed-refuses-dirty-worktree": "teardown --from-reconstructed refuses a dirty worktree and removes nothing",
   "teardown-from-reconstructed-refuses-unlanded-branch": "teardown --from-reconstructed refuses an unlanded branch and names its tip",
   "teardown-from-reconstructed-derives-the-default-branch": "teardown --from-reconstructed derives a non-main default branch instead of guessing",
-  "teardown-from-reconstructed-writes-no-record": "no teardown path writes a reconstructed record to worktrees/"
+  "teardown-from-reconstructed-writes-no-record": "no teardown path writes a reconstructed record to worktrees/",
+  "pool-list-reconstruction-is-network-free": "pool list does not consult the network to reconstruct, even when it would answer",
+  "doctor-check-worktrees-is-network-free": "doctor's worktrees check does not consult the network either",
+  "pool-list-returns-against-a-silent-remote": "pool list returns against a remote that accepts and never answers",
+  "teardown-from-reconstructed-refuses-dirty-scout": "teardown --from-reconstructed refuses a dirty SCOUT worktree and removes nothing",
+  "teardown-with-record-scout-still-discards": "the with-record scout path still discards, so the asymmetry is measured not asserted",
+  "teardown-from-reconstructed-bounds-the-remote-probe": "teardown --from-reconstructed gives up on a remote that never answers",
+  "teardown-network-timeout-override-is-validated": "a malformed network-timeout override is ignored rather than honoured"
 }

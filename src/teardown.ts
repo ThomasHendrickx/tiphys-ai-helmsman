@@ -198,14 +198,35 @@ export interface TeardownOptions {
  * reasoning is exactly wrong, and it is the dangerous state this phase's
  * red witnesses redden against: the record is the ONE input that was
  * lost, every other input to every refusal survives, and a reconstructed
- * record makes the gates MORE able to judge, not less. So every refusal
- * that applies to a task with an original record applies unchanged here:
+ * record makes the gates MORE able to judge, not less. So no refusal that
+ * applies to a task with an original record is weakened here, and the
+ * refusals are enumerated PER SHAPE rather than as one sentence about
+ * "a task", because the two shapes do not have the same refusal set and
+ * an earlier revision of this header said they did (M4-P19 fix round,
+ * finding F-5: it claimed "a dirty worktree is refused without --salvage,
+ * as ever", which was true of a ship and false of a scout, and the scout
+ * arm below discarded the tree):
  *
- *   - a dirty worktree is refused without --salvage, as ever;
- *   - an unlanded branch is refused, as ever, and the refusal names the
- *     branch tip so the operator has the recovery handle (V-1);
- *   - a field git cannot answer for is named and the command refuses,
- *     rather than being filled with "origin" and "main".
+ *   ship
+ *     - a dirty worktree is refused without --salvage, as on the
+ *       with-record path;
+ *     - an unlanded branch is refused, as on the with-record path, and
+ *       the refusal names the branch tip so the operator has the
+ *       recovery handle (V-1).
+ *   scout
+ *     - a dirty worktree is refused OUTRIGHT, with no --salvage escape,
+ *       which is STRICTER than the with-record path rather than equal to
+ *       it. The reasoning is at the check itself, in the scout arm of
+ *       `teardownTask`, not summarised here.
+ *     - commits on the scratch branch are refused naming tip and base,
+ *       as on the with-record path.
+ *   both shapes
+ *     - a field git cannot answer for is named and the command refuses,
+ *       rather than being filled with "origin" and "main".
+ *
+ * A SHAPE ADDED TO `TaskShape` LATER TAKES NO REFUSAL FROM THIS LIST. It
+ * gets whichever arm of `teardownTask` it falls into, and this comment
+ * is not a specification that would give it one.
  *
  * A reconstruction is also never persisted. It is passed to pool destroy
  * in memory (DestroyOptions.reconstructed) and no file is created, so a
@@ -250,7 +271,13 @@ function resolveContext(
           `and git, which keeps every other refusal in force`,
       };
     }
-    const rebuilt = reconstructPoolRecord(fleet, taskId);
+    // NETWORK ALLOWED here and nowhere else in this kernel's
+    // reconstruction (M4-P19 fix round). Teardown is a command the
+    // operator invoked in order to destroy something, it is about to
+    // fetch from this remote on the next line regardless, and it is
+    // allowed to take as long as that fetch takes. `pool list` and
+    // doctor are not, and they pass `{ network: false }`.
+    const rebuilt = reconstructPoolRecord(fleet, taskId, { network: true });
     if (rebuilt.kind === "absent") {
       return {
         ok: false,
@@ -420,6 +447,50 @@ export async function teardownTask(
   const { meta, record, worktree } = context;
 
   if (meta.shape === "scout") {
+    // M4-P19 FIX ROUND, finding F-5. THE RECONSTRUCTED PATH IS STRICTER
+    // THAN THE WITH-RECORD PATH FOR A SCOUT, DELIBERATELY.
+    //
+    // The scout arm below discards a dirty scratch tree by design
+    // (PR-010: a scout is judged by its report and never pushes), and it
+    // reaches `finish` without ever probing cleanliness. That was
+    // reachable only by an operator who had the pool record in front of
+    // them. This phase made it reachable from a RECLAIM, where the
+    // record is the one thing that did not survive, and measured at head
+    // abde402: `teardown --task s1 --from-reconstructed` against a scout
+    // worktree holding ` M readme.md` and `?? important.md` exited 0 and
+    // removed the worktree, where the same fixture on the phase base
+    // exited 1 and left it standing. Plan criterion 4 states the refusal
+    // with no shape qualifier, so the plan is what is followed here.
+    //
+    // WHY NOT INSTEAD MAKE THE WITH-RECORD SCOUT PATH REFUSE TOO. That
+    // is a change to a decided scout policy (PR-010) which this phase
+    // does not own and which the plan does not ask for. The asymmetry is
+    // therefore REAL and is stated rather than smoothed over: the
+    // difference in force is the difference in what the operator knows.
+    // With the record present they are tearing down a scout they are
+    // tracking; arriving here from a reclaim they are recovering a fleet
+    // whose bookkeeping is already known to be incomplete, and the
+    // leavings in that tree may be the only copy.
+    //
+    // --salvage is NOT the escape, because salvage pushes (PR-010: a
+    // scout never pushes), so the remedy named is the one that works.
+    if (context.reconstructed) {
+      const scoutDirty = worktreeDirty(worktree);
+      if (!scoutDirty.ok) {
+        return { ok: false, reason: scoutDirty.reason };
+      }
+      if (scoutDirty.dirty) {
+        return {
+          ok: false,
+          reason:
+            `scout worktree ${worktree} has uncommitted changes or untracked ` +
+            `files and its pool record did not survive, so teardown is running ` +
+            `on a reconstruction and refuses to discard them: copy anything ` +
+            `worth keeping out of ${worktree}, then re-run once ` +
+            `"git -C ${worktree} status --porcelain" is empty`,
+        };
+      }
+    }
     // (a) A scout is judged by its report, never by its scratch tree.
     if (!existsSync(reportPath(fleet, options.taskId))) {
       return {

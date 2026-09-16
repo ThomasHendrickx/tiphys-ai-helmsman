@@ -76,16 +76,90 @@ interface GitRun {
   stderr: string;
 }
 
-function runGit(cwd: string, args: string[]): GitRun {
+/**
+ * THE BOUND ON A NETWORK-REACHING GIT SUBPROCESS (M4-P19 fix round).
+ *
+ * `spawnSync` with no `timeout` waits for the child forever. For a local
+ * git command that is harmless: it either answers or fails. For one that
+ * opens a socket it is not, and the failure mode is not a slow command,
+ * it is a command that NEVER RETURNS. Measured by the clean-room
+ * reviewer against head abde402: a remote pointed at a TCP listener that
+ * accepts and never speaks made `tiphys pool list` and `tiphys doctor`
+ * run until killed (exit 124 under `timeout 25`), where the same fixture
+ * on the phase base exited 0 in about a second.
+ *
+ * This bound is applied to `ls-remote --symref <remote> HEAD` only, and
+ * the reason it is safe THERE and not elsewhere is a property of the
+ * command rather than a judgement about it: that invocation transfers a
+ * ref advertisement and nothing else, so a legitimate one is bounded by
+ * round-trip latency. `git fetch` (src/pool.ts, src/teardown.ts) and
+ * `git push` (src/teardown.ts) transfer objects, so their legitimate
+ * duration IS unbounded and a wall-clock cap on them would abort real
+ * work. They are left unbounded deliberately, and they are reached only
+ * from a command the operator invoked to do that work, never from a
+ * reporting path; keeping reporting paths off the network entirely is
+ * the other half of this fix (see `reconstructPoolRecord`).
+ *
+ * TIPHYS_GIT_NETWORK_TIMEOUT_MS is a TEST SEAM in the style of
+ * TIPHYS_WATCH_TEST_HOLD (src/watcher.ts) and TIPHYS_LOCK_TEST_HOLD
+ * (src/commands/lock.ts): a test cannot afford to wait out the shipped
+ * bound, and a shipped bound short enough for a test would abort a
+ * legitimate ls-remote over a slow link. A value that is not a positive
+ * integer is IGNORED rather than honoured, so a malformed environment
+ * cannot silently remove the bound.
+ */
+export const NETWORK_TIMEOUT_MS = 20_000;
+
+/**
+ * Exported as a PURE function so the validation has a witness that does
+ * not have to wait out a twenty-second bound to observe it. The
+ * end-to-end bound is witnessed separately, against a real remote that
+ * never answers; this is the arm that says a malformed environment
+ * cannot silently switch the bound off.
+ *
+ * `Number("")` is 0 and `Number("0x10")` is 16, so neither a blank value
+ * nor a hexadecimal one is passed through: the accepted set is exactly
+ * the positive integers, and everything else falls back.
+ */
+export function resolveNetworkTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined) {
+    return NETWORK_TIMEOUT_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return NETWORK_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+function networkTimeoutMs(): number {
+  return resolveNetworkTimeoutMs(process.env["TIPHYS_GIT_NETWORK_TIMEOUT_MS"]);
+}
+
+function runGit(cwd: string, args: string[], timeoutMs?: number): GitRun {
   const result = spawnSync("git", ["-C", cwd, ...args], {
     encoding: "utf8",
     // The transient-contention classification below reads git's English
     // message text, so the locale is pinned rather than inherited
     // (U-8). Without this a translated git silently stops retrying.
     env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   });
   if (result.error !== undefined) {
-    return { status: null, stdout: "", stderr: String(result.error) };
+    // A killed-on-timeout child arrives here with an ETIMEDOUT error. It
+    // is named in terms rather than passed through as
+    // "Error: spawnSync git ETIMEDOUT", because the operator's remedy
+    // (an unreachable remote) is not readable from that string.
+    const timedOut =
+      timeoutMs !== undefined &&
+      (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+    return {
+      status: null,
+      stdout: "",
+      stderr: timedOut
+        ? `git ${args.join(" ")} did not answer within ${String(timeoutMs)}ms and was killed`
+        : String(result.error),
+    };
   }
   return {
     status: result.status,
@@ -205,8 +279,21 @@ function resolveRemote(project: string): PoolResult<string> {
  * set locally (no network); otherwise the remote's advertised default
  * via ls-remote --symref. The clone's own HEAD is never consulted, so a
  * detached HEAD in the clone is irrelevant.
+ *
+ * `network` IS A REQUIRED PARAMETER AND HAS NO DEFAULT (M4-P19 fix
+ * round). Every caller must state whether it is allowed to open a
+ * socket, because the two callers that exist have opposite answers and a
+ * default would hand the wrong one to whichever caller is added next
+ * without anybody having to decide. `false` stops at the local
+ * `origin/HEAD` lookup and refuses, naming the fact that the network was
+ * not consulted, so a caller reading the refusal can tell "this remote
+ * has no default branch" from "I was not permitted to ask".
  */
-function resolveDefaultBranch(project: string, remote: string): PoolResult<string> {
+function resolveDefaultBranch(
+  project: string,
+  remote: string,
+  network: boolean,
+): PoolResult<string> {
   const local = runGit(project, [
     "symbolic-ref",
     "--quiet",
@@ -219,7 +306,20 @@ function resolveDefaultBranch(project: string, remote: string): PoolResult<strin
       return { ok: true, value: ref.slice(prefix.length) };
     }
   }
-  const advertised = runGit(project, ["ls-remote", "--symref", remote, "HEAD"]);
+  if (!network) {
+    return {
+      ok: false,
+      reason:
+        `cannot resolve the default branch of remote ${remote} without the ` +
+        `network: ${remote}/HEAD is unset locally, and this caller reports ` +
+        `rather than writes, so it does not contact ${remote} to ask`,
+    };
+  }
+  const advertised = runGit(
+    project,
+    ["ls-remote", "--symref", remote, "HEAD"],
+    networkTimeoutMs(),
+  );
   if (advertised.status === 0) {
     const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(advertised.stdout);
     if (match !== null) {
@@ -280,10 +380,44 @@ export type ReconstructResult =
   | { kind: "absent"; reason: string };
 
 /**
+ * What a caller of `reconstructPoolRecord` is permitted to do to answer.
+ *
+ * THE FIELD IS REQUIRED AND THE TYPE IS WHY (M4-P19 fix round). The
+ * reconstruction rebuilds `branch` through `resolveDefaultBranch`, which
+ * falls back to `git ls-remote` when `<remote>/HEAD` is unset locally,
+ * and that fallback opens a socket. `<remote>/HEAD` unset is not an
+ * exotic state: it is the NORMAL state of a clone made by `git init` +
+ * `git remote add` + `git fetch`, which is how this kernel's own tests
+ * and fixtures build one. So the fallback is reached on ordinary fleets,
+ * and a caller that must return, such as `pool list` or `doctor`, must
+ * not reach it.
+ *
+ * Measured against head abde402, where this option did not exist and
+ * every caller got the network: with the remote pointed at a TCP
+ * listener that accepts and never speaks, `tiphys pool list` and
+ * `tiphys doctor` ran until killed. Making the decision a required field
+ * rather than a defaulted one is the part of the fix that survives the
+ * next caller: adding one without choosing does not compile.
+ */
+export interface ReconstructOptions {
+  /**
+   * True only for a caller the operator invoked to CHANGE something and
+   * which may therefore wait on a remote. False for every reporting
+   * path, which then reports `unreconstructable (unresolved: branch)`
+   * rather than blocking.
+   */
+  network: boolean;
+}
+
+/**
  * Rebuild a pool record for taskId from tasks/<id>/meta.json and git.
  * Reads only; writes nothing anywhere, ever.
  */
-export function reconstructPoolRecord(fleet: Fleet, taskId: string): ReconstructResult {
+export function reconstructPoolRecord(
+  fleet: Fleet,
+  taskId: string,
+  options: ReconstructOptions,
+): ReconstructResult {
   if (!TASK_ID_PATTERN.test(taskId)) {
     return { kind: "absent", reason: `task id "${taskId}" is not a safe path segment` };
   }
@@ -312,7 +446,11 @@ export function reconstructPoolRecord(fleet: Fleet, taskId: string): Reconstruct
     const resolvedRemote = resolveRemote(meta.project);
     if (resolvedRemote.ok) {
       remote = resolvedRemote.value;
-      const resolvedBranch = resolveDefaultBranch(meta.project, remote);
+      const resolvedBranch = resolveDefaultBranch(
+        meta.project,
+        remote,
+        options.network,
+      );
       if (resolvedBranch.ok) {
         branch = resolvedBranch.value;
       } else {
@@ -445,7 +583,9 @@ export async function poolCreate(
   if (!remote.ok) {
     return remote;
   }
-  const branch = resolveDefaultBranch(project, remote.value);
+  // poolCreate is a write the operator invoked and it is about to fetch
+  // from this remote anyway, so it may ask the remote for its default.
+  const branch = resolveDefaultBranch(project, remote.value, true);
   if (!branch.ok) {
     return branch;
   }
@@ -592,6 +732,13 @@ function headShaOf(fleet: Fleet, taskId: string): string {
  * Closed tasks are excluded: a closed task is not in the pool, and
  * listing every task this fleet ever finished as a missing worktree would
  * make the report useless within a week.
+ *
+ * THIS FUNCTION OPENS NO SOCKET (M4-P19 fix round). It reads the
+ * filesystem and runs local git commands, and its reconstruction is
+ * asked for with `{ network: false }`. An entry whose default branch
+ * cannot be established from the clone alone is reported
+ * `unreconstructable (unresolved: branch)` rather than waited on. See
+ * `ReconstructOptions` for the measured hang that this closes.
  */
 export function poolList(fleet: Fleet): PoolListEntry[] {
   const entries: PoolListEntry[] = [];
@@ -621,7 +768,11 @@ export function poolList(fleet: Fleet): PoolListEntry[] {
     if (meta === undefined || meta.status !== "open") {
       continue;
     }
-    const rebuilt = reconstructPoolRecord(fleet, taskId);
+    // REPORTING, so NO NETWORK. `pool list` and doctor's CHECK worktrees
+    // both arrive here, and both must return. A task whose `branch`
+    // needs the network to resolve is reported `unreconstructable`,
+    // which is a true statement about what this path can establish.
+    const rebuilt = reconstructPoolRecord(fleet, taskId, { network: false });
     if (rebuilt.kind === "absent") {
       continue;
     }
