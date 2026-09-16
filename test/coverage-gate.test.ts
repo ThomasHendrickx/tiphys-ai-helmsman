@@ -88,6 +88,7 @@ const coverageModule = (await import(new URL("../src/gates/coverage.ts", import.
   ) => FindingParityResult;
   isEmptyCell: (value: string) => boolean;
   boundedExec: (compiled: RegExp, value: string) => RegExpExecArray | null;
+  extractIdRows: (text: string, idPattern: string) => { id: string; cells: string[]; line: number }[];
   RegexBoundExceededError: new (message: string) => Error;
   validateConfigPatterns: (config: CoverageConfig) => string | undefined;
   REGEX_EXEC_TIMEOUT_MS: number;
@@ -151,16 +152,28 @@ test("the coverage gate against the real migration table and appendix reports un
 
   const report = coverageModule.checkCoverage(config, inventoryText, coverageText);
 
-  assert.equal(report.totalInventoryIds, 115);
   assert.deepEqual(report.findings, []);
-  assert.equal(report.perKind["phase"], 11);
-  assert.equal(report.perKind["milestone"], 104);
-  assert.equal(report.perMilestone["M1"], 11);
-  assert.equal(report.perMilestone["M2"], 16);
-  assert.equal(report.perMilestone["M3"], 74);
-  assert.equal(report.perMilestone["M4"], 13);
-  assert.equal(report.perMilestone["M5"], 1);
-  assert.equal(report.perMilestone["parked"] ?? 0, 0);
+  // M4-P13: ONE assertion over ONE literal, replacing the six separate
+  // `assert.equal` pins that stood here. Six pins let a partial
+  // re-disposition leave five green and one red, and the red one names a
+  // single number rather than the distribution that actually moved. A
+  // `deepEqual` over the whole shape fails once, printing both the expected
+  // and the actual distribution, so the reviewer reads the re-disposition
+  // rather than a subtraction. `perMilestone` carries a `decision` key
+  // because a bucket kind whose pattern has no milestone capture group
+  // buckets by the kind's own name in that view (src/gates/coverage.ts:530).
+  assert.deepEqual(
+    {
+      totalInventoryIds: report.totalInventoryIds,
+      perKind: report.perKind,
+      perMilestone: report.perMilestone,
+    },
+    {
+      totalInventoryIds: 115,
+      perKind: { decision: 6, milestone: 98, phase: 11 },
+      perMilestone: { M1: 11, M2: 16, M3: 74, M4: 5, M5: 3, decision: 6 },
+    },
+  );
 
   // The end-to-end CLI path, through the real manifest entry, confirms the
   // gate is wired rather than only importable: gates run reads its own
@@ -922,3 +935,194 @@ test(
     assert.match(linked.stderr, /usage: node src\/gates\/coverage\.ts/u, linked.stderr);
   },
 );
+
+/* -------------------------------------------------------------------- */
+/* M4-P13: the invariant the counts sentence asserts and no gate checks.  */
+/* -------------------------------------------------------------------- */
+
+/**
+ * THE DANGEROUS STATE, measured rather than supposed. The coverage gate
+ * reads the migration table for IDS ONLY: `extractIdRows` keeps the first
+ * cell of a table row and discards the rest (src/gates/coverage.ts:356), and
+ * every bucket comes from the coverage table. So the migration table's
+ * Milestone column can say M4 while Appendix A says DR-0029, forever, and
+ * the gate reports the identical detail with zero findings. That is a guard
+ * whose condition does not test the property that matters, which is why this
+ * is a second, independent reader of the same two documents rather than one
+ * more assertion inside the gate's own report.
+ *
+ * delivery/plan/kernel-plan-v1.md:435 states the property in words ("Buckets
+ * follow the migration table's milestone column"). This test is that
+ * sentence, mechanised.
+ *
+ * THE NORMALIZATION IS DECLARED, not inferred:
+ *   - an Appendix A bucket of the form M<n>-P<k> (a phase id) must meet a
+ *     Milestone cell of M<n>, because the migration table buckets by
+ *     milestone and never by phase;
+ *   - a bare M<n> bucket must meet the same bare M<n>;
+ *   - anything else (a decision or parked bucket) must meet that same string
+ *     VERBATIM. This is the declared exemption from the bare-milestone
+ *     comparison, and it is a stricter check rather than a skip: the six
+ *     rows DR-0029 discharges are required to say DR-0029 in BOTH documents.
+ *
+ * The exemption list is asserted BY NAME, never by count, because the
+ * decision-bucketed set grows as later phases re-disposition rows and a
+ * pinned count would be a claim about every future phase.
+ */
+const M4_P13_DECISION_BUCKETED_ROWS = [
+  "R-042",
+  "R-045",
+  "R-046",
+  "R-050a",
+  "R-051",
+  "R-071",
+] as const;
+
+const MILESTONE_COLUMN_IN_MIGRATION_TABLE = 5;
+
+function readIdKeyedColumn(
+  text: string,
+  idPattern: string,
+  column: number,
+): Map<string, string> {
+  const rows = coverageModule.extractIdRows(text, idPattern);
+  const byId = new Map<string, string>();
+  for (const row of rows) {
+    if (!byId.has(row.id)) {
+      byId.set(row.id, row.cells[column] ?? "");
+    }
+  }
+  return byId;
+}
+
+function bucketMismatches(
+  inventoryText: string,
+  coverageText: string,
+): { mismatches: string[]; compared: number; exempt: string[] } {
+  const config = coverageModule.KERNEL_COVERAGE_CONFIG;
+  const milestoneCells = readIdKeyedColumn(
+    inventoryText,
+    config.inventory.idPattern,
+    MILESTONE_COLUMN_IN_MIGRATION_TABLE,
+  );
+  const buckets = readIdKeyedColumn(
+    coverageText,
+    config.coverageTable.idPattern,
+    config.coverageTable.bucketColumn,
+  );
+
+  const mismatches: string[] = [];
+  const exempt: string[] = [];
+  let compared = 0;
+  for (const [id, bucket] of buckets) {
+    const cell = milestoneCells.get(id);
+    if (cell === undefined) {
+      mismatches.push(`${id}: bucketed ${bucket} in Appendix A but absent from the migration table`);
+      continue;
+    }
+    const phase = /^(M[0-9]+)-P[0-9]+$/.exec(bucket);
+    const bare = /^M[0-9]+$/.test(bucket);
+    if (!phase && !bare) {
+      exempt.push(id);
+    }
+    const expected = phase?.[1] ?? bucket;
+    compared += 1;
+    if (cell !== expected) {
+      mismatches.push(
+        `${id}: Appendix A bucket ${bucket} implies milestone cell ${expected}, migration table says ${cell}`,
+      );
+    }
+  }
+  return { mismatches, compared, exempt };
+}
+
+test("every Appendix A bucket agrees with the migration table's milestone cell for the row, and the decision-bucketed rows agree verbatim", () => {
+  const config = coverageModule.KERNEL_COVERAGE_CONFIG;
+  const inventoryText = readFileSync(join(repoRoot, config.inventory.path), "utf8");
+  const coverageText = readFileSync(join(repoRoot, config.coverageTable.path), "utf8");
+
+  const { mismatches, compared, exempt } = bucketMismatches(inventoryText, coverageText);
+
+  // Every row is compared. Nothing is skipped, so "compared" is the whole
+  // inventory rather than the subset a skip would leave.
+  assert.equal(compared, 115);
+  assert.deepEqual(mismatches, []);
+
+  // The exemption is declared BY NAME. Every declared row must still be
+  // non-milestone-bucketed here; the assertion is one-directional on purpose,
+  // because a later phase adding a seventh decision-bucketed row must not
+  // redden this test.
+  for (const id of M4_P13_DECISION_BUCKETED_ROWS) {
+    assert.ok(
+      exempt.includes(id),
+      `${id} is declared as decision-bucketed but Appendix A buckets it to a milestone: ${String(
+        readIdKeyedColumn(coverageText, config.coverageTable.idPattern, config.coverageTable.bucketColumn).get(id),
+      )}`,
+    );
+  }
+});
+
+/**
+ * THE RED WITNESS FOR THE TEST ABOVE, in the file, so a later reader can
+ * re-run the class rather than trust a work history. Two structurally
+ * different members of "the two documents disagree and every gate stays
+ * green":
+ *
+ *   (i) a row THIS PHASE MOVED: R-072 went M4 to M5 in both documents, and
+ *       the mutation puts the migration table back to M4 while Appendix A
+ *       keeps M5. This is the half-finished re-disposition.
+ *  (ii) a row THIS PHASE NEVER TOUCHED: R-026a has been M5 in both documents
+ *       since the plan was written, and the mutation moves Appendix A's
+ *       bucket to M4. This is drift arriving from somewhere else entirely.
+ *
+ * Both are seeded in a scratch COPY of the real text, never on disk. Both
+ * are checked to leave the coverage gate green with zero findings, which is
+ * what makes them dangerous rather than merely wrong.
+ */
+test("a migration-table cell that disagrees with its Appendix A bucket is named, for a row this phase moved and for one it never touched, while the coverage gate stays green under both", () => {
+  const config = coverageModule.KERNEL_COVERAGE_CONFIG;
+  const inventoryText = readFileSync(join(repoRoot, config.inventory.path), "utf8");
+  const coverageText = readFileSync(join(repoRoot, config.coverageTable.path), "utf8");
+
+  // MEMBER (i): a row M4-P13 moved. The migration table reverts to M4.
+  const r072Before = "| R-072 | S4, 171-172 | CI needs a per-ref concurrency group so superseded runs cancel | L1 | CI config (concurrency group) | M5 |";
+  assert.ok(
+    inventoryText.includes(r072Before),
+    "fixture assumption failed: R-072's migration-table row was not found with an M5 milestone cell",
+  );
+  const mutatedInventory = inventoryText.replace(
+    r072Before,
+    r072Before.replace("| M5 |", "| M4 |"),
+  );
+  assert.notEqual(mutatedInventory, inventoryText);
+
+  const memberOne = bucketMismatches(mutatedInventory, coverageText);
+  assert.equal(memberOne.mismatches.length, 1, JSON.stringify(memberOne.mismatches));
+  assert.match(memberOne.mismatches[0] ?? "", /^R-072: /);
+  assert.match(memberOne.mismatches[0] ?? "", /migration table says M4/);
+  // AND THE GATE IS GREEN AGAINST IT, which is the whole point.
+  const gateOne = coverageModule.checkCoverage(config, mutatedInventory, coverageText);
+  assert.deepEqual(gateOne.findings, []);
+  assert.equal(gateOne.perMilestone["M4"], 5);
+
+  // MEMBER (ii): a row M4-P13 never touched. Appendix A drifts to M4.
+  const r026aBefore = "| R-026a | M5 |";
+  assert.ok(
+    coverageText.includes(r026aBefore),
+    "fixture assumption failed: R-026a's Appendix A row was not found bucketed M5",
+  );
+  const mutatedCoverage = coverageText.replace(r026aBefore, "| R-026a | M4 |");
+  assert.notEqual(mutatedCoverage, coverageText);
+
+  const memberTwo = bucketMismatches(inventoryText, mutatedCoverage);
+  assert.equal(memberTwo.mismatches.length, 1, JSON.stringify(memberTwo.mismatches));
+  assert.match(memberTwo.mismatches[0] ?? "", /^R-026a: /);
+  assert.match(memberTwo.mismatches[0] ?? "", /migration table says M5/);
+  const gateTwo = coverageModule.checkCoverage(config, inventoryText, mutatedCoverage);
+  assert.deepEqual(gateTwo.findings, []);
+  assert.equal(gateTwo.perMilestone["M4"], 6);
+
+  // BOTH DIRECTIONS: the unmutated pair is clean.
+  const clean = bucketMismatches(inventoryText, coverageText);
+  assert.deepEqual(clean.mismatches, []);
+});

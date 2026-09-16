@@ -110,7 +110,17 @@ export async function cmdPool(args: string[]): Promise<number> {
         return usageError("list takes no flags");
       }
       for (const entry of poolList(fleet)) {
-        process.stdout.write(`${entry.taskId} ${entry.headSha}\n`);
+        // M4-P19: an entry whose pool record did not survive a reclaim is
+        // MARKED. The original two-field line is unchanged, so nothing
+        // that reads this output learns a new field it did not ask for,
+        // and a reconstruction can never be read as an original.
+        let marker = "";
+        if (entry.origin === "reconstructed") {
+          marker = " reconstructed";
+        } else if (entry.origin === "unreconstructable") {
+          marker = ` unreconstructable (unresolved: ${(entry.unresolved ?? []).join(", ")})`;
+        }
+        process.stdout.write(`${entry.taskId} ${entry.headSha}${marker}\n`);
       }
       return 0;
     }

@@ -17,11 +17,18 @@ import type { Fleet } from "../fleet.ts";
  * either, because the two must never be described alike.
  */
 
-const USAGE = "usage: tiphys teardown --task <id> [--salvage]";
+const USAGE =
+  "usage: tiphys teardown --task <id> [--salvage] [--from-reconstructed]";
 
 interface TeardownArgs {
   task: string | undefined;
   salvage: boolean;
+  /**
+   * M4-P19: proceed on a pool record rebuilt from tasks/<id>/meta.json
+   * and git. It authorizes DERIVATION, never destruction; see the
+   * FROM-RECONSTRUCTED header in src/teardown.ts.
+   */
+  fromReconstructed: boolean;
 }
 
 function usageError(message?: string): number {
@@ -33,7 +40,11 @@ function usageError(message?: string): number {
 }
 
 function parseFlags(args: string[]): TeardownArgs | undefined {
-  const parsed: TeardownArgs = { task: undefined, salvage: false };
+  const parsed: TeardownArgs = {
+    task: undefined,
+    salvage: false,
+    fromReconstructed: false,
+  };
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     const value = args[i + 1];
@@ -42,6 +53,8 @@ function parseFlags(args: string[]): TeardownArgs | undefined {
       i += 1;
     } else if (flag === "--salvage") {
       parsed.salvage = true;
+    } else if (flag === "--from-reconstructed") {
+      parsed.fromReconstructed = true;
     } else {
       return undefined;
     }
@@ -75,6 +88,7 @@ export async function cmdTeardown(args: string[]): Promise<number> {
   const result = await teardownTask(fleet, {
     taskId: flags.task,
     salvage: flags.salvage,
+    fromReconstructed: flags.fromReconstructed,
   });
   if (!result.ok) {
     // Plan step 5: "every refusal is exit nonzero plus a single reason

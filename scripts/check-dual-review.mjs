@@ -16,7 +16,15 @@
  * there is then nothing left that would object to it, and that is the shape
  * section 2.3 rule 3 asks a Kind B criterion to be falsified by.
  *
- * IT RUNS EXACTLY ONE CHECK, BY ID, AND THAT IS DELIBERATE. `runChecks` would
+ * IT RUNS TWO CHECKS, BY ID, AND THAT IS DELIBERATE. M4-P10 added the second,
+ * `verdict-pair-approves`, which is DR-0012 condition 2 made into a predicate.
+ * Before it this gate could not see a verdict's VALUE at all, so two properly
+ * decorrelated reviews that both REFUSED the merge passed green. The two counts
+ * are printed SEPARATELY, because deregistering either one is its own Kind B
+ * witness and a reader must be able to tell which guard was absent.
+ *
+ * BY ID, AND NOT THROUGH `runChecks`, is the older half of the same decision.
+ * `runChecks` would
  * run every check registered for `verdict`, including the three cross-document
  * COMPLETENESS checks M3-P7 ships, which resolve `plan.yaml` and
  * `work-history.yaml` out of the context. Those are real rules and they are not
@@ -26,13 +34,14 @@
  * is PRINTED, because "the guard ran and found nothing" and "no guard ran" must
  * not print the same line (SC-011).
  *
- * THE DIRECTORY IS WHAT SCOPES A SET OF VERDICTS TO ONE HEAD. Criterion 7 says
- * "two verdicts for one head", and `schemas/verdict.schema.json` carries no head
- * field: its join key is `phase`, and that schema belongs to M3-P7 and is not on
- * this phase's declaration. So the operator points this at the directory holding
- * one head's committed reviews and verdicts are grouped inside it by `phase`.
- * That reading is declared in delivery/work-history/m3-p9.md rather than
- * absorbed silently.
+ * THE DIRECTORY NO LONGER SCOPES A SET OF VERDICTS TO ONE HEAD, AND THAT IS
+ * M4-P10's FIRST CHANGE. Until then `schemas/verdict.schema.json` carried no
+ * head field, so the join key was `phase` and the operator's choice of directory
+ * was the only thing tying a pair to one commit, a reading declared in
+ * delivery/work-history/m3-p9.md rather than absorbed. The schema now REQUIRES
+ * `head`, forty lowercase hex digits, and the derived check groups by
+ * `(phase, head)`. Two verdicts for two different heads in one directory are
+ * now two groups of one and are refused; they used to be compared as a pair.
  *
  * TWO ARMS, and the second exists because of the gate contract rather than the
  * criterion. `--precondition <dir>` answers only "is there any verdict document
@@ -64,11 +73,18 @@ const checksModule = await import(
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
 const { refuseOpenForWrite, classifyEntry } = taskModule;
 const { decodeDocument, readOperatorPath } = validateModule;
-const { registeredChecks } = checksModule;
+const { registeredChecks, readVerdictKind } = checksModule;
 
 const GATE_ID = "check-dual-review";
 const UNIT_LABEL = "review verdicts examined for decorrelation";
 const CHECK_ID = "dual-review-decorrelation";
+/* M4-P10 step 6. DR-0012 condition 2's predicate, run ALONGSIDE the
+   decorrelation check rather than instead of it, and counted separately.
+   Separately is the point: `0 registered check(s) named verdict-pair-approves`
+   beside a green is what tells a reader that the deregistration witness is
+   running rather than that the pair was examined and found clean, which is
+   the same SC-011 distinction the existing line draws for its sibling. */
+const PAIR_CHECK_ID = "verdict-pair-approves";
 const EXIT_NOT_APPLICABLE = 20;
 const EXIT_GATE_ERROR = 21;
 
@@ -119,18 +135,31 @@ function parseArgs(argv) {
 }
 
 /**
- * Every verdict document committed under `<dir>/delivery/review/`.
+ * Every verdict document committed under `<dir>/delivery/review/`, and every
+ * candidate that could not be examined.
  *
  * Deliberately the same selection rule the derived check uses: a `.yaml`,
  * `.yml` or `.json` file that decodes and carries `kind: verdict`. That
  * directory also holds prose reviews in this repository, so anything else is
  * skipped rather than reported.
+ *
+ * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
+ * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
+ * documents the checks are RUN OVER and, through `--precondition`, whether the
+ * gate RUNS AT ALL. A directory whose only review documents fail to decode
+ * therefore reported `0 verdict document(s)`, the precondition exited 1, and the
+ * gate was NOT-APPLICABLE: the merge evidence was unreadable and the gate said
+ * there was nothing to compare. So a candidate that passed the extension filter
+ * and could not be read or decoded is carried out of here, the precondition
+ * counts it as a reason to run, and `evaluate` refuses the directory with status
+ * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
+ * screen down: at this layer, could-not-determine is `error` and never green.
  */
 export function committedVerdictPaths(directory) {
   const reviewDirectory = join(directory, REVIEW_DIRECTORY);
   const entry = classifyEntry(reviewDirectory);
   if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, paths: [] };
+    return { ok: true, paths: [], unexaminable: [] };
   }
   if (entry.kind === "unexaminable") {
     return { ok: false, reason: entry.reason };
@@ -148,6 +177,7 @@ export function committedVerdictPaths(directory) {
     return { ok: false, reason: `${reviewDirectory} could not be listed: ${String(error)}` };
   }
   const paths = [];
+  const unexaminable = [];
   for (const name of names.sort()) {
     if (!/\.(ya?ml|json)$/i.test(name)) {
       continue;
@@ -155,24 +185,37 @@ export function committedVerdictPaths(directory) {
     const path = join(reviewDirectory, name);
     const read = readOperatorPath(path);
     if (!read.ok) {
+      unexaminable.push(`${path} could not be read: ${read.reason}`);
       continue;
     }
     const decoded = decodeDocument(read.body, path);
     if (!decoded.ok) {
+      unexaminable.push(`${path} did not decode: ${decoded.reason}`);
       continue;
     }
-    const value = decoded.value;
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      value["kind"] !== "verdict"
-    ) {
+    /* THE SAME READER THE DERIVED CHECK USES, AND FIX ROUND 2 IS THAT IT IS THE
+       SAME ONE. What stood here was this script's OWN selection rule, a raw
+       `value["kind"] !== "verdict"`, and two readers of one fact diverged in
+       both directions at once: it dropped a `kind: Verdict` that
+       `loadCommittedVerdicts` canonicalises and admits, so the `units` this
+       gate printed were not the set the check compared, and it folded a
+       `kind` whose reading FAILED into the determinate answer "not a verdict",
+       so a review refusing this head vanished and the gate printed green.
+       `readVerdictKind` is documented in src/checks.ts; `unreadable` is the
+       outcome that must never be silent here. */
+    const reading = readVerdictKind(decoded.value);
+    if (reading.kind === "unreadable") {
+      unexaminable.push(
+        `${path} declares a kind field that could not be read as a word (it is ${reading.found})`,
+      );
       continue;
     }
-    paths.push({ path, instance: value });
+    if (reading.kind !== "verdict") {
+      continue;
+    }
+    paths.push({ path, instance: reading.record });
   }
-  return { ok: true, paths };
+  return { ok: true, paths, unexaminable };
 }
 
 /**
@@ -216,7 +259,31 @@ export function evaluate(directory) {
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
   }
-  const selected = registeredChecks().filter((check) => check.id === CHECK_ID);
+  /* THE SECOND FAIL-CLOSED REFUSAL AT THIS LAYER, AND IT IS THE SAME RULE AS
+     THE ONE ABOVE RATHER THAN A NEW ONE. `REGIME_DOCUMENTS` refuses a directory
+     whose merge regime cannot be determined; this refuses one whose review
+     evidence cannot be READ. Both are could-not-determine, and the status for
+     could-not-determine at the layer DR-0012's grant runs through is `error`,
+     never green and never not-applicable. The paths are named, because the
+     reported defect was that the dropped document appeared nowhere in the
+     gate's output. */
+  if (found.unexaminable.length > 0) {
+    return {
+      status: "error",
+      units: 0,
+      checksRun: 0,
+      lines: [
+        `${String(found.unexaminable.length)} document(s) under ` +
+          `${join(directory, REVIEW_DIRECTORY)} could not be examined, so whether a review ` +
+          `refusing this head is among them is unknown and no merge verdict can be reached: ` +
+          found.unexaminable.join("; "),
+      ],
+    };
+  }
+  const registered = registeredChecks();
+  const selected = registered.filter((check) => check.id === CHECK_ID);
+  const pairSelected = registered.filter((check) => check.id === PAIR_CHECK_ID);
+  const running = [...selected, ...pairSelected];
   /* DEDUPLICATED, and the reason is a property of the rule rather than tidiness.
      Decorrelation is a property of a SET, so every verdict in a group reports
      the same violation about the same pair, and a two-verdict group would print
@@ -228,7 +295,7 @@ export function evaluate(directory) {
   const lines = [];
   const violations = new Set();
   for (const { path, instance } of found.paths) {
-    for (const check of selected) {
+    for (const check of running) {
       const outcome = check.run(instance, directory);
       for (const violation of outcome.violations) {
         const line = `INVALID ${violation.pointer} ${violation.message} (check: ${check.id}) [${path}]`;
@@ -253,6 +320,24 @@ export function evaluate(directory) {
     lines,
     distinctViolations: violations.size,
     checksRun: selected.length,
+    pairChecksRun: pairSelected.length,
+    /* THE VALUES, NOT ONLY THE COUNT (M4-P10 step 6). A gate that printed only
+       "2 verdict(s) examined" was the shape that let two REFUSING reviews read
+       as a satisfied precondition, and it is also what keeps the one unchecked
+       dimension invisible: `produced-by` is compared as a STRING, so two values
+       naming ONE vendor pass as decorrelated. Nothing here refuses that, and
+       refusing it is M4-P11's declared scope; what this line buys is that a
+       reader of the gate's own output can SEE both values and judge, rather
+       than having to open two files to find out what was compared. */
+    read: found.paths.map((entry) => ({
+      path: entry.path,
+      verdict: typeof entry.instance["verdict"] === "string" ? entry.instance["verdict"] : "(unreadable)",
+      producedBy:
+        typeof entry.instance["produced-by"] === "string"
+          ? entry.instance["produced-by"]
+          : "(unreadable)",
+      head: typeof entry.instance["head"] === "string" ? entry.instance["head"] : "(unreadable)",
+    })),
     verdicts: found.paths.map((entry) => entry.path),
   };
 }
@@ -325,10 +410,18 @@ function main(argv) {
       process.stderr.write(`tiphys ${GATE_ID}: ${found.reason}\n`);
       return 1;
     }
+    /* AN UNEXAMINABLE CANDIDATE MAKES THE GATE APPLICABLE, WHICH IS THE
+       OPPOSITE OF WHAT DROPPING IT DID. Exit 1 here means "no pair of reviews
+       exists, do not run me", and answering that about a directory whose
+       documents could not be read is a not-applicable reached by not looking.
+       The gate runs and `evaluate` then refuses it with `error`. */
+    const unexaminable = found.unexaminable.length;
     process.stdout.write(
-      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}\n`,
+      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}` +
+        (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
+        "\n",
     );
-    return found.paths.length > 0 ? 0 : 1;
+    return found.paths.length + unexaminable > 0 ? 0 : 1;
   }
 
   const run = evaluate(options.directory);
@@ -361,6 +454,14 @@ function main(argv) {
   process.stdout.write(
     `${GATE_ID}: ${String(run.checksRun)} registered check(s) named ${CHECK_ID} ran over ${String(run.units)} verdict(s)\n`,
   );
+  process.stdout.write(
+    `${GATE_ID}: ${String(run.pairChecksRun)} registered check(s) named ${PAIR_CHECK_ID} ran over ${String(run.units)} verdict(s)\n`,
+  );
+  for (const entry of run.read ?? []) {
+    process.stdout.write(
+      `${GATE_ID}: verdict ${entry.verdict} at head ${entry.head} produced-by ${entry.producedBy} [${entry.path}]\n`,
+    );
+  }
   for (const line of run.lines) {
     process.stdout.write(`${line}\n`);
   }
@@ -371,13 +472,16 @@ function main(argv) {
     startedAt,
     detail:
       run.status === "green"
-        ? `${String(run.units)} verdict(s) examined by ${String(run.checksRun)} registered check(s); no decorrelation violation`
+        ? `${String(run.units)} verdict(s) examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves`
         : run.lines.filter((line) => line.startsWith("INVALID")).join("; "),
     evidenceLines: [
       `directory: ${options.directory}`,
       `registered checks named ${CHECK_ID}: ${String(run.checksRun)}`,
+      `registered checks named ${PAIR_CHECK_ID}: ${String(run.pairChecksRun)}`,
       `verdicts examined: ${String(run.units)}`,
-      ...(run.verdicts ?? []).map((path) => `  ${path}`),
+      ...(run.read ?? []).map(
+        (entry) => `  ${entry.path}: verdict ${entry.verdict}, head ${entry.head}, produced-by ${entry.producedBy}`,
+      ),
       ...run.lines,
     ],
   });
@@ -413,4 +517,4 @@ if (invokedDirectly()) {
   }
 }
 
-export { EXIT_NOT_APPLICABLE, REVIEW_DIRECTORY, CHECK_ID };
+export { EXIT_NOT_APPLICABLE, REVIEW_DIRECTORY, CHECK_ID, PAIR_CHECK_ID };

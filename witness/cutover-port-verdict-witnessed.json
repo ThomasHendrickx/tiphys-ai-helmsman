@@ -1,0 +1,31 @@
+{
+  "id": "cutover-port-verdict-witnessed",
+  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (!Array.isArray(row.negativeWitness) || row.negativeWitness.length === 0) {",
+      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (!Array.isArray(row.negativeWitness) || row.negativeWitness.length === 0) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
+      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "remote / status --porcelain / push",
+    "captures": [
+      "witness/captures/cutover-git-contracts.txt"
+    ],
+    "provenance": "src/cutover.ts spawns the version-control program and parses what it prints: `remote` decides whether a fleet has an origin, `status --porcelain` decides whether a tree is dirty, and `push` decides whether the rolled-back state landed. Red-witness rule (f) therefore binds every witness over that file. The cited capture is a real run, taken 2026-09-16 against version 2.43.0, and the named test `the captured git contract this module parses is reproduced live` reproduces each contract in a live scratch repository and requires the live result to match the capture, so nothing here is a hand-written string chosen to match the implementation. Two recorded facts earn their place: an empty stdout with exit 0 is what makes no-origin and clean-tree decidable, and a push to a path that is not a repository exits 128 rather than 1, which is why syncFleetState tests for non-zero rather than for 1."
+  }
+}
