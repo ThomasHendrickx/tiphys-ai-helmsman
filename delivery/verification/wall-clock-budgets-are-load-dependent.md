@@ -243,3 +243,58 @@ controlled load to find the threshold at which it starts lying; the three
 observations are 46-57, 53-66 and an unrecorded load, which bracket nothing
 precisely. And no CI run has been checked for this signature, so whether it has
 ever reddened a real pull request here is unknown.
+
+## A FIFTH witness, mine, and it LOWERS the threshold
+
+Measured 2026-09-16 on the orchestrator's own paperwork branch, which is the
+first time this defect has been observed outside a phase branch.
+
+Full suite, head `f7a51f7`, interpreter node v26.6.0 at
+`/home/user/n26-review/bin`, `dist/` built with `git status` clean afterwards,
+invocation `npm test`, tree a git CHECKOUT deliberately placed OUTSIDE
+`/tmp/claude-0` so standing warning 1's traversal trap could not contribute:
+
+```
+tests 849
+pass 848
+fail 1
+skipped 0
+duration_ms 895444.622876
+NPM_TEST_EXIT=1
+
+test at test/coverage-gate.test.ts:476:1
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a
+  value of length 5 (possible catastrophic backtracking)
+      at boundedExec (src/gates/coverage.ts:260:11)
+```
+
+**One failure in 849, and it is this defect.** The branch is otherwise green.
+
+The control, same tree, same interpreter, same build state, the same test run
+alone rather than inside the suite:
+
+```
+ALONE_EXIT=0
+```
+
+### The number that matters: load 33, not 46
+
+Every prior observation was in the 46 to 67 band, and this document has been
+quoting "46 to 57" as where the gate starts lying. The load at the start of this
+run was **33.06** and at the end **29.99**. The one-minute figure never reached
+the previously recorded band.
+
+So the threshold is LOWER than recorded, and the honest form of the claim is
+weaker than the one written above: nobody has found the load at which this
+starts, only successive lower values at which it has already happened. Each new
+observation has moved the floor down, and none has established it.
+
+That matters for DR-0044, which cites this defect as part of its reasoning for
+capping concurrency at two agents. The cap is still right; the specific band it
+was argued from is not a floor.
+
+**What this observation does NOT cover.** It is one run. The load figures are
+one-minute averages sampled at the start and end of a fifteen-minute run, so the
+load AT THE MOMENT the test ran is unknown and could have been higher than
+either sample. A run under controlled, sustained load is still the experiment
+nobody has done.
