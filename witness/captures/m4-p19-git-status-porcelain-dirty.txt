@@ -1,0 +1,29 @@
+M4-P19 fix round: real output of `git status --porcelain` in a worktree
+holding one MODIFIED TRACKED file and one UNTRACKED file, captured
+2026-09-16 against git 2.43.0.
+
+src/teardown.ts's cleanliness probe is exactly this command, and it decides
+whether a worktree may be destroyed. Plan criterion 4's register is that this
+output is BYTE-IDENTICAL before and after a refused teardown, so the bytes
+have to come from git rather than from a hand-written string: the leading
+SPACE on the tracked-modification line is significant and is the byte a
+hand-written expectation loses first.
+
+git --version:
+git version 2.43.0
+
+$ git -C <worktree> status --porcelain
+ M readme.md
+?? important.md
+exit: 0
+
+Byte detail, from `cat -A`, one line per status entry:
+
+  " M readme.md$"        -> 0x20 0x4d 0x20 readme.md
+  "?? important.md$"     -> 0x3f 0x3f 0x20 important.md
+
+Two structurally different kinds of dirt in one fixture, on purpose: a
+worktree that is dirty only because of an untracked file and one that is
+dirty only because of a tracked modification are different arms of the same
+probe, and a witness carried by just one of them is the single-member
+collapse the red-witness rule forbids.

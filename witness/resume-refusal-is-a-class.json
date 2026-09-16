@@ -1,0 +1,24 @@
+{
+  "id": "resume-refusal-is-a-class",
+  "behavior": "resume-refusal-is-a-class",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "resume refuses every directory that is not a rehydratable fleet clone, and creates nothing in any of them"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/resume.ts",
+      "find": "  if (gitEntry.kind === \"absent\") {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/resume.ts",
+      "find": "  if (missingDurable.length > 0) {",
+      "replace": "  if (false) {"
+    }
+  ]
+}

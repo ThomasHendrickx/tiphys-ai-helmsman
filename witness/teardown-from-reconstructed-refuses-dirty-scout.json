@@ -1,0 +1,31 @@
+{
+  "id": "teardown-from-reconstructed-refuses-dirty-scout",
+  "behavior": "teardown-from-reconstructed-refuses-dirty-scout",
+  "tests": [
+    "teardown --from-reconstructed refuses a dirty SCOUT worktree and removes nothing"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "      if (scoutDirty.dirty) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "    if (context.reconstructed) {\n      const scoutDirty = worktreeDirty(worktree);",
+      "replace": "    if (false) {\n      const scoutDirty = worktreeDirty(worktree);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git status --porcelain",
+    "captures": [
+      "witness/captures/m4-p19-git-status-porcelain-dirty.txt"
+    ],
+    "provenance": "src/teardown.ts decides whether a worktree may be destroyed from the output of `git status --porcelain`, which it spawns, so SPAWN_GREP matches and rule (f) binds. The capture is a real run against git 2.43.0 on 2026-09-16 in a worktree holding one modified tracked file and one untracked file, with the byte detail recorded because the leading SPACE on the ` M` line is significant and plan criterion 4's register is byte-identical output before and after the refusal. The named test reads that file and asserts each LIVE porcelain line appears in it. The two dangerous states are structurally different: the first removes the REFUSAL while leaving the probe running, the second stops the probe being reached at all, and the second is the shape the defect actually had at head abde402, where the scout arm returned to `finish` with discard: true having never probed cleanliness."
+  }
+}

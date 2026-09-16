@@ -118,6 +118,61 @@ function git(args) {
   }
 }
 
+/* WHY THIS EXISTS BESIDE `git`, AND WHY BOTH ARE KEPT.
+ *
+ * `git` above swallows every failure to the empty string. For a LISTING that is
+ * right: no matching branch and a failed listing are both "nothing to report"
+ * and neither is a fact this script acts on.
+ *
+ * For a COUNT it is a silent lie, and it was measured as one. A clean-room
+ * reviewer forced the arm with a single config change, `git config color.branch
+ * always`, which makes `git branch --list` emit an escape sequence inside the
+ * branch name; the following `rev-list` then exits with a usage error, `git`
+ * returns "", and `Number.parseInt("") || 0` is 0. The script dropped from exit
+ * 6 with [UNPUSHED 1 commit(s)] to exit 2 with no marker at all. The usage error
+ * does reach stderr, so it is not wholly silent to a human, but the EXIT CODE,
+ * which is the half this script exists to make un-report-around-able, lied.
+ *
+ * That is this project's most-recorded failure shape: a guard whose condition
+ * does not test the property it claims, reported green. CLAUDE.md's own
+ * fix-round contract names "a usage error read as a clean result" as one of
+ * three recorded instances.
+ *
+ * So: counts go through `gitTry`, and a failed count is a HARD ERROR that exits
+ * nonzero rather than a zero. A guard that cannot measure must not report
+ * "nothing found". */
+function gitTry(args) {
+  try {
+    return { ok: true, out: execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim() };
+  } catch (error) {
+    const stderr = typeof error?.stderr === "string" ? error.stderr.trim() : String(error?.message ?? error);
+    return { ok: false, out: "", err: stderr };
+  }
+}
+
+/** A count, or null when the command failed or did not return an integer. */
+function gitCount(args) {
+  const r = gitTry(args);
+  if (!r.ok) return { value: null, why: `git ${args.join(" ")} failed: ${r.err}` };
+  const n = Number.parseInt(r.out, 10);
+  if (!Number.isInteger(n)) {
+    return { value: null, why: `git ${args.join(" ")} returned ${JSON.stringify(r.out)}, which is not an integer` };
+  }
+  return { value: n, why: null };
+}
+
+/* Branch listings use --format rather than the default, which prints a "* " or
+ * "+ " marker and, under color.branch=always, escape sequences inside the name.
+ * --format emits the bare short name with neither. That removes the specific
+ * trigger above at its source; gitCount's failure arm covers the general case,
+ * because closing one door is not closing the mechanism. */
+function branchNames(pattern, remote) {
+  const args = ["branch", "--format=%(refname:short)"];
+  if (remote) args.push("-r");
+  args.push("--list", pattern);
+  return git(args).split("\n").map((x) => x.trim()).filter(Boolean);
+}
+
 function onMain(path) {
   try {
     execFileSync("git", ["cat-file", "-e", `origin/main:${path}`], { stdio: "ignore" });
@@ -228,19 +283,49 @@ const PHASE_COUNT = phaseNumbers.length;
 
 const WORKTREES = worktreesByBranch();
 const phases = [];
+/* Counts that could NOT be taken. Never silently zero: see gitTry. */
+const hardErrors = [];
 for (const n of phaseNumbers) {
   const id = `${MILESTONE}-p${n}`;
   const merged = onMain(`delivery/work-history/${id}.md`);
   const branch = `claude/${id}-`;
-  const remoteBranch = git(["branch", "-r", "--list", `origin/${branch}*`])
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)[0];
+  /* EVERY MATCHING BRANCH, NOT THE FIRST.
+   *
+   * This read `.filter(Boolean)[0]` until 2026-09-16, on both the remote and
+   * the local side. A clean-room reviewer measured what that costs, in a lab
+   * built from this script's own source: with one local branch carrying a
+   * commit on no remote, the script printed [UNPUSHED 1 commit(s)] and exited
+   * 6; with a pushed branch SORTING FIRST and a second branch carrying the
+   * unreplicated commit, it printed the ordinary "pushed, NOT merged" line, no
+   * marker, exit 2.
+   *
+   * It was live for M4-P15, whose plan section declares the branch
+   * claude/m4-p15-fleet-bringup while the delivered branch is
+   * claude/m4-p15-kernel-charter. The first sorts BEFORE the second, so
+   * creating it would have made the branch under review the unwatched one.
+   *
+   * The worktree watch set carried the identical truncation, and the script's
+   * "WORKTREE WATCH SET IS EMPTY" warning fires only at ZERO, so a PARTIAL
+   * watch set was silent. That is T-014's shape exactly: a watchdog pointed at
+   * one of several paths is not weak, it is false, because it reports quiet at
+   * full speed. */
+  const remoteBranches = branchNames(`origin/${branch}*`, true);
+  const remoteBranch = remoteBranches[0];
   let ahead = 0;
-  if (remoteBranch !== undefined) {
-    const counts = git(["rev-list", "--left-right", "--count", `origin/main...${remoteBranch}`]);
-    ahead = Number.parseInt(counts.split(/\s+/)[1] ?? "0", 10) || 0;
+  for (const rb of remoteBranches) {
+    const counts = gitTry(["rev-list", "--left-right", "--count", `origin/main...${rb}`]);
+    if (!counts.ok) {
+      hardErrors.push(`${id}: cannot count commits ahead on ${rb}: ${counts.err}`);
+      continue;
+    }
+    const n = Number.parseInt(counts.out.split(/\s+/)[1] ?? "", 10);
+    if (!Number.isInteger(n)) {
+      hardErrors.push(`${id}: ahead-count for ${rb} was ${JSON.stringify(counts.out)}, not a pair of integers`);
+      continue;
+    }
+    if (n > ahead) ahead = n;
   }
+
   /* UNREPLICATED WORK: commits that exist in this container and NOWHERE else.
    *
    * Measured 2026-09-16: twelve M4 phase branches carrying 141 distinct
@@ -252,27 +337,45 @@ for (const n of phaseNumbers) {
    * This is the one state the script can observe that no later session can
    * recover from, so it outranks every other next action. A commit is not
    * durable; a PUSHED commit is (durability rule, blueprint principle 4). */
-  const localBranch = git(["branch", "--list", `${branch}*`])
-    .split("\n")
-    .map((x) => x.replace(/^[*+]?\s*/, "").trim())
-    .filter(Boolean)[0];
+  const localBranches = branchNames(`${branch}*`, false);
+  const localBranch = localBranches[0];
   /* `--not --remotes` is the precise question: commits on this local branch
    * that NO remote ref contains. Subtracting only the branch's own remote
    * counterpart gets the no-counterpart case wrong, counting every commit back
    * to the root as unreplicated, including ones already on main. */
   let unreplicated = 0;
-  if (localBranch !== undefined) {
-    const n2 = git(["rev-list", "--count", localBranch, "--not", "--remotes"]);
-    unreplicated = Number.parseInt(n2, 10) || 0;
+  const unreplicatedBy = [];
+  for (const lb of localBranches) {
+    const c = gitCount(["rev-list", "--count", lb, "--not", "--remotes"]);
+    if (c.value === null) {
+      /* NOT a zero. A count that could not be taken is the state this guard
+       * exists to refuse to paper over. */
+      hardErrors.push(`${id}: cannot count unreplicated commits on ${lb}: ${c.why}`);
+      continue;
+    }
+    if (c.value > 0) {
+      unreplicated += c.value;
+      unreplicatedBy.push(`${lb} ${c.value}`);
+    }
   }
-  const wt = localBranch === undefined ? undefined : WORKTREES.get(localBranch);
+
+  /* The watch set is the UNION over every matching local branch, not the first
+   * one's worktree. */
   let worktree = null;
-  if (wt !== undefined && existsSync(wt)) {
+  for (const lb of localBranches) {
+    const wt = WORKTREES.get(lb);
+    if (wt === undefined || !existsSync(wt)) continue;
     const newest = newestMtime(wt);
     const age = newest === 0 ? -1 : Math.round((Date.now() - newest) / 1000);
-    worktree = { path: wt, ageSeconds: age, stale: age < 0 || age >= STALE_SECONDS };
+    const candidate = { path: wt, ageSeconds: age, stale: age < 0 || age >= STALE_SECONDS };
+    /* Freshest wins: any live worktree for this phase means the phase is being
+     * worked on, and reporting the stalest would invent a death. */
+    if (worktree === null || (candidate.ageSeconds >= 0 && candidate.ageSeconds < worktree.ageSeconds)) {
+      worktree = candidate;
+    }
   }
-  phases.push({ id, merged, remoteBranch, localBranch, unreplicated, ahead, worktree });
+
+  phases.push({ id, merged, remoteBranch, remoteBranches, localBranch, localBranches, unreplicated, unreplicatedBy, ahead, worktree });
 }
 
 const done = phases.filter((p) => p.merged);
@@ -289,7 +392,12 @@ for (const p of phases) {
     : p.ahead > 0
       ? `pushed, ${p.ahead} commit(s) ahead, NOT merged`
       : "not started";
-  const unrep = p.unreplicated > 0 ? `  [UNPUSHED ${p.unreplicated} commit(s)]` : "";
+  /* NAME the branches, do not only total them. A phase with two local branches
+   * and one commit unreplicated on the second is invisible in a bare total. */
+  const unrep =
+    p.unreplicated > 0
+      ? `  [UNPUSHED ${p.unreplicated} commit(s) on ${p.unreplicatedBy.join(", ")}]`
+      : "";
   const wt =
     p.worktree === null
       ? ""
@@ -303,6 +411,23 @@ lines.push("");
  * order is dependency order (binding convention 5). */
 let next;
 let exitCode;
+/* A COUNT THAT COULD NOT BE TAKEN OUTRANKS EVERY OTHER ANSWER, including the
+ * unreplicated-work check below, because it is the state in which this script
+ * does not KNOW whether work is unreplicated. Reporting a next action here
+ * would be the script's own false green: the whole point of it is that a
+ * nonzero exit is a fact the orchestrator cannot report its way around, and a
+ * guard that answers "nothing found" when it could not look is worth less than
+ * no guard, because it is trusted. */
+if (hardErrors.length > 0) {
+  process.stderr.write(
+    `orchestrator-next: ${String(hardErrors.length)} git count(s) FAILED, so the unreplicated-work ` +
+      `guard could not run. This is NOT an absence of unreplicated work.\n` +
+      hardErrors.map((e) => `  ${e}\n`).join("") +
+      `Fix the cause and re-run. Do not read the absence of an [UNPUSHED ...] marker as safety.\n`,
+  );
+  process.exit(7);
+}
+
 if (unreplicated.length > 0) {
   const ids = unreplicated.map((p) => `${p.id}(${p.unreplicated})`).join(", ");
   next =

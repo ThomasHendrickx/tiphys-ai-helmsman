@@ -28,9 +28,12 @@ interface NodeCheckResult {
   status: string;
   detail: string;
 }
-const { nodeCheckFor } = (await import(
+const { nodeCheckFor, runChecks } = (await import(
   new URL("../src/commands/doctor.ts", import.meta.url).href
-)) as { nodeCheckFor: (range: string, version: string) => NodeCheckResult };
+)) as {
+  nodeCheckFor: (range: string, version: string) => NodeCheckResult;
+  runChecks: (root: string) => { name: string }[];
+};
 
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -47,6 +50,28 @@ const floorSkip = nodeFloorMet
   ? false
   : `local Node ${process.version} is below the kernel floor >=26; exit-0 witnessed on CI (Node 26)`;
 
+/**
+ * The checks this repository has committed to shipping. It is a FLOOR,
+ * not the whole set.
+ *
+ * IT USED TO BE THE WHOLE SET, compared for equality against doctor's
+ * output, and that made it a COUNT-LIKE ASSERTION OVER AN APPEND-ONLY
+ * THING: true of today's check list and false of every future phase that
+ * adds one. Binding convention 5 names exactly that shape and says to
+ * derive at run time instead. M4-P19 is where it came due: adding
+ * `CHECK worktrees` reddened this test in a file M4-P19 does not own.
+ *
+ * The property the equality comparison was PROTECTING is real and is kept,
+ * split into the two halves it was conflating:
+ *
+ *   - a check SILENTLY DROPPED is still red, because every name below must
+ *     appear in doctor's output (the floor, asserted by containment);
+ *   - a check that RUNS BUT DOES NOT PRINT, or prints without running, is
+ *     still red, because doctor's printed names are compared for EQUALITY
+ *     against the names `runChecks` returns, in order.
+ *
+ * A phase adding a check appends its name here and changes nothing else.
+ */
 const CHECK_NAMES = [
   "node",
   "git",
@@ -56,13 +81,12 @@ const CHECK_NAMES = [
   "lock",
   "beacon",
   "identity",
-  /* M3-P8 step 7 (R-098). Appended, and the list is compared for EQUALITY
-     rather than containment, so a check silently dropped is as red as one
-     silently added. */
+  /* M3-P8 step 7 (R-098). */
   "retention",
-  /* M3-P13, the M3 exit test's subject change. Same equality property: this
-     entry is what makes a silently dropped kernel-artifacts check red. */
+  /* M3-P13, the M3 exit test's subject change. */
   "kernel-artifacts",
+  /* M4-P19: post-reclaim pool entries, reported by id. */
+  "worktrees",
 ];
 
 function runCli(
@@ -131,7 +155,19 @@ test("doctor in a healthy fleet prints one line per check with no unexpected FAI
   const fleet = initFleet(t);
   const result = runCli(["doctor"], { cwd: fleet });
   const checks = checkLines(result.stdout);
-  assert.deepEqual([...checks.keys()], CHECK_NAMES, "one line per check, in order");
+  // One line per check, in order, DERIVED rather than pinned: this is the
+  // half that catches a check which runs without printing or prints
+  // without running.
+  assert.deepEqual(
+    [...checks.keys()],
+    runChecks(fleet).map((check) => check.name),
+    "doctor printed a different set of checks than runChecks computed",
+  );
+  // And the floor: every check this repository has committed to is still
+  // there. This is the half that catches a silent deletion.
+  for (const name of CHECK_NAMES) {
+    assert.ok(checks.has(name), `check ${name} disappeared from doctor's output`);
+  }
   for (const name of CHECK_NAMES) {
     if (name === "node") {
       continue;
