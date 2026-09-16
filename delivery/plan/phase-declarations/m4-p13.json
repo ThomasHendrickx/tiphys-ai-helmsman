@@ -1,0 +1,33 @@
+{
+  "id": "M4-P13",
+  "branch": "claude/m4-p13-migration-redisposition",
+  "filesToTouch": [
+    "delivery/requirements/migration-table.md",
+    "delivery/plan/kernel-plan-v1.md",
+    "test/coverage-gate.test.ts",
+    "delivery/requirements/clause-map.json"
+  ],
+  "declaredExtras": [
+    "delivery/plan/phase-declarations/m4-p13.json"
+  ],
+  "citations": [
+    "DR-0028",
+    "DR-0029",
+    "DR-0037",
+    "R-001a",
+    "R-041",
+    "R-042",
+    "R-045",
+    "R-046",
+    "R-047",
+    "R-050a",
+    "R-051",
+    "R-064",
+    "R-065a",
+    "R-071",
+    "R-072",
+    "R-097",
+    "D-12",
+    "D-15"
+  ]
+}

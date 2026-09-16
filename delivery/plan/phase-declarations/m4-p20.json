@@ -1,0 +1,19 @@
+{
+  "id": "M4-P20",
+  "branch": "claude/m4-p20-exclusion-pre-pass",
+  "filesToTouch": [
+    "scripts/probe-cas-ref.mjs",
+    "test/cas-probe.test.ts",
+    "test/cross-environment.test.ts",
+    "test/behaviors.json",
+    "delivery/verification/cross-environment-exclusion-probe.md",
+    "delivery/plan/phase-declarations/m4-p20.json"
+  ],
+  "declaredExtras": [],
+  "citations": [
+    "M4-D-11",
+    "C-2",
+    "T-003",
+    "T-008"
+  ]
+}
