@@ -136,3 +136,82 @@ read `/proc/loadavg` BEFORE dispatching a wave, and if the wave will put the
 one-minute figure above roughly 40 on this four-CPU box, either stage it or
 instruct every agent in it to record the load alongside every timing-sensitive
 result it reports. The second is cheaper and loses nothing.
+
+## Settled 2026-09-16: the instrument cannot measure what it claims to measure
+
+Everything above treats this as a load-dependent FLAKE to be worked around. It
+is not. It is a defect in shipped code, and the measurement that settles it is
+one command.
+
+**Three independent witnesses now exist, and they satisfy the two-member rule.**
+
+1. My own fan-out, load 46 to 57, against 17 tests that pass 17/17 solo.
+2. The M4-P2 implementer, recorded in its work history.
+3. The M4-P2 clean-room reviewer, load 53 to 66, hitting **two tests that are
+   different from the implementer's**, which is what makes this a class rather
+   than one flaky test seen three times:
+
+   ```
+   pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 6
+   pattern ^(?:M([0-9]+)-P[0-9]+)$ did not complete within 250ms against a value of length 5
+   ```
+
+### Those two patterns cannot backtrack, so the red is false BY CONSTRUCTION
+
+The budget at src/gates/coverage.ts:235 is `REGEX_EXEC_TIMEOUT_MS = 250`,
+applied as a wall-clock `timeout` at src/gates/coverage.ts:257 and reported as
+"did not complete within 250ms" at src/gates/coverage.ts:261. The word
+"complete" is the claim: it presents elapsed time as evidence about the regex.
+
+Measured, on this box, at load average 33:
+
+| pattern | input | 1,000,000 executions | per execution |
+|---|---|---|---|
+| `^(?:R-[0-9]+[a-z]?)$` | `R-094a` | 154.2 ms | **0.000154 ms** |
+| `^(?:M([0-9]+)-P[0-9]+)$` | `M3-P1` | 49.3 ms | **0.000049 ms** |
+
+A MILLION executions of the first fit inside the budget meant for ONE. A single
+execution is roughly 1.6 million times under it. Both patterns are anchored,
+have no nested quantifier and no alternation over a repeated group, so there is
+no catastrophic backtracking available to them at any input length; the inputs
+here are six and five characters.
+
+For one of those executions to exceed 250 ms, the process must be descheduled
+for a quarter of a second. **That is a fact about the machine, and the gate
+reports it as a fact about the regex.**
+
+### Why this is worse than a flake
+
+- It is in SHIPPED code, `src/gates/coverage.ts`, reached by the user-visible
+  `tiphys gates run`, so it is inside DR-0027's blocking surface rather than
+  outside it.
+- `coverage` is a REQUIRED gate in `full` and `direct-pr` modes, so a false red
+  blocks a merge.
+- CI runners are shared and loaded. This repository has been treating the
+  failure as local noise because it was first seen locally.
+- It fails in the direction that costs most: a correct branch reported wrong.
+  An agent trained by three of these to wave the gate through is the second-order
+  cost, and CLAUDE.md already names that pattern for the default-toolchain red.
+
+### The fix, and what it owes
+
+Wall clock is the wrong instrument for backtracking. The property being guarded
+is complexity of the match, and the honest ways to reach it are a step-bounded
+engine, a static analysis of the pattern for the nested-quantifier shapes, or a
+budget expressed in work rather than time. Any of those is a real change, not a
+constant bump: RAISING 250 ms to a larger number keeps the same instrument and
+only moves the load at which it lies.
+
+Its red witness is already written above, and it has the two structurally
+different members the class rule requires. Its GREEN witness is the table in
+this section: the same patterns, unloaded, at six orders of magnitude under
+budget.
+
+**What this derivation did NOT cover.** Only two patterns were timed, the two
+the reviewer reported. The other patterns the gate compiles were not examined
+and one of them may genuinely backtrack, which would be a real finding the
+current instrument is too noisy to surface. Nor was the gate run under
+controlled load to find the threshold at which it starts lying; the three
+observations are 46-57, 53-66 and an unrecorded load, which bracket nothing
+precisely. And no CI run has been checked for this signature, so whether it has
+ever reddened a real pull request here is unknown.
