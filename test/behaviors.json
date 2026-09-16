@@ -789,5 +789,13 @@
   "retirement-inventory-empty-derivation-exits-two": "retirement checker exits 2 rather than green when the derivation finds no rules",
   "retirement-inventory-extraction-deterministic": "retirement extraction is deterministic and covers all three roots",
   "retirement-inventory-roots-still-present": "retirement inventory deletes nothing from the three roots in this phase",
-  "retirement-inventory-gap-names-what-is-missing": "retirement checker reddens on a GAP row that does not name what is missing"
+  "retirement-inventory-gap-names-what-is-missing": "retirement checker reddens on a GAP row that does not name what is missing",
+  "retirement-inventory-write-capable-tool-in-place-flag": "retirement checker refuses a write-capable tool reached through an in-place editor flag",
+  "retirement-inventory-write-capable-tool-output-flag": "retirement checker refuses a write-capable tool reached through an output flag on a filter",
+  "retirement-inventory-usage-error-is-not-an-answer": "retirement checker reddens on a verified-by whose recorded exit is a grep usage error",
+  "retirement-inventory-not-found-is-not-an-answer": "retirement checker reddens on a negative witness whose recorded exit is the shell's not-found",
+  "retirement-inventory-absence-needs-a-widened-block": "retirement checker reddens on an absence row with no widened block when the token is carried",
+  "retirement-inventory-widened-hit-paths-are-a-superset": "retirement checker reddens on a widened block whose hit-paths omit a carrying file",
+  "retirement-inventory-absence-by-spelling-only": "retirement checker reddens on an absence that is only an absence of that spelling",
+  "retirement-inventory-fenced-blocks-are-not-rules": "retirement extraction does not read rules out of fenced code blocks"
 }

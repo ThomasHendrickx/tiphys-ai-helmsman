@@ -369,6 +369,99 @@ export function kernelPathsNamed(command, repo) {
   return [...new Set(found)];
 }
 
+/** A single-quoted or double-quoted span. */
+const QUOTED_SPAN = /'[^']*'|"[^"]*"/g;
+
+/**
+ * The files a command names AS ARGUMENTS, with every quoted span removed first.
+ *
+ * `kernelPathsNamed` does not strip the quotes, so a path-shaped token INSIDE
+ * the search pattern counts as a file the command named. That was invisible
+ * until the fix round widened the absence check over exactly this list and a row
+ * searching for the literal text `delivery/ is the build` was re-searched over
+ * the whole `delivery/` tree, where the inventory quotes the rule back at
+ * itself. Measured at the fix-round head: `grep -c 'delivery/ is the build'
+ * AGENTS.md roles/implementer.md templates/charter.example.yaml` yields
+ * `delivery` from inside its own pattern.
+ *
+ * This helper is used for the WIDENING only, and `kernelPathsNamed` is left as
+ * it is on purpose: their questions differ. One asks "did this command reach
+ * outside the roots at all", which a pattern-internal path answers loosely but
+ * not dangerously; the other asks "which files did this command actually
+ * search", where a pattern-internal path is simply wrong. Measured at the
+ * fix-round head, SEVEN of the 468 commands name a different path set under the
+ * two helpers and NONE of the seven loses its last kernel path, so no row's
+ * kernel-path check depends on the difference today.
+ */
+export function argumentPathsNamed(command, repo) {
+  return kernelPathsNamed(String(command ?? "").replace(QUOTED_SPAN, " "), repo);
+}
+
+/* ------------------------------------------------------------------ */
+/* A command that failed to RUN is not a command that answered         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Exit codes that mean THE COMMAND DID NOT RUN, keyed by the tool that produced
+ * them, plus the two the shell itself produces for any tool.
+ *
+ * This exists because a row shipped with `verified-by` `grep -c '-- '--registry''
+ * scripts/m2-exit-test.sh`, exit 2, output "grep: unrecognized option". The
+ * shell concatenated the quotes into the argument `-- --registry`, grep refused
+ * it as an option, and nothing was searched. The row's note beside it read
+ * "Re-verified in this phase and still TRUE". The checker was green, because
+ * exit 2 reproduces forever: a command that cannot run cannot stop reproducing.
+ * CLAUDE.md's fix-round contract names this exact bite, "a usage error read as a
+ * clean result", as one of three the project has already paid for.
+ *
+ * The instance is fixed in the row. This is the MECHANISM: every recorded exit,
+ * on `verified-by` and on `negative-witness` alike, is classified as an ANSWER
+ * or a NON-ANSWER, and a non-answer is a finding whatever else is true of it.
+ * A negative witness is the sharper case, because there the rule is only "exit
+ * nonzero" and a usage error satisfies it perfectly while discriminating
+ * nothing.
+ *
+ * Listed as DATA, per tool, rather than as a blanket "exit > 1 is bad", because
+ * a tool's exit codes are its own. grep: 0 found, 1 not found, 2 error. diff: 0
+ * same, 1 differ, 2 error. cmp the same. test and the rest have no error code
+ * distinct from their answer, so they carry only the universal pair and this
+ * check says nothing about them, which it states rather than implying coverage.
+ *
+ * Measured at the fix-round head: 468 recorded exits, 198 zero, 270 one, and
+ * ZERO non-answers, so this guard reddens nothing today. It is a trip wire for
+ * the next row, and its red witness is a fixture rather than a live row.
+ */
+const NON_ANSWER_EXITS = {
+  "*": new Map([
+    [126, "the shell found the command and could not execute it"],
+    [127, "the shell could not find the command at all"],
+  ]),
+  grep: new Map([[2, "grep exits 2 only on an error, so it searched nothing"]]),
+  diff: new Map([[2, "diff exits 2 only on an error, so it compared nothing"]]),
+  cmp: new Map([[2, "cmp exits 2 only on an error, so it compared nothing"]]),
+};
+
+/**
+ * Why a recorded exit is not an answer, or null if it is one.
+ *
+ * The tool is taken from the LAST segment of the command, because that is the
+ * one whose exit the shell reports. Every command in the inventory is a single
+ * segment, measured, so today the last segment is the only segment.
+ */
+export function nonAnswerExit(command, exit) {
+  if (!Number.isInteger(exit)) return null;
+  const segments = String(command ?? "").split(/[;&|]+/).filter((x) => x.trim() !== "");
+  const last = segments.length === 0 ? "" : segments[segments.length - 1].trim().split(/\s+/)[0];
+  const universal = NON_ANSWER_EXITS["*"].get(exit);
+  if (universal !== undefined) return universal;
+  const perTool = NON_ANSWER_EXITS[last];
+  if (perTool !== undefined) {
+    const why = perTool.get(exit);
+    if (why !== undefined) return why;
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Widened absence: the word is absent is not the rule is absent       */
 /* ------------------------------------------------------------------ */
@@ -404,12 +497,13 @@ export const WIDENED_SURFACE = [
 const REGEX_METACHAR = /[\\[\]().*+?{}|^$]/;
 
 /**
- * Lift the search pattern out of a row's command. Measured at 7b2b7f1: all 90
- * absence rows carry exactly one single-quoted pattern and NONE of the 27
- * distinct patterns contains a regex metacharacter, so the fixed-string
+ * Lift the search pattern out of a row's command. Measured at the fix-round
+ * head: all 82 absence rows carry exactly one single-quoted pattern and NONE of
+ * the 24 distinct patterns contains a regex metacharacter, so the fixed-string
  * widening below is exactly equivalent to what the row itself ran. Both of
  * those facts are CHECKED rather than assumed, because a row that breaks either
- * would be widened by something that is not its own search.
+ * would be widened by something that is not its own search, and a row that
+ * breaks either FAILS CLOSED rather than being skipped.
  */
 export function liftPattern(command) {
   const m = /'([^']*)'/.exec(String(command ?? ""));
@@ -421,10 +515,25 @@ export function liftPattern(command) {
   return { pattern: m[1], why: null };
 }
 
-/** Files on WIDENED_SURFACE that carry `pattern`, case-insensitively, as a fixed string. */
-function widenedHitPaths(pattern, repo, cache) {
-  if (cache.has(pattern)) return cache.get(pattern);
-  const present = WIDENED_SURFACE.filter((p) => existsSync(join(repo, p)));
+/**
+ * Files carrying `pattern`, case-insensitively, as a fixed string, across
+ * `WIDENED_SURFACE` plus `extra`.
+ *
+ * `extra` is THE FILES THE ROW'S OWN COMMAND NAMED, and it is here because
+ * widening only the surface leaves one whole family uncovered. A row that ran
+ * `grep -c 'DELEGATED' <file>` and recorded exit 1 has proved that the token is
+ * absent IN THAT SPELLING from a file that carries `delegated` twice. The
+ * search surface was right and the search was wrong, so no amount of widening
+ * the TREES catches it. Re-running the row's own pattern case-insensitively
+ * over the row's own files does, and it costs nothing.
+ *
+ * The cache is keyed on the pattern AND the extra paths, because the same
+ * pattern searched over different files is a different question.
+ */
+function widenedHitPaths(pattern, repo, cache, extra = []) {
+  const key = `${pattern}\u0000${[...extra].sort().join("\u0000")}`;
+  if (cache.has(key)) return cache.get(key);
+  const present = [...new Set([...WIDENED_SURFACE, ...extra])].filter((p) => existsSync(join(repo, p)));
   let paths = [];
   if (present.length > 0) {
     const r = spawnSync("grep", ["-rlniF", "--", pattern, ...present], {
@@ -438,7 +547,7 @@ function widenedHitPaths(pattern, repo, cache) {
       paths = [...new Set((r.stdout ?? "").split("\n").filter((l) => l !== ""))].sort();
     }
   }
-  cache.set(pattern, paths);
+  cache.set(key, paths);
   return paths;
 }
 
@@ -465,7 +574,7 @@ function checkRowWidenedAbsence(row, repo, cache, findings) {
     return;
   }
 
-  const hits = widenedHitPaths(pattern, repo, cache);
+  const hits = widenedHitPaths(pattern, repo, cache, argumentPathsNamed(vb.command, repo));
   if (hits.length === 0) return;
 
   if (declared === undefined || declared === null || typeof declared !== "object") {
@@ -575,6 +684,13 @@ function checkRowStructure(row, anchorsById, repo, findings) {
     for (const p of screenCommand(vb.command)) fail(`verified-by ${p}`);
     if (!Number.isInteger(vb.exit)) fail("verified-by has no integer exit");
     if (!nonEmptyString(vb.output)) fail("verified-by has no captured output");
+    const why = nonAnswerExit(vb.command, vb.exit);
+    if (why !== null) {
+      fail(
+        `verified-by records exit ${vb.exit}, which is not an answer: ${why}. ` +
+          "A command that failed to run reproduces forever and verifies nothing.",
+      );
+    }
   }
 
   if (row.disposition === "PORT") {
@@ -587,6 +703,13 @@ function checkRowStructure(row, anchorsById, repo, findings) {
       if (!Number.isInteger(nw.exit)) fail("negative-witness has no integer exit");
       if (nw.exit === 0) fail("negative-witness records exit 0, so it never reddened and proves nothing");
       if (!nonEmptyString(nw.output)) fail("negative-witness has no captured output");
+      const whyNw = nonAnswerExit(nw.command, nw.exit);
+      if (whyNw !== null) {
+        fail(
+          `negative-witness records exit ${nw.exit}, which is not an answer: ${whyNw}. ` +
+            "A usage error is nonzero and discriminates nothing, so it satisfies the witness rule while proving nothing.",
+        );
+      }
       if (nonEmptyString(row.probe) && nonEmptyString(nw.command) && !nw.command.includes(row.probe)) {
         fail("negative-witness does not carry the probe, so it is not the same probe run elsewhere");
       }
@@ -613,6 +736,10 @@ function checkRowExecution(row, repo, findings) {
     const r = runCommand(vb.command, repo);
     if (r.exit === null) fail(`verified-by did not run: ${r.why}`);
     else if (r.exit !== vb.exit) fail(`verified-by recorded exit ${vb.exit} and now exits ${r.exit}`);
+    else {
+      const why = nonAnswerExit(vb.command, r.exit);
+      if (why !== null) fail(`verified-by now exits ${r.exit}, which is not an answer: ${why}`);
+    }
   }
 
   if (row.disposition === "PORT") {
@@ -622,6 +749,10 @@ function checkRowExecution(row, repo, findings) {
       if (r.exit === null) fail(`negative-witness did not run: ${r.why}`);
       else if (r.exit === 0) fail("negative-witness exits 0: the probe does not discriminate, so the PORT is unwitnessed");
       else if (Number.isInteger(nw.exit) && r.exit !== nw.exit) fail(`negative-witness recorded exit ${nw.exit} and now exits ${r.exit}`);
+      else {
+        const why = nonAnswerExit(nw.command, r.exit);
+        if (why !== null) fail(`negative-witness now exits ${r.exit}, which is not an answer: ${why}`);
+      }
     }
   }
 }

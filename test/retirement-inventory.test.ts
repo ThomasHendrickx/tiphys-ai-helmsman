@@ -19,7 +19,7 @@
 
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -62,6 +62,63 @@ function sample(n: number): Row[] {
     .filter((r) => r.disposition === "PORT")
     .slice(0, n)
     .map((r) => JSON.parse(JSON.stringify(r)) as Row);
+}
+
+/**
+ * A scratch retirement root: the three roots, plus one victim file that a
+ * destructive fixture can be aimed at.
+ *
+ * THIS EXISTS BECAUSE THE RED ARM OF A DESTRUCTIVE WITNESS MUST NOT BE ABLE TO
+ * DESTROY ITS SUBJECT. The first version of the allowlist test set a row's
+ * `verified-by` to `rm -rf delivery/plan/cutover` and ran the checker with
+ * `--repo` pointed at the REAL repository root. The screen refuses `rm` today,
+ * so nothing happened, and that is exactly the problem: the witness's red arm
+ * is "the screen failed", and in that state the command deletes a tracked
+ * directory of the working tree before the assertion fires. A clean-room
+ * reviewer raised it, and the fix is to give the destructive fixtures a tree of
+ * their own rather than to trust the guard they are testing.
+ */
+function scratchRoot(): string {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-retirement-root-"));
+  mkdirSync(join(dir, ".claude", "skills"), { recursive: true });
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "CLAUDE.md"), "# Lab rules\n");
+  writeFileSync(join(dir, ".claude", "skills", "SKILL.md"), "# Lab skill\n");
+  writeFileSync(join(dir, ".claude", "orchestrator-next.mjs"), "export const LAB = 1;\n");
+  writeFileSync(join(dir, "src", "victim.txt"), VICTIM);
+  return dir;
+}
+
+const VICTIM = "IMPORTANT ORIGINAL CONTENT\n";
+
+/** The rows that resolve a `scratchRoot`, with row 0 carrying `command`. */
+function scratchRows(command: string): Row[] {
+  const anchors = [
+    { id: "claude-md:lab-rules", file: "CLAUDE.md", line: 1, kind: "heading", text: "# Lab rules" },
+    { id: "skill-skills:lab-skill", file: ".claude/skills/SKILL.md", line: 1, kind: "heading", text: "# Lab skill" },
+    { id: "next-script:lab", file: ".claude/orchestrator-next.mjs", line: 1, kind: "binding", text: "export const LAB = 1;" },
+  ];
+  return anchors.map((a, i) => ({
+    ...a,
+    status: i === 0 ? "FALSE" : "GAP",
+    disposition: "KEEP",
+    gap: "lab fixture, nothing is missing anywhere",
+    correction: i === 0 ? "lab fixture" : undefined,
+    "dr0029-side": "process",
+    "verified-by":
+      i === 0
+        ? { command, exit: 0, output: "(lab)" }
+        : { command: "grep -c 'LAB' src/victim.txt", exit: 1, output: "0" },
+  })) as unknown as Row[];
+}
+
+/** Run the checker against a scratch root, never against the repository. */
+function checkScratch(root: string, rows: Row[], extra: string[] = []) {
+  const path = join(root, "candidate.json");
+  writeFileSync(path, JSON.stringify({ rows }, null, 2));
+  return spawnSync(process.execPath, [checker, "--repo", root, "--json", path, ...extra], {
+    encoding: "utf8",
+  });
 }
 
 function firstPortRowIndex(rows: Row[]): number {
@@ -175,18 +232,163 @@ test("retirement checker reddens when a recorded exit code no longer reproduces"
   assert.match(result.stdout, new RegExp(`${rows[0].id}: verified-by recorded exit 42 and now exits`));
 });
 
+/**
+ * THE SCREEN IS A LIST OF TOOLS THAT CANNOT WRITE, and that is a stronger claim
+ * than "a list of tools that look harmless". Two structurally different write
+ * paths, because one member is not a class: `sed -i` reaches the write through
+ * an IN-PLACE EDITOR FLAG, and `sort -o` reaches it through an OUTPUT FLAG on an
+ * ordinary filter. Both were on the allowlist before this fix round and both
+ * were measured executing against the tree the checker was auditing: `sed -i`
+ * rewrote the victim file, `sort -o` truncated it to zero bytes.
+ *
+ * Every arm runs against a scratch root. If the screen regresses, this test
+ * fails and destroys a temporary directory.
+ */
+for (const [label, command, tool] of [
+  ["an in-place editor flag", "sed -i s/ORIGINAL/DESTROYED/ src/victim.txt", "sed"],
+  ["an output flag on a filter", "sort -o src/victim.txt /dev/null", "sort"],
+] as const) {
+  test(`retirement checker refuses a write-capable tool reached through ${label}`, () => {
+    const root = scratchRoot();
+    const result = checkScratch(root, scratchRows(command));
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(
+      result.stdout,
+      new RegExp(`verified-by command segment starts with "${tool}", which is not on the allowlist`),
+    );
+    /* The refusal is a screen, not a report: the file it was aimed at is intact. */
+    assert.equal(readFileSync(join(root, "src", "victim.txt"), "utf8"), VICTIM);
+  });
+}
+
 test("retirement checker refuses a command outside the allowlist without running it", () => {
+  /* `rm` is the plainest member and the one a mistyped row is likeliest to
+   * reach for. It is aimed at a scratch root, never at delivery/plan/cutover. */
+  const root = scratchRoot();
+  const result = checkScratch(root, scratchRows("rm -rf src"));
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /verified-by command segment starts with "rm", which is not on the allowlist/);
+  assert.equal(readFileSync(join(root, "src", "victim.txt"), "utf8"), VICTIM);
+  /* And the real inventory, which an earlier version of this test aimed at. */
+  assert.equal(spawnSync("test", ["-f", inventoryPath]).status, 0);
+});
+
+/**
+ * A COMMAND THAT FAILED TO RUN IS NOT A COMMAND THAT ANSWERED, and the checker
+ * could not tell those apart until this fix round. A row shipped carrying a
+ * shell-quoting error whose recorded exit was 2 and whose note beside it read
+ * "Re-verified in this phase and still TRUE". Nothing was searched, and the
+ * checker was green, because an exit that means "I could not run" reproduces
+ * forever.
+ *
+ * Two structurally different members: a TOOL-SPECIFIC error code on a
+ * `verified-by`, and the SHELL's own "not found" on a `negative-witness`, which
+ * is the sharper of the two because there the contract is only "exit nonzero"
+ * and a usage error satisfies it perfectly while discriminating nothing.
+ */
+test("retirement checker reddens on a verified-by whose recorded exit is a grep usage error", () => {
   const rows = sample(2);
   rows[0]["verified-by"] = {
-    command: "rm -rf delivery/plan/cutover",
-    exit: 0,
-    output: "(no output)",
+    command: "grep -c -- --registry AGENTS.md",
+    exit: 2,
+    output: "grep: unrecognized option '-- --registry'",
+  };
+  const result = check(rows, ["--no-execute"]);
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stdout,
+    new RegExp(`${rows[0].id}: verified-by records exit 2, which is not an answer`),
+  );
+});
+
+test("retirement checker reddens on a negative witness whose recorded exit is the shell's not-found", () => {
+  const rows = sample(2);
+  const i = firstPortRowIndex(rows);
+  const nw = rows[i]["negative-witness"];
+  assert.ok(nw !== undefined);
+  nw.exit = 127;
+  const result = check(rows, ["--no-execute"]);
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stdout,
+    new RegExp(`${rows[i].id}: negative-witness records exit 127, which is not an answer`),
+  );
+});
+
+/**
+ * THE WORD BEING ABSENT IS NOT THE RULE BEING ABSENT. A row whose `verified-by`
+ * exits nonzero is making an absence claim, and the claim its prose makes is
+ * always wider than the claim its command proved. This shipped: the C-3 row
+ * greped for the literal token `auto-background` across five files, exited 1,
+ * and concluded that C-3 was stated in no instruction channel at all. It is
+ * stated in `AGENTS.md`, in different words.
+ *
+ * Two structurally different members: the declaration is ABSENT, and the
+ * declaration is PRESENT BUT INCOMPLETE. The second is the one that matters,
+ * because a checker that only looks for a field is the guard this repository
+ * has shipped three times and the one that cannot go red.
+ */
+test("retirement checker reddens on an absence row with no widened block when the token is carried", () => {
+  const rows = sample(2);
+  rows[0]["verified-by"] = { command: "grep -c 'mandated-reading' bin/tiphys.ts", exit: 1, output: "0" };
+  delete rows[0].widened;
+  const result = check(rows);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, new RegExp(`${rows[0].id}: verified-by exits 1, so the row claims an absence`));
+});
+
+test("retirement checker reddens on a widened block whose hit-paths omit a carrying file", () => {
+  const rows = sample(2);
+  rows[0]["verified-by"] = { command: "grep -c 'mandated-reading' bin/tiphys.ts", exit: 1, output: "0" };
+  rows[0].widened = {
+    "hit-paths": [],
+    read: "a declaration that names nothing, which is the shape that must not pass",
   };
   const result = check(rows);
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /verified-by command segment starts with "rm", which is not on the allowlist/);
-  /* The refusal is a screen, not a report: the tree it names is still here. */
-  assert.equal(spawnSync("test", ["-f", inventoryPath]).status, 0);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, new RegExp(`${rows[0].id}: widened absence: .* is not in the row's reviewed hit-paths`));
+});
+
+test("retirement checker reddens on an absence that is only an absence of that spelling", () => {
+  /* The third member, and a different arm of the same mechanism: the surface
+   * searched was RIGHT and the search was WRONG. `grep -c 'DELEGATED' <file>`
+   * exits 1 against a file that carries `delegated` twice. Widening the TREES
+   * cannot catch this, so the row's own files are widened over too. */
+  const rows = sample(2);
+  rows[0]["verified-by"] = {
+    command: "grep -c 'MANDATED-READING' AGENTS.md",
+    exit: 1,
+    output: "0",
+  };
+  delete rows[0].widened;
+  const result = check(rows);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, new RegExp(`${rows[0].id}: verified-by exits 1, so the row claims an absence`));
+  assert.match(result.stdout, /AGENTS\.md/);
+});
+
+/**
+ * FENCED BLOCKS ARE NOT RULES. Two structurally different members inside one
+ * fence, because the grammar has four markdown kinds and a fence swallows more
+ * than one of them: a column-zero BULLET and a column-zero HEADING, the second
+ * of which is how every shell comment in this repository's fenced examples
+ * begins. Measured on the real roots, with and without the fence state machine:
+ * the two anchor lists are byte-identical, so this is a trip wire for the next
+ * editor rather than a correction to today's count.
+ */
+test("retirement extraction does not read rules out of fenced code blocks", () => {
+  const root = scratchRoot();
+  writeFileSync(
+    join(root, "CLAUDE.md"),
+    ["# Lab rules", "", "Run the check like this:", "", "```", "- Never do the thing.", "# a shell comment", "```", "", "That is all."].join("\n") + "\n",
+  );
+  const extract = spawnSync(process.execPath, [checker, "--repo", root, "--extract"], {
+    encoding: "utf8",
+  });
+  assert.equal(extract.status, 0, extract.stderr);
+  assert.ok(extract.stdout.includes("claude-md:lab-rules"), "the real heading outside the fence is still a rule");
+  assert.ok(!extract.stdout.includes("never-do-the-thing"), "the fenced bullet is not a rule");
+  assert.ok(!extract.stdout.includes("a-shell-comment"), "the fenced heading is not a rule");
 });
 
 test("retirement checker reddens when no row is marked FALSE", () => {
