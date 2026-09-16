@@ -30,8 +30,8 @@ markdown kinds with no exceptions. Measured over the six markdown roots: a
 headings-only grammar finds 59 rules where the shipped one finds 264, and in
 `CLAUDE.md` alone it finds 24 of 133. A grammar of headings and numbers still
 drops every bolded lead-in and the seven `## Never` bullets, which are the most
-binding lines in the file. Every line of every root falls inside exactly one anchor's span, so a
-rule cannot hide between two anchors.
+binding lines in the file. Every line of every root falls inside exactly one
+anchor's span, so a rule cannot hide between two anchors.
 
 Measured at this head:
 
@@ -124,14 +124,17 @@ carrying, and neither is true.
 | `roles/investigator.md` | 7 |
 | `src/gates/scope.ts` | 6 |
 | `assurance-modes.yaml` | 4 |
-| everything else (12 artifacts) | 25 |
+| everything else (14 artifacts) | 25 |
 
 The shape is worth stating: the supervision and merge rules are the
 orchestrator brief's, the working rules are the implementer brief's, the review
-rules are checklist probe ids, and a handful of rules are not prose anywhere in
-the kernel because they are CODE. The citation grammar is one of those: it lives
-in src/gates/citations.ts:104 and nowhere else, which is exactly why reading the
-rules file did not help the three authors who got it wrong.
+rules are checklist probe ids, and a handful of rules live in CODE. The citation
+grammar is the interesting case: it is enforced at src/gates/citations.ts:104,
+and it is ALSO stated in three role briefs, at roles/investigator.md:129,
+roles/plan-writer.md:90 and roles/clean-room-reviewer.md:121. That is a stronger
+port than the row claims, and it is recorded here because my first reading of it
+("not prose anywhere in the kernel") was wrong: a `grep -rniE 'path.ext|citation'`
+over the kernel's prose trees found all three.
 
 ## The gaps, which are the part a migration would have lost
 
@@ -187,7 +190,9 @@ request as OPEN forever.
 Enforced, by execution, on every run:
 
 1. set equality between the derived anchors and the rows, both directions;
-2. the closed vocabularies and the cross-axis consistency;
+2. the closed vocabularies and the cross-axis consistency, including a GAP row
+   naming what kernel destination does not exist and a FALSE row saying what
+   this phase corrected;
 3. every row's `verified-by` command RE-RUN, with the recorded exit code
    reproduced;
 4. that command naming at least one existing path OUTSIDE the three retirement
