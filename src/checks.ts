@@ -2910,16 +2910,30 @@ interface LoadedVerdict {
 /**
  * Every verdict document committed under `<context>/delivery/review/`.
  *
- * A file that is not a regular file, does not decode, or does not carry
- * `kind: verdict` is SKIPPED rather than reported, because that directory also
- * holds this project's prose reviews and a check that reddened on a markdown
- * file would be unusable. What is NOT skipped is the directory being
- * unreadable, which the caller turns into a violation: "nothing to compare" and
- * "could not look" are different facts.
+ * A file that does not carry `kind: verdict` is SKIPPED rather than reported,
+ * because that directory also holds this project's prose reviews and a check
+ * that reddened on a markdown file would be unusable. What is NOT skipped is
+ * the directory being unreadable, which the caller turns into a violation:
+ * "nothing to compare" and "could not look" are different facts.
+ *
+ * AND A CANDIDATE THAT COULD NOT BE LOOKED AT IS THE SECOND HALF OF THAT SAME
+ * SENTENCE, WHICH THE FIRST ROUND WROTE AND APPLIED AT ONE SITE ONLY. A
+ * `.yaml`, `.yml` or `.json` file here has passed the only filter that
+ * separates a candidate verdict from a prose review, so bytes that cannot be
+ * READ and bytes that do not DECODE are not "this is not a verdict", they are
+ * "nobody knows whether this is a verdict". Dropping such a file SHRINKS the
+ * set the merge predicates reason over, which is the fail-open direction for a
+ * predicate that approves when the set is clean: measured at the reviewed head,
+ * a third review reading FIX-ROUND-NEEDED with one malformed line left
+ * `verdict-pair-approves` printing that the pair approves. So they are returned
+ * as diagnostics and every caller seeds its violation list with them, exactly
+ * as `headGroupFor` already does for a sibling with no usable head.
  */
 function loadCommittedVerdicts(
   contextDirectory: string,
-): { ok: true; verdicts: LoadedVerdict[] } | { ok: false; reason: string } {
+):
+  | { ok: true; verdicts: LoadedVerdict[]; unexaminable: Diagnostic[] }
+  | { ok: false; reason: string } {
   const directory = join(contextDirectory, REVIEW_DIRECTORY);
   /* `classifyEntry` HAS NO `directory` KIND: a directory lands in `irregular`,
      which is the kind that means "present and not safe to OPEN AS A FILE". So
@@ -2929,7 +2943,7 @@ function loadCommittedVerdicts(
      exist would have been dead code that always took the error arm. */
   const entry = classifyEntry(directory);
   if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, verdicts: [] };
+    return { ok: true, verdicts: [], unexaminable: [] };
   }
   if (entry.kind === "unexaminable") {
     return { ok: false, reason: entry.reason };
@@ -2947,17 +2961,30 @@ function loadCommittedVerdicts(
     return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
   }
   const verdicts: LoadedVerdict[] = [];
+  const unexaminable: Diagnostic[] = [];
   for (const name of names.sort()) {
+    /* THE ONE SKIP THAT IS A DETERMINATE ANSWER RATHER THAN A FAILURE TO LOOK.
+       A `.md` prose review carries no document structure this check could read
+       and was never a candidate; the extension is the whole of the claim. Every
+       refusal below is about a file that DID pass this filter. */
     if (!/\.(ya?ml|json)$/i.test(name)) {
       continue;
     }
     const path = join(directory, name);
     const read = readOperatorPath(path);
     if (!read.ok) {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and could not be read, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${read.reason}`,
+      });
       continue;
     }
     const decoded = decodeDocument(read.body, path);
     if (!decoded.ok) {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and did not decode, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${decoded.reason}`,
+      });
       continue;
     }
     const record = asRecord(decoded.value);
@@ -2974,6 +3001,14 @@ function loadCommittedVerdicts(
        here: more verdicts in the group means more chances to find a shared
        value, never fewer. A file that is not a verdict at all still fails this
        test, because no canonical form turns a prose review into `verdict`. */
+    /* THESE TWO STAY SKIPS, AND THE LINE THAT SEPARATES THEM FROM THE TWO
+       REFUSALS ABOVE IS WORTH STATING because it is the line the round that
+       added them had to draw. A file that READ and DECODED has ANSWERED: a
+       document that is not a mapping declares no `kind` because it has no
+       fields, and one whose `kind` is anything but `verdict` has said what it
+       is. Those are determinate negatives. Bytes that could not be read or
+       decoded answer nothing, which is why they are diagnostics and these are
+       not. */
     if (record === undefined) {
       continue;
     }
@@ -2983,7 +3018,7 @@ function loadCommittedVerdicts(
     }
     verdicts.push({ path, record });
   }
-  return { ok: true, verdicts };
+  return { ok: true, verdicts, unexaminable };
 }
 
 /**
@@ -3295,9 +3330,26 @@ function headGroupFor(
   for (const candidate of verdicts) {
     /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
        read through the same function so the two are compared in one form
-       rather than one canonical value against one raw one. */
+       rather than one canonical value against one raw one.
+
+       AND THE TWO ARMS ARE SPLIT, WHICH THE FIRST ROUND LEFT JOINED. `phase` is
+       half of the join key, so a sibling whose phase cannot be ESTABLISHED is
+       unkeyable for exactly the reason a sibling with no usable head is, and
+       the paragraph above says what that costs. It was folded into one `||`
+       with the determinate case, so a verdict declaring no phase fell out
+       silently while one declaring a DIFFERENT phase fell out correctly.
+       Measured at the reviewed head through the shipped CLI: a refusing third
+       review with its `phase:` line deleted left both merge checks printing
+       their affirmative REPORT lines over the remaining two. */
     const phaseReading = establishField(candidate.record, "phase");
-    if (phaseReading.kind !== "established" || phaseReading.value !== phaseKey) {
+    if (phaseReading.kind !== "established") {
+      unkeyed.push({
+        pointer: "#/phase",
+        message: `${candidate.path} ${unestablishedReason(phaseReading, "phase") as string}, so it cannot be placed in or out of the group for phase ${phaseKey}, and a sibling that cannot be keyed must not shrink the set the delegated grant is read off`,
+      });
+      continue;
+    }
+    if (phaseReading.value !== phaseKey) {
       continue;
     }
     const key = headKeyOf(candidate.record, candidate.path);
@@ -3638,10 +3690,12 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
 
-    /* THE SIBLINGS THAT COULD NOT BE KEYED ARE CARRIED IN, NOT DROPPED. See
-       `headGroupFor`: a same-phase verdict with an unusable head shrinks the
-       group silently otherwise, and a shrinking group is the fail-open shape. */
-    const violations: Diagnostic[] = [...grouped.unkeyed];
+    /* THE SIBLINGS THAT COULD NOT BE LOOKED AT OR COULD NOT BE KEYED ARE
+       CARRIED IN, NOT DROPPED. See `loadCommittedVerdicts` and `headGroupFor`:
+       a candidate whose bytes do not read or decode, and a same-phase verdict
+       with an unusable phase or head, each shrink the group silently
+       otherwise, and a shrinking group is the fail-open shape. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
     if (group.length < 2) {
       violations.push({
         pointer: "#/phase",
@@ -3855,7 +3909,10 @@ export const verdictPairApproves: DerivedCheck = {
     const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
     const group = grouped.members;
 
-    const violations: Diagnostic[] = [...grouped.unkeyed];
+    /* SAME TWO SOURCES AS THE SIBLING CHECK, AND THE REASON IS SHARPER HERE.
+       This predicate says the pair APPROVES, so every document that could not
+       be examined is a document that could have been the refusal. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
     if (group.length < 2) {
       violations.push({
         pointer: "#/verdict",

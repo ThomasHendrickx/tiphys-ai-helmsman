@@ -956,6 +956,250 @@ test("under an owner-authority mode neither check violates, and both say why rat
 });
 
 /* ------------------------------------------------------------------ */
+/* Fix round 1: a candidate that could not be LOOKED AT is a violation   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A refusing THIRD review of the same phase and head, decorrelated from both
+ * halves of the good pair on every dimension.
+ *
+ * DECORRELATED ON PURPOSE, so that when it is admitted the ONLY thing that can
+ * redden is its FIX-ROUND-NEEDED verdict. A third document that also collided
+ * on `review-contract` would redden the decorrelation check as well, and the
+ * test would then pass whether or not the pair predicate ever saw it.
+ */
+const REFUSING_THIRD = fixture("decorrelated-criteria.yaml", [
+  ["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"],
+  ["produced-by: family-a", "produced-by: family-c"],
+  ["framing: criteria-contract", "framing: third-framing"],
+  ["review-contract: criteria", "review-contract: third-contract"],
+]);
+
+/**
+ * Stage the good pair plus one third document, and return the gate's run.
+ *
+ * `body` of `undefined` means "make the path a DIRECTORY instead", which is how
+ * an unreadable candidate is produced without depending on file modes: this
+ * container runs as uid 0, so `chmod 000` does not stop the read and a witness
+ * built on it would be green for the wrong reason. Measured before this helper
+ * was written: the mode-000 arm reddened only because the gate had ALREADY read
+ * the file.
+ */
+function withThirdDocument<T>(
+  body: string | undefined,
+  run: (dir: string, output: { status: number; output: string }) => T,
+): T {
+  return withContext("full", SAME_HEAD_PAIR, (dir) => {
+    const path = join(dir, "delivery", "review", "third-refusing.yaml");
+    if (body === undefined) {
+      mkdirSync(path);
+    } else {
+      writeFileSync(path, body);
+    }
+    return run(dir, runGate(dir));
+  });
+}
+
+/** `tiphys validate` over ONE committed verdict with the directory as context. */
+function runValidateOne(dir: string, name: string): string {
+  const run = spawnSync(
+    process.execPath,
+    [
+      cliEntry,
+      "validate",
+      "--type",
+      "verdict",
+      join(dir, "delivery", "review", name),
+      "--context",
+      dir,
+    ],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  return `${run.stdout ?? ""}${run.stderr ?? ""}`;
+}
+
+/*
+ * TWO LAYERS AND TWO MESSAGES, AND EACH ARM BELOW ASSERTS BOTH. The drop was
+ * present in `loadCommittedVerdicts` (the derived checks) AND in
+ * `committedVerdictPaths` (the gate runner's own selection), and closing only
+ * one leaves the other. They do not both print, because the runner refuses the
+ * directory with `error` before any check runs, so the runner's refusal is
+ * witnessed through the gate and the checks' through `tiphys validate`.
+ */
+
+test("a sibling whose YAML does not decode makes the gate error instead of reporting the pair clean", () => {
+  /* MEMBER ONE OF THE CLASS "a candidate that could not be looked at shrinks
+     the set". Before this round the gate printed
+     `no decorrelation violation and the pair approves` at exit 0 over a
+     directory whose third review read FIX-ROUND-NEEDED and had one malformed
+     line, and the dropped document appeared nowhere in the output. */
+  withThirdDocument(`${REFUSING_THIRD}\n  this line: is: not: yaml: [\n`, (dir, run) => {
+    assert.equal(run.status, 21, run.output);
+    assert.match(run.output, /third-refusing\.yaml did not decode/, run.output);
+    assert.doesNotMatch(run.output, /the pair approves/, run.output);
+
+    const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
+    for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+      assert.match(
+        validated,
+        new RegExp(
+          `INVALID #/kind .*third-refusing\\.yaml sits under delivery/review and did not decode.*\\(check: ${check}\\)`,
+        ),
+        validated,
+      );
+    }
+    assert.doesNotMatch(validated, /REPORT verdict-pair-approves .* read APPROVE/, validated);
+  });
+});
+
+test("a sibling that cannot be read at all makes the gate error instead of reporting the pair clean", () => {
+  /* MEMBER TWO, AND IT IS STRUCTURALLY DIFFERENT RATHER THAN A SECOND SPELLING
+     OF MEMBER ONE: member one has bytes that fail to parse, this one is never
+     opened, so it exercises `readOperatorPath`'s refusal rather than
+     `decodeDocument`'s. The two reach the same drop through different
+     readers. */
+  withThirdDocument(undefined, (dir, run) => {
+    assert.equal(run.status, 21, run.output);
+    assert.match(run.output, /third-refusing\.yaml could not be read/, run.output);
+    assert.doesNotMatch(run.output, /the pair approves/, run.output);
+
+    const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
+    for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+      assert.match(
+        validated,
+        new RegExp(
+          `INVALID #/kind .*third-refusing\\.yaml sits under delivery/review and could not be read.*\\(check: ${check}\\)`,
+        ),
+        validated,
+      );
+    }
+    assert.doesNotMatch(validated, /REPORT verdict-pair-approves .* read APPROVE/, validated);
+  });
+});
+
+test("a verdict sibling that states no phase is reported rather than silently left out of the group", () => {
+  /* MEMBER THREE, one layer in from the other two: this document READS and
+     DECODES and declares `kind: verdict`, so it is a review of something, and
+     `phase` is half the join key. It used to fall out through the same `||`
+     as a verdict of a DIFFERENT phase, which is a determinate answer and a
+     correct skip. The two arms are now separate.
+
+     THE GATE RUNNER IS NOT THE ONLY READER, and that is why the CLI arm below
+     exists as its own test: this runner happens to run the checks over EVERY
+     loaded document, so the phase-less one reddens on its own instance too. A
+     reader could mistake that for the guard working. */
+  withThirdDocument(
+    REFUSING_THIRD.split("\n")
+      .filter((line) => !line.startsWith("phase: "))
+      .join("\n"),
+    (_dir, run) => {
+      assert.notEqual(run.status, 0, run.output);
+      assert.match(
+        run.output,
+        /third-refusing\.yaml declares no phase, so it cannot be placed in or out of the group/,
+        run.output,
+      );
+    },
+  );
+});
+
+test("the phase-less sibling is reported through `tiphys validate` too, where only one instance is checked", () => {
+  /* THE ISOLATING PATH. `tiphys validate --type verdict <one document>
+     --context <dir>` runs the derived checks over ONE instance, so a dropped
+     sibling gets no run of its own and the drop is invisible unless the
+     grouping reports it. Measured at the reviewed head on this exact staging:
+     both checks printed their affirmative REPORT lines over the remaining
+     two. */
+  withThirdDocument(
+    REFUSING_THIRD.split("\n")
+      .filter((line) => !line.startsWith("phase: "))
+      .join("\n"),
+    (dir) => {
+      const output = runValidateOne(dir, "decorrelated-criteria.yaml");
+      for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+        assert.match(
+          output,
+          new RegExp(
+            `INVALID #/phase .*third-refusing\\.yaml declares no phase.*\\(check: ${check}\\)`,
+          ),
+          output,
+        );
+      }
+      assert.doesNotMatch(output, /REPORT verdict-pair-approves .* read APPROVE/, output);
+    },
+  );
+});
+
+test("the precondition reports a directory whose only review document is unexaminable as APPLICABLE", () => {
+  /* THE WORST ARM OF THE SAME CLASS, AND IT IS NOT REACHABLE THROUGH THE GATE
+     ARM ABOVE. `--precondition` decides whether the gate RUNS. With the only
+     candidate dropped it counted zero and exited 1, and the gate then reported
+     NOT-APPLICABLE: merge evidence that could not be read was announced as
+     "there is no pair of reviews to compare". A not-applicable reached by not
+     looking is the vacuous pass M2-C-3 exists against. */
+  withContext("full", {}, (dir) => {
+    writeFileSync(
+      join(dir, "delivery", "review", "only-review.yaml"),
+      `${REFUSING_THIRD}\n  this line: is: not: yaml: [\n`,
+    );
+    const precondition = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const preconditionOutput = `${precondition.stdout ?? ""}${precondition.stderr ?? ""}`;
+    assert.equal(precondition.status, 0, preconditionOutput);
+    assert.match(
+      preconditionOutput,
+      /1 candidate\(s\) that could not be examined/,
+      preconditionOutput,
+    );
+
+    const run = runGate(dir);
+    assert.equal(run.status, 21, run.output);
+    assert.match(run.output, /check-dual-review: error/, run.output);
+    assert.doesNotMatch(run.output, /not-applicable/, run.output);
+  });
+});
+
+test("an empty review directory is still NOT-APPLICABLE, which is the control the four arms above need", () => {
+  /* Without this every arm above would also pass a gate that errored on any
+     directory at all, and "could not look" would stop being distinguishable
+     from "nothing to look at", which is the distinction the whole section is
+     about. */
+  withContext("full", {}, (dir) => {
+    const precondition = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.equal(precondition.status, 1, `${precondition.stdout ?? ""}`);
+    const run = runGate(dir);
+    assert.equal(run.status, 20, run.output);
+    assert.match(run.output, /check-dual-review: not-applicable/, run.output);
+  });
+});
+
+test("a prose review and a non-verdict document in the same directory are still skipped silently", () => {
+  /* THE OTHER CONTROL, and it is the one that stops this round from having
+     swapped one fail-open for a gate nobody can keep green. `delivery/review/`
+     in this repository is mostly markdown, and a `.yaml` that decodes and says
+     it is something else has ANSWERED. Neither is a candidate that could not
+     be looked at, so neither may redden. */
+  withContext("full", SAME_HEAD_PAIR, (dir) => {
+    writeFileSync(
+      join(dir, "delivery", "review", "clean-room-m4-p10.md"),
+      "# a prose review\n\nthis is not: valid: yaml: [\n",
+    );
+    writeFileSync(
+      join(dir, "delivery", "review", "notes.yaml"),
+      "kind: note\nphase: M3-P9\nbody: not a verdict\n",
+    );
+    const run = runGate(dir);
+    assert.equal(run.status, 0, run.output);
+    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* The shipped corpus                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -989,6 +1233,11 @@ test("this phase's behaviors are registered in test/behaviors.json and resolve b
     "verdict-pair-severity-vocabulary-closed",
     "verdict-pair-low-finding-mergeable",
     "dual-review-prints-verdict-values",
+    "dual-review-undecodable-sibling-refused",
+    "dual-review-unreadable-sibling-refused",
+    "dual-review-phaseless-sibling-refused",
+    "dual-review-unexaminable-candidate-is-applicable",
+    "dual-review-non-verdict-document-still-skipped",
   ]) {
     assert.ok(
       Object.prototype.hasOwnProperty.call(behaviors, id),

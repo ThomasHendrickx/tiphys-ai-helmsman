@@ -7,7 +7,11 @@
     "scripts/check-dual-review.mjs",
     "test/verdict-head.test.ts",
     "delivery/review/",
-    "witness/fixtures/dual-review/"
+    "witness/fixtures/dual-review/",
+    "witness/dual-review-distinct-model-families.json",
+    "witness/dual-review-merge-authority-lookalike.json",
+    "witness/dual-review-requires-two-verdicts.json",
+    "witness/dual-review-unestablished-merge-authority.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

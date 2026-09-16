@@ -11,14 +11,14 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (group.length < 2) {",
-      "replace": "    if (false) {"
+      "find": "    if (group.length < 2) {\n      violations.push({\n        pointer: \"#/phase\",",
+      "replace": "    if (false) {\n      violations.push({\n        pointer: \"#/phase\","
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (authority !== DELEGATED_MERGE_AUTHORITY) {",
-      "replace": "    if (true) {"
+      "find": "  if (authority !== DELEGATED_MERGE_AUTHORITY) {",
+      "replace": "  if (true) {"
     }
   ]
 }

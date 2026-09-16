@@ -135,18 +135,31 @@ function parseArgs(argv) {
 }
 
 /**
- * Every verdict document committed under `<dir>/delivery/review/`.
+ * Every verdict document committed under `<dir>/delivery/review/`, and every
+ * candidate that could not be examined.
  *
  * Deliberately the same selection rule the derived check uses: a `.yaml`,
  * `.yml` or `.json` file that decodes and carries `kind: verdict`. That
  * directory also holds prose reviews in this repository, so anything else is
  * skipped rather than reported.
+ *
+ * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
+ * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
+ * documents the checks are RUN OVER and, through `--precondition`, whether the
+ * gate RUNS AT ALL. A directory whose only review documents fail to decode
+ * therefore reported `0 verdict document(s)`, the precondition exited 1, and the
+ * gate was NOT-APPLICABLE: the merge evidence was unreadable and the gate said
+ * there was nothing to compare. So a candidate that passed the extension filter
+ * and could not be read or decoded is carried out of here, the precondition
+ * counts it as a reason to run, and `evaluate` refuses the directory with status
+ * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
+ * screen down: at this layer, could-not-determine is `error` and never green.
  */
 export function committedVerdictPaths(directory) {
   const reviewDirectory = join(directory, REVIEW_DIRECTORY);
   const entry = classifyEntry(reviewDirectory);
   if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, paths: [] };
+    return { ok: true, paths: [], unexaminable: [] };
   }
   if (entry.kind === "unexaminable") {
     return { ok: false, reason: entry.reason };
@@ -164,6 +177,7 @@ export function committedVerdictPaths(directory) {
     return { ok: false, reason: `${reviewDirectory} could not be listed: ${String(error)}` };
   }
   const paths = [];
+  const unexaminable = [];
   for (const name of names.sort()) {
     if (!/\.(ya?ml|json)$/i.test(name)) {
       continue;
@@ -171,10 +185,12 @@ export function committedVerdictPaths(directory) {
     const path = join(reviewDirectory, name);
     const read = readOperatorPath(path);
     if (!read.ok) {
+      unexaminable.push(`${path} could not be read: ${read.reason}`);
       continue;
     }
     const decoded = decodeDocument(read.body, path);
     if (!decoded.ok) {
+      unexaminable.push(`${path} did not decode: ${decoded.reason}`);
       continue;
     }
     const value = decoded.value;
@@ -188,7 +204,7 @@ export function committedVerdictPaths(directory) {
     }
     paths.push({ path, instance: value });
   }
-  return { ok: true, paths };
+  return { ok: true, paths, unexaminable };
 }
 
 /**
@@ -231,6 +247,27 @@ export function evaluate(directory) {
   const found = committedVerdictPaths(directory);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
+  }
+  /* THE SECOND FAIL-CLOSED REFUSAL AT THIS LAYER, AND IT IS THE SAME RULE AS
+     THE ONE ABOVE RATHER THAN A NEW ONE. `REGIME_DOCUMENTS` refuses a directory
+     whose merge regime cannot be determined; this refuses one whose review
+     evidence cannot be READ. Both are could-not-determine, and the status for
+     could-not-determine at the layer DR-0012's grant runs through is `error`,
+     never green and never not-applicable. The paths are named, because the
+     reported defect was that the dropped document appeared nowhere in the
+     gate's output. */
+  if (found.unexaminable.length > 0) {
+    return {
+      status: "error",
+      units: 0,
+      checksRun: 0,
+      lines: [
+        `${String(found.unexaminable.length)} document(s) under ` +
+          `${join(directory, REVIEW_DIRECTORY)} could not be examined, so whether a review ` +
+          `refusing this head is among them is unknown and no merge verdict can be reached: ` +
+          found.unexaminable.join("; "),
+      ],
+    };
   }
   const registered = registeredChecks();
   const selected = registered.filter((check) => check.id === CHECK_ID);
@@ -362,10 +399,18 @@ function main(argv) {
       process.stderr.write(`tiphys ${GATE_ID}: ${found.reason}\n`);
       return 1;
     }
+    /* AN UNEXAMINABLE CANDIDATE MAKES THE GATE APPLICABLE, WHICH IS THE
+       OPPOSITE OF WHAT DROPPING IT DID. Exit 1 here means "no pair of reviews
+       exists, do not run me", and answering that about a directory whose
+       documents could not be read is a not-applicable reached by not looking.
+       The gate runs and `evaluate` then refuses it with `error`. */
+    const unexaminable = found.unexaminable.length;
     process.stdout.write(
-      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}\n`,
+      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}` +
+        (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
+        "\n",
     );
-    return found.paths.length > 0 ? 0 : 1;
+    return found.paths.length + unexaminable > 0 ? 0 : 1;
   }
 
   const run = evaluate(options.directory);
