@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }",
-      "replace": "  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const early = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);\n  if (early.status !== 0) {\n    return { ok: false, reason: `git checkout failed: ${early.stderr.trim()}` };\n  }\n  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }"
+      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const checkout = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);",
+      "replace": "  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const checkout = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);\n  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }"
     }
   ],
   "consumesExternalOutput": {

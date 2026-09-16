@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "  if (run.status === 0) {\n    return {\n      id: row.id,\n      verdict: \"unported\",",
+      "replace": "  if (run.status !== 0) {\n    return {\n      id: row.id,\n      verdict: \"unported\","
     }
   ],
   "consumesExternalOutput": {

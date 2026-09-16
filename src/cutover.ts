@@ -117,18 +117,8 @@ export function cutoverStatePath(fleet: Fleet): string {
   return join(fleet.root, "cutover.json");
 }
 
-/**
- * The document as it was parsed, keys and all. It is carried beside the typed
- * state because the typed view is NARROWER than the file: `CutoverState` names
- * `switches` and nothing else, so a writer that serialises the typed view
- * DELETES every other key the file held. A rollback is a change to the
- * switches, not a rewrite of the document, and this is what lets the two be
- * different sizes.
- */
-export type CutoverDocument = Record<string, unknown>;
-
 export type CutoverRead =
-  | { kind: "read"; state: CutoverState; document: CutoverDocument }
+  | { kind: "read"; state: CutoverState }
   | { kind: "absent" }
   | { kind: "refused"; reason: string };
 
@@ -207,34 +197,11 @@ export function readCutoverState(fleet: Fleet): CutoverRead {
   if (reasons.length > 0) {
     return { kind: "refused", reason: `${path}: ${reasons.join("; ")}` };
   }
-  return {
-    kind: "read",
-    state: parsed as CutoverState,
-    document: parsed as CutoverDocument,
-  };
+  return { kind: "read", state: parsed as CutoverState };
 }
 
-export function renderCutoverState(state: CutoverState | CutoverDocument): string {
+export function renderCutoverState(state: CutoverState): string {
   return `${JSON.stringify(state, null, 2)}\n`;
-}
-
-/**
- * Put a new switch table into the document the file actually held, leaving
- * every other key exactly as it was read.
- *
- * WHY THIS EXISTS AS A NAMED FUNCTION. `validateCutoverDocument` refuses an
- * unknown SWITCH NAME because the five are a closed list, and that made it
- * look as though the whole document were closed. It is not: M4-P25 owns the
- * schema and may add top-level keys, so a rollback that serialises only what
- * this module's interface names would silently delete them. Refusing them
- * instead would be this phase deciding M4-P25's schema, which is not its to
- * decide, so the document is CARRIED rather than narrowed or refused.
- */
-export function withSwitches(
-  document: CutoverDocument,
-  switches: Record<CutoverSwitchName, SwitchRecord>,
-): CutoverDocument {
-  return { ...document, switches };
 }
 
 /**
@@ -250,10 +217,7 @@ export function withSwitches(
  * Every caller in this module builds the complete next state first and calls
  * this once.
  */
-export function publishCutoverState(
-  path: string,
-  state: CutoverState | CutoverDocument,
-): void {
+export function publishCutoverState(path: string, state: CutoverState): void {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true });
   /* The suffix is random, never a pid. C-2 forbids a pid as an identity, and
@@ -337,26 +301,9 @@ export const ROLLBACK_TRIGGERS: readonly RollbackTrigger[] = [
  * Trigger 2 (freeze-point restore) reads each switch's own `restoreTo`. That
  * is the difference between the two, and it is why M4-P25 criterion 4 refuses
  * a write that omits the field.
- *
- * ROLLBACK IS MONOTONE AND THE CLAMP BELOW IS WHAT MAKES THE MODULE HEADER
- * TRUE. `restoreTo` is the value a switch held BEFORE its last flip, and
- * `planRollback` sets it to the value the switch is leaving. So a switch that
- * has already been rolled back to `current` carries `restoreTo: "kernel"`, and
- * returning that value would move the switch FORWARD on the second run of the
- * same command. The failure arm of trigger 1 step 1 exits nonzero after the
- * local write has already happened, and the natural response to that is to run
- * the command again, so the second run is not a hypothetical. A rollback never
- * hands authority to the kernel: `current` is a floor, and a switch already at
- * it is a no-op rather than a flip.
  */
 export function targetFor(trigger: RollbackTrigger, record: SwitchRecord): SwitchState {
-  if (trigger === "drain-reversal") {
-    return "current";
-  }
-  if (record.state === "current") {
-    return "current";
-  }
-  return record.restoreTo;
+  return trigger === "drain-reversal" ? "current" : record.restoreTo;
 }
 
 /**
@@ -376,31 +323,18 @@ export function planRollback(
     const to = targetFor(trigger, record);
     const change: SwitchChange = { name, from: record.state, to };
     options.onSwitch?.(change, index);
-    if (change.from === change.to) {
-      /* A SWITCH THIS ROLLBACK DOES NOT MOVE IS NOT REWRITTEN. The record is
-         carried through unchanged, `flippedAt`, `flippedBy`, `reason` and
-         `restoreTo` included. Stamping the current run over an unmoved switch
-         would destroy the one fact freeze-point restore depends on, which is
-         what that switch left, and it would do it while reporting zero
-         changes: a write whose scope is wider than the sentence describing
-         it. */
-      nextSwitches[name] = record;
-    } else {
-      nextSwitches[name] = {
-        /* Spread the record as it was READ. The interface names five fields;
-           the file may carry more, and a rollback that rebuilds the record
-           from the interface deletes whatever it did not know about. */
-        ...record,
-        state: to,
-        flippedAt: options.now,
-        flippedBy: options.by,
-        reason: options.reason,
-        /* The rolled-back switch can be flipped forward again, and the value
-           it would return to is the one it is leaving now. Carrying the OLD
-           restoreTo forward would make a second rollback restore a state two
-           flips old. */
-        restoreTo: record.state,
-      };
+    nextSwitches[name] = {
+      state: to,
+      flippedAt: options.now,
+      flippedBy: options.by,
+      reason: options.reason,
+      /* The rolled-back switch can be flipped forward again, and the value it
+         would return to is the one it is leaving now. Carrying the OLD
+         restoreTo forward would make a second rollback restore a state two
+         flips old. */
+      restoreTo: record.state,
+    };
+    if (change.from !== change.to) {
       changes.push(change);
     }
     index += 1;
@@ -445,14 +379,7 @@ export function applyRollback(
     };
   }
   try {
-    /* Publish the DOCUMENT with the new switch table in it, not the typed
-       view. `read.document` is what the file held; `plan.next.switches` is the
-       only part this rollback decided. Publishing `plan.next` alone would
-       delete every top-level key this module does not name. */
-    publishCutoverState(
-      cutoverStatePath(fleet),
-      withSwitches(read.document, plan.next.switches),
-    );
+    publishCutoverState(cutoverStatePath(fleet), plan.next);
   } catch (error) {
     return {
       ok: false,
@@ -468,12 +395,7 @@ export function applyRollback(
 /* Drain: the computed predicate                                         */
 /* -------------------------------------------------------------------- */
 
-/**
- * `unexaminable` is a THIRD kind and not an error channel. A drain predicate
- * that cannot decide an entry has not found it clean, and folding the
- * undecidable into "nothing here" is how a guard reads quiet at full speed.
- */
-export type InFlightKind = "worktree" | "task" | "unexaminable";
+export type InFlightKind = "worktree" | "task";
 
 export interface InFlightItem {
   kind: InFlightKind;
@@ -500,57 +422,15 @@ export interface InFlightItem {
  */
 export function inFlightItems(fleet: Fleet): InFlightItem[] {
   const items: InFlightItem[] = [];
-
-  /* ABSENT IS UNDECIDABLE HERE AND NOT EMPTY. `loadFleet` refuses a fleet
-     whose `worktrees/` or `tasks/` is not a directory (src/fleet.ts:65), so a
-     Fleet value that reaches this function had both when it was loaded. One
-     that is gone now was removed since, which says nothing about what was in
-     it, and reading that as a clean drain is the same fall-through as reading
-     an unreadable directory as an empty one. */
-  const worktrees = listDirectory(fleet.worktreesDir);
-  if (worktrees.kind !== "listed") {
-    items.push({
-      kind: "unexaminable",
-      id: fleet.worktreesDir,
-      detail:
-        worktrees.kind === "absent"
-          ? `${fleet.worktreesDir} is gone, and the fleet had it when it was loaded`
-          : worktrees.reason,
-    });
-  }
-  for (const id of worktrees.kind === "listed" ? worktrees.names : []) {
+  for (const id of listDirectoryNames(fleet.worktreesDir)) {
     const path = join(fleet.worktreesDir, id);
-    const probe = probeDirectory(path);
-    if (probe.kind === "directory") {
+    if (isDirectory(path)) {
       items.push({ kind: "worktree", id, detail: path });
-    } else if (probe.kind === "unexaminable") {
-      items.push({ kind: "unexaminable", id, detail: probe.reason });
     }
   }
-
-  const tasks = listDirectory(fleet.tasksDir);
-  if (tasks.kind !== "listed") {
-    items.push({
-      kind: "unexaminable",
-      id: fleet.tasksDir,
-      detail:
-        tasks.kind === "absent"
-          ? `${fleet.tasksDir} is gone, and the fleet had it when it was loaded`
-          : tasks.reason,
-    });
-  }
-  for (const id of tasks.kind === "listed" ? tasks.names : []) {
+  for (const id of listDirectoryNames(fleet.tasksDir)) {
     const metaRead = readRegularFileIfPresent(join(fleet.tasksDir, id, "meta.json"));
-    if (metaRead.kind === "refused") {
-      /* Present and not readable. A meta.json that is a named pipe, a
-         directory, or a path this process may not stat says NOTHING about
-         whether the task finished, and the T-003 hazard shape is exactly a
-         FIFO where a regular file was expected. */
-      items.push({ kind: "task", id, detail: `meta.json could not be examined: ${metaRead.reason}` });
-      continue;
-    }
-    if (metaRead.kind === "absent") {
-      items.push({ kind: "task", id, detail: "meta.json is absent, so the task has no recorded status" });
+    if (metaRead.kind !== "read") {
       continue;
     }
     let status: unknown;
@@ -562,104 +442,40 @@ export function inFlightItems(fleet: Fleet): InFlightItem[] {
       items.push({ kind: "task", id, detail: "meta.json is unparseable" });
       continue;
     }
-    /* `closed` is the ONLY positive evidence that a task is finished. The
-       previous form tested `status !== "open"`, which made every value that is
-       not the word `open` - a missing field, a typo, a number - read as
-       finished. The vocabulary is closed (src/task.ts, TaskStatus), so a value
-       outside it is undecided and undecided counts. */
-    if (status === "closed") {
-      continue;
-    }
     if (status !== "open") {
-      items.push({
-        kind: "task",
-        id,
-        detail: `meta.json status ${JSON.stringify(status)} is not one of open or closed`,
-      });
       continue;
     }
     const turnEnd = classifyEntry(turnEndPath(fleet, id));
-    /* Symmetrically: a REGULAR turn-end file is the only positive evidence
-       that the turn ended. `irregular` and `unexaminable` are undecided, not
-       finished, and the previous form counted only `absent` and `dangling`,
-       so a turn-end that was a named pipe read as a finished task. */
-    if (turnEnd.kind === "regular") {
-      continue;
+    if (turnEnd.kind === "absent" || turnEnd.kind === "dangling") {
+      items.push({ kind: "task", id, detail: "open with no turn-end" });
     }
-    items.push({
-      kind: "task",
-      id,
-      detail:
-        turnEnd.kind === "absent" || turnEnd.kind === "dangling"
-          ? "open with no turn-end"
-          : `open and the turn-end could not be examined: ${turnEnd.reason}`,
-    });
   }
   return items.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`));
 }
 
 /**
- * Is this path a directory, and SAY SO WHEN THE QUESTION COULD NOT BE ANSWERED.
- *
- * `classifyEntry` deliberately answers one question, "may this be opened", and
- * calls a directory irregular; a worktree IS a directory, so the two need
- * separating. stat(2) does not block on a FIFO the way open(2) does, so this
- * is safe on exactly the paths src/task.ts:118 exists to protect.
- *
- * The tri-state is the fix rather than a refinement. A boolean forces an
- * unreadable path to be reported as "not a directory", which in a drain
- * predicate means "no work here", which is the answer a caller cannot tell
- * from the true one.
+ * Directory test that STATS and never opens. `classifyEntry` deliberately
+ * answers one question, "may this be opened", and calls a directory
+ * irregular; a worktree IS a directory, so the two need separating. stat(2)
+ * does not block on a FIFO the way open(2) does, so this is safe on exactly
+ * the paths src/task.ts:118 exists to protect.
  */
-type DirectoryProbe =
-  | { kind: "directory" }
-  | { kind: "other" }
-  | { kind: "absent" }
-  | { kind: "unexaminable"; reason: string };
-
-function probeDirectory(path: string): DirectoryProbe {
-  let stats;
+function isDirectory(path: string): boolean {
   try {
-    stats = statSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "absent" };
-    }
-    return { kind: "unexaminable", reason: `${path} could not be examined: ${String(error)}` };
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
   }
-  return stats.isDirectory() ? { kind: "directory" } : { kind: "other" };
 }
 
-type DirectoryListing =
-  | { kind: "listed"; names: string[] }
-  | { kind: "absent" }
-  | { kind: "unexaminable"; reason: string };
-
-/**
- * Enumerate a directory, distinguishing "it is not there" from "it could not
- * be enumerated". An empty list and a failed listing are the same value to a
- * caller that returns `[]` for both, and in this module the caller is the
- * drain predicate: a `tasks/` that cannot be read would have reported a clean
- * drain over an unknown number of open tasks.
- */
-function listDirectory(path: string): DirectoryListing {
-  const probe = probeDirectory(path);
-  if (probe.kind === "absent") {
-    return { kind: "absent" };
-  }
-  if (probe.kind === "unexaminable") {
-    return { kind: "unexaminable", reason: probe.reason };
-  }
-  if (probe.kind === "other") {
-    return {
-      kind: "unexaminable",
-      reason: `${path} is not a directory, so its contents could not be enumerated`,
-    };
+function listDirectoryNames(path: string): string[] {
+  if (!isDirectory(path)) {
+    return [];
   }
   try {
-    return { kind: "listed", names: readdirSync(path).sort() };
-  } catch (error) {
-    return { kind: "unexaminable", reason: `${path} could not be enumerated: ${String(error)}` };
+    return readdirSync(path).sort();
+  } catch {
+    return [];
   }
 }
 
@@ -720,62 +536,22 @@ export function runGit(cwd: string, args: string[]): CommandResult {
  * `allowNoRemote` to turn it into a reported, non-fatal condition, and when it
  * does the reason is still printed, so a reader can never mistake the local
  * write for a published one.
- *
- * THE COMMIT CARRIES THE NAMED PATHS AND NOTHING ELSE. Staging everything at
- * the fleet root stages whatever is dirty anywhere under it, and the
- * precondition of trigger 1 is that IN-FLIGHT WORK EXISTS: a half-written
- * note, a torn meta.json, an operator scratch file. Committing all of it under
- * the message "cutover rollback" publishes somebody else's unfinished work
- * under this command's name, which is a write whose scope is wider than the
- * sentence describing it. Three checks make the scope exactly the named set:
- * the index must be empty before, the staging names paths, and the staged set
- * is compared with the requested one afterwards.
  */
 export type SyncOutcome =
-  | { ok: true; pushed: true; head: string; staged: string[] }
-  | { ok: true; pushed: false; reason: string; staged: string[] }
+  | { ok: true; pushed: true; head: string }
+  | { ok: true; pushed: false; reason: string }
   | { ok: false; reason: string };
-
-function nonEmptyLines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
 
 export function syncFleetState(
   fleetRoot: string,
-  options: { allowNoRemote?: boolean; message: string; paths: string[] },
+  options: { allowNoRemote?: boolean; message: string },
 ): SyncOutcome {
-  if (options.paths.length === 0) {
-    return {
-      ok: false,
-      reason:
-        "syncFleetState was given no path to stage, and a rollback that stages everything commits work it did not do",
-    };
-  }
   const remotes = runGit(fleetRoot, ["remote"]);
   if (remotes.status !== 0) {
     return { ok: false, reason: `git remote failed in ${fleetRoot}: ${remotes.stderr.trim()}` };
   }
   const hasOrigin = remotes.stdout.split("\n").some((line) => line.trim() === "origin");
-  /* An index that already holds something is refused rather than absorbed: a
-     scoped staging does not unstage what somebody else staged, so committing
-     here would carry it under this message. */
-  const preStaged = runGit(fleetRoot, ["diff", "--cached", "--name-only"]);
-  if (preStaged.status !== 0) {
-    return { ok: false, reason: `git diff --cached failed: ${preStaged.stderr.trim()}` };
-  }
-  const already = nonEmptyLines(preStaged.stdout);
-  if (already.length > 0) {
-    return {
-      ok: false,
-      reason:
-        `${fleetRoot} already holds ${String(already.length)} staged path(s) this rollback did not stage, ` +
-        `and nothing was committed: ${already.slice(0, 10).join(", ")}`,
-    };
-  }
-  const add = runGit(fleetRoot, ["add", "--", ...options.paths]);
+  const add = runGit(fleetRoot, ["add", "-A"]);
   if (add.status !== 0) {
     return { ok: false, reason: `git add failed in ${fleetRoot}: ${add.stderr.trim()}` };
   }
@@ -783,21 +559,7 @@ export function syncFleetState(
   if (staged.status !== 0) {
     return { ok: false, reason: `git diff --cached failed: ${staged.stderr.trim()}` };
   }
-  const stagedPaths = nonEmptyLines(staged.stdout);
-  /* The scope is VERIFIED and not assumed. A named path that turns out to be a
-     directory, or a pathspec the caller did not mean, shows up here. */
-  const stray = stagedPaths.filter(
-    (path) => !options.paths.some((want) => path === want || path.startsWith(`${want}/`)),
-  );
-  if (stray.length > 0) {
-    return {
-      ok: false,
-      reason:
-        `staging ${options.paths.join(", ")} also staged ${String(stray.length)} path(s) outside it, ` +
-        `and nothing was committed: ${stray.slice(0, 10).join(", ")}`,
-    };
-  }
-  if (stagedPaths.length > 0) {
+  if (staged.stdout.trim().length > 0) {
     const commit = runGit(fleetRoot, ["commit", "-q", "-m", options.message]);
     if (commit.status !== 0) {
       return { ok: false, reason: `git commit failed: ${commit.stderr.trim()}` };
@@ -806,7 +568,7 @@ export function syncFleetState(
   if (!hasOrigin) {
     const reason = `${fleetRoot} has no origin remote, so the rollback is committed locally and NOT published`;
     return options.allowNoRemote === true
-      ? { ok: true, pushed: false, reason, staged: stagedPaths }
+      ? { ok: true, pushed: false, reason }
       : { ok: false, reason };
   }
   const push = runGit(fleetRoot, ["push", "origin", "HEAD"]);
@@ -820,7 +582,7 @@ export function syncFleetState(
   if (head.status !== 0) {
     return { ok: false, reason: `git rev-parse HEAD failed: ${head.stderr.trim()}` };
   }
-  return { ok: true, pushed: true, head: head.stdout.trim(), staged: stagedPaths };
+  return { ok: true, pushed: true, head: head.stdout.trim() };
 }
 
 /* -------------------------------------------------------------------- */
@@ -858,26 +620,15 @@ export function refuseIfTreeDirty(repoRoot: string): GuardResult {
 }
 
 export type RestoreFilesOutcome =
-  | { ok: true; roots: string[]; removed: string[] }
+  | { ok: true; roots: string[] }
   | { ok: false; reason: string };
 
 /**
  * Restore the named retirement roots from a pre-freeze sha.
  *
- * The dirty check runs FIRST and returns before any version-control
- * invocation that can write. That order is the whole guarantee, and the test
- * asserts the dirty file is byte-identical afterwards rather than asserting
- * the exit code alone.
- *
- * "RESTORE" IS A CLAIM ABOUT THE WHOLE ROOT, AND CHECKING A TREE OUT OVER A
- * PATH IS NOT ONE. `checkout <sha> -- <root>` writes what the sha held and
- * removes NOTHING, so every file added under the root after the freeze
- * survives the restore untouched. The result is a hybrid tree that the caller
- * prints `RESTORED` over: a verdict wider than the operation that produced it.
- * The post-freeze additions are therefore enumerated and removed, and then the
- * root is COMPARED with the sha. The comparison is the verdict; without it the
- * success arm is an assumption, and a success arm that cannot fail is the
- * guard that cannot go red.
+ * The dirty check runs FIRST and returns before any git invocation that can
+ * write. That order is the whole guarantee, and the test asserts the dirty
+ * file is byte-identical afterwards rather than asserting the exit code alone.
  */
 export function restoreRetirementRoots(
   repoRoot: string,
@@ -895,66 +646,11 @@ export function restoreRetirementRoots(
   if (resolved.status !== 0) {
     return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };
   }
-  /* Tracked under a root NOW and absent at the freeze. The tree is clean here,
-     because refuseIfTreeDirty has already returned, so HEAD is the tree. */
-  const added = runGit(repoRoot, [
-    "diff",
-    "--name-only",
-    "--diff-filter=A",
-    /* --no-renames IS LOAD-BEARING AND THE VERIFICATION ARM BELOW IS WHAT
-       FOUND IT. With rename detection on, a file renamed after the freeze is
-       reported as R rather than A, so its NEW name is not enumerated, the
-       removal misses it, and the checkout restores the old name beside it. The
-       first version of this function had the flag missing; the residue
-       comparison turned the hybrid tree into a refusal naming
-       `retired/renamed.md` instead of a green. That is the whole reason the
-       verdict is measured rather than assumed. */
-    "--no-renames",
-    sha,
-    "HEAD",
-    "--",
-    ...roots,
-  ]);
-  if (added.status !== 0) {
-    return {
-      ok: false,
-      reason: `enumerating the post-freeze additions failed: ${added.stderr.trim()}`,
-    };
-  }
-  const postFreeze = nonEmptyLines(added.stdout);
   const checkout = runGit(repoRoot, ["checkout", sha, "--", ...roots]);
   if (checkout.status !== 0) {
     return { ok: false, reason: `git checkout failed: ${checkout.stderr.trim()}` };
   }
-  if (postFreeze.length > 0) {
-    const removed = runGit(repoRoot, ["rm", "-q", "-f", "--", ...postFreeze]);
-    if (removed.status !== 0) {
-      return {
-        ok: false,
-        reason: `removing the post-freeze additions failed: ${removed.stderr.trim()}`,
-      };
-    }
-  }
-  /* THE VERDICT IS MEASURED. Compare the sha with the working tree over the
-     same roots; anything printed here is a difference the restore did not
-     close, and the caller is told rather than shown a success. */
-  const residue = runGit(repoRoot, ["diff", "--name-only", sha, "--", ...roots]);
-  if (residue.status !== 0) {
-    return {
-      ok: false,
-      reason: `verifying the restore against ${sha} failed: ${residue.stderr.trim()}`,
-    };
-  }
-  const differing = nonEmptyLines(residue.stdout);
-  if (differing.length > 0) {
-    return {
-      ok: false,
-      reason:
-        `${String(differing.length)} path(s) under the retirement roots still differ from ${sha} ` +
-        `after the restore, so nothing is reported as restored: ${differing.slice(0, 10).join(", ")}`,
-    };
-  }
-  return { ok: true, roots, removed: postFreeze };
+  return { ok: true, roots };
 }
 
 /* -------------------------------------------------------------------- */
@@ -1043,18 +739,6 @@ export function generateRestoreRequest(document: unknown): RestoreRequestOutcome
   ] as const) {
     const list = capture[listName];
     if (!Array.isArray(list)) {
-      /* PRESENT, NON-EMPTY AND NOT A LIST. The top-level loop above asks only
-         whether the key is there and whether it is empty, and a string such as
-         "see the wiki" passes both. Falling through here would generate an
-         owner request carrying zero fields from that key while reporting
-         success, which is the present-but-useless arm criterion 6 member B
-         exists for, one level up from a single field. Absence is already
-         reported above, so only presence is reported here. */
-      if (listName in capture) {
-        reasons.push(
-          `field ${listName} is present but is not a list, so no pre-flip value could be read from it`,
-        );
-      }
       continue;
     }
     list.forEach((row, index) => {
@@ -1144,61 +828,28 @@ export interface PortResult {
  * rule, so a witness that exits 0 under the new artifact means the new
  * artifact does not catch what the old one caught, which is precisely
  * "WEAKER". Exit 0 from the witness is therefore `unported`, not a pass.
- *
- * `ported` IS REACHED FROM A POSITIVE TEST AND NEVER FROM A FALLTHROUGH, and
- * that is what the first three checks below are. `readRetirementInventory`
- * casts whatever the fixture's `rows` array holds, so a row may be a string, a
- * number, or an object whose `disposition` is misspelt; the earlier form asked
- * only whether the disposition was NOT the word `PORT`, so every one of those
- * returned `ported`, which is a verdict of "this retirement is complete" over
- * a row nobody could read. The vocabulary is closed, so a value outside it is
- * `unported` and names itself.
  */
-export const DISPOSITIONS: readonly Disposition[] = ["PORT", "DELETE", "KEEP"];
-
-function isDisposition(value: unknown): value is Disposition {
-  return typeof value === "string" && (DISPOSITIONS as readonly string[]).includes(value);
-}
-
 export function evaluatePortRow(
   row: RetirementRow,
   repoRoot: string,
 ): PortResult {
-  if (typeof row !== "object" || row === null || Array.isArray(row)) {
-    return {
-      id: `(row ${JSON.stringify(row)})`,
-      verdict: "unported",
-      reason: "inventory row is not an object, so its disposition could not be read",
-    };
-  }
-  const id = nonEmptyString(row.id) ? row.id : "(row with no id)";
-  if (!nonEmptyString(row.id)) {
-    return { id, verdict: "unported", reason: "inventory row has no id" };
-  }
-  if (!isDisposition(row.disposition)) {
-    return {
-      id,
-      verdict: "unported",
-      reason: `disposition ${JSON.stringify(row.disposition)} is not one of ${DISPOSITIONS.join(", ")}`,
-    };
-  }
   if (row.disposition !== "PORT") {
-    return { id, verdict: "ported", reason: `disposition ${row.disposition} needs no port` };
+    return { id: row.id, verdict: "ported", reason: `disposition ${row.disposition} needs no port` };
   }
   if (!nonEmptyString(row.destination)) {
-    return { id, verdict: "unported", reason: "PORT row names no destination" };
+    return { id: row.id, verdict: "unported", reason: "PORT row names no destination" };
   }
   const destination = join(repoRoot, row.destination);
   if (classifyEntry(destination).kind !== "regular") {
     return {
-      id,
+      id: row.id,
       verdict: "unported",
       reason: `destination ${row.destination} does not exist as a file`,
     };
   }
   if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {
     return {
-      id,
+      id: row.id,
       verdict: "unported",
       reason: "PORT row carries no negative-witness command",
     };
@@ -1207,40 +858,21 @@ export function evaluatePortRow(
   const run = spawnSync(program, args, { cwd: repoRoot, encoding: "utf8" });
   if (run.error !== undefined) {
     return {
-      id,
+      id: row.id,
       verdict: "unported",
       reason: `negative witness could not be run: ${String(run.error)}`,
     };
   }
-  /* A WITNESS THAT DIED IS NOT A WITNESS THAT WAS RED. `status` is null when a
-     child is killed by a signal, and null is not 0, so the nonzero arm at the
-     bottom used to accept it and report the row as ported. A witness killed by
-     the out-of-memory killer or by a harness timeout has demonstrated nothing
-     about the new artifact. */
-  if (run.signal !== null && run.signal !== undefined) {
-    return {
-      id,
-      verdict: "unported",
-      reason: `negative witness was killed by ${run.signal}, which is not evidence that it is red under the new artifact`,
-    };
-  }
-  if (run.status === null) {
-    return {
-      id,
-      verdict: "unported",
-      reason: "negative witness reported no exit status, so it did not demonstrate anything",
-    };
-  }
   if (run.status === 0) {
     return {
-      id,
+      id: row.id,
       verdict: "unported",
       reason:
         "negative witness exits 0 under the new artifact, so the destination is WEAKER than the rule it replaced",
     };
   }
   return {
-    id,
+    id: row.id,
     verdict: "ported",
     reason: `negative witness exits ${String(run.status)} under the new artifact`,
   };

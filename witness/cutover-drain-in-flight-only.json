@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "    if (turnEnd.kind === \"regular\") {\n      continue;\n    }",
-      "replace": "    if (turnEnd.kind === \"regular\" || turnEnd.kind === \"absent\") {\n      continue;\n    }"
+      "find": "    const turnEnd = classifyEntry(turnEndPath(fleet, id));\n    if (turnEnd.kind === \"absent\" || turnEnd.kind === \"dangling\") {\n      items.push({ kind: \"task\", id, detail: \"open with no turn-end\" });\n    }",
+      "replace": "    items.push({ kind: \"task\", id, detail: \"open\" });"
     }
   ],
   "consumesExternalOutput": {

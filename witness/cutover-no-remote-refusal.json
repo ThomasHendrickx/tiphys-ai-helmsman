@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "    return options.allowNoRemote === true\n      ? { ok: true, pushed: false, reason, staged: stagedPaths }\n      : { ok: false, reason };",
-      "replace": "    return { ok: true, pushed: false, reason, staged: stagedPaths };"
+      "find": "    return options.allowNoRemote === true\n      ? { ok: true, pushed: false, reason }\n      : { ok: false, reason };",
+      "replace": "    return { ok: true, pushed: false, reason };"
     },
     {
       "kind": "mutation",

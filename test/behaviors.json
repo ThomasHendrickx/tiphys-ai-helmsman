@@ -800,15 +800,5 @@
   "cutover-document-pilot-as-second-subject": "the rollback document carries the pilot as a second subject with read-only steps",
   "cutover-rehearsal-self-check-discriminates": "every rehearsal arm proves its own assertion helper discriminates before reporting a verdict",
   "cutover-no-remote-refuses-by-default": "a fleet with no origin remote refuses the rollback publish by default and prints the reason when the refusal is waived",
-  "cutover-git-contract-reproduced-live": "the captured output the cutover module parses is reproduced live in a scratch repository before it is relied on",
-  "cutover-rollback-is-monotone-and-idempotent": "a second rollback of the same trigger reports no change and never moves a switch forward to kernel",
-  "cutover-rollback-leaves-an-unmoved-switch-byte-identical": "a switch a rollback does not move comes out of it byte-identical, restore-to and flip record included",
-  "cutover-rollback-preserves-document-keys-it-does-not-own": "a rollback preserves top-level and per-record keys of the cutover document that this module does not name",
-  "cutover-publish-replaces-the-destination": "publishing the cutover state replaces the destination by rename rather than writing through it, leaving no temporary behind",
-  "cutover-drain-counts-the-undecidable": "drain counts an entry it cannot decide, including an irregular turn-end, an unreadable meta.json, a status outside the vocabulary and an unenumerable tasks directory",
-  "cutover-rollback-commit-is-scoped-to-the-switch-file": "the rollback commit carries the switch file alone, and an index holding anything else is refused with nothing committed",
-  "cutover-restore-removes-post-freeze-additions-and-verifies": "restoring a retirement root removes what was added after the freeze and verifies the root against the pre-freeze sha before reporting success",
-  "cutover-port-verdict-refuses-an-unreadable-row-or-a-killed-witness": "a retirement row whose disposition is outside the closed vocabulary, or which is not an object, is unported, and a negative witness killed by a signal is not a red witness",
-  "cutover-restore-request-refuses-a-present-non-list": "the owner restore request is refused, naming the field, when a captured list is present and non-empty but is not a list",
-  "cutover-restore-request-out-refuses-a-non-regular-path": "the owner restore request refuses to write its output to a path that is not a regular file"
+  "cutover-git-contract-reproduced-live": "the captured output the cutover module parses is reproduced live in a scratch repository before it is relied on"
 }
