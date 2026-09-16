@@ -134,6 +134,12 @@ function baselineVerdict(): Record<string, unknown> {
   return {
     kind: "verdict",
     phase: String(phase["id"]),
+    /* M4-P10 made `head` required. A real forty-character sha rather than a
+       row of zeroes, so a reader of this fixture is not left wondering whether
+       the pattern would have accepted a placeholder: this is the head of
+       `claude/m3-p9-agents-policy`, the branch the shipped dual-review
+       fixtures are modelled on. */
+    head: "dcbe6704813e861736c8d394dca35f7dc31b4f93",
     verdict: "APPROVE",
     "produced-by": "a model family recorded here because DR-0012 compares two reviews on it",
     framing: "criteria-contract",

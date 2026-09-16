@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +23,18 @@ import { fileURLToPath } from "node:url";
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
 const SALVAGE_PREFIX = "WIP-UNREVIEWED (do not treat as reviewed):";
+
+/**
+ * THE SPAWN BOUND ON THE CHILD. Sibling of the constant of the same name
+ * in test/pool.test.ts, and carrying the same value for the same reason:
+ * it is not the bound under test, it is what makes a FAILURE of the bound
+ * under test show up as a killed child rather than as a suite that never
+ * finishes. Twenty seconds is the shipped NETWORK_TIMEOUT_MS
+ * (src/pool.ts:111), and the tests that pass it override the shipped
+ * bound down to 1500ms, so the margin is more than ten times the value
+ * being waited on.
+ */
+const SPAWN_BOUND_MS = 20_000;
 
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: "Teardown Test",
@@ -56,14 +69,23 @@ function baseEnv(): NodeJS.ProcessEnv {
  * hide anything, because the helper asserts the guard produced at most
  * one line and everything else still lands in stderr.
  */
+/**
+ * `timeout` is a SPAWN BOUND ON THE CHILD, and it exists so that a test
+ * over a command that must RETURN can fail rather than hang (M4-P19 fix
+ * round). Without it, a defect that makes teardown wait forever makes the
+ * witness for that defect wait forever too, which is a guard that cannot
+ * go red in the most literal way available. A killed child reports
+ * `status: null`, and the tests that pass this assert on the status.
+ */
 function runCli(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {},
 ): CliResult {
   const result = spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
     cwd: opts.cwd,
     env: opts.env ?? baseEnv(),
+    ...(opts.timeout === undefined ? {} : { timeout: opts.timeout }),
   });
   const raw = result.stderr ?? "";
   const lines = raw.split("\n");
@@ -180,10 +202,12 @@ function teardown(
   taskId: string,
   extra: string[] = [],
   env?: NodeJS.ProcessEnv,
+  timeout?: number,
 ): CliResult {
   return runCli(["teardown", "--task", taskId, ...extra], {
     cwd: scratch.fleet,
     env,
+    timeout,
   });
 }
 
@@ -695,4 +719,698 @@ test("teardown usage errors exit 64 and an unknown task exits 1", (t) => {
   const outside = runCli(["teardown", "--task", "x"], { cwd: makeTempDir(t) });
   assert.equal(outside.status, 1);
   assert.match(outside.stderr, /not a fleet home/);
+});
+
+/* ================================================================== *
+ * M4-P19: post-reclaim teardown on a RECONSTRUCTED pool record.
+ *
+ * THE MECHANISM THESE GUARD, stated once here rather than per test:
+ * DESTRUCTION AUTHORIZED BY A FIELD THAT WAS GUESSED RATHER THAN DERIVED,
+ * and its twin, DESTRUCTION AUTHORIZED BY THE PRESENCE OF A FLAG RATHER
+ * THAN BY A GATE.
+ *
+ * meta.json survives a reclaim and carries six of the eight PoolRecord
+ * fields. It does NOT carry `remote` or `branch`, and those two are what
+ * `defaultRef` is built from, which is what landed-ness is judged against,
+ * which is what authorizes deleting the task branch. So a guess there is
+ * not a cosmetic inaccuracy: it is the V-1 defect reached from the reclaim
+ * side.
+ *
+ * TWO STRUCTURALLY DIFFERENT DANGEROUS STATES are reddened below, and the
+ * captures of each mutant are in delivery/work-history/m4-p19.md:
+ *
+ *   D1, "the flag is a destruction override". The natural mis-read of
+ *       "mirrors the existing explicit-destruction pattern": pass
+ *       discard: true and deleteBranchForce: true, because there is no
+ *       record so nothing can be checked. Reddened by the dirty-worktree
+ *       member (UNCOMMITTED loss, through discard) and by the unlanded
+ *       member (COMMITTED loss, through deleteBranchForce). Those two are
+ *       structurally different: different gate, different thing lost, and
+ *       an implementation can defeat one while passing the other.
+ *   D2, "fill the two missing fields with plausible defaults" (origin and
+ *       main). Reddened by the non-default-branch member, where the guess
+ *       RESOLVES and says landed while the real default branch has none
+ *       of the work.
+ * ================================================================== */
+
+/**
+ * A scratch whose upstream default branch is NOT `main`. The decoy branch
+ * is what makes a guessed `branch: "main"` resolve instead of failing
+ * safe at the fetch, which is the difference between a witness and a
+ * test that would pass against the dangerous state.
+ */
+function makeScratchWithDefaultBranch(
+  t: { after(fn: () => void): void },
+  defaultBranch: string,
+): Scratch {
+  const tmp = makeTempDir(t);
+  const fleet = join(tmp, "fleet");
+  assert.equal(runCli(["init", fleet]).status, 0);
+  const upstream = join(tmp, "upstream");
+  gitOk(tmp, ["init", `--initial-branch=${defaultBranch}`, upstream]);
+  writeFileSync(join(upstream, "readme.md"), "upstream\n");
+  gitOk(upstream, ["add", "-A"]);
+  gitOk(upstream, ["commit", "-m", "commit one"]);
+  const clone = join(fleet, "projects", "demo");
+  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+  const briefFile = join(tmp, "brief.md");
+  writeFileSync(briefFile, "# Brief\n\nDo the thing.\n");
+  const stub = join(tmp, "payload.sh");
+  writeFileSync(stub, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  return { tmp, fleet, upstream, clone, briefFile, stub };
+}
+
+function recordOf(scratch: Scratch, taskId: string): string {
+  return join(scratch.fleet, "worktrees", `${taskId}.pool.json`);
+}
+
+/** Delete the pool record and leave the worktree: the post-reclaim shape. */
+function reclaimRecord(scratch: Scratch, taskId: string): void {
+  rmSync(recordOf(scratch, taskId));
+  assert.equal(existsSync(recordOf(scratch, taskId)), false);
+}
+
+/** Criterion 6: every *.pool.json under worktrees/, which must stay empty. */
+function recordFilesIn(scratch: Scratch): string[] {
+  return readdirSync(join(scratch.fleet, "worktrees"))
+    .filter((name) => name.endsWith(".pool.json"))
+    .sort();
+}
+
+test("teardown without a pool record names --from-reconstructed as the remedy", (t) => {
+  // Criterion 2. Asserted on the REMEDY TOKEN, not on the exit code: the
+  // exit code is nonzero today, so a test over it alone is green against
+  // the state this criterion exists to change.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-noflag").status, 0);
+  reclaimRecord(scratch, "t-noflag");
+
+  const refused = teardown(scratch, "t-noflag");
+  assert.equal(refused.status, 1, refused.stderr);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  assert.match(refused.stderr, /--from-reconstructed/);
+  assert.ok(existsSync(worktreeOf(scratch, "t-noflag")));
+  assert.equal(metaStatus(scratch, "t-noflag"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("teardown --from-reconstructed closes a landed task whose record did not survive", (t) => {
+  // Criterion 3's SUCCESS arm. Without it the other three could all be
+  // satisfied by a flag that refuses unconditionally, which would be a
+  // guard that cannot go green: the mirror of the one that cannot go red.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-recon-ok").status, 0);
+  commitInWorktree(scratch, "t-recon-ok", "work.md");
+  pushTaskBranch(scratch, "t-recon-ok");
+  squashLand(scratch, "t-recon-ok");
+  reclaimRecord(scratch, "t-recon-ok");
+
+  const done = teardown(scratch, "t-recon-ok", ["--from-reconstructed"]);
+  assert.equal(done.status, 0, done.stderr);
+  assert.equal(done.stdout.trim(), "torn down t-recon-ok");
+  assert.equal(existsSync(worktreeOf(scratch, "t-recon-ok")), false);
+  assert.equal(metaStatus(scratch, "t-recon-ok"), "closed");
+  // Criterion 6 on the one path that could plausibly have written one.
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("teardown --from-reconstructed names the field it could not derive and refuses", (t) => {
+  // Criterion 3's FAILURE arm. The message names `remote`, a PoolRecord
+  // field, rather than reporting a generic failure: the operator's remedy
+  // is different per field, so the field is the useful half.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-noremote").status, 0);
+  commitInWorktree(scratch, "t-noremote", "work.md");
+  pushTaskBranch(scratch, "t-noremote");
+  squashLand(scratch, "t-noremote");
+  reclaimRecord(scratch, "t-noremote");
+  // The clone's only remote goes, so neither field can be derived. The
+  // task is otherwise PERFECTLY tearable-down: the previous test proves
+  // this exact fixture exits 0 with the remote in place, so the refusal
+  // here is attributable to the unresolvable field and to nothing else.
+  gitOk(scratch.clone, ["remote", "remove", "origin"]);
+
+  const refused = teardown(scratch, "t-noremote", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  assert.match(refused.stderr, /unresolved field\(s\) remote, branch/);
+  assert.ok(existsSync(worktreeOf(scratch, "t-noremote")), "the refusal removed the worktree");
+  assert.equal(metaStatus(scratch, "t-noremote"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("teardown --from-reconstructed refuses a dirty worktree and removes nothing", (t) => {
+  // Criterion 4. RED WITNESS, dangerous state D1, member A: UNCOMMITTED
+  // work lost through a discard the flag was read as authorizing.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-recon-dirty").status, 0);
+  commitInWorktree(scratch, "t-recon-dirty", "work.md");
+  pushTaskBranch(scratch, "t-recon-dirty");
+  squashLand(scratch, "t-recon-dirty");
+  const worktree = worktreeOf(scratch, "t-recon-dirty");
+  // Both shapes of dirt the cleanliness check covers, so the witness is
+  // not specific to one of them.
+  writeFileSync(join(worktree, "work.md"), "work\nedited but not committed\n");
+  writeFileSync(join(worktree, "untracked.md"), "never added\n");
+  reclaimRecord(scratch, "t-recon-dirty");
+  const before = gitOk(worktree, ["status", "--porcelain"]);
+  assert.notEqual(before, "", "precondition: the worktree is dirty");
+
+  const refused = teardown(scratch, "t-recon-dirty", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  assert.ok(existsSync(worktree), "the refusal removed the worktree");
+  assert.equal(
+    gitOk(worktree, ["status", "--porcelain"]),
+    before,
+    "the refusal changed the worktree's status output",
+  );
+  assert.equal(metaStatus(scratch, "t-recon-dirty"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("teardown --from-reconstructed refuses an unlanded branch and names its tip", (t) => {
+  // Criterion 5. RED WITNESS, dangerous state D1, member B, structurally
+  // different from member A: the worktree is CLEAN, so the dirty gate has
+  // nothing to say, and what is at risk is COMMITTED work destroyed by a
+  // branch delete. An implementation that passes discard: true but not
+  // deleteBranchForce: true is green on A and red here; one that passes
+  // deleteBranchForce: true but not discard: true is the reverse. One
+  // witness is not a class.
+  const scratch = makeScratchWithDefaultBranch(t, "main");
+  assert.equal(spawnTask(scratch, "t-recon-unlanded").status, 0);
+  const tip = commitInWorktree(scratch, "t-recon-unlanded", "work.md");
+  pushTaskBranch(scratch, "t-recon-unlanded");
+  // Deliberately NOT landed: the upstream default branch never sees it.
+  reclaimRecord(scratch, "t-recon-unlanded");
+  const worktree = worktreeOf(scratch, "t-recon-unlanded");
+  assert.equal(gitOk(worktree, ["status", "--porcelain"]), "", "precondition: clean");
+
+  const refused = teardown(scratch, "t-recon-unlanded", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  // The TIP SHA, which is the recovery handle. Compared against git's own
+  // answer rather than a hand-written string.
+  assert.ok(refused.stderr.includes(tip), `${refused.stderr} does not name ${tip}`);
+  assert.ok(existsSync(worktree), "the refusal removed the worktree");
+  assert.equal(
+    gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-recon-unlanded"]),
+    tip,
+    "the refusal deleted or moved the task branch",
+  );
+  assert.equal(metaStatus(scratch, "t-recon-unlanded"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("teardown --from-reconstructed derives a non-main default branch instead of guessing", (t) => {
+  // RED WITNESS, dangerous state D2, structurally different from D1: the
+  // gates are intact and the INPUT to them is wrong.
+  //
+  // The upstream default branch is `trunk`. A DECOY `main` exists and is
+  // fast-forwarded to the task branch's tip, so an implementation that
+  // fills the two missing fields with "origin" and "main" fetches
+  // successfully, judges the branch LANDED, and destroys the worktree and
+  // deletes the branch, while `trunk` carries none of the work. The decoy
+  // is load-bearing: without it the guess would fail at the fetch and
+  // this test would be green against the dangerous state.
+  const scratch = makeScratchWithDefaultBranch(t, "trunk");
+  assert.equal(spawnTask(scratch, "t-trunk").status, 0);
+  const tip = commitInWorktree(scratch, "t-trunk", "work.md");
+  pushTaskBranch(scratch, "t-trunk");
+  gitOk(scratch.upstream, ["branch", "main", `task/t-trunk`]);
+  assert.equal(
+    gitOk(scratch.upstream, ["rev-parse", "refs/heads/main"]),
+    tip,
+    "precondition: the decoy main carries the task branch tip",
+  );
+  assert.notEqual(
+    gitOk(scratch.upstream, ["rev-parse", "refs/heads/trunk"]),
+    tip,
+    "precondition: the REAL default branch does not carry the work",
+  );
+  reclaimRecord(scratch, "t-trunk");
+
+  const refused = teardown(scratch, "t-trunk", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  // The refusal names the REAL default branch, which is the derived value.
+  assert.match(refused.stderr, /origin\/trunk/, refused.stderr);
+  assert.ok(refused.stderr.includes(tip), `${refused.stderr} does not name ${tip}`);
+  assert.ok(existsSync(worktreeOf(scratch, "t-trunk")), "the refusal removed the worktree");
+  assert.equal(
+    gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-trunk"]),
+    tip,
+    "the refusal deleted or moved the task branch",
+  );
+  assert.equal(metaStatus(scratch, "t-trunk"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("no teardown path writes a reconstructed record to worktrees/", (t) => {
+  // Criterion 6, as its own guard rather than only as an assertion tacked
+  // onto each test above. A reconstruction that reached disk would be
+  // indistinguishable from an original to every later reader, including
+  // the destroy gate that treats the record as authoritative.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-nowrite").status, 0);
+  reclaimRecord(scratch, "t-nowrite");
+
+  // Every command this phase touches, on the reconstructed task.
+  runCli(["pool", "list"], { cwd: scratch.fleet });
+  runCli(["doctor"], { cwd: scratch.fleet });
+  teardown(scratch, "t-nowrite");
+  teardown(scratch, "t-nowrite", ["--from-reconstructed"]);
+  assert.deepEqual(recordFilesIn(scratch), []);
+
+  // And the source carries no write of a reconstruction, so a future call
+  // site cannot reopen the hole without the change being visible here.
+  const poolSource = readFileSync(
+    fileURLToPath(new URL("../src/pool.ts", import.meta.url)),
+    "utf8",
+  );
+  const start = poolSource.indexOf("export function reconstructPoolRecord(");
+  const end = poolSource.indexOf("export interface CreateOptions {");
+  assert.ok(start > 0 && end > start, "reconstructPoolRecord could not be located");
+  const body = poolSource.slice(start, end);
+  assert.equal(body.includes("writeFileSync"), false, "the reconstruction writes a file");
+});
+
+test("this phase's new teardown behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "teardown-no-record-names-the-flag",
+    "teardown-from-reconstructed-closes-a-landed-task",
+    "teardown-from-reconstructed-names-unresolved-field",
+    "teardown-from-reconstructed-refuses-dirty-worktree",
+    "teardown-from-reconstructed-refuses-unlanded-branch",
+    "teardown-from-reconstructed-derives-the-default-branch",
+    "teardown-from-reconstructed-writes-no-record",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/* ================================================================== *
+ * M4-P19 FIX ROUND: THE REFUSAL SET IS PER SHAPE, AND THE PROSE SAID
+ * IT WAS NOT.
+ *
+ * THE MECHANISM. `teardownTask` forks on `meta.shape` and the two arms
+ * do not have the same gates: the ship arm probes cleanliness, the scout
+ * arm discards by design (PR-010). This phase opened a NEW WAY IN to
+ * both arms, `--from-reconstructed`, and described it with one sentence
+ * about "a task" that was true of only one arm. Measured at head
+ * abde402: `teardown --task s1 --from-reconstructed` against a scout
+ * worktree holding ` M readme.md` and `?? important.md` exited 0, said
+ * "torn down s1", and removed the tree; the same fixture on the phase
+ * base exited 1 and left it standing. Plan criterion 4 states the
+ * refusal with no shape qualifier.
+ *
+ * The two tests below are the DIFFERENCE, tested rather than asserted.
+ * The first is the new refusal. The second is the control that the
+ * with-record scout policy is unchanged, so the asymmetry the source
+ * comment now declares is a measured fact and not a claim about intent.
+ * ================================================================== */
+
+/**
+ * Uncommitted work of BOTH shapes the cleanliness probe covers, a tracked
+ * modification and an untracked file, so the witness is not carried by
+ * one of them. The porcelain is read UNTRIMMED, because a tracked
+ * modification's status code is " M" with a leading space and `gitOk`
+ * trims it away: criterion 4's register is byte-identical output, and a
+ * comparison over trimmed text is not that.
+ */
+function porcelainOf(scratch: Scratch, taskId: string): string {
+  const status = git(worktreeOf(scratch, taskId), ["status", "--porcelain"]);
+  assert.equal(status.status, 0, status.stderr);
+  return status.stdout;
+}
+
+function dirtyWorktree(scratch: Scratch, taskId: string): string {
+  const worktree = worktreeOf(scratch, taskId);
+  writeFileSync(join(worktree, "readme.md"), "upstream\nedited by the scout\n");
+  writeFileSync(join(worktree, "important.md"), "the only copy\n");
+  const porcelain = porcelainOf(scratch, taskId);
+  // The expected lines are READ from a real recorded run rather than
+  // written here: witness/captures/m4-p19-git-status-porcelain-dirty.txt
+  // holds `git status --porcelain` output captured against git 2.43.0 in
+  // exactly this state. The leading SPACE on the tracked-modification
+  // line is the byte a hand-written expectation loses first, and this
+  // probe's whole job is to decide whether a worktree may be destroyed.
+  const capture = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../witness/captures/m4-p19-git-status-porcelain-dirty.txt",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+  const lines = porcelain.split("\n").filter((line) => line !== "");
+  assert.equal(lines.length, 2, JSON.stringify(porcelain));
+  for (const line of lines) {
+    assert.ok(
+      capture.includes(`\n${line}\n`),
+      `live porcelain line ${JSON.stringify(line)} is not in the recorded capture`,
+    );
+  }
+  return porcelain;
+}
+
+test("teardown --from-reconstructed refuses a dirty SCOUT worktree and removes nothing", (t) => {
+  // Criterion 4, on the shape it was never walked against. The scout arm
+  // reaches `finish` with discard: true without probing cleanliness, so a
+  // test that only ever uses a ship task is green against this.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-recon-dirty", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-recon-dirty"), "report.md"),
+    "# Scout report\n",
+  );
+  const before = dirtyWorktree(scratch, "s-recon-dirty");
+  reclaimRecord(scratch, "s-recon-dirty");
+
+  const refused = teardown(scratch, "s-recon-dirty", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.equal(
+    refused.stderr.trim().split("\n").length,
+    1,
+    `expected a single reason line, got: ${refused.stderr}`,
+  );
+  assert.match(refused.stderr, /uncommitted changes or untracked files/);
+  const worktree = worktreeOf(scratch, "s-recon-dirty");
+  assert.ok(existsSync(worktree), "the refusal removed the scout worktree");
+  assert.ok(
+    existsSync(join(worktree, "important.md")),
+    "the untracked file was destroyed",
+  );
+  // Criterion 4's exact register: byte-identical porcelain before and after.
+  assert.equal(porcelainOf(scratch, "s-recon-dirty"), before);
+  assert.equal(metaStatus(scratch, "s-recon-dirty"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+/* ------------------------------------------------------------------ *
+ * SECOND PASS: the two regions the first pass listed as UNCOVERED.
+ *
+ * Its section 13 named them honestly rather than ticking them: item 4,
+ * a SCOUT WITH COMMITS torn down through the reconstructed path, was
+ * READ FROM SOURCE and never run; item 5, `--salvage` combined with
+ * `--from-reconstructed` on a scout, was read the same way. Both sit
+ * BEHIND the new dirty refusal, which is exactly why neither was reached
+ * by the tests that pass: the refusal that was just added shadows them.
+ * A region behind a new guard is the region most likely to be wrong and
+ * least likely to be exercised.
+ * ------------------------------------------------------------------ */
+
+test("a clean scout with commits is still refused through the reconstructed path", (t) => {
+  // UNCOVERED ITEM 4, now run. The tree is made CLEAN deliberately: the
+  // dirty refusal added by the first pass fires before this check, so a
+  // dirty fixture would be refused for the WRONG REASON and the test
+  // would pass without ever reaching the commits gate. That distinction
+  // is the whole point of driving it rather than reading it.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-recon-commits", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-recon-commits"), "report.md"),
+    "# Scout report\n",
+  );
+  const tip = commitInWorktree(scratch, "s-recon-commits", "scratch-finding.md");
+  assert.equal(
+    porcelainOf(scratch, "s-recon-commits"),
+    "",
+    "precondition: the worktree is CLEAN, so the dirty refusal cannot fire",
+  );
+  reclaimRecord(scratch, "s-recon-commits");
+
+  const refused = teardown(scratch, "s-recon-commits", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /has commits on its scratch branch/, refused.stderr);
+  // The tip is NAMED, and it is the tip the test made rather than one the
+  // message could have invented: the baseSha it is compared against comes
+  // from meta.json on this path, not from a pool record, and that
+  // substitution is what the first pass recorded as unverified.
+  assert.ok(
+    refused.stderr.includes(tip),
+    `the refusal does not name the branch tip ${tip}: ${refused.stderr}`,
+  );
+  assert.ok(existsSync(worktreeOf(scratch, "s-recon-commits")));
+  assert.equal(metaStatus(scratch, "s-recon-commits"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("--salvage does not open the reconstructed scout path, because a scout never pushes", (t) => {
+  // UNCOVERED ITEM 5, now run. `--salvage` is the escape from the SHIP
+  // dirty refusal, and the first pass reasoned from source that it is not
+  // an escape from the scout one. Reasoning is what this round exists to
+  // stop accepting, so the combination is driven.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-recon-salv", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-recon-salv"), "report.md"),
+    "# Scout report\n",
+  );
+  const before = dirtyWorktree(scratch, "s-recon-salv");
+  const refsBefore = gitOk(scratch.upstream, ["show-ref"]);
+  reclaimRecord(scratch, "s-recon-salv");
+
+  const refused = teardown(scratch, "s-recon-salv", [
+    "--from-reconstructed",
+    "--salvage",
+  ]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /uncommitted changes or untracked files/, refused.stderr);
+  assert.ok(existsSync(join(worktreeOf(scratch, "s-recon-salv"), "important.md")));
+  assert.equal(porcelainOf(scratch, "s-recon-salv"), before);
+  // AND NOTHING WAS PUSHED. The salvage path's whole action is a commit
+  // plus a push, so the upstream's ref list is where its side effect
+  // would show; comparing it before and after is what distinguishes
+  // "refused" from "refused after pushing".
+  assert.equal(
+    gitOk(scratch.upstream, ["show-ref"]),
+    refsBefore,
+    "the refused salvage changed the upstream's refs",
+  );
+  assert.equal(metaStatus(scratch, "s-recon-salv"), "open");
+});
+
+test("this second pass's teardown behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "teardown-from-reconstructed-refuses-committed-scout",
+    "teardown-salvage-never-rescues-a-reconstructed-scout",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+test("the with-record scout path still discards, so the asymmetry is measured not asserted", (t) => {
+  // THE CONTROL for the test above, and the reason the source comment
+  // calls the reconstructed path STRICTER rather than equal. PR-010
+  // decided that a scout is judged by its report and its scratch tree is
+  // discarded; this phase does not own that decision and does not change
+  // it. If this test ever starts refusing, the comment in src/teardown.ts
+  // is the thing that has gone stale, and it says so there.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-record-dirty", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-record-dirty"), "report.md"),
+    "# Scout report\n",
+  );
+  dirtyWorktree(scratch, "s-record-dirty");
+  assert.ok(
+    existsSync(recordOf(scratch, "s-record-dirty")),
+    "precondition: the pool record is present",
+  );
+
+  const done = teardown(scratch, "s-record-dirty", ["--from-reconstructed"]);
+  assert.equal(done.status, 0, done.stderr);
+  assert.equal(
+    existsSync(worktreeOf(scratch, "s-record-dirty")),
+    false,
+    "the with-record scout path stopped discarding; src/teardown.ts's asymmetry note is now stale",
+  );
+  assert.equal(metaStatus(scratch, "s-record-dirty"), "closed");
+});
+
+/* ================================================================== *
+ * M4-P19 FIX ROUND: THE ONE NETWORK CALL THIS PHASE ADDED IS BOUNDED.
+ *
+ * Teardown IS allowed to reach the network, so the reporting-path fix in
+ * test/pool.test.ts does not cover it. Allowed to reach is not allowed
+ * to wait forever: at head abde402 this command was still running when
+ * killed at 30s. `git ls-remote --symref <remote> HEAD` transfers a ref
+ * advertisement and nothing else, so a wall-clock bound on it cannot
+ * abort real work, which is why it gets one and `git fetch` and
+ * `git push` on the same paths deliberately do not.
+ * ================================================================== */
+
+async function silentListener(t: {
+  after(fn: () => void | Promise<void>): void;
+}): Promise<number> {
+  const net = await import("node:net");
+  const sockets: Array<{ destroy(): void }> = [];
+  const server = net.createServer((socket) => {
+    sockets.push(socket);
+  });
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      done();
+    });
+  });
+  t.after(
+    () =>
+      new Promise<void>((done) => {
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+        server.close(() => {
+          done();
+        });
+      }),
+  );
+  const address = server.address();
+  assert.ok(
+    address !== null && typeof address === "object",
+    "the silent listener reported no address",
+  );
+  return address.port;
+}
+
+test("teardown --from-reconstructed gives up on a remote that never answers", async (t) => {
+  // The property this rests on is a property of GIT, not of this kernel:
+  // git ls-remote does not give up on its own. That is measured rather
+  // than assumed, in witness/captures/m4-p19-git-ls-remote-silent-listener.txt,
+  // a real run against this same listener shape at two different waits,
+  // exit 124 and empty output both times. The assertion below reads that
+  // file so the claim is anchored to the capture rather than to belief.
+  const hangCapture = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../witness/captures/m4-p19-git-ls-remote-silent-listener.txt",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+  assert.match(
+    hangCapture,
+    /exit: 124 {3}elapsed: 20s {3}stdout and stderr: empty/,
+    "the recorded capture no longer shows git waiting unbounded",
+  );
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "t-recon-hang").status, 0);
+  reclaimRecord(scratch, "t-recon-hang");
+  gitOk(scratch.clone, ["symbolic-ref", "-d", "refs/remotes/origin/HEAD"]);
+  const port = await silentListener(t);
+  gitOk(scratch.clone, [
+    "remote",
+    "set-url",
+    "origin",
+    `git://127.0.0.1:${String(port)}/nope.git`,
+  ]);
+
+  // The shipped bound is 20s, which no test can afford to wait out, and a
+  // shipped bound short enough for a test would abort a legitimate
+  // ls-remote over a slow link. The seam is the same one src/watcher.ts
+  // and src/commands/lock.ts already use for exactly this reason.
+  // The child carries its own spawn bound so that an UNBOUNDED teardown
+  // fails this test instead of hanging the suite that is meant to catch
+  // it. 20s is comfortably above the 1500ms the command should take and
+  // comfortably below anything a human would call "forever".
+  const refused = teardown(
+    scratch,
+    "t-recon-hang",
+    ["--from-reconstructed"],
+    { ...baseEnv(), TIPHYS_GIT_NETWORK_TIMEOUT_MS: "1500" },
+    SPAWN_BOUND_MS,
+  );
+  assert.equal(
+    refused.status,
+    1,
+    `teardown did not give up on a silent remote (status ${String(refused.status)})`,
+  );
+  assert.match(refused.stderr, /unresolved field\(s\) branch/);
+  assert.match(refused.stderr, /did not answer within 1500ms and was killed/);
+  assert.ok(existsSync(worktreeOf(scratch, "t-recon-hang")), "the refusal removed the worktree");
+  assert.equal(metaStatus(scratch, "t-recon-hang"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("a malformed network-timeout override is ignored rather than honoured", async () => {
+  // A guard a bad environment can switch off is not a guard, and the
+  // switch-off here is silent: `Number("")` is 0, and spawnSync reads a
+  // timeout of 0 as NO TIMEOUT. So the empty string is not a cosmetic
+  // bad value, it is the exact value that would restore the unbounded
+  // behaviour this round removed.
+  //
+  // This arm is a UNIT test rather than an end-to-end one on purpose,
+  // and the reason is stated because the choice is a weakening. The
+  // shipped bound is 20s; an end-to-end witness for the FALLBACK would
+  // have to wait it out on every run, and a bound short enough to test
+  // would not be the shipped one. The end-to-end bound has its own
+  // witness above, against a remote that really does not answer.
+  const pool = (await import(new URL("../src/pool.ts", import.meta.url).href)) as {
+    NETWORK_TIMEOUT_MS: number;
+    resolveNetworkTimeoutMs(raw: string | undefined): number;
+  };
+  const shipped = pool.NETWORK_TIMEOUT_MS;
+  assert.ok(Number.isInteger(shipped) && shipped > 0, "the shipped bound is not a positive integer");
+  for (const bad of [undefined, "", " ", "0", "-1", "1.5", "nonsense", "1e3ms", "Infinity"]) {
+    assert.equal(
+      pool.resolveNetworkTimeoutMs(bad),
+      shipped,
+      `override ${JSON.stringify(bad)} was honoured instead of rejected`,
+    );
+  }
+  // And the accepted set is not empty, so the fallback is a decision and
+  // not a function that ignores its argument.
+  assert.equal(pool.resolveNetworkTimeoutMs("1500"), 1500);
+});
+
+test("this fix round's new teardown behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "teardown-from-reconstructed-refuses-dirty-scout",
+    "teardown-with-record-scout-still-discards",
+    "teardown-from-reconstructed-bounds-the-remote-probe",
+    "teardown-network-timeout-override-is-validated",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
 });

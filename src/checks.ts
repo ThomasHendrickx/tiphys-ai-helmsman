@@ -2908,18 +2908,102 @@ interface LoadedVerdict {
 }
 
 /**
+ * What reading a candidate document's own `kind` produced, in the THREE
+ * outcomes that fix round 2 exists to keep apart.
+ *
+ * THE MECHANISM FIX ROUND 2 CLOSES: `establishField` already separates ABSENT
+ * from UNUSABLE from UNCANONICAL, and both selection sites consumed it with a
+ * single `!== "established"`, which folds those outcomes back into one silent
+ * skip. So "this document declares no type" and "this document declares a type
+ * nobody could read" printed as the same fact, and that fact is the determinate
+ * negative "not a verdict". Measured at the round-1 head: a third review
+ * reading `verdict: FIX-ROUND-NEEDED` whose `kind:` was a one-element YAML list
+ * was dropped and `scripts/check-dual-review.mjs` reported that the pair
+ * approves. Eight deformations of one refusing document reached that same
+ * green, and the table is in delivery/work-history/m4-p10.md's section 13.
+ *
+ * WHERE THE LINE IS DRAWN, and it is drawn at the PRESENCE OF THE KEY rather
+ * than at the validity of its value:
+ *
+ *   `verdict`     the key is there and canonicalises to the word. A member.
+ *   `other`       the document ANSWERED and the answer is not `verdict`. That
+ *                 is a mapping carrying no `kind` key at all, a document that
+ *                 is not a mapping (a list, a scalar, an empty file), and a
+ *                 `kind` that reads as some other word. Each is a determinate
+ *                 negative: nothing here claims to be a typed document, or it
+ *                 claims to be a different one.
+ *   `unreadable`  the key IS there and its reading failed: a list, a map, a
+ *                 number, a boolean, null, an empty or whitespace-only string,
+ *                 or a string carrying a character outside printable ASCII.
+ *                 Writing a `kind` key is the claim to be a typed document, so
+ *                 a failed reading of it is a failed claim, not an absent one.
+ *
+ * WHY NOT REFUSE EVERY DOCUMENT THAT IS NOT A VERDICT. Because a project is
+ * entitled to keep other YAML beside its reviews, and a check that errored on
+ * it would be unusable. The property is not that every file is a verdict; it is
+ * that a file which LOOKS LIKE a verdict and could not be read as one is NAMED.
+ *
+ * EXPORTED, and that is the other half of the fix. `scripts/check-dual-review.mjs`
+ * had its OWN selection rule, a raw `value["kind"] !== "verdict"`, which is a
+ * second reader of one fact: it dropped `kind: Verdict` and `kind: "  verdict  "`
+ * that this file's canonicalisation admits. Two readers of one fact is the shape
+ * this repository's fix-round contract calls fixing the INSTANCE rather than the
+ * MECHANISM, and the sibling `establishDelegatedRegime` one screen down was
+ * lifted for exactly that reason. There is now one reader.
+ */
+export type VerdictKindReading =
+  | { kind: "verdict"; record: Record<string, unknown> }
+  | { kind: "other" }
+  | { kind: "unreadable"; found: string };
+
+export function readVerdictKind(value: unknown): VerdictKindReading {
+  const record = asRecord(value);
+  if (record === undefined) {
+    return { kind: "other" };
+  }
+  const reading = establishField(record, "kind");
+  if (reading.kind === "absent") {
+    return { kind: "other" };
+  }
+  if (reading.kind === "unusable" || reading.kind === "uncanonical") {
+    /* The vocabulary is the DOCUMENT's, as it is at `establishField`: a reader
+       looking at their own YAML is helped by "a list" and by the codepoint and
+       position of the character they cannot see, and not by "unestablished". */
+    return { kind: "unreadable", found: reading.found };
+  }
+  if (reading.value !== "verdict") {
+    return { kind: "other" };
+  }
+  return { kind: "verdict", record };
+}
+
+/**
  * Every verdict document committed under `<context>/delivery/review/`.
  *
- * A file that is not a regular file, does not decode, or does not carry
- * `kind: verdict` is SKIPPED rather than reported, because that directory also
- * holds this project's prose reviews and a check that reddened on a markdown
- * file would be unusable. What is NOT skipped is the directory being
- * unreadable, which the caller turns into a violation: "nothing to compare" and
- * "could not look" are different facts.
+ * A file that does not carry `kind: verdict` is SKIPPED rather than reported,
+ * because that directory also holds this project's prose reviews and a check
+ * that reddened on a markdown file would be unusable. What is NOT skipped is
+ * the directory being unreadable, which the caller turns into a violation:
+ * "nothing to compare" and "could not look" are different facts.
+ *
+ * AND A CANDIDATE THAT COULD NOT BE LOOKED AT IS THE SECOND HALF OF THAT SAME
+ * SENTENCE, WHICH THE FIRST ROUND WROTE AND APPLIED AT ONE SITE ONLY. A
+ * `.yaml`, `.yml` or `.json` file here has passed the only filter that
+ * separates a candidate verdict from a prose review, so bytes that cannot be
+ * READ and bytes that do not DECODE are not "this is not a verdict", they are
+ * "nobody knows whether this is a verdict". Dropping such a file SHRINKS the
+ * set the merge predicates reason over, which is the fail-open direction for a
+ * predicate that approves when the set is clean: measured at the reviewed head,
+ * a third review reading FIX-ROUND-NEEDED with one malformed line left
+ * `verdict-pair-approves` printing that the pair approves. So they are returned
+ * as diagnostics and every caller seeds its violation list with them, exactly
+ * as `headGroupFor` already does for a sibling with no usable head.
  */
 function loadCommittedVerdicts(
   contextDirectory: string,
-): { ok: true; verdicts: LoadedVerdict[] } | { ok: false; reason: string } {
+):
+  | { ok: true; verdicts: LoadedVerdict[]; unexaminable: Diagnostic[] }
+  | { ok: false; reason: string } {
   const directory = join(contextDirectory, REVIEW_DIRECTORY);
   /* `classifyEntry` HAS NO `directory` KIND: a directory lands in `irregular`,
      which is the kind that means "present and not safe to OPEN AS A FILE". So
@@ -2929,7 +3013,7 @@ function loadCommittedVerdicts(
      exist would have been dead code that always took the error arm. */
   const entry = classifyEntry(directory);
   if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, verdicts: [] };
+    return { ok: true, verdicts: [], unexaminable: [] };
   }
   if (entry.kind === "unexaminable") {
     return { ok: false, reason: entry.reason };
@@ -2947,20 +3031,32 @@ function loadCommittedVerdicts(
     return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
   }
   const verdicts: LoadedVerdict[] = [];
+  const unexaminable: Diagnostic[] = [];
   for (const name of names.sort()) {
+    /* THE ONE SKIP THAT IS A DETERMINATE ANSWER RATHER THAN A FAILURE TO LOOK.
+       A `.md` prose review carries no document structure this check could read
+       and was never a candidate; the extension is the whole of the claim. Every
+       refusal below is about a file that DID pass this filter. */
     if (!/\.(ya?ml|json)$/i.test(name)) {
       continue;
     }
     const path = join(directory, name);
     const read = readOperatorPath(path);
     if (!read.ok) {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and could not be read, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${read.reason}`,
+      });
       continue;
     }
     const decoded = decodeDocument(read.body, path);
     if (!decoded.ok) {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and did not decode, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${decoded.reason}`,
+      });
       continue;
     }
-    const record = asRecord(decoded.value);
     /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
        `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
        over, so a lookalike character in `kind` does not produce a wrong
@@ -2974,16 +3070,27 @@ function loadCommittedVerdicts(
        here: more verdicts in the group means more chances to find a shared
        value, never fewer. A file that is not a verdict at all still fails this
        test, because no canonical form turns a prose review into `verdict`. */
-    if (record === undefined) {
+    /* THE ONE READER, AND FIX ROUND 2 IS THAT IT IS ONE READER WITH THREE
+       OUTCOMES RATHER THAN A BOOLEAN. `readVerdictKind` is documented at its
+       own definition; what matters here is that `unreadable` is a DIAGNOSTIC
+       and `other` is a skip, because a document whose `kind` key is present and
+       whose reading FAILED has not said it is not a verdict, it has said
+       nothing that could be read. The skip below is now reached only by a
+       document that answered. */
+    const kindReading = readVerdictKind(decoded.value);
+    if (kindReading.kind === "unreadable") {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and declares a kind field that could not be read as a word (it is ${kindReading.found}), so whether it is a verdict refusing this head could not be established, and a merge check that could not read one document's own type must not report the rest of them clean`,
+      });
       continue;
     }
-    const kindReading = establishField(record, "kind");
-    if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
+    if (kindReading.kind !== "verdict") {
       continue;
     }
-    verdicts.push({ path, record });
+    verdicts.push({ path, record: kindReading.record });
   }
-  return { ok: true, verdicts };
+  return { ok: true, verdicts, unexaminable };
 }
 
 /**
@@ -3212,6 +3319,264 @@ function decorrelationTriple(record: Record<string, unknown> | undefined): strin
   }).join(" | ");
 }
 
+/* ------------------------------------------------------------------ */
+/* The head, and what it is allowed to be (M4-P10)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A commit sha as `schemas/verdict.schema.json` spells it.
+ *
+ * RESTATED HERE RATHER THAN BORROWED FROM THE SCHEMA, and that is not
+ * duplication by accident. Nothing on the shipped path validates the SIBLING
+ * documents this check loads, which is recorded at `dualReviewDecorrelation`
+ * below, so a sibling carrying an abbreviated `head` reaches the grouping code
+ * whatever the schema says. A check that trusted the schema for this would put
+ * a short sha in its own group of one and never compare it to anything, which
+ * is the fail-open direction.
+ */
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/** One verdict's group key, or the reason it does not have one. */
+type HeadKey = { ok: true; value: string } | { ok: false; message: string };
+
+/**
+ * Establish the head a verdict claims to review.
+ *
+ * TWO REFUSALS, AND THEY ARE DIFFERENT FACTS. An UNESTABLISHED `head` is the
+ * ordinary absent-or-unusable-or-uncanonical reading every other dimension in
+ * this file gets, with its own sentence from `unestablishedReason`. A head that
+ * IS established and is not forty hex digits is a SECOND SPELLING of a fact
+ * some other document may state in full, and it is refused on its own terms,
+ * because no canonical form reconciles an abbreviation with the forty-character
+ * sha it abbreviates without resolving both against a repository this check is
+ * never given.
+ *
+ * Case never reaches the pattern as a problem: `establishField` folds it, so an
+ * upper-case sha and a lower-case one are already ONE key by the time the test
+ * runs. That is the direction the hazard row asks for, two spellings of one
+ * head becoming one group rather than two.
+ */
+function headKeyOf(record: Record<string, unknown> | undefined, where: string): HeadKey {
+  const reading = establishField(record, "head");
+  if (reading.kind !== "established") {
+    return {
+      ok: false,
+      message: `${where} ${unestablishedReason(reading, "head") as string}, so the reviews cannot be grouped by the head they reviewed, and a delegated grant is not satisfied by a review that does not say what it reviewed`,
+    };
+  }
+  if (!FULL_SHA.test(reading.value)) {
+    return {
+      ok: false,
+      message: `${where} declares head ${reading.value}, which is not forty lowercase hexadecimal digits; an abbreviated sha is a second spelling of one head and would form its own group of one, which is never compared to anything`,
+    };
+  }
+  return { ok: true, value: reading.value };
+}
+
+/** The committed verdicts for one (phase, head), plus every sibling refused a key. */
+interface HeadGroup {
+  members: LoadedVerdict[];
+  unkeyed: Diagnostic[];
+}
+
+/**
+ * Select the verdicts for one `(phase, head)` out of a directory's committed set.
+ *
+ * WHY A SIBLING WITH NO USABLE HEAD BECOMES A VIOLATION RATHER THAN BEING
+ * SKIPPED, which is the whole reason this is a function and not a `filter`.
+ * Dropping such a sibling silently SHRINKS the group, and a shrinking group is
+ * exactly the fail-open shape this file has already been bitten by twice, at
+ * `loadCommittedVerdicts` and at the `phase` canonicalisation. With three
+ * verdicts, two of them sharing a model family, giving the third an unreadable
+ * head would leave a compared pair of two and a green run. So every same-phase
+ * sibling that cannot be keyed is REPORTED as a violation and the remaining
+ * members are still compared: a reader is owed both facts.
+ */
+function headGroupFor(
+  verdicts: readonly LoadedVerdict[],
+  phaseKey: string,
+  headKey: string,
+): HeadGroup {
+  const members: LoadedVerdict[] = [];
+  const unkeyed: Diagnostic[] = [];
+  for (const candidate of verdicts) {
+    /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
+       read through the same function so the two are compared in one form
+       rather than one canonical value against one raw one.
+
+       AND THE TWO ARMS ARE SPLIT, WHICH THE FIRST ROUND LEFT JOINED. `phase` is
+       half of the join key, so a sibling whose phase cannot be ESTABLISHED is
+       unkeyable for exactly the reason a sibling with no usable head is, and
+       the paragraph above says what that costs. It was folded into one `||`
+       with the determinate case, so a verdict declaring no phase fell out
+       silently while one declaring a DIFFERENT phase fell out correctly.
+       Measured at the reviewed head through the shipped CLI: a refusing third
+       review with its `phase:` line deleted left both merge checks printing
+       their affirmative REPORT lines over the remaining two. */
+    const phaseReading = establishField(candidate.record, "phase");
+    if (phaseReading.kind !== "established") {
+      unkeyed.push({
+        pointer: "#/phase",
+        message: `${candidate.path} ${unestablishedReason(phaseReading, "phase") as string}, so it cannot be placed in or out of the group for phase ${phaseKey}, and a sibling that cannot be keyed must not shrink the set the delegated grant is read off`,
+      });
+      continue;
+    }
+    if (phaseReading.value !== phaseKey) {
+      continue;
+    }
+    const key = headKeyOf(candidate.record, candidate.path);
+    if (!key.ok) {
+      unkeyed.push({ pointer: "#/head", message: key.message });
+      continue;
+    }
+    if (key.value === headKey) {
+      members.push(candidate);
+    }
+  }
+  return { members, unkeyed };
+}
+
+/* ------------------------------------------------------------------ */
+/* The merge regime, read once and shared by both merge-precondition checks */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What reading the declared merge regime produced.
+ *
+ * THREE OUTCOMES, NOT TWO, AND THAT IS THE WHOLE REASON THIS EXISTS AS A TYPE.
+ * "The regime is not a delegated grant" and "the regime could not be
+ * established" are different facts with different consequences: the first is a
+ * REPORT, because there is genuinely no precondition to satisfy, and the second
+ * is a VIOLATION, because a merge check that cannot determine the regime must
+ * never report that nothing was required (SC-011).
+ */
+type RegimeOutcome =
+  | { kind: "delegated" }
+  | { kind: "report"; lines: string[] }
+  | { kind: "violation"; pointer: string; message: string };
+
+/**
+ * Read the declared delivery mode's merge authority out of a context directory.
+ *
+ * LIFTED OUT OF `dual-review-decorrelation` BY M4-P10, AND THE LIFT IS THE
+ * POINT RATHER THAN A TIDY-UP. M4-P10 adds a SECOND check that applies exactly
+ * where DR-0012's delegated grant applies (`verdict-pair-approves`, condition
+ * 2). Copying the regime reading into it would have produced two readers of one
+ * fact, which is the shape this repository's fix-round contract calls fixing the
+ * INSTANCE rather than the MECHANISM: a later correction to one reader would
+ * leave the other fail-open, and the three sites already repaired inside this
+ * block (recorded in the comments below) are the evidence that such corrections
+ * happen.
+ *
+ * Every message below is the one `dual-review-decorrelation` shipped, byte for
+ * byte, except that the two REPORT lines now name the CALLING check. That is
+ * deliberate: a reader who sees `REPORT verdict-pair-approves ... declares no
+ * delivery mode` must be able to tell which guard declined to run.
+ */
+function establishDelegatedRegime(
+  checkId: string,
+  contextDirectory: string,
+  phase: string,
+): RegimeOutcome {
+  const charterPresent =
+    classifyEntry(join(contextDirectory, "charter.yaml")).kind !== "absent";
+  if (!charterPresent) {
+    return {
+      kind: "report",
+      lines: [
+        `REPORT ${checkId} ${contextDirectory} declares no delivery mode ` +
+          `(no charter.yaml), so the verdicts for phase ${phase} were NOT evaluated against a ` +
+          `merge-authority regime; scripts/check-dual-review.mjs refuses such a directory outright`,
+      ],
+    };
+  }
+  const charter = readContextDocument(contextDirectory, "charter.yaml");
+  if (!charter.ok) {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `the charter is present and could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
+    };
+  }
+  /* SITE TWO OF THE SAME MECHANISM. `asRecord(charter.value)?.["delivery-mode"]`
+     used to flow into `String(modeId)` and into an `===` against every mode's
+     id, so a charter declaring NO delivery mode reddened with the sentence
+     "declares delivery mode undefined, which ... does not define". The verdict
+     was right by luck and the sentence was false: the charter declares no mode
+     rather than one called "undefined". Establishing it first gives absence its
+     own sentence, and gives the `===` below a non-empty string, which is also
+     what stops an id-less mode row (`eachMode` defaults a missing id to "")
+     from matching a charter whose delivery-mode is the empty string. */
+  const modeReading = establishField(asRecord(charter.value), "delivery-mode");
+  if (modeReading.kind !== "established") {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `${charter.path} ${unestablishedReason(modeReading, "delivery-mode") as string}, so no mode's merge-authority can be looked up and whether the delegated grant applies to phase ${phase} could not be established`,
+    };
+  }
+  const modeId = modeReading.value;
+  const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
+  if (!modesDocument.ok) {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `${charter.path} declares delivery mode ${String(modeId)} and ${MODES_DOCUMENT} could not be read, so that mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
+    };
+  }
+  /* BOTH SIDES CANONICAL, and the direction here is worth stating because it
+     is the one place in this function where collapsing makes a lookup SUCCEED
+     more often rather than fail. `eachMode` builds `row.id` with its own
+     `String(... ?? "")` and is shared with six other consumers, so it is left
+     alone and its output is canonicalised at THIS use site. Finding the mode
+     a charter actually names is the correct reading; the security-relevant
+     comparison is the `merge-authority` one below, and THAT one is fail-closed
+     under collapsing, because more values matching the delegated constant
+     means the decorrelation requirement applies more often, never less. */
+  const mode = eachMode(modesDocument.value).find((row) => {
+    const reading = canonicalScalar(row.id);
+    return reading.ok && reading.value === modeId;
+  });
+  if (mode === undefined) {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `${charter.path} declares delivery mode ${String(modeId)}, which ${modesDocument.path} does not define, so its merge-authority is unknown`,
+    };
+  }
+  /* SITE THREE, AND IT IS THE WORST OF THE FOUR BECAUSE IT DISABLES THE WHOLE
+     CHECK RATHER THAN ONE DIMENSION. `String(mode.mode["merge-authority"] ?? "")`
+     made a mode that declares NO merge-authority indistinguishable from one
+     declaring some other authority, and the not-a-delegated-grant arm below is
+     a REPORT rather than a violation. Measured on the shipped script before
+     this repair (probe P1 in delivery/work-history/m3-p9.md): a pair sharing
+     one model family, under a mode with its `merge-authority` line deleted,
+     exited 0 GREEN printing "mode full declares merge-authority , which is not
+     a delegated grant". That sentence is false and the exit code authorises
+     the merge the check exists to refuse. The reviewer did not find this one;
+     the derivation did. */
+  const authorityReading = establishField(mode.mode, "merge-authority");
+  if (authorityReading.kind !== "established") {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `${modesDocument.path} ${unestablishedReason(authorityReading, "merge-authority") as string} for mode ${modeId}, so whether the delegated grant applies to phase ${phase} could not be established, and a merge check that cannot determine the regime must not report that no decorrelation is required`,
+    };
+  }
+  const authority = authorityReading.value;
+  if (authority !== DELEGATED_MERGE_AUTHORITY) {
+    return {
+      kind: "report",
+      lines: [
+        `REPORT ${checkId} mode ${String(modeId)} declares merge-authority ${authority}, ` +
+          `which is not a delegated grant, so no decorrelation is required of the reviews of phase ${phase}`,
+      ],
+    };
+  }
+
+  return { kind: "delegated" };
+}
+
 /**
  * DR-0012's merge precondition, made into a comparison a command can make
  * against the verdict FILES rather than against a session's memory (M3R-004).
@@ -3247,15 +3612,24 @@ function decorrelationTriple(record: Record<string, unknown> | undefined): strin
  * criteria contract. So `review-contract` is compared separately and is
  * witnessed separately (criterion 7b).
  *
- * WHAT IT DOES NOT REACH, named rather than left to be found. Condition (d) of
- * step 3b, that neither verdict carries an unresolved high or medium finding,
- * is NOT checked here: the verdict schema's own root `if`/`then` already
- * forbids APPROVE beside a high or critical finding, and "unresolved" is a
- * state of the review thread rather than of the document. Nothing here decides
- * whether the two verdicts describe the same HEAD either: the verdict schema
- * carries no head field, so `phase` is the join key and the DIRECTORY is what
- * scopes a set of verdicts to one head. Both are stated in
- * delivery/work-history/m3-p9.md as declared readings rather than absorbed.
+ * WHAT IT DOES NOT REACH, named rather than left to be found, AND BOTH ITEMS
+ * THIS PARAGRAPH USED TO NAME HAVE BEEN CLOSED BY M4-P10. The first was
+ * condition (d) of step 3b, that neither verdict carries an unresolved high or
+ * medium finding; that is now the sibling check `verdict-pair-approves`, and
+ * the schema's own root `if`/`then` was widened from [high, critical] to
+ * [medium, high, critical] at the same time, because it had been one severity
+ * narrower than DR-0012 condition 2 ever since it shipped. The second was that
+ * nothing decided whether two verdicts describe the same HEAD; the schema now
+ * requires `head` and this check groups by `(phase, head)`.
+ *
+ * WHAT IS STILL NOT REACHED, so the paragraph does not read as complete. This
+ * check compares `produced-by` as a canonicalised STRING, never as a model
+ * FAMILY, so two values naming one vendor pass as decorrelated; that was
+ * measured twice against this repository's own reviews and recorded at
+ * delivery/verification/m4-prototype-probes.md:1. Closing it is M4-P11's
+ * declared scope, which edits this same function. And a
+ * `produced-by` line is written BY the reviewing agent, so it is forgeable; an
+ * observed alternative exists and is M4-D-06's business, not this check's.
  */
 export const dualReviewDecorrelation: DerivedCheck = {
   id: "dual-review-decorrelation",
@@ -3327,122 +3701,20 @@ export const dualReviewDecorrelation: DerivedCheck = {
        `error`. That is the path DR-0012's grant runs through, and it must never
        report green without knowing the regime. Imposing the same refusal here
        imposed it on a path the grant has nothing to do with. */
-    const charterPresent =
-      classifyEntry(join(contextDirectory, "charter.yaml")).kind !== "absent";
-    if (!charterPresent) {
-      return {
-        violations: [],
-        reports: [
-          `REPORT dual-review-decorrelation ${contextDirectory} declares no delivery mode ` +
-            `(no charter.yaml), so the verdicts for phase ${phase} were NOT evaluated against a ` +
-            `merge-authority regime; scripts/check-dual-review.mjs refuses such a directory outright`,
-        ],
-      };
+    const regime = establishDelegatedRegime(
+      "dual-review-decorrelation",
+      contextDirectory,
+      phase,
+    );
+    if (regime.kind === "report") {
+      return { violations: [], reports: regime.lines };
     }
-    const charter = readContextDocument(contextDirectory, "charter.yaml");
-    if (!charter.ok) {
+    if (regime.kind === "violation") {
       return {
-        violations: [
-          {
-            pointer: "#/produced-by",
-            message: `the charter is present and could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
-          },
-        ],
+        violations: [{ pointer: regime.pointer, message: regime.message }],
         reports: [],
       };
     }
-    /* SITE TWO OF THE SAME MECHANISM. `asRecord(charter.value)?.["delivery-mode"]`
-       used to flow into `String(modeId)` and into an `===` against every mode's
-       id, so a charter declaring NO delivery mode reddened with the sentence
-       "declares delivery mode undefined, which ... does not define". The verdict
-       was right by luck and the sentence was false: the charter declares no mode
-       rather than one called "undefined". Establishing it first gives absence its
-       own sentence, and gives the `===` below a non-empty string, which is also
-       what stops an id-less mode row (`eachMode` defaults a missing id to "")
-       from matching a charter whose delivery-mode is the empty string. */
-    const modeReading = establishField(asRecord(charter.value), "delivery-mode");
-    if (modeReading.kind !== "established") {
-      return {
-        violations: [
-          {
-            pointer: "#/produced-by",
-            message: `${charter.path} ${unestablishedReason(modeReading, "delivery-mode") as string}, so no mode's merge-authority can be looked up and whether the delegated grant applies to phase ${phase} could not be established`,
-          },
-        ],
-        reports: [],
-      };
-    }
-    const modeId = modeReading.value;
-    const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
-    if (!modesDocument.ok) {
-      return {
-        violations: [
-          {
-            pointer: "#/produced-by",
-            message: `${charter.path} declares delivery mode ${String(modeId)} and ${MODES_DOCUMENT} could not be read, so that mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
-          },
-        ],
-        reports: [],
-      };
-    }
-    /* BOTH SIDES CANONICAL, and the direction here is worth stating because it
-       is the one place in this function where collapsing makes a lookup SUCCEED
-       more often rather than fail. `eachMode` builds `row.id` with its own
-       `String(... ?? "")` and is shared with six other consumers, so it is left
-       alone and its output is canonicalised at THIS use site. Finding the mode
-       a charter actually names is the correct reading; the security-relevant
-       comparison is the `merge-authority` one below, and THAT one is fail-closed
-       under collapsing, because more values matching the delegated constant
-       means the decorrelation requirement applies more often, never less. */
-    const mode = eachMode(modesDocument.value).find((row) => {
-      const reading = canonicalScalar(row.id);
-      return reading.ok && reading.value === modeId;
-    });
-    if (mode === undefined) {
-      return {
-        violations: [
-          {
-            pointer: "#/produced-by",
-            message: `${charter.path} declares delivery mode ${String(modeId)}, which ${modesDocument.path} does not define, so its merge-authority is unknown`,
-          },
-        ],
-        reports: [],
-      };
-    }
-    /* SITE THREE, AND IT IS THE WORST OF THE FOUR BECAUSE IT DISABLES THE WHOLE
-       CHECK RATHER THAN ONE DIMENSION. `String(mode.mode["merge-authority"] ?? "")`
-       made a mode that declares NO merge-authority indistinguishable from one
-       declaring some other authority, and the not-a-delegated-grant arm below is
-       a REPORT rather than a violation. Measured on the shipped script before
-       this repair (probe P1 in delivery/work-history/m3-p9.md): a pair sharing
-       one model family, under a mode with its `merge-authority` line deleted,
-       exited 0 GREEN printing "mode full declares merge-authority , which is not
-       a delegated grant". That sentence is false and the exit code authorises
-       the merge the check exists to refuse. The reviewer did not find this one;
-       the derivation did. */
-    const authorityReading = establishField(mode.mode, "merge-authority");
-    if (authorityReading.kind !== "established") {
-      return {
-        violations: [
-          {
-            pointer: "#/produced-by",
-            message: `${modesDocument.path} ${unestablishedReason(authorityReading, "merge-authority") as string} for mode ${modeId}, so whether the delegated grant applies to phase ${phase} could not be established, and a merge check that cannot determine the regime must not report that no decorrelation is required`,
-          },
-        ],
-        reports: [],
-      };
-    }
-    const authority = authorityReading.value;
-    if (authority !== DELEGATED_MERGE_AUTHORITY) {
-      return {
-        violations: [],
-        reports: [
-          `REPORT dual-review-decorrelation mode ${String(modeId)} declares merge-authority ${authority}, ` +
-            `which is not a delegated grant, so no decorrelation is required of the reviews of phase ${phase}`,
-        ],
-      };
-    }
-
     const committed = loadCommittedVerdicts(contextDirectory);
     if (!committed.ok) {
       return {
@@ -3450,15 +3722,27 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const group = committed.verdicts.filter(
-      /* BOTH SIDES CANONICAL. `phase` above is already canonical; the sibling's
-         is read through the same function so the two are compared in one form
-         rather than one canonical value against one raw one. */
-      (candidate) => {
-        const reading = establishField(candidate.record, "phase");
-        return reading.kind === "established" && reading.value === phaseKey;
-      },
-    );
+    /* THE JOIN KEY IS NOW (phase, head), WHICH IS M4-P10's FIRST CHANGE. Until
+       this line the key was `phase` alone and the DIRECTORY was what scoped a
+       set of verdicts to one head, a convention declared in
+       delivery/work-history/m3-p9.md and enforced by nothing. Under that
+       convention two reviews of two DIFFERENT heads sitting in one directory
+       were compared as a pair and the grant read as satisfied, which is
+       DR-0012 condition 1's head clause
+       (delivery/decisions/DR-0012-delegated-merge-authority.md:22) asserted by
+       an operator rather than checked. The instance's OWN head is established
+       first, so a verdict that does not say what it reviewed cannot select a
+       group at all. */
+    const ownHead = headKeyOf(verdict, "this verdict");
+    if (!ownHead.ok) {
+      return {
+        violations: [{ pointer: "#/head", message: ownHead.message }],
+        reports: [],
+      };
+    }
+    const headKey = ownHead.value;
+    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const group = grouped.members;
 
     /* MEMBERSHIP FIRST. DR-0012 condition 1 says the two reviews are WRITTEN TO
        `delivery/review/` AND COMMITTED, so a verdict that is not among them is
@@ -3471,18 +3755,23 @@ export const dualReviewDecorrelation: DerivedCheck = {
         violations: [
           {
             pointer: "#/phase",
-            message: `this verdict is not among the ${String(group.length)} verdict document(s) committed under ${REVIEW_DIRECTORY} for phase ${phase}, so it is not a review the delegated grant can be satisfied by`,
+            message: `this verdict is not among the ${String(group.length)} verdict document(s) committed under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, so it is not a review the delegated grant can be satisfied by`,
           },
         ],
         reports: [],
       };
     }
 
-    const violations: Diagnostic[] = [];
+    /* THE SIBLINGS THAT COULD NOT BE LOOKED AT OR COULD NOT BE KEYED ARE
+       CARRIED IN, NOT DROPPED. See `loadCommittedVerdicts` and `headGroupFor`:
+       a candidate whose bytes do not read or decode, and a same-phase verdict
+       with an unusable phase or head, each shrink the group silently
+       otherwise, and a shrinking group is the fail-open shape. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
     if (group.length < 2) {
       violations.push({
         pointer: "#/phase",
-        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase}, and a delegated grant requires two independent clean-room reviews of the exact head`,
+        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and a delegated grant requires two independent clean-room reviews of the exact head`,
       });
     }
 
@@ -3534,11 +3823,279 @@ export const dualReviewDecorrelation: DerivedCheck = {
         violations.length > 0
           ? []
           : [
-              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} are distinct on ${DECORRELATION_DIMENSIONS.join(", ")}`,
+              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${DECORRELATION_DIMENSIONS.join(", ")}`,
             ],
     };
   },
 };
+
+
+/* ------------------------------------------------------------------ */
+/* verdict-pair-approves (M4-P10 step 5, DR-0012 condition 2)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The severities DR-0012 condition 2 bars an APPROVE from sitting beside.
+ *
+ * `low` is absent DELIBERATELY and the record says why:
+ * delivery/decisions/DR-0012-delegated-merge-authority.md:23 permits merging
+ * with a low finding provided it is fixed or tracked with a reason. The same
+ * three words are the escalation enum in `schemas/verdict.schema.json`, and the
+ * two must agree; M4-P10 widened both together, because the shipped pair had
+ * the schema stopping at `high` while the decision said `medium`.
+ */
+export const BLOCKING_SEVERITIES: readonly string[] = ["medium", "high", "critical"];
+
+/**
+ * The whole severity vocabulary, canonicalised, and the reason it exists BESIDE
+ * the blocking list rather than being inferred from it.
+ *
+ * WITHOUT IT, AN UNRECOGNISED SEVERITY IS SILENTLY NON-BLOCKING. `includes` over
+ * the blocking three answers "is this one of the three", and a review ranking a
+ * defect `blocker`, `sev1` or `showstopper` gets `false` from that question and
+ * sails through. The verdict schema forbids those words, and nothing on this
+ * gate's path validates the committed siblings, so the schema is not the guard
+ * here. Under a delegated grant an unrecognised severity has not been shown
+ * non-blocking, and unshown must be refused; the four words are the ones
+ * `schemas/verdict.schema.json` and `schemas/finding.schema.json` share.
+ */
+const SEVERITY_VOCABULARY: readonly string[] = ["low", "medium", "high", "critical"];
+
+/**
+ * The closed verdict vocabulary, exactly as `schemas/verdict.schema.json` spells
+ * it, and the one word in it that authorises a merge.
+ *
+ * WHY THE RAW SPELLING IS CHECKED HERE AND CANONICALISATION IS NOT ENOUGH, which
+ * is the opposite of the rule the decorrelation check follows one screen up and
+ * is opposite for a reason that is worth stating rather than looking like an
+ * inconsistency. THAT check REFUSES when two values are the same, so collapsing
+ * more spellings onto one value produces MORE refusals and is fail-CLOSED. THIS
+ * check APPROVES when a value equals one particular word, so collapsing produces
+ * more APPROVALS and is fail-OPEN: a sibling reading `Approve`, which
+ * `schemas/verdict.schema.json` forbids and which nothing on this path
+ * validates, would canonicalise to `approve` and be read as an authorisation.
+ * The direction of the comparison decides the direction of the collapse.
+ *
+ * So the canonical reading is still used to ESTABLISH that a value is there and
+ * is comparable, and the RAW string then has to be one of the two words.
+ */
+const VERDICT_VOCABULARY: readonly string[] = ["APPROVE", "FIX-ROUND-NEEDED"];
+const APPROVING_VERDICT = "APPROVE";
+
+/**
+ * DR-0012 CONDITION 2, MADE INTO A PREDICATE
+ * (delivery/decisions/DR-0012-delegated-merge-authority.md:23).
+ *
+ * WHAT WAS MISSING, stated as the gap rather than as a feature. Before this
+ * check, `scripts/check-dual-review.mjs` could not see a verdict's VALUE at
+ * all: measured against the whole of that script, `grep -c` returned 0 for
+ * `APPROVE`, 0 for `severity` and 0 for `findings`. So two properly
+ * decorrelated reviews that both REFUSED the merge passed the gate green, and
+ * so did an APPROVE sitting beside a finding the review itself ranked medium.
+ * Condition 1 looked checked and condition 2 was asserted by a human, which is
+ * the worse of the two states because it reads as progress.
+ *
+ * WHY IT IS A SEPARATE CHECK RATHER THAN MORE OF `dual-review-decorrelation`.
+ * They are different predicates over the same set, and section 2.3 rule 3's
+ * Kind B falsification is per-check: DEREGISTERING this one must make a
+ * refusing pair pass, which is only a witness if there is one id to deregister.
+ * Folding condition 2 into the decorrelation check would have made that
+ * witness unavailable and would have made one red indistinguishable from the
+ * other in the gate's output.
+ *
+ * WHY IT EVALUATES THE COMMITTED GROUP AND NEVER THE INSTANCE'S OWN FIELDS,
+ * which is the one place its shape differs from its sibling's. DR-0012
+ * condition 2 is a property of the two reviews WRITTEN TO `delivery/review/`
+ * AND COMMITTED. A document handed to this check that is not among them is not
+ * a review the grant can be satisfied by, and it also cannot break the
+ * predicate: what is asserted is about the committed set, which the stray
+ * document is not a member of. So there is no membership test here, and the
+ * empty case is not a hole: a `(phase, head)` selecting fewer than two
+ * committed verdicts is refused by the pair-size rule below.
+ *
+ * WHAT IT DOES NOT REACH, named rather than left to be found. "Unresolved" is
+ * a state of the review THREAD, and this check reads documents: a finding that
+ * was raised, fixed in a later round and left in the file still reddens here.
+ * That is the fail-closed direction and it is a real cost, paid deliberately,
+ * because the alternative is a resolution field an author sets on their own
+ * finding. Nothing here decides whether a `severity` was ranked honestly
+ * either; a review that calls a critical defect `low` passes, and no keyword
+ * reaches that.
+ */
+export const verdictPairApproves: DerivedCheck = {
+  id: "verdict-pair-approves",
+  type: "verdict",
+  requiresContext: true,
+  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+    if (contextDirectory === undefined) {
+      /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
+         than trusting a caller that reaches the check directly. */
+      return {
+        violations: [{ pointer: "#/verdict", message: "no context directory was supplied" }],
+        reports: [],
+      };
+    }
+    const verdict = asRecord(instance);
+    const phaseReading = establishField(verdict, "phase");
+    if (phaseReading.kind !== "established") {
+      return {
+        violations: [
+          {
+            pointer: "#/phase",
+            message: `the verdict ${unestablishedReason(phaseReading, "phase") as string}, so the other reviews of the same work cannot be selected`,
+          },
+        ],
+        reports: [],
+      };
+    }
+    const phaseKey = phaseReading.value;
+    const phase = verdict?.["phase"] as string;
+
+    const regime = establishDelegatedRegime("verdict-pair-approves", contextDirectory, phase);
+    if (regime.kind === "report") {
+      return { violations: [], reports: regime.lines };
+    }
+    if (regime.kind === "violation") {
+      return {
+        violations: [{ pointer: regime.pointer, message: regime.message }],
+        reports: [],
+      };
+    }
+
+    const ownHead = headKeyOf(verdict, "this verdict");
+    if (!ownHead.ok) {
+      return {
+        violations: [{ pointer: "#/head", message: ownHead.message }],
+        reports: [],
+      };
+    }
+    const headKey = ownHead.value;
+
+    const committed = loadCommittedVerdicts(contextDirectory);
+    if (!committed.ok) {
+      return {
+        violations: [{ pointer: "#/verdict", message: committed.reason }],
+        reports: [],
+      };
+    }
+    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const group = grouped.members;
+
+    /* SAME TWO SOURCES AS THE SIBLING CHECK, AND THE REASON IS SHARPER HERE.
+       This predicate says the pair APPROVES, so every document that could not
+       be examined is a document that could have been the refusal. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
+    if (group.length < 2) {
+      violations.push({
+        pointer: "#/verdict",
+        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two`,
+      });
+    }
+
+    for (const candidate of group) {
+      const reading = establishField(candidate.record, "verdict");
+      if (reading.kind !== "established") {
+        violations.push({
+          pointer: "#/verdict",
+          message: `${candidate.path} ${unestablishedReason(reading, "verdict") as string}, so whether this review approves the merge could not be established, and a merge check that cannot read a verdict must not report the pair clean`,
+        });
+      } else {
+        const raw = candidate.record["verdict"] as string;
+        if (!VERDICT_VOCABULARY.includes(raw)) {
+          violations.push({
+            pointer: "#/verdict",
+            message: `${candidate.path} declares verdict ${raw}, which is not one of the two words the closed vocabulary admits (${VERDICT_VOCABULARY.join(", ")}), so it cannot be read as an authorisation however it is spelled`,
+          });
+        } else if (raw !== APPROVING_VERDICT) {
+          violations.push({
+            pointer: "#/verdict",
+            message: `${candidate.path} reads ${raw} for phase ${phase} at head ${headKey}, so the pair does not approve this head and the delegated grant's condition 2 is not met`,
+          });
+        }
+      }
+      violations.push(...blockingFindings(candidate, phase, headKey));
+    }
+
+    return {
+      violations,
+      reports:
+        violations.length > 0
+          ? []
+          : [
+              `REPORT verdict-pair-approves ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} read APPROVE and carry no finding at ${BLOCKING_SEVERITIES.join(", ")}`,
+            ],
+    };
+  },
+};
+
+/**
+ * Every finding in one verdict that DR-0012 condition 2 bars a merge over.
+ *
+ * SEPARATE FROM THE CHECK BODY because the shapes it has to refuse are the
+ * interesting part and they are easy to lose in a loop. `findings` that is not
+ * a list, an entry that is not a map, and a `severity` that cannot be
+ * established are all REFUSALS rather than skips, for the reason the whole of
+ * this section follows: a value that has not been established is not a value
+ * that has been shown safe, and under a grant unshown must be refused.
+ */
+function blockingFindings(
+  candidate: LoadedVerdict,
+  phase: string,
+  headKey: string,
+): Diagnostic[] {
+  const raw = candidate.record["findings"];
+  if (raw === undefined) {
+    return [
+      {
+        pointer: "#/findings",
+        message: `${candidate.path} declares no findings, so whether it carries a blocking one could not be established for phase ${phase} at head ${headKey}`,
+      },
+    ];
+  }
+  if (!Array.isArray(raw)) {
+    return [
+      {
+        pointer: "#/findings",
+        message: `${candidate.path} declares findings as ${raw === null ? "null" : typeof raw === "object" ? "a map" : `a ${typeof raw}`}, which is not a list of findings, so whether it carries a blocking one could not be established`,
+      },
+    ];
+  }
+  const out: Diagnostic[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const finding = asRecord(raw[index]);
+    if (finding === undefined) {
+      out.push({
+        pointer: `#/findings/${String(index)}`,
+        message: `${candidate.path} finding ${String(index)} is not a map, so its severity could not be established`,
+      });
+      continue;
+    }
+    const severity = establishField(finding, "severity");
+    if (severity.kind !== "established") {
+      out.push({
+        pointer: `#/findings/${String(index)}/severity`,
+        message: `${candidate.path} finding ${String(index)} ${unestablishedReason(severity, "severity") as string}, so whether it blocks the merge could not be established`,
+      });
+      continue;
+    }
+    const id = establishField(finding, "id");
+    const named = id.kind === "established" ? (finding["id"] as string) : `at index ${String(index)}`;
+    if (!SEVERITY_VOCABULARY.includes(severity.value)) {
+      out.push({
+        pointer: `#/findings/${String(index)}/severity`,
+        message: `${candidate.path} ranks finding ${named} ${severity.value}, which is not one of the four severities the kernel's vocabulary admits (${SEVERITY_VOCABULARY.join(", ")}), so whether it blocks the merge could not be established`,
+      });
+      continue;
+    }
+    if (BLOCKING_SEVERITIES.includes(severity.value)) {
+      out.push({
+        pointer: `#/findings/${String(index)}/severity`,
+        message: `${candidate.path} carries finding ${named} at severity ${severity.value} for phase ${phase} at head ${headKey}, and a delegated grant is not satisfied while a review carries an unresolved finding at ${BLOCKING_SEVERITIES.join(", ")}`,
+      });
+    }
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ */
 /* The registry                                                         */
@@ -3582,6 +4139,10 @@ const registry: DerivedCheck[] = [
      id, and `registeredChecks` returns a copy, so this array's position carries
      no meaning any check reads. */
   dualReviewDecorrelation,
+  /* M4-P10 step 5. Appended rather than inserted, for the reason recorded on
+     the M3-P7 block above: `checksFor` filters by declared type and sorts by
+     id, so this array's position carries no meaning any check reads. */
+  verdictPairApproves,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

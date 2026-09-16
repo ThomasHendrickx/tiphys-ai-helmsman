@@ -1,0 +1,33 @@
+{
+  "id": "pool-list-reconstruction-is-network-free",
+  "behavior": "pool-list-reconstruction-is-network-free",
+  "tests": [
+    "pool list does not consult the network to reconstruct, even when it would answer",
+    "doctor's worktrees check does not consult the network either",
+    "pool list returns against a remote that accepts and never answers"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "reconstructPoolRecord(fleet, taskId, { network: false })",
+      "replace": "reconstructPoolRecord(fleet, taskId, { network: true })"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  if (!network) {\n    return {\n      ok: false,\n      reason:\n        `cannot resolve the default branch of remote ${remote} without the `",
+      "replace": "  if (false) {\n    return {\n      ok: false,\n      reason:\n        `cannot resolve the default branch of remote ${remote} without the `"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git ls-remote --symref <remote> HEAD",
+    "captures": [
+      "witness/captures/m4-p19-git-default-branch-resolution.txt"
+    ],
+    "provenance": "src/pool.ts resolves a project's default branch by spawning `git symbolic-ref` and, when that fails, `git ls-remote --symref <remote> HEAD`, so SPAWN_GREP matches the changed file and rule (f) binds. The capture is a real run of both commands against git 2.43.0 on 2026-09-16, taken on a clone made by `git clone` from a local upstream whose initial branch is main, and it records the third arm too (symbolic-ref --quiet after `symbolic-ref -d`, exit 1). The named test reads that file and asserts the LIVE ls-remote reproduces a line it contains before concluding that the reporting path declined to ask; the separator on the ref line is a TAB, which is the byte a hand-written expectation loses. The two dangerous states are structurally different: the first hands the reporting CALLER the network licence, the second removes the guard INSIDE the resolver so the licence is irrelevant. An implementation could defeat either alone."
+  }
+}

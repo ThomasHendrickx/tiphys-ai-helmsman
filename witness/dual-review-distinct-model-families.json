@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (authority !== DELEGATED_MERGE_AUTHORITY) {",
-      "replace": "    if (true) {"
+      "find": "  if (authority !== DELEGATED_MERGE_AUTHORITY) {",
+      "replace": "  if (true) {"
     }
   ]
 }

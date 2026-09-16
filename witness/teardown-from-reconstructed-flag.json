@@ -1,0 +1,25 @@
+{
+  "id": "teardown-from-reconstructed-flag",
+  "behavior": "teardown-from-reconstructed-closes-a-landed-task",
+  "tests": [
+    "teardown --from-reconstructed closes a landed task whose record did not survive",
+    "teardown --from-reconstructed refuses a dirty SCOUT worktree and removes nothing"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/teardown.ts",
+      "find": "    } else if (flag === \"--from-reconstructed\") {",
+      "replace": "    } else if (flag === \"--from-reconstructed-never-matches\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/teardown.ts",
+      "find": "      parsed.fromReconstructed = true;",
+      "replace": "      parsed.fromReconstructed = false;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
