@@ -17,8 +17,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/cutover.ts",
-      "find": "    const refusal = refuseOpenForWrite(target);\n    if (refusal !== undefined) {\n      return fail(refusal, 1);\n    }",
-      "replace": "    const raw = refuseOpenForWrite(target);\n    const refusal = raw !== undefined && raw.includes(\"named pipe\") ? raw : undefined;\n    if (refusal !== undefined) {\n      return fail(refusal, 1);\n    }"
+      "find": "    const target = resolve(out);\n",
+      "replace": "    const target = resolve(out);\n    writeFileSync(target, outcome.text);\n"
     }
   ],
   "consumesExternalOutput": {
