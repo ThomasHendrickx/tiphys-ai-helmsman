@@ -12,6 +12,7 @@
  *   1  the rehearsal ran and an observation did not hold
  *   2  usage error
  *   3  REFUSED: this trigger has a step that cannot be rehearsed
+ *   4  the script's own assertion helper does not discriminate (see selfCheck)
  *
  * WHY 3 IS ITS OWN CODE. A rehearsal that silently skipped an unrehearsable
  * step, and exited 0 on the steps around it, would be the exact shape
@@ -52,6 +53,56 @@ function observe(label, actual, expected) {
       "\n",
   );
   return ok;
+}
+
+/**
+ * THE GUARD ON THE GUARD, and it exists because the gap was MEASURED rather
+ * than imagined.
+ *
+ * Every arm below decides what it decides through `observe`. An `observe` that
+ * agrees with everything makes every `OBSERVED` line in this script
+ * meaningless, and the script still exits 0. That was measured on 2026-09-16:
+ * with `const ok = true` substituted into `observe`, ALL FOUR rehearsal tests
+ * stayed green and the suite noticed nothing. That is the shape T-008's
+ * postscript names, a guard that cannot go red, inside the rehearsal this
+ * phase ships.
+ *
+ * So the first thing every run does is put a pair that DISAGREES through
+ * `observe` itself, and read what comes back. It goes through `observe` and
+ * not through a private comparator on purpose: a check that bypassed `observe`
+ * would be green against exactly the substitution that was measured.
+ *
+ * The two probe lines are captured rather than printed, so an arm's output
+ * stays clean and a reader cannot mistake the deliberate MISMATCH for a real
+ * one.
+ */
+function selfCheck() {
+  const captured = [];
+  const realWrite = process.stdout.write.bind(process.stdout);
+  let disagreed;
+  let agreed;
+  process.stdout.write = (chunk) => {
+    captured.push(String(chunk));
+    return true;
+  };
+  try {
+    disagreed = observe("probe with a deliberately wrong pair", 1, 2);
+    agreed = observe("probe with a matching pair", 1, 1);
+  } finally {
+    process.stdout.write = realWrite;
+  }
+  const text = captured.join("");
+  if (disagreed !== false || agreed !== true || !text.includes("MISMATCH")) {
+    process.stderr.write(
+      "SELF-CHECK FAILED: observe() does not discriminate, so every OBSERVED " +
+        "line this script would print is meaningless\n",
+    );
+    return 4;
+  }
+  process.stdout.write(
+    "SELF-CHECK OK: observe() discriminates, so the OBSERVED lines below mean something\n",
+  );
+  return 0;
 }
 
 function git(cwd, args) {
@@ -538,6 +589,12 @@ function main(argv) {
       "usage: node scripts/rehearse-cutover-rollback.mjs --trigger <drain-reversal|freeze-point-restore|freeze-point-restore-input|retirement-unmet> [--port] [--keep]\n",
     );
     return 2;
+  }
+  /* Before any arm, and on every arm. A rehearsal whose assertion helper has
+     stopped discriminating must not be able to report a green. */
+  const self = selfCheck();
+  if (self !== 0) {
+    return self;
   }
   if (trigger === "drain-reversal") {
     return rehearseDrainReversal(keep);

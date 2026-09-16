@@ -1,0 +1,29 @@
+{
+  "id": "M4-P26",
+  "branch": "claude/m4-p26-rollback",
+  "filesToTouch": [
+    "delivery/plan/cutover/rollback.md",
+    "src/cutover.ts",
+    "src/commands/cutover.ts",
+    "scripts/rehearse-cutover-rollback.mjs",
+    "test/cutover.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p26.json",
+    "delivery/work-history/m4-p26.md"
+  ],
+  "citations": [
+    "D-19",
+    "DR-0025",
+    "DR-0031",
+    "DR-0035",
+    "DR-0036",
+    "DR-0037",
+    "DR-0042",
+    "T-025",
+    "C-1",
+    "C-2",
+    "C-3"
+  ]
+}

@@ -99,6 +99,26 @@ function runRehearsal(args: string[]) {
   });
 }
 
+/**
+ * Every arm of the rehearsal must PROVE its own assertion helper discriminates
+ * before its OBSERVED lines are worth anything, and that is asserted here
+ * rather than trusted. Measured 2026-09-16: with `observe` substituted to
+ * return true unconditionally, all four rehearsal tests stayed green. This
+ * assertion is what makes that substitution red.
+ */
+function assertSelfChecked(result: { stdout: string; stderr: string }): void {
+  assert.match(
+    result.stdout,
+    /^SELF-CHECK OK: observe\(\) discriminates/m,
+    result.stdout + result.stderr,
+  );
+}
+
+/** A MISMATCH line, anchored, so a label merely containing the word is not one. */
+function hasMismatch(stdout: string): boolean {
+  return /^MISMATCH /m.test(stdout);
+}
+
 /* -------------------------------------------------------------------- */
 /* Acceptance criterion 2: the rewrite is atomic, or nothing moves       */
 /* -------------------------------------------------------------------- */
@@ -484,19 +504,22 @@ test("cutover usage errors exit 64", () => {
 test("the rehearsal runs trigger 1 end to end against a scratch fleet and exits 0", () => {
   const result = runRehearsal(["--trigger", "drain-reversal"]);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+  assertSelfChecked(result);
   assert.match(result.stdout, /OBSERVED step 5 drain: got 0/);
-  assert.ok(!result.stdout.includes("MISMATCH"), result.stdout);
+  assert.ok(!hasMismatch(result.stdout), result.stdout);
 });
 
 test("the rehearsal exits nonzero on a weaker destination and 0 once the row is disposed of", () => {
   const failing = runRehearsal(["--trigger", "retirement-unmet"]);
   assert.equal(failing.status, 1, failing.stdout + failing.stderr);
+  assertSelfChecked(failing);
   assert.match(failing.stdout, /PORT R-CIT unported/);
   assert.match(failing.stdout, /WEAKER/);
   const repaired = runRehearsal(["--trigger", "retirement-unmet", "--port"]);
   assert.equal(repaired.status, 0, repaired.stdout + repaired.stderr);
+  assertSelfChecked(repaired);
   assert.match(repaired.stdout, /PORT R-CIT ported/);
-  assert.ok(!repaired.stdout.includes("MISMATCH"), repaired.stdout);
+  assert.ok(!hasMismatch(repaired.stdout), repaired.stdout);
 });
 
 /**
@@ -507,6 +530,7 @@ test("the rehearsal exits nonzero on a weaker destination and 0 once the row is 
 test("the rehearsal REFUSES trigger 2 step 3 and names the property in one line", () => {
   const result = runRehearsal(["--trigger", "freeze-point-restore"]);
   assert.equal(result.status, 3, "a refusal must not share an exit code with success or failure");
+  assertSelfChecked(result);
   const refusalLines = result.stdout.split("\n").filter((line) => line.startsWith("REFUSED "));
   assert.equal(refusalLines.length, 1, result.stdout);
   assert.ok(
@@ -518,9 +542,10 @@ test("the rehearsal REFUSES trigger 2 step 3 and names the property in one line"
 test("the rehearsal DOES rehearse the input to trigger 2 step 3 and exits 0", () => {
   const result = runRehearsal(["--trigger", "freeze-point-restore-input"]);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+  assertSelfChecked(result);
   assert.match(result.stdout, /member A absent key refused/);
   assert.match(result.stdout, /member B present-but-empty value refused/);
-  assert.ok(!result.stdout.includes("MISMATCH"), result.stdout);
+  assert.ok(!hasMismatch(result.stdout), result.stdout);
 });
 
 /* -------------------------------------------------------------------- */
@@ -614,6 +639,46 @@ test("the rollback document flips and verifies each of the five switches by name
   }
   assert.match(document, /flipped back by/);
   assert.match(document, /verified flipped by/);
+});
+
+test("this phase's new behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). The registry is
+     append-only, so a count here would be a claim about every future phase. */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "cutover-rollback-atomic-on-mid-apply-failure",
+    "cutover-rollback-refuses-switch-without-restore-to",
+    "cutover-rollback-moves-five-switches-and-records-return-value",
+    "cutover-drain-counts-in-flight-not-branches",
+    "cutover-cannot-see-list-names-the-pilot",
+    "cutover-restore-request-carries-every-pre-flip-value",
+    "cutover-restore-request-refuses-absent-field",
+    "cutover-restore-request-refuses-present-but-empty-field",
+    "cutover-restore-files-refuses-dirty-tree",
+    "cutover-port-verdict-needs-a-red-negative-witness",
+    "cutover-rollback-nonzero-when-fleet-state-not-published",
+    "cutover-rollback-refuses-freeze-point-restore-as-one-command",
+    "cutover-usage-errors",
+    "cutover-rehearsal-drain-reversal-end-to-end",
+    "cutover-rehearsal-retirement-both-arms",
+    "cutover-rehearsal-refuses-unrehearsable-step",
+    "cutover-rehearsal-covers-the-restore-request-input",
+    "cutover-rehearsal-self-check-discriminates",
+    "cutover-document-carries-three-triggers",
+    "cutover-document-every-step-has-command-and-observation",
+    "cutover-document-names-unrehearsable-steps",
+    "cutover-document-states-what-is-not-covered",
+    "cutover-document-file-half-cheap-authority-half-owner",
+    "cutover-document-five-switches-flip-and-verify",
+    "cutover-document-pilot-as-second-subject",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
 });
 
 test("the rollback document carries the pilot as a second subject with read-only steps", () => {

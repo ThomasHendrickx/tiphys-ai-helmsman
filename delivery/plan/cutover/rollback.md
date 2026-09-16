@@ -58,8 +58,8 @@ published by one rename, so a failure part way through leaves the file holding
 the five values it held before. A per-switch write would leave three switches
 saying `kernel` and two saying `current`, which describes a process with no
 owner for three of its five authorities. The implementation is at
-src/cutover.ts:211 and the two witnesses are at test/cutover.test.ts:128 and
-test/cutover.test.ts:168.
+src/cutover.ts:220 and the two witnesses are at test/cutover.test.ts:135 and
+test/cutover.test.ts:177.
 
 ## Two subjects, not one
 
