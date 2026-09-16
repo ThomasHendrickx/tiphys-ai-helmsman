@@ -320,3 +320,59 @@ it. Key the watch set on the artifact the harness guarantees, not on the one
 the agent might produce. The replacement derives its subjects from
 `<workflows>/wf_*/journal.jsonl` where `started > result`, and its beacon from
 the newest `agent-*.jsonl` mtime in that run.
+
+## Postscript 7: the fourth instance, and the mechanical rule that prevents it
+
+2026-09-16, 02:38. A fix-round workflow for M4-P2 died in **1,302 ms** with the
+same error this entry opens with: "Cannot create agent worktree: not in a git
+repository". Fourth occurrence.
+
+The cause is now precisely stated, because "remember to cd" has demonstrably
+not worked four times:
+
+**The shell working directory RESETS between tool calls.** A `cd` inside one
+Bash call does not persist to the next call, and it does not persist to a
+`Workflow` call either. `Workflow` with `isolation: 'worktree'` reads the
+SESSION working directory, which had reverted to `/home/user`, a directory that
+is not a git repository.
+
+So the rule is not "work in the repository". It is:
+
+> **A Bash `cd` to the repository root must immediately precede any worktree-
+> isolated dispatch, in the same assistant turn, with nothing between them.**
+
+The check costs one line and answers the actual question:
+
+```
+cd /home/user/tiphys-ai-helmsman && pwd && git rev-parse --is-inside-work-tree
+```
+
+The relaunch after that check succeeded. The cost of the failure was small
+because it fails FAST and LOUD, which is the one good property here: 1.3
+seconds and an explicit error, rather than an agent that runs for twenty minutes
+in the wrong place. A failure mode that announces itself is cheap to repeat and
+therefore easy to leave unfixed, which is probably why this is the fourth time.
+
+## Postscript 8: a reviewer's environmental claim, checked and not reproduced
+
+The M4-P2 reviewer explained that it could execute the `red-witness` gate where
+the implementer could not, because "my clone of this repository is NOT shallow
+(the implementer's worktree was)". Its finding stands on its own evidence, which
+is an executed gate run, and nothing below weakens it.
+
+The environmental half did not reproduce here:
+
+```
+main clone shallow?      false
+agent worktree shallow?  false
+orchestrator worktree?   false
+commits reachable from origin/main: 295
+```
+
+Nothing in this container is a shallow clone. Either the implementer made its
+own clone with `--depth`, which is invisible from here, or the reviewer inferred
+the cause of a failure it saw rather than measuring it. This is recorded because
+the difference matters for the next implementer: if worktrees WERE shallow, then
+`red-witness` would be unrunnable for every implementer and that would be a
+systemic gap worth a phase. Measured, it is not. Whatever stopped that
+implementer running the gate, it was not the depth of this repository.
