@@ -169,3 +169,51 @@ spot, discovered by an agent checking its own work.
 a SUSPICION, and the only action it authorises is a non-destructive copy. Any
 procedure that lets a timer destroy work is wrong regardless of what the timer
 is set to.
+
+
+## Third postscript: the beacon was in the wrong place all along
+
+Two agents of ONE workflow went quiet while the eight agents of every other
+workflow stayed busy. That correlation looked decisive: two independent agents
+finishing within minutes of each other is a coincidence, one workflow dying is
+an explanation.
+
+**It was wrong, and one command settled it.** The harness writes each agent's
+TRANSCRIPT continuously, at `<workflows>/<run>/agent-*.jsonl`. For the workflow
+whose two worktrees had been silent for 508 and 825 seconds, the newest agent
+transcript was **2 seconds old**. Both agents were alive and had been the whole
+time. They were reading, reasoning and running commands, none of which writes a
+file into the worktree.
+
+**So every watchdog in this session measured the wrong thing.** T-008 says the
+agent's artifact mtime is its beacon, and that is right for an agent told to
+write its output incrementally. It is WRONG for a harness-run agent, because the
+harness already maintains a better beacon and nothing told anyone to use it.
+
+| beacon | moves when | false positives |
+|---|---|---|
+| worktree file mtime | the agent happens to write a file | high: a long read-reason-run stretch looks dead |
+| agent transcript mtime | the agent does ANYTHING at all | none observed |
+
+The worktree measure produced three alerts in an hour, all false. The transcript
+measure would have produced none.
+
+**The rule: prefer a beacon the HARNESS maintains over one the agent maintains.**
+An agent-maintained beacon depends on the agent behaving; a harness-maintained
+one depends on the agent existing. Before arming any watchdog, ask what the
+infrastructure is already recording, because it is usually both more reliable
+and free.
+
+And the general form, which is the fourth variant of one mechanism this entry
+has now collected: **a guard is only as good as the correspondence between what
+it measures and what it claims.** Watching a subset makes a live agent look dead
+(T-014). Watching a union makes a dead one look alive (first postscript).
+Watching a bursty signal makes a working one look dead (this). None of the three
+is fixed by a threshold, and all three were found by checking the alert against
+reality rather than by trusting it.
+
+**What did NOT change.** The response rule from the second postscript stands and
+is what made all of this cheap: every alert triggered a non-destructive copy and
+nothing else, so three false positives cost three wasted `git bundle` calls and
+no work. A correct response makes a wrong detector survivable, which is the
+argument for fixing the response before fixing the detector.
