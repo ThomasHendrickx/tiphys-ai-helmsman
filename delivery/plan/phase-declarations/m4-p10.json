@@ -8,6 +8,7 @@
     "test/verdict-head.test.ts",
     "delivery/review/",
     "witness/fixtures/dual-review/",
+    "witness/dual-review-kind-case-still-counts.json",
     "witness/dual-review-distinct-model-families.json",
     "witness/dual-review-merge-authority-lookalike.json",
     "witness/dual-review-requires-two-verdicts.json",
