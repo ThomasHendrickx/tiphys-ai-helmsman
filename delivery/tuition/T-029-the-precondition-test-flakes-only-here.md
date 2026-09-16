@@ -109,6 +109,82 @@ outside the suite and the fix is to stop touching `/tmp` at all.
 Neither run has been done. It is written down because it is cheap, decisive, and
 nobody has done it in seven occurrences.
 
+## SETTLED, 2026-09-16, AND IT IS NOT THE RACE THIS ENTRY EXPECTED
+
+The concurrency experiment above was never needed. A cheaper one settles it, and
+the answer is an ORDERING DEPENDENCY inside a single file rather than a race
+between files.
+
+Same head, same toolchain, same clone, same single-test invocation, ONE variable:
+the mode of `/tmp/claude-0`, which is the directory holding both the checkout and
+the fetched Node 26 interpreter.
+
+| mode of `/tmp/claude-0` | result |
+|---|---|
+| `700`, the container default | **exit 1**, ERR_MODULE_NOT_FOUND on `src/cli.ts` from the unprivileged child |
+| `705`, after `chmod o+rx` | **exit 0**, 1 pass, 0 fail |
+
+That is the whole mechanism. `runCliUnprivileged` drops to an unprivileged uid
+and spawns `process.execPath`; at `700` that uid cannot traverse into
+`/tmp/claude-0`, so the child cannot resolve the repository's own source, and the
+test's assertion correctly reports it as an environment failure rather than a
+wrong verdict.
+
+### Why it looked like a race, and why re-running "fixed" it
+
+The helper walks UP from the path it is given, adding `0o055` at each ancestor
+strictly under `/tmp`, and it only ever ADDS bits. Nothing removes them. So:
+
+- A test given a fixture under `mkdtemp` (here `/tmp/tiphys-gates-*`) grants
+  traversal for THAT tree and never touches `/tmp/claude-0`.
+- A test given a path under `/tmp/claude-0` grants it for the whole session.
+
+Whether the first kind of test succeeds therefore depends on whether the second
+kind has ALREADY RUN. That is a dependency on execution order, and the order
+changes with file-level concurrency, with `--test-name-pattern`, and with which
+tests a filtered run includes at all.
+
+The mode transition was visible in the measurement and is the proof rather than
+the theory: in the passing arm `/tmp/claude-0` went from `705` to `755` during
+the run, which is exactly `0o705 | 0o055`, so the helper did reach it. In the
+failing arm it stayed at `700`, because the test aborted at the spawn before
+anything reached that call.
+
+**"Re-run it alone and it passes" worked for the same reason, and it is worse
+than a workaround: it is a self-erasing bug.** The first full run that includes a
+`/tmp/claude-0`-rooted test leaves the directory open, so every later run in that
+container passes. The advice earlier in this entry to re-run and quote both
+results was right about honesty and wrong about the cause.
+
+### What to do about it
+
+For a local run, grant and restore explicitly rather than depending on which
+tests happened to run first:
+
+```
+chmod o+rx /tmp/claude-0     # before
+chmod 700  /tmp/claude-0     # after, back to the container default
+```
+
+The repository's local-green driver now does this with a trap, so the restore
+happens even when the suite fails.
+
+### Why it has never been seen in CI, now explained rather than observed
+
+CI checks the repository out under the runner's workspace, not under a `0700`
+scratch directory, and it does not use a fetched interpreter under one either.
+Both halves of the precondition are absent there. That is a statement about the
+two environments, so it predicts the flake will stay CI-invisible rather than
+merely recording that it has been.
+
+### What this still does NOT establish
+
+Whether `test/witness.test.ts`, the other file that chmods shared ancestors, has
+the same ordering dependency. It was not exercised in either arm. And nothing
+here says the helper SHOULD grant traversal for the interpreter as well as the
+repository; that is a real gap in `test/` and closing it is a change to shipped
+test code, which is a phase's work and not a tuition entry's.
+
 ## How to behave when you meet it
 
 Re-run it alone and re-run the suite. In every recorded case both come back
