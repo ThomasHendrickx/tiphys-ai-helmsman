@@ -774,10 +774,10 @@
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
   "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
-  "charter-root-present-regime-determinable": "the gate's own command against the repository root does not report the regime unknown",
-  "charter-root-reaches-a-verdict": "with a committed pair of verdicts the root charter lets check-dual-review reach a verdict on the delegated path",
-  "charter-root-absent-errors-fail-closed": "removing the root charter from the same staged context makes the merge check exit 21 rather than green",
-  "charter-root-unusable-fails-loudly": "a root charter that does not decode and one naming an undeclared mode each fail with their own sentence",
-  "charter-root-validates-against-the-schema": "the root charter validates and a copy missing any one schema-required key is rejected naming that key",
-  "charter-root-mode-resolves-by-name": "the root charter's delivery-mode and assurance-tier each resolve to a mode assurance-modes.yaml declares"
+  "charter-root-present-regime-determinable": "the repository root carries a charter, so the merge check can determine the regime",
+  "charter-root-reaches-a-verdict": "with a committed pair of verdicts the root charter is what lets the check reach a verdict",
+  "charter-root-absent-errors-fail-closed": "removing the root charter from that same context makes the merge check error rather than green",
+  "charter-root-unusable-fails-loudly": "a root charter that is present and unusable fails loudly, and two different members do",
+  "charter-root-validates-against-the-schema": "the root charter validates, and a copy missing any one required key does not",
+  "charter-root-mode-resolves-by-name": "the root charter's declared mode is one assurance-modes.yaml defines, by name"
 }

@@ -122,21 +122,33 @@ test("the repository root carries a charter, so the merge check can determine th
 test("with a committed pair of verdicts the root charter is what lets the check reach a verdict", () => {
   const dir = stageRealCharterContext();
   try {
-    /* GREEN ARM. `are distinct on` is printed ONLY after the declared mode has
-       been found in `assurance-modes.yaml` and its `merge-authority` has been
-       read as the delegated grant, so this line is evidence that the delegated
-       path was taken and not that the check shrugged. A mode whose authority is
-       not delegated prints `is not a delegated grant` instead, which is why the
-       two sentences are asserted apart. */
+    /* `are distinct on` is printed ONLY after the declared mode has been found
+       in `assurance-modes.yaml` and its `merge-authority` has been read as the
+       delegated grant, so this line is evidence that the delegated path was
+       taken and not that the check shrugged. A mode whose authority is not
+       delegated prints `is not a delegated grant` instead, which is why the two
+       sentences are asserted apart. */
     const reached = runScript(dir);
     assert.equal(reached.status, 0, reached.output);
     assert.match(reached.output, /registered check\(s\) named dual-review-decorrelation ran over/);
     assert.match(reached.output, /are distinct on/, reached.output);
     assert.doesNotMatch(reached.output, /is not a delegated grant/, reached.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
-    /* RED ARM, ONE VARIABLE. Same directory, same verdicts, same mode document;
-       the charter is removed and nothing else changes. This is the CI error the
-       phase exists against, reproduced inside the suite. */
+test("removing the root charter from that same context makes the merge check error rather than green", () => {
+  /* THE RED ARM OF THE TEST ABOVE, ONE VARIABLE. The same staging function
+     builds the same directory with the same verdicts and the same mode
+     document; the charter is removed and nothing else changes. This is the CI
+     error the phase exists against, reproduced inside the suite, and it is a
+     separate test so that a reader of the suite output sees the dangerous state
+     named rather than buried inside a green one. */
+  const dir = stageRealCharterContext();
+  try {
+    const before = runScript(dir);
+    assert.equal(before.status, 0, `the control arm was not green: ${before.output}`);
     rmSync(join(dir, "charter.yaml"));
     const refused = runScript(dir);
     assert.equal(refused.status, 21, refused.output);
