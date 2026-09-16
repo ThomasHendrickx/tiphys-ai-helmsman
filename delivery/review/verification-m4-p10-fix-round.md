@@ -1,614 +1,538 @@
-# Delta verification: M4-P10 fix round
+# Delta verification: M4-P10 fix round 2
 
-Reviewer role: delta verifier. Started 2026-09-16.
+Subject: branch claude/m4-p10-verdict-head-and-medium
+Reviewed delta: a6db78d94b61e812526f22a5a2d751e45c003fe5..c1b9a088739afc0d49258e8022f51be492bacf92
+
+STATUS: IN PROGRESS. This file is written incrementally; its mtime is the beacon.
 
 ## Plan
 
-1. Confirm the dispatched head sha resolves.
-2. Read CLAUDE.md, plan section, work history in full.
-3. Run the work history's own derivation command, then widen it.
-4. Walk each original finding: mechanism, other call sites, reproduction at
-   the old head versus the new one.
-5. Attack the round itself: red witnesses, fail-open guards, pinned counts,
-   the claim grep (both forms), the suite sentence, C-1/C-2/C-3.
-6. Apply DR-0027 reachability to every HIGH/MEDIUM and set blocking status.
+1. Read the three prior review documents in full.
+2. FIRST CHECK: does the work history state what its derivation did NOT cover?
+   Run the derivation command myself. Widen it in a direction the author excluded.
+3. Per original finding: name the mechanism, enumerate other call sites,
+   reproduce at a6db78d and show gone at c1b9a08.
+4. Attack the round: red witnesses (defang them), guards that cannot go red,
+   counts pinned over append-only registries, the claim grep in both forms,
+   the four-part suite sentence, C-1/C-2/C-3.
+5. DR-0027 reachability for every HIGH or MEDIUM.
 
-Written incrementally; this file is the beacon.
+Load average at start: see the suite section below.
 
-## 0. A stale clone cost the first hour of this review, and the correction
-##    is recorded rather than erased
+## 1. FIRST CHECK: the derivation, run and then widened
 
-`git clone --no-local /home/user/tiphys-ai-helmsman <scratch>` clones from a
-LOCAL FILESYSTEM MIRROR, not from GitHub. That mirror's copy of
-`claude/m4-p10-verdict-head-and-medium` was itself stale: it stopped at
-`deae190a03affe711efa854fefcfd6fe0454d63f` (the commit that lands the two
-clean-room reviews), one commit short of where the real branch already was.
-The dispatched head, `a6db78d94b61e812526f22a5a2d751e45c003fe5`, did not
-exist in that mirror at all.
-
-I treated the sha's absence as a dispatch error and wrote most of a review
-against `deae190a03affe711efa854fefcfd6fe0454d63f`, concluding (correctly,
-for that commit) that no fix-round code existed yet, since the only
-commit past the reviewed head `6a5e5af` was the evidence-landing commit.
-That conclusion could not survive contact with the real branch: pushing my
-own report commit to `origin` failed as a non-fast-forward, which is what
-uncovered the mirror's staleness. `git remote set-url origin
-https://github.com/ThomasHendrickx/tiphys-ai-helmsman` and a fresh `git
-fetch` produced the real tip:
+The round's own not-covered statement exists and is long (work history section
+13.5, seven numbered items). Item 6 publishes a command and its output:
 
 ```
-$ git fetch origin claude/m4-p10-verdict-head-and-medium
-   deae190..a6db78d  claude/m4-p10-verdict-head-and-medium -> origin/...
-$ git cat-file -t a6db78d94b61e812526f22a5a2d751e45c003fe5
-commit
+$ grep -rn '"kind"]' --include=*.ts --include=*.mjs src bin scripts
+src/checks.ts:158        (step) => asRecord(step)?.["kind"] === "verification-first",
+src/gates/manifest.ts:181    const kind = precondition["kind"];
 ```
 
-The dispatched sha was correct all along. **The lesson kept for this
-project's own record: a clone taken with `--no-local` from a sibling
-session's working copy is only as fresh as that copy, and a sha that fails
-to resolve there is not proof the sha is wrong.** A stale local mirror and a
-wrong dispatched sha produce the identical symptom (`git cat-file -t`
-fails), and the only way to tell them apart is to check the REAL remote,
-which is what I should have done before writing a page of analysis against
-the wrong commit. The rest of this document is against the real head,
-`a6db78d94b61e812526f22a5a2d751e45c003fe5`, rebased my report commit onto
-it (`git rebase --onto a6db78d... deae190... claude/m4-p10-...`), and
-redid every measurement below from there.
+and draws a conclusion from it: "TWO OTHER RAW `kind` READS EXIST IN THE TREE
+AND I LEFT BOTH ALONE", then "Neither is a document selected out of
+`delivery/review/`. ... In both, a failed reading shrinks nothing that a merge
+predicate then approves over".
 
-## 1. The delta actually contains a fix round
+**I ran the command. It does not print two rows. It prints seven, at both
+heads.** Verbatim, in my clone at `c1b9a08`:
 
-`git log deae190a03affe711efa854fefcfd6fe0454d63f..a6db78d94b61e812526f22a5a2d751e45c003fe5`
-shows six commits, not one, ending in "Work history: the suite-gate finding,
-the gate bundle, and the claim grep re-measured". `git diff --stat` between
-the two: 11 files changed, 1155 insertions, 67 deletions, touching
-`src/checks.ts`, `scripts/check-dual-review.mjs`, four `witness/*.json`
-specs, `test/dual-review.test.ts`, `test/verdict-head.test.ts`,
-`test/behaviors.json`, the phase declaration, and 743 new lines in the work
-history (its section 11, "FIX ROUND 1"). This is a real fix round with real
-code, not a paperwork-only commit.
+```
+$ grep -rn '"kind"\]' --include=*.ts --include=*.mjs src bin scripts
+src/gates/manifest.ts:181:    const kind = precondition["kind"];
+src/checks.ts:158:        (step) => asRecord(step)?.["kind"] === "verification-first",
+src/checks.ts:2947: * had its OWN selection rule, a raw `value["kind"] !== "verdict"`, which is a
+src/witness/spec.ts:120:    const kind = member["kind"];
+src/commands/validate.ts:208:  const kind = (instance as Record<string, unknown>)["kind"];
+src/commands/doctor.ts:471:    if (document["kind"] !== "charter") {
+scripts/check-dual-review.mjs:198:       `value["kind"] !== "verdict"`, and two readers of one fact diverged in
+```
 
-## 2. What the work history's own fix-round section claims
+And at the dispatched head, so this is not an artefact of the round's own edits:
 
-`delivery/work-history/m4-p10.md`'s section 11 (lines 916-1531 in the
-current file) is unusually thorough, and states, per its own row-by-row
-disposition table (11.1):
+```
+$ git --no-pager grep -n '"kind"\]' 470f788 -- 'src/*.ts' 'src/**/*.ts' 'bin/*' 'scripts/*'
+470f788:scripts/check-dual-review.mjs:201:      value["kind"] !== "verdict"
+470f788:src/checks.ts:158:        (step) => asRecord(step)?.["kind"] === "verification-first",
+470f788:src/commands/doctor.ts:471:    if (document["kind"] !== "charter") {
+470f788:src/commands/validate.ts:208:  const kind = (instance as Record<string, unknown>)["kind"];
+470f788:src/gates/manifest.ts:181:    const kind = precondition["kind"];
+470f788:src/witness/spec.ts:120:    const kind = member["kind"];
+```
 
-| finding | disposition claimed |
+Three rows were omitted from the published output: `src/commands/doctor.ts:471`,
+`src/commands/validate.ts:208` and `src/witness/spec.ts:120`. Two comment lines
+were also omitted, which is harmless. The three code rows are not.
+
+I checked each of the three:
+
+| site | what it does with an unreadable `kind` | verdict |
+|---|---|---|
+| `src/commands/validate.ts:208` (`resolveAutoType`) | returns `undefined`, which the command turns into a USAGE error | CLEAR, fail-closed and documented at its own definition |
+| `src/witness/spec.ts:120` (`memberKindDiagnostics`) | `continue`, skipping the required-field diagnostics for that member | benign: the schema's own enum for `kind` reddens the member independently, and no predicate reports affirmatively over the shrunk set |
+| `src/commands/doctor.ts:471` (`checkRetention`) | `continue`, and the check then reports `PASS` over the charters that remain | **A LIVE INSTANCE OF THE SAME MECHANISM.** Measured below. |
+
+**The widened search found something the narrow one did not.** Section 2 is the
+measurement.
+
+## 2. NF-2 (the widened search): the same mechanism, live, in a shipped command
+
+`src/commands/doctor.ts` is BYTE-IDENTICAL on `origin/main` and at this head
+(`git diff --stat origin/main c1b9a08 -- src/commands/doctor.ts` prints
+nothing), so the citation below resolves and this is PRE-EXISTING rather than
+introduced by the round.
+
+src/commands/doctor.ts:471 reads `if (document["kind"] !== "charter") { continue; }`
+inside a loop over `readdirSync(charter/)`. It is the round's own mechanism
+verbatim: a raw, uncanonicalised read of a document's own declared TYPE, whose
+failure is folded into the determinate negative "this is not a charter", so the
+document leaves the set that `checkRetention` then reports affirmatively over.
+
+**MEASURED, not inferred.** A fleet created by `tiphys init`, one good charter
+declaring three retention paths that exist, and a SECOND charter declaring a
+retention path that does NOT exist:
+
+```
+$ node bin/tiphys.ts init <fleet>
+$ <charter/charter.yaml: kind: charter, three real retention paths>
+$ <charter/second.yaml:  retention: work-history: notes/does-not-exist>
+```
+
+| `second.yaml`'s `kind:` line | `CHECK retention` |
 |---|---|
-| opus5 HIGH: four stale witness `find` strings | FIXED (11.3) |
-| opus5 MEDIUM: unreadable third review silently dropped | FIXED, "and it was one of FIVE sites" (11.2) |
-| opus5 MEDIUM (tracked): scope gate red, 27 inherited files | NOT fixed, not fixable in this phase (11.8) |
-| fable: stale citations | FIXED for every citation (11.7) |
-| fable: `preHeadCommit()` 200-commit walk | NOT fixed, left as a future trigger (11.9) |
+| `kind: charter` (CONTROL) | `FAIL .../second.yaml declares retention path notes/does-not-exist, which does not exist` |
+| `kind:` then `  - charter` (a one-element list) | `PASS 3 declared retention path(s) present and tracked` |
+| `kind: Charter` (case only) | `PASS 3 declared retention path(s) present and tracked` |
+| `kind: "char<U+200B>ter"` (invisible character) | `PASS 3 declared retention path(s) present and tracked` |
 
-It also reports finding TWO further defects itself, beyond both reviews:
-a masking bug in its own first attempt to fix the HIGH finding (11.5, a
-guard that could not go red because a second rule's message shared its
-first twelve words with the rule the tests already asserted), and the
-`suite` gate being red the whole time at `6a5e5af` because
-`test/behaviors.json`'s values were prose descriptions rather than the
-literal test names the gate matches against (11.11).
-
-I did not take this table on faith. Below is what I independently checked
-against it, and where I could not check something myself, I say so rather
-than repeating the claim as my own finding.
-
-## 3. HIGH finding: reproduced fixed, independently
-
-**The mechanism, unchanged from my own first pass**: a witness spec's
-`find` field targets shipped source by exact string; a refactor can zero
-its occurrence count (loud error) or double it (silent, since
-`.split(find).join(replace)` applies to every match). I re-ran my own
-widened derivation, over every `witness/*.json` file's `src/checks.ts`
-mutation members, against the FIXED head:
+Full run for the list arm, `DOCTOR_EXIT=0`, `second.yaml` named nowhere:
 
 ```
-$ python3 - <<'PY'
-import json, glob
-checks = open("src/checks.ts").read()
-total = 0
-missing = []
-for path in sorted(glob.glob("witness/*.json")):
-    data = json.load(open(path))
-    for ds in data.get("dangerousStates", []):
-        if ds.get("kind") == "mutation" and ds.get("file") == "src/checks.ts":
-            total += 1
-            cnt = checks.count(ds["find"])
-            if cnt != 1:
-                missing.append((path, cnt, ds["find"][:80]))
-print(f"total members: {total}, off-count members: {len(missing)}")
-for m in missing: print(m)
-PY
-total members: 79, off-count members: 1
-('witness/checklist-duplicate-probe-id-guard.json', 2, ...)
+CHECK retention PASS 3 declared retention path(s) present and tracked
+CHECK kernel-artifacts PASS ...
+DOCTOR_EXIT=0
 ```
 
-Down from 7 off-count members (6 of them the dual-review family) before the
-round, to 1. The one remaining is the SAME pre-existing, phase-unrelated
-member I found before the round even started (identical count, 2, at both
-`origin/main`'s merge base and the current head; already being addressed on
-the sibling M4-P11 branch per `git log --all --oneline` showing
-`1edfb89 Four witness members on main are BLUNTED: they match two sites,
-silently`). The widened search finds nothing new attributable to this
-round.
+Three structurally different members, one control. This is the SAME class the
+round closed for `delivery/review/`, one directory over, and it reaches
+`tiphys doctor`, a user-visible command in shipped `src/`.
 
-**Live reproduction against the shipped gate**, not only the static count:
+**Two consequences, stated separately because they have different dispositions.**
+
+1. The CODE defect is pre-existing, is on `main` today, and is in a file this
+   phase does not declare and must not touch (touching it would redden `scope`
+   further). **TRACKED, not blocking**, the same disposition this branch already
+   gives the four pre-existing AMBIGUOUS-2 witness members.
+2. The WORK HISTORY's section 13.5 item 6 states, as a measurement, that the
+   command finds two other raw `kind` reads and that "In both, a failed reading
+   shrinks nothing that a merge predicate then approves over". The command finds
+   five, and one of the three that were not printed does exactly that. The
+   defect is in `delivery/`, so under DR-0027 it does not block, but it is the
+   fix-round contract's item 2 ("publish the derivation ... its full output. Not
+   a summary of it") not being met at the one derivation a reader can re-run.
+
+**Why "the one a reader can re-run" is the sharp part.** The round's other four
+derivations are scripts under `lab/` (`derive-doors.mjs`, `probe-doors.mjs`,
+`derive-verdict-checks.mjs`, `witness-drift.mjs`). `git ls-files lab` prints
+nothing and the directory does not exist in the tree, so no later reader can
+re-run any of them. The single derivation that is a plain shell command, and
+therefore the only one I could reproduce independently, is the one whose
+published output does not match what it prints.
+
+## 3. The original blocking finding (NF-1), reproduced open and then closed
+
+**The mechanism**, restated in my own words before checking anything: a
+candidate document is removed from the set a merge predicate then reports
+affirmatively over, on the strength of a reading of its own declared type that
+FAILED, and the failure is reported as the determinate answer "this is not one
+of those". That is the round's own sentence and I agree with it.
+
+I staged the two shipped decorrelated APPROVE fixtures plus one third document
+derived from a shipped fixture by named edits (`verdict: FIX-ROUND-NEEDED`,
+`produced-by: family-c`, `framing: third-framing`,
+`review-contract: third-contract`), so the only thing that can redden when it is
+admitted is its refusing verdict. Then I ran the SHIPPED script at both heads.
+Staging directories are rendered `<dir>`; nothing else in any capture below is
+altered.
+
+| the third (refusing) document's `kind:` | a6db78d (before) | c1b9a08 (after) |
+|---|---|---|
+| a one-element YAML list | `green (2 ... examined)`, exit 0, file named nowhere | `error (0 ...)`, exit 21, `... declares a kind field that could not be read as a word (it is a list)` |
+| a string carrying U+200B | `green (2 ... examined)`, exit 0, file named nowhere | `error (0 ...)`, exit 21, `... (it is U+200B at position 4)` |
+| `kind: Verdict` (case only) | `red`, but `(2 review verdicts examined)` over a group of THREE | `red`, `(3 review verdicts examined)`, and the third is printed as a `verdict FIX-ROUND-NEEDED` line |
+| NO `kind` key at all (control) | `green (2 ...)`, exit 0 | `green (2 ...)`, exit 0 |
+| undeformed refusing verdict (control) | `red (3 ...)`, exit 1 | `red (3 ...)`, exit 1 |
+
+**NF-1 is CLOSED, at the mechanism and not at the instance.** The reviewer named
+one shape (a one-element list). The round fixed the READER, so seven other
+shapes moved with it, and it closed the SECOND reader (the script's own
+selection rule) at the same time, which is where the `units` divergence in row
+three lived and which no review had named.
+
+**The worst arm is closed too, and the round does not claim it.** `--precondition`
+decides whether the gate RUNS at all. With the only document in the directory
+carrying an unreadable `kind`:
 
 ```
-$ node --experimental-strip-types bin/tiphys.ts gates run --registry gate-registry.yaml \
-    --mode full --only red-witness --evidence <dir> --base origin/main --head HEAD
+--- a6db78d --- check-dual-review: 0 verdict document(s) under <dir>/delivery/review
+                exit=1        (do not run me: a not-applicable reached by not looking)
+--- c1b9a08 --- check-dual-review: 0 verdict document(s) under <dir>/delivery/review,
+                and 1 candidate(s) that could not be examined
+                exit=0        (applicable; evaluate then errors)
 ```
 
-This run was still in flight when I finished drafting the rest of this
-document (39 stored witnesses under heavy container contention take
-several minutes); its result is appended at the end of this section once it
-completed, unedited from what the tool printed.
+and the no-`kind` control still exits 1 at the new head, so the precondition did
+not become "any file makes me applicable".
+
+## 4. Attacking the round
+
+### A. Red witnesses, defanged by me rather than read
+
+Three defangs, each applied by hand to a throwaway worktree at `c1b9a08`, each
+built before running. Transliteration for every `node --test` capture in this
+section is declared at the end of it.
+
+**Defang 1: the collapse restored in `readVerdictKind` only** (the `unusable` /
+`uncanonical` arm made unreachable). Both halves of the fix use this reader, so
+this is the mechanism put back.
 
 ```
-gates: run 560c528811920954504b9764
-gates: registry gate-registry.yaml mode full
+x a sibling whose kind is a one-element list makes the gate error instead of reporting the pair clean
+x a sibling whose kind is an invisible character makes the gate error instead of reporting the pair clean
+x the two unreadable-kind members fail through different readers and say so differently
+v a sibling that declares no kind at all is still skipped, and the pair still approves
+v the gate runner and the derived check select the same documents, so a kind differing only in case is counted
+i tests 5   i pass 2   i fail 3
+```
+
+**Defang 2: the SCRIPT's own pre-round selection rule restored verbatim,
+`src/checks.ts` left fixed.** This is the "two readers of one fact" half on its
+own, and it has its own witness:
+
+```
+x a sibling whose kind is a one-element list makes the gate error instead of reporting the pair clean
+x a sibling whose kind is an invisible character makes the gate error instead of reporting the pair clean
+v the two unreadable-kind members fail through different readers and say so differently
+v a sibling that declares no kind at all is still skipped, and the pair still approves
+x the gate runner and the derived check select the same documents, so a kind differing only in case is counted
+i tests 5   i pass 2   i fail 3
+```
+
+**Defang 3: the repointed stored witness member applied by hand**
+(`dual-review-kind-case-still-counts` member 0, which puts the raw
+case-sensitive comparison back inside `readVerdictKind`).
+
+```
+member 0: find occurs 1 time(s) in src/checks.ts   ->   applied
+BUILD_UNDER_MUTATION=0
+x a verdict whose kind is written in another case still counts toward the group it correlates with
+i tests 2   i pass 1   i fail 1
+```
+
+It reddens the test the spec declares it guards, and the build still exits 0
+under the mutation, so it DEFANGS rather than breaks. That is the repoint
+verified independently, not read off the work history.
+
+**ARE THE TWO MEMBERS OF THE CLASS GENUINELY DIFFERENT?** Yes, and I checked the
+claim rather than accepting it. The list member returns from `establishField`
+through the non-string arm and never reaches `canonicalScalar`; the U+200B
+member is a string and is refused inside `canonicalScalar`. The two produce
+different sentences (`it is a list` versus `it is U+200B at position 4`), a
+third test asserts they DIFFER, and defang 1 reddens all three while defang 2
+reddens only the two that go through the script. Two structurally different
+members, not one defect witnessed twice.
+
+**THE CONTROL IS THE HALF THAT MATTERS AND IT HOLDS.** `a sibling that declares
+no kind at all is still skipped` is green under every defang above and green at
+head. Without it, a "fix" that refused every non-verdict YAML would pass all the
+other tests. The line is drawn at the PRESENCE OF THE KEY, and that is argued at
+the reader's own definition rather than left implicit.
+
+**TRANSLITERATION DECLARED for the three captures above.** They are real
+`node --test` output, and the reporter's glyphs were replaced so this file stays
+pure ASCII: U+2716 rendered `x` (10 occurrences), U+2714 rendered `v`
+(5 occurrences), U+2139 rendered `i` (6 occurrences). Per-test durations and the
+runner's other counter lines were cut. Nothing else in any capture was changed.
+
+### B. A guard that cannot go red
+
+I looked for a new check that passes for a reason unrelated to its property.
+
+- The two member tests assert an exit code of exactly 21 AND a message naming
+  the file AND `doesNotMatch(/the pair approves/)`, so a crash for an unrelated
+  reason does not satisfy them. Defangs 1 and 2 redden them.
+- The `members-differ` test would be green if BOTH members printed nothing, so I
+  checked: it first asserts the message matched at all (`line !== null`) before
+  comparing. Defang 1 reddens it.
+- The divergence test asserts the UNITS COUNT (`3 review verdicts examined`),
+  which is the only place the runner-versus-check divergence was ever visible;
+  asserting only the status would have been green before the round, which is the
+  trap the round names and avoids.
+
+### C. A count pinned over an append-only registry
+
+`test/behaviors.json` gains five keys and loses none
+(`git diff` on it shows five added lines and one line re-terminated). The
+registry test asserts each id with `hasOwnProperty` over a literal list of
+names; `grep -rn "behaviors" test/*.ts | grep -iE "length|\.size|count"` returns
+nothing, so no test in the tree pins a total over it. `gates.manifest.json` and
+`delivery/requirements/clause-map.json` are untouched by the delta.
+
+### D. The claim grep, both forms
+
+Over the whole work history: 86 matching lines, 174 occurrences line-based, 174
+occurrences wrap-insensitive. **The gap is ZERO**, so no hit phrase straddles a
+hard wrap anywhere in the file.
+
+Over section 13 alone: 14 matching lines, 54 occurrences line-based, 54
+wrap-insensitive. Both numbers reproduce the work history's own section 13.18
+exactly. Of the 14 lines, 7 are the capture in 13.18 quoting the other 7, and of
+those 7: two are the grep commands themselves, two are inside captured output (a
+`comm` result naming a test from `main`), two are the disposition table quoting
+the phrases it disposes, and one is the substantive claim ("a walker whose
+transitive arm has never fired is the shape of a search that cannot report a
+hit"), which is settled by the control run printed immediately below it. No hit
+is an unsettled over-claim.
+
+### E. The suite sentence, all four axes
+
+**Interpreter** node v26.6.0 at `/home/user/n26-review/bin/node`, which is NOT
+under `/tmp/claude-0` (CLAUDE.md standing warning 1's EACCES trap). **Build
+state** `dist/` built immediately before, `npm run build` exit 0, `git status
+--porcelain` clean afterwards apart from this report. **Invocation** `npm test`,
+which excludes the tracked `sandbox/` fixture a bare `node --test` picks up.
+**Tree** a fresh clone, detached at `c1b9a08`.
+
+```
+i tests 890   i suites 0   i pass 890   i fail 0
+i cancelled 0   i skipped 0   i todo 0   i duration_ms 277359.509736
+SUITE_EXIT=0
+```
+
+**890 tests, 890 pass, 0 fail, 0 SKIPPED, exit 0.** `/proc/loadavg` before
+`4.98 4.78 7.46`, after `6.19 7.00 7.85`. This reproduces the work history's own
+number exactly, and 890 is 885 (the round-1 head's total) plus the five tests
+this round adds. Transliteration declared: U+2139 rendered `i` (8 occurrences),
+and the per-test `v` lines were cut; nothing else changed.
+
+I did not need to establish a base result for a failure, because there was no
+failure. The container default toolchain was NOT used, for the reason CLAUDE.md
+records since 2026-08-20.
+
+### F. C-1, C-2, C-3
+
+```
+$ git diff a6db78d..c1b9a08 -- src/ scripts/ test/ bin/ witness/ \
+  | grep -nEi '\bpid\b|process\.kill|/proc/|unref\(|\.detached|tail -f|tail -n|kill\('
+(no output, exit 1)
+```
+
+No pid, no process liveness, no signals, no `/proc`, no log-tail read, no
+backgrounding anywhere in the delta's code.
+
+## 5. The SECOND widening: every consumer of the reading, not just the two loaders
+
+The work history's not-covered item 2 bounds both derivations to "the path from
+`delivery/review/` to the two merge predicates and nothing else". I widened
+there deliberately: `establishField` is the function whose four outcomes the
+mechanism collapses, so I enumerated every one of its consumers and read what
+each does with a reading that is not `established`.
+
+```
+$ grep -rn "establishField(" --include=*.ts --include=*.mjs src bin scripts
+```
+
+Thirteen lines, one of them the definition. The twelve consumers:
+
+| consumer | what a non-established reading becomes |
+|---|---|
+| `readVerdictKind` (`kind`) | THE FIX: `unreadable` diagnostic, or `other` for absent |
+| `decorrelationTriple` (each dimension) | rendered `<absent>` / `<unusable>` / `<uncanonical>`, kept distinct from a value |
+| `headKeyOf` (`head`) | a keyed refusal message |
+| `headGroupFor` (`phase`) | pushed onto `unkeyed`; only a phase MISMATCH is a silent skip, which is the correct determinate negative |
+| `establishDelegatedRegime` (`delivery-mode`) | violation |
+| `establishDelegatedRegime` (`merge-authority`) | violation |
+| `dualReviewDecorrelation` (`phase`) | violation |
+| the dimension loop (`produced-by`, `framing`, `review-contract`) | violation |
+| `verdictPairApproves` (`phase`) | violation |
+| `verdictPairApproves` (`verdict`) | violation |
+| `blockingFindings` (`severity`) | violation |
+| `blockingFindings` (`id`) | a fallback LABEL (`at index N`), never a drop |
+
+**Every one is fail-closed and none is a second instance of the mechanism.** The
+widening in this direction adds nothing, which is a measurement rather than an
+assumption, and it is the direction the round excluded.
+
+One pre-existing note, recorded because I checked it and it is not a finding
+against this round: `decorrelationTriple` renders every non-established reading
+as its OUTCOME WORD, so two verdicts whose dimensions fail in the same way
+compare equal on the identity test at `src/checks.ts:3753`, QUOTED because this
+branch changes that file. That direction is
+mildly permissive rather than fail-closed, it is named as such at the
+canonicalisation rules' own definition, and it is unchanged by this delta.
+
+## 6. What the round broke
+
+I looked for the round's own recurrence of the mechanism it cites, because the
+round itself found one (it moved source text that a fifth stored witness member
+anchored on).
+
+I re-derived the whole witness surface rather than the four the round names, at
+this head, over every `witness/*.json` mutation member against the file it
+points at:
+
+```
+mutation members: 327, non-mutation: 7, off-count: 4
+  witness/checklist-duplicate-probe-id-guard.json      member 0  src/checks.ts            2
+  witness/doctor-kernel-artifacts-resolution.json      member 0  src/commands/doctor.ts   2
+  witness/role-brief-set-derived-not-listed.json       member 0  test/roles.test.ts       2
+  witness/witness-ownership-baseline-is-the-merge-base.json member 0 src/gates/red-witness.ts 2
+```
+
+All four count 2 on `origin/main` as well (checked by reading each spec and each
+target out of `origin/main` and counting there), so all four are pre-existing and
+none is in a file this branch changes. **Zero broken members and zero newly
+blunted members are attributable to this round.** The repointed member counts
+exactly 1 and defangs correctly (section 4A, defang 3).
+
+Nothing else in the delta breaks: `test/behaviors.json` gains keys and loses
+none, the phase declaration gains one path, `asRecord` still excludes arrays so
+a top-level list document is still the determinate negative it was, and the
+precondition arm moved in the fail-closed direction with its control intact.
+
+## 7. Findings
+
+### NF-1 (the round-1 blocking MEDIUM): CLOSED
+
+Reproduced open at `a6db78d` and gone at `c1b9a08`, by my own fixtures, on three
+arms plus two controls plus the precondition arm (section 3). Closed at the
+MECHANISM: one exported reader with three outcomes, used by both selection
+sites, so the divergence between the runner's count and the check's set closed
+with it. Eight document shapes moved, not the one the reviewer named.
+
+### NF-2 (MEDIUM, NOT BLOCKING, TRACKED): the published derivation's output is not what its command prints, and the omitted rows include a live instance of the same mechanism
+
+**Evidence.** Work history section 13.5 item 6 publishes
+`grep -rn '"kind"\]' --include=*.ts --include=*.mjs src bin scripts` with two
+rows of output and concludes "TWO OTHER RAW `kind` READS EXIST IN THE TREE" and
+"In both, a failed reading shrinks nothing that a merge predicate then approves
+over". The command prints seven rows at both heads (section 1). Three code rows
+were omitted. One of them, src/commands/doctor.ts:471, is the mechanism live in
+a shipped command: three structurally different unreadable `kind` values on a
+second charter each produce `CHECK retention PASS 3 declared retention path(s)
+present and tracked` and `DOCTOR_EXIT=0` while that charter declares a retention
+path that does not exist, and the `kind: charter` control produces
+`CHECK retention FAIL ... which does not exist` (section 2).
+
+**REACHABILITY, stated plainly as DR-0027 requires.** The CODE defect reaches
+shipped `src/` and the user-visible command `tiphys doctor`. It is nonetheless
+**NOT BLOCKING**, for a reason I can name rather than a severity label: the file
+is byte-identical on `origin/main` and at this head, so merging this branch does
+not introduce it and refusing the merge does not remove it; and it is not on
+this phase's files-to-touch, so fixing it here would widen the diff into a file
+the phase has no business changing. It belongs in a follow-up phase with its own
+declaration. The DOCUMENT defect (the false enumeration) is confined to
+`delivery/`, which does not block.
+
+**What would close it.** Two separate actions. (1) Replace section 13.5 item 6's
+output with what the command prints, and restate the conclusion for five sites
+rather than two: three lines in a file already on this phase's declaration, no
+CI cycle of its own if it rides the merge. (2) Raise a follow-up phase for
+`src/commands/doctor.ts`'s charter selection, since `readVerdictKind` is now the
+exported shape that a `readCharterKind` would copy.
+
+### NF-3 (LOW, NOT BLOCKING, TRACKED): four of the five derivations cannot be re-run
+
+`lab/derive-doors.mjs`, `lab/probe-doors.mjs`, `lab/derive-verdict-checks.mjs`
+and `lab/witness-drift.mjs` are cited by name throughout section 13 and are not
+in the tree: `git ls-files lab` prints nothing and the directory does not exist.
+Their outputs are pasted, which is better than nothing, but no later reader can
+re-derive them or widen them. The one derivation that IS a plain shell command,
+and therefore the only one I could reproduce, is the one whose published output
+turned out wrong; that is not a coincidence a reviewer should let pass without
+saying so. Confined to `delivery/`, so it does not block.
+
+### Carried forward unchanged, both still correctly open
+
+- The `scope` gate is red because the branch was cut from
+  `plan/pstack-borrow-review` and the merge base carries no phase declaration. A
+  known DR-0031 process gap, an orchestrator item, confined to `delivery/`.
+  TRACKED, as round 1 and both clean-room reviews already concluded.
+- `preHeadCommit()`'s 200-commit walk stays unfixed. Test-only. TRACKED.
+
+## 8. Verdict
+
+**APPROVE.**
+
+Every finding above is TRACKED. None is blocking under DR-0027: NF-2's code half
+is pre-existing and byte-identical on `origin/main`, NF-2's document half and
+NF-3 are confined to `delivery/`, and the two carried-forward items were already
+tracked before this round began.
+
+**What I tried to break, and how it held.** I restored the collapse inside the
+exported reader and three of the five new tests reddened with the control still
+green; I restored the script's own pre-round selection rule with the reader left
+fixed and three reddened, a different three; I applied the repointed stored
+witness member by hand and the test it declares it guards reddened while the
+build still exited 0. I re-derived every one of the 327 witness mutation members
+rather than the five the round names, and found only the four pre-existing
+ambiguous members that are also ambiguous on `origin/main`. I enumerated all
+twelve consumers of `establishField` rather than the three functions the round
+bounded itself to, and every one is fail-closed. I ran the claim grep in both
+forms over the whole document and over section 13 and reproduced the round's own
+numbers exactly, with a wrap gap of zero. The suite is 890/890/0 fail/0 skipped
+on the floor toolchain with `dist/` built under `npm test`.
+
+**The one thing that did not hold is section 1**, and it is why this document
+spends its first page there: the round's own reviewer-facing first check, the
+not-covered statement, is long and specific and one of its seven items publishes
+output that its own command does not produce. The mechanism the round closed for
+`delivery/review/` is still open one directory over, in a shipped command, and
+the document says it is not.
+
+## 8b. Gates I ran myself, at my own commit
+
+Not quoted from the work history. Run at the commit that carries this document,
+`--mode full --base origin/main --head HEAD`, node v26.6.0.
+
+```
+gates: citations: green: linted 16 changed document(s) at 3bea9289304e73c1c148e83c2be80f4684bc61db:
+  504 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
 gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
-gates: red-witness: green: 39 witness(es) evaluated (4 own, 35 stored
-  re-evaluated in 512430ms); every witness red against every declared
-  dangerous state and green at head
-gates: every applicable gate is green
 ```
 
-**GREEN, confirmed live and independently**, not merely by re-reading the
-work history's own claim of green at an earlier intermediate commit
-(`3098650`). This run is at the actual final head,
-`a6db78d94b61e812526f22a5a2d751e45c003fe5`, `--base origin/main`, the same
-invocation this repository's own required `pull_request` gate uses. `4 own`
-matches the work history's own deduction (this branch changes exactly four
-files under `witness/`, each one spec); `35 stored re-evaluated` plus the
-`0 red 0 error` verdict means all 39 stored witnesses this diff triggers,
-including the four repointed ones, are now red against their dangerous
-states and green at this head. The HIGH finding's mechanism (a `find`
-string losing uniqueness) is fixed for every site this round's diff
-touches.
-
-**A detail the work history's own section 11.3 surfaces and I checked
-independently**: the fix does not merely repoint the four broken `find`
-strings, it also repairs the "blunted" one my first pass found
-(`dual-review-requires-two-verdicts` member 0, which had drifted from
-matching once to matching twice because round 0 added a second, textually
-similar guard). The repointed member now carries three lines of
-surrounding context specific to the `dualReviewDecorrelation` check
-(the `"#/phase"` pointer, which is unique to it; `verdictPairApproves` uses
-`"#/verdict"`). I confirmed this distinguishes the two sites by checking
-both messages directly in the current source:
-
 ```
-$ grep -n 'a delegated grant requires two independent\|condition 2 is a property of the PAIR' src/checks.ts
-3702:  ...and a delegated grant requires two independent clean-room reviews of the exact head
-3919:  ...and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two
+gates: red-witness: green: 39 witness(es) evaluated (5 own, 34 stored
+  re-evaluated in 369523ms); every witness red against every declared dangerous
+  state and green at head
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+RW_EXIT=0
 ```
 
-Two distinct message tails, confirming the two call sites of the
-`if (group.length < 2)` shape are now textually distinguishable at the
-line the witness's context now anchors on. I also checked that the TESTS
-were tightened to match, not only the spec (this is the part that actually
-closes the masking bug; a repointed witness anchor with an unchanged,
-prefix-only test assertion would still mask):
+`5 own` is the five `witness/*.json` specs this branch changes, which is the
+repoint of section 4A defang 3 confirmed by the gate rather than by my hand
+application alone. `/proc/loadavg` before the red-witness run `0.11 2.60 5.69`,
+after `13.36 8.89 7.24`; the run itself is not wall-clock sensitive in the way
+`coverage` is, and it was green regardless.
 
-```
-$ grep -n 'only 1 verdict document\|condition 2 is a property of the PAIR' test/dual-review.test.ts test/verdict-head.test.ts
-test/dual-review.test.ts:243: ...(check: dual-review-decorrelation)
-test/verdict-head.test.ts:575: ...(check: dual-review-decorrelation)
-test/verdict-head.test.ts:582: ...(check: verdict-pair-approves)
-```
+I did not run the whole bundle. `scope` is red for the reason in section 7 and
+`check-dual-review` is not-applicable on this repository (`ls delivery/review`
+is 202 files and `grep -Eic "\.(ya?ml|json)$"` over that listing prints 0,
+which I checked rather than took from the work history).
 
-Both the distinguishing tail AND the emitting check id are now asserted,
-in two separate assertions rather than one regex either rule could satisfy.
-This matches what section 11.5 claims and is not merely restated from it.
+## 9. Citations in this document
 
-**Verdict: FIXED, confirmed independently at both the static and the live
-gate level.**
+`git diff --name-only origin/main...origin/claude/m4-p10-verdict-head-and-medium`
+lists 49 files, including `src/checks.ts`, `scripts/check-dual-review.mjs`,
+`test/verdict-head.test.ts`, `test/behaviors.json`, `CLAUDE.md`, the five
+`witness/dual-review-*.json` specs, the work history and this file. Every
+citation into any of those is inside backticks or inside a fenced block, which
+the citations gate treats as QUOTED (M2-D-22), and deliberately does not
+resolve.
 
-## 4. MEDIUM finding: reproduced fixed, independently, with my own fixture
-
-**The mechanism, unchanged from my own first pass**: `loadCommittedVerdicts`
-treated "does not decode" identically to "is legitimately prose", both
-silently skipped. The fix (`git diff deae190 a6db78d -- src/checks.ts`,
-inspected directly) changes this: an unreadable or undecodable `.yaml`/
-`.yml`/`.json` file is now pushed onto a new `unexaminable: Diagnostic[]`
-array that both `dualReviewDecorrelation` and `verdictPairApproves` seed
-their violations with, rather than being `continue`d past. A parallel fix
-was made at `headGroupFor` (a verdict whose `phase` cannot be established
-now becomes a diagnostic instead of silently failing the join), and at
-`scripts/check-dual-review.mjs`'s own `committedVerdictPaths`, which the
-work history says was a FIFTH site neither review named.
-
-**Reproduced live, with my own fixture, against the FIXED script** (same
-staging shape as before the round, `test/dual-review.test.ts`'s own
-`stageContext`, quoted rather than resolved since that file is one this
-branch changes):
-
-```
-$ node scripts/check-dual-review.mjs <dir with a.yaml, b.yaml (both APPROVE), and
-    a third file, c-broken.yaml, containing:
-    "kind: verdict\nphase: M3-P9\nhead: dcbe6704...\nverdict: FIX-ROUND-NEEDED\n  bad: [unclosed">
-check-dual-review: error (0 review verdicts examined for decorrelation)
-1 document(s) under <dir>/delivery/review could not be examined, so whether
-a review refusing this head is among them is unknown and no merge verdict
-can be reached: <dir>/delivery/review/c-broken.yaml did not decode:
-<dir>/delivery/review/c-broken.yaml is not valid YAML: Nested mappings are
-not allowed in compact mappings
-exit=21
-```
-
-Before the round, the identical fixture produced `check-dual-review: green
-(2 review verdicts examined for decorrelation) ... the pair approves`,
-`exit=0`, with the broken file never named (I measured this myself against
-the pre-round code before I knew a real fix round existed; see Section 6).
-After the round: the gate ERRORS, names the exact file, and states plainly
-that no merge verdict can be reached, rather than silently reporting two
-verdicts and moving on. This is the fail-closed direction DR-0012's own
-merge precondition needs and it is now what the shipped script does, not
-only what the work history claims it does.
-
-**Verdict: FIXED, confirmed independently with my own fixture, not merely
-re-run from the work history's example.**
-
-## 5. The MEDIUM (tracked) scope finding: correctly left open
-
-opus5's third finding (scope gate red, 27 inherited paperwork files) is
-unchanged, as both the original review and the work history's own section
-11.8 agree it should be: the branch was cut from
-`plan/pstack-borrow-review` rather than from `main`, and the scope gate
-reads the phase declaration from the merge base, which does not yet carry
-it. Fixing this is not a code change available to this phase (it would
-require the declaration to already be on `main`, or the branch to have
-been cut differently, neither of which an implementer inside this phase
-can retroactively do). I re-confirm the reachability call: confined to
-`delivery/`, no shipped file, no user path. **TRACKED, not blocking**, as
-both original reviews and the work history already conclude.
-
-## 6. My own first-pass numbers, against the stale head, recorded for
-##    the record rather than discarded
-
-Before discovering the mirror was stale, I independently reproduced the
-HIGH and MEDIUM findings as OPEN against `deae190a03affe711efa854fefcfd6fe0454d63f`
-(the same code as the reviewed head `6a5e5af`, since no code changed
-between them): the red-witness gate errored with the same five broken
-members opus5 named, and my own fixture reproduced the silently-dropped
-third review. Those measurements are not wrong, they are simply about a
-commit that was never actually "the current head": the real fix round
-(Sections 3-4 above) already existed on GitHub when the dispatch was
-written. I am keeping this section rather than deleting the earlier work,
-per this project's own practice of not softening or erasing a working
-history's record of what was actually measured and when.
-
-## 7. First check, applied to the ROUND's own derivation (fix-round
-##    contract item 3)
-
-The round's own not-covered statements are unusually explicit (11.2's
-bullet list and 11.9's additions). I ran its central derivation command
-myself rather than trusting the printed output:
-
-```
-$ grep -n 'continue;' -B 6 src/checks.ts | sed -n '/function loadCommittedVerdicts/,/return { ok: true, verdicts/p'
-```
-
-reproduces the same site enumeration the work history's table in 11.2
-lists (12 sites, 5 of them changed from skip to diagnostic). I widened
-this in the one direction the round's own section 11.6 concedes is a
-judgment call rather than a measurement: a `.yaml` whose `kind` is present
-but not a scalar (a list, say). I did not leave this as an open question:
-I built the fixture and ran it, at the current (fixed) head, with the same
-staging shape as Section 4:
-
-```
-$ <third file c-list-kind.yaml, alongside two real APPROVE verdicts>
-  kind:
-    - verdict
-  phase: M3-P9
-  head: dcbe6704813e861736c8d394dca35f7dc31b4f93
-  verdict: FIX-ROUND-NEEDED
-$ node scripts/check-dual-review.mjs <dir>
-check-dual-review: green (2 review verdicts examined for decorrelation)
-2 verdict(s) examined ... no decorrelation violation and the pair approves
-exit=0
-```
-
-**This is the SAME fail-open shape Section 4 shows fixed for the decode
-case, still present through this one arm.** A third, genuinely refusing
-review (`verdict: FIX-ROUND-NEEDED`) whose `kind:` field is a YAML list
-rather than a scalar string is silently dropped and the gate reports the
-pair approves, exactly as an undecodable file did before this round. The
-work history's own reasoning for treating this as a determinate "not a
-verdict" answer (11.6: "a document declaring a list-valued `kind` has said
-it is not a verdict") does not hold up against this fixture: the document
-plainly IS a verdict, malformed in one field, not a prose review that
-happens to share a directory. A `kind:` typo shaped this way (`kind:
-[verdict]`, or a YAML block-list slip) is exactly the kind of accident this
-mechanism exists to catch, not a legitimate "this is not a verdict"
-signal.
-
-This is a residual finding, not a new one I am inventing from nothing: it
-is the one arm the round's own work history flags as unresolved (11.6,
-11.9), and my probe shows the flagged gap is real and reachable rather
-than hypothetical. I am carrying it forward as MEDIUM, same mechanism
-family as opus5's original finding, same reachability (shipped
-`src/checks.ts` plus the real `scripts/check-dual-review.mjs`
-delegated-merge-authority path). Credit where due: the round did not hide
-this gap, it named it as open in its own document; that is exactly the
-right way to leave an unclosed arm, and it is why I am calling this
-residual rather than a regression the round introduced.
-
-**A second widened check I did run**: the work history's own section 11.3
-states its derivation covers `dangerousStates` mutation members only, not
-`patch` or `baseline-ref` members. I checked whether any `patch`-kind
-member touches `src/checks.ts` or the two other files this phase's code
-changed, since a stale patch would be the same class of defect in a
-different member kind:
-
-```
-$ python3 -c "
-import json, glob
-for path in sorted(glob.glob('witness/*.json')):
-    data = json.load(open(path))
-    for ds in data.get('dangerousStates', []):
-        if ds.get('kind') == 'patch' and any(s in str(ds) for s in ['checks.ts','check-dual-review.mjs']):
-            print(path, ds.get('patch'))
-"
-(no output)
-```
-
-None found. The widened search adds nothing here either.
-
-## 8. Attacking the round itself
-
-**A. Red witnesses the round added or changed.** The round's own red
-witnesses are the eight-test run quoted in its section 11.4 (pre-fix at
-`deae190`: 3 pass, 5 fail; post-fix: 8 pass, 0 fail) and the `red-witness`
-gate re-run against the repointed specs (claimed green at intermediate
-head `3098650`, "every witness red against every declared dangerous state
-and green at head"). I did not re-run the eight-test comparison against
-`deae190` myself (that would mean re-staging the pre-fix tree, which the
-round already did with a documented `grep -c` assertion that the staged
-tree really lacked the fix's marker strings); I instead ran the SAME eight
-tests at the current head directly and got a clean pass as part of the
-56/63 total in Section 9 below, which corroborates the "AT THIS HEAD" half
-of the claimed comparison without re-deriving the "PRE-FIX" half.
-
-The work history's own class-membership discipline (two structurally
-different members) is satisfied for the HIGH mechanism: bytes that fail to
-parse, a path that is never opened, and a field that cannot be established,
-which is three distinct readers reaching the same drop, not one witness
-run three times.
-
-**B. A guard that cannot go red.** This is exactly what the round's OWN
-section 11.5 found and fixed in itself: the first attempt at fixing the
-HIGH finding left a guard (the repointed `dual-review-requires-two-verdicts`
-member 0) that matched but could not go red, because a second, newly added
-predicate's message shared the first twelve words with what the existing
-test asserted. I verified the fix for this class directly in Section 3
-above (both the distinguishing message tail and the check id are now
-separately asserted). I looked for a second instance of the SAME class
-(two near-identical messages differing only in a tail neither test
-isolates) elsewhere in the four repointed witness specs and did not find
-one; the other three specs' `find` strings are each unique substrings with
-no textually similar sibling in the current file (checked by `grep -c` on
-each repointed string, all returning exactly 1, per Section 3's python
-output).
-
-**C. A count pinned over an append-only registry.** `test/behaviors.json`
-was edited by this round: 18 existing values were rewritten from prose
-descriptions to literal test names (Section "8b" evidence below), and this
-is exactly what the `suite` gate's third-defect finding (11.11) is about.
-I checked that the edit does not introduce a new PINNED COUNT anywhere
-(the registry stays a set of id-to-name pairs, asserted by name at
-`test/verdict-head.test.ts:1233`-ish per the work history, not by count).
-`git diff` on `test/behaviors.json` for this round shows only value
-rewrites, no additions or removals of keys, so the append-only property is
-undisturbed.
-
-**D. The claim grep, both forms, over the round's own new prose**
-(section 11 of the work history, since sections 1-10 are round 0's and
-were already checked before this round existed):
-
-```
-$ sed -n '/^## 11\./,/^## 12\./p' delivery/work-history/m4-p10.md > s11.txt
-$ grep -cEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' s11.txt
-13
-$ tr '\n' ' ' < s11.txt | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-14
-```
-
-Both numbers reproduce EXACTLY what the work history's own section 12
-reports for itself (13 lines, 14 occurrences, the gap being one line
-carrying two hits). I additionally ran the EXTENDED passive-form
-vocabulary the work history's own section 12 introduces
-(`is (covered|refused|validated|checked|handled|guarded|rejected|enforced|prevented|caught)`)
-and got the same 5 hits it reports, 4 of them inside captured `node --test`
-output (test names, not assertions) and 1 a genuine assertion with an
-adjacent citation. No gap between my run and the work history's own
-self-audit.
-
-**E. The suite sentence.** See Section 9.
-
-**F. C-1, C-2, C-3.**
-
-```
-$ git diff deae190a03affe711efa854fefcfd6fe0454d63f a6db78d94b61e812526f22a5a2d751e45c003fe5 \
-    -- src/checks.ts scripts/check-dual-review.mjs \
-  | grep -nE '\bpid\b|process\.kill|/proc/|unref\(|\.detached|tail -f|tail -n'
-(no output)
-```
-
-Clean.
-
-## 9. The suite sentence
-
-Two isolated files first, for a fast signal:
-
-```
-$ node --test test/verdict-head.test.ts test/dual-review.test.ts
-1..63
-# tests 63
-# pass 63
-# fail 0
-# skipped 0
-```
-
-Up from 56/56 before the round (7 new tests, matching the work history's
-own count of `test/verdict-head.test.ts` growing from 29 to 36 tests plus
-`test/dual-review.test.ts`'s own small growth).
-
-The full suite, interpreter `/opt/node22/bin/node` v22.22.2 (the container
-default, not the fetched v26.6.0 toolchain the work history's own section
-11.10 used), `dist/` built immediately before (`npm run build` exit 0,
-`git status --porcelain` empty afterward), invocation `npm test`:
-
-This container carried many other agents' concurrent `node --test` runs
-throughout this review (confirmed repeatedly via `ps aux`, loadavg holding
-between 8 and 21 across the session), which is why this run took over nine
-minutes of test time and considerably longer in wall clock. It ran to
-completion:
-
-```
-1..885
-# tests 885
-# suites 0
-# pass 876
-# fail 7
-# cancelled 0
-# skipped 2
-# todo 0
-# duration_ms 550846.06505
-```
-
-**885 tests, 876 pass, 7 fail, 2 skipped, exit 1, duration_ms 550846**
-(about 9 minutes 11 seconds of test time). The 7 failures, unedited:
-
-```
-not ok 180 - the coverage gate against the real migration table and appendix reports units 115 ...
-not ok 182 - deleting an appendix row is red naming the orphan id, and restoring it is green
-not ok 189 - a duplicated inventory id is red naming it, and units count distinct ids rather than occurrences
-not ok 190 - a row deleted from both real documents is red against the expected-units floor ...
-not ok 193 - a refused or failed evidence write makes the gate error instead of a silent green
-not ok 258 - a staged install of the built package reproduces the captured contract live
-not ok 361 - a precondition command exiting nonzero is error, not a skip, whenever a path-shaped ...
-```
-
-Every one of these is independently explainable and none touches this
-phase's own files. `test/doctor.test.ts:934` and `test/gates.test.ts:3571`
-are the two pre-existing, environment-caused failures Section 6 and
-CLAUDE.md's own standing warnings 1 and 12 already document (default
-toolchain, clone under `/tmp/claude-0`). The five `coverage-gate` failures
-(180, 182, 189, 190, 193) all fail with the identical signature `pattern
-... did not complete within 250ms ... (possible catastrophic
-backtracking)`, at `src/gates/coverage.ts:260` via
-`test/coverage-gate.test.ts`, which is the wall-clock guard CLAUDE.md's own
-fix-round contract example names by number and which the fable review's
-own run also hit once under contention. `test/coverage-gate.test.ts` is
-not in the set of files this branch changes. None of the seven is new,
-none is this phase's code, and none is the shape of a masked regression
-(a test that should catch this phase's behavior silently passing); all
-seven are either the two named pre-existing environment failures or a
-single wall-clock guard tripping repeatedly under a loaded box, which
-CLAUDE.md itself warns reddens for reasons that have nothing to do with
-the branch.
-
-The isolated run in Section 9 above, `test/verdict-head.test.ts
-test/dual-review.test.ts` (63/63 pass, 0 fail), and the LIVE `red-witness`
-gate run (Section 3, green) are the tests and the gate this phase's own
-findings are actually about, and both are unambiguous. The full suite
-corroborates rather than contradicts: 876 of 885 pass, and every one of
-the 9 that did not (7 fail, 2 skipped) is accounted for by something other
-than this phase's code.
-
-The work history's own section 11.10 reports, on node v26.6.0 with dist
-built: 885 tests, 885 pass, 0 fail, 0 skipped, to completion. My run, same
-total (885), on the container DEFAULT toolchain (v22.22.2) rather than the
-fetched v26.6.0 one: 876 pass, 7 fail, 2 skipped. **Naming the axis rather
-than averaging the two counts**: the 2 skipped are exactly the floor-gated
-`doctor` tests standing warning 12's own table says v22.22.2 skips
-regardless of build state; 2 of the 7 failures are the two pre-existing
-environment failures that same standing warning documents for this exact
-toolchain and clone location; the other 5 are one wall-clock guard
-(`test/coverage-gate.test.ts`, unrelated to this phase) tripping five
-times under a loaded box. Two honest runs, two different toolchains, one
-true sentence each, exactly the shape CLAUDE.md's own standing warnings ask
-for.
-
-## 10. Verdict
-
-**FIX-ROUND-NEEDED, narrowly.**
-
-The round did strong, mechanism-level work and I could not fault its own
-discipline anywhere I checked it independently: it found and fixed the
-HIGH finding at all four broken witness sites plus a fifth site neither
-review named (Section 3, confirmed live: `red-witness` gate green at the
-real current head); it found and fixed the MEDIUM finding through five
-call sites, again more than either review named (Section 4, confirmed
-live with my own fixture, not only the work history's own example); it
-found and fixed a masking bug IN ITS OWN first attempt at the HIGH fix
-(Section 8B); it found and fixed a THIRD defect neither review raised at
-all (the `suite` gate being red the entire time because
-`test/behaviors.json` held prose instead of test names); and its claim
-grep, citation count and suite numbers all reproduced exactly when I
-re-ran them independently (Sections 8D, 9).
-
-**One thing keeps this from being a clean APPROVE.** The round's own work
-history honestly flags, as an unresolved judgment call (11.6), that a
-`.yaml` whose `kind` field is present but not a scalar string (a YAML
-list, for example) is still read as "not a verdict" and silently skipped,
-the same site class as the now-fixed decode-failure case. I built and ran
-the fixture rather than leaving this as the work history left it: a
-genuinely refusing third review (`verdict: FIX-ROUND-NEEDED`) shaped with
-`kind:` as a one-element list still vanishes silently, and
-`check-dual-review` still reports `green ... the pair approves` over the
-remaining two (Section 7). This is the SAME fail-open shape as the
-finding this round otherwise closed, reachable through the same shipped
-file (`src/checks.ts`) and the same real path
-(`scripts/check-dual-review.mjs`, the script this repository's own
-delegated-merge-authority precondition already depends on). **MEDIUM,
-blocking, residual** rather than a new defect the round introduced: the
-round disclosed it rather than hiding it, which is exactly the right way
-to leave an item open, and that disclosure is why I am not treating this
-as a mark against the round's quality. It is still a real gap in shipped
-code that DR-0012's merge precondition depends on.
-
-**What would close this round.** Extend the `loadCommittedVerdicts` fix
-(the same `unexaminable` diagnostic mechanism already used for the decode
-and unreadable-file cases) to the "present but not a scalar" arm of
-`kind`, or replace the informal "list means not a verdict" reasoning with
-an actual check: a document whose `kind` is a list CONTAINING `"verdict"`
-should probably still be flagged as unexaminable rather than silently
-passed over, since the honest answer is "this could be a malformed
-verdict", not "this is answered". This is a small, scoped edit inside a
-mechanism the round has already built correctly for every other arm; it
-does not require new design, only extending the arm the round's own
-document already named as open.
-
-**The scope MEDIUM (opus5 F3) stays TRACKED, not blocking**, exactly as
-both original reviews and the work history's own section 11.8 already
-conclude: confined to `delivery/`, not fixable inside this phase, a known
-DR-0031 process gap rather than a code defect.
-
-Everything else this review checked (the claim grep in both forms, the
-citation-resolution discipline, C-1/C-2/C-3, the widened `witness/*.json`
-derivation, the append-only-registry edit to `test/behaviors.json`) came
-back clean, independently, not merely re-quoted from the work history.
-
-## 11. Citations in this document
-
-Per CLAUDE.md 3b's trap: `git diff --name-only origin/main...origin/claude/m4-p10-verdict-head-and-medium`
-lists 47 files this branch changes, including `src/checks.ts`,
-`scripts/check-dual-review.mjs`, `test/dual-review.test.ts`,
-`test/verdict-head.test.ts`, `test/behaviors.json`,
-`delivery/work-history/m4-p10.md`, the four repointed `witness/*.json`
-specs, and `CLAUDE.md` itself (inherited from the unmerged base branch this
-phase was cut from, per Section 5). Every citation into any of those in
-this document is quoted in backticks deliberately and does not resolve.
-
-Two citations are left to resolve, into files this branch does not touch
-(confirmed against the same diff): src/gates/result.ts:68 (the line
-defining the constant `EXIT_GATE_ERROR`, whose value is the code the live
-`check-dual-review.mjs` reproduction in Section 4 exits with) and
-delivery/decisions/DR-0012-delegated-merge-authority.md:21 (the sentence
-"A pull request may be merged only when ALL of the following hold", which
-is the condition list both the HIGH and residual MEDIUM findings sit
-inside).
+Four citations resolve, and all four are into files this branch does not touch,
+checked against that same diff: src/commands/doctor.ts:471 (the raw charter
+selection this document's NF-2 is about), src/commands/validate.ts:208 and
+src/witness/spec.ts:120 (the two sibling sites I cleared), and
+src/gates/manifest.ts:181 (the one the round did print).
