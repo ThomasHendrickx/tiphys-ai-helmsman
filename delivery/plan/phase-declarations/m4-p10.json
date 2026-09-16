@@ -1,0 +1,33 @@
+{
+  "id": "M4-P10",
+  "branch": "claude/m4-p10-verdict-head-and-medium",
+  "filesToTouch": [
+    "schemas/verdict.schema.json",
+    "src/checks.ts",
+    "scripts/check-dual-review.mjs",
+    "test/verdict-head.test.ts",
+    "delivery/review/",
+    "witness/fixtures/dual-review/"
+  ],
+  "declaredExtras": [
+    "test/verdict-schema.test.ts",
+    "test/dual-review.test.ts"
+  ],
+  "citations": [
+    "DR-0012",
+    "DR-0016",
+    "DR-0027",
+    "DR-0031",
+    "M4-D-08",
+    "T-001",
+    "T-007",
+    "T-008",
+    "T-009",
+    "SC-011",
+    "R-053",
+    "R-060",
+    "C-1",
+    "C-2",
+    "C-3"
+  ]
+}

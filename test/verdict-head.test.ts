@@ -126,8 +126,12 @@ function stageContext(mode: string, documents: Record<string, string>): string {
   mkdirSync(join(dir, "delivery", "review"), { recursive: true });
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
   const charter = readFileSync(join(repoRoot, "templates", "charter.example.yaml"), "utf8");
+  /* The line must EXIST; it does not have to change. The shipped template
+     already declares `full`, so asserting the text differs would fail on the
+     one mode this file most needs to stage. */
+  assert.match(charter, /^delivery-mode: .*$/m, "the charter template has no delivery-mode line");
   const retargeted = charter.replace(/^delivery-mode: .*$/m, `delivery-mode: ${mode}`);
-  assert.notEqual(retargeted, charter, "the charter template's delivery-mode line was not found");
+  assert.match(retargeted, new RegExp(`^delivery-mode: ${mode}$`, "m"));
   writeFileSync(join(dir, "charter.yaml"), retargeted);
   for (const [name, body] of Object.entries(documents)) {
     writeFileSync(join(dir, "delivery", "review", name), body);
@@ -196,7 +200,15 @@ function preHeadCommit(): string | undefined {
   if (!gitAvailable) {
     return undefined;
   }
-  const listed = git(["rev-list", "HEAD", "--", "schemas/verdict.schema.json"]);
+  /* EVERY ANCESTOR, NEWEST FIRST, NOT ONLY THOSE THAT TOUCHED THE SCHEMA, and
+     the difference is not cosmetic: filtering by path finds the newest commit
+     that EDITED the file without `head`, which is an M3 commit from before
+     `scripts/check-dual-review.mjs` existed at all. Measured while writing
+     this: the staged tree had no `scripts/` entry for the gate and every
+     witness died with MODULE_NOT_FOUND. What is wanted is the newest ancestor
+     whose TREE does not carry the change, which is the commit this branch was
+     cut from. */
+  const listed = git(["rev-list", "--max-count=200", "HEAD"]);
   if (listed.status !== 0) {
     return undefined;
   }
@@ -208,7 +220,8 @@ function preHeadCommit(): string | undefined {
     const parsed = JSON.parse(shown.stdout) as Record<string, unknown>;
     const required = (parsed["required"] ?? []) as string[];
     if (!required.includes("head")) {
-      return sha;
+      const script = git(["cat-file", "-e", `${sha}:scripts/check-dual-review.mjs`]);
+      return script.status === 0 ? sha : undefined;
     }
   }
   return undefined;
@@ -402,6 +415,7 @@ test("the reconstructed pre-change schema agrees with the one in git, so the rec
     fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]),
   );
   const approveWithMedium = parsed(mediumFindingBody());
+  delete approveWithMedium["head"];
 
   for (const instance of [headless, approveWithMedium]) {
     assert.deepEqual(
@@ -448,10 +462,28 @@ test("APPROVE beside a medium finding is refused, and the diagnostic names the v
 });
 
 test("RED WITNESS, criterion 4: that exact document validates clean against the PRE-CHANGE schema", () => {
+  /* `head` IS REMOVED FIRST, AND THAT IS NOT A WEAKENING OF THE WITNESS. The
+     pre-change schema is `additionalProperties: false` and has no `head`
+     property, so it refuses the field outright: a document carrying one is a
+     document that schema could never have been given, and validating it there
+     would measure the absence of the property rather than the escalation rule.
+     What the criterion is about is the SEVERITY, and this arm holds everything
+     else fixed. The head-less-ness of the pre-change corpus is exactly what
+     the criterion-2 witness one screen up measures. */
+  const instance = parsed(mediumFindingBody());
+  delete instance["head"];
   assert.deepEqual(
-    validateModule.validateToLines(reconstructedPreHeadSchema(), parsed(mediumFindingBody())),
+    validateModule.validateToLines(reconstructedPreHeadSchema(), instance),
     [],
     "the pre-change escalation rule was expected to accept APPROVE beside a medium finding",
+  );
+  /* THE CONTROL. Reintroduce only the severity change and the shipped schema
+     refuses it, so the green above is the old RULE and not the edit that
+     removed the field. */
+  assert.ok(
+    validateModule
+      .validateToLines(shippedSchema(), parsed(mediumFindingBody()))
+      .some((line) => line.startsWith("INVALID #/verdict")),
   );
 });
 
@@ -703,10 +735,20 @@ test("the SHIPPED gate reddens that same both-refusing pair, which is what the p
   withContext("full", BOTH_REFUSING_PAIR, (dir) => {
     const run = runGate(dir);
     assert.notEqual(run.status, 0, run.output);
-    const refusals = run.output
-      .split("\n")
-      .filter((line) => /reads FIX-ROUND-NEEDED/.test(line));
-    assert.equal(refusals.length, 2, `both verdicts should be named: ${run.output}`);
+    /* BOTH VERDICTS ARE NAMED AS SUBJECTS, which is the assertion, and it is
+       not a count of lines. The gate runs each check once per document and
+       every violation is about the whole group, so one refusal is reported
+       from each vantage point and differs only in its trailing path; the
+       script's own dedup comment records that as deliberate. Counting lines
+       would be asserting about that reporting shape rather than about the
+       refusals. */
+    for (const name of ["decorrelated-criteria.yaml", "decorrelated-hazard.yaml"]) {
+      assert.match(
+        run.output,
+        new RegExp(`review/${name} reads FIX-ROUND-NEEDED`),
+        `${name} was not named as refusing: ${run.output}`,
+      );
+    }
   });
 });
 
