@@ -997,6 +997,22 @@ test(
       0,
       "the task branch was deleted by a rollback that should not have run",
     );
+    // THE ASSERTIONS THAT ACTUALLY DISTINGUISH A ROLLBACK, and the reason
+    // the four above do not. Pool destroy is called with discard false, so
+    // it REFUSES a dirty worktree, and this adapter deliberately dirtied
+    // one. A rollback that ran would therefore leave the worktree, the
+    // pool record and the branch in place anyway, and every assertion
+    // above would stay green through the defect they are written to
+    // catch. What a rollback unlinks unconditionally, before it ever
+    // reaches pool destroy, is the files THIS invocation created
+    // (src/spawn.ts:452): the brief, meta.json and the turn-end hook.
+    // Those are the witness.
+    for (const name of ["meta.json", "brief.md", "turn-end-hook.mjs"]) {
+      assert.ok(
+        existsSync(join(taskDirOf(scratch, "t-rejected"), name)),
+        `${name} was unlinked by a rollback that should not have run`,
+      );
+    }
 
     // THE COUNTERPART ARM. The adapter ASSERTS the payload never started,
     // which is the one claim that authorizes destroying the worktree.
