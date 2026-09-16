@@ -1,0 +1,25 @@
+{
+  "id": "M4-P2",
+  "branch": "claude/m4-p2-async-launch",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/task.ts",
+    "src/watcher.ts",
+    "test/spawn.test.ts",
+    "test/watcher.test.ts",
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p2.json"
+  ],
+  "declaredExtras": [
+    "test/credentials-gate.test.ts",
+    "witness/spawn-completed-without-turn-end-is-incomplete.json",
+    "witness/spawn-rejected-launch-rolls-nothing-back.json",
+    "witness/watcher-signal-surfaced-once.json"
+  ],
+  "citations": [
+    "C-3",
+    "T-005",
+    "M4-D-04",
+    "DR-0007"
+  ]
+}
