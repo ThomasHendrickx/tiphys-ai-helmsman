@@ -1,0 +1,15 @@
+arm: three-concurrent-run4
+claude-exit: 0
+expected mapping: alpha=haiku beta=sonnet gamma=opus
+--- resolver log (one line per SubagentStop) ---
+{"at":"2026-09-16T00:10:23.934Z","outcome":"fail-no-assistant-model-rows","agent_id":"a398ca432c5d7d083","agent_type":"beta","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a398ca432c5d7d083.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":[],"assistant_rows":0,"last_assistant_message":"AGENT beta REPORTING"}
+{"at":"2026-09-16T00:10:25.323Z","outcome":"resolved","agent_id":"afe20eefa27833585","agent_type":"gamma","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-afe20eefa27833585.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-opus-5"],"assistant_rows":1,"last_assistant_message":"AGENT gamma REPORTING"}
+{"at":"2026-09-16T00:10:39.119Z","outcome":"resolved","agent_id":"a388f0e4b3edffa9c","agent_type":"alpha","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a388f0e4b3edffa9c.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run4/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-haiku-4-5-20251001"],"assistant_rows":11,"last_assistant_message":"## Probe Task Completion Report\n\nI have successfully executed the standard probe task for this concurrency test. Here ar"}
+--- distinct agent_transcript_path count ---
+subagentstop events: 3
+distinct agent_id        : 3
+distinct agent_transcript: 3
+  type=beta   id=a398ca432c5d7d083  models=[] rows=0 outcome=fail-no-assistant-model-rows
+  type=gamma  id=afe20eefa27833585  models=['claude-opus-5'] rows=1 outcome=resolved
+  type=alpha  id=a388f0e4b3edffa9c  models=['claude-haiku-4-5-20251001'] rows=11 outcome=resolved
+--- stderr ---

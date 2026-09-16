@@ -1,0 +1,15 @@
+arm: three-concurrent-run2
+claude-exit: 0
+expected mapping: alpha=haiku beta=sonnet gamma=opus
+--- resolver log (one line per SubagentStop) ---
+{"at":"2026-09-16T00:09:37.794Z","outcome":"resolved","agent_id":"a02ea760550add006","agent_type":"alpha","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a02ea760550add006.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-haiku-4-5-20251001"],"assistant_rows":2,"last_assistant_message":"AGENT alpha REPORTING"}
+{"at":"2026-09-16T00:09:38.382Z","outcome":"resolved","agent_id":"a8d50aae2847540b3","agent_type":"beta","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a8d50aae2847540b3.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-sonnet-5"],"assistant_rows":1,"last_assistant_message":"AGENT beta REPORTING"}
+{"at":"2026-09-16T00:09:39.190Z","outcome":"resolved","agent_id":"a30a9a26f3b0448a3","agent_type":"gamma","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a30a9a26f3b0448a3.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run2/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-opus-5"],"assistant_rows":1,"last_assistant_message":"AGENT gamma REPORTING"}
+--- distinct agent_transcript_path count ---
+subagentstop events: 3
+distinct agent_id        : 3
+distinct agent_transcript: 3
+  type=alpha  id=a02ea760550add006  models=['claude-haiku-4-5-20251001'] rows=2 outcome=resolved
+  type=beta   id=a8d50aae2847540b3  models=['claude-sonnet-5'] rows=1 outcome=resolved
+  type=gamma  id=a30a9a26f3b0448a3  models=['claude-opus-5'] rows=1 outcome=resolved
+--- stderr ---
