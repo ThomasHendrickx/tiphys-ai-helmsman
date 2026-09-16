@@ -545,3 +545,48 @@ vocabulary, because the wider form reddens on decoration.
 reviewers' concern (an arm reading a stale line from a failed command) addressed
 by a different mechanism than they asked for, and the next reviewer of this
 phase should test THAT mechanism rather than re-raising the original.
+
+## A registry guard that checks for a KEY and claims to check RESOLUTION
+
+Found by M4-P26 fix round 2, 2026-09-16, and confirmed independently here. It is
+recorded in this register rather than sent to a round because the remaining
+instances are in other phases' files, which the fix-round contract forbids
+widening into.
+
+**The defect.** A behaviour-registration test asserts
+`Object.hasOwn(behaviors, id)`, which establishes that the id is a KEY in
+`test/behaviors.json`. It does not establish that the VALUE names a test that
+runs. In M4-P26's own file the two were far apart: the guard was GREEN while
+**35 of 39** cutover behaviours resolved to nothing.
+
+**The instances, all confirmed by `git grep` at `claude/m4-p26-rollback`:**
+
+| site | status |
+|---|---|
+| `test/cutover.test.ts:832` | FIXED by M4-P26 round 2; 40 of 40 resolve at `b904961` |
+| `test/doctor.test.ts:895` | OPEN, other phase's file |
+| `test/license-gate.test.ts:2332` | OPEN, other phase's file |
+| `test/license-gate.test.ts:2899` | OPEN, other phase's file |
+
+**`test/license-gate.test.ts:2332` is the sharpest of the three**, because its
+own failure message is a claim the assertion does not support: it reads
+`behavior ${id} does not resolve in test/behaviors.json` beside an assertion
+that only checks a key exists. A reader auditing by message rather than by
+condition would record it as checked.
+
+**Severity: LATENT, and the reason is second-hand.** The round reports that all
+rows resolve today and is explicit that this is a DEDUCTION from the suite gate
+reporting 815 behaviours resolving green, not a separate measurement it ran. I
+have not re-measured it either. So "no phantom rows exist today" is the weakest
+sentence in this entry and is marked as such.
+
+**Why it is not merely a test defect.** `test/behaviors.json` is one of the
+append-only registries binding convention 5 names, and the whole point of
+registering a behaviour by name is that the name resolves. A guard that accepts a
+key makes the registry a list of intentions rather than a list of behaviours, and
+it does so silently: nothing distinguishes 40 of 40 from 4 of 39 in its output.
+
+**What closing it needs.** The same check M4-P26 now applies, in three more
+files: resolve each id to a `test()` title in the sources and assert set equality
+by NAME in both directions, never by count. It is a candidate for a small phase
+of its own alongside M4-P28 and M4-P29, and is not allocated one yet.
