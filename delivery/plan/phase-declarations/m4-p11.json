@@ -3,10 +3,12 @@
   "branch": "claude/m4-p11-single-family-exception",
   "filesToTouch": [
     "schemas/charter.schema.json",
-    "src/checks.ts",
     "scripts/check-dual-review.mjs",
+    "src/checks.ts",
     "src/gates/run.ts",
-    "test/single-family-exception.test.ts"
+    "src/witness/run.ts",
+    "test/single-family-exception.test.ts",
+    "test/witness.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",
