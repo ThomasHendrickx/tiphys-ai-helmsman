@@ -1371,3 +1371,25 @@ run on bef47e4 at all, and the macOS runner is what closes the round's own
 open item 1. DV2-1's remedy is two lines in `src/gates/suite.ts` plus one
 sentence in the not-covered statement. Landing it on the same push costs no
 additional CI cycle, which is the consideration DR-0031 exists to protect.
+
+### R2-16. A fourth push, and still no run: the evidence for R2-10 got stronger while I was writing it
+
+This document's own commit is a fourth push to this branch since the last head
+that produced CI. Measured immediately after pushing it:
+
+```
+$ GET /repos/.../actions/runs?branch=claude/m4-p2-async-launch
+total_count 2
+  35098416926  macOS smoke  2157389  pull_request  completed  failure  12:52:52Z
+  35098417462  gates        2157389  pull_request  completed  success  12:52:52Z
+```
+
+Four accepted pushes (155fe7e, 6d50e8d, bef47e4 and this document's commit),
+zero runs, while the same workflows fired for five other refs in the same
+window. Whatever the cause, the reading for the orchestrator is unchanged and
+now has four observations instead of one: **this branch is not producing CI
+runs, and no head of this fix round has been tested by any runner.** The cause
+is still not established, and I did not establish it; candidates named by the
+work history (a queue, a suppressed event for pushes made with the credential
+this container's proxy substitutes) remain candidates with no measurement behind
+either.
