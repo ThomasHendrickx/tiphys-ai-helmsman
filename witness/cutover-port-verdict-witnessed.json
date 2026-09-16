@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "  if (!Array.isArray(row.negativeWitness) || row.negativeWitness.length === 0) {",
+      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (!Array.isArray(row.negativeWitness) || row.negativeWitness.length === 0) {"
     },
     {
       "kind": "mutation",
