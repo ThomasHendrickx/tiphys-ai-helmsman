@@ -1,0 +1,26 @@
+{
+  "id": "M4-P16",
+  "branch": "claude/m4-p16-fleet-rehydration",
+  "filesToTouch": [
+    "src/commands/resume.ts",
+    "src/cli.ts",
+    "src/commands/init.ts",
+    "src/fleet.ts",
+    "test/resume.test.ts",
+    "test/init.test.ts",
+    "witness/"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p16.json",
+    "delivery/work-history/m4-p16.md"
+  ],
+  "citations": [
+    "DR-0007",
+    "DR-0016",
+    "DR-0035",
+    "DR-0036",
+    "T-003",
+    "T-008"
+  ]
+}
