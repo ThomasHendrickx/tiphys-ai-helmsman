@@ -517,6 +517,30 @@ Answer these three IN WRITING in the dispatch turn, before arming anything:
    One that cannot tell them apart must SAY so rather than print a number
    implying it can.
 
+**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six
+implementers were dispatched; five were given worktree isolation and one was not,
+because its files-to-touch list looked like documents only. Within minutes the
+main clone read `branch: claude/m4-p1-harness-probe`: the unisolated agent had
+checked out its own branch IN THE ORCHESTRATOR'S CLONE. Nothing was lost, and
+only because the orchestrator's work was already pushed.
+
+Two rules follow, both cheap:
+
+1. **Isolate EVERY dispatched implementer, including the ones that only write
+   documents.** An agent told to commit on its own branch will create that
+   branch wherever it is standing.
+2. **The orchestrator takes its own worktree before dispatching**, so its
+   working tree is not the one an agent moves:
+
+   ```
+   git worktree add -f <scratch>/orch <orchestrator-branch>
+   ```
+
+This also breaks the watchdog rule above in a way worth naming: the unisolated
+agent's freshness is NOT visible in `.claude/worktrees/`, so a watchdog watching
+only those directories reads quiet at full speed for that one agent. Either
+isolate it, or watch its path too and say which agents the watchdog covers.
+
 **Exclude the orchestrator's own worktrees from any agent watchdog.** Including
 them keeps it green regardless of the agent, and a watchdog that cannot go red
 is worse than none because it is trusted. Full account in
@@ -1060,6 +1084,31 @@ Each of these bit someone once. Forward them to every implementer.
     refused". A check that returns the same answer either way is the T-008 shape:
     a guard that cannot go red.
 
+    **GENERALISED 2026-09-15, AND THE ORIGINAL ENTRY UNDERSTATED IT.** A
+    cross-environment-exclusion probe measured a SECOND, independent instance
+    that has nothing to do with deletion. Same commit, same clone, four target
+    refs, `--dry-run` versus real:
+
+    | ref | `--dry-run` | real push |
+    |---|---|---|
+    | `refs/heads/tiphys/lease` | `* [new branch]`, exit 0 | exit 0 |
+    | `refs/tags/...` | `* [new tag]`, exit 0 | **exit 1, HTTP 403** |
+    | `refs/notes/...` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
+    | `refs/tiphys-probe/lease` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
+
+    So the rule is not "a dry-run lies about deletion". It is
+    **`git push --dry-run` does not probe push AUTHORIZATION at all**, for any
+    ref namespace, in either direction. It reports what the local side intends,
+    not what the remote will accept. Never accept a dry-run as evidence that a
+    push will succeed.
+
+    Two consequences worth carrying. **Only `refs/heads/*` is pushable from this
+    container**, which matters for any design reaching for a side namespace: a
+    "dedicated ref" must be read as a dedicated BRANCH, and it is then visible
+    in branch listings and subject to any `refs/heads/**` ruleset. And whether
+    the 403 originates at GitHub or at the agent proxy is UNRESOLVED; the two
+    available signals disagree and the control arm cannot be run here.
+
     **Consequence: branch cleanup is an OWNER action, always, and there is no
     non-destructive way to confirm that in advance.** Do not spend a round
     proving it again, do not attempt a real delete to find out, and do not
@@ -1104,6 +1153,76 @@ answered the owner (answering is an interruption to the work, not the end of
 it), having just written a status report, a subagent being in flight (verify
 its beacon, then do orchestrator work meanwhile), or something looking blocked
 (name the blocker in one line and do everything that is not blocked).
+
+## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)
+
+The owner has had to point this out TWICE, which is this project's own signal
+that a rule depending on memory does not survive and needs a mechanism.
+
+**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is
+`min(16, CPUs - 2)`, so ONE workflow runs at most TWO agents at a time.** Ten
+agents passed to a single workflow do not run ten wide; eight of them queue.
+Load average during the run was 0.03, so the cap is a configured limit and not a
+resource constraint: these agents are waiting on model calls, not on CPU.
+
+**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its
+own cap. Five concurrent workflows give ten concurrent agents.
+
+Mechanical form, so it survives a busy session:
+
+1. Write the script ONCE with an args filter, so one script serves every slice:
+
+   ```
+   const wanted = Array.isArray(args) && args.length > 0 ? args : Object.keys(TASKS)
+   const mine = wanted.filter((k) => TASKS[k])
+   ```
+
+2. Launch it inline the first time. The tool result returns a `scriptPath`.
+3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls
+   cost four tool uses and buy four times the throughput.
+
+**Before dispatching any fan-out, state in writing: how many agents, in how many
+workflows, therefore how many run at once.** If that third number is 2, the
+dispatch is wrong. This is the same discipline T-008 requires for watchdogs, one
+level up: the number you intended is not the number the tool used, so read the
+number the tool reports rather than the one you passed.
+
+**Model choice is per agent and costs nothing to set.** `agent(prompt, {model:
+'fable'})` overrides for that call. Review and judgment stages benefit from a
+DIFFERENT family than the stage they review, which is the same decorrelation
+property DR-0012 condition 1 protects, applied to subagents.
+
+## Reporting to the owner (binding, 2026-09-15)
+
+Owner instruction, in their words: "Can you hide the text when you are talking
+to yourself? Only show what I need to see for making decisions?"
+
+**The owner's screen is an interface for DECISIONS, not a log of the work.**
+Everything else already has a home: the durability rule above requires it to be
+a committed file, so putting it in chat as well is duplication that costs the
+owner attention. This is the same property DR-0016 protects when it forbids
+asking a question whose answer was already obvious.
+
+Surface exactly four things:
+
+1. A decision the owner must take, with the options and a recommendation.
+2. An action only the owner can perform, because it needs access an agent does
+   not hold. **Verify it is not already done before asking.** Measured
+   2026-09-15: two of five owner actions raised in one message were a request
+   for work that already existed and a preference toggle nothing reads.
+3. A finished result.
+4. A blocker, in one line, naming what is blocked and by what.
+
+Do NOT surface: progress narration, which agents are running, what is being
+measured, the reasoning behind a recommendation already given, or a restatement
+of what was just decided. If it would go in a file, it goes in the file.
+
+**Plain language is part of this.** The owner reads English fluently and is not
+a native speaker, and has said the writing needs reading twice. Short sentences.
+One idea per sentence. No nested clauses. Ordinary words over precise-sounding
+ones. This constrains the OWNER-FACING text only: work histories, reviews and
+decision records keep their existing register, because their readers are agents
+and later reviewers.
 
 ## Never
 

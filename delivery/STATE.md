@@ -41,62 +41,73 @@ is wrong: verify against git and the PR list before trusting it.
   than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
   carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
   All three are fixed on `main`.
-- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch under active
-  work, no dispatched implementer. The next unit of work is not yet chosen.
-- **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND
-  `.claude/orchestrator-next.mjs` READS THAT AS UNMERGED WORK.** The phase's
-  code reached `main` inside the exit test's branch at `1945d69`, carrying a
-  fix on top of it; `origin/claude/m3-p13-doctor-kernel-artifacts` therefore
-  sits 11 commits ahead of `main` forever and the stop-condition script prints
-  "DRIVE M3-P13 TO MERGE" at a head where there is nothing to drive. Checked
-  rather than assumed: all 762 of that branch's registered behaviors are
-  present among `main`'s 775.
-  **A stop condition that cannot go green is the same defect as a guard that
-  cannot go red**, and this one points an orchestrator at work that is done.
-  The script decides merged-ness by branch-ahead-ness alone and has no notion
-  of delivered-elsewhere. Tracked, not assigned.
-- **THE PAPERWORK WAS THE PART THAT WAS ACTUALLY MISSING, AND IT IS LANDED
-  HERE.** `main` carried M3-P13's code, its tests and its four witness specs
-  while carrying neither its work history nor its phase declaration. That is
-  the mirror of the defect CLAUDE.md names under DR-0031, one turn further
-  round: there, `main` asserted review evidence for code it did not contain;
-  here, `main` contained code whose implementer record it did not carry.
-  Neither the scope gate nor any review catches either direction.
-- **M4's PILOT IS RUNNING, IN A SESSION THIS ORCHESTRATOR DOES NOT OWN.** Both
-  `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet` exist, carry a
-  charter, a plan and a delivered M1-P1 with dual review, and deploy to a live
-  Vercel target. DR-0034 describes the pilot as something about to be started;
-  it was already running when that record was written. The correction, measured,
-  is at delivery/verification/dr-0034-premise-check.md:1.
-  **This orchestrator has not touched either repository and should not**, unless
-  the owner says otherwise: two orchestrators against one fleet is the exact
-  contention the session lock exists to prevent.
-- **A-2 IS HALF DONE AND THE OTHER HALF NEEDS ONE OWNER CLICK.** A durable fleet
-  remote exists, which is what A-2 asked for in substance. It is **PUBLIC**, and
-  A-2 asked for private, for a personal finance project. No credential was found
-  in it; what is public is the shape of the system and the delivery paperwork,
-  and the exposure that matters accrues going forward rather than having already
-  happened. Recommendation: make both repositories private now. See the
-  measurement and the reasoning at
-  delivery/verification/dr-0034-premise-check.md:1.
-- **THE PILOT HAS ALREADY PRODUCED THREE KERNEL DEFECTS THAT NO GATE HERE
-  CATCHES**, all found by USE rather than by review: `tiphys spawn` ships no
-  agent adapter so a real payload cannot authenticate under it; `tiphys validate
-  --type verdict --context .` cannot pass in a downstream fleet because it
-  resolves plan, work-history and assurance-mode documents at the context root;
-  and `dual-review-decorrelation` hard-requires two `produced-by` families with
-  no declared override, so a single-family environment can satisfy it only by
-  declaring something false. They are candidates for 0.2.0, not a decided scope.
-- **THE DEFAULT TOOLCHAIN NOW FAILS THE SUITE, AND IT IS NOT THIS BRANCH.**
-  Measured 2026-08-20 at `1945d69`, one test, one head, two interpreters:
-  test/doctor.test.ts:934, "a staged install of the built package reproduces
-  the captured contract live", asserts "the unpromoted arm must not fail the
-  fleet" and gets `1 !== 0` on node v22.22.2, and PASSES on node v26.6.0. It is
-  floor-DEPENDENT without being floor-GATED, unlike the two `doctor` tests that
-  skip themselves. Consequence: anyone running the suite on the container
-  default sees `846 pass, 1 fail, 2 skipped` at a green head, which is how a
-  real red gets ignored. CI is unaffected and remains the authority. Not
-  assigned; a candidate for the next kernel change that touches `doctor`.
+- **M4 IS RUNNING. TWELVE PHASE BRANCHES EXIST, ZERO ARE MERGED, 2026-09-16.**
+  D-19's blocker is cleared: delivery/plan/m4-intake.md:1 and
+  delivery/plan/kernel-plan-m4.md:1 both exist, twenty-seven phases across the
+  six required workstreams. The wave-1 conflict pre-pass is
+  delivery/plan/m4-conflict-pre-pass.md:1.
+
+  Branches, all now on origin: M4-P1, P2, P10, P11, P13, P15, P16, P19, P20,
+  P23, P26, P27. Held back and why: M4-P3, M4-P4 and M4-P8 all collide with
+  M4-P2 on `src/spawn.ts`; M4-P9 is blocked on a measurement rather than a file.
+
+- **TWO MERGE BLOCKERS GATE EVERY M4 PHASE, AND BOTH ARE IN FLIGHT.** Neither is
+  a defect in any phase; both are properties of the merge predicate itself.
+  M4-P15 authors the root `charter.yaml` without which `check-dual-review`
+  reports error the moment any phase commits two verdict documents, which
+  DR-0031 requires every phase to do; the chain is written out in
+  delivery/plan/m4-charter-blocks-every-merge.md:1. M4-P11 implements DR-0038's
+  declared single-family review exception, without which this orchestrator's
+  own dual reviews do not satisfy DR-0012, because both reviewers are Claude
+  models and the decorrelation check compares canonicalised strings rather than
+  model families. **Nothing merges before both land.**
+
+- **REVIEW TRIAGE IS BY DR-0027 REACHABILITY, NOT BY PHASE COUNT.** Measured
+  2026-09-16 with `git diff --name-only origin/main...<branch>` per phase: only
+  M4-P2 (src/spawn.ts, src/task.ts, src/watcher.ts), M4-P10
+  (schemas/verdict.schema.json, src/checks.ts) and M4-P16 (src/cli.ts,
+  src/commands/init.ts, src/commands/resume.ts, src/fleet.ts) change shipped
+  artifacts. The other five unreviewed phases (M4-P1, P13, P20, P23, P27) touch
+  only scripts/, test/, .github/ and paperwork, so under DR-0027 they get one
+  recorded round and do not block on a MEDIUM. Full dual cross-model review was
+  dispatched for the three shipped-surface phases; that is six reviewers rather
+  than the sixteen a per-phase rule would have spent, and DR-0027 exists
+  because 1.66 million subagent tokens once went to two files that ship nothing.
+
+- **ALL SEVEN FIX ROUNDS ARE DONE, 2026-09-16.** M4-P2, P10, P11, P19, P23, P26
+  and P27 have each had a round; M4-P26 has had two, which is DR-0027's hard
+  limit, so it merges with its remaining LOW findings recorded rather than fixed.
+  Every branch is pushed and the replicator re-checks every five minutes.
+
+  **The board, from `.claude/merge-ready.mjs`:**
+
+  | state | phases |
+  |---|---|
+  | only the shared declaration blocker | M4-P13, M4-P16, M4-P20 |
+  | first review outstanding | M4-P15 (running) |
+  | fix round outstanding | M4-P1 |
+  | re-review owed after its fix | M4-P2, P10, P11, P19, P23, P26, P27 |
+
+- **THE MERGE SEQUENCE IS VERIFIED END TO END** and is the one thing every phase
+  waits on: delivery/plan/m4-merge-sequence-verified.md:1. Eleven of twelve pass
+  the scope gate once the paperwork lands and each branch merges `main` forward;
+  the twelfth passes once M4-P10 merges before M4-P11, which binding convention
+  5 already requires. It needs a pull request and nothing else.
+
+- **THE MERGE-AUTHORITY BYPASS IS FOUND AND CLOSED, AND IT WAS THE MOST SERIOUS
+  DEFECT OF THE MILESTONE.** `establishDelegatedRegime` read `charter.yaml` off
+  DISK while its sibling read the same file from the git object database, so an
+  UNCOMMITTED one-word edit of `delivery-mode` turned a refusal into an approval
+  and switched the decorrelation requirement off entirely. Four sites, all in
+  `src/checks.ts`, three reported by the reviews and the worst found by the fix
+  round's own derivation. Verified closed independently by the orchestrator in
+  three arms: delivery/verification/m4-p11-bypass-is-closed.md:1.
+
+- **THE FIRST CONFORMING VERDICT DOCUMENTS IN THIS REPOSITORY'S HISTORY EXIST.**
+  Both M4-P11 reviewers wrote one. `check-dual-review` has reported
+  not-applicable on every phase of M1, M2 and all of M3 because 234 committed
+  review files contain zero verdict documents. These carry the `head` field
+  M4-P10 adds to the schema, so they cannot land until M4-P10 merges.
 
 - **The three M3 exit-test falsification controls are SKIPPED BY DECISION**, not
   passed and not pending, per DR-0034. Anyone citing the M3 plan's section 4.5
@@ -1558,8 +1569,50 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 | DR-0014 release verification | decided in principle: pluggable interface with kernel-shipped reference adapters; interface design investigated, report in `delivery/verification/release-verification-interface.md` |
 | DR-0015 owner out of the merge path | decided: dual clean review is the approval, at milestone boundaries too; exit tests stay hard gates and their evidence still goes to the owner |
 | DR-0016 escalation threshold | decided: recommendation-backed questions are the agent's to take; only genuine high-impact ties reach the owner. A stalled phase gets a fresh implementer and a third contract, not a wait |
+| DR-0017 to DR-0033 | **REGISTER GAP, 2026-09-15.** These seventeen records were decided and never entered here, so this register was twenty records stale and an intake that sourced its open list from it would have been wrong. Read `delivery/decisions/` directly; this row exists so the gap is visible rather than silent |
+| DR-0034 pulse is the pilot, controls cut | decided: `pulse` is the M4 pilot; M3's three falsification controls are skipped by decision, leaving three exit-test stages unfalsified |
+| DR-0035 review is never skipped | decided: every change is reviewed; the FIX-ROUND COUNT is what tiers, floor 1 ceiling 3 |
+| DR-0036 harness adapter leads M4 | decided: the adapter goes first as `@tiphys/claude-code-plugin`; the kernel becomes a subject under the current process's retained authority |
+| DR-0037 the kernel is M4's only subject | decided: this orchestrator stays away from `pulse`; part 2 amends A-2 below, and its GENERALISATION is the orchestrator's and vetoable |
+| DR-0038 single-family review exception | decided by owner SELECTION of an orchestrator-written option: a declared, recorded exception reporting a third status |
+| DR-0039 write-capable release credential | decided by owner SELECTION: accepted, orchestrator-only; the four conditions are the orchestrator's and vetoable |
+| DR-0040 plugin is a second package here | decided: one repository, two packages; two named triggers reopen it |
+| DR-0041 exit test stays bound to the pilot | decided by the ORCHESTRATOR under DR-0016: no kernel-only exit test. SUPERSEDED IN PART by DR-0042 the same day |
+| DR-0042 reading the pilot is allowed | decided: read-only observation permitted; the owner can reboot the pilot at cutover, so the exit test is deferred and not blocked |
+| DR-0043 post-M4 package cleanup | decided: the pass runs after M4, with a measured baseline of 683 build-history references in shipped artifacts |
 
 ## Owner action items
+
+- **A-9: DELETE THE SCRATCH BRANCHES I PUSHED BY MISTAKE.** Only the owner can;
+  this container cannot delete a remote ref, which standing warning 14 at
+  CLAUDE.md:1094 records with the measurement, and a `--dry-run` reports success
+  either way so there is no non-destructive way to confirm it in advance.
+
+  On 2026-09-16 at about 04:38 I pushed every M4 branch after a session-limit
+  kill, using the refspec `grep -E '^(claude/m4-p|worktree-wf)'`. That second
+  alternative was meant to carry ONE branch holding salvaged work and it carried
+  FIFTEEN, because the harness names every agent worktree's branch
+  `worktree-wf_*`. Fourteen of the fifteen are empty harness scratch.
+
+  Safe to delete, all of them: `worktree-wf_2b81e806-d59-1`,
+  `-d59-2`, `worktree-wf_325aa631-d2d-1`, `-d2d-2`, `worktree-wf_6346a0c1-e72-1`,
+  `worktree-wf_717552c9-287-1`, `worktree-wf_a1849252-b71-1`,
+  `worktree-wf_aca97ef8-95e-1`, `-95e-2`, `worktree-wf_ad5072ea-a8f-1`,
+  `worktree-wf_badbbac6-8f2-2`, `worktree-wf_bdcf1646-6e4-1`,
+  `worktree-wf_cc74053e-aaa-1`, `worktree-wf_deb48280-c22-1`, `-c22-2`.
+
+  **`worktree-wf_95ea9fad-2fd-1` is the ONE to keep for now.** It carries the
+  M4-P19 fix round's salvaged work as a `WIP-UNREVIEWED` commit. It can be
+  deleted once that work is folded into `claude/m4-p19-pool-record-reconstruction`.
+
+  This is low urgency and pure tidiness; nothing is blocked by it. It is
+  recorded rather than left because a mistake that cannot be undone from here
+  should not be discovered later by someone wondering what those branches are.
+
+- **A-10: THE SIX PROBE BRANCHES ON THE FLEET REMOTE, AND ITS DEFAULT BRANCH.**
+  Raised earlier and unchanged. A probe against `tiphys-ai-helmsman-fleet` left
+  six branches and altered its default branch. Same constraint as A-9: ref
+  deletion is refused here.
 
 > **ANSWERED AND CLOSED, 2026-08-10: M3-P3's CR-002.** The owner authorised the
 > final round. Rounds 9 and 10 followed and the phase merged at `c7a7ce9`. The
@@ -1610,8 +1663,36 @@ and `A-3` meant three, one of them a literal string inside
    settings. What it unblocks: M1-P6 criterion 1's real-repository form, its
    commit-identity assertion, and the idempotence half, plus the M1 exit test's
    FULL mode. Local mode is unaffected and passes.
-4. **A-2, before M4.** Provide or approve a private remote per real fleet
-   home, for fleet-state durability.
+4. **A-2, AMENDED 2026-09-15 by DR-0037 and PARTLY DONE.** Original text:
+   "Provide or approve a private remote per real fleet home, for fleet-state
+   durability." **The PRIVATE requirement is withdrawn.** The kernel needs a
+   DURABLE remote; visibility is the project's declaration and the kernel does
+   not check it.
+   - **`pulse` half: CLOSED.** The owner has decided `pulse` and `pulse-fleet`
+     are a portfolio project and stay public. The recommendation earlier in this
+     file to make them private is SUPERSEDED and must not be acted on.
+   - **Kernel half: remote DONE, fleet home NOT.**
+     `ThomasHendrickx/tiphys-ai-helmsman-fleet` exists and is private. The
+     fleet home itself has not been created, and the remote now carries six
+     branches pushed by this orchestrator's own cross-environment-exclusion
+     probe (`probe-fleet-home`, `probe-lease-a`, `tiphys/lease`,
+     `tiphys/lease-r1`, `tiphys/lease-r2`, `tiphys/lease-r3`). It must be
+     cleaned or re-created before pilot bootstrap, and branch deletion is an
+     owner action.
+   - The GENERALISATION of this amendment beyond `pulse` is the ORCHESTRATOR's
+     inference under DR-0016, not the owner's instruction, and is vetoable.
+4b. **A-n REQUESTED, 2026-09-15: clean the kernel fleet remote.** This
+   orchestrator's own cross-environment-exclusion probe pushed six branches to
+   `ThomasHendrickx/tiphys-ai-helmsman-fleet` and, by pushing first, set the
+   repository's DEFAULT BRANCH to a probe branch. The refs are
+   `probe-fleet-home`, `probe-lease-a`, `tiphys/lease`, `tiphys/lease-r1`,
+   `tiphys/lease-r2` and `tiphys/lease-r3`. Ref deletion is refused to this
+   container (A-4 and standing warning 14), so cleaning is an owner action. It
+   must happen before pilot bootstrap runs `tiphys init` against that remote.
+   The kernel repository's own refs were not touched. The probe's measured
+   results are in `delivery/verification/` and are worth keeping; only the refs
+   need removing.
+
 5. **A-4: DONE (owner, 2026-08-07).** The stale `claude/*` branches were
    deleted through the `gh` CLI. The orchestrator could not do it: this
    container's credentials are refused ref deletion with HTTP 403 on both the
@@ -1721,6 +1802,33 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **`process.exit()` TRUNCATES A PIPED GATE REPORT AT 64 KiB, IN THREE SHIPPED
+  MODULES, AND NO M4 PHASE OWNS THEM.** Raised by the M4-P23 reviewer as a MEDIUM
+  it could not force; forced and bounded on 2026-09-16 in
+  delivery/verification/process-exit-truncates-a-piped-gate-report.md:1. The
+  sites are src/gates/credentials.ts:691, src/gates/red-witness.ts:574 and
+  src/gates/suite.ts:1142, all reached by `tiphys gates run`, which spawns them
+  as subprocesses whose stdout is a pipe. Measured: 58,890 bytes survive intact,
+  118,890 bytes arrive as 65,466. To a FILE nothing is lost, which is why it
+  survives casual testing.
+
+  **LATENT, not live, and the number matters.** The largest gate stdout in any
+  captured evidence here is 2,425 bytes, thirty times below the trigger, so no
+  gate is losing evidence today. The plausible future trigger is `suite`, whose
+  subject is another program's output. The verdict cannot change through this
+  path because the exit code survives; what is lost is the evidence.
+
+  Needs a phase that owns `src/gates/`. No M4 phase does: the twenty-seven are
+  plugin, fleet and cutover work. The fix is three one-line changes to
+  `process.exitCode`, and its red witness already exists as the measured table.
+
+- **`delivery/plan/m4-conflict-pre-pass.md:60` IS A BLANK LINE.** Found by the
+  same reviewer while checking twenty-two citations by hand, hit rate 21 of 22.
+  The wave-1b row naming M4-P23 is four lines further down. It is IN RANGE, so
+  the citations gate stays green and the citation points at nothing, which is
+  the silent-resolution trap CLAUDE.md:155 describes: the citation that reddens
+  is not the dangerous one.
+
 - **DR-0022 is DECIDED (owner, 2026-08-09): option A2.** `commonmark` for block
   structure, `sourcepos` slicing for text, acceptance criterion "unit sets
   byte-identical on all nineteen records". M3-P3 round 6 is executing it on
@@ -1824,6 +1932,58 @@ fact rather than a memory.
   IMMEDIATELY AFTER M3-P1 merges and before M3-P2 is dispatched.
 
 ## Standing reminders
+
+- **ONE WORKFLOW AT A TIME, TWO AGENTS, owner decision 2026-09-16 (DR-0044).**
+  This REVERSES the fan-out rule at CLAUDE.md:1157, which the same owner had
+  asked for twice. Both requests were reasonable when made; what changed is
+  measured, not preference. Fourteen agents drove a four-CPU box to load 69, and
+  in that band a REQUIRED gate lies: four independent parties reported `coverage`
+  false reds on six structurally different patterns, one of which cannot
+  backtrack at all. More parallelism here does not buy more work, it buys work
+  whose measurements are suspect. Full reasoning and what it does NOT settle:
+  delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:1.
+
+- **THREE CLAUDE.md AMENDMENTS ARE QUEUED BEHIND M4-P23**, which owns that file
+  under the conflict pre-pass. Each is already durable somewhere else, so none is
+  lost if the queue stalls: DR-0044 above (the concurrency reversal, binding
+  now); the claim grep's passive-voice gap, seven forms measured missed, in
+  delivery/verification/the-claim-grep-catches-one-passive-assertion-and-misses-seven.md:1;
+  and the fourth suite qualifier, git checkout versus `git archive` copy, in
+  delivery/verification/a-suite-number-needs-a-fourth-qualifier.md:1.
+
+- **PUSH EVERY PHASE BRANCH ON DISPATCH, NOT ON COMPLETION.** Measured
+  2026-09-16: twelve M4 branches carrying 141 distinct commits existed only in
+  this container and on no remote, for just over two hours of continuous
+  multi-agent work. `git ls-remote --heads origin 'refs/heads/claude/m4-*'`
+  returned zero lines. Nothing was lost, because the container was not
+  reclaimed first, which is luck and not process. A commit is not a durable
+  artifact; a pushed commit is. The full account is
+  delivery/tuition/T-027-four-hundred-commits-lived-only-in-the-container.md:1.
+
+- **THE STOP CONDITION HAD THREE GUARDS THAT COULD NOT GO RED, ALL IN ONE
+  FILE.** Found in the same sitting. Its milestone defaulted to the literal
+  "m3", complete since 2026-08-26, so the bare invocation printed "13/13
+  merged, NOTHING LEFT" and exited 0 for every milestone after it. Its phase
+  set was harvested from three sources that all read origin, so local-only work
+  was not an unflagged phase but not a phase at all. Its worktree path was a
+  hard-coded constant containing a different session's scratchpad id, a
+  directory that does not exist, so the liveness half had been silently inert.
+  All three are fixed; the milestone is derived, unpushed commits rank above
+  every other action with exit 6, and worktrees are found with `git worktree
+  list --porcelain`.
+
+  **Run it bare and read the exit code.** 6 means push now; 2 means work
+  remains; 3 means run the exit test; 4 or 5 mean the derivation is broken,
+  which is a defect and never an idle repository.
+
+- **A WATCHDOG MUST PRINT EVERY CYCLE.** The one armed before this ran for
+  hours and emitted zero bytes, because it printed only on transitions. Its
+  healthy output and its absence were identical, so it carried no information.
+  It was also keyed on worktrees, and three review workflows dispatched on
+  2026-09-16 had none, so six reviewers would have been unwatched. Key on the
+  transcript the harness guarantees, not the worktree an agent may not create.
+  Recorded as postscripts 5 and 6 of
+  delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:1.
 
 - **DR-0012 CONDITION 1 IS APPLIED THROUGH A READING, AND THE READING MUST BE
   STATED IN EVERY MERGE COMMIT THAT USES IT.** The condition requires "two
