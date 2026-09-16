@@ -2702,15 +2702,21 @@
       "kind": "bullet",
       "text": "- Never read current state from the tail of an append-only log (C-1).",
       "group": "never-log-tail",
-      "status": "GAP",
-      "disposition": "KEEP",
-      "gap": "C-1 is implemented in src/status.ts and witnessed, but no BRIEF or CHECKLIST states it, so an agent is never told",
-      "dr0029-side": "process",
-      "note": "The implementation ports and the instruction does not. That asymmetry is worth one row of its own.",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "tuition/mechanism-index.yaml",
+      "note": "CORRECTED DURING THIS PHASE. My first pass called C-1 a GAP after searching the briefs and the checklists, where it does not appear. It is in the MECHANISM INDEX under key append-only-log, and roles/implementer.md#clause-mechanism-lookup routes an implementer to that index before writing code that uses the mechanism. The search scope was wrong, not the kernel.",
+      "probe": "Never read current state from the tail of a log",
       "verified-by": {
-        "command": "grep -c 'log tail' AGENTS.md roles/implementer.md checklists/hazard-review.yaml checklists/clean-room.yaml",
+        "command": "grep -c 'Never read current state from the tail of a log' tuition/mechanism-index.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'Never read current state from the tail of a log' templates/warnings.md",
         "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/hazard-review.yaml:0 / checklists/clean-room.yaml:0"
+        "output": "0"
       }
     },
     {
@@ -2722,12 +2728,13 @@
       "group": "never-auto-background",
       "status": "GAP",
       "disposition": "KEEP",
-      "gap": "C-3 is enforced in shipped code and named in templates/report.example.yaml, but no brief or checklist tells an agent the rule",
+      "gap": "C-3 is enforced in shipped code (src/spawn.ts, src/gates/run.ts) and stated in NO instruction channel: not in a brief, not in a checklist, and not in the mechanism index, which is where C-1 and C-2 are",
       "dr0029-side": "process",
+      "note": "Searched case-insensitively for auto-background and background across AGENTS.md, roles/, checklists/, templates/, tuition/ and schemas/: the one hit is roles/implementer.md:93, where background is an ordinary English word. C-1 and C-2 both have mechanism-index entries and C-3 does not, which is what makes this a gap rather than a phrasing miss.",
       "verified-by": {
-        "command": "grep -c 'auto-background' AGENTS.md roles/implementer.md checklists/hazard-review.yaml checklists/clean-room.yaml",
+        "command": "grep -c 'auto-background' AGENTS.md roles/implementer.md checklists/hazard-review.yaml checklists/clean-room.yaml tuition/mechanism-index.yaml",
         "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/hazard-review.yaml:0 / checklists/clean-room.yaml:0"
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/hazard-review.yaml:0 / checklists/clean-room.yaml:0 / tuition/mechanism-index.yaml:0"
       }
     },
     {

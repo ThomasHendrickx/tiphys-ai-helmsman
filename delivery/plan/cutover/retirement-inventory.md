@@ -70,8 +70,8 @@ makes them non-redundant:
   `verified-by` command is the REFUTATION: it demonstrates that the world
   contradicts the rule.
 
-Totals: 186 PORTED, 90 GAP, 4 FALSE. Dispositions: 186 PORT, 77 KEEP, 17
-DELETE. Of the KEEP rows, 48 are process-side and 29 predicate-side.
+Totals: 187 PORTED, 89 GAP, 4 FALSE. Dispositions: 187 PORT, 76 KEEP, 17
+DELETE. Of the KEEP rows, 47 are process-side and 29 predicate-side.
 
 ## The four FALSE rows
 
@@ -112,7 +112,7 @@ carrying, and neither is true.
 
 ## Where the ported rules go
 
-186 rows PORT, and the destinations concentrate rather than scatter:
+187 rows PORT, and the destinations concentrate rather than scatter:
 
 | destination | rows |
 |---|---|
@@ -124,7 +124,7 @@ carrying, and neither is true.
 | `roles/investigator.md` | 7 |
 | `src/gates/scope.ts` | 6 |
 | `assurance-modes.yaml` | 4 |
-| everything else (11 artifacts) | 24 |
+| everything else (12 artifacts) | 25 |
 
 The shape is worth stating: the supervision and merge rules are the
 orchestrator brief's, the working rules are the implementer brief's, the review
@@ -135,7 +135,7 @@ rules file did not help the three authors who got it wrong.
 
 ## The gaps, which are the part a migration would have lost
 
-Twenty-seven groups of rules have no kernel destination. The three the intake
+Twenty-six groups of rules have no kernel destination. The three the intake
 predicted are confirmed by command, and the pass found more.
 
 **The three loop gaps.** Open the pull request, merge, and the stop condition.
@@ -145,11 +145,19 @@ orchestrator does not decide when it is finished" has no destination at all,
 which is the largest single gap here and has three recorded violations behind
 it.
 
-**C-1 and C-3 are enforced in code and stated to nobody.** Constraint C-1 (never
-read current state from the tail of an append-only log) is implemented and
-witnessed in the kernel, and no brief or checklist tells an agent the rule. C-3
-is the same shape. The implementation ported and the instruction did not, which
-is an asymmetry a rules migration reading only prose would never notice.
+**C-3 is enforced in code and stated in no instruction channel.** Constraint
+C-3 (no auto-backgrounding) is enforced in shipped code and appears in no brief,
+no checklist and not in the mechanism index, which is where C-1 and C-2 both
+live. That asymmetry is the kind a prose-only migration would not notice.
+
+**C-1 nearly became a false gap in this very document, and the correction is
+recorded rather than quietly applied.** My first pass called C-1 a GAP after
+searching the briefs and the checklists. It is in tuition/mechanism-index.yaml:45,
+under the key `append-only-log`, and roles/implementer.md:175 routes an
+implementer to that index before writing code that uses the mechanism. The
+search scope was wrong, not the kernel. It is the exact failure the fix-round
+contract's third item exists against, committed by the person writing the
+inventory that is supposed to prevent it.
 
 **The identifier register.** Thirteen rows: `SC-nnn`, `R-nnn`, `DR-nnnn`,
 `T-nnn`, `A-n` and the never-reuse-a-retired-id rule. The kernel has finding ids
