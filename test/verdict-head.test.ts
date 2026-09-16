@@ -563,10 +563,24 @@ test("two verdicts carrying DIFFERENT heads are two groups of one and the condit
   withContext("full", TWO_HEAD_PAIR, (dir) => {
     const run = runGate(dir);
     assert.notEqual(run.status, 0, run.output);
+    /* EACH GUARD IS NAMED SEPARATELY, for the reason recorded at the sibling
+       assertion in `test/dual-review.test.ts`: the two pair-size rules open
+       their messages with the same twelve words, so a regex stopping at the
+       shared prefix is satisfied by either one and neither rule is actually
+       guarded. Both must print for both heads. */
     for (const head of [FIXTURE_HEAD, OTHER_HEAD]) {
       assert.match(
         run.output,
-        new RegExp(`only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}`),
+        new RegExp(
+          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and a delegated grant requires two independent clean-room reviews of the exact head \\(check: dual-review-decorrelation\\)`,
+        ),
+        run.output,
+      );
+      assert.match(
+        run.output,
+        new RegExp(
+          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two \\(check: verdict-pair-approves\\)`,
+        ),
         run.output,
       );
     }
