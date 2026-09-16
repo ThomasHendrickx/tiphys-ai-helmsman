@@ -316,3 +316,39 @@ agent was inside a long tool call, while its journal still showed the round
 unfinished and its diff showed 258 lines of new work. Removing it on the
 freshness reading would have destroyed a running fix round. **Direction decided
 it; freshness would have got it wrong.**
+
+## Three more dispatch-brief defects, all caught by the agents they were sent to
+
+The postscript above records a brief that invented a finding. Two more briefs
+were found wrong the same day, by two different agents, and the pattern across
+all three is worth naming rather than filing as three incidents.
+
+| brief | what it asserted | what was true |
+|---|---|---|
+| `m4-fix.js` | "Both clean-room reviewers returned FIX-ROUND-NEEDED", and a specific five-defect grouping quoted as a reviewer's | false for every single-round phase; the grouping is in no review of the phase it was sent to (grep, exit 1) |
+| `m4-fix.js` | cited two `delivery/verification/` documents by path | both live on the orchestrator's branch, which is NOT an ancestor of any phase branch: ABSENT from all twelve |
+| `m4-wave.js` | "THIS UNBLOCKS EVERY MERGE IN M4 AND NOTHING MERGES UNTIL IT LANDS" | withdrawn by my own correction hours earlier: markdown reviews leave the gate dormant, so a phase merges past it |
+| `m4-wave.js` | a probe "has since measured" the `release-verification` shape | item 12 measures `release-verification.json`, the deploy gate's declaration file, a DIFFERENT artifact from the charter's field |
+
+**One mechanism, four instances: the brief carried a CLAIM ABOUT THE WORLD, and
+the world moved or was never that way.** A procedure does not go stale. "Run the
+claim grep, both forms" is true whenever it is sent. Every one of the four above
+is a fact, and a fact in a template is a fact asserted at a time other than the
+time it is read.
+
+The path citations are the same defect wearing different clothes: a path is a
+claim that a file exists in the reader's tree, and the orchestrator's tree is not
+the reader's tree. The fix in every case was to state the SUBSTANCE inline, so
+the brief carries what the agent needs without asserting where it lives.
+
+**What makes this recoverable rather than costly is not the briefs.** It is that
+every one of these was caught by the agent receiving it, because the briefs also
+say to verify rather than trust. Three agents each spent effort disproving
+something I told them, and each said so plainly in its result. That is the
+review contract working on the orchestrator.
+
+**What this does NOT cover.** Only the three briefs actually dispatched today
+were audited, and only against the claims the agents happened to check. No sweep
+was run over `m4-review1.js` or `m4-review2.js` for the same shape; the one
+check made was that their single cited document IS reachable from a phase
+branch, which it is. Other claims in them are unexamined.
