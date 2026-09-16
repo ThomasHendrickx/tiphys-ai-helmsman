@@ -93,3 +93,36 @@ WRITES. This adds a fourth, about where the orchestrator STANDS:
 - The `WorktreeCreate` hook path named in the error message was not
   investigated. There may be a configuration that removes the git-cwd
   requirement entirely, and nobody has looked.
+
+
+## Postscript, 2026-09-16: a third location failure, in the watchdog itself
+
+The watchdog armed for these ten agents took the NEWEST write across the UNION
+of all agent worktrees and compared that one number to a threshold.
+
+**That guard cannot go red while any single agent is alive.** Nine busy agents
+mask one dead one, permanently, and the reading it prints is indistinguishable
+from full health. It was armed twice in that form, and the second arming was
+done while re-reading the rule that forbids it.
+
+T-014 records the inverse and this project has now paid for both:
+
+| shape | why it cannot go red |
+|---|---|
+| watch a SUBSET of the agent's paths (T-014) | the agent writes somewhere the watchdog is not looking, so quiet reads as dead |
+| watch the UNION and take the newest (this) | one busy sibling keeps the number fresh, so dead reads as alive |
+
+**The fix is per-agent, and it is four lines of shell:** loop the worktrees,
+compute each one's own age, and NAME the ones over threshold. The replacement
+prints the branch name of every stale agent rather than a single aggregate
+number, so the output says WHICH agent rather than WHETHER any.
+
+**The general rule, which is the reusable half:** a freshness check over N
+independent things must be N checks. An aggregate over independent subjects is
+not a weaker version of the per-subject check, it is a DIFFERENT check that
+answers a question nobody asked. The measured example here is that the aggregate
+read 28 seconds while one agent sat at 444, and both numbers were true.
+
+Verified the same way the rest of this entry was: all ten agents were confirmed
+alive by a per-agent listing, and the spread between the freshest and the
+stalest was 416 seconds.
