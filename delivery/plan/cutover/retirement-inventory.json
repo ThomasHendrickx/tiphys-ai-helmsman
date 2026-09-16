@@ -379,15 +379,15 @@
       "disposition": "PORT",
       "destination": "AGENTS.md",
       "note": "Milestone exit tests as hard gates live in the orchestrator brief and in the plan schema's milestone structure.",
-      "probe": "exit test",
+      "probe": "milestone exit tests remain HARD GATES",
       "verified-by": {
-        "command": "grep -c 'exit test' AGENTS.md",
+        "command": "grep -c 'milestone exit tests remain HARD GATES' AGENTS.md",
         "exit": 0,
         "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'exit test' roles/implementer.md",
+        "command": "grep -c 'milestone exit tests remain HARD GATES' roles/implementer.md",
         "exit": 1,
         "output": "0"
       }
@@ -4071,15 +4071,15 @@
       "disposition": "PORT",
       "destination": "AGENTS.md",
       "note": "Milestone exit tests as hard gates live in the orchestrator brief and in the plan schema's milestone structure.",
-      "probe": "exit test",
+      "probe": "milestone exit tests remain HARD GATES",
       "verified-by": {
-        "command": "grep -c 'exit test' AGENTS.md",
+        "command": "grep -c 'milestone exit tests remain HARD GATES' AGENTS.md",
         "exit": 0,
         "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'exit test' roles/implementer.md",
+        "command": "grep -c 'milestone exit tests remain HARD GATES' roles/implementer.md",
         "exit": 1,
         "output": "0"
       }
@@ -4095,15 +4095,15 @@
       "disposition": "PORT",
       "destination": "src/pool.ts",
       "note": "Loop function 1. The kernel creates the phase worktree from merged main.",
-      "probe": "worktree",
+      "probe": "worktree per task at",
       "verified-by": {
-        "command": "grep -c 'worktree' src/pool.ts",
+        "command": "grep -c 'worktree per task at' src/pool.ts",
         "exit": 0,
-        "output": "76"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'worktree' src/lock.ts",
+        "command": "grep -c 'worktree per task at' src/lock.ts",
         "exit": 1,
         "output": "0"
       }
@@ -4119,15 +4119,15 @@
       "disposition": "PORT",
       "destination": "src/commands/spawn.ts",
       "note": "Loop functions 2. tiphys brief compose plus tiphys spawn.",
-      "probe": "brief",
+      "probe": "tiphys spawn --task",
       "verified-by": {
-        "command": "grep -c 'brief' src/commands/spawn.ts",
+        "command": "grep -c 'tiphys spawn --task' src/commands/spawn.ts",
         "exit": 0,
-        "output": "9"
+        "output": "2"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'brief' src/commands/teardown.ts",
+        "command": "grep -c 'tiphys spawn --task' src/commands/teardown.ts",
         "exit": 1,
         "output": "0"
       }
@@ -4390,15 +4390,15 @@
       "disposition": "PORT",
       "destination": "src/commands/teardown.ts",
       "note": "Loop function 8. Teardown is a command.",
-      "probe": "teardown",
+      "probe": "the worktree is already gone",
       "verified-by": {
-        "command": "grep -c 'teardown' src/commands/teardown.ts",
+        "command": "grep -c 'the worktree is already gone' src/commands/teardown.ts",
         "exit": 0,
-        "output": "9"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'teardown' src/commands/pool.ts",
+        "command": "grep -c 'the worktree is already gone' src/commands/pool.ts",
         "exit": 1,
         "output": "0"
       }
@@ -4414,15 +4414,15 @@
       "disposition": "PORT",
       "destination": "src/commands/watch.ts",
       "note": "Completion exposure is tiphys watch.",
-      "probe": "watch",
+      "probe": "beacon by the liveness guard",
       "verified-by": {
-        "command": "grep -c 'watch' src/commands/watch.ts",
+        "command": "grep -c 'beacon by the liveness guard' src/commands/watch.ts",
         "exit": 0,
-        "output": "11"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'watch' src/commands/lock.ts",
+        "command": "grep -c 'beacon by the liveness guard' src/commands/lock.ts",
         "exit": 1,
         "output": "0"
       }
@@ -4438,15 +4438,15 @@
       "disposition": "PORT",
       "destination": "src/commands/teardown.ts",
       "note": "Loop function 8. Teardown is a command.",
-      "probe": "teardown",
+      "probe": "the worktree is already gone",
       "verified-by": {
-        "command": "grep -c 'teardown' src/commands/teardown.ts",
+        "command": "grep -c 'the worktree is already gone' src/commands/teardown.ts",
         "exit": 0,
-        "output": "9"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'teardown' src/commands/pool.ts",
+        "command": "grep -c 'the worktree is already gone' src/commands/pool.ts",
         "exit": 1,
         "output": "0"
       }
@@ -4510,15 +4510,15 @@
       "disposition": "PORT",
       "destination": "src/pool.ts",
       "note": "Loop function 1. The kernel creates the phase worktree from merged main.",
-      "probe": "worktree",
+      "probe": "worktree per task at",
       "verified-by": {
-        "command": "grep -c 'worktree' src/pool.ts",
+        "command": "grep -c 'worktree per task at' src/pool.ts",
         "exit": 0,
-        "output": "76"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'worktree' src/lock.ts",
+        "command": "grep -c 'worktree per task at' src/lock.ts",
         "exit": 1,
         "output": "0"
       }
@@ -5110,15 +5110,15 @@
       "disposition": "PORT",
       "destination": "src/pool.ts",
       "note": "Loop function 1. The kernel creates the phase worktree from merged main.",
-      "probe": "worktree",
+      "probe": "worktree per task at",
       "verified-by": {
-        "command": "grep -c 'worktree' src/pool.ts",
+        "command": "grep -c 'worktree per task at' src/pool.ts",
         "exit": 0,
-        "output": "76"
+        "output": "1"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'worktree' src/lock.ts",
+        "command": "grep -c 'worktree per task at' src/lock.ts",
         "exit": 1,
         "output": "0"
       }

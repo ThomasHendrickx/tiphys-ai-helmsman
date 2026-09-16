@@ -321,8 +321,7 @@ function checkRowStructure(row, anchorsById, repo, findings) {
     fail("row has no id");
     return;
   }
-  const anchor = anchorsById.get(row.id);
-  if (anchor === undefined) {
+  if (!anchorsById.has(row.id)) {
     fail("no rule with this id is extractable from the three roots (stale row, or a reworded rule)");
   }
   if (!STATUSES.has(row.status)) {
