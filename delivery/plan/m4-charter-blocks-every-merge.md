@@ -188,3 +188,39 @@ machine check asleep.
 
 Step 3 is the one that has never been rehearsed, which by T-025's title is
 precisely the one to expect trouble from.
+
+## The eleven reviews running on 2026-09-16 do NOT produce verdict documents
+
+Stated here rather than left to be discovered, because the gap is mine and it
+is cheap to say now and expensive to find later.
+
+Eleven clean-room reviews were dispatched that morning: dual cross-model rounds
+for M4-P2, M4-P10 and M4-P16, the three phases that change shipped artifacts,
+and one recorded round each for M4-P1, M4-P13, M4-P20, M4-P23 and M4-P27 under
+DR-0027, which change none. Their brief asks for a markdown review and a
+structured result, and neither is a document conforming to
+schemas/verdict.schema.json:1.
+
+Two fields are why a converter cannot close this after the fact, and they are
+the substantive ones. `criteria[]` wants one entry per acceptance criterion in
+the phase's plan section, each carrying the evidence the reviewer actually
+gathered for it, and `deviations-judged[]` wants one entry per deviation the
+work history declares. Neither is recoverable from a review that did not
+collect them. Filling them from the plan text alone would be a fabricated
+criterion walk, which is exactly what `met: true` beside no evidence means and
+exactly what the schema's own comment says the document exists to prevent.
+
+So these eleven satisfy DR-0012 as a PROCESS (two independent reviews of one
+head, different framings, and for the three shipped-surface phases different
+model families) and they leave the machine check asleep, which is the state
+this document has just finished arguing is not acceptable to stay in.
+
+The fix is already in the dispatch scripts rather than in a plan: both now
+require the reviewer to write a conforming verdict and to report, as a required
+field, how many criteria it walked out of how many the plan declares and which
+it could not reach. Since most of these eleven are expected to return
+FIX-ROUND-NEEDED, and a fix round is followed by a re-review, the first
+conforming verdicts arrive on that pass. A phase that returns APPROVE on the
+first pass is the case to watch: it would merge having never produced the
+artifact, and it is the one that must be sent back for the verdict document
+rather than waved through.
