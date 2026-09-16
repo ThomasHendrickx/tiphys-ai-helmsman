@@ -8,12 +8,16 @@
     "src/gates/run.ts",
     "src/witness/run.ts",
     "test/single-family-exception.test.ts",
-    "test/witness.test.ts"
+    "test/witness.test.ts",
+    "test/dual-review.test.ts",
+    "test/kernel-charter.test.ts",
+    "test/verdict-head.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",
     "delivery/plan/phase-declarations/m4-p11.json",
-    "delivery/work-history/m4-p11.md"
+    "delivery/work-history/m4-p11.md",
+    "delivery/plan/cutover/retirement-inventory.json"
   ],
   "citations": [
     "DR-0012",

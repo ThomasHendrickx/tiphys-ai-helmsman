@@ -237,10 +237,20 @@ test("one verdict for a head exits nonzero saying a delegated grant needs two", 
        which defangs the decorrelation size rule alone, left this test green.
        Measured by running that witness, which is what found it. Asserting the
        tail and the attribution is what makes this test about the rule it
-       claims to guard. */
+       claims to guard.
+
+       THE PROVENANCE TAIL SITS BETWEEN THEM SINCE M4-P11 (stack integration,
+       2026-09-16), so the two halves are matched across it rather than
+       adjacently. M4-P11 makes every sentence about a corpus end with the
+       source it was actually read from, which is SC-011 applied to the corpus,
+       and that parenthetical carries nested parentheses of its own, so it is
+       crossed with `.*` rather than enumerated. The property this assertion
+       exists for is unchanged: the DISTINGUISHING TAIL and the ATTRIBUTION are
+       both required, and `.` does not cross a newline, so both must still be on
+       ONE line of output. */
     assert.match(
       run.output,
-      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9 at head [0-9a-f]{40}, and a delegated grant requires two independent clean-room reviews of the exact head \(check: dual-review-decorrelation\)/,
+      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9 at head [0-9a-f]{40}, and a delegated grant requires two independent clean-room reviews of the exact head .*\(check: dual-review-decorrelation\)/,
       run.output,
     );
   });

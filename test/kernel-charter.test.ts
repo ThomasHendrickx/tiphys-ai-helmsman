@@ -59,7 +59,24 @@ const charterPath = join(repoRoot, "charter.yaml");
 const DECORRELATED_PAIR = ["decorrelated-criteria.yaml", "decorrelated-hazard.yaml"];
 
 /** The sentence the fail-closed regime check prints. Quoted from its own source. */
-const REGIME_UNKNOWN = /does not exist, so the declared mode's merge-authority is unknown/;
+/*
+ * TWO REGEXES FOR ONE SENTENCE, AND THE ASYMMETRY IS THE POINT (M4-P11 stack
+ * integration, 2026-09-16). One constant used for both `match` and
+ * `doesNotMatch` has to be loose enough for the positive and tight enough for
+ * the negative, and it cannot be both: tightening it weakens the control
+ * silently, because a `doesNotMatch` passes when the sentence changed as
+ * happily as when it is absent.
+ *
+ * M4-P11 forced the split by giving the sentence its SOURCE: the probe moved to
+ * the commit and the message used to say "no charter.yaml" about a directory
+ * with a charter.yaml sitting in it (its fix round 2, DV-001). So the positive
+ * assertion now REQUIRES the source to be named, which is strictly more than it
+ * asked before, and the negative one forbids the whole family by matching only
+ * the invariant clause.
+ */
+const REGIME_UNKNOWN = /so the declared mode's merge-authority is unknown/;
+const REGIME_UNKNOWN_NAMING_ITS_SOURCE =
+  /does not exist (?:in the WORKING TREE|in commit )[^\n]*, so the declared mode's merge-authority is unknown/;
 
 const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
@@ -152,7 +169,7 @@ test("removing the root charter from that same context makes the merge check err
     rmSync(join(dir, "charter.yaml"));
     const refused = runScript(dir);
     assert.equal(refused.status, 21, refused.output);
-    assert.match(refused.output, REGIME_UNKNOWN, refused.output);
+    assert.match(refused.output, REGIME_UNKNOWN_NAMING_ITS_SOURCE, refused.output);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
