@@ -41,21 +41,47 @@ is wrong: verify against git and the PR list before trusting it.
   than that it RESOLVED, so a zero-byte `AGENTS.md` reported PASS; and `gitIn`
   carried the 1 MiB default `maxBuffer`, which a 9,120,827-byte diff exceeded.
   All three are fixed on `main`.
-- **M4 IS DISPATCHED, 2026-09-15. WAVE 1 IS SIX PHASES IN FLIGHT.** D-19's
-  blocker is cleared: delivery/plan/m4-intake.md:1 and
+- **M4 IS RUNNING. TWELVE PHASE BRANCHES EXIST, ZERO ARE MERGED, 2026-09-16.**
+  D-19's blocker is cleared: delivery/plan/m4-intake.md:1 and
   delivery/plan/kernel-plan-m4.md:1 both exist, twenty-seven phases across the
   six required workstreams. The wave-1 conflict pre-pass is
-  delivery/plan/m4-conflict-pre-pass.md:1 and proves the six mutually disjoint
-  pairwise. In flight: M4-P1 remainder (the blocking probe for M4-P9), M4-P2
-  (async launch), M4-P10 (verdict head and medium), M4-P13 (migration-row
-  re-disposition), M4-P16 (fleet resume), M4-P20 (exclusion red witnesses).
-  Held back and why: M4-P3, M4-P4 and M4-P8 all collide with M4-P2 on
-  `src/spawn.ts`; M4-P9 is blocked on a measurement rather than a file.
-  **None has been reviewed and none may merge until it has been.** DR-0035
-  floor is one round.
+  delivery/plan/m4-conflict-pre-pass.md:1.
 
-- **NOTHING IN THIS REPOSITORY IS IN FLIGHT.** No phase branch under active
-  work, no dispatched implementer. The next unit of work is not yet chosen.
+  Branches, all now on origin: M4-P1, P2, P10, P11, P13, P15, P16, P19, P20,
+  P23, P26, P27. Held back and why: M4-P3, M4-P4 and M4-P8 all collide with
+  M4-P2 on `src/spawn.ts`; M4-P9 is blocked on a measurement rather than a file.
+
+- **TWO MERGE BLOCKERS GATE EVERY M4 PHASE, AND BOTH ARE IN FLIGHT.** Neither is
+  a defect in any phase; both are properties of the merge predicate itself.
+  M4-P15 authors the root `charter.yaml` without which `check-dual-review`
+  reports error the moment any phase commits two verdict documents, which
+  DR-0031 requires every phase to do; the chain is written out in
+  delivery/plan/m4-charter-blocks-every-merge.md:1. M4-P11 implements DR-0038's
+  declared single-family review exception, without which this orchestrator's
+  own dual reviews do not satisfy DR-0012, because both reviewers are Claude
+  models and the decorrelation check compares canonicalised strings rather than
+  model families. **Nothing merges before both land.**
+
+- **REVIEW TRIAGE IS BY DR-0027 REACHABILITY, NOT BY PHASE COUNT.** Measured
+  2026-09-16 with `git diff --name-only origin/main...<branch>` per phase: only
+  M4-P2 (src/spawn.ts, src/task.ts, src/watcher.ts), M4-P10
+  (schemas/verdict.schema.json, src/checks.ts) and M4-P16 (src/cli.ts,
+  src/commands/init.ts, src/commands/resume.ts, src/fleet.ts) change shipped
+  artifacts. The other five unreviewed phases (M4-P1, P13, P20, P23, P27) touch
+  only scripts/, test/, .github/ and paperwork, so under DR-0027 they get one
+  recorded round and do not block on a MEDIUM. Full dual cross-model review was
+  dispatched for the three shipped-surface phases; that is six reviewers rather
+  than the sixteen a per-phase rule would have spent, and DR-0027 exists
+  because 1.66 million subagent tokens once went to two files that ship nothing.
+
+- **M4-P19 AND M4-P26 ARE IN FIX ROUNDS.** M4-P19's reviews are at
+  `delivery/review/M4-P19-opus5-correctness` and
+  `delivery/review/M4-P19-fable-evidence` on its branch; the HIGH findings were
+  that the canonical post-reclaim fleet makes the new check inert, that the
+  scout arm of teardown passes `discard: true` unconditionally and so destroys
+  uncommitted work, that `red-witness` is red with four changed source files
+  carrying no witness spec, and that three asserted facts in section 6 of the
+  work history measured FALSE.
 - **M3-P13 IS DELIVERED THROUGH A BRANCH THAT IS NOT ITS OWN, AND
   `.claude/orchestrator-next.mjs` READS THAT AS UNMERGED WORK.** The phase's
   code reached `main` inside the exit test's branch at `1945d69`, carrying a
@@ -1878,6 +1904,40 @@ fact rather than a memory.
   IMMEDIATELY AFTER M3-P1 merges and before M3-P2 is dispatched.
 
 ## Standing reminders
+
+- **PUSH EVERY PHASE BRANCH ON DISPATCH, NOT ON COMPLETION.** Measured
+  2026-09-16: twelve M4 branches carrying 141 distinct commits existed only in
+  this container and on no remote, for just over two hours of continuous
+  multi-agent work. `git ls-remote --heads origin 'refs/heads/claude/m4-*'`
+  returned zero lines. Nothing was lost, because the container was not
+  reclaimed first, which is luck and not process. A commit is not a durable
+  artifact; a pushed commit is. The full account is
+  delivery/tuition/T-027-four-hundred-commits-lived-only-in-the-container.md:1.
+
+- **THE STOP CONDITION HAD THREE GUARDS THAT COULD NOT GO RED, ALL IN ONE
+  FILE.** Found in the same sitting. Its milestone defaulted to the literal
+  "m3", complete since 2026-08-26, so the bare invocation printed "13/13
+  merged, NOTHING LEFT" and exited 0 for every milestone after it. Its phase
+  set was harvested from three sources that all read origin, so local-only work
+  was not an unflagged phase but not a phase at all. Its worktree path was a
+  hard-coded constant containing a different session's scratchpad id, a
+  directory that does not exist, so the liveness half had been silently inert.
+  All three are fixed; the milestone is derived, unpushed commits rank above
+  every other action with exit 6, and worktrees are found with `git worktree
+  list --porcelain`.
+
+  **Run it bare and read the exit code.** 6 means push now; 2 means work
+  remains; 3 means run the exit test; 4 or 5 mean the derivation is broken,
+  which is a defect and never an idle repository.
+
+- **A WATCHDOG MUST PRINT EVERY CYCLE.** The one armed before this ran for
+  hours and emitted zero bytes, because it printed only on transitions. Its
+  healthy output and its absence were identical, so it carried no information.
+  It was also keyed on worktrees, and three review workflows dispatched on
+  2026-09-16 had none, so six reviewers would have been unwatched. Key on the
+  transcript the harness guarantees, not the worktree an agent may not create.
+  Recorded as postscripts 5 and 6 of
+  delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:1.
 
 - **DR-0012 CONDITION 1 IS APPLIED THROUGH A READING, AND THE READING MUST BE
   STATED IN EVERY MERGE COMMIT THAT USES IT.** The condition requires "two
