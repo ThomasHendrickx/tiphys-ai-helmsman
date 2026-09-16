@@ -1,0 +1,24 @@
+{
+  "id": "cutover-dirty-tree-guard",
+  "behavior": "cutover-restore-files-refuses-dirty-tree",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "restoring retirement roots refuses a dirty tree and leaves the modified file byte-identical"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved",
+      "replace": "  const resolved"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const checkout = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);",
+      "replace": "  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const checkout = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);\n  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "cutover-drain-in-flight-only",
+  "behavior": "cutover-drain-counts-in-flight-not-branches",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "drain counts a live worktree and an open task with no turn-end, and nothing else"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  return items.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`));",
+      "replace": "  const heads = runGit(fleet.root, [\n    \"for-each-ref\",\n    \"--format=%(refname:short)\",\n    \"refs/remotes/origin\",\n  ]);\n  for (const line of heads.stdout.split(\"\\n\")) {\n    const name = line.trim();\n    if (name.length > 0 && name !== \"origin/main\") {\n      items.push({ kind: \"task\", id: name, detail: \"unmerged branch\" });\n    }\n  }\n  return items.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    const turnEnd = classifyEntry(turnEndPath(fleet, id));\n    if (turnEnd.kind === \"absent\" || turnEnd.kind === \"dangling\") {\n      items.push({ kind: \"task\", id, detail: \"open with no turn-end\" });\n    }",
+      "replace": "    items.push({ kind: \"task\", id, detail: \"open\" });"
+    }
+  ]
+}

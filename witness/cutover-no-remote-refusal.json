@@ -1,0 +1,24 @@
+{
+  "id": "cutover-no-remote-refusal",
+  "behavior": "cutover-no-remote-refuses-by-default",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a fleet with no remote refuses by default and says so out loud when allowed"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    return options.allowNoRemote === true\n      ? { ok: true, pushed: false, reason }\n      : { ok: false, reason };",
+      "replace": "    return { ok: true, pushed: false, reason };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    const reason = `${fleetRoot} has no origin remote, so the rollback is committed locally and NOT published`;",
+      "replace": "    const reason = \"\";"
+    }
+  ]
+}

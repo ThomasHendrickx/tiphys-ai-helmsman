@@ -1,0 +1,24 @@
+{
+  "id": "cutover-command-sync-failure-is-nonzero",
+  "behavior": "cutover-rollback-nonzero-when-fleet-state-not-published",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "cutover rollback exits nonzero when the fleet state cannot be published"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  if (!sync.ok) {\n    return fail(sync.reason, 1);\n  }\n  return 0;",
+      "replace": "  return 0;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  if (!sync.ok) {\n    return fail(sync.reason, 1);\n  }\n  return 0;",
+      "replace": "  if (!sync.ok) {\n    return fail(sync.reason, 0);\n  }\n  return 0;"
+    }
+  ]
+}

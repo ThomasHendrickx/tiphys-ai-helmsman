@@ -1,0 +1,24 @@
+{
+  "id": "cutover-rollback-atomic",
+  "behavior": "cutover-rollback-atomic-on-mid-apply-failure",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a failure part way through the rollback leaves cutover.json byte-identical"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  let plan: RollbackPlan;\n  try {\n    plan = planRollback(read.state, trigger, options);",
+      "replace": "  let plan: RollbackPlan;\n  try {\n    publishCutoverState(cutoverStatePath(fleet), {\n      switches: {\n        ...read.state.switches,\n        \"planning-and-scope\": {\n          ...read.state.switches[\"planning-and-scope\"],\n          state: \"current\",\n          restoreTo: \"kernel\",\n        },\n      },\n    });\n    plan = planRollback(read.state, trigger, options);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  let plan: RollbackPlan;\n  try {\n    plan = planRollback(read.state, trigger, options);\n  } catch (error) {\n    return {\n      ok: false,\n      reason: `rollback assembly failed before any write: ${\n        error instanceof Error ? error.message : String(error)\n      }`,\n    };\n  }",
+      "replace": "  const plan: RollbackPlan = planRollback(read.state, trigger, options);"
+    }
+  ]
+}

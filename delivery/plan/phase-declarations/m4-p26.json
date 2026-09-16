@@ -6,7 +6,8 @@
     "src/cutover.ts",
     "src/commands/cutover.ts",
     "scripts/rehearse-cutover-rollback.mjs",
-    "test/cutover.test.ts"
+    "test/cutover.test.ts",
+    "witness/"
   ],
   "declaredExtras": [
     "test/behaviors.json",
