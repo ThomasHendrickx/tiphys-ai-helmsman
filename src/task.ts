@@ -472,10 +472,13 @@ export function runStep<T>(what: string, step: () => T): StepResult<T> {
  * one"; spawn's launch call site needs the same shape now that
  * `ExecutorAdapter.launch` returns a promise, and T-005's one-mechanism
  * rule makes copying it a third time the wrong answer. The promotion was
- * verified byte-identical before it was made: the two functions were run
- * side by side over six `what`/thrown-error pairs and their reason strings
- * compared as buffers, so moving it cannot change a watcher message
- * (delivery/work-history/m4-p2.md:60).
+ * measured before it was made: the two functions were run side by side over
+ * six `what`/thrown-error pairs covering an ordinary Error, an Error with an
+ * empty message, a thrown string, a thrown object with a custom toString, an
+ * Error subclass and a multi-line pair, and their reason strings were
+ * compared as buffers. All six were byte-identical, so no watcher message
+ * changes on any of those six. The capture is in the M4-P2 work history
+ * under `delivery/work-history/m4-p2.md`.
  *
  * WHY A SEPARATE FUNCTION RATHER THAN WIDENING runStep. `runStep` returns
  * `{ok: true, value}` the instant its callback returns, and a callback that
