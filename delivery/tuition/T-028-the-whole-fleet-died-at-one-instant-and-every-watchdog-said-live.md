@@ -385,3 +385,30 @@ reviews were landed from a fresh worktree at the true head.
 **The comparison is against `origin/<branch>`.** A local ref is a cache of what
 this clone last heard, and in a session where agents push, it is routinely
 behind. Fetch first, or compare to the remote-tracking ref, or both.
+
+### The corollary: where a phase-specific fact DOES belong
+
+The rule above ("a template may carry PROCEDURE and must not carry FINDINGS")
+leaves an obvious question unanswered, and leaving it unanswered is how the
+defect comes back: the orchestrator often DOES know something a round needs, and
+learns it after the review was written.
+
+The answer is a per-dispatch file, not the template and not chat.
+
+The fix brief already instructs every round to read every file matching
+`/tmp/claude-0/reviews/<PHASE>-*.md` in full before changing anything. So an
+orchestrator note dropped at `<PHASE>-orchestrator-note.md` is read by exactly
+the one round it concerns, is dated, and disappears from every other dispatch
+without anyone having to remember to remove it.
+
+The first one written says, for M4-P1: the review's HIGH is discharged by a
+delivery-order action and there is nothing in the branch to change for it; do
+NOT declare the inherited paperwork to make the gate green; here is the half of
+the MEDIUM that is independently confirmed and here is the half that is
+unverifiable in either direction, with the measurement for each.
+
+**The three properties that make this the right shape**, against the template:
+it is addressed to one reader, so it cannot leak into a dispatch it is false
+for; it carries its own measurements rather than pointing at a document on a
+branch the reader cannot reach; and it is disposable, so nothing has to garbage-
+collect a stale fact out of a script months later.
