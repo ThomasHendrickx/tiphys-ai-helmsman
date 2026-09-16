@@ -1,0 +1,44 @@
+# HEAD, full suite, node v26.6.0, dist built, invocation: npm test
+# Summary block and the two failure records, verbatim except the declared transliteration.
+
+ok a work history claim filed under a kind the schema does not question is rejected through the shared definition (269.103096ms)
+ok the shipped warnings template placed as a fleet warnings file reaches an assembled brief verbatim (5332.87215ms)
+ok the parity check runs on a work history's gate-evidence, through the shared definition it guards (472.033634ms)
+ok a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition (2875.798996ms)
+ok the exit-code obligation on a gate result that ran travels to a work history's gate-evidence, and not-applicable stays free there too (3747.5254ms)
+ok an impossibility filed as an open question is rejected in a work history too, through the shared definition (2131.115005ms)
+i tests 849
+i suites 0
+i pass 847
+i fail 2
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 909585.018543
+
+x failing tests:
+
+test at test/coverage-gate.test.ts:146:1
+x the coverage gate against the real migration table and appendix reports units 115 with per-kind and per-milestone breakdowns matching the plan (667.795005ms)
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 5 (possible catastrophic backtracking)
+      at boundedExec (file:///home/user/tiphys-ai-helmsman/src/gates/coverage.ts:260:11)
+      at extractIdRows (file:///home/user/tiphys-ai-helmsman/src/gates/coverage.ts:376:9)
+      at Module.checkCoverage (file:///home/user/tiphys-ai-helmsman/src/gates/coverage.ts:416:25)
+      at TestContext.<anonymous> (file:///home/user/tiphys-ai-helmsman/test/coverage-gate.test.ts:151:33)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+
+test at test/coverage-gate.test.ts:516:1
+x a row deleted from both real documents is red against the expected-units floor, and restoring it is green (1715.769214ms)
+  Error: pattern ^(?:M([0-9]+)-P[0-9]+)$ did not complete within 250ms against a value of length 2 (possible catastrophic backtracking)
+      at boundedExec (file:///home/user/tiphys-ai-helmsman/src/gates/coverage.ts:260:11)
+      at Module.checkCoverage (file:///home/user/tiphys-ai-helmsman/src/gates/coverage.ts:491:21)
+      at TestContext.<anonymous> (file:///home/user/tiphys-ai-helmsman/test/coverage-gate.test.ts:537:36)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7)

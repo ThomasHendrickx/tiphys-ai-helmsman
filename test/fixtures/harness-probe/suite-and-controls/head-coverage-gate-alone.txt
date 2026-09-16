@@ -1,0 +1,12 @@
+# HEAD, same file alone, node v26.6.0, invocation: node --test test/coverage-gate.test.ts
+
+ok a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging (1090.395062ms)
+ok a bucket value matching more than one declared kind is red naming every match, never a silent first match (5.336304ms)
+i tests 17
+i suites 0
+i pass 17
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 15318.644516

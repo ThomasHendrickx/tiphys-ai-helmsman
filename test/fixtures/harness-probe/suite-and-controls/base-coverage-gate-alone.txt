@@ -1,0 +1,15 @@
+# BASE commit 6961186 in a separate worktree, node v26.6.0, invocation: node --test test/coverage-gate.test.ts
+# NO added load. This is the control that the file is green at the base.
+
+ok a refused or failed evidence write makes the gate error instead of a silent green (1775.415663ms)
+ok a malformed config pattern is a named config error with a written result record, never an uncaught exception (1547.449084ms)
+ok a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging (1701.466123ms)
+ok a bucket value matching more than one declared kind is red naming every match, never a silent first match (6.968865ms)
+i tests 17
+i suites 0
+i pass 17
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 13719.693189

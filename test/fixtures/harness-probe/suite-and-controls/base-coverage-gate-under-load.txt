@@ -1,0 +1,19 @@
+# SAME base commit, SAME worktree, SAME invocation, ONE variable changed: eight busy node
+# processes running alongside. The identical guard message appears with no change of mine present.
+
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 5 (possible catastrophic backtracking)
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 5 (possible catastrophic backtracking)
+  AssertionError [ERR_ASSERTION]: {"status":21,"record":{"gate":"coverage","status":"error","units":0,"unitLabel":"finding ids checked","startedAt":"2026-09-16T00:44:49.594Z","endedAt":"2026-09-16T00:44:50.492Z","detail":"coverage check failed: pattern ^(?:Z-[0-9]+)$ did not complete within 250ms against a value of length 2 (possible catastrophic backtracking)","evidence":[]},"stdout":"coverage: error (0 finding ids checked)\ncoverage check failed: pattern ^(?:Z-[0-9]+)$ did not complete within 250ms against a value of length 2 (possible catastrophic backtracking)\n","stderr":""}
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 6 (possible catastrophic backtracking)
+  Error: pattern ^(?:R-[0-9]+[a-z]?)$ did not complete within 250ms against a value of length 5 (possible catastrophic backtracking)
+  AssertionError [ERR_ASSERTION]: {"status":21,"record":{"gate":"coverage","status":"error","units":0,"unitLabel":"finding ids checked","startedAt":"2026-09-16T00:45:15.029Z","endedAt":"2026-09-16T00:45:19.294Z","detail":"coverage check failed: pattern ^(?:M([0-9]+))$ did not complete within 250ms against a value of length 2 (possible catastrophic backtracking)","evidence":[]},"stdout":"coverage: error (0 finding ids checked)\ncoverage check failed: pattern ^(?:M([0-9]+))$ did not complete within 250ms against a value of length 2 (possible catastrophic backtracking)\n","stderr":""}
+
+ok a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging (7740.055446ms)
+ok a bucket value matching more than one declared kind is red naming every match, never a silent first match (400.365583ms)
+i tests 17
+i suites 0
+i pass 11
+i fail 6
+i cancelled 0
+i skipped 0
+i todo 0
