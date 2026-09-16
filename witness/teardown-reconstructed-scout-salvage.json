@@ -1,0 +1,29 @@
+{
+  "id": "teardown-reconstructed-scout-salvage",
+  "behavior": "teardown-salvage-never-rescues-a-reconstructed-scout",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "--salvage does not open the reconstructed scout path, because a scout never pushes"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "      if (scoutDirty.dirty) {\n        return {\n          ok: false,\n          reason:\n            `scout worktree ${worktree} has uncommitted changes or untracked ` +",
+      "replace": "      if (scoutDirty.dirty && !options.salvage) {\n        return {\n          ok: false,\n          reason:\n            `scout worktree ${worktree} has uncommitted changes or untracked ` +"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "    if (context.reconstructed) {\n      const scoutDirty = worktreeDirty(worktree);\n      if (!scoutDirty.ok) {",
+      "replace": "    if (context.reconstructed && !options.salvage) {\n      const scoutDirty = worktreeDirty(worktree);\n      if (!scoutDirty.ok) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git, as `git status --porcelain` in the task worktree and `git show-ref` in the upstream repository",
+    "captures": ["witness/captures/m4-p19-git-status-porcelain-dirty.txt"],
+    "provenance": "Rule (f) binds because src/teardown.ts matches the spawn grep. The capture is the one the first fix round took on 2026-09-16 against git 2.43.0, holding real `git status --porcelain` output for a worktree with one tracked modification and one untracked file; the named test reaches it through the shared `dirtyWorktree` helper, which refuses to proceed unless the live porcelain lines appear in the recorded file, so the leading SPACE on the ` M` line is read from git rather than typed here. The test also compares `git show-ref` in the upstream before and after, which is what distinguishes a refusal from a refusal that pushed first. THE DANGEROUS STATE IS ONE MIS-READ WITH TWO ENTRY POINTS, and that is stated rather than dressed up as two unrelated defects: `--salvage` is the escape from the SHIP dirty refusal, so treating it as the escape from the scout one is the obvious next step, and it can be written at the refusal or at the gate above it. The first member leaves the porcelain probe running and skips only the refusal; the second skips the probe entirely, so the command never even looks at the tree it is about to remove. The first fix round listed this combination as READ FROM SOURCE and not run; it is now run."
+  }
+}

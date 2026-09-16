@@ -1,0 +1,32 @@
+M4-P19 fix round: what `git ls-remote` really does against a TCP listener
+that accepts the connection and then never speaks. Captured 2026-09-16.
+
+This capture exists because the behaviour under test is an ABSENCE, and an
+absence is the easiest thing in the world to assert about wrongly. The claim
+the bound rests on is "git does not give up on its own". That is a claim
+about another program, so it is measured rather than assumed, and it is
+measured at two different waits so the reader can see that the second one is
+not a longer version of a timeout that had already fired.
+
+The listener is a plain socket bound to 127.0.0.1 that accepts connections
+and holds them. Nothing is written to the client.
+
+git --version:
+git version 2.43.0
+
+$ timeout 5 git ls-remote --symref git://127.0.0.1:48399/nope.git HEAD
+exit: 124   elapsed: 5s   stdout and stderr: empty
+
+$ timeout 20 git ls-remote --symref git://127.0.0.1:48399/nope.git HEAD
+exit: 124   elapsed: 20s   stdout and stderr: empty
+
+124 is what `timeout` reports when it killed the child, so in both runs git
+was still waiting. It printed nothing in either case, which is the other half
+of why this is dangerous: an unbounded call here is indistinguishable from a
+slow one, from the outside, for as long as anybody is willing to wait.
+
+Two consequences this fix round acts on. A caller that must return cannot be
+allowed to reach this command at all, which is the `{ network: false }`
+decision in src/pool.ts. And a caller that MAY reach it still needs a bound
+imposed from outside git, which is the `timeout` passed to spawnSync, because
+this capture shows git will not impose one itself.
