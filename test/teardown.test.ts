@@ -1238,7 +1238,7 @@ test("teardown --from-reconstructed gives up on a remote that never answers", as
     "t-recon-hang",
     ["--from-reconstructed"],
     { ...baseEnv(), TIPHYS_GIT_NETWORK_TIMEOUT_MS: "1500" },
-    20_000,
+    SPAWN_BOUND_MS,
   );
   assert.equal(
     refused.status,

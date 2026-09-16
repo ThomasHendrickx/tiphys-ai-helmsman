@@ -1416,7 +1416,7 @@ test("pool list returns against a remote that accepts and never answers", async 
     `git://127.0.0.1:${String(port)}/nope.git`,
   ]);
 
-  const listed = runCli(["pool", "list"], { cwd: scratch.fleet, timeout: 20_000 });
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet, timeout: SPAWN_BOUND_MS });
   assert.equal(
     listed.status,
     0,
