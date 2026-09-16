@@ -82,7 +82,37 @@ function gitOk(dir: string, args: string[]): string {
 }
 
 function makeTempDir(t: { after(fn: () => void): void }): string {
-  const dir = mkdtempSync(join(tmpdir(), "tiphys-p4-spawn-"));
+  /*
+   * CANONICAL, not merely absolute, and that is the whole point of the
+   * realpathSync. `os.tmpdir()` returns a SPELLING of the temp directory and
+   * makes no promise that it is the canonical one. On macOS it is not: the
+   * platform hands back a path under /var/folders and /var is a symlink to
+   * /private/var, so every scratch root this helper produced there was
+   * already reached through a symlink before any test created one.
+   *
+   * That matters because this file composes paths from the returned root and
+   * then compares them, as STRINGS, against paths another program produced,
+   * or asserts that they are canonical. Git canonicalises every worktree path
+   * it records, so a composed path and the path git prints are two spellings
+   * of one directory, and a string comparison answers "different object" for
+   * the same object. The macOS runner of pull request #155 failed on exactly
+   * that, twice in one test (work history, round 4).
+   *
+   * Resolving ONCE here is the repair at the mechanism rather than at the two
+   * assertions that happened to notice: it makes every scratch path in this
+   * file mean the same thing on every platform, and the next test added to
+   * the file inherits it without having to know any of this.
+   *
+   * It takes nothing away from what the tests exercise. The symlinks that
+   * matter here are the ones a test builds for ITSELF, deliberately, on every
+   * platform: see the launch-failed rollback test's two arms, which construct
+   * a symlinked fleet root and a symlinked worktrees directory. Leaning on
+   * the platform to supply a symlink by accident is the weaker arrangement,
+   * because it makes the dangerous state depend on which runner is executing,
+   * and it is what let arm B stop being a different arm from arm A on macOS
+   * without any assertion in the file noticing until one was added.
+   */
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "tiphys-p4-spawn-")));
   t.after(() => {
     rmSync(dir, { recursive: true, force: true });
   });
@@ -1339,6 +1369,17 @@ test(
     const live = makeScratch(t);
     {
       // The captured contract, re-measured here on this machine's git.
+      //
+      // THE CONTRACT IS "GIT PRINTS THE REALPATH OF WHAT IT WAS GIVEN", so
+      // that is what the comparison below is written against. Composing the
+      // expected string out of the fixture's own directory instead is what
+      // made this probe fail on the macOS runner of pull request #155: there
+      // os.tmpdir() sits under /var/folders and /var is itself a symlink to
+      // /private/var, so the fixture's "real" directory was ALREADY a
+      // non-canonical spelling before the fixture created any symlink, git
+      // printed the /private/var form, and the probe read a correct git as a
+      // broken one. Resolving the asked-for path states the contract exactly
+      // and is the same sentence on every platform.
       const realDir = join(live.tmp, "canonical-probe");
       mkdirSync(realDir);
       const linkDir = join(live.tmp, "canonical-probe-link");
@@ -1347,19 +1388,28 @@ test(
       gitOk(live.tmp, ["clone", "--quiet", live.upstream, probeClone]);
       const probeTree = join(linkDir, "wt");
       gitOk(probeClone, ["worktree", "add", "--quiet", "-b", "probe/x", probeTree]);
+      // realpathSync is applied to the path GIT WAS GIVEN, never to git's
+      // answer, so the symlink the fixture built is still the thing under
+      // test. If git stopped canonicalising and echoed the spelling it was
+      // handed, this string would be absent from the listing and the next
+      // assertion would find probeTree present: two independent reds, and
+      // the notEqual below is what stops either passing vacuously.
+      const canonicalTree = realpathSync(probeTree);
       const listed = gitOk(probeClone, ["worktree", "list", "--porcelain"]);
+      assert.notEqual(
+        probeTree,
+        canonicalTree,
+        "captured contract: the two spellings are different strings",
+      );
       assert.ok(
-        listed.includes(`worktree ${join(realDir, "wt")}\n`),
-        `captured contract: git reports the canonical worktree path, got:\n${listed}`,
+        listed.includes(`worktree ${canonicalTree}\n`),
+        `captured contract: git reports the canonical worktree path ` +
+          `${canonicalTree} for the worktree it was asked to add at ` +
+          `${probeTree}, got:\n${listed}`,
       );
       assert.ok(
         !listed.includes(`worktree ${probeTree}\n`),
         `captured contract: git does not echo the spelling it was given, got:\n${listed}`,
-      );
-      assert.notEqual(
-        probeTree,
-        join(realDir, "wt"),
-        "captured contract: the two spellings are different strings",
       );
     }
 
@@ -1428,10 +1478,20 @@ test(
     mkdirSync(elsewhere);
     rmSync(join(second.fleet, "worktrees"), { recursive: true });
     symlinkSync(elsewhere, join(second.fleet, "worktrees"));
+    // AND THIS PRECONDITION IS LOAD-BEARING, NOT DECORATION. If the fleet
+    // root here carries a symlink anywhere in it, the arm stops being
+    // structurally different from arm A: canonicalising the caller's
+    // argument would repair both, and "one witness is not a class" would be
+    // satisfied on paper by two members that fail under the same repair. On
+    // macOS that is exactly what happened until round 4, because
+    // os.tmpdir() sits under /var and /var is a symlink; makeTempDir now
+    // resolves the scratch root once, which is what makes this true on every
+    // platform. Failing here means the helper stopped doing that.
     assert.equal(
       realpathSync(second.fleet),
       second.fleet,
-      "precondition: this arm's fleet root is already canonical",
+      "precondition: this arm's fleet root is already canonical, or it is not " +
+        "a different arm from arm A (see makeTempDir)",
     );
     const failedB = await spawnWithAdapter(second, "t-linkedworktrees", failing);
     const reasonB = reasonOf(failedB);
