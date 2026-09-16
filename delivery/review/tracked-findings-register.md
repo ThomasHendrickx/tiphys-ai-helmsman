@@ -421,6 +421,39 @@ These predate the decision and were already unowned. They are listed so that
 `describeDrift` and HRB-4 are the SAME mechanism in two programs, which is the
 observation T-020 records. Anyone picking up either should pick up both.
 
+## M4 wave 1, reviewed 2026-09-16, NOT yet merged
+
+These are recorded BEFORE their phases merge, which is a departure from the
+sections above and is deliberate: the session-limit kill on the same day showed
+that a finding living only in a review document and a chat message is one
+container away from gone. Each names the reviewer's own reachability judgement.
+
+### M4-P20 (exclusion pre-pass) -- one round, verdict APPROVE
+
+| id | what | why not blocking |
+|---|---|---|
+| CR-M4P20-001 | `scripts/probe-cas-ref.mjs` recursively force-deletes its raw argv path operand with NO guard, and the deletion is documented nowhere. The reviewer built a directory holding `.git/HEAD`, a plan file and an uncommitted `WORK.md`, pointed the DOCUMENTED reproduction command at it, and it was gone at exit 0 with no warning | `scripts/` is outside the shipped surface: `package.json` `files` lists `dist`, `LICENSE`, `AGENTS.md`, `gate-registry.yaml` and the manifest, and neither `scripts` nor `test`. **CONTESTED BY THE ORCHESTRATOR**, and recorded as contested rather than flattened: the reachability test is satisfied, and a documented command that destroys uncommitted work is still a hazard to a HUMAN following the documentation. It is queued for a fix round rather than left, and it is in this register in case that round does not happen |
+| CR-M4P20-002 | the probe guard is GREEN against a HAND-WRITTEN refusal line. The reviewer replaced the function with a constant carrying a `deadbeef` object name no git ever produced; the probe printed the fabrication at exit 0 and all five guard tests stayed green | one hop from shipped: the probe is the evidence behind M4-D-11, which governs `src/exclusion.ts`. It is the red-witness rule's own "never hand-written" property (T-003) failing inside a guard whose whole purpose is that property. Tracked, and the reviewer supplied a one-line fix it witnessed red |
+| CR-M4P20-003 | a derivation published as "Full output" is not the full output: 16 lines published against 24 real, with one row silently dropped and no elision marker | prose only, and no gate can see it because the citations gate does not lint work histories. Recorded because a published derivation that is not the full output is the fix-round contract's item 2 failing quietly |
+| CR-M4P20-004 | the disjointness argument is file-level only, and these tests depend on `src/fleet.ts`, which another wave-1 unit owns | `src/fleet.ts` IS shipped, so a FUTURE instance could turn `main` red after both merge with neither branch's own CI able to see it. No instance today |
+
+### M4-P23 (retirement inventory) -- fix round dispatched, not tracked-only
+
+Its HIGH (the C-3 gap row is false, refuted by `AGENTS.md` and a shipped schema)
+and three of its MEDIUMs went to a fix round rather than here. One item is
+tracked because it is not that phase's:
+
+| id | what | why not blocking |
+|---|---|---|
+| CR-M4P23-007 | `process.exit(main(...))` truncates a piped report at one pipe buffer, in three shipped gate modules reached by `tiphys gates run` | **REACHES SHIPPED**, so it is not tracked under the reachability test; it is tracked because it is NOT M4-P23's to fix and no M4 phase owns `src/gates/`. Forced and bounded after the review: 58,890 bytes intact, 118,890 arrive as 65,466, nothing lost to a FILE. LATENT: the largest gate stdout measured anywhere here is 2,425 bytes. Now planned as M4-P29 |
+
+### Found by the orchestrator, not by a review
+
+| id | what | why not blocking |
+|---|---|---|
+| ORCH-2026-09-16-a | the `coverage` gate uses a 250 ms WALL-CLOCK budget as a backtracking proxy, so it reports machine load as a property of the regex | **REACHES SHIPPED and is NOT tracked-because-unreachable.** It is here because no existing phase owns it. Four independent parties, six structurally different patterns, one of them `^(?:parked)$` which cannot backtrack at all; a single execution measured 1.6 to 5.1 million times under budget. Now planned as M4-P28 |
+| ORCH-2026-09-16-b | `check-dual-review` has never asserted anything on this repository, across M1, M2 and all thirteen M3 phases | the gate is honest: it reports not-applicable with a reason, which M2-C-3 requires. What is tracked is that DR-0012 makes dual review the CONDITION of delegated merge authority and the check that would verify it has never run. Needs the root charter (M4-P15) and a conforming verdict document |
+
 ## What this register does NOT establish
 
 - **It is not a completeness claim.** It holds what the reviews reported and
@@ -432,3 +465,401 @@ observation T-020 records. Anyone picking up either should pick up both.
 - **The reachability judgements are the orchestrator's**, made from the
   reviewers' own descriptions rather than by re-deriving each finding. A wrong
   description produces a wrong judgement here and this file would not show it.
+
+## A finding partially verified, and the half that could not be
+
+### M4-P1 CR-002, re-measured by the orchestrator 2026-09-16
+
+The reviewer reported two things in one MEDIUM. They have different evidential
+status and flattening them would be wrong.
+
+**CONFIRMED.** The fixture count is stale. The work history says "THIRTY-EIGHT
+fixture files ... counted with `git ls-files test/fixtures/harness-probe | wc -l`"
+at delivery/work-history/m4-p1.md:671. Run today, that exact command returns
+**44**. `find` agrees at 44, untracked is 0 and ignored is 0, so this is not a
+tracked-versus-on-disk artifact, which was my first hypothesis and was wrong.
+The tree grew after the sentence was written. That is binding convention 5's own
+defect, a count pinned over a growing set, inside the criterion whose subject is
+evidence integrity.
+
+**NOT CONFIRMED BY ME.** The reviewer also reported that six of those fixtures
+carry 73 UNDECLARED glyph substitutions. I could not verify it and I state why
+rather than repeating it as established: every tracked fixture under that tree is
+pure ASCII, measured, zero files with a byte above 127. That result is equally
+consistent with "nothing needed transliterating" and with "six files were
+transliterated and not declared".
+
+**The reason it is unverifiable from the committed bytes is the rule's own
+point.** CLAUDE.md says silent transliteration is "after the fact
+indistinguishable from fabricated evidence". This is that sentence being true in
+practice: the act destroys its own evidence, so a later reader with only the
+repository cannot tell. The reviewer presumably compared against source captures
+it could still reach; whatever it compared against is not in the tree.
+
+**What the fix round is owed, therefore, is different for the two halves.** The
+count is a one-line correction. The substitution claim needs the reviewer's
+comparison reproduced, or the fixtures re-derived from their sources with the
+declaration regenerated. Treating the second as settled because the first is
+would be the error this entry exists to prevent.
+
+## Two reviewer recommendations REFUSED, with a fixture rather than an argument
+
+M4-P27 fix round 1, 2026-09-16. Recorded here because a refused recommendation
+is the case most likely to be quietly reversed by a later round that does not
+know it was refused, and because both reviews agreed on the recommendation.
+
+**The recommendation, from both reviews:** require `run.status === 0` before
+parsing in `armDrain` and `armRetirement`, so an arm cannot read a stale line
+out of a failed command.
+
+**Why it was refused.** M4-P25's criterion 1 makes `tiphys cutover status` exit
+0 only when all five switches read `kernel` AND drain is clean. At cutover
+ENTRY, which is the only moment this checker runs, the switches read `current`
+BY DEFINITION, so the command exits nonzero by design. Requiring exit 0 would
+make the arm report `unreachable` at exactly the moment it is asked.
+
+**Measured, not argued.** A fixture imitating that state was run against the
+shipped checker and against a copy carrying exactly the recommended change:
+
+| build | reports |
+|---|---|
+| shipped | `ARM a drain satisfied` |
+| the recommended variant | `ARM a drain unreachable -- cutover status: exited 1` |
+
+Drain IS clean in that fixture, so the recommended change produces the wrong
+answer on the phase's own subject.
+
+**What was done instead**, and its declared cost: a shape rule, where a line
+carrying an arm's vocabulary that is not a row of the shape its contract fixes
+makes the arm unreachable, plus exit-code coherence in the one direction each
+contract makes decisive. The cost is stated rather than hidden: if M4-P25's
+informational branch-count line ever contains the word "drain", arm a reports
+unreachable until the shapes are reconciled. That is fail-closed, and it is
+written in two places in the code.
+
+**The second refusal is narrower.** Review finding 3 wanted ANY unrecognised
+line treated as unrecognised; the round scoped it to lines carrying the arm's
+vocabulary, because the wider form reddens on decoration.
+
+**Status: OPEN, and deliberately.** A refusal is not a resolution. It leaves the
+reviewers' concern (an arm reading a stale line from a failed command) addressed
+by a different mechanism than they asked for, and the next reviewer of this
+phase should test THAT mechanism rather than re-raising the original.
+
+## A registry guard that checks for a KEY and claims to check RESOLUTION
+
+Found by M4-P26 fix round 2, 2026-09-16, and confirmed independently here. It is
+recorded in this register rather than sent to a round because the remaining
+instances are in other phases' files, which the fix-round contract forbids
+widening into.
+
+**The defect.** A behaviour-registration test asserts
+`Object.hasOwn(behaviors, id)`, which establishes that the id is a KEY in
+`test/behaviors.json`. It does not establish that the VALUE names a test that
+runs. In M4-P26's own file the two were far apart: the guard was GREEN while
+**35 of 39** cutover behaviours resolved to nothing.
+
+**The instances, all confirmed by `git grep` at `claude/m4-p26-rollback`:**
+
+| site | status |
+|---|---|
+| `test/cutover.test.ts:832` | FIXED by M4-P26 round 2; 40 of 40 resolve at `b904961` |
+| `test/doctor.test.ts:895` | OPEN, other phase's file |
+| `test/license-gate.test.ts:2332` | OPEN, other phase's file |
+| `test/license-gate.test.ts:2899` | OPEN, other phase's file |
+
+**`test/license-gate.test.ts:2332` is the sharpest of the three**, because its
+own failure message is a claim the assertion does not support: it reads
+`behavior ${id} does not resolve in test/behaviors.json` beside an assertion
+that only checks a key exists. A reader auditing by message rather than by
+condition would record it as checked.
+
+**Severity: LATENT, and now measured rather than deduced.** The round reported
+that all rows resolve today and was explicit that this was a DEDUCTION from the
+suite gate's 815-behaviour green, not a measurement. That was the weakest
+sentence in the first version of this entry, so it was replaced by a
+measurement.
+
+Written as an independent checker that resolves each referenced id to a `test()`
+title present in the sources, run at `claude/m4-p26-rollback`:
+
+| file | ids referenced | do NOT resolve |
+|---|---|---|
+| `test/doctor.test.ts` | 13 | **0** |
+| `test/license-gate.test.ts` | 11 | **0** |
+| `test/cutover.test.ts` | 40 | **0** |
+
+**A checker reporting zero is worthless until it has reported non-zero**, so it
+was witnessed before the result above was believed. One phantom row was planted
+in a throwaway worktree, a behaviour whose value names a title no source file
+contains, and referenced from `test/doctor.test.ts`:
+
+```
+RED  : 14 behaviour id(s) referenced, 1 DO NOT resolve to a test title
+         unresolved: probe-planted-phantom-row -> {"test":"a test title that no source file contains..."}
+GREEN: 13 behaviour id(s) referenced, 0 DO NOT resolve to a test title
+```
+
+So the three open sites are genuinely latent: the weak guard would not catch a
+phantom row, and there is no phantom row for it to miss today.
+
+**Why it is not merely a test defect.** `test/behaviors.json` is one of the
+append-only registries binding convention 5 names, and the whole point of
+registering a behaviour by name is that the name resolves. A guard that accepts a
+key makes the registry a list of intentions rather than a list of behaviours, and
+it does so silently: nothing distinguishes 40 of 40 from 4 of 39 in its output.
+
+**What closing it needs.** The same check M4-P26 now applies, in three more
+files: resolve each id to a `test()` title in the sources and assert set equality
+by NAME in both directions, never by count. It is a candidate for a small phase
+of its own alongside M4-P28 and M4-P29, and is not allocated one yet.
+
+## M4-P1's HIGH is discharged by sequencing, not by a code change
+
+Recorded BEFORE dispatching that phase's fix round, because the round would
+otherwise spend itself on a finding that is already answered, and the fix-round
+contract's whole subject is not confusing an instance for a mechanism.
+
+**The finding.** The M4-P1 reviewer reported the `scope` gate red "twice over":
+the declaration absent from the merge base, and, once it had put a declaration
+on a simulated trunk to clear that, **27 undeclared paths** behind it.
+
+**Both halves are real and both are discharged by the merge sequence**, which
+was simulated end to end afterwards in a clone with `origin/main` moved to its
+post-paperwork state. At that state, with the branch merged forward:
+
+```
+scope: green: 48 changed path(s) audited against declaration
+  delivery/plan/phase-declarations/m4-p1.json at merge base e3ddbff
+  (2 declared path(s) not touched: ...)
+```
+
+The 27 were the orchestrator's own paperwork, inherited because every phase
+branch was cut from the unmerged plan branch. They stop being M4-P1's changes the
+moment that paperwork is on `main` and the branch merges forward. The reviewer
+could not have known this: it measured only the first step, putting the
+declaration on a trunk, and not the second, merging that trunk forward. Its
+finding is correct about the state it measured.
+
+**So M4-P1's fix round owes the MEDIUM and three LOWs, not the HIGH.** In
+particular it owes the stale fixture count, which is separately confirmed here:
+the work history says THIRTY-EIGHT counted with `git ls-files`, and that exact
+command returns 44 today.
+
+**What is NOT discharged, and the distinction matters.** The sequencing answers
+whether those 27 paths are M4-P1's to declare. It says nothing about the
+transliteration half of the same reviewer's MEDIUM, which remains unverified in
+either direction for the reason recorded above: the act destroys its own
+evidence.
+
+**Generalises to every phase.** The same 26-to-28 inherited paths sit on all
+twelve branches, so any reviewer measuring scope before the sequence will report
+the same class of red, and it will be correct and not the phase's defect. A
+reviewer's scope finding on an M4 branch should be read against which of the two
+steps it measured.
+
+## The red-witness gate is NOT systemically red, measured
+
+A hypothesis worth recording because it was WRONG, and because the cost of not
+testing it would have been dispatching six rounds for one imagined cause.
+
+Two phases failed the `red-witness` gate for a similar reason (M4-P2 on rule (f),
+M4-P11 on an enumeration short by one), which looked like a shared defect in how
+implementers reason about that gate. Six phases add witness specs, so the
+question was whether all six are red.
+
+Measured, one gate run per phase against its own diff, in a throwaway clone:
+
+| phase | red-witness | note |
+|---|---|---|
+| m4-p16 | **green** | 10 witnesses, 5 own, 5 stored re-evaluated |
+| m4-p19 | **green** | 18 witnesses, 9 own, 9 stored |
+| m4-p26 | **green** | 22 witnesses, 22 own |
+| m4-p10 | **error** | stored witnesses cannot find their mutation text |
+| m4-p2 | was red | fixed by its round; green at the shipping head |
+| m4-p11 | red | this phase's round owes it |
+
+**So it is not systemic and there is no shared fix.** Three phases satisfy the
+gate without trouble. The two reds are genuine, independent, per-phase defects.
+
+M4-P10's error is a THIRD kind and was already reported by its own reviewer: it
+lifted a block of `src/checks.ts` to a top-level function, so the stored witness
+specs that mutate that block by exact source text can no longer find it. The gate
+reports `mutation find text "    if (authority !== DELEGATED_MERGE_AUTHORITY) {"
+does not occur in src/checks.ts`. That is the gate working: a stored witness
+whose target has moved is unverifiable, and it errors rather than passing.
+
+**What this measurement did NOT cover.** Each run used the phase's own merge base
+with the plan branch as `--base`, not `origin/main`, because the inherited
+paperwork would otherwise dominate the diff. That is the right question for "does
+this phase's witness set satisfy the rules" and it is not the invocation CI will
+use. Nothing here says what CI will report after the merge sequence.
+
+## The git-versus-filesystem disagreement: derived across shipped code, one instance
+
+The M4-P11 HIGH is a mechanism, not an instance: **a paired decision where one
+half reads the git object database and the other reads the working tree, so the
+two can disagree and the actor being guarded against controls the uncommitted
+half.** Its own round will derive it within that phase. This is the complementary
+half no single-phase agent will do: whether it appears anywhere else in shipped
+code.
+
+Derived, and the derivation is stated so its gaps are visible:
+
+```
+$ grep -rnE 'readdirSync|readFileSync|existsSync|statSync|lstatSync' src/ --include='*.ts' | wc -l
+84
+$ grep -rnE '"(show|cat-file|ls-tree|ls-files|rev-parse)"' src/ --include='*.ts' | wc -l
+43
+```
+
+Mixing the two is not the defect, so the filter is FILES CARRYING BOTH, then
+reading each to see whether the two sources feed one paired decision. Three
+files carry both: `src/gates/citations.ts`, `src/gates/suite.ts`,
+`src/witness/run.ts`. **All three were read, and all three are sound.**
+
+**`src/gates/citations.ts`: SOUND.** Both halves read git. The document set comes
+from `git diff --name-only --diff-filter=d base...head` at
+src/gates/citations.ts:1076 and citation targets from `git cat-file -t` and
+`-p` at src/gates/citations.ts:696 and src/gates/citations.ts:733. Its one
+`readdirSync` at src/gates/citations.ts:987 walks a configuration directory, not
+the corpus being judged. An uncommitted edit changes neither side.
+
+**`src/gates/suite.ts`: SOUND on the same test.** The registry it compares comes
+from `git ls-tree` and `git show` at the merge base
+(src/gates/suite.ts:802 and src/gates/suite.ts:809); its `readdirSync` at
+src/gates/suite.ts:500 walks declared test roots to ENUMERATE files to run, which
+is a different question from judging committed content.
+
+**`src/witness/run.ts`: SOUND, and it exposed a false positive in my own filter.**
+Every read of judged content goes through git: `gitIn(repoRoot, ["show",
+"<headSha>:<path>"])` at src/witness/run.ts:1144, src/witness/run.ts:1203,
+src/witness/run.ts:1403 and src/witness/run.ts:1733, plus `ls-tree` at
+src/witness/run.ts:1718 and a `show` inside the clone at src/witness/run.ts:764.
+
+Its four apparent `readFileSync` hits are NOT reads at all. They are at
+src/witness/run.ts:418, :428, :562 and :563, and every one is inside a regex
+literal or a doc comment: this module SEARCHES TEST SOURCES for the text
+`readFileSync(`, so the token appears as data. My filter counted a pattern the
+analyser looks for as a call the analyser makes.
+
+That is worth more than the result it produced. A grep for a call name matches
+the same name quoted, commented, or built into a regex, so a count from it is an
+upper bound and never a finding. The three files it flagged all had to be read
+anyway, which is the only reason the false positive cost nothing.
+
+**What this derivation did NOT cover.** The filter is textual: a paired decision split across TWO files,
+one reading git and one reading disk, is invisible to a per-file test and no
+cross-file analysis was run. And `src/gates/` was the only tree examined at this
+depth; `bin/` and `scripts/` carry their own readers.
+
+**Status of the instance itself: being fixed.** The round pushed
+`Read the verdict corpus from the commit the declaration was read`, which fixes
+the mechanism by making both halves read git, rather than patching either arm the
+reviewer demonstrated.
+
+## CORRECTION: that derivation found none of the four real instances
+
+The entry above concluded "the M4-P11 instance remains the only one" after
+reading three files. The fix round then derived the same mechanism properly and
+found **four sites**, and the fourth is worse than the three the reviews reported.
+
+**Site 4, which neither review nor my derivation reached.**
+`establishDelegatedRegime` decides whether DR-0012's delegated grant applies AT
+ALL. It read `charter.yaml` and `assurance-modes.yaml` off DISK, while
+`readReviewFamilies` read the SAME `charter.yaml` out of the object database.
+Measured at one commit, one uncommitted word changed:
+
+| working tree | result |
+|---|---|
+| committed `delivery-mode: full`, pair sharing `produced-by` | red, exit 1 |
+| `delivery-mode: direct-pr` written to disk, NEVER committed | **green, exit 0** |
+
+The green arm prints "mode direct-pr declares merge-authority owner, which is not
+a delegated grant" about a mode the commit it names does not declare. That is not
+buying the single-family exception; it is switching the entire decorrelation
+requirement OFF, needing no declaration and no second family.
+
+### Why my derivation found nothing, twice over
+
+Both reasons are structural, not carelessness, which is what makes them worth
+writing down.
+
+**One: I searched the wrong trees.** I examined `src/gates/` and `src/witness/`
+and said so. All four sites are in `src/checks.ts`. The gap I named in that entry
+("`src/gates/` was the only tree examined at this depth") is exactly where every
+instance lived.
+
+**Two: my filter could not have flagged it even there.** It required both kinds
+of read IN ONE FILE. Measured on `src/checks.ts` before the fix: 3 filesystem
+reads, **0** git-object reads. The pair was split across a module boundary, which
+is the second gap that entry named ("a paired decision split across TWO files is
+invisible to a per-file test"). After the fix the same file reads 4 and 8, so the
+filter flags it only once it is already correct.
+
+**So the entry named both of its own blind spots, and the defects were in both.**
+Naming a gap is not closing it, and a derivation that reports clean while its
+stated exclusions cover the whole population has reported nothing at all. That is
+the fix-round contract's item 3 turned on its author.
+
+### What the round did that mine did not
+
+It derived the population as an INTERSECTION and by DOCUMENT rather than by file:
+every filesystem read of a governance document (81 hits, 24 files), intersected
+with every git-object read, matched on the document each touches rather than on
+the file each sits in. That crosses module boundaries by construction.
+
+It also refused the reviewers' grouping after testing it. The two reviews treated
+"the corpus is read from disk" and "the corpus is one directory" as one family;
+they are source and extent, and the obvious joint repair is measurably wrong for
+the second, because a whole-tree enumeration finds seven verdict documents of
+which five are this check's own test fixtures, and adopting it turned a green
+test red.
+
+## Four witness members on `main` are BLUNTED: they match two sites, silently
+
+Found by M4-P10 fix round 1 as a by-product of fixing the broken ones, and
+confirmed here independently. It is the more dangerous half of a two-sided
+failure and neither review reached it.
+
+**The mechanism.** A stored witness member is a POINTER INTO SOURCE TEXT: a find
+string the gate replaces to create the dangerous state. An edit to the target
+file can do two things to it:
+
+- **BREAK it**, so the string occurs ZERO times. The gate errors loudly. This is
+  the half the M4-P10 review reported, and loud failures get fixed.
+- **BLUNT it**, so the string occurs MORE THAN ONCE. The mutation lands on
+  whichever site comes first, the named test may still redden, and the witness
+  reads as working while no longer testing the line it names. Nothing is printed.
+
+**Measured at `origin/main`**, over 163 specs and 327 mutation members:
+
+```
+specs=163 mutation-members=327 broken=0 blunted=4
+   BLUNTED-2 checklist-duplicate-probe-id-guard.json          -> src/checks.ts
+   BLUNTED-2 doctor-kernel-artifacts-resolution.json          -> src/commands/doctor.ts
+   BLUNTED-2 role-brief-set-derived-not-listed.json           -> test/roles.test.ts
+   BLUNTED-2 witness-ownership-baseline-is-the-merge-base.json -> src/gates/red-witness.ts
+```
+
+All four are pre-existing and none belongs to an M4 phase. Two are in SHIPPED
+files (`src/checks.ts`, `src/commands/doctor.ts`, `src/gates/red-witness.ts`).
+
+**The checker was witnessed before its zero was believed**, which is the rule
+this register has had to apply to itself twice today. Run against M4-P10's
+reviewed head it reports `broken=5 blunted=5` and names each; against that
+phase's fixed head, `broken=0 blunted=4`. It goes red and it goes green, and its
+counts reproduce the fix round's independently.
+
+**Why it is LATENT rather than live.** A blunted member still mutates something
+and its named test still has to redden, so the gate is not passing on nothing.
+What is lost is the guarantee that the mutation lands where the spec says. Whether
+any of these four currently mutates the wrong site was NOT measured and is the
+open question.
+
+**What closing it needs.** The witness spec schema has no way to declare an
+expected occurrence count, so there is nothing for a gate to assert against.
+Adding one, and asserting exactly-one by default, is a small change to
+`schemas/witness-spec.schema.json` and `src/witness/run.ts`. That is another
+phase's file, which is why this round correctly did not widen into it, and it is
+a candidate for a small phase alongside M4-P28 and M4-P29. Not allocated one yet.
