@@ -265,3 +265,46 @@ item 3 names as one of three things that have bitten this project, and the cost
 here would have been a fabricated defect report against a sound gate. Capture
 the exit code from the command itself, or use `PIPESTATUS`, and never from the
 tail of a pipeline.
+
+## The hazard the verdict schema exists against fired, in this very round
+
+Written the same day the sections above argued that leaving `check-dual-review`
+asleep is not an option. It stopped being an argument about principle within
+the hour.
+
+**An M4-P27 clean-room review returned APPROVE while carrying a HIGH finding it
+had measured in both directions.** Its own summary is unambiguous: arm d of the
+cutover-entry trigger decides by filesystem mtime, `touch` alone flips it from
+`not-yet` to `satisfied` with the file's sha1 identical before and after, and a
+fresh `git clone` puts it in the false-RED state because git does not preserve
+mtimes and the two files were written 0.57 milliseconds apart in name order.
+That is a guard whose verdict is decided by checkout order. The review reported
+it, ranked it HIGH, and said APPROVE.
+
+`schemas/verdict.schema.json` refuses exactly that pair. Its own comment names
+it as the first thing the document exists against: "APPROVE beside a finding the
+review itself ranked high or critical, which is a review saying yes while
+recording a reason to say no, and is how a fix round gets skipped". The refusal
+is an `if`/`then` at the schema root, so it is mechanical and unarguable.
+
+**My review schema did not carry that rule, so nothing objected.** The reviewer
+was not being dishonest; it recorded the finding in full, with evidence, and
+then chose a verdict the document it was not writing would have refused. The
+only thing standing between that APPROVE and a skipped fix round was me reading
+the findings rather than the verdict field.
+
+Two changes, both made rather than noted:
+
+1. Both dispatch scripts now COERCE the verdict in post-processing. A returned
+   APPROVE beside any HIGH or CRITICAL becomes FIX-ROUND-NEEDED, the original is
+   preserved as `verdict_as_returned` so nothing is hidden, and the coercion is
+   logged naming the schema rule that requires it.
+2. The brief now states the rule, cites the schema, and tells the reviewer to
+   grade findings first and let the verdict follow mechanically.
+
+The M4-P27 fix round was dispatched on the findings, not the verdict.
+
+This is the strongest argument yet for the conforming verdict document. The
+markdown review is where a reviewer does its thinking; the schema is what stops
+a review contradicting itself. Running one without the other is how the contra-
+diction reached me, and on a busier day it is how it would have reached `main`.
