@@ -12,7 +12,8 @@
     "witness/dual-review-distinct-model-families.json",
     "witness/dual-review-merge-authority-lookalike.json",
     "witness/dual-review-requires-two-verdicts.json",
-    "witness/dual-review-unestablished-merge-authority.json"
+    "witness/dual-review-unestablished-merge-authority.json",
+    "lab/"
   ],
   "declaredExtras": [
     "test/behaviors.json",
