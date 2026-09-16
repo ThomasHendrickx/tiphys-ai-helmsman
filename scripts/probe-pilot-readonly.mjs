@@ -128,6 +128,83 @@ export function assertReadOnlyGit(args) {
 }
 
 /**
+ * THE GIT CHILD'S ENVIRONMENT IS CONSTRUCTED, NEVER INHERITED.
+ *
+ * Same mechanism as the sibling block in `scripts/check-cutover-entry.mjs`,
+ * stated here too because this file is standalone by design and shares no
+ * import with it: a child inherits its parent's WHOLE environment, and git
+ * reads more than thirty `GIT_*` names that relocate the repository, the index
+ * and the config it answers about. `{ ...process.env }` therefore lets an
+ * inherited `GIT_DIR` make a read-only probe report on a repository that is not
+ * the one it was asked about, which is a wrong-scope answer of exactly the kind
+ * this probe exists to avoid giving.
+ *
+ * An allowlist rather than a denylist, because the set of names that
+ * reconfigure git is open and a denylist over an open set is green by
+ * construction for whatever it does not name.
+ *
+ * WHICH VARIABLES REACH THE CHILD:
+ *
+ *   `PATH`, `HOME`, temp    CARRIED. git cannot start or find its own
+ *   and locale names        configuration without them.
+ *   proxy and TLS names     CARRIED. This container reaches a real remote only
+ *                           through its agent proxy, and a probe that lost them
+ *                           would report the pilot unreachable for a reason
+ *                           that has nothing to do with the pilot.
+ *   `GIT_SSH_COMMAND`,      NOT carried. Each names a PROGRAM git will run, so
+ *   `GIT_PAGER`,            carrying one would let an inherited variable
+ *   `GIT_EXTERNAL_DIFF`     execute code inside a read-only probe.
+ *   every other `GIT_*`     NOT carried. The two this file needs are SET below.
+ *   anything else           NOT carried.
+ */
+const GIT_CHILD_ENV_NAMES = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "COMSPEC",
+  "PATHEXT",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "WINDIR",
+  "ProgramData",
+  "ProgramFiles",
+  "HTTP_PROXY",
+  "http_proxy",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "CURL_CA_BUNDLE",
+  "GIT_SSL_CAINFO",
+  "GIT_SSL_CAPATH",
+  "SSH_AUTH_SOCK",
+];
+
+export function gitChildEnv() {
+  const built = {};
+  for (const name of GIT_CHILD_ENV_NAMES) {
+    const value = process.env[name];
+    if (typeof value === "string") built[name] = value;
+  }
+  built.GIT_TERMINAL_PROMPT = "0";
+  built.GIT_OPTIONAL_LOCKS = "0";
+  return built;
+}
+
+/**
  * THE ONLY `spawnSync` CALL SITE IN THIS FILE. The test asserts that by
  * counting call sites in the source, so a second one is a red test rather than
  * a review miss.
@@ -138,7 +215,7 @@ export function readOnlyGit(args, options = {}) {
     cwd: options.cwd,
     encoding: "utf8",
     timeout: typeof options.timeoutMs === "number" ? options.timeoutMs : 30000,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: gitChildEnv(),
   });
   return result;
 }

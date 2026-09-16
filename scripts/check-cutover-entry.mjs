@@ -140,6 +140,147 @@ function singleLine(value) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The environment every child gets: CONSTRUCTED, never inherited      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM, named as a mechanism rather than as the variable that caught
+ * it: a child process inherits its parent's WHOLE environment, so any variable
+ * the parent happens to carry can reconfigure the child, and the parent of this
+ * script is whatever launched it (a shell, Node's test runner, the `suite`
+ * gate, a CI job). The set of names that reconfigure `node` or `git` is OPEN:
+ * `NODE_OPTIONS` carries arbitrary interpreter flags by itself, Node adds
+ * `NODE_*` names between releases, and git reads more than thirty `GIT_*`
+ * names that relocate its repository, its index and its config.
+ *
+ * A DENYLIST OVER AN OPEN SET IS GREEN BY CONSTRUCTION whenever the next name
+ * arrives. Fix round 1 wrote one, listing `NODE_TEST_CONTEXT` and
+ * `NODE_TEST_WORKER_ID`, and the required `suite` gate sets the third name.
+ * Measured 2026-09-16 with no gate involved, in this repository, on
+ * node v26.6.0:
+ *
+ *   NODE_OPTIONS="--test-reporter=tap --test-reporter-destination=F" \
+ *     node --test test/cutover-entry.test.ts
+ *   -> 10 failing tests, because the exclusion child's `# pass N` lines went
+ *      to F instead of its stdout and arm b read "reported no pass/fail counts"
+ *
+ * So the environment is BUILT from an allowlist instead. The allowlist is the
+ * names a child needs in order to START AT ALL: where to find programs, where
+ * its home and temporary directories are, and how to render text. None of them
+ * changes what `node` or `git` DO with the input they are given, which is the
+ * property that makes the list safe to carry.
+ *
+ * WHICH VARIABLES CAN REACH A CHILD FROM HERE, and how each is handled:
+ *
+ *   `NODE_OPTIONS`          NOT carried. Arbitrary interpreter flags, and the
+ *                           measured defect above. It can also INJECT TEXT into
+ *                           a child's stdout through `--import`, which this
+ *                           script then parses as the CLI's answer (measured,
+ *                           see the work history's fix-round-2 section).
+ *   every other `NODE_*`    NOT carried, including names that do not exist yet.
+ *                           That is the point of an allowlist.
+ *   every `GIT_*`           NOT carried. `GIT_DIR`, `GIT_WORK_TREE`,
+ *                           `GIT_INDEX_FILE`, `GIT_COMMON_DIR`,
+ *                           `GIT_CEILING_DIRECTORIES` and `GIT_CONFIG_GLOBAL`
+ *                           each make git answer about a DIFFERENT repository
+ *                           than `cwd`, which is exactly the wrong-scope defect
+ *                           arm d exists against. The two this script needs are
+ *                           SET below rather than inherited.
+ *   `GIT_SSH_COMMAND`,      NOT carried, deliberately, even though the git
+ *   `GIT_PAGER`,            children below could use them: each names a PROGRAM
+ *   `GIT_EXTERNAL_DIFF`     git will run, so carrying them would hand an
+ *                           inherited variable the power to execute code inside
+ *                           a read-only check.
+ *   proxy and TLS names     carried FOR GIT ONLY (see GIT_CHILD_ENV_NAMES),
+ *                           because the read-only probe's git children talk to
+ *                           a real remote through this container's agent proxy
+ *                           and dropping them would break that silently.
+ *                           NOT carried for node children, which reach nothing.
+ *   `PATH`, `HOME`,         CARRIED. A child cannot find git, or its own home
+ *   `TMPDIR`/`TMP`/`TEMP`,  and scratch directories, without them.
+ *   `LANG`/`LC_*`, `TZ`
+ *   Windows path names      CARRIED. `SystemRoot` and its siblings are how a
+ *                           process starts at all on Windows; absent on Linux,
+ *                           where the loop below simply skips them.
+ *   anything else           NOT carried. A child that needs a new name gets it
+ *                           added to a list here, with a test, rather than
+ *                           arriving by accident.
+ *
+ * `NODE_TEST_CONTEXT` and `NODE_TEST_WORKER_ID`, the two the denylist named,
+ * are handled by the same rule and need no clause of their own. That is the
+ * difference between closing a mechanism and closing an instance: the list
+ * above did not have to grow to cover the third name, because it never
+ * enumerated the dangerous ones in the first place.
+ */
+const BASE_CHILD_ENV_NAMES = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "COMSPEC",
+  "PATHEXT",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "WINDIR",
+  "ProgramData",
+  "ProgramFiles",
+];
+
+/**
+ * The extra names a GIT child gets, and nothing here reconfigures which
+ * repository git reads. They are the transport: this container reaches github
+ * through an agent proxy, so a read-only clone or ls-remote that loses them
+ * fails in a way that looks like an unreachable pilot rather than a lost
+ * variable.
+ */
+const GIT_CHILD_ENV_NAMES = [
+  "HTTP_PROXY",
+  "http_proxy",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "CURL_CA_BUNDLE",
+  "GIT_SSL_CAINFO",
+  "GIT_SSL_CAPATH",
+  "SSH_AUTH_SOCK",
+];
+
+/**
+ * Builds a child environment. `kind` is "node" or "git"; an unrecognised kind
+ * throws rather than quietly returning the narrower set, because a silent
+ * narrowing here would look like a transport failure in an arm.
+ */
+export function childEnv(kind) {
+  if (kind !== "node" && kind !== "git") {
+    throw new Error(`check-cutover-entry: unknown child environment kind: ${kind}`);
+  }
+  const names = kind === "git" ? [...BASE_CHILD_ENV_NAMES, ...GIT_CHILD_ENV_NAMES] : BASE_CHILD_ENV_NAMES;
+  const built = {};
+  for (const name of names) {
+    const value = process.env[name];
+    if (typeof value === "string") built[name] = value;
+  }
+  if (kind === "git") {
+    built.GIT_TERMINAL_PROMPT = "0";
+    built.GIT_OPTIONAL_LOCKS = "0";
+  }
+  return built;
+}
+
+/* ------------------------------------------------------------------ */
 /* Running the kernel CLI, with the transport arm written first        */
 /* ------------------------------------------------------------------ */
 
@@ -165,6 +306,7 @@ export function runCli(root, cliArgs, options = {}) {
     cwd: root,
     encoding: "utf8",
     timeout: options.timeoutMs ?? 120000,
+    env: childEnv("node"),
   });
   if (result.error) {
     return { transport: "failed", reason: `could not start the CLI: ${singleLine(result.error)}` };
@@ -226,18 +368,63 @@ function classifyCliFailure(run, what) {
  * one. The old `/m` exec took the FIRST of any number of them silently, so two
  * contradicting lines produced a confident answer.
  */
+/**
+ * FIX ROUND 2, AND THIS IS THE MECHANISM FIX THE FIRST ROUND DID NOT MAKE.
+ *
+ * Round 1 checked the SHAPE of every line it looked at, and decided which lines
+ * to look at with a ONE-WORD FILTER: `/drain/i` here, `/\b(un)?ported\b/i` in
+ * arm c. So the rule was structural only over lines that already carried the
+ * arm's vocabulary, and a failing run whose error text happened not to contain
+ * that word was INVISIBLE to it. A delta verifier measured three structurally
+ * different stubs still reading `satisfied` at the fixed head, one of them the
+ * reviewer's own with a single word changed ("drain register" to "in-flight
+ * register").
+ *
+ * THE MECHANISM: the arm decided which INPUT to validate from the input itself.
+ * A vocabulary is an open set, so a filter over one is a guard that cannot go
+ * red for whatever it does not name, which is the same shape as the denylist
+ * above and as T-008's watchdog.
+ *
+ * THE RULE NOW: A REPORT IS AN ANSWER ONLY IF THE WHOLE REPORT MATCHES THE
+ * SHAPES ITS CONTRACT FIXES. M4-P25 criterion 1 fixes the entire output of
+ * `cutover status`: exactly five `SWITCH <name> current|kernel` lines plus one
+ * `DRAIN clean|<n> in flight` line (delivery/plan/kernel-plan-m4.md:3290). Any
+ * other non-blank line, on either stream, is a shape this arm does not model,
+ * and a report this arm cannot model IN FULL is not a report it may draw a
+ * verdict from. The error line, the stack frame and the warning are all covered
+ * by one rule that never mentions them.
+ *
+ * The switch lines are MODELLED here and their COUNT is asserted, because
+ * criterion 1 fixes it at five. Their NAMES are not asserted: the table that
+ * fixes them is M4-P25's (section 4.3) and duplicating it here would create a
+ * second place to keep it correct. So a report carrying five identically named
+ * switches passes this check, which is stated rather than left to be found.
+ */
+export const SWITCH_ROW = /^[ \t]*SWITCH[ \t]+(\S+)[ \t]+(current|kernel)[ \t]*$/;
 export const DRAIN_ROW = /^[ \t]*DRAIN[ \t]+(clean|\d+ in flight)[ \t]*$/;
 
-export function readDrainReport(text) {
+/** Criterion 1 fixes the count, so it is a constant rather than a literal. */
+export const EXPECTED_SWITCH_ROWS = 5;
+
+export function readStatusReport(text) {
   const rows = [];
-  const unrecognised = [];
+  const switches = [];
+  const unmodelled = [];
   for (const line of String(text).split(/\r?\n/)) {
-    if (!/drain/i.test(line)) continue;
-    const match = DRAIN_ROW.exec(line);
-    if (match === null) unrecognised.push(line.trim());
-    else rows.push(match[1]);
+    if (line.trim() === "") continue;
+    const drain = DRAIN_ROW.exec(line);
+    if (drain !== null) {
+      rows.push(drain[1]);
+      continue;
+    }
+    const flip = SWITCH_ROW.exec(line);
+    if (flip !== null) {
+      switches.push({ name: flip[1], side: flip[2] });
+      continue;
+    }
+    unmodelled.push(line.trim());
   }
-  return { rows, unrecognised };
+  return { rows, switches, unmodelled };
 }
 
 export function armDrain(root) {
@@ -245,14 +432,14 @@ export function armDrain(root) {
   const failure = classifyCliFailure(run, "cutover status");
   if (failure) return arm("a", "drain", failure.verdict, failure.reason);
 
-  const report = readDrainReport(run.text);
-  if (report.unrecognised.length > 0) {
+  const report = readStatusReport(run.text);
+  if (report.unmodelled.length > 0) {
     return arm(
       "a",
       "drain",
       "unreachable",
-      "cutover status printed a line about drain that is not a DRAIN row: " +
-        `${singleLine(report.unrecognised[0])}`,
+      "cutover status printed a line its contract does not fix, so the report " +
+        `cannot be read in full: ${singleLine(report.unmodelled[0])}`,
     );
   }
   if (report.rows.length === 0) {
@@ -292,6 +479,37 @@ export function armDrain(root) {
         "makes exit 0 mean drain is clean, so the two disagree",
     );
   }
+  // The mirror of the rule above, and it is the half round 1 left out. Exit 0
+  // IFF all five read `kernel` AND drain is clean, so a NONZERO exit under a
+  // report that satisfies both halves is the same self-contradiction read the
+  // other way. It cannot fire at cutover entry, where the switches read
+  // `current` by definition and the nonzero exit is the expected state, which
+  // is why it is safe to add without making the arm permanently unreachable.
+  if (
+    run.status !== 0 &&
+    state === "clean" &&
+    report.switches.length === EXPECTED_SWITCH_ROWS &&
+    report.switches.every((flip) => flip.side === "kernel")
+  ) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      `cutover status exited ${run.status} while reporting DRAIN clean and all ` +
+        `${EXPECTED_SWITCH_ROWS} switches on kernel; its own contract makes that ` +
+        "combination exit 0, so the two disagree",
+    );
+  }
+  if (report.switches.length !== EXPECTED_SWITCH_ROWS) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      `cutover status printed ${report.switches.length} SWITCH line(s) and its ` +
+        `contract fixes exactly ${EXPECTED_SWITCH_ROWS}; a report that is not the ` +
+        "report the contract describes is not one this arm can read",
+    );
+  }
   if (state === "clean") {
     return arm("a", "drain", "satisfied", "cutover status reports DRAIN clean");
   }
@@ -301,33 +519,6 @@ export function armDrain(root) {
 /* ------------------------------------------------------------------ */
 /* Arm b: the cross-environment exclusion behaviors and their tests    */
 /* ------------------------------------------------------------------ */
-
-/**
- * The environment for the nested `node --test` run.
- *
- * `NODE_TEST_CONTEXT` is set by Node's own test runner in every child it
- * spawns, and a nested run that inherits it does NOT run: it prints
- * "node:test run() is being called recursively within a test file. skipping
- * running files" and exits 0 with no counts at all. Measured 2026-09-16 in
- * this repository.
- *
- * That is the exact shape of the thing this script exists against. Exit 0 and
- * no assertions is a vacuous pass, and an arm that read "exit 0" as "the tests
- * pass" would have been GREEN on a run where nothing executed. The arm already
- * fail-closes to `unreachable` when the counts are missing, which is how this
- * was found, but relying on that would leave a checker that can never satisfy
- * arm b when run from inside a test. So the variable is removed and the
- * reporter is pinned, and the missing-counts arm stays as the backstop.
- */
-const TEST_RUNNER_ENV_NAMES = ["NODE_TEST_CONTEXT", "NODE_TEST_WORKER_ID"];
-
-function childTestEnv() {
-  const cleaned = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !TEST_RUNNER_ENV_NAMES.includes(key)) cleaned[key] = value;
-  }
-  return cleaned;
-}
 
 export function armExclusion(root, requiredNames, testPaths) {
   const behaviorsPath = join(root, "test", "behaviors.json");
@@ -373,7 +564,7 @@ export function armExclusion(root, requiredNames, testPaths) {
         cwd: root,
         encoding: "utf8",
         timeout: 600000,
-        env: childTestEnv(),
+        env: childEnv("node"),
       },
     );
     if (result.error) {
@@ -465,23 +656,42 @@ export function armExclusion(root, requiredNames, testPaths) {
  * the sentence "one line per PORT row", and it defeated the zero-rows guard
  * that is this arm's headline property.
  *
- * A line carrying the vocabulary that is not a row is now UNRECOGNISED, which
- * is `unreachable`. A line carrying none of it is a header and is ignored.
+ * A line carrying the vocabulary that is not a row is UNRECOGNISED, which is
+ * `unreachable`. Round 1 stopped there and ignored a line carrying none of the
+ * vocabulary, calling it a header; fix round 2 removed that exemption, because
+ * criterion 6 authorises no header and the exemption was the hole a truncation
+ * notice walked through. See `countRetirementRows` below.
  */
 export const RETIREMENT_ROW = /^[ \t]*PORT[ \t]+(\S+)[ \t]+(ported|unported)[ \t]*$/;
 
+/**
+ * FIX ROUND 2, the arm c half of the same mechanism. The filter here was
+ * `/\b(un)?ported\b/i`, so a truncation notice that never says "ported" was
+ * ignored and the surviving row was counted as the whole report. Measured stub:
+ * exit 1, `PORT alpha ported`, stderr "ERROR: the retirement register is
+ * truncated, rows below row 1 were not read", reading
+ * `satisfied -- all 1 retirement row(s) are ported`.
+ *
+ * Criterion 6 fixes the whole output: ONE LINE PER PORT ROW
+ * (delivery/plan/kernel-plan-m4.md:3315). It authorises no header and no
+ * summary, so every non-blank line on either stream is either a PORT row or a
+ * shape this arm does not model. `unrecognised` keeps its name because it is
+ * the same field; what changed is that it is no longer scoped to lines that
+ * already carry the arm's vocabulary.
+ */
 export function countRetirementRows(text) {
   let ported = 0;
   let unported = 0;
   const unrecognised = [];
   for (const line of String(text).split(/\r?\n/)) {
+    if (line.trim() === "") continue;
     const match = RETIREMENT_ROW.exec(line);
     if (match !== null) {
       if (match[2] === "unported") unported += 1;
       else ported += 1;
       continue;
     }
-    if (/\b(un)?ported\b/i.test(line)) unrecognised.push(line.trim());
+    unrecognised.push(line.trim());
   }
   return { ported, unported, rows: ported + unported, unrecognised };
 }
@@ -497,8 +707,8 @@ export function armRetirement(root) {
       "c",
       "retirement",
       "unreachable",
-      "the retirement report carries a line about porting that is not a PORT row: " +
-        `${singleLine(counts.unrecognised[0])}`,
+      "the retirement report carries a line its contract does not fix, so the " +
+        `report cannot be read in full: ${singleLine(counts.unrecognised[0])}`,
     );
   }
   if (counts.rows === 0) {
@@ -522,6 +732,22 @@ export function armRetirement(root) {
       "unreachable",
       `the retirement report exited 0 while printing ${counts.unported} unported ` +
         "row(s); its own contract makes exit 0 mean none are unported, so the two disagree",
+    );
+  }
+  // FIX ROUND 2: the same implication read the other way, which is the half
+  // round 1 left out and the second route that closes the measured stub. Exits
+  // nonzero WHILE ANY ROW IS UNPORTED, so a nonzero exit over a report with
+  // ZERO unported rows is the command contradicting its own report. Unlike arm
+  // a's mirror there is no entry-time exemption here: criterion 6 makes the
+  // retirement exit depend on the rows alone.
+  if (run.status !== 0 && counts.unported === 0) {
+    return arm(
+      "c",
+      "retirement",
+      "unreachable",
+      `the retirement report exited ${run.status} while printing ${counts.rows} ` +
+        "row(s) and none unported; its own contract makes a nonzero exit mean at " +
+        "least one is unported, so the two disagree",
     );
   }
   if (counts.unported > 0) {
@@ -580,7 +806,7 @@ function readOnlyGitRead(root, args) {
     cwd: root,
     encoding: "utf8",
     timeout: 30000,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+    env: childEnv("git"),
   });
   if (result.error) {
     return { ok: false, reason: `git could not start: ${singleLine(result.error)}` };
@@ -603,7 +829,55 @@ function readOnlyGitRead(root, args) {
  * `GIT_OPTIONAL_LOCKS=0` keep this a read: a checker must not refresh the index
  * of the tree it is inspecting.
  */
+/**
+ * FIX ROUND 2: A SHALLOW CLONE CANNOT ANSWER THIS QUESTION, AND IT DOES NOT SAY
+ * SO. The work history claimed, without a command, that
+ * `git log -1 --format=%ct -- <path>` "returns nothing when the path's last
+ * change is outside a truncated history" and that the arm fail-closes there. A
+ * delta verifier built the depth-1 fixture and measured the opposite: the
+ * boundary commit of a shallow clone is grafted PARENTLESS, so every tracked
+ * path reads as changed IN IT and every path dates to the same tip.
+ *
+ * So the arm returned `not-yet`, this checker's REAL NEGATIVE, for a state
+ * whose truth is UNKNOWN, on a source tree where the correct answer was
+ * `satisfied`. That is the unknown case collapsing into the false case, which
+ * is the mechanism this whole phase exists against, arriving inside the fix for
+ * the previous round's finding.
+ *
+ * It is not an edge case: `actions/checkout` defaults to `fetch-depth: 1`, so
+ * on a default runner arm d would have read `not-yet` whatever the content.
+ *
+ * The question is asked of git rather than inferred, because the property is
+ * git's own. `--is-shallow-repository` prints `true` or `false`; anything else
+ * (an old git that does not know the flag, a failure) is also `unreachable`,
+ * because a checker that cannot establish whether its input is truncated
+ * cannot read that input either.
+ */
+export function repositoryIsShallow(root) {
+  const probe = readOnlyGitRead(root, ["rev-parse", "--is-shallow-repository"]);
+  if (!probe.ok) return { ok: false, reason: probe.reason };
+  const answer = probe.text.trim();
+  if (answer !== "true" && answer !== "false") {
+    return {
+      ok: false,
+      reason: `git could not say whether this is a shallow repository: ${singleLine(answer)}`,
+    };
+  }
+  return { ok: true, shallow: answer === "true" };
+}
+
 export function commitSecondsFor(root, relativePath) {
+  const shallow = repositoryIsShallow(root);
+  if (!shallow.ok) return { ok: false, reason: `${relativePath}: ${shallow.reason}` };
+  if (shallow.shallow) {
+    return {
+      ok: false,
+      reason:
+        "this is a shallow repository, where the boundary commit is grafted " +
+        `parentless and every tracked path dates to it, so commit order cannot date ` +
+        `${relativePath}`,
+    };
+  }
   const dirty = readOnlyGitRead(root, [
     "--no-optional-locks",
     "status",
@@ -628,6 +902,9 @@ export function commitSecondsFor(root, relativePath) {
   }
   const dated = readOnlyGitRead(root, ["log", "-1", "--format=%ct", "--", relativePath]);
   if (!dated.ok) return { ok: false, reason: `${relativePath}: ${dated.reason}` };
+  // `Number("")` is 0, which IS finite, so the length clause below is the half
+  // that catches an empty answer and is not redundant with the finiteness one.
+  // Measured: `node -p 'Number.isFinite(Number(""))'` prints true.
   const seconds = Number(dated.text.trim());
   if (!Number.isFinite(seconds) || dated.text.trim().length === 0) {
     return {

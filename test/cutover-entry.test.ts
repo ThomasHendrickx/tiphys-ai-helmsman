@@ -41,6 +41,7 @@ import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -77,6 +78,8 @@ const checker = (await import(
     unrecognised: string[];
   };
   overallFor: (arms: ArmRecord[]) => string;
+  childEnv: (kind: string) => Record<string, string | undefined>;
+  EXIT_SATISFIED: number;
 };
 
 const probe = (await import(
@@ -94,6 +97,7 @@ const probe = (await import(
   overallVerdict: (results: { verdict: string }[]) => string;
   verdictForStatus: (status: number) => string;
   TARGET_VERDICTS: string[];
+  gitChildEnv: () => Record<string, string | undefined>;
 };
 
 /* ------------------------------------------------------------------ */
@@ -116,9 +120,13 @@ interface RootSpec {
   /** Text the stub CLI prints for `cutover status`. `null` omits the CLI. */
   statusText?: string | null;
   statusExit?: number;
+  /** Text the stub CLI prints on STDERR for `cutover status`. */
+  statusStderr?: string;
   /** Text the stub CLI prints for `cutover status --retirement`. */
   retirementText?: string;
   retirementExit?: number;
+  /** Text the stub CLI prints on STDERR for `cutover status --retirement`. */
+  retirementStderr?: string;
   /** Behavior names to register. Defaults to the checker's required list. */
   behaviors?: string[];
   /** Body of the stub exclusion test file. */
@@ -185,6 +193,21 @@ function fixtureGit(cwd: string, args: string[], when?: string): void {
   );
 }
 
+/**
+ * The five `SWITCH` lines M4-P25 criterion 1 fixes
+ * (delivery/plan/kernel-plan-m4.md:3290). Fix round 2 made arm a read the WHOLE
+ * report rather than only the lines carrying its own vocabulary, so a fixture
+ * that prints one switch line is no longer a fixture imitating the real
+ * command. The names are the criterion's own; the checker asserts the COUNT and
+ * not the names, so they are here for realism rather than to be matched.
+ */
+const FIVE_SWITCHES =
+  "SWITCH planning-and-scope kernel\n" +
+  "SWITCH dispatch kernel\n" +
+  "SWITCH review kernel\n" +
+  "SWITCH gates kernel\n" +
+  "SWITCH merge kernel\n";
+
 const PASSING_TEST_BODY =
   'import test from "node:test";\n' +
   'test("a cross-environment exclusion witness", () => {});\n';
@@ -192,10 +215,12 @@ const PASSING_TEST_BODY =
 const VACUOUS_TEST_BODY = "// a file that registers no tests at all\n";
 
 function stubCli(spec: RootSpec): string {
-  const statusText = spec.statusText ?? "SWITCH planning-and-scope kernel\nDRAIN clean\n";
+  const statusText = spec.statusText ?? `${FIVE_SWITCHES}DRAIN clean\n`;
   const statusExit = spec.statusExit ?? 0;
   const retirementText = spec.retirementText ?? "PORT claude-md ported\nPORT skills ported\n";
   const retirementExit = spec.retirementExit ?? 0;
+  const statusStderr = spec.statusStderr ?? "";
+  const retirementStderr = spec.retirementStderr ?? "";
   return [
     "const args = process.argv.slice(2);",
     'if (args[0] !== "cutover" || args[1] !== "status") {',
@@ -204,9 +229,11 @@ function stubCli(spec: RootSpec): string {
     "}",
     'if (args.includes("--retirement")) {',
     `  process.stdout.write(${JSON.stringify(retirementText)});`,
+    `  process.stderr.write(${JSON.stringify(retirementStderr)});`,
     `  process.exit(${retirementExit});`,
     "}",
     `process.stdout.write(${JSON.stringify(statusText)});`,
+    `process.stderr.write(${JSON.stringify(statusStderr)});`,
     `process.exit(${statusExit});`,
     "",
   ].join("\n");
@@ -327,7 +354,7 @@ test("the drain arm reddens when cutover status does not report DRAIN clean", ()
   // contradiction as unreachable, so the fixture has to imitate the real
   // command rather than a command that cannot exist.
   const root = makeRoot({
-    statusText: "SWITCH planning-and-scope kernel\nDRAIN 3 in flight\n",
+    statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n`,
     statusExit: 1,
   });
   const run = runChecker(root);
@@ -365,7 +392,7 @@ test("every arm is evaluated: four simultaneous failures are all reported", () =
   // three, which is the shape M4-P27 criterion 2 names when it asks for four
   // independently forced-false witnesses rather than two.
   const root = makeRoot({
-    statusText: "DRAIN 9 in flight\n",
+    statusText: `${FIVE_SWITCHES}DRAIN 9 in flight\n`,
     statusExit: 1,
     behaviors: [],
     retirementText: "PORT claude-md unported\n",
@@ -401,7 +428,7 @@ test("an unreachable CLI is unreachable, never satisfied, and exits 3 rather tha
 test("a retirement report naming zero rows is unreachable, never satisfied", () => {
   // THE DANGEROUS STATE: zero rows reads as zero bad rows. The command exits 0
   // and says nothing, and the arm must not turn that into a pass.
-  const root = makeRoot({ retirementText: "RETIREMENT report\n", retirementExit: 0 });
+  const root = makeRoot({ retirementText: "", retirementExit: 0 });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
   assert.match(armOf(run.text, "c"), /^unreachable\|.*zero rows is not zero unported rows/);
@@ -939,6 +966,33 @@ test("the entry-trigger document states the four steps, the reserve and the resi
 /* Registry                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * THE GUARD THAT COULD NOT GO RED, AND IT GUARDED THIS PHASE'S OWN REGISTRY.
+ *
+ * As first written this test asserted `Object.hasOwn(behaviors, id)` and
+ * nothing else, so it was green whenever the KEY existed, whatever its VALUE
+ * said. `test/behaviors.json` maps an id to the EXACT NAME of the test that
+ * guards it, and the `suite` gate resolves a row by a byte-identical lookup of
+ * that VALUE against the names the runner reported (src/gates/suite.ts:1060):
+ * there is no id-to-test lookup anywhere, so a paraphrase is permanently
+ * unresolvable however well the test passes.
+ *
+ * Measured by running the required `suite` gate, which neither the phase nor
+ * fix round 1 had run: 49 of this phase's rows registered a DESCRIPTION rather
+ * than the test's name, 29 `cutover-entry-*` and 20 `pilot-probe-*`. The
+ * registration test was green throughout, and so was every full `node --test`
+ * run in the work history.
+ *
+ * A sibling phase paid for the identical weak predicate and wrote the guard
+ * this one now matches, on `main` at test/cutover.test.ts:1659. This test
+ * asserts the property the key check only appeared to: every id below resolves
+ * BY NAME to a `test()` that exists. It reads the test sources rather than the
+ * running suite because a test cannot enumerate its own run, and the `suite`
+ * gate does the runtime half.
+ *
+ * MEMBER A of the class is a row whose value matches no test. MEMBER B is the
+ * weaker predicate itself, an assertion over ids rather than over names.
+ */
 test("this phase's new behaviors are registered in test/behaviors.json", () => {
   // BY NAME, never by count: `test/behaviors.json` is append-only and resolved
   // as a union against the merge base, so a count is a claim about every
@@ -996,13 +1050,53 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "pilot-probe-zero-targets-is-a-failure",
     "pilot-probe-usage-error",
     "cutover-entry-document-states-the-four-steps",
+    // Fix round 2.
+    "cutover-entry-child-env-excludes-an-inherited-reporter",
+    "cutover-entry-child-env-excludes-an-inherited-import",
+    "cutover-entry-child-env-excludes-an-inherited-git-dir",
+    "cutover-entry-child-env-is-an-allowlist",
+    "cutover-entry-drain-arm-reads-the-whole-report",
+    "cutover-entry-drain-arm-survives-a-crash-with-no-vocabulary",
+    "cutover-entry-retirement-arm-reads-the-whole-report",
+    "cutover-entry-retirement-nonzero-exit-with-nothing-unported-is-unreachable",
+    "cutover-entry-status-nonzero-exit-with-everything-clean-is-unreachable",
+    "cutover-entry-switch-row-count-is-fixed-at-five",
+    "cutover-entry-shallow-clone-cannot-date-arm-d",
   ];
-  for (const id of ids) {
-    assert.ok(
-      Object.prototype.hasOwnProperty.call(behaviors, id),
-      `behaviors.json does not register ${id}`,
-    );
+  const testNames = new Set<string>();
+  const testDir = join(repoRoot, "test");
+  for (const entry of readdirSync(testDir)) {
+    if (!entry.endsWith(".test.ts")) continue;
+    const body = readFileSync(join(testDir, entry), "utf8");
+    for (const match of body.matchAll(/\btest\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) {
+      testNames.add(match[2] as string);
+    }
   }
+  // The scan's own control: if the regex stopped matching, every assertion
+  // below would be red rather than quietly vacuous, but a named failure is
+  // cheaper to read than fifty.
+  assert.ok(
+    testNames.size > 100,
+    `the test-name scan found only ${testNames.size} names, so it is not reading the suite`,
+  );
+
+  const unregistered: string[] = [];
+  const unresolved: string[] = [];
+  for (const id of ids) {
+    if (!Object.prototype.hasOwnProperty.call(behaviors, id)) {
+      unregistered.push(id);
+      continue;
+    }
+    if (!testNames.has(behaviors[id] as string)) {
+      unresolved.push(`${id} -> ${JSON.stringify(behaviors[id])}`);
+    }
+  }
+  assert.deepEqual(unregistered, [], `behaviors.json does not register ${unregistered.length} id(s)`);
+  assert.deepEqual(
+    unresolved,
+    [],
+    `${unresolved.length} of ${ids.length} registered rows name no test:\n  ${unresolved.join("\n  ")}`,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -1030,13 +1124,14 @@ test("a DRAIN clean line is not believed when the report says it is stale", () =
   // `satisfied` on a report the command itself disowned.
   const root = makeRoot({
     statusText:
-      "SWITCH planning-and-scope kernel\nDRAIN clean\n" +
+      `${FIVE_SWITCHES}DRAIN clean\n` +
       "ERROR: could not read the drain register, the numbers above are stale\n",
     statusExit: 1,
   });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
-  assert.match(armOf(run.text, "a"), /^unreachable\|.*not a DRAIN row/);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*contract does not fix/);
+  assert.match(armOf(run.text, "a"), /could not read the drain register/);
   assert.doesNotMatch(run.text, /ARM a drain satisfied/, run.text);
 });
 
@@ -1044,7 +1139,10 @@ test("two DRAIN lines are unreachable, because the first of several is not an an
   // A STRUCTURALLY DIFFERENT MEMBER of the same shape rule: not an extra line
   // ABOUT drain, but an extra DRAIN ROW that contradicts the first. The old
   // `/m` exec silently took the first and reported a confident verdict.
-  const root = makeRoot({ statusText: "DRAIN clean\nDRAIN 4 in flight\n", statusExit: 1 });
+  const root = makeRoot({
+    statusText: `${FIVE_SWITCHES}DRAIN clean\nDRAIN 4 in flight\n`,
+    statusExit: 1,
+  });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
   assert.match(armOf(run.text, "a"), /^unreachable\|.*2 DRAIN lines/);
@@ -1054,7 +1152,7 @@ test("a cutover status exiting 0 under a DRAIN line that is not clean is unreach
   // The exit code used in the ONE direction it is decisive in. M4-P25
   // criterion 1 makes exit 0 mean drain is clean, so this input is the command
   // contradicting itself and neither half may be preferred to the other.
-  const root = makeRoot({ statusText: "DRAIN 3 in flight\n", statusExit: 0 });
+  const root = makeRoot({ statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n`, statusExit: 0 });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
   assert.match(armOf(run.text, "a"), /^unreachable\|.*exited 0 while reporting DRAIN 3 in flight/);
@@ -1068,7 +1166,8 @@ test("a retirement SUMMARY line is not a retirement row", () => {
   const root = makeRoot({ retirementText: "RETIREMENT SUMMARY: 12 rows, all ported\n" });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
-  assert.match(armOf(run.text, "c"), /^unreachable\|.*not a PORT row/);
+  assert.match(armOf(run.text, "c"), /^unreachable\|.*contract does not fix/);
+  assert.match(armOf(run.text, "c"), /RETIREMENT SUMMARY/);
   assert.doesNotMatch(run.text, /ARM c retirement satisfied/, run.text);
 });
 
@@ -1354,4 +1453,373 @@ test("the probe refuses a flag with no value rather than resolving it to a direc
     assert.equal(run.status, 64, `${argv[0]}: ${run.text}`);
     assert.match(run.text, new RegExp(`${argv[0]} needs a value`), run.text);
   }
+});
+
+
+/* ==================================================================== */
+/* FIX ROUND 2. AN INHERITED VARIABLE RECONFIGURES A CHILD.             */
+/* ==================================================================== */
+
+/**
+ * THE MECHANISM, and it is not "NODE_OPTIONS was missing from a list of two".
+ *
+ * A child process inherits its parent's WHOLE environment, so any variable the
+ * parent happens to carry can reconfigure the child. The parent of
+ * `check-cutover-entry.mjs` is whatever launched it, and one of those parents
+ * is the required `suite` gate, which sets
+ * `NODE_OPTIONS=--test-reporter=... --test-reporter-destination=...` on its
+ * child. The set of names that reconfigure `node` or `git` is OPEN, so a
+ * denylist over it is green by construction for whatever it does not name.
+ *
+ * The fix builds each child's environment from an allowlist instead
+ * (`childEnv` in the checker, `gitChildEnv` in the probe). These three tests
+ * are the class's witnesses, and they are structurally different on purpose:
+ * three different variables, two different child PROGRAMS, and errors in both
+ * directions (a false unreachable and a FALSE GREEN).
+ */
+
+/** Runs the checker with named variables forced into ITS OWN environment. */
+function runCheckerWithEnv(
+  root: string,
+  overrides: Record<string, string>,
+  extra: string[] = [],
+): RunResult {
+  const result = spawnSync(
+    process.execPath,
+    [checkerPath, "--root", root, "--exclusion-test", "test/cross-environment.test.ts", ...extra],
+    { encoding: "utf8", timeout: 300000, env: { ...process.env, ...overrides } },
+  );
+  return { status: result.status, text: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+}
+
+/**
+ * MEMBER A: a reporter configuration reaches the nested `node --test` run and
+ * sends its counts to a file, so arm b reads no counts at all.
+ *
+ * This is the measured instance: the `suite` gate sets exactly this, and ten of
+ * this phase's tests failed under the gate while passing under `npm test`. The
+ * direction of the error is a false UNREACHABLE, which is the safe direction
+ * and still wrong, because it makes the checker unusable from inside any run
+ * that pins a reporter.
+ */
+test("a reporter pinned in the parent's environment does not reach the exclusion child", () => {
+  const root = makeRoot();
+  const destination = join(root, "inherited-reporter.tap");
+  try {
+    const run = runCheckerWithEnv(root, {
+      NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=${destination}`,
+    });
+    const armB = armOf(run.text, "b");
+    assert.ok(
+      armB.startsWith("satisfied|"),
+      `arm b must still read the child's counts, got: ${armB}\n${run.text}`,
+    );
+    assert.doesNotMatch(run.text, /reported no pass\/fail counts/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER B: the SAME variable, a DIFFERENT child (the kernel CLI, not the test
+ * runner) and the OPPOSITE direction of error.
+ *
+ * `NODE_OPTIONS=--import <file>` runs that file inside every node child, so
+ * anything it prints lands on the CHILD'S STDOUT, which is the text arm a parses
+ * as the CLI's answer. The fixture's CLI prints NO drain row, whose correct
+ * verdict is `unreachable`; an injected `DRAIN clean` line makes exactly one
+ * row and turns the arm SATISFIED. That is a false green in the arm the owner's
+ * go/no-go reads, produced by a variable nobody passed on purpose.
+ *
+ * `runCli` cleaned nothing at all, so this member reddens against the pre-fix
+ * code even in the shape fix round 1 left behind.
+ */
+test("an --import inherited from the parent cannot inject a row into the CLI's answer", () => {
+  // The five switches read `current`, which is the cutover-ENTRY state, so an
+  // injected `DRAIN clean` row makes a report that is COHERENT in every other
+  // respect and the arm would answer `satisfied`. Without five switches the
+  // count check would catch it for an unrelated reason and this test would pass
+  // while witnessing nothing, which is how it was first written.
+  const atEntry =
+    "SWITCH planning-and-scope current\nSWITCH dispatch current\n" +
+    "SWITCH review current\nSWITCH gates current\nSWITCH merge current\n";
+  const root = makeRoot({ statusText: atEntry, statusExit: 1 });
+  const injector = join(root, "inject.mjs");
+  try {
+    writeFileSync(injector, 'process.stdout.write("DRAIN clean\\n");\n', "utf8");
+    // Control: with the variable absent the arm is unreachable BECAUSE THERE IS
+    // NO DRAIN LINE, so the assertion below is about the variable and about
+    // that specific reason, not about the fixture being broken some other way.
+    const control = runChecker(root);
+    assert.match(armOf(control.text, "a"), /^unreachable\|.*printed no DRAIN line/);
+
+    const run = runCheckerWithEnv(root, { NODE_OPTIONS: `--import ${injector}` });
+    const armA = armOf(run.text, "a");
+    assert.match(
+      armA,
+      /^unreachable\|.*printed no DRAIN line/,
+      `an inherited --import must not become a DRAIN row, got: ${armA}\n${run.text}`,
+    );
+    assert.notEqual(run.status, checker.EXIT_SATISFIED);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER C: a different variable FAMILY and a different child PROGRAM.
+ *
+ * `GIT_DIR` relocates the repository git answers about, so arm d's commit-order
+ * read reports on a repository that is not the one it was asked about. That is
+ * the wrong-scope answer this whole phase exists against, arriving through the
+ * environment rather than through an argument. git reads more than thirty such
+ * names, which is why the fix is an allowlist rather than three more entries.
+ */
+test("an inherited GIT_DIR does not relocate the repository arm d dates", () => {
+  const root = makeRoot();
+  const elsewhere = scratch("tiphys-cutover-entry-elsewhere-");
+  try {
+    fixtureGit(elsewhere, ["init", "--quiet", "--initial-branch", "main"]);
+    writeFileSync(join(elsewhere, "unrelated.txt"), "not the fixture\n", "utf8");
+    fixtureGit(elsewhere, ["add", "-A"]);
+    fixtureGit(elsewhere, ["commit", "--quiet", "-m", "an unrelated repository"], EARLIER);
+
+    const control = runChecker(root);
+    assert.ok(
+      armOf(control.text, "d").startsWith("satisfied|"),
+      `control fixture must be satisfied, got: ${armOf(control.text, "d")}`,
+    );
+
+    const run = runCheckerWithEnv(root, { GIT_DIR: join(elsewhere, ".git") });
+    const armD = armOf(run.text, "d");
+    assert.ok(
+      armD.startsWith("satisfied|"),
+      `an inherited GIT_DIR must not change which repository is read, got: ${armD}\n${run.text}`,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The construction itself, asserted directly rather than only through its
+ * effects: the allowlist carries what a child needs to start and carries no
+ * name that reconfigures the child, and the git kind is the only one that
+ * reaches the network.
+ */
+test("the child environment is built from an allowlist and carries no reconfiguring name", () => {
+  const before = {
+    NODE_OPTIONS: process.env.NODE_OPTIONS,
+    NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT,
+    GIT_DIR: process.env.GIT_DIR,
+    GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND,
+  };
+  try {
+    process.env.NODE_OPTIONS = "--import /nowhere.mjs";
+    process.env.NODE_TEST_CONTEXT = "child";
+    process.env.GIT_DIR = "/nowhere/.git";
+    process.env.GIT_SSH_COMMAND = "/nowhere/run-me";
+
+    const nodeEnv = checker.childEnv("node");
+    const gitEnvironment = checker.childEnv("git");
+    for (const built of [nodeEnv, gitEnvironment]) {
+      for (const name of Object.keys(built)) {
+        assert.ok(
+          !name.startsWith("NODE_"),
+          `a NODE_* name reached a child environment: ${name}`,
+        );
+      }
+      assert.equal(built.GIT_DIR, undefined);
+      assert.equal(built.GIT_SSH_COMMAND, undefined);
+      // PATH is the one name a child cannot start without.
+      assert.equal(built.PATH, process.env.PATH);
+    }
+    // The git kind pins git's own two behaviours and is the only kind that
+    // carries the transport, because only its children reach a remote.
+    assert.equal(gitEnvironment.GIT_TERMINAL_PROMPT, "0");
+    assert.equal(gitEnvironment.GIT_OPTIONAL_LOCKS, "0");
+    assert.equal(nodeEnv.GIT_TERMINAL_PROMPT, undefined);
+    process.env.HTTPS_PROXY = "http://127.0.0.1:1";
+    assert.equal(checker.childEnv("git").HTTPS_PROXY, "http://127.0.0.1:1");
+    assert.equal(checker.childEnv("node").HTTPS_PROXY, undefined);
+    delete process.env.HTTPS_PROXY;
+    // An unrecognised kind throws rather than quietly returning the narrow set.
+    assert.throws(() => checker.childEnv("shell"), /unknown child environment kind/);
+    // The probe's sibling construction, same rule, standalone file.
+    assert.equal(probe.gitChildEnv().GIT_DIR, undefined);
+    assert.equal(probe.gitChildEnv().GIT_TERMINAL_PROMPT, "0");
+    assert.equal(probe.gitChildEnv().PATH, process.env.PATH);
+  } finally {
+    for (const [name, value] of Object.entries(before)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+
+/* ==================================================================== */
+/* FIX ROUND 2. THE SHAPE RULE DECIDED ITS OWN INPUT.                   */
+/* ==================================================================== */
+
+/**
+ * THE MECHANISM, and it is not "the word `drain` was the wrong word".
+ *
+ * Round 1's shape rule was structural over the lines it LOOKED AT, and it chose
+ * those lines with a one-word filter: `/drain/i` in arm a, `/\b(un)?ported\b/i`
+ * in arm c. A vocabulary is an open set, so the filter is a guard that cannot go
+ * red for anything it does not name, and a delta verifier measured three
+ * structurally different stubs still reading `satisfied` at the fixed head. One
+ * of them was the reviewer's own stub with a single word changed.
+ *
+ * The fix is that a report is an answer only if the WHOLE report matches the
+ * shapes its contract fixes, plus the exit-code coherence read in BOTH
+ * directions. The witnesses below are the verifier's three stubs and the two
+ * new coherence arms, and they are structurally different on purpose: two
+ * streams, two arms, two error vocabularies, a crash with no vocabulary at all,
+ * and two shape-clean reports that only the exit code refutes.
+ */
+
+test("an error line one word away from the reviewer's still defeats the drain arm", () => {
+  // MEMBER A of the class, and it is DV-1's stub A2: the reviewer's own input
+  // with "drain register" changed to "in-flight register", on STDERR rather
+  // than stdout. Round 1's filter never saw it and answered `satisfied`.
+  const root = makeRoot({
+    statusText: `${FIVE_SWITCHES}DRAIN clean\n`,
+    statusStderr:
+      "ERROR: could not read the in-flight register, the numbers above are stale\n",
+    statusExit: 1,
+  });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*contract does not fix/);
+  assert.doesNotMatch(run.text, /ARM a drain satisfied/, run.text);
+  assert.equal(run.status, 3, run.text);
+});
+
+test("a crash whose text carries none of the arm's vocabulary still defeats it", () => {
+  // MEMBER B, DV-1's stub A3, and STRUCTURALLY DIFFERENT because its error text
+  // contains no word either filter could ever have been written around: a node
+  // stack frame, and an exit code the contract does not define at all.
+  const root = makeRoot({
+    statusText: `${FIVE_SWITCHES}DRAIN clean\n`,
+    statusStderr:
+      "TypeError: Cannot read properties of undefined (reading 'switches')\n" +
+      "    at readSwitchTable (/kernel/src/cutover/status.ts:88:19)\n",
+    statusExit: 7,
+  });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*contract does not fix/);
+  assert.doesNotMatch(run.text, /ARM a drain satisfied/, run.text);
+});
+
+test("a truncation notice on stderr defeats the retirement arm", () => {
+  // MEMBER C, DV-1's stub C2, and it is the OTHER ARM: the same mechanism
+  // reached through `/\b(un)?ported\b/i` instead of `/drain/i`. The notice says
+  // the register was truncated, which is precisely the state in which counting
+  // the surviving row as the whole report is a false green.
+  const root = makeRoot({
+    retirementText: "PORT alpha ported\n",
+    retirementStderr:
+      "ERROR: the retirement register is truncated, rows below row 1 were not read\n",
+    retirementExit: 1,
+  });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "c"), /^unreachable\|.*contract does not fix/);
+  assert.doesNotMatch(run.text, /ARM c retirement satisfied/, run.text);
+});
+
+test("a shape-clean retirement report exiting nonzero with nothing unported is unreachable", () => {
+  // MEMBER D, and it is structurally different from C because the SHAPE RULE
+  // CANNOT SEE IT: every line is a valid PORT row. Only criterion 6's exit
+  // implication read in the nonzero direction refutes it
+  // (delivery/plan/kernel-plan-m4.md:3315). That second route is what makes the
+  // class closed rather than one filter replaced by a wider filter.
+  const root = makeRoot({
+    retirementText: "PORT alpha ported\nPORT beta ported\n",
+    retirementExit: 1,
+  });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "c"), /^unreachable\|.*exited 1 while printing 2 row\(s\)/);
+  assert.doesNotMatch(run.text, /ARM c retirement satisfied/, run.text);
+  // Control: the same report exiting 0 IS the coherent one and is satisfied, so
+  // the assertion above is about the exit code and not about the rows.
+  const coherent = makeRoot({ retirementText: "PORT alpha ported\nPORT beta ported\n" });
+  assert.match(armOf(runChecker(coherent).text, "c"), /^satisfied\|/);
+});
+
+test("a shape-clean status exiting nonzero with everything clean is unreachable", () => {
+  // MEMBER E, arm a's mirror of D, and the one that needed the switch lines to
+  // be modelled: five switches on `kernel` AND drain clean is the exact state
+  // criterion 1 says exits 0. It cannot fire at cutover entry, where the
+  // switches read `current`, which is why adding it does not make the arm
+  // permanently unreachable. The control below is that entry state.
+  const root = makeRoot({ statusText: `${FIVE_SWITCHES}DRAIN clean\n`, statusExit: 1 });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*exited 1 while reporting DRAIN clean/);
+
+  const atEntry = makeRoot({
+    statusText:
+      "SWITCH planning-and-scope current\nSWITCH dispatch current\n" +
+      "SWITCH review current\nSWITCH gates current\nSWITCH merge current\n" +
+      "DRAIN clean\n",
+    statusExit: 1,
+  });
+  assert.match(armOf(runChecker(atEntry).text, "a"), /^satisfied\|/);
+});
+
+test("a status report with the wrong number of SWITCH lines is unreachable", () => {
+  // The report is not the report the contract describes, so it is not one this
+  // arm can read. Four lines, and the missing one is not visible in the drain
+  // row at all, which is why a drain-only model answered confidently.
+  const root = makeRoot({
+    statusText:
+      "SWITCH planning-and-scope current\nSWITCH dispatch current\n" +
+      "SWITCH review current\nSWITCH gates current\nDRAIN clean\n",
+    statusExit: 1,
+  });
+  const run = runChecker(root);
+  assert.match(armOf(run.text, "a"), /^unreachable\|.*printed 4 SWITCH line\(s\)/);
+});
+
+
+/**
+ * FIX ROUND 2: the shallow clone, which the work history asserted about and did
+ * not measure.
+ *
+ * The claim was that `git log` returns nothing in a truncated history and the
+ * arm fail-closes. A delta verifier built the fixture and measured the
+ * opposite: the boundary commit is grafted parentless, so every tracked path
+ * dates to it and the arm answered `not-yet` -- a REAL NEGATIVE -- for a state
+ * it could not know, on a source tree whose correct answer was `satisfied`.
+ * The control below asserts that correct answer on the SAME source, so this
+ * test is about the truncation and not about the fixture.
+ */
+test("a shallow clone cannot date arm d and says so, rather than reporting not-yet", () => {
+  const source = makeRoot();
+  // The control: the full repository answers satisfied, so the shallow arm
+  // below is not measuring a fixture that was stale anyway.
+  assert.match(armOf(runChecker(source).text, "d"), /^satisfied\|/);
+
+  const cloneParent = scratch("tiphys-cutover-shallow-");
+  const shallow = join(cloneParent, "shallow");
+  fixtureGit(cloneParent, [
+    "clone",
+    "--quiet",
+    "--depth",
+    "1",
+    `file://${source}`,
+    shallow,
+  ]);
+  // The fixture asserts the truncation it depends on, so a git that cloned in
+  // full would fail this witness rather than pass it vacuously.
+  const depth = spawnSync("git", ["-C", shallow, "rev-list", "--count", "HEAD"], {
+    encoding: "utf8",
+  });
+  assert.equal((depth.stdout ?? "").trim(), "1", depth.stderr ?? "");
+
+  const run = runChecker(shallow);
+  assert.match(armOf(run.text, "d"), /^unreachable\|.*shallow repository/);
+  assert.doesNotMatch(run.text, /ARM d pre-freeze-ruleset not-yet/, run.text);
+  assert.equal(run.status, 3, run.text);
 });
