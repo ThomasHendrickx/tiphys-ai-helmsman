@@ -126,3 +126,46 @@ read 28 seconds while one agent sat at 444, and both numbers were true.
 Verified the same way the rest of this entry was: all ten agents were confirmed
 alive by a per-agent listing, and the spread between the freshest and the
 stalest was 416 seconds.
+
+
+## Second postscript: a FINISHING agent looks exactly like a dead one
+
+The per-agent watchdog from the first postscript fired within minutes, on
+exactly the agent the aggregate had been masking: one implementer at 562 seconds
+with no write while its sibling sat at 259.
+
+**It was not dead. It was finishing.**
+
+Its last file writes were build output. Its uncommitted changes were the closing
+sections of its work history. An agent composing its final structured response
+performs NO FILE WRITES for as long as that takes, so **the end of a healthy
+agent's life is indistinguishable, by freshness, from its death.** This is the
+same class as the three failures above and it is the one no threshold fixes:
+raising the threshold delays every real detection by the same amount.
+
+**What makes it safe is the RESPONSE, not the detection.** The correct action on
+a stale reading is to PRESERVE, never to reclaim:
+
+```
+git -C <worktree> diff > <salvage>/uncommitted.patch
+cp <each modified file> <salvage>/
+git -C <worktree> bundle create <salvage>/branch.bundle <base>..<branch>
+```
+
+Three commands, nothing mutated, and the worktree left exactly as found. If the
+agent was finishing, the copy is wasted and costs seconds. If it was dead, the
+work survives. The asymmetry is the whole argument, and it means a watchdog does
+not need to distinguish the two cases to be useful.
+
+**What was preserved here**, and it is the argument against reclaiming on a
+timer: 28KB of work history, a 23KB test file, a 22KB probe script, and a branch
+bundle of three commits. The work history's closing section recorded that the
+citations gate does NOT lint work histories, that its own citations were
+therefore verified by hand, and that three of them were wrong on first writing
+and corrected. A reclaim would have destroyed a finding about a gate's blind
+spot, discovered by an agent checking its own work.
+
+**So the rule is not "tune the threshold".** It is: a freshness watchdog reports
+a SUSPICION, and the only action it authorises is a non-destructive copy. Any
+procedure that lets a timer destroy work is wrong regardless of what the timer
+is set to.
