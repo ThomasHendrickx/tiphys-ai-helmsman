@@ -25,6 +25,8 @@
  * PLAN DEFECT to escalate, not a script to add quietly.
  */
 
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -2902,7 +2904,7 @@ export const DECORRELATION_DIMENSIONS: readonly string[] = [
 /** The merge-authority value that makes decorrelation a precondition of merge. */
 export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
 
-interface LoadedVerdict {
+export interface LoadedVerdict {
   path: string;
   record: Record<string, unknown>;
 }
@@ -2978,7 +2980,146 @@ export function readVerdictKind(value: unknown): VerdictKindReading {
 }
 
 /**
- * Every verdict document committed under `<context>/delivery/review/`.
+ * WHERE A CORPUS WAS READ FROM, carried WITH the corpus and never assumed.
+ *
+ * THE MECHANISM THIS TYPE EXISTS TO CLOSE (M4-P11 fix round 1, CR-M4P11-001
+ * and CR-M4P11-002). One decision was assembled out of TWO SOURCES OF TRUTH:
+ * the declaration was read from the git object database by
+ * `readReviewFamilies`, and the corpus that is supposed to refute it was read
+ * from the WORKING TREE. Two sources means the two halves can be made to
+ * disagree, and the actor the check exists to guard against controls the half
+ * that is not committed.
+ *
+ * Measured by the reviewer at ONE commit, three arms, only the working tree
+ * changing: all verdicts present gave red exit 1; an UNCOMMITTED `rm` of the
+ * contradicting verdict gave not-applicable exit 20 with the exception
+ * GRANTED; copying the file back gave red again. `git ls-tree` listed the file
+ * throughout and `git show` still read `produced-by: family-b` from it. The
+ * declaration was tamper-EVIDENT and the evidence that refutes it was not.
+ *
+ * So the source is decided ONCE per load and travels with the result, and
+ * every sentence a check prints about a corpus ends with the source it was
+ * actually read from. A reader can tell a claim about a commit from a claim
+ * about somebody's working tree, which is SC-011 applied to the CORPUS rather
+ * than to a single check's verdict.
+ */
+export type VerdictCorpusSource =
+  | { kind: "commit"; ref: string; refSha: string; scope: string }
+  | { kind: "worktree"; reason: string; scope: string };
+
+/**
+ * The corpus, plus the source it was read from. Never one without the other.
+ *
+ * `unexaminable` IS M4-P10 FIX ROUND 2's CHANNEL, CARRIED ACROSS M4-P11's
+ * RESTRUCTURE RATHER THAN DROPPED. M4-P10 added it to the single filesystem
+ * loop this phase replaced with a commit arm and a worktree arm, and every
+ * caller seeds its violation list from it. A candidate that passed the
+ * extension filter and could not be read, did not decode, or declares a `kind`
+ * whose reading failed is NOT the determinate answer "not a verdict": it is
+ * "nobody knows whether this is a verdict", and dropping it SHRINKS the set the
+ * merge predicates reason over, which is the fail-open direction for a
+ * predicate that approves when the set is clean.
+ */
+export interface LoadedVerdictCorpus {
+  verdicts: LoadedVerdict[];
+  unexaminable: Diagnostic[];
+  source: VerdictCorpusSource;
+}
+
+/** A verdict document is committed under one of these extensions. */
+const VERDICT_FILE_PATTERN = /\.(ya?ml|json)$/i;
+
+/**
+ * The project's own paperwork root, and the widest set the FALSIFIERS look at.
+ *
+ * WHY THIS IS THE BOUNDARY AND NOT THE WHOLE TREE (CR-M4P11-002, and the
+ * measurement that decided it). Falsifier 1 asks a question about A PROJECT'S
+ * OWN RECORD, so scoping it to `delivery/review/` was defeated by FILE
+ * PLACEMENT ALONE: the reviewer committed two `family-b` verdicts under
+ * `delivery/evidence/`, which is where this repository actually keeps its only
+ * two real verdicts, and the exception was granted anyway.
+ *
+ * The obvious repair, the whole tree, was tried and MEASURED WRONG. At
+ * `122472b` a whole-subtree enumeration finds SEVEN verdict documents here and
+ * FIVE of them are `witness/fixtures/dual-review/*.yaml`, deliberately
+ * carrying `family-a` and `family-b` because they are the inputs to this very
+ * check's own tests. A corpus that counts a test fixture as a project's record
+ * would make the exception permanently unusable for any project that vendors
+ * fixtures, and would say something false while doing it.
+ *
+ * `delivery/` is the kernel's OWN declared paperwork root, not a boundary
+ * invented here: `REVIEW_DIRECTORY` is under it, `loadDeclaration`
+ * (src/gates/release.ts:817) reads phase declarations from under it, and
+ * src/gates/scope.ts:565 already treats `delivery/review/` and
+ * `delivery/verification/` as the phase-evidence directories. Using it keeps
+ * the rule mechanical and placement-based rather than a judgment about which
+ * documents look real.
+ *
+ * WHAT IT STILL DOES NOT REACH, named rather than left to be found: a verdict
+ * committed OUTSIDE `delivery/` is invisible to the falsifiers. That residue
+ * is smaller than the one it replaces and it is stated here, in the file, so
+ * the next reader does not have to re-derive it.
+ */
+const PAPERWORK_ROOT = "delivery";
+
+/**
+ * How to name the set a check just looked at, in the check's own output.
+ *
+ * SC-011 one scope out: "every verdict this project has committed" and "every
+ * file that happens to be sitting in one directory right now" are different
+ * claims and must not print the same sentence. This renders a TRAILING
+ * parenthetical rather than a clause in the middle of one, so a sentence that
+ * already names its subject keeps its shape and gains a provenance tail.
+ */
+export function describeVerdictCorpusSource(source: VerdictCorpusSource): string {
+  return source.kind === "commit"
+    ? `(corpus: ${source.scope} read from commit ${source.refSha}, resolved from ${source.ref})`
+    : `(corpus: ${source.scope} read from the WORKING TREE because this context has no resolvable git ref: ${source.reason})`;
+}
+
+/**
+ * How to name the source ONE context document was looked for in.
+ *
+ * FIX ROUND 2, DV-001. The regime report line used to say "no charter.yaml"
+ * about a directory with a `charter.yaml` sitting in it, because the probe had
+ * moved to the commit and the sentence had not. A record that names a document
+ * and not the SOURCE it was looked for in is unfalsifiable by the person
+ * reading it, which is the same SC-011 property `describeVerdictCorpusSource`
+ * exists for one scope out.
+ */
+export function describeContextDocumentSource(source: VerdictCorpusSource): string {
+  return source.kind === "commit"
+    ? `in commit ${source.refSha}, resolved from ${source.ref}`
+    : `in the WORKING TREE, because this context has no resolvable git ref: ${source.reason}`;
+}
+
+/**
+ * The verdict documents a PAIR decision is made over: `delivery/review/`.
+ *
+ * TWO ARMS, AND WHICH ONE RAN IS REPORTED RATHER THAN INFERRED.
+ *
+ * THE COMMIT ARM is taken whenever `<context>` resolves `ref`, and it reads
+ * the directory's entries out of the git object database. The filesystem is
+ * not consulted at all, so an uncommitted addition, deletion or edit cannot
+ * change what this returns. That is the anti-widening rule
+ * `readReviewFamilies` and `loadDeclaration` (src/gates/release.ts:817)
+ * already apply to a DECLARATION, now applied to the evidence beside it. It
+ * closes both directions of the same hole: an uncommitted DELETION can no
+ * longer remove a verdict that contradicts a declaration, and an uncommitted
+ * ADDITION can no longer manufacture the pair DR-0012 condition 2 requires.
+ *
+ * THE WORKTREE ARM is taken only when there is no resolvable ref, which is the
+ * pre-existing behaviour for a context that is not a git repository at all,
+ * and it SAYS SO in every sentence it produces. No exception can be granted on
+ * this arm, because `readReviewFamilies` resolves the same ref and returns
+ * absent or error when it cannot: with no git there is one source of truth and
+ * nothing to disagree.
+ *
+ * THE SCOPE STAYS `delivery/review/` HERE, and widening it was measured wrong.
+ * `headGroupFor` turns this set into the reviews of one `(phase, head)`, and
+ * five of the seven verdict documents in this repository's tree are fixtures
+ * for this check's own tests. See `PAPERWORK_ROOT` above; the widest set is
+ * what the FALSIFIERS use, and it is a different question.
  *
  * A file that does not carry `kind: verdict` is SKIPPED rather than reported,
  * because that directory also holds this project's prose reviews and a check
@@ -2999,57 +3140,336 @@ export function readVerdictKind(value: unknown): VerdictKindReading {
  * as diagnostics and every caller seeds its violation list with them, exactly
  * as `headGroupFor` already does for a sibling with no usable head.
  */
-function loadCommittedVerdicts(
+export function loadCommittedVerdicts(
   contextDirectory: string,
-):
-  | { ok: true; verdicts: LoadedVerdict[]; unexaminable: Diagnostic[] }
-  | { ok: false; reason: string } {
-  const directory = join(contextDirectory, REVIEW_DIRECTORY);
-  /* `classifyEntry` HAS NO `directory` KIND: a directory lands in `irregular`,
-     which is the kind that means "present and not safe to OPEN AS A FILE". So
-     the shape here is the one `listWitnessSpecFiles` already uses: classify to
-     rule out absent and unexaminable, then LIST, and read the classification
-     again only to explain a listing failure. Testing for a kind that does not
-     exist would have been dead code that always took the error arm. */
-  const entry = classifyEntry(directory);
-  if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, verdicts: [], unexaminable: [] };
+  source: VerdictCorpusSource = resolveCorpusSource(contextDirectory),
+): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
+  if (source.kind !== "commit") {
+    return loadVerdictsFromWorktree(contextDirectory, source.reason);
   }
-  if (entry.kind === "unexaminable") {
-    return { ok: false, reason: entry.reason };
+  const refSha = source.refSha;
+  const listed = listCommittedTree(contextDirectory, refSha, REVIEW_DIRECTORY, false);
+  if (!listed.ok) {
+    return { ok: false, reason: listed.reason };
   }
-  let names: string[];
-  try {
-    names = readdirSync(directory);
-  } catch (error) {
-    if (entry.kind === "regular") {
+  return readCommittedVerdicts(contextDirectory, refSha, listed.paths, source);
+}
+
+/**
+ * Every verdict document committed anywhere under `delivery/` at one commit.
+ *
+ * THE FALSIFIERS' CORPUS, AND A DIFFERENT QUESTION FROM THE PAIR'S. See
+ * `PAPERWORK_ROOT` for why the boundary is the paperwork root rather than one
+ * directory or the whole tree.
+ *
+ * COMMIT ONLY, WITH NO WORKTREE FALLBACK, and that is not an omission. This is
+ * reached only from `singleFamilyException`, which is reached only when a
+ * declaration was successfully read out of a commit. There is no arm where a
+ * declaration exists and a commit does not, so a worktree fallback here would
+ * be code that cannot run, which is the dead-arm shape this file already
+ * refused once at `classifyEntry`.
+ */
+function loadPaperworkVerdicts(
+  contextDirectory: string,
+  ref: string,
+  refSha: string,
+): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
+  const source: VerdictCorpusSource = {
+    kind: "commit",
+    ref,
+    refSha,
+    scope: `every verdict document under ${PAPERWORK_ROOT}/`,
+  };
+  /* `recursive` HERE AND NOT ON THE PAIR CORPUS. The pair's directory is flat
+     by convention and `readdirSync` never recursed it, so recursing would have
+     been a silent behaviour change on the arm that already worked. The
+     paperwork root is a tree of phase directories and the whole point of this
+     corpus is that placement must not hide a verdict from it. THE LISTING
+     ITSELF IS THE SAME FUNCTION the pair corpus uses (FIX ROUND 2, DV-002):
+     two listing idioms maintained side by side is what let one of them be
+     wrong in a nested context while the other was right. */
+  const listed = listCommittedTree(contextDirectory, refSha, PAPERWORK_ROOT, true);
+  if (!listed.ok) {
+    return {
+      ok: false,
+      reason:
+        `the verdict documents under ${PAPERWORK_ROOT}/ in ${refSha} could not be enumerated, so the ` +
+        `record that would refute a single-family declaration could not be established: ${listed.reason}`,
+    };
+  }
+  return readCommittedVerdicts(contextDirectory, refSha, listed.paths, source);
+}
+
+/**
+ * List one committed directory, as paths relative to the CONTEXT DIRECTORY.
+ *
+ * ONE LISTING IDIOM FOR BOTH CORPORA (FIX ROUND 2, DV-002), AND THE PATHSPEC
+ * FORM IS THE LOAD-BEARING HALF. Fix round 1 replaced one `readdirSync` with
+ * TWO different git idioms: the falsifiers' corpus listed
+ * `<sha> -- ./<dir>/` and the pair corpus listed the tree-ish `<sha>:./<dir>`.
+ * Those are not two spellings of one question. `git ls-tree` applies the
+ * CURRENT DIRECTORY as an implicit pathspec, so a tree-ish listing run from a
+ * context directory that is a SUBDIRECTORY of its repository is filtered
+ * against a prefix the named tree's own entries do not carry, and it returns
+ * NOTHING with exit 0. Measured, one commit, cwd = a context directory nested
+ * one level inside its repository, `delivery/review/` holding two committed
+ * verdicts:
+ *
+ *   git cat-file -t $S:./delivery/review              -> tree, exit 0
+ *   git ls-tree -z --name-only $S:./delivery/review   -> EMPTY, exit 0
+ *   git ls-tree -z --name-only $S -- ./delivery/review/
+ *                                                     -> both names, exit 0
+ *
+ * An empty listing is then indistinguishable from an absent directory, so
+ * "could not enumerate" became "there are none", the pair corpus came back
+ * empty, and a committed pair sharing one `produced-by` reported
+ * NOT-APPLICABLE on a conditional gate instead of red. The kernel's own
+ * repository could not see it, because the registry command runs the script
+ * with `.` at the repository root; every consumer whose tiphys context is not
+ * its repository root does see it.
+ *
+ * The pathspec form's output is relative to the current directory, which is
+ * the context directory, which is what `readCommittedVerdicts` then hands to
+ * `git show ${refSha}:./${path}`. The listing and the read therefore resolve
+ * against the SAME base, which is the property that broke.
+ *
+ * ABSENT, REGULAR AND UNLISTABLE ARE THREE ANSWERS, exactly as `classifyEntry`
+ * gives three on the worktree arm. `git cat-file -t` is what separates them:
+ * a missing path is an empty corpus, a `blob` where a directory was expected
+ * is the same fact the worktree arm reports as "is a regular file, not a
+ * directory", and a listing that fails for any other reason has not reached a
+ * verdict and must not report one (M2-C-3).
+ */
+function listCommittedTree(
+  contextDirectory: string,
+  refSha: string,
+  directory: string,
+  recursive: boolean,
+): { ok: true; paths: string[] } | { ok: false; reason: string } {
+  const typed = gitIn(["cat-file", "-t", `${refSha}:./${directory}`], contextDirectory);
+  if (!typed.ok) {
+    /* ABSENT, OR COULD NOT LOOK, AND THEY ARE NOT THE SAME ANSWER. Until this
+       round a `cat-file -t` that failed for ANY reason returned an empty
+       corpus, so an object database that could not be read reported the same
+       thing as a project that keeps no `delivery/` at all, which is the
+       "could not look" reported as "looked and found nothing" shape the
+       sibling loader's comment already named. Absence is established by a
+       SECOND probe that does not mention the path: if the commit object
+       itself is readable, the only thing the first probe can have been
+       reporting is that the path is not in it. This is the same fail-closed
+       rule `readCommittedVerdicts` twenty lines down already applies to a
+       blob it was told about and cannot read. */
+    const commitReadable = gitIn(["cat-file", "-t", refSha], contextDirectory);
+    if (!commitReadable.ok) {
       return {
         ok: false,
-        reason: `${directory} is a regular file, not a directory, so the committed verdicts cannot be enumerated`,
+        reason:
+          `${refSha} could not be read in ${contextDirectory}, so whether ${directory}/ is committed there ` +
+          `was not established and an empty corpus must not be reported: ${commitReadable.reason}`,
       };
     }
-    return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
+    return { ok: true, paths: [] };
   }
+  const type = typed.stdout.trim();
+  if (type !== "tree") {
+    return {
+      ok: false,
+      reason:
+        `${refSha}:./${directory} is a ${type}, not a directory, so the committed verdicts cannot be enumerated`,
+    };
+  }
+  const listed = gitIn(
+    [
+      "ls-tree",
+      ...(recursive ? ["-r"] : []),
+      "-z",
+      "--name-only",
+      refSha,
+      "--",
+      `./${directory}/`,
+    ],
+    contextDirectory,
+  );
+  if (!listed.ok) {
+    return {
+      ok: false,
+      reason: `${refSha}:./${directory} could not be listed: ${listed.reason}`,
+    };
+  }
+  return { ok: true, paths: listed.stdout.split("\0").filter((name) => name !== "") };
+}
+
+/**
+ * Read a list of committed paths and keep the ones that are verdicts.
+ *
+ * `-z` ON EVERY LISTING THAT FEEDS THIS IS LOAD-BEARING. Without it git QUOTES
+ * a path carrying a quote, a backslash or a non-ASCII byte, and the quoted
+ * spelling is not the path `git show` wants, so exactly the documents whose
+ * names are unusual would drop out of the corpus. Dropping a document from the
+ * corpus is the fail-open direction.
+ *
+ * `${refSha}:./${path}` AND NOT `${refSha}:${path}`, for the reason
+ * `readReviewFamilies` already gives further down: without the leading `./`
+ * git resolves the path against the REPOSITORY ROOT, so a context directory
+ * nested inside a larger repository would silently read the outer
+ * repository's documents. With `./` the listing and the read are both relative
+ * to the directory the caller named, so they cannot disagree about which tree
+ * they are describing.
+ */
+function readCommittedVerdicts(
+  contextDirectory: string,
+  refSha: string,
+  paths: readonly string[],
+  source: VerdictCorpusSource,
+): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
+  const documents: CorpusDocument[] = [];
+  for (const path of [...paths].sort()) {
+    if (!VERDICT_FILE_PATTERN.test(path)) {
+      continue;
+    }
+    const shown = gitIn(["show", `${refSha}:./${path}`], contextDirectory);
+    if (!shown.ok) {
+      /* A path the same commit's own listing named and the same commit cannot
+         produce is not a document to skip, it is a corpus that could not be
+         read. M2-C-3: this has not reached a verdict, so it must not report
+         one. */
+      return {
+        ok: false,
+        reason:
+          `${refSha}:./${path} is listed in ${refSha} and could not be read, so the committed verdict corpus is ` +
+          `incomplete and no merge precondition can be decided over it: ${shown.reason}`,
+      };
+    }
+    documents.push({ path: join(contextDirectory, path), body: shown.stdout });
+  }
+  const selected = selectVerdicts(documents);
+  return { ok: true, verdicts: selected.verdicts, unexaminable: selected.unexaminable, source };
+}
+
+/**
+ * Read a context document AT THE SOURCE THE DECISION IS BEING MADE FROM.
+ *
+ * FIX ROUND 1, AND IT IS THE FOURTH SITE OF THE MECHANISM the reviewers found
+ * at the first. Their finding was that the CORPUS was read from disk while the
+ * declaration was read from a commit. The derivation for it (D2 and D3 in the
+ * work history) turned up the same split one document further out and WORSE:
+ * `establishDelegatedRegime` decides whether a delegated merge grant is in
+ * force at all, and it read `charter.yaml` and `assurance-modes.yaml` off
+ * DISK, while `readReviewFamilies` read THE SAME `charter.yaml` out of the
+ * object database.
+ *
+ * Measured, one commit, one working-tree edit of one word:
+ *
+ *   committed `delivery-mode: full` (merge-authority delegated-under-conditions)
+ *   with a pair sharing produced-by         -> red, exit 1
+ *   the SAME commit, `delivery-mode: direct-pr` written into the working tree
+ *   and never committed                     -> GREEN, exit 0, and the record
+ *                                              prints "mode direct-pr declares
+ *                                              merge-authority owner, which is
+ *                                              not a delegated grant"
+ *
+ * That is not the exception being bought, it is the ENTIRE decorrelation
+ * requirement being switched off, by an edit no commit records and no diff
+ * shows. It is the same mechanism as CR-M4P11-001 and it is why this round
+ * fixes the mechanism rather than the corpus.
+ *
+ * The worktree arm is the pre-existing behaviour and is unchanged: with no
+ * resolvable ref there is one source of truth and nothing to disagree.
+ */
+function readContextDocumentAt(
+  contextDirectory: string,
+  relativePath: string,
+  source: VerdictCorpusSource,
+): { ok: true; value: unknown; path: string } | { ok: false; reason: string } {
+  if (source.kind !== "commit") {
+    return readContextDocument(contextDirectory, relativePath);
+  }
+  const path = join(contextDirectory, relativePath);
+  const shown = gitIn(["show", `${source.refSha}:./${relativePath}`], contextDirectory);
+  if (!shown.ok) {
+    return {
+      ok: false,
+      reason: `${source.refSha}:./${relativePath} could not be read: ${shown.reason}`,
+    };
+  }
+  const decoded = decodeDocument(shown.stdout, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  return { ok: true, value: decoded.value, path };
+}
+
+/**
+ * Is a context document present AT THE SOURCE the decision is read from?
+ *
+ * SEPARATE FROM READING IT, because "absent" and "present and unreadable" are
+ * different facts with different verdicts one screen down, exactly as
+ * `classifyEntry` keeps them apart on the worktree arm.
+ */
+function contextDocumentPresentAt(
+  contextDirectory: string,
+  relativePath: string,
+  source: VerdictCorpusSource,
+): boolean {
+  if (source.kind !== "commit") {
+    return classifyEntry(join(contextDirectory, relativePath)).kind !== "absent";
+  }
+  const typed = gitIn(
+    ["cat-file", "-t", `${source.refSha}:./${relativePath}`],
+    contextDirectory,
+  );
+  return typed.ok && typed.stdout.trim() === "blob";
+}
+
+/**
+ * Resolve, ONCE, the source every document of one decision is read from.
+ *
+ * EXPORTED because the two merge-precondition checks each resolve it at the
+ * top of their own run and hand the SAME value to the regime reader, the
+ * declaration reader and both corpus loaders. One resolution is what makes
+ * "the halves disagree" unrepresentable rather than merely unlikely.
+ */
+export function resolveCorpusSource(
+  contextDirectory: string,
+  ref = "HEAD",
+): VerdictCorpusSource {
+  const resolved = gitIn(["rev-parse", `${ref}^{commit}`], contextDirectory);
+  return resolved.ok
+    ? { kind: "commit", ref, refSha: resolved.stdout.trim(), scope: REVIEW_DIRECTORY }
+    : { kind: "worktree", reason: resolved.reason, scope: REVIEW_DIRECTORY };
+}
+
+/**
+ * One document read out of a corpus, however it was obtained.
+ *
+ * THE TWO ARMS CONVERGE HERE AND NOT LATER. Reading is what differs between a
+ * commit and a working tree; SELECTING what counts as a verdict is one rule,
+ * and two copies of a selection rule is how the halves of one decision drift
+ * apart, which is the mechanism this whole section exists to remove. A third
+ * copy lived in `scripts/check-dual-review.mjs` and has been deleted in favour
+ * of calling `loadCommittedVerdicts` itself.
+ */
+interface CorpusDocument {
+  path: string;
+  body: string;
+}
+
+/**
+ * The one selection rule, applied to every document an arm produced.
+ *
+ * MATERIALISED RATHER THAN STREAMED, and the bound is stated rather than left
+ * to be discovered: the widest corpus is the candidate `.yaml`, `.yml` and
+ * `.json` blobs under `delivery/`, measured at 103 files and 8953667 bytes in
+ * this repository at `79ce63b`, and it is read only when a single-family
+ * declaration has already been established.
+ */
+function selectVerdicts(
+  documents: readonly CorpusDocument[],
+): { verdicts: LoadedVerdict[]; unexaminable: Diagnostic[] } {
   const verdicts: LoadedVerdict[] = [];
   const unexaminable: Diagnostic[] = [];
-  for (const name of names.sort()) {
-    /* THE ONE SKIP THAT IS A DETERMINATE ANSWER RATHER THAN A FAILURE TO LOOK.
-       A `.md` prose review carries no document structure this check could read
-       and was never a candidate; the extension is the whole of the claim. Every
-       refusal below is about a file that DID pass this filter. */
-    if (!/\.(ya?ml|json)$/i.test(name)) {
-      continue;
-    }
-    const path = join(directory, name);
-    const read = readOperatorPath(path);
-    if (!read.ok) {
-      unexaminable.push({
-        pointer: "#/kind",
-        message: `${path} sits under ${REVIEW_DIRECTORY} and could not be read, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${read.reason}`,
-      });
-      continue;
-    }
-    const decoded = decodeDocument(read.body, path);
+  for (const { path, body } of documents) {
+    const decoded = decodeDocument(body, path);
     if (!decoded.ok) {
       unexaminable.push({
         pointer: "#/kind",
@@ -3090,7 +3510,76 @@ function loadCommittedVerdicts(
     }
     verdicts.push({ path, record: kindReading.record });
   }
-  return { ok: true, verdicts, unexaminable };
+  return { verdicts, unexaminable };
+}
+
+/** The pre-existing arm, for a context that is not a git repository. */
+function loadVerdictsFromWorktree(
+  contextDirectory: string,
+  why: string,
+): ({ ok: true } & LoadedVerdictCorpus) | { ok: false; reason: string } {
+  const source: VerdictCorpusSource = {
+    kind: "worktree",
+    reason: why,
+    scope: REVIEW_DIRECTORY,
+  };
+  const directory = join(contextDirectory, REVIEW_DIRECTORY);
+  /* `classifyEntry` HAS NO `directory` KIND: a directory lands in `irregular`,
+     which is the kind that means "present and not safe to OPEN AS A FILE". So
+     the shape here is the one `listWitnessSpecFiles` already uses: classify to
+     rule out absent and unexaminable, then LIST, and read the classification
+     again only to explain a listing failure. Testing for a kind that does not
+     exist would have been dead code that always took the error arm. */
+  const entry = classifyEntry(directory);
+  if (entry.kind === "absent" || entry.kind === "dangling") {
+    return { ok: true, verdicts: [], unexaminable: [], source };
+  }
+  if (entry.kind === "unexaminable") {
+    return { ok: false, reason: entry.reason };
+  }
+  let names: string[];
+  try {
+    names = readdirSync(directory);
+  } catch (error) {
+    if (entry.kind === "regular") {
+      return {
+        ok: false,
+        reason: `${directory} is a regular file, not a directory, so the committed verdicts cannot be enumerated`,
+      };
+    }
+    return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
+  }
+  const documents: CorpusDocument[] = [];
+  const unreadable: Diagnostic[] = [];
+  for (const name of names.sort()) {
+    if (!VERDICT_FILE_PATTERN.test(name)) {
+      continue;
+    }
+    const path = join(directory, name);
+    const read = readOperatorPath(path);
+    if (!read.ok) {
+      /* M4-P10 FIX ROUND 2, REAPPLIED ON THIS ARM. The commit arm one screen up
+         refuses the whole corpus when a path its own listing named cannot be
+         produced, which is stricter than a diagnostic and is right there: the
+         same commit named it. Here the directory was listed from a working tree
+         that can change under the read, so the fail-closed form is the one
+         M4-P10 wrote, a named candidate carried out to every caller's violation
+         list rather than a silent `continue`. */
+      unreadable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and could not be read, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${read.reason}`,
+      });
+      continue;
+    }
+    documents.push({ path, body: read.body });
+  }
+  const selected = selectVerdicts(documents);
+  return {
+    ok: true,
+    verdicts: selected.verdicts,
+    unexaminable: [...unreadable, ...selected.unexaminable],
+    source,
+  };
 }
 
 /**
@@ -3477,20 +3966,32 @@ function establishDelegatedRegime(
   checkId: string,
   contextDirectory: string,
   phase: string,
+  source: VerdictCorpusSource,
 ): RegimeOutcome {
-  const charterPresent =
-    classifyEntry(join(contextDirectory, "charter.yaml")).kind !== "absent";
+  const charterPresent = contextDocumentPresentAt(contextDirectory, CHARTER_DOCUMENT, source);
   if (!charterPresent) {
+    /* THE SENTENCE NAMES THE SOURCE, AND THE CLAIM ABOUT THE MERGE GATE NAMES
+       THE READER BOTH SIDES SHARE (FIX ROUND 2, DV-001). Fix round 1 moved
+       this PRESENCE probe to the commit and left the merge gate's refusal on
+       disk, so a `charter.yaml` written into a working tree and committed
+       nowhere passed the gate's refusal, reached this arm, and was reported as
+       "no charter.yaml" while the file sat in the directory the same line
+       names. The gate now refuses through `missingRegimeDocument` below,
+       which is this same probe, so the second half of this sentence is a
+       property of one shared function rather than a claim about another
+       program that has to be maintained by hand. */
     return {
       kind: "report",
       lines: [
         `REPORT ${checkId} ${contextDirectory} declares no delivery mode ` +
-          `(no charter.yaml), so the verdicts for phase ${phase} were NOT evaluated against a ` +
-          `merge-authority regime; scripts/check-dual-review.mjs refuses such a directory outright`,
+          `(no ${CHARTER_DOCUMENT} ${describeContextDocumentSource(source)}), so the verdicts for phase ` +
+          `${phase} were NOT evaluated against a merge-authority regime; the merge gate ` +
+          `scripts/check-dual-review.mjs refuses such a directory outright, through the same presence ` +
+          `reader and therefore against the same source`,
       ],
     };
   }
-  const charter = readContextDocument(contextDirectory, "charter.yaml");
+  const charter = readContextDocumentAt(contextDirectory, CHARTER_DOCUMENT, source);
   if (!charter.ok) {
     return {
       kind: "violation",
@@ -3516,7 +4017,7 @@ function establishDelegatedRegime(
     };
   }
   const modeId = modeReading.value;
-  const modesDocument = readContextDocument(contextDirectory, MODES_DOCUMENT);
+  const modesDocument = readContextDocumentAt(contextDirectory, MODES_DOCUMENT, source);
   if (!modesDocument.ok) {
     return {
       kind: "violation",
@@ -3575,6 +4076,460 @@ function establishDelegatedRegime(
   }
 
   return { kind: "delegated" };
+}
+
+/* ------------------------------------------------------------------ */
+/* review-families: DR-0038's declared single-family exception (M4-P11) */
+/* ------------------------------------------------------------------ */
+
+/** The charter field DR-0038's declaration lives in (M4-D-28). */
+export const REVIEW_FAMILIES_FIELD = "review-families";
+
+/** The document that carries it. */
+export const CHARTER_DOCUMENT = "charter.yaml";
+
+/**
+ * The documents that say WHICH merge-authority regime is in force.
+ *
+ * MOVED HERE FROM `scripts/check-dual-review.mjs` (FIX ROUND 2, DV-001). The
+ * script held its own copy of this list AND its own presence probe, and the
+ * probe read the WORKING TREE while `establishDelegatedRegime` read the
+ * COMMIT. Two probes of one fact against two sources is the mechanism this
+ * phase has now paid for twice: each answered correctly about its own source,
+ * so nothing ever reported a disagreement, and an uncommitted `charter.yaml`
+ * took the gate from error to GREEN on a correlated committed pair.
+ */
+export const REGIME_DOCUMENTS = [CHARTER_DOCUMENT, MODES_DOCUMENT];
+
+/**
+ * The first regime document that is NOT present at the source a decision over
+ * this context would be made from, or `undefined` when both are.
+ *
+ * WHY THE REFUSAL LIVES AT THE MERGE GATE AND THE REPORT LIVES IN THE CHECK,
+ * unchanged from M3-P9 and restated because this round moved the probe: the
+ * derived check runs on ANY verdict with ANY context, and M3-P7's verdict
+ * contexts carry a plan and a work history and no charter, so a check that
+ * reddened on an absent charter reddened eight of that phase's tests. The
+ * check therefore REPORTS, and `scripts/check-dual-review.mjs`, which is the
+ * command DR-0012's grant runs through, refuses. What changed is that the
+ * refusal and the report are now ONE probe with two callers, so they cannot
+ * answer about different sources.
+ *
+ * THE SOURCE IS A PARAMETER, not resolved here, so a caller that has already
+ * resolved one (the gate script resolves it when it loads the corpus) refuses
+ * against the SAME commit it read the verdicts from rather than a second
+ * `rev-parse` that could land elsewhere.
+ */
+export function missingRegimeDocument(
+  contextDirectory: string,
+  source: VerdictCorpusSource = resolveCorpusSource(contextDirectory),
+): { document: string; source: VerdictCorpusSource; reason: string } | undefined {
+  for (const document of REGIME_DOCUMENTS) {
+    if (!contextDocumentPresentAt(contextDirectory, document, source)) {
+      return {
+        document,
+        source,
+        reason:
+          `${join(contextDirectory, document)} does not exist ${describeContextDocumentSource(source)}, so ` +
+          `the declared mode's merge-authority is unknown and no decorrelation verdict can be reached; a ` +
+          `merge check that cannot determine the regime reports error, never green`,
+      };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Where a declaration was read from, so a claim nobody can refute is at least
+ * ATTRIBUTABLE AND DATED.
+ *
+ * This is the honest half of DR-0038's third constraint. Two falsifiers below
+ * catch a project whose own record contradicts the declaration. NEITHER of
+ * them catches a project that HAS a second family available and has simply
+ * never used it, and nothing inside the record can: the record holds what was
+ * used, not what was reachable. So the countermeasure for that residue is
+ * provenance rather than detection, on the src/gates/release.ts:1028 pattern,
+ * and the gap is stated here rather than left to be found.
+ */
+export interface ReviewFamiliesProvenance {
+  /** The path inside the commit, as `git show` was asked for it. */
+  path: string;
+  /** The ref the declaration was read from, as the caller spelled it. */
+  ref: string;
+  /** That ref resolved to a commit sha. */
+  refSha: string;
+  /** sha256 of the exact blob bytes the declaration was decoded from. */
+  sha256: string;
+}
+
+/**
+ * What reading `review-families` produced.
+ *
+ * THREE OUTCOMES AND NOT TWO, for the reason `RegimeOutcome` gives one screen
+ * up: "no declaration" and "a declaration that could not be established" are
+ * different facts. The first leaves DR-0012 condition 1 applying unchanged,
+ * which is a REPORT-nothing. The second is an ERROR, because a check that
+ * cannot establish whether an exception applies must never decide that it does
+ * not apply and carry on (M2-C-3).
+ */
+export type ReviewFamiliesReading =
+  | { kind: "absent" }
+  | { kind: "error"; reason: string }
+  | {
+      kind: "declared";
+      /** Canonicalised, deduplicated by construction, sorted. Compared. */
+      families: string[];
+      /** The operator's own spelling, in document order. Printed. */
+      declaredAs: string[];
+      reason: string;
+      provenance: ReviewFamiliesProvenance;
+    };
+
+function gitIn(
+  args: string[],
+  cwd: string,
+): { ok: true; stdout: string } | { ok: false; reason: string } {
+  /* The buffer is raised because a charter is an operator document with no
+     declared size bound, and a truncated read would decode as a DIFFERENT
+     document rather than as a failure. */
+  const run = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (run.error !== undefined) {
+    return { ok: false, reason: `git ${args.join(" ")} could not be run: ${String(run.error)}` };
+  }
+  if (run.status !== 0) {
+    return {
+      ok: false,
+      reason: `git ${args.join(" ")} exited ${String(run.status)}: ${(run.stderr ?? "").replace(/\s+/g, " ").trim()}`,
+    };
+  }
+  return { ok: true, stdout: run.stdout ?? "" };
+}
+
+/**
+ * Is a `review-families` key present in the WORKING TREE's charter?
+ *
+ * Asked for exactly one purpose: to tell "this project makes no declaration"
+ * apart from "this project makes a declaration that is not committed". The
+ * first is absence and changes nothing. The second is an ERROR, because the
+ * whole value of the exception over a silent one is that a reader can check
+ * it, and an uncommitted claim is one nothing can be checked against.
+ */
+function treeDeclaresReviewFamilies(contextDirectory: string): boolean {
+  const tree = readContextDocument(contextDirectory, CHARTER_DOCUMENT);
+  if (!tree.ok) {
+    return false;
+  }
+  const record = asRecord(tree.value);
+  return record !== undefined && REVIEW_FAMILIES_FIELD in record;
+}
+
+/**
+ * Read DR-0038's declaration OUT OF THE GIT OBJECT DATABASE, never out of the
+ * working tree.
+ *
+ * WHY THE COMMITTED BLOB IS THE ONLY ONE THAT COUNTS. This is the anti-widening
+ * rule the scope auditor and `loadDeclaration` (src/gates/release.ts:817) both
+ * already apply, one condition along: a phase must not be able to switch off,
+ * inside its own working tree, the condition that would otherwise have refused
+ * its merge. A declaration read from disk is one an implementer can add,
+ * merge under, and delete, leaving a merged head whose record says the
+ * cross-family requirement was met.
+ *
+ * `HEAD:./charter.yaml` AND NOT `HEAD:charter.yaml`, and the difference is not
+ * cosmetic. A path without the leading `./` is resolved against the repository
+ * ROOT, so a context directory that happens to sit inside a larger repository
+ * (which every fixture staged under a checkout does) would silently read that
+ * repository's charter instead of its own. With `./` git resolves relative to
+ * the directory it was run in, which is the one the caller named.
+ */
+export function readReviewFamilies(
+  contextDirectory: string,
+  ref = "HEAD",
+): ReviewFamiliesReading {
+  const resolved = gitIn(["rev-parse", `${ref}^{commit}`], contextDirectory);
+  const relativePath = `./${CHARTER_DOCUMENT}`;
+  if (!resolved.ok) {
+    if (treeDeclaresReviewFamilies(contextDirectory)) {
+      return {
+        kind: "error",
+        reason:
+          `${join(contextDirectory, CHARTER_DOCUMENT)} declares ${REVIEW_FAMILIES_FIELD} in the working tree and ` +
+          `${contextDirectory} has no resolvable git ref ${ref}, so the declaration cannot be attributed to a ` +
+          `commit; an exception read from an uncommitted file is error, never permission (${resolved.reason})`,
+      };
+    }
+    return { kind: "absent" };
+  }
+  const refSha = resolved.stdout.trim();
+  const shown = gitIn(["show", `${refSha}:${relativePath}`], contextDirectory);
+  if (!shown.ok) {
+    if (treeDeclaresReviewFamilies(contextDirectory)) {
+      return {
+        kind: "error",
+        reason:
+          `${join(contextDirectory, CHARTER_DOCUMENT)} declares ${REVIEW_FAMILIES_FIELD} in the working tree and ` +
+          `${refSha}:${relativePath} could not be read, so the declaration is not committed and cannot be ` +
+          `attributed; an exception read from an uncommitted file is error, never permission (${shown.reason})`,
+      };
+    }
+    return { kind: "absent" };
+  }
+  const body = shown.stdout;
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  const provenance: ReviewFamiliesProvenance = {
+    path: CHARTER_DOCUMENT,
+    ref,
+    refSha,
+    sha256,
+  };
+  const decoded = decodeDocument(body, join(contextDirectory, CHARTER_DOCUMENT));
+  if (!decoded.ok) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} does not decode, so whether it declares ${REVIEW_FAMILIES_FIELD} could not be established: ${decoded.reason}`,
+    };
+  }
+  const charter = asRecord(decoded.value);
+  if (charter === undefined || !(REVIEW_FAMILIES_FIELD in charter)) {
+    return { kind: "absent" };
+  }
+  const declaration = asRecord(charter[REVIEW_FAMILIES_FIELD]);
+  if (declaration === undefined) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} carries ${REVIEW_FAMILIES_FIELD} and it is not a map, so no declared family set can be read from it`,
+    };
+  }
+  const reasonReading = establishField(declaration, "reason");
+  if (reasonReading.kind !== "established") {
+    return {
+      kind: "error",
+      reason:
+        `${refSha}:${relativePath} ${unestablishedReason(reasonReading, `${REVIEW_FAMILIES_FIELD}.reason`) as string}; ` +
+        `narrowing an owner-reserved merge condition costs a stated reason, so a declaration without one is error`,
+    };
+  }
+  const available = declaration["available"];
+  if (!Array.isArray(available) || available.length === 0) {
+    return {
+      kind: "error",
+      reason: `${refSha}:${relativePath} declares ${REVIEW_FAMILIES_FIELD}.available as ${Array.isArray(available) ? "an empty list" : "not a list"}, so no family set can be read from it`,
+    };
+  }
+  const families: string[] = [];
+  const declaredAs: string[] = [];
+  for (let index = 0; index < available.length; index += 1) {
+    const entry = available[index];
+    /* Each entry goes through the SAME canonical form a verdict's
+       `produced-by` goes through, because the two are compared to each other
+       below. A declaration canonicalised one way and an observation
+       canonicalised another is the fix-round-2 mechanism with two documents
+       instead of one. */
+    const reading = establishField({ entry }, "entry");
+    if (reading.kind !== "established") {
+      return {
+        kind: "error",
+        reason: `${refSha}:${relativePath} ${unestablishedReason(reading, `${REVIEW_FAMILIES_FIELD}.available[${String(index)}]`) as string}, so the declared family set cannot be compared with what the verdicts carry`,
+      };
+    }
+    if (families.includes(reading.value)) {
+      /* REFUSED RATHER THAN DEDUPLICATED, and the direction is why. The
+         exception applies when exactly ONE family is declared, so collapsing
+         `[Anthropic, anthropic]` to one entry would turn a document that reads
+         as two families into a single-family declaration. That is the only
+         canonicalisation in this file that would be fail-OPEN, so it is a
+         refusal instead. */
+      return {
+        kind: "error",
+        reason: `${refSha}:${relativePath} lists ${String(entry)} in ${REVIEW_FAMILIES_FIELD}.available more than once once canonicalised, so how many families it declares cannot be established`,
+      };
+    }
+    families.push(reading.value);
+    declaredAs.push(String(entry));
+  }
+  return {
+    kind: "declared",
+    families: [...families].sort(),
+    declaredAs,
+    reason: declaration["reason"] as string,
+    provenance,
+  };
+}
+
+/** One line naming where a declaration came from, for a detail or a report. */
+export function reviewFamiliesProvenanceLine(provenance: ReviewFamiliesProvenance): string {
+  return (
+    `declaration ${provenance.path} read from ${provenance.ref} ` +
+    `(${provenance.refSha}), blob sha256 ${provenance.sha256}`
+  );
+}
+
+/** What the single-family arm concluded about one committed corpus. */
+export type SingleFamilyOutcome =
+  | { kind: "not-declared" }
+  | { kind: "error"; reason: string }
+  | { kind: "refused"; violations: Diagnostic[] }
+  | {
+      kind: "exempt";
+      family: string;
+      reading: Extract<ReviewFamiliesReading, { kind: "declared" }>;
+      reports: string[];
+    };
+
+/**
+ * DR-0038's exception, and its two falsifiers, over one committed corpus.
+ *
+ * THE EXCEPTION NARROWS EXACTLY ONE DIMENSION. `produced-by` stops being
+ * required to differ. `framing` and `review-contract` are untouched, because
+ * T-007's whole finding is that model decorrelation and CONTRACT decorrelation
+ * are different properties: a single-family environment still has two framings
+ * and two contracts available to it, so relaxing those would be relaxing
+ * something the environment does not force.
+ *
+ * FALSIFIER 1, CONTRADICTION BY THE CORPUS. If the project's own committed
+ * verdicts carry two or more distinct canonicalised `produced-by` values, the
+ * declaration is contradicted by the project's own record and this is RED. A
+ * project that has demonstrably used two cannot claim one.
+ *
+ * FALSIFIER 2, THE NAME MUST MATCH. A verdict whose `produced-by` canonicalises
+ * to anything other than the declared family is RED. Without this, a
+ * declaration could name a family nothing in the record uses and still buy the
+ * relaxation.
+ *
+ * THE SCOPE IS THE WHOLE COMMITTED CORPUS, NOT THE ONE (phase, head) GROUP,
+ * and that is deliberate. "This project has one family available" is a claim
+ * about the project, so the widest set of its own verdicts is what can refute
+ * it. Scoping the falsifiers to the group under review would let a project
+ * whose history carries three families declare one, provided the two reviews
+ * in front of the check happened to agree.
+ *
+ * WHAT IT DOES NOT CATCH, said here and not only in the plan: a project with a
+ * second family AVAILABLE that has simply never used it. Nothing in a record of
+ * what WAS used reaches what COULD have been used. `readReviewFamilies` answers
+ * that with provenance rather than detection: the claim is attributable to a
+ * commit and a blob, so it is dated and signed even where it is not refutable.
+ */
+export function singleFamilyException(
+  contextDirectory: string,
+  loaded: LoadedVerdictCorpus,
+): SingleFamilyOutcome {
+  /* ONE RESOLUTION, THREADED THROUGH, AND THAT IS THE STRUCTURAL HALF OF THE
+     FIX (M4-P11 fix round 1). The declaration is no longer read at whatever
+     `HEAD` happens to mean when `readReviewFamilies` is called: it is read at
+     the EXACT commit sha the pair corpus was enumerated from, and the
+     falsifiers' own corpus is then read from that same sha. A declaration and
+     the evidence that refutes it come out of ONE TREE by construction, so
+     "they disagree about what exists" is not a state this function can be put
+     into rather than a state it checks for and hopes to catch.
+
+     On the worktree arm there is no commit to pin to, so `HEAD` is passed and
+     `readReviewFamilies` performs the same `rev-parse` that just failed: it
+     returns `absent`, or `error` if the working tree declares anyway. Either
+     way no exception is granted, which is why one source of truth with no git
+     is safe and two sources with git was not. */
+  const declarationRef = loaded.source.kind === "commit" ? loaded.source.refSha : "HEAD";
+  const reading = readReviewFamilies(contextDirectory, declarationRef);
+  if (reading.kind === "error") {
+    return { kind: "error", reason: reading.reason };
+  }
+  if (reading.kind === "absent") {
+    /* AN ABSENT DECLARATION IS NOT PERMISSION. src/gates/release.ts:1037 states
+       the rule for the sibling case; here it means the cross-family requirement
+       applies unchanged, so a same-family pair stays red. */
+    return { kind: "not-declared" };
+  }
+  if (reading.families.length !== 1) {
+    /* A declaration of TWO OR MORE families is a valid declaration and it is
+       not this exception. The environment says it has more than one, so
+       DR-0012 condition 1 is satisfiable honestly and nothing is narrowed. */
+    return { kind: "not-declared" };
+  }
+  /* THE FALSIFIERS' CORPUS IS READ HERE AND NOT BY THE CALLER, for two
+     reasons that both matter. It is a WIDER set than the pair corpus, because
+     the claim being falsified is about the project rather than about the two
+     reviews in front of the check (CR-M4P11-002). And reading it only after a
+     single-family declaration has been established means the wider read is
+     paid for only by the runs that claim the exception, instead of by every
+     verdict validated anywhere. */
+  const paperwork =
+    loaded.source.kind === "commit"
+      ? loadPaperworkVerdicts(contextDirectory, loaded.source.ref, loaded.source.refSha)
+      : /* UNREACHABLE BY CONSTRUCTION AND NOT LEFT TO CHANCE: `reading` is
+           `declared` only when `readReviewFamilies` resolved a commit, and it
+           resolves the same ref this corpus failed to resolve. It is written
+           as a refusal rather than an assertion because M2-C-3 says a check
+           that cannot establish its subject reports error, never a verdict. */
+        ({
+          ok: false,
+          reason:
+            `${CHARTER_DOCUMENT} declares ${REVIEW_FAMILIES_FIELD} at ${declarationRef} and ${contextDirectory} ` +
+            `has no resolvable commit to read the refuting record from, so the exception could not be evaluated`,
+        } as const);
+  if (!paperwork.ok) {
+    return { kind: "error", reason: paperwork.reason };
+  }
+  const corpus = paperwork.verdicts;
+  const corpusScope = describeVerdictCorpusSource(paperwork.source);
+  const declared = reading.families[0] as string;
+  const provenance = reviewFamiliesProvenanceLine(reading.provenance);
+  const violations: Diagnostic[] = [];
+  const observed = new Map<string, string[]>();
+  for (const candidate of corpus) {
+    const value = establishField(candidate.record, "produced-by");
+    if (value.kind !== "established") {
+      violations.push({
+        pointer: "#/produced-by",
+        message: `${candidate.path} ${unestablishedReason(value, "produced-by") as string}, so it cannot be compared with the single family ${REVIEW_FAMILIES_FIELD} declares, and an exception cannot rest on a verdict that does not say what produced it; ${provenance}`,
+      });
+      continue;
+    }
+    observed.set(value.value, [...(observed.get(value.value) ?? []), candidate.path]);
+  }
+  const distinct = [...observed.keys()].sort();
+  if (distinct.length > 1) {
+    violations.push({
+      pointer: "#/produced-by",
+      message:
+        `${CHARTER_DOCUMENT} declares the single review family ${reading.declaredAs.join(", ")} and the ` +
+        `${String(corpus.length)} verdict document(s) committed under ${PAPERWORK_ROOT}/ carry ` +
+        `${String(distinct.length)} distinct produced-by value(s) (${distinct.join(", ")}), so the declaration ` +
+        `is contradicted by this project's own record and the exception does not apply; ${provenance} ` +
+        corpusScope,
+    });
+  }
+  for (const value of distinct) {
+    if (value === declared) {
+      continue;
+    }
+    violations.push({
+      pointer: "#/produced-by",
+      /* BOTH SPELLINGS OF THE DECLARED NAME, for the reason the `phase` label
+         one screen down already gives: the canonical form is what was
+         COMPARED and the operator's form is what is in the file they are
+         holding. Printing only the canonical form tells someone whose charter
+         says `Family-A` about a family called `family-a`. */
+      message:
+        `${CHARTER_DOCUMENT} declares the single review family ${reading.declaredAs.join(", ")} ` +
+        `(canonically ${declared}) and ` +
+        `${(observed.get(value) as string[]).sort().join(", ")} carr${(observed.get(value) as string[]).length === 1 ? "ies" : "y"} ` +
+        `produced-by ${value}, which is not the declared family, so the exception does not apply to it; ${provenance}`,
+    });
+  }
+  if (violations.length > 0) {
+    return { kind: "refused", violations };
+  }
+  return {
+    kind: "exempt",
+    family: declared,
+    reading,
+    reports: [
+      `REPORT single-family-declared ${CHARTER_DOCUMENT} declares exactly one review family ` +
+        `(${reading.declaredAs.join(", ")}) and all ${String(corpus.length)} verdict document(s) committed ` +
+        `under ${PAPERWORK_ROOT}/ carry it, so produced-by is NOT required to differ; framing and ` +
+        `review-contract still are; reason: ${reading.reason}; ${provenance} ` +
+        corpusScope,
+    ],
+  };
 }
 
 /**
@@ -3701,10 +4656,18 @@ export const dualReviewDecorrelation: DerivedCheck = {
        `error`. That is the path DR-0012's grant runs through, and it must never
        report green without knowing the regime. Imposing the same refusal here
        imposed it on a path the grant has nothing to do with. */
+    /* ONE RESOLUTION FOR THE WHOLE DECISION (M4-P11 fix round 1). The regime,
+       the declaration and both corpora are read from THIS value, so no two of
+       them can describe different trees. Resolved before the regime rather
+       than after it because the regime is the first thing that can end the
+       run, and a regime read from an uncommitted charter was measured turning
+       a red correlated pair green at exit 0. */
+    const source = resolveCorpusSource(contextDirectory);
     const regime = establishDelegatedRegime(
       "dual-review-decorrelation",
       contextDirectory,
       phase,
+      source,
     );
     if (regime.kind === "report") {
       return { violations: [], reports: regime.lines };
@@ -3715,13 +4678,44 @@ export const dualReviewDecorrelation: DerivedCheck = {
         reports: [],
       };
     }
-    const committed = loadCommittedVerdicts(contextDirectory);
+    const committed = loadCommittedVerdicts(contextDirectory, source);
     if (!committed.ok) {
       return {
         violations: [{ pointer: "#/produced-by", message: committed.reason }],
         reports: [],
       };
     }
+    /* DR-0038's EXCEPTION IS DECIDED HERE, BEFORE THE GROUP IS ASSEMBLED, AND
+       THE POSITION IS LOAD-BEARING (M4-P11). Both falsifiers are claims about
+       the project's WHOLE committed corpus, not about the pair in front of the
+       check, so they are answerable without a head and they are answered first.
+       Putting them after the head resolution would have made a contradicted
+       declaration invisible on exactly the corpus that contradicts it: this
+       repository's own two real review verdicts predate M4-P10's required
+       `head` field, so the head arm returns before any of this would run.
+
+       A CONTRADICTED DECLARATION RETURNS IMMEDIATELY. It is red either way, so
+       nothing is authorised by the early return, and what a reader needs first
+       is that the project's declaration is false rather than a list of
+       downstream consequences of believing it. */
+    const exception = singleFamilyException(contextDirectory, committed);
+    if (exception.kind === "error") {
+      /* M2-C-3. A check that cannot establish whether an exception applies must
+         not decide that it does not and carry on: that would silently impose
+         the strict rule on a project that may have declared honestly, and,
+         worse, would report a normal red that hides an unreadable declaration. */
+      return {
+        violations: [{ pointer: "#/produced-by", message: exception.reason }],
+        reports: [],
+      };
+    }
+    if (exception.kind === "refused") {
+      return { violations: exception.violations, reports: [] };
+    }
+    const exemptDimensions =
+      exception.kind === "exempt" ? new Set<string>(["produced-by"]) : new Set<string>();
+    const exceptionReports = exception.kind === "exempt" ? exception.reports : [];
+
     /* THE JOIN KEY IS NOW (phase, head), WHICH IS M4-P10's FIRST CHANGE. Until
        this line the key was `phase` alone and the DIRECTORY was what scoped a
        set of verdicts to one head, a convention declared in
@@ -3755,7 +4749,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
         violations: [
           {
             pointer: "#/phase",
-            message: `this verdict is not among the ${String(group.length)} verdict document(s) committed under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, so it is not a review the delegated grant can be satisfied by`,
+            message: `this verdict is not among the ${String(group.length)} verdict document(s) committed under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, so it is not a review the delegated grant can be satisfied by ${describeVerdictCorpusSource(committed.source)}`,
           },
         ],
         reports: [],
@@ -3771,11 +4765,21 @@ export const dualReviewDecorrelation: DerivedCheck = {
     if (group.length < 2) {
       violations.push({
         pointer: "#/phase",
-        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and a delegated grant requires two independent clean-room reviews of the exact head`,
+        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and a delegated grant requires two independent clean-room reviews of the exact head ${describeVerdictCorpusSource(committed.source)}`,
       });
     }
 
     for (const dimension of DECORRELATION_DIMENSIONS) {
+      if (exemptDimensions.has(dimension)) {
+        /* THE ONE NARROWED DIMENSION (DR-0038, M4-P11). `continue` skips the
+           DISTINCTNESS requirement only, and it is reached only after both
+           falsifiers passed, which means every committed verdict has already
+           been read and found to carry the one declared family. So this is not
+           a dimension that stopped being looked at: it is one that was looked
+           at against a different rule. The two dimensions below are untouched,
+           which is what stops the exception relaxing the whole check. */
+        continue;
+      }
       /* SITE ONE, THE ONE CR-001 REPORTS. ABSENCE IS ITS OWN VERDICT AND IT IS A
          FAIL, and the choice was deliberate rather than inherited.
 
@@ -3817,13 +4821,25 @@ export const dualReviewDecorrelation: DerivedCheck = {
       }
     }
 
+    /* THE REPORT NAMES THE DIMENSIONS ACTUALLY COMPARED, never the constant.
+       Printing the full triple while one of its members was exempt is the
+       sentence DR-0038 exists to stop being written: "distinct on produced-by"
+       about a pair that was not required to be. */
+    const compared = DECORRELATION_DIMENSIONS.filter(
+      (dimension) => !exemptDimensions.has(dimension),
+    );
     return {
       violations,
       reports:
         violations.length > 0
-          ? []
+          ? /* THE EXCEPTION IS PRINTED EVEN ON A RED, because the owner's whole
+               requirement is that nobody can hide it. A red run whose reader
+               cannot see that produced-by was exempt is one where the exception
+               is invisible exactly when the record is being read most closely. */
+            [...exceptionReports]
           : [
-              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${DECORRELATION_DIMENSIONS.join(", ")}`,
+              ...exceptionReports,
+              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}`,
             ],
     };
   },
@@ -3951,7 +4967,13 @@ export const verdictPairApproves: DerivedCheck = {
     const phaseKey = phaseReading.value;
     const phase = verdict?.["phase"] as string;
 
-    const regime = establishDelegatedRegime("verdict-pair-approves", contextDirectory, phase);
+    const source = resolveCorpusSource(contextDirectory);
+    const regime = establishDelegatedRegime(
+      "verdict-pair-approves",
+      contextDirectory,
+      phase,
+      source,
+    );
     if (regime.kind === "report") {
       return { violations: [], reports: regime.lines };
     }
@@ -3971,7 +4993,7 @@ export const verdictPairApproves: DerivedCheck = {
     }
     const headKey = ownHead.value;
 
-    const committed = loadCommittedVerdicts(contextDirectory);
+    const committed = loadCommittedVerdicts(contextDirectory, source);
     if (!committed.ok) {
       return {
         violations: [{ pointer: "#/verdict", message: committed.reason }],
@@ -3988,7 +5010,7 @@ export const verdictPairApproves: DerivedCheck = {
     if (group.length < 2) {
       violations.push({
         pointer: "#/verdict",
-        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two`,
+        message: `only ${String(group.length)} verdict document(s) exist under ${REVIEW_DIRECTORY} for phase ${phase} at head ${headKey}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two ${describeVerdictCorpusSource(committed.source)}`,
       });
     }
 

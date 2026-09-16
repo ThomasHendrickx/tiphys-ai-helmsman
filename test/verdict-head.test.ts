@@ -567,19 +567,25 @@ test("two verdicts carrying DIFFERENT heads are two groups of one and the condit
        assertion in `test/dual-review.test.ts`: the two pair-size rules open
        their messages with the same twelve words, so a regex stopping at the
        shared prefix is satisfied by either one and neither rule is actually
-       guarded. Both must print for both heads. */
+       guarded. Both must print for both heads.
+
+       `.*` BEFORE THE ATTRIBUTION, for the reason the sibling assertion in
+       `test/dual-review.test.ts` now gives at length: M4-P11 puts the corpus's
+       PROVENANCE between the message and its attribution, that parenthetical
+       carries nested parentheses, and `.` does not cross a newline, so the
+       distinguishing tail and the attribution are still required on ONE line. */
     for (const head of [FIXTURE_HEAD, OTHER_HEAD]) {
       assert.match(
         run.output,
         new RegExp(
-          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and a delegated grant requires two independent clean-room reviews of the exact head \\(check: dual-review-decorrelation\\)`,
+          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and a delegated grant requires two independent clean-room reviews of the exact head .*\\(check: dual-review-decorrelation\\)`,
         ),
         run.output,
       );
       assert.match(
         run.output,
         new RegExp(
-          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two \\(check: verdict-pair-approves\\)`,
+          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two .*\\(check: verdict-pair-approves\\)`,
         ),
         run.output,
       );
@@ -1033,12 +1039,25 @@ function runValidateOne(dir: string, name: string): string {
 }
 
 /*
- * TWO LAYERS AND TWO MESSAGES, AND EACH ARM BELOW ASSERTS BOTH. The drop was
+ * TWO LAYERS, ONE MESSAGE, AND EACH ARM BELOW ASSERTS BOTH LAYERS. The drop was
  * present in `loadCommittedVerdicts` (the derived checks) AND in
  * `committedVerdictPaths` (the gate runner's own selection), and closing only
  * one leaves the other. They do not both print, because the runner refuses the
  * directory with `error` before any check runs, so the runner's refusal is
  * witnessed through the gate and the checks' through `tiphys validate`.
+ *
+ * THE SECOND SENTENCE IS GONE, WHICH IS WHY THESE ASSERTIONS MOVED (M4-P11
+ * stack integration, 2026-09-16). This block used to read "TWO LAYERS AND TWO
+ * MESSAGES", because the runner wrote its own SHORT sentence beside the checks'
+ * long one: two WRITERS of one fact, which is the same shape as the two READERS
+ * the round that wrote these tests removed, one step along. M4-P11's
+ * CR-M4P11-001 deleted the runner's duplicate enumeration outright and made it
+ * call `loadCommittedVerdicts`, which is what src/checks.ts asked for in its own
+ * words ("There is now one reader"). The runner therefore surfaces the CHECKS'
+ * sentence now, and the gate-output assertions below are pinned to that one
+ * sentence instead of to the deleted copy's. NOTHING THE ARMS GUARD CHANGED and
+ * all of it is still asserted: the gate exits 21, NAMES the document, NAMES the
+ * reason it could not be examined, and does not say the pair approves.
  */
 
 test("a sibling whose YAML does not decode makes the gate error instead of reporting the pair clean", () => {
@@ -1049,7 +1068,11 @@ test("a sibling whose YAML does not decode makes the gate error instead of repor
      line, and the dropped document appeared nowhere in the output. */
   withThirdDocument(`${REFUSING_THIRD}\n  this line: is: not: yaml: [\n`, (dir, run) => {
     assert.equal(run.status, 21, run.output);
-    assert.match(run.output, /third-refusing\.yaml did not decode/, run.output);
+    assert.match(
+      run.output,
+      /third-refusing\.yaml sits under delivery\/review and did not decode/,
+      run.output,
+    );
     assert.doesNotMatch(run.output, /the pair approves/, run.output);
 
     const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
@@ -1074,7 +1097,11 @@ test("a sibling that cannot be read at all makes the gate error instead of repor
      readers. */
   withThirdDocument(undefined, (dir, run) => {
     assert.equal(run.status, 21, run.output);
-    assert.match(run.output, /third-refusing\.yaml could not be read/, run.output);
+    assert.match(
+      run.output,
+      /third-refusing\.yaml sits under delivery\/review and could not be read/,
+      run.output,
+    );
     assert.doesNotMatch(run.output, /the pair approves/, run.output);
 
     const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
@@ -1204,7 +1231,8 @@ for (const [label, kindLines, found] of KIND_MEMBERS) {
       assert.match(
         run.output,
         new RegExp(
-          `third-refusing\\.yaml declares a kind field that could not be read as a word \\(${literal(found)}\\)`,
+          `third-refusing\\.yaml sits under delivery/review and declares a kind field ` +
+            `that could not be read as a word \\(${literal(found)}\\)`,
         ),
         run.output,
       );

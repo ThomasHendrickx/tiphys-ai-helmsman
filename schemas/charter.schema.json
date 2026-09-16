@@ -151,6 +151,25 @@
         }
       ]
     },
+    "review-families": {
+      "$comment": "DR-0038's DECLARATION, and it is a declaration rather than the exception itself (M4-D-28, kernel plan M4 section 4.2.6). DR-0012 condition 1 requires two clean-room reviews produced on different model FAMILIES. A project with one family available can satisfy that only by recording something false, and the shipped check makes it worse: it compares canonicalised STRINGS, so two models of one family compare as distinct and the pair reports decorrelated. This field is where a project states WHICH families its environment actually has. The schema does not encode the exception: single-family is `available.length === 1`, and what that then means is `dual-review-decorrelation`'s business. OPTIONAL, AND ITS ABSENCE IS NOT PERMISSION: an absent `review-families` leaves the cross-family requirement applying unchanged, so a same-family pair stays red (src/gates/release.ts:1037 states the same rule for the sibling case). WHY THE CHARTER AND NOT assurance-modes.yaml: DR-0029's split asks whether a fact is process or predicate, and 'which model families exist in this environment' is a fact about the PROJECT's environment, so it belongs to the project's own declaration; the assurance-mode vocabularies are closed by DR-0020 and bound to a derived check.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "reason"],
+      "properties": {
+        "available": {
+          "$comment": "The model families this environment can actually dispatch a clean-room review on. NOT an enum: no closed vocabulary of model families can be kept current, and a stale enum here would refuse a true declaration. The check canonicalises each entry the same way it canonicalises a verdict's `produced-by`, so the two are comparable.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reason": {
+          "$comment": "Investigation defence 2, the same rule release-verification mode none is held to: narrowing an owner-reserved merge condition costs a stated reason. A declaration nobody has to justify is the shape DR-0038 exists to replace.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "retention": {
       "$comment": "Consumed by M3-P8 for R-098.",
       "type": "object",

@@ -1242,9 +1242,10 @@
       },
       "widened": {
         "hit-paths": [
-          "src/gates/run.ts"
+          "src/gates/run.ts",
+          "src/witness/run.ts"
         ],
-        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
       }
     },
     {
@@ -1266,9 +1267,10 @@
       },
       "widened": {
         "hit-paths": [
-          "src/gates/run.ts"
+          "src/gates/run.ts",
+          "src/witness/run.ts"
         ],
-        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
       }
     },
     {
@@ -1290,9 +1292,10 @@
       },
       "widened": {
         "hit-paths": [
-          "src/gates/run.ts"
+          "src/gates/run.ts",
+          "src/witness/run.ts"
         ],
-        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
       }
     },
     {
@@ -1314,9 +1317,10 @@
       },
       "widened": {
         "hit-paths": [
-          "src/gates/run.ts"
+          "src/gates/run.ts",
+          "src/witness/run.ts"
         ],
-        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
       }
     },
     {
