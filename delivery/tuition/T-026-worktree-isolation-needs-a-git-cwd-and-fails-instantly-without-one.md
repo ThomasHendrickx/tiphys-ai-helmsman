@@ -267,3 +267,56 @@ entire bill for three repetitions of the same defect is eleven confusing lines
 in a log and a few wasted `git bundle` calls. That is the second postscript
 earning its keep, and it is the argument for fixing the RESPONSE before the
 DETECTOR, one more time.
+
+## Postscript 5: the watchdog that printed only on transitions, so its silence was unreadable
+
+2026-09-16. The watchdog armed after postscript 4 ran for hours and produced
+**zero bytes**. Not a partial log, not a stale log: an output file that did not
+exist on disk while the task status read `running`.
+
+It was doing what it was written to do. It printed on a TRANSITION only, and
+nothing transitioned, so it said nothing. That is defensible logging and it is
+a broken guard, because the reader cannot tell it apart from the two states
+that matter:
+
+| the watchdog is | what it prints |
+|---|---|
+| alive, everything healthy | nothing |
+| dead | nothing |
+
+A guard whose healthy output and whose absence are byte-identical has no
+information content at all. This is the same defect as the four before it, and
+the novel part is that this one could not go red **because it could not go
+anything**: it had no output channel that was ever exercised.
+
+The fix is one line of policy: **print every cycle.** A heartbeat carrying the
+full per-subject table makes silence mean exactly one thing, that the watchdog
+itself has died, and that is a state the reader can act on. The replacement
+also exits with a stated reason when its watch set empties, rather than looping
+silently over nothing, for the same reason.
+
+## Postscript 6: it was also watching the wrong place again, and I nearly assumed otherwise
+
+Found in the same minute, and it is T-014's mistake for the seventh time.
+
+The dead watchdog iterated `<repo>/.claude/worktrees/wf_*` and derived its
+subjects from them. Three review workflows dispatched at 02:11 were measured
+immediately afterwards:
+
+```
+$ ls -d /home/user/tiphys-ai-helmsman/.claude/worktrees/wf_16d43c4d* ...
+ls: cannot access ...: No such file or directory   (all three)
+```
+
+**No worktree, for any of them.** Six reviewers, and a worktree-keyed watchdog
+would have watched none of them while reporting healthily on the older runs
+that did have one. I was about to conclude it covered them, on the reasoning
+that new workflows create worktrees there, which is a PREDICTION and is exactly
+what T-014 says not to do. One `ls` refuted it.
+
+The keying is the lesson. A worktree is something an agent MAY create; a
+transcript is something every dispatched agent HAS, because the harness writes
+it. Key the watch set on the artifact the harness guarantees, not on the one
+the agent might produce. The replacement derives its subjects from
+`<workflows>/wf_*/journal.jsonl` where `started > result`, and its beacon from
+the newest `agent-*.jsonl` mtime in that run.
