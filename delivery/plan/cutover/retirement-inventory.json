@@ -58,6 +58,13 @@
         "command": "grep -c 'precedence' AGENTS.md roles/implementer.md roles/plan-writer.md roles/README.md",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/plan-writer.md:0 / roles/README.md:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/citations.ts",
+          "src/gates/run.ts"
+        ],
+        "read": "Both hits are code comments about a different precedence: src/gates/citations.ts:173 and :177 are about which citation ROOT wins, and src/gates/run.ts:1685 is about aggregating gate results. Neither states an authority order among charter, plan and decision records, and neither is an instruction channel an agent is routed to. The absence stands."
       }
     },
     {
@@ -76,6 +83,13 @@
         "command": "grep -c 'precedence' AGENTS.md roles/implementer.md roles/plan-writer.md roles/README.md",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/plan-writer.md:0 / roles/README.md:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/citations.ts",
+          "src/gates/run.ts"
+        ],
+        "read": "Both hits are code comments about a different precedence: src/gates/citations.ts:173 and :177 are about which citation ROOT wins, and src/gates/run.ts:1685 is about aggregating gate results. Neither states an authority order among charter, plan and decision records, and neither is an instruction channel an agent is routed to. The absence stands."
       }
     },
     {
@@ -94,6 +108,13 @@
         "command": "grep -c 'precedence' AGENTS.md roles/implementer.md roles/plan-writer.md roles/README.md",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/plan-writer.md:0 / roles/README.md:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/citations.ts",
+          "src/gates/run.ts"
+        ],
+        "read": "Both hits are code comments about a different precedence: src/gates/citations.ts:173 and :177 are about which citation ROOT wins, and src/gates/run.ts:1685 is about aggregating gate results. Neither states an authority order among charter, plan and decision records, and neither is an instruction channel an agent is routed to. The absence stands."
       }
     },
     {
@@ -112,6 +133,13 @@
         "command": "grep -c 'precedence' AGENTS.md roles/implementer.md roles/plan-writer.md roles/README.md",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/plan-writer.md:0 / roles/README.md:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/citations.ts",
+          "src/gates/run.ts"
+        ],
+        "read": "Both hits are code comments about a different precedence: src/gates/citations.ts:173 and :177 are about which citation ROOT wins, and src/gates/run.ts:1685 is about aggregating gate results. Neither states an authority order among charter, plan and decision records, and neither is an instruction channel an agent is routed to. The absence stands."
       }
     },
     {
@@ -475,11 +503,22 @@
       "disposition": "KEEP",
       "gap": "the open half is an edit to this repository's own exit-test script, which DR-0029 puts on the project side",
       "dr0029-side": "predicate",
-      "note": "Re-verified in this phase and still TRUE: --registry does not occur in scripts/m2-exit-test.sh, so a registry-only gate still does not run in CI here.",
+      "note": "Re-verified in this phase and still TRUE: --registry does not occur in scripts/m2-exit-test.sh. CORRECTED IN THE FIX ROUND: the command recorded here was `grep -c '-- '--registry'' scripts/m2-exit-test.sh`, which the shell concatenated into the argument `-- --registry`. grep rejected it as an option and exited 2 without searching anything, and that usage error was recorded as a re-verification. The claim is unchanged; the evidence for it was missing. CLAUDE.md names this exact bite in the fix-round contract.",
       "verified-by": {
-        "command": "grep -c '-- '--registry'' scripts/m2-exit-test.sh",
-        "exit": 2,
-        "output": "grep: unrecognized option '-- --registry' / Usage: grep [OPTION]... PATTERNS [FILE]... / Try 'grep --help' for more information."
+        "command": "grep -c -- '--registry' scripts/m2-exit-test.sh",
+        "exit": 1,
+        "output": "0"
+      },
+      "widened": {
+        "hit-paths": [
+          "roles/implementer.md",
+          "src/roles.ts",
+          "src/gates/run.ts",
+          "src/gates/suite.ts",
+          "src/commands/gates.ts",
+          "gate-registry.yaml"
+        ],
+        "read": "The claim is about ONE file, scripts/m2-exit-test.sh, and scripts/ is deliberately outside the widened surface. Every hit is the --registry FLAG being defined or used where it is supposed to be (the CLI parser, the runner, the rendered gate list), which is what makes its absence from the exit-test script the gap this row records rather than a typo. gate-registry.yaml:15 states the same absence independently."
       }
     },
     {
@@ -494,10 +533,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'npm, ci' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "claude-md:npm-run-build-the-type-gate-tsc-b-emits-dist-whi",
@@ -511,10 +551,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'npm, run, build' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "claude-md:node-test-sources-are-typescript-run-natively-vi",
@@ -528,10 +569,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'node, --test' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "claude-md:red-witness-rule",
@@ -1197,6 +1239,12 @@
         "command": "grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/run.ts"
+        ],
+        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
       }
     },
     {
@@ -1215,6 +1263,12 @@
         "command": "grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/run.ts"
+        ],
+        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
       }
     },
     {
@@ -1233,6 +1287,12 @@
         "command": "grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/run.ts"
+        ],
+        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
       }
     },
     {
@@ -1251,6 +1311,12 @@
         "command": "grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/gates/run.ts"
+        ],
+        "read": "The one hit is src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable'. That is the output this rule teaches a reader to interpret, not a kernel statement of the reading procedure, and a line a program prints is not an instruction channel. The absence stands."
       }
     },
     {
@@ -2726,15 +2792,21 @@
       "kind": "bullet",
       "text": "- Never auto-background a long-running process (C-3).",
       "group": "never-auto-background",
-      "status": "GAP",
-      "disposition": "KEEP",
-      "gap": "C-3 is enforced in shipped code (src/spawn.ts, src/gates/run.ts) and stated in NO instruction channel: not in a brief, not in a checklist, and not in the mechanism index, which is where C-1 and C-2 are",
-      "dr0029-side": "process",
-      "note": "Searched case-insensitively for auto-background and background across AGENTS.md, roles/, checklists/, templates/, tuition/ and schemas/: the one hit is roles/implementer.md:93, where background is an ordinary English word. C-1 and C-2 both have mechanism-index entries and C-3 does not, which is what makes this a gap rather than a phrasing miss.",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "note": "CORRECTED IN THE FIX ROUND. This row said C-3 was stated in NO instruction channel. AGENTS.md:496 states it: 'C-3 forbids a kernel COMMAND from putting long-running work out of the operator's sight without being told to.' The old verified-by searched for the literal token auto-background, which AGENTS.md does not use, and exit 1 was read as the RULE being absent when it was only the WORD. Searching the constraint id finds it at once. The residual gap is narrower and real: C-1 and C-2 have tuition/mechanism-index.yaml entries and C-3 has none (grep -c 'C-3' tuition/mechanism-index.yaml exits 1), and the AGENTS.md statement is incidental, made to disambiguate C-3 from arming a watchdog rather than as a standalone rule. That residual is recorded in delivery/plan/cutover/retirement-inventory.md rather than as a GAP row, because the rule IS carried.",
       "verified-by": {
-        "command": "grep -c 'auto-background' AGENTS.md roles/implementer.md checklists/hazard-review.yaml checklists/clean-room.yaml tuition/mechanism-index.yaml",
+        "command": "grep -c 'C-3 forbids a kernel COMMAND' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      },
+      "destination": "AGENTS.md",
+      "probe": "C-3 forbids a kernel COMMAND",
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'C-3 forbids a kernel COMMAND' roles/implementer.md",
         "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/hazard-review.yaml:0 / checklists/clean-room.yaml:0 / tuition/mechanism-index.yaml:0"
+        "output": "0"
       }
     },
     {
@@ -4379,11 +4451,11 @@
       "gap": "loop function 7 (merge) ALSO has no kernel destination: the kernel merges nothing, and M4-D-09 puts the capability in the plugin. This row carries both facts because the rule and the missing capability sit in the same span.",
       "dr0029-side": "process",
       "correction": "Recorded here. CLAUDE.md already carries the true rule (merge authority is DELEGATED to the orchestrator under DR-0012 on dual cross-model clean review). The skill text is corrected by the deletion in M4-P25.",
-      "note": "Merge authority is the owner's, and the owner has approved is false as an unconditional statement since DR-0012.",
+      "note": "Merge authority is the owner's, and the owner has approved is false as an unconditional statement since DR-0012. CORRECTED IN THE FIX ROUND: the command recorded here was `grep -c 'DELEGATED' delivery/decisions/DR-0012-delegated-merge-authority.md` with exit 1, which is a CASE artifact. The decision record writes the word in lower case, so the recorded evidence said the delegation is not in the file it names, which is the opposite of what this row asserts. The correction was true and the evidence beside it refuted it.",
       "verified-by": {
-        "command": "grep -c 'DELEGATED' delivery/decisions/DR-0012-delegated-merge-authority.md",
-        "exit": 1,
-        "output": "0"
+        "command": "grep -c 'delegated' delivery/decisions/DR-0012-delegated-merge-authority.md",
+        "exit": 0,
+        "output": "2"
       }
     },
     {
@@ -5424,10 +5496,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'npm, ci' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "ref-implementer-brief:npm-run-build",
@@ -5441,10 +5514,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'npm, run, build' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "ref-implementer-brief:npm-test-with-dist-removed-no-prior-build",
@@ -5458,10 +5532,11 @@
       "gap": "DR-0029 part 1 again: the kernel ships the gate CONTRACT and never the command, so npm ci, npm run build and node --test are this project's registry entries",
       "dr0029-side": "predicate",
       "verified-by": {
-        "command": "grep -c 'npm ci' gate-registry.yaml",
-        "exit": 1,
-        "output": "0"
-      }
+        "command": "grep -c 'node, --test' gate-registry.yaml",
+        "exit": 0,
+        "output": "1"
+      },
+      "note": "CORRECTED IN THE FIX ROUND. The command recorded here was `grep -c 'npm ci' gate-registry.yaml` with exit 1, read as 'the command is not in the registry'. It IS: gate-registry.yaml:50 to :54 carry it as a YAML sequence, `- command: [npm, ci]`, so the literal token `npm ci` never appears and the exit said something about the SPELLING. That inverted the row's own claim, which is that the command is this project's registry entry rather than kernel content."
     },
     {
       "id": "ref-implementer-brief:every-acceptance-criterion-walked-in-order-with",
@@ -6096,6 +6171,24 @@
         "command": "grep -c 'CANNOT SEE' AGENTS.md src/cli.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / src/cli.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "checklists/plan-review.yaml",
+          "schemas/assurance-modes.schema.json",
+          "schemas/finding.schema.json",
+          "schemas/report.schema.json",
+          "schemas/role-brief.schema.json",
+          "schemas/tuition.schema.json",
+          "schemas/verdict.schema.json",
+          "src/checks.ts",
+          "src/gates/coverage.ts",
+          "src/gates/credentials.ts",
+          "src/gates/run.ts",
+          "src/gates/suite.ts",
+          "tuition/T-016.yaml"
+        ],
+        "read": "Every hit is the ordinary English phrase 'cannot see' about something else: a reviewer who cannot see a pair (checklists/plan-review.yaml:24), a guard that cannot see what the operator saw (tuition/T-016.yaml:26), a schema that cannot see a fact about its own document. None of them is the rule this row is about, which is that a COMMAND prints the list of things IT cannot see so an absence of network does not read as an absence of work. The absence stands."
       }
     },
     {

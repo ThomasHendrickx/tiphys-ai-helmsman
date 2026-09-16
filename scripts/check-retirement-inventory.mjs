@@ -30,13 +30,43 @@
  *     against a subject that does not carry the rule. It must exit nonzero. A
  *     negative witness that exits 0 proves the probe discriminates nothing,
  *     and the pair (green here, red there) is what makes "verify not weaker"
- *     a command rather than a phrase.
+ *     a command rather than a phrase;
+ *   - every row whose `verified-by` records a NONZERO exit is making an
+ *     ABSENCE claim, and the absence is re-established on a WIDER surface than
+ *     the row itself named. See the widened-absence section below.
  *
  * THE COMMANDS ARE DATA FROM A FILE AND ARE TREATED AS SUCH. They run through
- * `sh -c` with a timeout, in the repository root, with a first-token allowlist
- * and a refusal of redirection and command substitution. This is a checker for
- * a tracked, reviewed file, not a sandbox, and the restriction is here so a
- * careless row cannot write to the tree it is auditing.
+ * `sh -c` with a timeout, in the repository root, with a per-segment first-token
+ * allowlist and a refusal of redirection and command substitution.
+ *
+ * WHAT THAT SCREEN DOES AND DOES NOT GUARANTEE, stated exactly, because the
+ * first version of this header claimed more than the screen delivered and a
+ * clean-room reviewer measured the difference. It is a TOOL allowlist, not a
+ * sandbox. What it guarantees: every segment that can start a command begins
+ * with a tool from `ALLOWED_FIRST_TOKENS`, and every tool on that list is one
+ * that has no option for writing a file, so a row cannot modify the tree this
+ * checker is auditing. That is why `git`, `sed`, `awk`, `node` and `sort` are
+ * NOT on the list: each of them was, and each of them writes
+ * (`git checkout -- .`, `sed -i`, `awk -i inplace`, `node -e`, `sort -o`).
+ * Measured at 7b2b7f1, before the list was narrowed: a row whose `verified-by`
+ * was `sed -i s/ORIGINAL/DESTROYED/ src/victim.txt` ran, and the file changed.
+ * What it does NOT guarantee: the child process still runs with this checker's
+ * own privileges and can READ anything the checker can read, it can be slow,
+ * and a tool added to the list later carries whatever write paths it has. The
+ * list is the contract; adding to it is a change to the contract.
+ *
+ * THE WIDENED-ABSENCE RULE, added in the fix round and the reason it exists.
+ * A row whose `verified-by` exits nonzero has proved that A TOKEN is absent
+ * from the FILES THAT COMMAND NAMED. The row's prose then says something much
+ * larger: that the RULE is absent from the kernel. Those are different claims
+ * and nothing compared them, so three rows shipped a false one. The checker now
+ * re-runs the row's own search pattern, case-insensitively and as a fixed
+ * string, over `WIDENED_SURFACE`. If that finds nothing, the absence holds and
+ * the row is silent. If it finds something, the row must carry a `widened`
+ * block naming the files that carry the token and saying, in one sentence, why
+ * they do not refute the claim. The declared file list is checked BY NAME and
+ * as a SUPERSET: a file gaining the token later reddens, a reviewed file losing
+ * it does not, and no count is pinned.
  *
  * Usage:
  *   node scripts/check-retirement-inventory.mjs                 # check
@@ -95,6 +125,18 @@ export const ROOTS = [
  * Column zero is load-bearing. An indented `1.` inside a fenced block or a
  * nested bullet is CONTINUATION of its anchor, not a new rule, and treating it
  * as one would inflate the count with fragments of the rule above it.
+ *
+ * AND FENCED BLOCKS ARE SKIPPED, which this header did not say until the fix
+ * round and which the code did not do. A column-zero `- ` or `# ` INSIDE a
+ * ``` fence is a shell comment or a sample bullet, not a rule, and both roots
+ * are dense with fenced shell. Measured at 7b2b7f1 on the real roots: ZERO
+ * anchors fell inside a fence, so the 280 was right by CONTENT and not by
+ * GRAMMAR, and the next person to paste a fenced bullet into `CLAUDE.md` would
+ * have got a phantom rule. It fails closed (a phantom anchor reddens as a rule
+ * with no row, never as a silent pass), which is why this was a trip wire
+ * rather than a hole, and it is fixed rather than documented as a surprise.
+ * A fence opens on a column-zero run of three or more backticks or tildes and
+ * closes on a run of the same character at least as long.
  */
 const MARKDOWN_ANCHORS = [
   { kind: "heading", re: /^(#{1,6})\s+(.+?)\s*$/ },
@@ -102,6 +144,9 @@ const MARKDOWN_ANCHORS = [
   { kind: "bullet", re: /^-\s+(.+?)\s*$/ },
   { kind: "bold-lead", re: /^\*\*(.+?)\s*$/ },
 ];
+
+/** A column-zero run of three or more backticks or tildes opens or closes a fence. */
+const FENCE_RE = /^(`{3,}|~{3,})/;
 
 const JS_ANCHORS = [
   { kind: "function", re: /^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/ },
@@ -171,10 +216,21 @@ export function extractAnchors(repo) {
     const abs = join(repo, f.rel);
     if (!existsSync(abs)) continue;
     const lines = readFileSync(abs, "utf8").split("\n");
-    const patterns = f.kind === "javascript" ? JS_ANCHORS : MARKDOWN_ANCHORS;
+    const isMarkdown = f.kind !== "javascript";
+    const patterns = isMarkdown ? MARKDOWN_ANCHORS : JS_ANCHORS;
     const key = fileKey(f.rel);
+    let fence = null;
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i];
+      if (isMarkdown) {
+        const m = FENCE_RE.exec(line);
+        if (m !== null) {
+          if (fence === null) fence = m[1];
+          else if (line.startsWith(fence[0].repeat(fence.length))) fence = null;
+          continue;
+        }
+        if (fence !== null) continue;
+      }
       for (const p of patterns) {
         const m = p.re.exec(line);
         if (m === null) continue;
@@ -205,20 +261,34 @@ export function extractAnchors(repo) {
 /* Command execution: constrained, timed, and never silently green     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * THE ALLOWLIST IS THE WHOLE MECHANISM, so every entry has to be a tool with NO
+ * option that writes a file. That is the property the header promises and it is
+ * the property this list is chosen for, rather than "tools that seem harmless".
+ *
+ * Removed in the fix round, with the write each one offers:
+ *   git   `git checkout -- .`, `git clean -fdx`, `git reset --hard`
+ *   sed   `sed -i`, `sed --in-place`
+ *   awk   `awk -i inplace`
+ *   node  `node -e`, `node --eval`, and any script it is pointed at
+ *   sort  `sort -o FILE`, `sort --output=FILE`
+ * Measured at 7b2b7f1: all five were allowed, and `sed -i` was demonstrated
+ * end to end rewriting a file in the tree the checker was auditing.
+ *
+ * Nothing was lost by removing them: all 467 commands in the inventory at that
+ * head are `grep -c`, measured, so the narrowed list refuses none of them. A
+ * later row that genuinely needs one of these tools is a change to the screen's
+ * contract and belongs in this list with the reason written next to it.
+ */
 const ALLOWED_FIRST_TOKENS = new Set([
   "grep",
-  "git",
   "test",
-  "node",
   "ls",
   "wc",
-  "sed",
-  "awk",
   "comm",
   "diff",
   "head",
   "tail",
-  "sort",
   "cat",
 ]);
 
@@ -240,6 +310,10 @@ const FORBIDDEN = [
  * command and requiring the first token of each segment to be on the allowlist
  * is both stricter (it catches a tool a denylist forgot) and correct about
  * quoted text.
+ *
+ * THE LIST IT CHECKS AGAINST IS WHERE THE SAFETY LIVES, not this function. See
+ * `ALLOWED_FIRST_TOKENS`: the screen is only as true as the claim that every
+ * tool on it cannot write.
  */
 export function screenCommand(command) {
   const problems = [];
@@ -293,6 +367,134 @@ export function kernelPathsNamed(command, repo) {
     found.push(rel);
   }
   return [...new Set(found)];
+}
+
+/* ------------------------------------------------------------------ */
+/* Widened absence: the word is absent is not the rule is absent       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The surface an ABSENCE claim is re-tested against. Listed as DATA for the
+ * same reason `ROOTS` is: which places were searched is the whole content of an
+ * absence claim, so it is declared and reviewed rather than discovered.
+ *
+ * It is everything a rule could have been carried INTO: the kernel's briefs,
+ * its checklists, its templates, its tuition feed, its schemas, its shipped
+ * source, its entry points, and this project's own gate registry. It
+ * deliberately includes `src/` and `bin/`, which the phase's own searches
+ * excluded on the ground that a code comment is not an instruction channel.
+ * That ground is sound and it is not this check's business: the check forces
+ * the hits to be READ and the reason to be WRITTEN DOWN, and "these are code
+ * comments, not an instruction channel" is a perfectly good `read` field. What
+ * is refused is a hit nobody looked at.
+ */
+export const WIDENED_SURFACE = [
+  "AGENTS.md",
+  "roles",
+  "checklists",
+  "templates",
+  "tuition",
+  "schemas",
+  "src",
+  "bin",
+  "gate-registry.yaml",
+];
+
+/** BRE and ERE metacharacters. A pattern carrying one cannot be widened as a fixed string. */
+const REGEX_METACHAR = /[\\[\]().*+?{}|^$]/;
+
+/**
+ * Lift the search pattern out of a row's command. Measured at 7b2b7f1: all 90
+ * absence rows carry exactly one single-quoted pattern and NONE of the 27
+ * distinct patterns contains a regex metacharacter, so the fixed-string
+ * widening below is exactly equivalent to what the row itself ran. Both of
+ * those facts are CHECKED rather than assumed, because a row that breaks either
+ * would be widened by something that is not its own search.
+ */
+export function liftPattern(command) {
+  const m = /'([^']*)'/.exec(String(command ?? ""));
+  if (m === null) return { pattern: null, why: "no single-quoted search pattern could be lifted from the command" };
+  if (m[1] === "") return { pattern: null, why: "the lifted search pattern is empty" };
+  if (REGEX_METACHAR.test(m[1])) {
+    return { pattern: null, why: `the search pattern ${JSON.stringify(m[1])} carries a regex metacharacter, so a fixed-string widening would not be the same search` };
+  }
+  return { pattern: m[1], why: null };
+}
+
+/** Files on WIDENED_SURFACE that carry `pattern`, case-insensitively, as a fixed string. */
+function widenedHitPaths(pattern, repo, cache) {
+  if (cache.has(pattern)) return cache.get(pattern);
+  const present = WIDENED_SURFACE.filter((p) => existsSync(join(repo, p)));
+  let paths = [];
+  if (present.length > 0) {
+    const r = spawnSync("grep", ["-rlniF", "--", pattern, ...present], {
+      cwd: repo,
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, LC_ALL: "C" },
+    });
+    if (r.status === 0) {
+      paths = [...new Set((r.stdout ?? "").split("\n").filter((l) => l !== ""))].sort();
+    }
+  }
+  cache.set(pattern, paths);
+  return paths;
+}
+
+/**
+ * A row whose `verified-by` exits nonzero asserts an absence. Re-establish it on
+ * WIDENED_SURFACE, and require every file that carries the token to have been
+ * declared and read.
+ */
+function checkRowWidenedAbsence(row, repo, cache, findings) {
+  const id = nonEmptyString(row.id) ? row.id : "<row with no id>";
+  const fail = (msg) => findings.push(`${id}: ${msg}`);
+  const vb = row["verified-by"];
+  if (vb === undefined || vb === null || typeof vb !== "object") return;
+  if (!Number.isInteger(vb.exit) || vb.exit === 0) return;
+
+  const { pattern, why } = liftPattern(vb.command);
+  const declared = row.widened;
+  if (pattern === null) {
+    /* FAIL CLOSED. The widening could not be derived, so the absence claim
+     * cannot be re-established and the row has to say so itself. */
+    if (declared === undefined || declared === null || typeof declared !== "object" || !nonEmptyString(declared.read)) {
+      fail(`verified-by exits ${vb.exit} (an absence claim) and ${why}, so it needs a widened block with a read field`);
+    }
+    return;
+  }
+
+  const hits = widenedHitPaths(pattern, repo, cache);
+  if (hits.length === 0) return;
+
+  if (declared === undefined || declared === null || typeof declared !== "object") {
+    fail(
+      `verified-by exits ${vb.exit}, so the row claims an absence, but the same pattern ${JSON.stringify(pattern)} ` +
+        `is carried by ${hits.join(", ")}. A widened block naming those files and reading them is required: ` +
+        "the word being absent from the files the command named is not the rule being absent.",
+    );
+    return;
+  }
+  if (!nonEmptyString(declared.read)) {
+    fail("widened block has no read field saying why the files that carry the token do not refute the claim");
+  }
+  const named = Array.isArray(declared["hit-paths"]) ? declared["hit-paths"] : null;
+  if (named === null) {
+    fail("widened block has no hit-paths array");
+    return;
+  }
+  for (const p of named) {
+    if (!nonEmptyString(p)) fail("widened hit-paths carries an entry that is not a path");
+    else if (!existsSync(join(repo, p))) fail(`widened hit-path ${p} does not exist in this checkout`);
+  }
+  /* BY NAME and as a SUPERSET, never by count. A file that GAINS the token is
+   * new evidence and reddens; a reviewed file that loses it only strengthens the
+   * absence, so it does not. */
+  const undeclared = hits.filter((h) => !named.includes(h));
+  if (undeclared.length > 0) {
+    fail(`widened absence: ${undeclared.join(", ")} carries ${JSON.stringify(pattern)} and is not in the row's reviewed hit-paths`);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -477,7 +679,11 @@ export function checkInventory({ repo, jsonPath, execute }) {
   }
 
   if (execute) {
-    for (const row of rows) checkRowExecution(row, repo, findings);
+    const widenCache = new Map();
+    for (const row of rows) {
+      checkRowExecution(row, repo, findings);
+      checkRowWidenedAbsence(row, repo, widenCache, findings);
+    }
   }
 
   return {
