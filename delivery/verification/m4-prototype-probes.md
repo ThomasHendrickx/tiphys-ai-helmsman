@@ -286,3 +286,160 @@ cryptographically bound. The fix is a large improvement and is not attestation.
 fixture harness blocked its own event loop, so the server never accepted a
 connection and every arm failed for a reason that had nothing to do with the
 subject. They found it and said so.
+
+## AMENDMENT, 2026-09-16: the three questions M4-P1 had left open
+
+Added by the M4-P1 remainder on branch `claude/m4-p1-harness-probe`. The eight
+probes above left three questions open and one of them blocked M4-P9's design.
+All three were run. The captures are under
+`test/fixtures/harness-probe/` and the full account, including the failure arms
+written before the runs and the derivation, is in
+delivery/work-history/m4-p1.md:1.
+
+Harness probed: `claude --version` 2.1.273 (Claude Code), binary
+`/opt/claude-code/bin/claude`, node v22.22.2 at `/opt/node22/bin/node`, one
+container, one account, 2026-09-15 into 2026-09-16.
+
+### 13. `PreToolUse` hooks DO fire under a bypass permission mode, and `exit 2` still blocks
+
+**This unblocks M4-P9 and the answer is the favourable one.** Item 10 above left
+it open in terms ("Not established: whether `PreToolUse` hooks fire at all under
+a bypass permission mode").
+
+Measured with a plugin whose hook writes a marker file and then exits with a
+chosen code, in a real `claude -p` session whose payload reports
+`"permission_mode":"bypassPermissions"` back to the hook:
+
+| arm | hook exit | marker | app.txt |
+|---|---|---|---|
+| bypass, `Write` | 2 | YES | unchanged |
+| bypass, `Write` | 0 | YES | CHANGED (the control) |
+| bypass, `Bash` | 2 | YES | unchanged |
+| bypass, `Bash` | 0 | YES | CHANGED (the control) |
+| bypass via `--dangerously-skip-permissions` | 2 | YES | unchanged |
+
+Two structurally different tools, each with its own control, at
+test/fixtures/harness-probe/q1-bypass-permission-mode/bypass-exit2.summary.txt:1
+and
+test/fixtures/harness-probe/q1-bypass-permission-mode/bypass-bash-exit2.summary.txt:1.
+
+The earlier probe could not reach this arm because the CLI refuses the flag
+as root. The gate's condition is in the shipped bundle,
+`process.getuid()===0 && process.env.IS_SANDBOX!=="1" && !CLAUDE_CODE_BUBBLEWRAP`,
+and this container declares `IS_SANDBOX=yes`; the probe exported `IS_SANDBOX=1`
+for the child only.
+
+**Two traps found in the same pass, and the second is worse than the question
+that was asked:**
+
+- **`--settings '{"permissions":{"defaultMode":"bypassPermissions"}}'` does not
+  reach bypass.** The hook payload reports `permission_mode` as `default`. The
+  run looks entirely successful. Only the harness's own echoed field
+  distinguishes the mode you asked for from the mode you got, so every arm must
+  echo it.
+- **A `--plugin-dir` that does not exist removes the entire write-block,
+  silently, exit 0, no warning.** Same configuration as the blocking arm, one
+  wrong path: marker absent, file written. Captured at
+  test/fixtures/harness-probe/q1-bypass-permission-mode/bypass-badplugindir-exit2.summary.txt:1.
+  This is a second FAIL-OPEN route alongside item 10's `exit 1`, and it is
+  upstream of the hook: the hook is not broken, it is absent. **M4-P9 needs an
+  acceptance criterion that the plugin LOADED**, evidenced by a positive
+  artifact the hook writes, and an absent artifact must be red.
+
+### 14. Launch-failed versus incomplete IS distinguishable in the SUBPROCESS form, by the result envelope
+
+A different surface from the one the earlier probe drove. That probe measured
+`create_session` and recorded that it could not drive the Workflow primitive.
+This measures `claude -p` as a subprocess, which is what M4-P5's adapter will
+run, and nothing here is evidence about either of the other two.
+
+| arm | exit | stdout | transcript |
+|---|---|---|---|
+| healthy | 0 | full envelope, `terminal_reason: completed` | created, assistant rows present |
+| bad model | 1 | full envelope, `is_error: true`, `terminal_reason: api_error`, `api_error_status: 404` | created, one assistant row whose model is `<synthetic>` |
+| SIGKILL mid-turn | 137 | **zero bytes** | created, ZERO assistant rows |
+| SIGTERM mid-turn | 124 | **zero bytes** | created, ZERO assistant rows |
+| nonexistent `--plugin-dir` | **0** | full envelope, success | created, normal |
+
+Captures at
+test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/D2-abandon-sigkill.summary.txt:1
+and
+test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/B2-launch-fail-bad-model-freshcwd.summary.txt:1.
+
+**The discriminator is the presence of a complete result envelope, and three
+nearby fields are traps.** The exit code alone does not carry it. `subtype`
+reads `success` on the arm whose `is_error` is `true`. And the transcript does
+NOT discriminate: the first reading of this matrix thought it did, because two
+children launched in the same working directory APPEND TO ONE TRANSCRIPT FILE
+(the child inherits `CLAUDE_CODE_SESSION_ID` and the path is
+`<slug-of-cwd>/<session-id>.jsonl`), so a census that counted FILES saw the
+second run create nothing. Re-run in a fresh directory, the launch failure
+created a transcript like every other arm. Both summaries are committed,
+including the misleading one.
+
+### 15. Transcript-based model resolution is NOT stable, in two independent ways
+
+Item 11 above named two untested arms. Both were tested and both are negative.
+
+**The paths are sound under concurrency.** Four runs, three subagents each,
+launched in one message, each agent type pinned to a different model. Twelve
+resolutions: three distinct `agent_id` and three distinct
+`agent_transcript_path` every time, no reuse, and every model that came back
+was the right one for its agent type.
+
+**There is a WRITE RACE at the hook.** In two of those twelve, the transcript at
+`agent_transcript_path` had ZERO assistant rows at hook time while the payload's
+own `last_assistant_message` carried the agent's finished text. The same
+resolver against the same path twenty seconds later returned the correct model,
+which is what makes it a race rather than a wrong path:
+test/fixtures/harness-probe/q3-transcript-model-resolution/alpha-recheck-after-the-race.jsonl.txt:1.
+The loser varied between runs (`alpha` once, `beta` once), so it is not one
+agent type or one position in the fan-out.
+
+**Consequence: a resolver that falls back to the self-report on an empty
+transcript is green whenever the race does not fire and silently accepts a
+forgeable value when it does.** The failure correlates with load, so it is
+rarest in testing. An empty transcript at hook time must be UNRESOLVED and
+LOUD.
+
+**The transcript is agent-reachable.** An agent with only `Bash` found its own
+transcript in one turn. Asked to forge a row in it, the model REFUSED, and that
+refusal is a model policy rather than a boundary: the file is mode 0600 owned by
+root and the agent runs at that same uid, so an ordinary process at the agent's
+uid appends to it with exit 0. Two structurally different tampers were run:
+
+- APPEND a forged row: the resolver reports two models for one agent, which is
+  anomalous and catchable.
+- REWRITE the model string in place on every assistant row: the resolver reports
+  one model, `outcome: resolved`, byte-shaped exactly like the truth.
+
+Both at
+test/fixtures/harness-probe/q3-transcript-model-resolution/tamper-mechanism.jsonl.txt:1.
+
+**So `observed` is a real level ABOVE `self-reported` and BELOW attested.** The
+earlier probe's demonstration stands and is not weakened: a haiku agent claiming
+GPT-7 was caught by the transcript, because a self-report costs nothing and a
+tamper takes deliberate file access. What must not be written into M4-P7 is any
+vocabulary implying attestation. An attested level needs a signer the agent's
+uid cannot reach, and nothing in this container provides one.
+
+### What this amendment did NOT cover
+
+- **The Workflow primitive is still undriven.** Item 14 measures a subprocess.
+- **One container, one account, one CLI build (2.1.273), one day.** Every
+  statement here is about that configuration.
+- **The bypass arms ran as root with `IS_SANDBOX=1`.** A genuinely unprivileged
+  run was attempted and abandoned: `claude` as a fresh non-root user hit
+  `EACCES` on `/root/.ccr/ca-bundle.crt` followed by an authentication error,
+  and copying that CA bundle to a readable path was refused by this session's
+  own classifier with `Reason: [Credential Exploration]`. The two causes could
+  not be separated and were not worked around. So whether hooks fire under
+  bypass AT A DIFFERENT UID is NOT ESTABLISHED.
+- **The race was not bisected.** Two empty reads in twelve resolutions over four
+  runs is enough to show it exists and that the loser varies. It is not a rate
+  and no probability should be quoted from it.
+- **No usage-limit, OOM, container-reclaim or network-partition arm** was run
+  for item 14, exactly as the earlier probe recorded for its own surface.
+- **`claude --restricted` was still not run**, which item 10 named as the most
+  promising route past the Bash unsoundness and which remains one command
+  someone else can settle.
