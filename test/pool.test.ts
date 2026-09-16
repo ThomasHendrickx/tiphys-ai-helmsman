@@ -1602,6 +1602,20 @@ test("every socket-opening git call is classified, and the ref probe carries its
     `an object-transfer call carries a wall-clock bound, which would abort a ` +
       `legitimate large transfer: ${boundedTransfers.join(", ")}`,
   );
+
+  // AND THE BOUND MUST STAY EXERCISABLE. A bound no test can shorten is a
+  // bound no test can drive: every behavioural witness for it would have
+  // to wait out the shipped twenty seconds, so in practice none would be
+  // written and the guard would go unwatched. That is the same
+  // cannot-go-red shape one level down, so the override read is part of
+  // the classification rather than a convenience beside it.
+  const poolSource = readFileSync(join(repoRoot, "src", "pool.ts"), "utf8");
+  assert.match(
+    poolSource,
+    /function networkTimeoutMs\(\): number \{\n\s*return resolveNetworkTimeoutMs\(process\.env\[/,
+    "the bound handed to the ref probe no longer reads its override, so no test " +
+      "can shorten it and the guard can no longer be exercised",
+  );
 });
 
 test("only the destroying caller holds the network licence for reconstruction", () => {
