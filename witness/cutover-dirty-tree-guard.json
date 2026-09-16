@@ -1,0 +1,31 @@
+{
+  "id": "cutover-dirty-tree-guard",
+  "behavior": "cutover-restore-files-refuses-dirty-tree",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "restoring retirement roots refuses a dirty tree and leaves the modified file byte-identical"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved",
+      "replace": "  const resolved"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }\n  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }",
+      "replace": "  const resolved = runGit(repoRoot, [\"rev-parse\", \"--verify\", `${sha}^{commit}`]);\n  if (resolved.status !== 0) {\n    return { ok: false, reason: `${sha} does not resolve to a commit in ${repoRoot}` };\n  }\n  const early = runGit(repoRoot, [\"checkout\", sha, \"--\", ...roots]);\n  if (early.status !== 0) {\n    return { ok: false, reason: `git checkout failed: ${early.stderr.trim()}` };\n  }\n  const guard = refuseIfTreeDirty(repoRoot);\n  if (!guard.ok) {\n    return { ok: false, reason: guard.reason };\n  }"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "remote / status --porcelain / push",
+    "captures": [
+      "witness/captures/cutover-git-contracts.txt"
+    ],
+    "provenance": "src/cutover.ts spawns the version-control program and parses what it prints: `remote` decides whether a fleet has an origin, `status --porcelain` decides whether a tree is dirty, and `push` decides whether the rolled-back state landed. Red-witness rule (f) therefore binds every witness over that file. The cited capture is a real run, taken 2026-09-16 against version 2.43.0, and the named test `the captured git contract this module parses is reproduced live` reproduces each contract in a live scratch repository and requires the live result to match the capture, so nothing here is a hand-written string chosen to match the implementation. Two recorded facts earn their place: an empty stdout with exit 0 is what makes no-origin and clean-tree decidable, and a push to a path that is not a repository exits 128 rather than 1, which is why syncFleetState tests for non-zero rather than for 1."
+  }
+}

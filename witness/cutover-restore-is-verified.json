@@ -1,0 +1,37 @@
+{
+  "id": "cutover-restore-is-verified",
+  "behavior": "cutover-restore-removes-post-freeze-additions-and-verifies",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "restoring a retirement root removes what was added after the freeze and verifies the result"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (postFreeze.length > 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  return { ok: true, roots, removed: postFreeze };",
+      "replace": "  return { ok: true, roots, removed: [] };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    \"--no-renames\",\n    sha,",
+      "replace": "    sha,"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "remote / status --porcelain / push",
+    "captures": [
+      "witness/captures/cutover-git-contracts.txt"
+    ],
+    "provenance": "src/cutover.ts spawns the version-control program and parses what it prints: `remote` decides whether a fleet has an origin, `status --porcelain` decides whether a tree is dirty, and `push` decides whether the rolled-back state landed. Red-witness rule (f) therefore binds every witness over that file. The cited capture is a real run, taken 2026-09-16 against version 2.43.0, and the named test `the captured git contract this module parses is reproduced live` reproduces each contract in a live scratch repository and requires the live result to match the capture, so nothing here is a hand-written string chosen to match the implementation. Two recorded facts earn their place: an empty stdout with exit 0 is what makes no-origin and clean-tree decidable, and a push to a path that is not a repository exits 128 rather than 1, which is why syncFleetState tests for non-zero rather than for 1."
+  }
+}

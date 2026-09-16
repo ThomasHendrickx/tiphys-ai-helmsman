@@ -1,0 +1,26 @@
+# captured 2026-09-16 with git version 2.43.0
+
+## git remote, in a repository with no remote configured
+exit=0
+stdout-bytes=0
+
+## git status --porcelain, clean tree
+exit=0
+stdout-bytes=0
+
+## git status --porcelain, one tracked file modified
+ M retired/rule.md
+exit=0
+
+## git status --porcelain, one untracked file added
+ M retired/rule.md
+?? untracked.txt
+exit=0
+
+## git push to a path that is not a repository
+fatal: '/tmp/cutover-capture-27yBSo/absent.git' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+exit=128
