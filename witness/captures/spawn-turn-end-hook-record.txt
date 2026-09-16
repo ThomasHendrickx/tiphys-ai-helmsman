@@ -4,9 +4,12 @@ external-program contract the M4-P2 completion precondition consumes.
 src/spawn.ts runs the hook with spawnSync (src/spawn.ts:232) and then reads the
 file the hook wrote (turnEndEvidence, src/spawn.ts:299). The record is the
 payload's own account of ending, and the precondition parses it. Rule (f) of
-the red-witness gate therefore binds the two spawn witnesses, and their
-assertions must be anchored on THIS output rather than on a hand-written
-string (CLAUDE.md warning 10, the red-witness rule).
+the red-witness gate therefore binds every witness whose members mutate
+src/spawn.ts, and their assertions must be anchored on THIS output rather than
+on a hand-written string (CLAUDE.md warning 10, the red-witness rule). Four of
+this phase's five spawn witnesses cite it, and each spec's provenance states
+how its OWN named test consumes it, because they do not consume it the same
+way.
 
 Captured 2026-09-16, node v26.6.0, in a scratch directory whose hook was
 rendered by src/hooks.ts renderTurnEndHook() and then invoked directly:
@@ -14,7 +17,10 @@ rendered by src/hooks.ts renderTurnEndHook() and then invoked directly:
   node <task>/turn-end-hook.mjs <argv[2]>
 
 The endedAt instant varies per run, so the STABLE contract is recorded here,
-not the timestamp; the witness tests assert a live hook reproduces it.
+not the timestamp. The completed-without-a-record witness's test renders a hook
+and runs BOTH arms live before exercising the refusal; the other three check
+the record a real hook child wrote, or the field types of it, against what is
+recorded here.
 
 bad-argument: node <task>/turn-end-hook.mjs "not-an-integer"
   exit 64

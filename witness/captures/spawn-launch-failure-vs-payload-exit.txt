@@ -5,7 +5,9 @@ authorized at all.
 src/spawn.ts:220 reads `result.error !== undefined` as "the payload never
 started" and returns `launch-failed`, which is the ONE outcome that lets
 spawnTask destroy the task's records (src/spawn.ts:612). Anything with an
-exit status ran, and the adapter reports it as `completed` instead. The
+exit status RAN, so the adapter never returns `launch-failed` for it: it goes
+on to invoke the turn-end hook and reports `completed` or, if that hook child
+fails, `incomplete`, and neither of those rolls anything back. The
 distinction is a property of Node's spawnSync, not of the kernel, so the
 witness for "a rejected launch rolls nothing back" is anchored here rather
 than on a hand-written string.
