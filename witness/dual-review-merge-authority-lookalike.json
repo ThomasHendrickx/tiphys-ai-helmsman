@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    const authorityReading = establishField(mode.mode, \"merge-authority\");",
-      "replace": "    const authorityReading = { kind: \"established\" as const, value: String(mode.mode[\"merge-authority\"] ?? \"\") };"
+      "find": "  const authorityReading = establishField(mode.mode, \"merge-authority\");",
+      "replace": "  const authorityReading = { kind: \"established\" as const, value: String(mode.mode[\"merge-authority\"] ?? \"\") };"
     },
     {
       "kind": "mutation",

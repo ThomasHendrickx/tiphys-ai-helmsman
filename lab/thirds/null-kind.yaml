@@ -1,0 +1,11 @@
+# A genuinely refusing third review whose kind: is present and null.
+kind:
+phase: M3-P9
+head: dcbe6704813e861736c8d394dca35f7dc31b4f93
+verdict: FIX-ROUND-NEEDED
+produced-by: family-a
+framing: criteria-contract
+review-contract: criteria
+findings: []
+criteria: []
+deviations-judged: []

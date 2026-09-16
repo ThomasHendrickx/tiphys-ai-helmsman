@@ -2910,6 +2910,76 @@ export interface LoadedVerdict {
 }
 
 /**
+ * What reading a candidate document's own `kind` produced, in the THREE
+ * outcomes that fix round 2 exists to keep apart.
+ *
+ * THE MECHANISM FIX ROUND 2 CLOSES: `establishField` already separates ABSENT
+ * from UNUSABLE from UNCANONICAL, and both selection sites consumed it with a
+ * single `!== "established"`, which folds those outcomes back into one silent
+ * skip. So "this document declares no type" and "this document declares a type
+ * nobody could read" printed as the same fact, and that fact is the determinate
+ * negative "not a verdict". Measured at the round-1 head: a third review
+ * reading `verdict: FIX-ROUND-NEEDED` whose `kind:` was a one-element YAML list
+ * was dropped and `scripts/check-dual-review.mjs` reported that the pair
+ * approves. Eight deformations of one refusing document reached that same
+ * green, and the table is in delivery/work-history/m4-p10.md's section 13.
+ *
+ * WHERE THE LINE IS DRAWN, and it is drawn at the PRESENCE OF THE KEY rather
+ * than at the validity of its value:
+ *
+ *   `verdict`     the key is there and canonicalises to the word. A member.
+ *   `other`       the document ANSWERED and the answer is not `verdict`. That
+ *                 is a mapping carrying no `kind` key at all, a document that
+ *                 is not a mapping (a list, a scalar, an empty file), and a
+ *                 `kind` that reads as some other word. Each is a determinate
+ *                 negative: nothing here claims to be a typed document, or it
+ *                 claims to be a different one.
+ *   `unreadable`  the key IS there and its reading failed: a list, a map, a
+ *                 number, a boolean, null, an empty or whitespace-only string,
+ *                 or a string carrying a character outside printable ASCII.
+ *                 Writing a `kind` key is the claim to be a typed document, so
+ *                 a failed reading of it is a failed claim, not an absent one.
+ *
+ * WHY NOT REFUSE EVERY DOCUMENT THAT IS NOT A VERDICT. Because a project is
+ * entitled to keep other YAML beside its reviews, and a check that errored on
+ * it would be unusable. The property is not that every file is a verdict; it is
+ * that a file which LOOKS LIKE a verdict and could not be read as one is NAMED.
+ *
+ * EXPORTED, and that is the other half of the fix. `scripts/check-dual-review.mjs`
+ * had its OWN selection rule, a raw `value["kind"] !== "verdict"`, which is a
+ * second reader of one fact: it dropped `kind: Verdict` and `kind: "  verdict  "`
+ * that this file's canonicalisation admits. Two readers of one fact is the shape
+ * this repository's fix-round contract calls fixing the INSTANCE rather than the
+ * MECHANISM, and the sibling `establishDelegatedRegime` one screen down was
+ * lifted for exactly that reason. There is now one reader.
+ */
+export type VerdictKindReading =
+  | { kind: "verdict"; record: Record<string, unknown> }
+  | { kind: "other" }
+  | { kind: "unreadable"; found: string };
+
+export function readVerdictKind(value: unknown): VerdictKindReading {
+  const record = asRecord(value);
+  if (record === undefined) {
+    return { kind: "other" };
+  }
+  const reading = establishField(record, "kind");
+  if (reading.kind === "absent") {
+    return { kind: "other" };
+  }
+  if (reading.kind === "unusable" || reading.kind === "uncanonical") {
+    /* The vocabulary is the DOCUMENT's, as it is at `establishField`: a reader
+       looking at their own YAML is helped by "a list" and by the codepoint and
+       position of the character they cannot see, and not by "unestablished". */
+    return { kind: "unreadable", found: reading.found };
+  }
+  if (reading.value !== "verdict") {
+    return { kind: "other" };
+  }
+  return { kind: "verdict", record };
+}
+
+/**
  * WHERE A CORPUS WAS READ FROM, carried WITH the corpus and never assumed.
  *
  * THE MECHANISM THIS TYPE EXISTS TO CLOSE (M4-P11 fix round 1, CR-M4P11-001
@@ -2937,9 +3007,22 @@ export type VerdictCorpusSource =
   | { kind: "commit"; ref: string; refSha: string; scope: string }
   | { kind: "worktree"; reason: string; scope: string };
 
-/** The corpus, plus the source it was read from. Never one without the other. */
+/**
+ * The corpus, plus the source it was read from. Never one without the other.
+ *
+ * `unexaminable` IS M4-P10 FIX ROUND 2's CHANNEL, CARRIED ACROSS M4-P11's
+ * RESTRUCTURE RATHER THAN DROPPED. M4-P10 added it to the single filesystem
+ * loop this phase replaced with a commit arm and a worktree arm, and every
+ * caller seeds its violation list from it. A candidate that passed the
+ * extension filter and could not be read, did not decode, or declares a `kind`
+ * whose reading failed is NOT the determinate answer "not a verdict": it is
+ * "nobody knows whether this is a verdict", and dropping it SHRINKS the set the
+ * merge predicates reason over, which is the fail-open direction for a
+ * predicate that approves when the set is clean.
+ */
 export interface LoadedVerdictCorpus {
   verdicts: LoadedVerdict[];
+  unexaminable: Diagnostic[];
   source: VerdictCorpusSource;
 }
 
@@ -3038,12 +3121,24 @@ export function describeContextDocumentSource(source: VerdictCorpusSource): stri
  * for this check's own tests. See `PAPERWORK_ROOT` above; the widest set is
  * what the FALSIFIERS use, and it is a different question.
  *
- * A file that is not a regular file, does not decode, or does not carry
- * `kind: verdict` is SKIPPED rather than reported, because that directory also
- * holds this project's prose reviews and a check that reddened on a markdown
- * file would be unusable. What is NOT skipped is the directory being
- * unreadable, which the caller turns into a violation: "nothing to compare"
- * and "could not look" are different facts.
+ * A file that does not carry `kind: verdict` is SKIPPED rather than reported,
+ * because that directory also holds this project's prose reviews and a check
+ * that reddened on a markdown file would be unusable. What is NOT skipped is
+ * the directory being unreadable, which the caller turns into a violation:
+ * "nothing to compare" and "could not look" are different facts.
+ *
+ * AND A CANDIDATE THAT COULD NOT BE LOOKED AT IS THE SECOND HALF OF THAT SAME
+ * SENTENCE, WHICH THE FIRST ROUND WROTE AND APPLIED AT ONE SITE ONLY. A
+ * `.yaml`, `.yml` or `.json` file here has passed the only filter that
+ * separates a candidate verdict from a prose review, so bytes that cannot be
+ * READ and bytes that do not DECODE are not "this is not a verdict", they are
+ * "nobody knows whether this is a verdict". Dropping such a file SHRINKS the
+ * set the merge predicates reason over, which is the fail-open direction for a
+ * predicate that approves when the set is clean: measured at the reviewed head,
+ * a third review reading FIX-ROUND-NEEDED with one malformed line left
+ * `verdict-pair-approves` printing that the pair approves. So they are returned
+ * as diagnostics and every caller seeds its violation list with them, exactly
+ * as `headGroupFor` already does for a sibling with no usable head.
  */
 export function loadCommittedVerdicts(
   contextDirectory: string,
@@ -3247,7 +3342,8 @@ function readCommittedVerdicts(
     }
     documents.push({ path: join(contextDirectory, path), body: shown.stdout });
   }
-  return { ok: true, verdicts: selectVerdicts(documents), source };
+  const selected = selectVerdicts(documents);
+  return { ok: true, verdicts: selected.verdicts, unexaminable: selected.unexaminable, source };
 }
 
 /**
@@ -3367,14 +3463,20 @@ interface CorpusDocument {
  * this repository at `79ce63b`, and it is read only when a single-family
  * declaration has already been established.
  */
-function selectVerdicts(documents: readonly CorpusDocument[]): LoadedVerdict[] {
+function selectVerdicts(
+  documents: readonly CorpusDocument[],
+): { verdicts: LoadedVerdict[]; unexaminable: Diagnostic[] } {
   const verdicts: LoadedVerdict[] = [];
+  const unexaminable: Diagnostic[] = [];
   for (const { path, body } of documents) {
     const decoded = decodeDocument(body, path);
     if (!decoded.ok) {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and did not decode, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${decoded.reason}`,
+      });
       continue;
     }
-    const record = asRecord(decoded.value);
     /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
        `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
        over, so a lookalike character in `kind` does not produce a wrong
@@ -3388,16 +3490,27 @@ function selectVerdicts(documents: readonly CorpusDocument[]): LoadedVerdict[] {
        here: more verdicts in the group means more chances to find a shared
        value, never fewer. A file that is not a verdict at all still fails this
        test, because no canonical form turns a prose review into `verdict`. */
-    if (record === undefined) {
+    /* THE ONE READER, AND FIX ROUND 2 IS THAT IT IS ONE READER WITH THREE
+       OUTCOMES RATHER THAN A BOOLEAN. `readVerdictKind` is documented at its
+       own definition; what matters here is that `unreadable` is a DIAGNOSTIC
+       and `other` is a skip, because a document whose `kind` key is present and
+       whose reading FAILED has not said it is not a verdict, it has said
+       nothing that could be read. The skip below is now reached only by a
+       document that answered. */
+    const kindReading = readVerdictKind(decoded.value);
+    if (kindReading.kind === "unreadable") {
+      unexaminable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and declares a kind field that could not be read as a word (it is ${kindReading.found}), so whether it is a verdict refusing this head could not be established, and a merge check that could not read one document's own type must not report the rest of them clean`,
+      });
       continue;
     }
-    const kindReading = establishField(record, "kind");
-    if (kindReading.kind !== "established" || kindReading.value !== "verdict") {
+    if (kindReading.kind !== "verdict") {
       continue;
     }
-    verdicts.push({ path, record });
+    verdicts.push({ path, record: kindReading.record });
   }
-  return verdicts;
+  return { verdicts, unexaminable };
 }
 
 /** The pre-existing arm, for a context that is not a git repository. */
@@ -3419,7 +3532,7 @@ function loadVerdictsFromWorktree(
      exist would have been dead code that always took the error arm. */
   const entry = classifyEntry(directory);
   if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, verdicts: [], source };
+    return { ok: true, verdicts: [], unexaminable: [], source };
   }
   if (entry.kind === "unexaminable") {
     return { ok: false, reason: entry.reason };
@@ -3437,6 +3550,7 @@ function loadVerdictsFromWorktree(
     return { ok: false, reason: `${directory} could not be listed: ${String(error)}` };
   }
   const documents: CorpusDocument[] = [];
+  const unreadable: Diagnostic[] = [];
   for (const name of names.sort()) {
     if (!VERDICT_FILE_PATTERN.test(name)) {
       continue;
@@ -3444,11 +3558,28 @@ function loadVerdictsFromWorktree(
     const path = join(directory, name);
     const read = readOperatorPath(path);
     if (!read.ok) {
+      /* M4-P10 FIX ROUND 2, REAPPLIED ON THIS ARM. The commit arm one screen up
+         refuses the whole corpus when a path its own listing named cannot be
+         produced, which is stricter than a diagnostic and is right there: the
+         same commit named it. Here the directory was listed from a working tree
+         that can change under the read, so the fail-closed form is the one
+         M4-P10 wrote, a named candidate carried out to every caller's violation
+         list rather than a silent `continue`. */
+      unreadable.push({
+        pointer: "#/kind",
+        message: `${path} sits under ${REVIEW_DIRECTORY} and could not be read, so whether it is a verdict refusing this head could not be established, and a merge check that could not look at one document must not report the rest of them clean: ${read.reason}`,
+      });
       continue;
     }
     documents.push({ path, body: read.body });
   }
-  return { ok: true, verdicts: selectVerdicts(documents), source };
+  const selected = selectVerdicts(documents);
+  return {
+    ok: true,
+    verdicts: selected.verdicts,
+    unexaminable: [...unreadable, ...selected.unexaminable],
+    source,
+  };
 }
 
 /**
@@ -3760,9 +3891,26 @@ function headGroupFor(
   for (const candidate of verdicts) {
     /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
        read through the same function so the two are compared in one form
-       rather than one canonical value against one raw one. */
+       rather than one canonical value against one raw one.
+
+       AND THE TWO ARMS ARE SPLIT, WHICH THE FIRST ROUND LEFT JOINED. `phase` is
+       half of the join key, so a sibling whose phase cannot be ESTABLISHED is
+       unkeyable for exactly the reason a sibling with no usable head is, and
+       the paragraph above says what that costs. It was folded into one `||`
+       with the determinate case, so a verdict declaring no phase fell out
+       silently while one declaring a DIFFERENT phase fell out correctly.
+       Measured at the reviewed head through the shipped CLI: a refusing third
+       review with its `phase:` line deleted left both merge checks printing
+       their affirmative REPORT lines over the remaining two. */
     const phaseReading = establishField(candidate.record, "phase");
-    if (phaseReading.kind !== "established" || phaseReading.value !== phaseKey) {
+    if (phaseReading.kind !== "established") {
+      unkeyed.push({
+        pointer: "#/phase",
+        message: `${candidate.path} ${unestablishedReason(phaseReading, "phase") as string}, so it cannot be placed in or out of the group for phase ${phaseKey}, and a sibling that cannot be keyed must not shrink the set the delegated grant is read off`,
+      });
+      continue;
+    }
+    if (phaseReading.value !== phaseKey) {
       continue;
     }
     const key = headKeyOf(candidate.record, candidate.path);
@@ -4608,10 +4756,12 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
 
-    /* THE SIBLINGS THAT COULD NOT BE KEYED ARE CARRIED IN, NOT DROPPED. See
-       `headGroupFor`: a same-phase verdict with an unusable head shrinks the
-       group silently otherwise, and a shrinking group is the fail-open shape. */
-    const violations: Diagnostic[] = [...grouped.unkeyed];
+    /* THE SIBLINGS THAT COULD NOT BE LOOKED AT OR COULD NOT BE KEYED ARE
+       CARRIED IN, NOT DROPPED. See `loadCommittedVerdicts` and `headGroupFor`:
+       a candidate whose bytes do not read or decode, and a same-phase verdict
+       with an unusable phase or head, each shrink the group silently
+       otherwise, and a shrinking group is the fail-open shape. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
     if (group.length < 2) {
       violations.push({
         pointer: "#/phase",
@@ -4853,7 +5003,10 @@ export const verdictPairApproves: DerivedCheck = {
     const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
     const group = grouped.members;
 
-    const violations: Diagnostic[] = [...grouped.unkeyed];
+    /* SAME TWO SOURCES AS THE SIBLING CHECK, AND THE REASON IS SHARPER HERE.
+       This predicate says the pair APPROVES, so every document that could not
+       be examined is a document that could have been the refusal. */
+    const violations: Diagnostic[] = [...committed.unexaminable, ...grouped.unkeyed];
     if (group.length < 2) {
       violations.push({
         pointer: "#/verdict",

@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "    if (kindReading.kind !== \"established\" || kindReading.value !== \"verdict\") {",
-      "replace": "    if (record[\"kind\"] !== \"verdict\") {"
+      "find": "  if (reading.value !== \"verdict\") {\n    return { kind: \"other\" };\n  }\n  return { kind: \"verdict\", record };",
+      "replace": "  if (record[\"kind\"] !== \"verdict\") {\n    return { kind: \"other\" };\n  }\n  return { kind: \"verdict\", record };"
     },
     {
       "kind": "mutation",

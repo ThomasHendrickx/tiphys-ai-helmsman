@@ -230,9 +230,18 @@ test("one verdict for a head exits nonzero saying a delegated grant needs two", 
   withContext("full", [DECORRELATED[0] as string], (dir) => {
     const run = runScript(dir);
     assert.equal(run.status, 1, run.output);
+    /* THE CHECK IS NAMED, AND THAT IS NOT DECORATION. M4-P10 added a SECOND
+       pair-size rule, in `verdict-pair-approves`, whose message opens with the
+       same twelve words. A regex stopping at the shared prefix therefore passed
+       on EITHER guard, so the sibling MASKED this one: its stored witness,
+       which defangs the decorrelation size rule alone, left this test green.
+       Measured by running that witness, which is what found it. Asserting the
+       tail and the attribution is what makes this test about the rule it
+       claims to guard. */
     assert.match(
       run.output,
-      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9/,
+      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9 at head [0-9a-f]{40}, and a delegated grant requires two independent clean-room reviews of the exact head \(check: dual-review-decorrelation\)/,
+      run.output,
     );
   });
 });
