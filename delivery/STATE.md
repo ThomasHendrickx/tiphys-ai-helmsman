@@ -1613,6 +1613,37 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
 
 ## Owner action items
 
+- **A-9: DELETE THE SCRATCH BRANCHES I PUSHED BY MISTAKE.** Only the owner can;
+  this container cannot delete a remote ref, which standing warning 14 at
+  CLAUDE.md:1094 records with the measurement, and a `--dry-run` reports success
+  either way so there is no non-destructive way to confirm it in advance.
+
+  On 2026-09-16 at about 04:38 I pushed every M4 branch after a session-limit
+  kill, using the refspec `grep -E '^(claude/m4-p|worktree-wf)'`. That second
+  alternative was meant to carry ONE branch holding salvaged work and it carried
+  FIFTEEN, because the harness names every agent worktree's branch
+  `worktree-wf_*`. Fourteen of the fifteen are empty harness scratch.
+
+  Safe to delete, all of them: `worktree-wf_2b81e806-d59-1`,
+  `-d59-2`, `worktree-wf_325aa631-d2d-1`, `-d2d-2`, `worktree-wf_6346a0c1-e72-1`,
+  `worktree-wf_717552c9-287-1`, `worktree-wf_a1849252-b71-1`,
+  `worktree-wf_aca97ef8-95e-1`, `-95e-2`, `worktree-wf_ad5072ea-a8f-1`,
+  `worktree-wf_badbbac6-8f2-2`, `worktree-wf_bdcf1646-6e4-1`,
+  `worktree-wf_cc74053e-aaa-1`, `worktree-wf_deb48280-c22-1`, `-c22-2`.
+
+  **`worktree-wf_95ea9fad-2fd-1` is the ONE to keep for now.** It carries the
+  M4-P19 fix round's salvaged work as a `WIP-UNREVIEWED` commit. It can be
+  deleted once that work is folded into `claude/m4-p19-pool-record-reconstruction`.
+
+  This is low urgency and pure tidiness; nothing is blocked by it. It is
+  recorded rather than left because a mistake that cannot be undone from here
+  should not be discovered later by someone wondering what those branches are.
+
+- **A-10: THE SIX PROBE BRANCHES ON THE FLEET REMOTE, AND ITS DEFAULT BRANCH.**
+  Raised earlier and unchanged. A probe against `tiphys-ai-helmsman-fleet` left
+  six branches and altered its default branch. Same constraint as A-9: ref
+  deletion is refused here.
+
 > **ANSWERED AND CLOSED, 2026-08-10: M3-P3's CR-002.** The owner authorised the
 > final round. Rounds 9 and 10 followed and the phase merged at `c7a7ce9`. The
 > question and the alternatives are at delivery/review/arbitration-m3-p3-stop.md:1

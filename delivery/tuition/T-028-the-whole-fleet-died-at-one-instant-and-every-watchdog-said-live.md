@@ -2,8 +2,10 @@
 
 - date: 2026-09-16, about 04:16 UTC
 - subject: the session token quota, and every watchdog this project has built
-- cost: zero work lost, entirely because of the salvage discipline T-026 records.
-  Roughly 2.4 million subagent tokens of in-flight work was interrupted.
+- cost: no work lost in the end, but NOT for the reason first written here. The
+  salvage recovered three branches and BROKE a fourth; see the correction at the
+  end, which is the more useful half of this entry. Roughly 2.4 million subagent
+  tokens of in-flight work was interrupted.
 
 ## What happened
 
@@ -65,8 +67,8 @@ much they will spend is the question that kills the fleet.**
 
 ## What actually saved the work, and it was not a guard
 
-Nothing detected this in time. What made it cost nothing was the response rule
-from T-026's postscript 2: **preserve, never reclaim.** Because no worktree had
+Nothing detected this in time. What made it MOSTLY cost nothing was the response
+rule from T-026's postscript 2: **preserve, never reclaim.** Because no worktree had
 ever been reclaimed, all fourteen were still on disk with their contents intact,
 and a single sweep recovered everything:
 
@@ -115,3 +117,72 @@ tree, not the history.
 - **The 2.4 million figure.** It is the sum of the `subagent_tokens` each
   workflow reported on failure, which is what those agents SPENT, not what the
   quota counts. The two may differ and I have not reconciled them.
+
+## CORRECTION, half an hour later: the salvage REVERTED a completed fix round
+
+Written above: "all four were committed verbatim". That was true and it was not
+safe, and the paragraph calling it a clean recovery was wrong within the hour.
+
+The `WIP-UNREVIEWED` commit on `claude/m4-p26-rollback` was **not new work**. It
+was a pure reversal of that phase's entire first fix round: twenty files, +76
+and **-1450**, deleting ten witness specs, 486 lines of `src/cutover.ts` and 615
+lines of `test/cutover.test.ts`.
+
+It was caught by the fix agent dispatched to resume that phase, which proved it
+with object hashes rather than reading the diff and guessing:
+
+```
+git rev-parse 7dcce83^{tree}   ->  86dd8afb7471915086899e214a9f94f51f495fc7
+git rev-parse 134b131^{tree}   ->  86dd8afb7471915086899e214a9f94f51f495fc7
+git diff --stat 7dcce83 134b131 ->  empty
+```
+
+The salvaged tree was byte-identical to the head the clean-room REVIEWS were
+written against. It carried nothing of its own.
+
+### The mechanism, which is one sentence and I did not think of it
+
+**`git status` in a worktree is relative to THAT WORKTREE'S OWN HEAD, not to the
+branch tip.**
+
+A REVIEWER's worktree is checked out at the head under review and stays there.
+When the implementer afterwards commits a fix round, the reviewer's worktree does
+not move. Its files are now older than the tip, so `git status --porcelain`
+reports them as twenty modifications, and `git add -A && git commit` writes the
+OLD tree over the new one. The output of `git status` is identical in shape
+whether a worktree holds unsaved progress or holds a stale checkout: twenty
+changed files either way.
+
+I read "twenty changed files" as "twenty files of unsaved work" and never asked
+which HEAD they were changed against.
+
+### The guard, and it is two commands
+
+Before committing any salvage, both of these, per worktree:
+
+```
+git -C <worktree> rev-parse HEAD          # is this the branch tip?
+git -C <worktree> rev-parse <branch>      # if these differ, the worktree is STALE
+git -C <worktree> diff --shortstat        # a salvage that is mostly DELETIONS is a reversal
+```
+
+The second is the cheap tell and it was visible in my own output at the time:
+three branches read `+637/-6`, `+350/-51`, `+8/-4`, and the fourth read
+`+76/-1450`. **One of these is not like the others**, and the number was printed
+on my screen before I pushed.
+
+### What this changes about the rules above
+
+Rule 4 said "salvage reads the INDEX and the WORKING TREE, not just commits".
+That is still right and it is now insufficient. The full rule:
+
+> **Salvage reads the index and the working tree, AND establishes that the
+> worktree's HEAD is the branch tip before believing what it finds there.** A
+> stale worktree's contents are not a rescue, they are a time machine pointed
+> backwards.
+
+And the meta-lesson, which is the one this project keeps relearning: what saved
+this was not a guard, it was an agent told to **verify rather than trust** an
+artifact handed to it. The resume brief said a `WIP-UNREVIEWED` commit is
+unreviewed, may stop mid-sentence, and must be verified rather than trusted or
+discarded. It was, and the instruction earned its place in one round.
