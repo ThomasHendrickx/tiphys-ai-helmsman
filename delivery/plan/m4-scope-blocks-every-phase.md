@@ -90,3 +90,50 @@ So the fix is two steps, and the second is per-branch:
 - **The other eleven gates.** Only `scope` was run. This says nothing about
   whether any of them is red, and several are wall-clock sensitive on a box
   that was at load 69 while this was measured.
+
+## A SECOND red sits behind the first, and it is structural
+
+Found by the M4-P1 clean-room reviewer, which did the thing this document did
+not: it put a declaration on a simulated trunk to clear the first refusal, ran
+the gate again, and looked at what was behind it. **Twenty-seven undeclared
+paths.**
+
+That is not M4-P1 being careless. Every M4 branch was cut from the UNMERGED
+`plan/pstack-borrow-review`, so every one inherits that branch's paperwork, and
+relative to `origin/main` all of it reads as the phase's own changes. Measured
+across all twelve, changed-path counts from the two bases:
+
+| phase | paths from `origin/main` | paths from the plan-branch cut | inherited |
+|---|---|---|---|
+| m4-p1 | 75 | 49 | 26 |
+| m4-p10 | 43 | 16 | 27 |
+| m4-p11 | 46 | 19 | 27 |
+| m4-p13 | 35 | 8 | 27 |
+| m4-p15 | 41 | 5 | 36 |
+| m4-p16 | 44 | 17 | 27 |
+| m4-p19 | 38 | 11 | 27 |
+| m4-p2 | 43 | 16 | 27 |
+| m4-p20 | 36 | 9 | 27 |
+| m4-p23 | 34 | 8 | 26 |
+| m4-p26 | 57 | 30 | 27 |
+| m4-p27 | 35 | 7 | 28 |
+
+The inherited column is flat at 26 to 28 everywhere except M4-P15, which was cut
+slightly later. That flatness is the signature of a common cause rather than
+twelve independent scope errors.
+
+**So the sequencing this document already argued for is not merely tidier, it is
+what makes the scope gate answerable at all.** `plan/pstack-borrow-review` must
+land on `main` FIRST. Once it has, each phase branch merges `main` in, its merge
+base moves past both the paperwork and the declarations, and the gate finally
+compares the phase's own files against the phase's own declaration.
+
+Until then the gate is being asked whether a phase declared twenty-seven files
+of somebody else's paperwork, and the honest answer is no.
+
+**What this still does NOT settle.** Even from the correct base, M4-P1 changes
+49 paths and M4-P26 changes 30. Whether each phase's declaration covers its own
+remaining set is a PER-PHASE question that this measurement does not answer and
+that only the gate, run after the sequencing, can. A phase that genuinely
+touched a file it did not declare will still be red, correctly, and that red
+will mean something.
