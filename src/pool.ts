@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { metaPath, readTaskMeta } from "./task.ts";
 import type { Fleet } from "./fleet.ts";
 
 /**
@@ -237,6 +238,111 @@ function resolveDefaultBranch(project: string, remote: string): PoolResult<strin
   };
 }
 
+/**
+ * POST-RECLAIM RECONSTRUCTION (M4-D-12, kernel plan M4 section M4-P19).
+ *
+ * THE RULE, and it is the whole design: RECONSTRUCT FOR REPORTING, NEVER
+ * FOR DESTRUCTION. A reconstructed record exists in memory for the life
+ * of one command and is NEVER written to worktrees/<id>.pool.json, so a
+ * later reader can never mistake a reconstruction for an original.
+ *
+ * THE DEFECT IT CLOSES, measured rather than assumed. tasks/<id>/meta.json
+ * is TRACKED and survives a reclaim; worktrees/<id>.pool.json cannot,
+ * because it sits beside the worktree BY DESIGN so it can never dirty the
+ * destroy-time cleanliness check (see the module header above, FM-059).
+ * Teardown then refuses without a pool record and says so in terms
+ * (src/teardown.ts), so the plan's stated fallback of "recovery is manual
+ * teardown" does not work post-reclaim: the manual path is itself blocked.
+ *
+ * WHAT IS DERIVED AND WHAT IS NOT. meta.json carries six of the eight
+ * PoolRecord fields directly (taskId, project, baseSha, branchName,
+ * offline, createdAt). It carries NEITHER `remote` NOR `branch`, which are
+ * the project's configured remote and that remote's default branch. Those
+ * two are re-derived from git through the SAME two resolvers poolCreate
+ * uses, so a reconstruction is a repeat of the original derivation and
+ * never a remembered value.
+ *
+ * WHEN EITHER OF THOSE TWO CANNOT BE DERIVED THE RESULT IS INCOMPLETE AND
+ * NAMES THE FIELD. It is never filled with a plausible default. "origin"
+ * and "main" are right often enough to look harmless and wrong often
+ * enough to destroy work: a guessed default branch sends the landed-ness
+ * judgement at a ref that is not the project's default, and teardown's
+ * authorization to delete a task branch comes from exactly that judgement
+ * (V-1, the defect src/spawn.ts was rewritten to prevent). An unresolvable
+ * field is therefore a refusal, not a gap to fill.
+ */
+export type ReconstructResult =
+  /** Every field derived. Safe to report, and safe to pass to a GATED path. */
+  | { kind: "complete"; record: PoolRecord }
+  /** meta.json read, but git could not answer for the named fields. */
+  | { kind: "incomplete"; unresolved: string[]; detail: string }
+  /** No readable task meta, so there is nothing to reconstruct from. */
+  | { kind: "absent"; reason: string };
+
+/**
+ * Rebuild a pool record for taskId from tasks/<id>/meta.json and git.
+ * Reads only; writes nothing anywhere, ever.
+ */
+export function reconstructPoolRecord(fleet: Fleet, taskId: string): ReconstructResult {
+  if (!TASK_ID_PATTERN.test(taskId)) {
+    return { kind: "absent", reason: `task id "${taskId}" is not a safe path segment` };
+  }
+  const meta = readTaskMeta(fleet, taskId);
+  if (meta === undefined) {
+    return {
+      kind: "absent",
+      reason:
+        `no readable task meta at ${metaPath(fleet, taskId)}, so there is ` +
+        `nothing to reconstruct a pool record from`,
+    };
+  }
+
+  const unresolved: string[] = [];
+  const details: string[] = [];
+  let remote: string | undefined;
+  let branch: string | undefined;
+  if (!existsSync(meta.project)) {
+    // Both fields live in the clone, so losing the clone loses both. They
+    // are reported together rather than one at a time, because a caller
+    // that repaired only the first would be told about the second on the
+    // next run and learn nothing it could not have been told now.
+    unresolved.push("remote", "branch");
+    details.push(`the project clone ${meta.project} recorded in meta.json is absent`);
+  } else {
+    const resolvedRemote = resolveRemote(meta.project);
+    if (resolvedRemote.ok) {
+      remote = resolvedRemote.value;
+      const resolvedBranch = resolveDefaultBranch(meta.project, remote);
+      if (resolvedBranch.ok) {
+        branch = resolvedBranch.value;
+      } else {
+        unresolved.push("branch");
+        details.push(resolvedBranch.reason);
+      }
+    } else {
+      unresolved.push("remote", "branch");
+      details.push(resolvedRemote.reason);
+    }
+  }
+
+  if (remote === undefined || branch === undefined) {
+    return { kind: "incomplete", unresolved, detail: details.join("; ") };
+  }
+  return {
+    kind: "complete",
+    record: {
+      taskId,
+      project: meta.project,
+      remote,
+      branch,
+      baseSha: meta.baseSha,
+      branchName: meta.branch,
+      offline: meta.baseOffline,
+      createdAt: meta.createdAt,
+    },
+  };
+}
+
 export interface CreateOptions {
   taskId: string;
   project: string;
@@ -448,30 +554,87 @@ export async function poolCreate(
   return { ok: true, value: poolRecord };
 }
 
+/**
+ * Where an entry's pool record came from. `record` is an original read
+ * from worktrees/<id>.pool.json; the other two exist only after a reclaim
+ * has taken worktrees/ with it, and are computed fresh on every call.
+ */
+export type PoolEntryOrigin = "record" | "reconstructed" | "unreconstructable";
+
 export interface PoolListEntry {
   taskId: string;
   headSha: string;
+  origin: PoolEntryOrigin;
+  /** Set only for `unreconstructable`: the PoolRecord fields git could not answer for. */
+  unresolved?: string[];
 }
 
-/** One entry per pool record, with the worktree's current HEAD SHA. */
+/** The worktree's current HEAD SHA, or "missing" when there is no worktree. */
+function headShaOf(fleet: Fleet, taskId: string): string {
+  const worktree = worktreePath(fleet, taskId);
+  const head = existsSync(worktree)
+    ? runGit(worktree, ["rev-parse", "HEAD"])
+    : undefined;
+  return head !== undefined && head.status === 0 ? head.stdout.trim() : "missing";
+}
+
+/**
+ * One entry per pool record, with the worktree's current HEAD SHA, PLUS
+ * one per OPEN task that has no pool record beside it (M4-P19).
+ *
+ * The second group is what a reclaim leaves behind: tasks/ is tracked and
+ * survives, worktrees/ is gitignored and does not, so a task can be open
+ * with its record gone. Reporting only the first group makes those tasks
+ * invisible to `pool list` and to doctor, which is the state the plan
+ * calls a defect. Every such entry is marked, never silently blended in
+ * with the originals, and NOTHING here is written to disk.
+ *
+ * Closed tasks are excluded: a closed task is not in the pool, and
+ * listing every task this fleet ever finished as a missing worktree would
+ * make the report useless within a week.
+ */
 export function poolList(fleet: Fleet): PoolListEntry[] {
   const entries: PoolListEntry[] = [];
+  const seen = new Set<string>();
   const names = readdirSync(fleet.worktreesDir)
     .filter((name) => name.endsWith(".pool.json"))
     .sort();
   for (const name of names) {
     const taskId = name.slice(0, -".pool.json".length);
-    const worktree = worktreePath(fleet, taskId);
-    const head = existsSync(worktree)
-      ? runGit(worktree, ["rev-parse", "HEAD"])
-      : undefined;
-    entries.push({
-      taskId,
-      headSha:
-        head !== undefined && head.status === 0
-          ? head.stdout.trim()
-          : "missing",
-    });
+    seen.add(taskId);
+    entries.push({ taskId, headSha: headShaOf(fleet, taskId), origin: "record" });
+  }
+
+  let taskIds: string[];
+  try {
+    taskIds = readdirSync(fleet.tasksDir).sort();
+  } catch {
+    // No tasks/ at all: nothing to reconstruct from, and the layout check
+    // in doctor is what reports a missing fleet directory.
+    taskIds = [];
+  }
+  for (const taskId of taskIds) {
+    if (seen.has(taskId) || !TASK_ID_PATTERN.test(taskId)) {
+      continue;
+    }
+    const meta = readTaskMeta(fleet, taskId);
+    if (meta === undefined || meta.status !== "open") {
+      continue;
+    }
+    const rebuilt = reconstructPoolRecord(fleet, taskId);
+    if (rebuilt.kind === "absent") {
+      continue;
+    }
+    entries.push(
+      rebuilt.kind === "complete"
+        ? { taskId, headSha: headShaOf(fleet, taskId), origin: "reconstructed" }
+        : {
+            taskId,
+            headSha: headShaOf(fleet, taskId),
+            origin: "unreconstructable",
+            unresolved: rebuilt.unresolved,
+          },
+    );
   }
   return entries;
 }
@@ -545,6 +708,24 @@ export interface DestroyOptions {
    * than assumed.
    */
   deleteBranchForce: boolean;
+  /**
+   * An IN-MEMORY reconstructed record (M4-P19), used ONLY when no record
+   * exists on disk. It is never written: `haveRecord` still comes from
+   * the file, so nothing here creates worktrees/<id>.pool.json and
+   * nothing unlinks a file that is not there.
+   *
+   * WHY THIS EXISTS AT ALL, since the whole design is "never for
+   * destruction". Without it, stage 2's base-sha gate has no base to
+   * compare against and returns its "pool record missing or unreadable"
+   * refusal, so the post-reclaim path would be blocked at the one gate
+   * that was ALREADY going to do the right thing. Passing the
+   * reconstruction in makes that gate WORK rather than abstain, which is
+   * strictly safer than the alternative of relaxing it. The caller is
+   * responsible for having derived it (src/teardown.ts's
+   * --from-reconstructed path is the only one), and `pool destroy` on
+   * the command line never sets it.
+   */
+  reconstructed?: PoolRecord;
 }
 
 async function destroyGitStep(
@@ -669,10 +850,16 @@ interface DestroyFacts {
 async function resolveDestroy(
   fleet: Fleet,
   taskId: string,
+  reconstructed: PoolRecord | undefined,
 ): Promise<PoolResult<DestroyFacts>> {
   const worktree = worktreePath(fleet, taskId);
   const recordFile = recordPath(fleet, taskId);
-  const record = readPoolRecord(fleet, taskId);
+  const onDisk = readPoolRecord(fleet, taskId);
+  // The on-disk record always wins. The reconstruction is a FALLBACK, so
+  // a present-but-different record can never be overridden by one.
+  const record = onDisk ?? reconstructed;
+  // Deliberately the FILE, not the record: this is what authorizes the
+  // unlink in stage 3, and a reconstruction has no file to unlink.
   const haveRecord = existsSync(recordFile);
   const haveWorktree = existsSync(worktree);
   if (!haveRecord && !haveWorktree) {
@@ -942,7 +1129,7 @@ export async function poolDestroy(
   }
 
   // Stage 1: read only.
-  const resolved = await resolveDestroy(fleet, taskId);
+  const resolved = await resolveDestroy(fleet, taskId, options.reconstructed);
   if (!resolved.ok) {
     return resolved;
   }

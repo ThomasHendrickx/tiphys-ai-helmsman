@@ -2,7 +2,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { MACHINE_IDENTITY_EMAIL, MACHINE_IDENTITY_NAME } from "./commands/init.ts";
 import type { Fleet } from "./fleet.ts";
-import { poolDestroy, readPoolRecord, worktreePath } from "./pool.ts";
+import {
+  poolDestroy,
+  readPoolRecord,
+  reconstructPoolRecord,
+  worktreePath,
+} from "./pool.ts";
 import type { PoolRecord } from "./pool.ts";
 import {
   checkHoldership,
@@ -168,11 +173,49 @@ export function landedness(
 export interface TeardownOptions {
   taskId: string;
   salvage: boolean;
+  /**
+   * Proceed on a pool record RECONSTRUCTED from tasks/<id>/meta.json and
+   * git, when worktrees/<id>.pool.json did not survive a reclaim
+   * (M4-P19, M4-D-12). See the FROM-RECONSTRUCTED header below for what
+   * this flag does and, more importantly, what it does NOT do.
+   */
+  fromReconstructed: boolean;
 }
 
+/**
+ * FROM-RECONSTRUCTED: WHAT THE FLAG AUTHORIZES, AND WHAT IT DOES NOT.
+ *
+ * It authorizes exactly ONE thing: deriving the two fields meta.json does
+ * not carry, `remote` and `branch`, from git instead of reading them from
+ * a pool record that no longer exists. That is all.
+ *
+ * IT IS NOT A DESTRUCTION OVERRIDE, and this sentence is here because the
+ * two flags it sits beside ARE ones. `--discard` overrides the dirty-tree
+ * refusal and `--delete-branch-force` overrides the unlanded-branch
+ * refusal, so "mirrors the existing explicit-destruction pattern" reads
+ * as an invitation to pass both of them through on this path, with the
+ * reasoning that there is no record so nothing can be checked. That
+ * reasoning is exactly wrong, and it is the dangerous state this phase's
+ * red witnesses redden against: the record is the ONE input that was
+ * lost, every other input to every refusal survives, and a reconstructed
+ * record makes the gates MORE able to judge, not less. So every refusal
+ * that applies to a task with an original record applies unchanged here:
+ *
+ *   - a dirty worktree is refused without --salvage, as ever;
+ *   - an unlanded branch is refused, as ever, and the refusal names the
+ *     branch tip so the operator has the recovery handle (V-1);
+ *   - a field git cannot answer for is named and the command refuses,
+ *     rather than being filled with "origin" and "main".
+ *
+ * A reconstruction is also never persisted. It is passed to pool destroy
+ * in memory (DestroyOptions.reconstructed) and no file is created, so a
+ * later reader cannot mistake it for an original record.
+ */
 interface TeardownContext {
   meta: TaskMeta;
   record: PoolRecord;
+  /** True when `record` was rebuilt rather than read from disk (M4-P19). */
+  reconstructed: boolean;
   worktree: string;
   defaultRef: string;
 }
@@ -185,6 +228,7 @@ interface TeardownContext {
 function resolveContext(
   fleet: Fleet,
   taskId: string,
+  fromReconstructed: boolean,
 ): { ok: true; value: TeardownContext } | { ok: false; reason: string } {
   const meta = readTaskMeta(fleet, taskId);
   if (meta === undefined) {
@@ -193,14 +237,41 @@ function resolveContext(
       reason: `no readable task meta for task id ${taskId}; teardown needs tasks/${taskId}/meta.json`,
     };
   }
-  const record = readPoolRecord(fleet, taskId);
+  let record = readPoolRecord(fleet, taskId);
+  let reconstructed = false;
   if (record === undefined) {
-    return {
-      ok: false,
-      reason:
-        `no readable pool record for task id ${taskId}; teardown needs it for the ` +
-        `project remote and default branch, and refuses rather than guessing them`,
-    };
+    if (!fromReconstructed) {
+      return {
+        ok: false,
+        reason:
+          `no readable pool record for task id ${taskId}; teardown needs it for the ` +
+          `project remote and default branch, and refuses rather than guessing them; ` +
+          `pass --from-reconstructed to rebuild them from tasks/${taskId}/meta.json ` +
+          `and git, which keeps every other refusal in force`,
+      };
+    }
+    const rebuilt = reconstructPoolRecord(fleet, taskId);
+    if (rebuilt.kind === "absent") {
+      return {
+        ok: false,
+        reason: `cannot reconstruct the pool record for task id ${taskId}: ${rebuilt.reason}`,
+      };
+    }
+    if (rebuilt.kind === "incomplete") {
+      // The missing FIELD is named, not merely the failure, because the
+      // remedy differs per field: `remote` is a git configuration repair
+      // in the clone, `branch` is usually an origin/HEAD that was never
+      // set or a remote that cannot be reached to advertise it.
+      return {
+        ok: false,
+        reason:
+          `cannot reconstruct the pool record for task id ${taskId}: unresolved ` +
+          `field(s) ${rebuilt.unresolved.join(", ")} (${rebuilt.detail}); teardown ` +
+          `refuses rather than guessing them`,
+      };
+    }
+    record = rebuilt.record;
+    reconstructed = true;
   }
   const worktree = worktreePath(fleet, taskId);
   const defaultRef = `refs/remotes/${record.remote}/${record.branch}`;
@@ -218,7 +289,7 @@ function resolveContext(
         `be judged against fresh remote state: ${singleLine(fetched.stderr)}`,
     };
   }
-  return { ok: true, value: { meta, record, worktree, defaultRef } };
+  return { ok: true, value: { meta, record, reconstructed, worktree, defaultRef } };
 }
 
 /** Uncommitted changes or untracked files in the task worktree. */
@@ -286,6 +357,11 @@ async function finish(
     taskId: context.meta.id,
     discard: options.discard,
     deleteBranchForce: options.deleteBranchForce,
+    // M4-P19: in memory only, and only when the record was rebuilt. This
+    // makes the destroy's own base-sha gate ABLE to judge instead of
+    // abstaining with its "pool record missing" refusal; it does not
+    // create a file and it does not relax a gate.
+    ...(context.reconstructed ? { reconstructed: context.record } : {}),
   });
   if (!destroyed.ok) {
     // The destroy's own reason distinguishes a stage-2 refusal (a true
@@ -336,7 +412,7 @@ export async function teardownTask(
     return { ok: false, reason: holdership.reason };
   }
 
-  const resolved = resolveContext(fleet, options.taskId);
+  const resolved = resolveContext(fleet, options.taskId, options.fromReconstructed);
   if (!resolved.ok) {
     return resolved;
   }
@@ -417,11 +493,25 @@ export async function teardownTask(
     };
   }
   if (landed.kind === "unlanded") {
+    // M4-P19 criterion 5: the refusal NAMES THE TIP. That sha is the
+    // operator's recovery handle, exactly as the deleted-branch sha is on
+    // the success path (V-1), and it is the one fact that makes this
+    // refusal actionable: it says which commit is at risk, not merely
+    // that something is. It is named on every unlanded refusal rather
+    // than only the reconstructed one, so there is one message and not
+    // two that can drift apart.
+    const tip = runGit(record.project, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${branchRef}^{commit}`,
+    ]);
+    const tipSha = tip.status === 0 ? tip.stdout.trim() : "unresolvable";
     return {
       ok: false,
       reason:
-        `branch ${record.branchName} is not landed on ${record.remote}/${record.branch}; ` +
-        `land it before tearing the task down` +
+        `branch ${record.branchName} (tip ${tipSha}) is not landed on ` +
+        `${record.remote}/${record.branch}; land it before tearing the task down` +
         (options.salvage ? " (--salvage rescues leavings, it never lands work)" : ""),
     };
   }

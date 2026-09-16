@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -1075,4 +1076,190 @@ test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {
   );
   assert.equal(badId.status, 1);
   assert.match(badId.stderr, /not a safe path segment/);
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19: post-reclaim pool-record reconstruction.
+ *
+ * THE STATE UNDER TEST. A reclaim takes worktrees/ with it, because that
+ * prefix is gitignored, while tasks/ is tracked and survives. Every
+ * fixture below reaches that state by deleting worktrees/<id>.pool.json
+ * and leaving the task record standing, which is the smallest fixture
+ * that exhibits it: the reporting paths cannot tell a deleted record from
+ * a reclaimed one, and the teardown gates this phase is really about need
+ * the worktree to still be there in order to refuse to destroy it.
+ * ------------------------------------------------------------------ */
+
+/** Spawn a real ship task, which is the only way a pool record exists. */
+function spawnShipTask(scratch: Scratch, taskId: string): CliResult {
+  const brief = join(scratch.fleet, `${taskId}-brief.md`);
+  writeFileSync(brief, "# Brief\n\nDo the thing.\n");
+  const stub = join(scratch.fleet, `${taskId}-payload.sh`);
+  writeFileSync(stub, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  return runCli(
+    [
+      "spawn",
+      "--task",
+      taskId,
+      "--project",
+      scratch.clone,
+      "--brief",
+      brief,
+      "--shape",
+      "ship",
+      "--exec",
+      stub,
+    ],
+    { cwd: scratch.fleet },
+  );
+}
+
+/** Delete the pool record, leaving the worktree: the post-reclaim shape. */
+function reclaimRecord(scratch: Scratch, taskId: string): void {
+  rmSync(recordOf(scratch, taskId));
+  assert.equal(
+    existsSync(recordOf(scratch, taskId)),
+    false,
+    "precondition: the pool record is gone",
+  );
+}
+
+/** Every *.pool.json currently under worktrees/, for criterion 6. */
+function recordFilesIn(scratch: Scratch): string[] {
+  return readdirSync(join(scratch.fleet, "worktrees"))
+    .filter((name) => name.endsWith(".pool.json"))
+    .sort();
+}
+
+test("pool list marks an entry whose record did not survive a reclaim", (t) => {
+  // Criterion 1. The reconstruction is derived from meta.json and git, so
+  // the HEAD sha it reports is the worktree's real one and never a
+  // remembered value: it is compared against git's own answer.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-recon").status, 0);
+  const head = gitOk(worktreeOf(scratch, "t-recon"), ["rev-parse", "HEAD"]);
+
+  const before = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(before.status, 0, before.stderr);
+  assert.equal(
+    before.stdout.trim(),
+    `t-recon ${head}`,
+    "precondition: an original record lists with no marker",
+  );
+
+  reclaimRecord(scratch, "t-recon");
+  const after = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(after.status, 0, after.stderr);
+  assert.equal(after.stdout.trim(), `t-recon ${head} reconstructed`);
+  // Criterion 6: nothing was written back.
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("pool list reports a reconstruction that cannot resolve remote and branch", (t) => {
+  // The INCOMPLETE arm. A plausible default is not filled in quietly: the
+  // unresolved PoolRecord field names are printed, and they are what the
+  // teardown refusal later keys off.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-noremote").status, 0);
+  reclaimRecord(scratch, "t-noremote");
+  // Remove the clone's only remote. Both fields live there, so both go.
+  gitOk(scratch.clone, ["remote", "remove", "origin"]);
+
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.match(
+    listed.stdout,
+    /^t-noremote \S+ unreconstructable \(unresolved: remote, branch\)$/m,
+    listed.stdout,
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("pool list does not resurrect a closed task as a pool entry", (t) => {
+  // A closed task is not in the pool. Without this the report grows by one
+  // permanent line per finished task and stops being readable.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-closed").status, 0);
+  reclaimRecord(scratch, "t-closed");
+  const metaFile = join(scratch.fleet, "tasks", "t-closed", "meta.json");
+  const meta = JSON.parse(readFileSync(metaFile, "utf8")) as Record<string, unknown>;
+  assert.equal(meta.status, "open", "precondition: the task is open");
+  const open = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.match(open.stdout, /t-closed \S+ reconstructed/, open.stdout);
+
+  meta.status = "closed";
+  writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
+  const closed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(closed.status, 0, closed.stderr);
+  assert.equal(closed.stdout.trim(), "");
+});
+
+test("doctor CHECK worktrees names a task whose pool record did not survive", (t) => {
+  // Criterion 1's doctor half. The check WARNs and the exit code does not
+  // move: a rehydrated fleet is EXPECTED to be in this state, so a FAIL
+  // would make the tool unpassable on the one fleet the remedy exists for.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-doc").status, 0);
+
+  const healthy = runCli(["doctor"], { cwd: scratch.fleet });
+  const healthyLine = healthy.stdout
+    .split("\n")
+    .find((line) => line.startsWith("CHECK worktrees "));
+  assert.ok(healthyLine !== undefined, healthy.stdout);
+  assert.match(healthyLine, /^CHECK worktrees PASS /, healthyLine);
+
+  reclaimRecord(scratch, "t-doc");
+  const reclaimed = runCli(["doctor"], { cwd: scratch.fleet });
+  const line = reclaimed.stdout
+    .split("\n")
+    .find((entry) => entry.startsWith("CHECK worktrees "));
+  assert.ok(line !== undefined, reclaimed.stdout);
+  assert.match(line, /^CHECK worktrees WARN /, line);
+  assert.match(line, /t-doc \(reconstructed\)/, line);
+  assert.equal(
+    reclaimed.status,
+    healthy.status,
+    "the worktrees check moved doctor's exit code",
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("the worktrees check reads task files and git, never a log tail or a process", () => {
+  // C-1 and C-2, asserted over the source this phase added rather than
+  // over its output, because a violation of either is invisible in output.
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/commands/doctor.ts", import.meta.url)),
+    "utf8",
+  );
+  const start = source.indexOf("export function checkWorktrees(");
+  const end = source.indexOf("export function runChecks(");
+  assert.ok(start > 0 && end > start, "checkWorktrees could not be located");
+  const body = source.slice(start, end);
+  for (const forbidden of ["/proc", "process.kill", "stream.jsonl", "pid"]) {
+    assert.equal(
+      body.includes(forbidden),
+      false,
+      `checkWorktrees mentions ${forbidden}`,
+    );
+  }
+});
+
+test("this phase's new pool behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-list-marks-reconstructed",
+    "pool-list-marks-unreconstructable",
+    "pool-list-excludes-closed-tasks",
+    "doctor-check-worktrees-names-reconstructed",
+    "doctor-check-worktrees-no-process-probe",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
 });

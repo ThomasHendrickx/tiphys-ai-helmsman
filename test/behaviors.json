@@ -773,5 +773,17 @@
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
-  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
+  "pool-list-marks-reconstructed": "pool list marks an entry whose record did not survive a reclaim",
+  "pool-list-marks-unreconstructable": "pool list reports a reconstruction that cannot resolve remote and branch",
+  "pool-list-excludes-closed-tasks": "pool list does not resurrect a closed task as a pool entry",
+  "doctor-check-worktrees-names-reconstructed": "doctor CHECK worktrees names a task whose pool record did not survive",
+  "doctor-check-worktrees-no-process-probe": "the worktrees check reads task files and git, never a log tail or a process",
+  "teardown-no-record-names-the-flag": "teardown without a pool record names --from-reconstructed as the remedy",
+  "teardown-from-reconstructed-closes-a-landed-task": "teardown --from-reconstructed closes a landed task whose record did not survive",
+  "teardown-from-reconstructed-names-unresolved-field": "teardown --from-reconstructed names the field it could not derive and refuses",
+  "teardown-from-reconstructed-refuses-dirty-worktree": "teardown --from-reconstructed refuses a dirty worktree and removes nothing",
+  "teardown-from-reconstructed-refuses-unlanded-branch": "teardown --from-reconstructed refuses an unlanded branch and names its tip",
+  "teardown-from-reconstructed-derives-the-default-branch": "teardown --from-reconstructed derives a non-main default branch instead of guessing",
+  "teardown-from-reconstructed-writes-no-record": "no teardown path writes a reconstructed record to worktrees/"
 }
