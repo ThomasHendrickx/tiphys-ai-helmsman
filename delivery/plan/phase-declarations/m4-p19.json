@@ -22,8 +22,7 @@
     "witness/teardown-from-reconstructed-bounds-the-remote-probe.json",
     "witness/teardown-network-timeout-override-is-validated.json",
     "witness/pool-network-call-classification.json",
-    "witness/pool-reconstruction-network-licence.json",
-    "witness/teardown-reconstructed-scout-residue.json",
+    "witness/teardown-reconstructed-scout-salvage.json",
     "witness/captures/m4-p19-git-default-branch-resolution.txt",
     "witness/captures/m4-p19-git-status-porcelain-dirty.txt",
     "witness/captures/m4-p19-git-ls-remote-silent-listener.txt"
