@@ -628,16 +628,23 @@ export async function spawnTask(
   // report. See turnEndEvidence above for the four refusals.
   const evidence = turnEndEvidence(fleet, taskId);
   if (!evidence.ok) {
+    // The scrub root is named only when there IS one. Under the declared
+    // escape hatch childEnv is undefined and nothing was ever staged under
+    // scrubRoot(dir), so naming it would enumerate a path that does not
+    // exist, in the one message an operator uses to find the residue.
+    const residue =
+      childEnv === undefined
+        ? `the worktree ${worktree}, its task directory and the pool record are all`
+        : `the worktree ${worktree}, its task directory, the pool record and the ` +
+          `harness-owned redirect targets under ${scrubRoot(dir)} are all`;
     return {
       ok: false,
       reason:
         `the ${adapter.name} adapter reported the payload completed with exit code ` +
         `${String(outcome.exitCode)}, but ${evidence.reason}, so the kernel does not ` +
         `accept that the payload ended; nothing was rolled back and nothing was ` +
-        `removed: the worktree ${worktree}, its task directory, the pool record and ` +
-        `the harness-owned redirect targets under ${scrubRoot(dir)} are all left in ` +
-        `place for inspection; when you have inspected them, close the task with ` +
-        `"tiphys teardown --task ${taskId}"`,
+        `removed: ${residue} left in place for inspection; when you have inspected ` +
+        `them, close the task with "tiphys teardown --task ${taskId}"`,
     };
   }
 
