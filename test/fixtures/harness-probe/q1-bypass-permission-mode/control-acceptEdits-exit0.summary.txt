@@ -1,0 +1,14 @@
+arm: control-acceptEdits-exit0
+extra-args: --permission-mode acceptEdits
+hook-exit-configured: 0
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+marker file present: YES
+marker lines: 1
+--- stdout ---
+WROTE
+--- stderr (first 20 lines) ---
+--- marker.jsonl ---
+{"fired_at":"2026-09-15T23:53:57.898Z","arm":"control-acceptEdits-exit0","hook_event_name":"PreToolUse","permission_mode":"acceptEdits","tool_name":"Write","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/m4p1/q1/project","tool_input":{"file_path":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/m4p1/q1/project/app.txt","content":"HOTFIX\n"},"exiting_with":0}

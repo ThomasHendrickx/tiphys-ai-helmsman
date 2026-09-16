@@ -1,0 +1,14 @@
+arm: bypass-bash-exit2
+extra-args: --permission-mode bypassPermissions
+hook-exit-configured: 2
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : ab0b884358ef3d28a8d0b7266a3c0345
+app.txt changed: NO
+marker file present: YES
+marker lines: 1
+--- stdout ---
+BLOCKED
+--- stderr (first 20 lines) ---
+--- marker.jsonl ---
+{"fired_at":"2026-09-15T23:59:47.248Z","arm":"bypass-bash-exit2","hook_event_name":"PreToolUse","permission_mode":"bypassPermissions","tool_name":"Bash","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/m4p1/q1/project","tool_input":{"command":"echo HOTFIX > app.txt","description":"Write HOTFIX to app.txt"},"exiting_with":2}

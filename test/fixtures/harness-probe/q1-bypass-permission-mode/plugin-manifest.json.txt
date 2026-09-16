@@ -1,0 +1,1 @@
+{"name":"m4p1-bypass-probe","version":"0.0.1","description":"PreToolUse marker probe","hooks":"./hooks/hooks.json"}

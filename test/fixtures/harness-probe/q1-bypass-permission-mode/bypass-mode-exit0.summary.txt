@@ -1,0 +1,14 @@
+arm: bypass-mode-exit0
+extra-args: --permission-mode bypassPermissions
+hook-exit-configured: 0
+claude-exit: 1
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : ab0b884358ef3d28a8d0b7266a3c0345
+app.txt changed: NO
+marker file present: NO
+marker lines: 0
+--- stdout ---
+--- stderr (first 20 lines) ---
+--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
+--- marker.jsonl ---
+(absent)
