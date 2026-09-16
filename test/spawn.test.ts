@@ -847,9 +847,10 @@ const REDIRECT_TARGETS = [
  * Real captured output from the programs these behaviours consume, read out
  * of witness/captures/ rather than retyped.
  *
- * Both spawn witnesses mutate src/spawn.ts, which imports spawnSync from
- * node:child_process, so red-witness rule (f) (src/witness/run.ts:1287)
- * requires each of them to declare `consumesExternalOutput`, and rule (c)
+ * Every spawn witness mutates src/spawn.ts or src/task.ts, and src/spawn.ts
+ * imports spawnSync from node:child_process, so red-witness rule (f)
+ * (src/witness/run.ts:1287) requires each of them to declare
+ * `consumesExternalOutput`, and rule (c)
  * (src/witness/run.ts:1243) then requires a cited capture's BASENAME to be
  * referenced from this file's own source. That is the mechanical half. The
  * substantive half is CLAUDE.md's red-witness rule: where a behavior consumes
