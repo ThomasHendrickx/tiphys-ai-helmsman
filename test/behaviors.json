@@ -821,5 +821,6 @@
   "pilot-probe-refuses-truncation-on-the-success-path": "probe-pilot-readonly: the truncation refusal fires on a run whose sources are all reachable, and the stub server records zero requests, so the guard is on the write",
   "pilot-probe-target-cannot-inject-an-evidence-row": "probe-pilot-readonly: a --repo value carrying a pipe and a newline cannot add a row to the evidence table",
   "pilot-probe-unexpected-failure-is-indeterminate": "probe-pilot-readonly: an unexpected throw exits 3, never the real-negative code 1",
-  "pilot-probe-flag-without-a-value-is-usage": "probe-pilot-readonly: every value-taking flag with no value is a usage error rather than a crash"
+  "pilot-probe-flag-without-a-value-is-usage": "probe-pilot-readonly: every value-taking flag with no value is a usage error rather than a crash",
+  "cutover-entry-ruleset-untracked-is-named-as-untracked": "check-cutover-entry: an uncommitted ruleset is reported as untracked rather than as differing from a commit it does not have, so the reason string's scope matches the state"
 }

@@ -135,6 +135,8 @@ interface RootSpec {
   git?: boolean;
   /** Leave the ruleset modified after its commit, so the tree differs from it. */
   rulesetDirty?: boolean;
+  /** Write the ruleset but never commit it, so it has no commit at all. */
+  rulesetUncommitted?: boolean;
 }
 
 /**
@@ -246,7 +248,10 @@ function makeRoot(spec: RootSpec = {}): string {
     fixtureGit(root, ["init", "--quiet", "--initial-branch", "main"]);
     const rulesetRelative = "delivery/plan/cutover/pre-freeze-ruleset.json";
     const inventoryRelative = "delivery/plan/cutover/retirement-inventory.json";
-    if (spec.ruleset === false || spec.rulesetSameCommit === true) {
+    if (spec.rulesetUncommitted === true) {
+      fixtureGit(root, ["add", "-A", ":!" + rulesetRelative]);
+      fixtureGit(root, ["commit", "--quiet", "-m", "fixture, ruleset left untracked"], EARLIER);
+    } else if (spec.ruleset === false || spec.rulesetSameCommit === true) {
       fixtureGit(root, ["add", "-A"]);
       fixtureGit(root, ["commit", "--quiet", "-m", "fixture"], EARLIER);
     } else if (spec.rulesetStale === true) {
@@ -967,6 +972,7 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-entry-ruleset-equal-commit-time-is-not-newer",
     "cutover-entry-ruleset-uncommitted-edit-is-unreachable",
     "cutover-entry-ruleset-without-git-is-unreachable",
+    "cutover-entry-ruleset-untracked-is-named-as-untracked",
     "cutover-entry-json-mode-carries-the-halt",
     "cutover-entry-root-flag-needs-a-value",
     "pilot-probe-refuses-to-truncate-existing-evidence",
@@ -1014,7 +1020,7 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
  *
  * Every one of them was demonstrated RED against the state shipped at 4e95204,
  * by running the same assertion with that version of the script restored into a
- * mutation lab. The captures are in delivery/work-history/m4-p27.md:1178.
+ * mutation lab. The captures are in delivery/work-history/m4-p27.md:1195.
  */
 
 test("a DRAIN clean line is not believed when the report says it is stale", () => {
@@ -1147,6 +1153,18 @@ test("a ruleset edited after its commit cannot be dated by commit order", () => 
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
   assert.match(armOf(run.text, "d"), /^unreachable\|.*differs from its last commit/);
+});
+
+test("an uncommitted ruleset is reported as untracked, not as differing from a commit", () => {
+  // A STRUCTURALLY DIFFERENT MEMBER of the undatable class, and the reason it
+  // has its own witness is the round's own mechanism one level down: an
+  // untracked file has NO last commit, so a reason saying it "differs from its
+  // last commit" would be a message whose scope is not the state it describes.
+  const root = makeRoot({ rulesetUncommitted: true });
+  const run = runChecker(root);
+  assert.equal(run.status, 3, run.text);
+  assert.match(armOf(run.text, "d"), /^unreachable\|.*is not tracked by git/);
+  assert.doesNotMatch(armOf(run.text, "d"), /differs from its last commit/);
 });
 
 test("a tree with no git repository cannot date the ruleset and says so", () => {

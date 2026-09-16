@@ -281,7 +281,8 @@ export function armDrain(root) {
   // itself. The converse is NOT available and requiring exit 0 here would be a
   // defect: at cutover ENTRY the five switches still read `current` by
   // definition, so a nonzero exit is the EXPECTED state and an arm that demanded
-  // exit 0 could never be satisfied when it matters.
+  // exit 0 reads `unreachable` on exactly that input. Both arms of that
+  // counterfactual are captured at delivery/work-history/m4-p27.md:1195.
   if (run.status === 0 && state !== "clean") {
     return arm(
       "a",
@@ -544,14 +545,17 @@ export function armRetirement(root) {
  *
  * The first version of this arm compared `statSync(...).mtimeMs`. A clean-room
  * reviewer measured it wrong in BOTH directions on 2026-09-16 and the
- * measurements are reproduced in delivery/work-history/m4-p27.md:1178.
+ * measurements are reproduced in delivery/work-history/m4-p27.md:1195.
  *
  *   FALSE GREEN. `touch` on byte-identical content flipped the arm from
  *   not-yet to satisfied, sha1 unchanged either side.
  *   FALSE RED. git does not preserve mtimes, so a fresh clone stamps every file
  *   with checkout time in checkout-walk order. `pre-freeze-ruleset.json` sorts
- *   before `retirement-inventory.json`, so in EVERY fresh clone the ruleset is
- *   written first and reads as the older file whatever its content says.
+ *   before `retirement-inventory.json`, so the clone writes the ruleset first
+ *   and it reads as the older file whatever its content says. Measured on a
+ *   real `git clone` here, and the witness ASSERTS that ordering before it
+ *   asserts anything about the arm, so a git that walked the other way would
+ *   fail the witness rather than pass it vacuously.
  *
  * The plan's sentence is "newer than the most recent inventory CHANGE"
  * (delivery/plan/kernel-plan-m4.md:3570). A change is a commit, and commit time
@@ -609,11 +613,17 @@ export function commitSecondsFor(root, relativePath) {
   ]);
   if (!dirty.ok) return { ok: false, reason: `${relativePath}: ${dirty.reason}` };
   if (dirty.text.trim().length > 0) {
+    // AN UNTRACKED FILE HAS NO LAST COMMIT, so saying it "differs from its last
+    // commit" would be a reason string whose scope is not the state it
+    // describes, which is this round's own mechanism one level down. `??` is
+    // git's porcelain code for untracked.
+    const untracked = /^\?\?/.test(dirty.text.trimStart());
     return {
       ok: false,
-      reason:
-        `${relativePath} differs from its last commit, so commit order does not ` +
-        "describe the bytes on disk",
+      reason: untracked
+        ? `${relativePath} is not tracked by git, so it has no commit to be dated by`
+        : `${relativePath} differs from its last commit, so commit order does not ` +
+          "describe the bytes on disk",
     };
   }
   const dated = readOnlyGitRead(root, ["log", "-1", "--format=%ct", "--", relativePath]);
@@ -688,7 +698,10 @@ export function armRuleset(root, rulesetPath = RULESET_PATH, inventoryPaths = IN
     }
   }
   if (rulesetDate.seconds <= newest.seconds) {
-    const how = rulesetDate.seconds === newest.seconds ? "is committed no later than" : "is older than";
+    const how =
+      rulesetDate.seconds === newest.seconds
+        ? "is committed no later than"
+        : "is older than";
     return arm(
       "d",
       "pre-freeze-ruleset",
