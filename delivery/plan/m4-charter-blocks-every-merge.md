@@ -26,6 +26,13 @@ Confirmed: `ls charter.yaml` finds nothing at the repository root, and the
 refusal reproduces against the pre-change tree, so it is M3-P9's fail-closed
 rule working exactly as written and is not a defect introduced by any M4 phase.
 
+The refusal is not inferred from behaviour; it is written down. The regime
+documents the gate will look for are the two named at
+scripts/check-dual-review.mjs:198, and the message above is emitted at
+scripts/check-dual-review.mjs:209. Both lines are byte-identical on origin/main
+and on this branch, checked with `git diff --name-only origin/main...HEAD`, so
+they resolve against either tree.
+
 ## Why this is on the critical path and not a footnote
 
 DR-0031 requires a pull request to carry ALL its evidence, and for a phase that
