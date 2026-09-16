@@ -100,11 +100,50 @@ if (removedByOurs.length > 0 || removedByTheirs.length > 0) {
   process.exit(68);
 }
 
+// THIS LOOP USED TO IGNORE THE BASE, AND THE DOC COMMENT ABOVE IT DESCRIBED THE
+// RULE IT DID NOT IMPLEMENT. Item 2 says "a key whose value DIFFERS between the
+// two sides, WHERE AT LEAST ONE SIDE ALSO DIFFERS FROM THE BASE". The code read
+// only `ours[key] !== theirs[key]`, which is a TWO-way comparison, and a
+// two-way comparison cannot tell an edit collision from an ordinary one-sided
+// edit. That is the shape this repository keeps paying for: a guard whose
+// condition does not test the property it claims.
+//
+// It failed CLOSED, which is the safe direction and is why it went unnoticed,
+// and it still cost a merge. Measured 2026-09-16 on claude/m4-p11: twelve
+// behavior descriptions where `ours` equalled `base` exactly and `theirs`
+// (main) carried M4-P10's later renames. Nothing collided; main had simply
+// moved on. The union refused all twelve and named them as collisions to
+// resolve by hand.
+//
+// The three-way rule, written out so the next reader can check the code against
+// it rather than against a paraphrase:
+//
+//   ours === theirs                      -> agreed, no conflict
+//   ours === base, theirs !== base       -> only THEIRS edited it; take theirs
+//   theirs === base, ours !== base       -> only OURS edited it; take ours
+//   both differ from base, and from each -> a real collision; REFUSE
+//   absent from base, both added, differ -> a real add/add collision; REFUSE
+//
+// `resolved` carries the one-sided edits so the merge block below does not have
+// to re-derive which side won.
 const collisions = [];
+const resolved = new Map();
 for (const key of Object.keys(ours)) {
   if (!Object.hasOwn(theirs, key)) continue;
   if (ours[key] === theirs[key]) continue;
+  const inBase = Object.hasOwn(base, key);
+  const oursIsBase = inBase && ours[key] === base[key];
+  const theirsIsBase = inBase && theirs[key] === base[key];
+  if (oursIsBase && !theirsIsBase) { resolved.set(key, theirs[key]); continue; }
+  if (theirsIsBase && !oursIsBase) { resolved.set(key, ours[key]); continue; }
   collisions.push({ key, ours: ours[key], theirs: theirs[key], base: base[key] });
+}
+if (resolved.size > 0) {
+  process.stderr.write(
+    `union-registry: ${resolved.size} key(s) changed on exactly ONE side since the merge base; ` +
+      `taking that side. This is not a collision, and each is named rather than applied silently:\n` +
+      [...resolved.keys()].map((k) => `  ${k}`).join("\n") + "\n",
+  );
 }
 if (collisions.length > 0) {
   process.stderr.write(
@@ -124,7 +163,11 @@ if (collisions.length > 0) {
 }
 
 const merged = {};
-for (const key of Object.keys(base)) merged[key] = Object.hasOwn(ours, key) ? ours[key] : theirs[key];
+for (const key of Object.keys(base)) {
+  merged[key] = resolved.has(key)
+    ? resolved.get(key)
+    : Object.hasOwn(ours, key) ? ours[key] : theirs[key];
+}
 let addedOurs = 0;
 for (const key of Object.keys(ours)) {
   if (Object.hasOwn(merged, key)) continue;
@@ -142,5 +185,5 @@ writeFileSync(resolve(repo, path), `${JSON.stringify(merged, null, 2)}\n`, "utf8
 process.stdout.write(
   `union-registry: ${path} resolved as a union. base ${Object.keys(base).length}, ` +
     `ours +${addedOurs}, theirs +${addedTheirs}, result ${Object.keys(merged).length}. ` +
-    `Zero removals, zero value collisions.\n`,
+    `Zero removals, zero value collisions, ${resolved.size} one-sided edit(s) taken from the side that made them.\n`,
 );
