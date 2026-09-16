@@ -773,5 +773,14 @@
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
-  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
+  "verdict-head-required": "a verdict document carrying no head is refused naming head, so the directory convention is no longer what ties a pair to one commit",
+  "verdict-head-is-a-full-sha": "an abbreviated head is refused rather than forming a second group of one, and an upper-case head is one key with its lower-case spelling",
+  "verdict-head-joins-the-pair": "two verdicts carrying different heads are two groups of one and the decorrelation condition is not reported satisfied",
+  "verdict-head-unreadable-sibling-refused": "a same-phase sibling whose head cannot be established is reported as a violation rather than dropped from the group",
+  "verdict-approve-with-medium-finding-rejected": "a verdict reading APPROVE beside a finding at severity medium is refused naming the verdict field",
+  "verdict-pair-must-approve": "a committed pair in which one verdict reads FIX-ROUND-NEEDED reddens verdict-pair-approves naming that verdict",
+  "verdict-pair-blocking-finding-refused": "a committed verdict carrying a finding at medium or above reddens verdict-pair-approves even though no schema validation ran over it",
+  "verdict-pair-approves-registered": "verdict-pair-approves resolves by name in the shipped registry for the verdict type and requires a context",
+  "dual-review-prints-verdict-values": "check-dual-review prints each verdict's value, head and produced-by alongside the count of verdicts examined"
 }
