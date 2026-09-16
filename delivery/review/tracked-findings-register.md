@@ -574,11 +574,34 @@ own failure message is a claim the assertion does not support: it reads
 that only checks a key exists. A reader auditing by message rather than by
 condition would record it as checked.
 
-**Severity: LATENT, and the reason is second-hand.** The round reports that all
-rows resolve today and is explicit that this is a DEDUCTION from the suite gate
-reporting 815 behaviours resolving green, not a separate measurement it ran. I
-have not re-measured it either. So "no phantom rows exist today" is the weakest
-sentence in this entry and is marked as such.
+**Severity: LATENT, and now measured rather than deduced.** The round reported
+that all rows resolve today and was explicit that this was a DEDUCTION from the
+suite gate's 815-behaviour green, not a measurement. That was the weakest
+sentence in the first version of this entry, so it was replaced by a
+measurement.
+
+Written as an independent checker that resolves each referenced id to a `test()`
+title present in the sources, run at `claude/m4-p26-rollback`:
+
+| file | ids referenced | do NOT resolve |
+|---|---|---|
+| `test/doctor.test.ts` | 13 | **0** |
+| `test/license-gate.test.ts` | 11 | **0** |
+| `test/cutover.test.ts` | 40 | **0** |
+
+**A checker reporting zero is worthless until it has reported non-zero**, so it
+was witnessed before the result above was believed. One phantom row was planted
+in a throwaway worktree, a behaviour whose value names a title no source file
+contains, and referenced from `test/doctor.test.ts`:
+
+```
+RED  : 14 behaviour id(s) referenced, 1 DO NOT resolve to a test title
+         unresolved: probe-planted-phantom-row -> {"test":"a test title that no source file contains..."}
+GREEN: 13 behaviour id(s) referenced, 0 DO NOT resolve to a test title
+```
+
+So the three open sites are genuinely latent: the weak guard would not catch a
+phantom row, and there is no phantom row for it to miss today.
 
 **Why it is not merely a test defect.** `test/behaviors.json` is one of the
 append-only registries binding convention 5 names, and the whole point of
