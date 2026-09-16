@@ -90,3 +90,49 @@ the tests say.
 - The actual complexity of the patterns involved. Nobody has shown that they are
   well-behaved; the isolation runs show only that they finish inside 250ms on an
   idle machine, which is the same weak evidence the budget itself provides.
+
+## Recurrence, 2026-09-16: I did it again, with a number
+
+The entry above was written after my own fan-out reddened a gate. That did not
+stop it happening a second time, eight days later, which is the shape tuition
+T-005 and T-006 both record: a rule that depends on remembering does not survive
+a busy session.
+
+Measured. Eleven clean-room reviewers were dispatched at 02:11 across eight
+workflows: dual rounds for M4-P2, M4-P10 and M4-P16, single rounds for M4-P1,
+M4-P13, M4-P20, M4-P23 and M4-P27. Load before dispatch was 10.08 on four CPUs.
+Eight minutes later:
+
+```
+$ cat /proc/loadavg
+45.96 29.43 20.98 55/739 11671
+```
+
+**45.96 is inside the 46 to 57 band this document already names as the band that
+reddens `coverage`.** Every one of those eleven reviewers is instructed to
+re-run the suite and the gates itself, which is the right instruction, and each
+one is doing it on a machine that eleven reviewers have loaded.
+
+So a red reported by any of them is ambiguous at the moment it is written, and
+the ambiguity is mine rather than theirs.
+
+## What I did about it, which is not what I should have done
+
+I did not reduce the concurrency, because stopping a workflow mid-review
+destroys work in progress and the reviewers were already several minutes in.
+Instead I started a one-line-per-minute load log at 02:19 so that any red a
+reviewer reports can be CORRELATED with the load at that minute, rather than
+argued about afterwards from memory.
+
+That is a mitigation and not a fix. **The fix is to treat dispatch concurrency
+as a variable of the test environment, in the same class as the interpreter, the
+build state, the invocation and whether the tree is a git checkout.** This
+repository now has five such axes and four of them were found the same way:
+two honest agents reported different numbers for one head and somebody refused
+to average them.
+
+The operational rule, stated so the next dispatch can follow it mechanically:
+read `/proc/loadavg` BEFORE dispatching a wave, and if the wave will put the
+one-minute figure above roughly 40 on this four-CPU box, either stage it or
+instruct every agent in it to record the load alongside every timing-sensitive
+result it reports. The second is cheaper and loses nothing.
