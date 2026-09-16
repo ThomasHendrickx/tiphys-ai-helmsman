@@ -1434,3 +1434,72 @@ test("the owner restore request refuses to write to a path that is not a regular
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * CLASS: a malformed retirement inventory is REFUSED with a reason, never
+ * thrown out of the reader and never read.
+ *
+ * FOUND BY FIX ROUND 2, AND IT IS THE ROUND'S OWN MECHANISM. The fix round's
+ * not-covered statement said "a malformed inventory is refused by its own code
+ * path and that path is unwitnessed". Measuring that sentence instead of
+ * trusting it found it false for one member: `JSON.parse("null")` succeeds and
+ * returns null, and `(parsed as { rows?: unknown }).rows` then threw
+ * `TypeError: Cannot read properties of null (reading 'rows')` out of a
+ * function whose entire interface is read / absent / refused. A reader that
+ * throws carries no reason, so the caller cannot say what was wrong with the
+ * file. That is a verdict arm narrower than the sentence describing it, which
+ * is the family this round exists for.
+ *
+ * MEMBER A is the null document: the type is not established before a property
+ * is read off it. MEMBER B is a `rows` value that is present and not a list,
+ * which is a different line and a different failure (a silent read of a
+ * non-array rather than a throw). The two mutations touch different text, so
+ * red-witness rule (g) does not collapse them.
+ */
+test("a malformed retirement inventory is refused with a reason rather than thrown", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-inventory-"));
+  try {
+    const cases: Array<[string, string]> = [
+      ["null.json", "null"],
+      ["number.json", "7"],
+      ["string.json", '"R-1"'],
+      ["array.json", "[]"],
+      ["no-rows.json", '{"note":"nothing here"}'],
+      ["rows-object.json", '{"rows":{"a":1}}'],
+      ["rows-string.json", '{"rows":"R-1"}'],
+      ["not-json.json", "{ this is not json"],
+    ];
+    for (const [name, body] of cases) {
+      const path = join(root, name);
+      writeFileSync(path, body);
+      let outcome: ReturnType<typeof cutover.readRetirementInventory>;
+      try {
+        outcome = cutover.readRetirementInventory(path);
+      } catch (error) {
+        assert.fail(
+          `${name}: readRetirementInventory threw instead of refusing: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      assert.equal(outcome.kind, "refused", `${name} must be refused`);
+      assert.ok(
+        outcome.kind === "refused" && outcome.reason.length > 0,
+        `${name}: a refusal must carry a reason naming what was wrong`,
+      );
+    }
+
+    /* Control: a well-formed inventory still reads, so the refusals above are
+       the guard and not the reader being broken. */
+    const good = join(root, "good.json");
+    writeFileSync(good, '{"rows":[{"id":"R-1","disposition":"KEEP"}]}');
+    const read = cutover.readRetirementInventory(good);
+    assert.equal(read.kind, "read");
+    assert.equal(read.kind === "read" ? read.rows.length : -1, 1);
+
+    /* Control: an absent file is `absent`, which is not a refusal. */
+    assert.equal(cutover.readRetirementInventory(join(root, "gone.json")).kind, "absent");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

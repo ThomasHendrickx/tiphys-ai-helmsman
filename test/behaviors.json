@@ -810,5 +810,6 @@
   "cutover-restore-removes-post-freeze-additions-and-verifies": "restoring a retirement root removes what was added after the freeze and verifies the root against the pre-freeze sha before reporting success",
   "cutover-port-verdict-refuses-an-unreadable-row-or-a-killed-witness": "a retirement row whose disposition is outside the closed vocabulary, or which is not an object, is unported, and a negative witness killed by a signal is not a red witness",
   "cutover-restore-request-refuses-a-present-non-list": "the owner restore request is refused, naming the field, when a captured list is present and non-empty but is not a list",
-  "cutover-restore-request-out-refuses-a-non-regular-path": "the owner restore request refuses to write its output to a path that is not a regular file"
+  "cutover-restore-request-out-refuses-a-non-regular-path": "the owner restore request refuses to write its output to a path that is not a regular file",
+  "cutover-inventory-refuses-the-malformed": "a malformed retirement inventory is refused with a reason naming what was wrong, and never throws out of the reader"
 }

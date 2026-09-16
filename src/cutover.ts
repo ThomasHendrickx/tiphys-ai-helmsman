@@ -1270,6 +1270,19 @@ export function readRetirementInventory(path: string): InventoryRead {
   } catch (error) {
     return { kind: "refused", reason: `${path} is not valid JSON: ${String(error)}` };
   }
+  /* THE TYPE IS ESTABLISHED BEFORE A PROPERTY IS READ OFF IT, and this line is
+     why. `JSON.parse("null")` succeeds and returns null, so the cast-and-read
+     that used to stand here threw a TypeError out of a function whose whole
+     interface is a three-way refusal. A read function that throws has no
+     refusal REASON, so the caller cannot report what was wrong with the file,
+     and the crash is indistinguishable from a defect in the reader. The
+     sibling readers both test the type first (validateCutoverDocument at
+     src/cutover.ts:154 and generateRestoreRequest at src/cutover.ts:1025);
+     this one did not, and the not-covered statement's claim that a malformed
+     inventory is refused was false for exactly that member. */
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { kind: "refused", reason: `${path} is not a JSON object` };
+  }
   const rows = (parsed as { rows?: unknown }).rows;
   if (!Array.isArray(rows)) {
     return { kind: "refused", reason: `${path} has no rows array` };
