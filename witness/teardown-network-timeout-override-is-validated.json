@@ -1,0 +1,31 @@
+{
+  "id": "teardown-network-timeout-override-is-validated",
+  "behavior": "teardown-network-timeout-override-is-validated",
+  "tests": [
+    "a malformed network-timeout override is ignored rather than honoured"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  if (!Number.isInteger(parsed) || parsed <= 0) {\n    return NETWORK_TIMEOUT_MS;\n  }\n  return parsed;",
+      "replace": "  return parsed;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "export const NETWORK_TIMEOUT_MS = 20_000;",
+      "replace": "export const NETWORK_TIMEOUT_MS = 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git ls-remote --symref <remote> HEAD, against a TCP listener that accepts and never speaks",
+    "captures": [
+      "witness/captures/m4-p19-git-ls-remote-silent-listener.txt"
+    ],
+    "provenance": "The mutated file src/pool.ts spawns git, so SPAWN_GREP matches and rule (f) binds. The capture is what makes both members DANGEROUS rather than merely wrong, and it is cited for that reason: it records that git waits forever when nothing answers, so a fallback that does not fire (member 0, where Number(\"\") is 0 and spawnSync reads a timeout of 0 as NO TIMEOUT) and a shipped bound of 0 (member 1, the same unbounded state reached without touching the validation at all) both restore exactly the wait the capture shows. The two members are structurally different: one attacks the VALIDATION, the other the VALUE it falls back to, and an implementation could defend either alone."
+  }
+}

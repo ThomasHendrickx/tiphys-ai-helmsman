@@ -1,0 +1,29 @@
+{
+  "id": "pool-network-call-classification",
+  "behavior": "pool-network-calls-are-classified",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "every socket-opening git call is classified, and the ref probe carries its bound"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  const advertised = runGit(\n    project,\n    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n    networkTimeoutMs(),\n  );",
+      "replace": "  const advertised = runGit(\n    project,\n    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n  );"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "function networkTimeoutMs(): number {\n  return resolveNetworkTimeoutMs(process.env[\"TIPHYS_GIT_NETWORK_TIMEOUT_MS\"]);\n}",
+      "replace": "function networkTimeoutMs(): number {\n  return NETWORK_TIMEOUT_MS;\n}"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git, as `git ls-remote --symref <remote> HEAD` against a TCP listener that accepts and never speaks",
+    "captures": ["witness/captures/m4-p19-git-ls-remote-silent-listener.txt"],
+    "provenance": "Rule (f) binds because src/pool.ts matches the spawn grep, and the obligation is met rather than waved at. The named test asserts over SOURCE TEXT, which is the right altitude for a CLASSIFICATION; the premise underneath it is a claim about another program, that git does not give up on a stalled peer by itself, and that premise is this capture, taken 2026-09-16 on git 2.43.0 at two different waits (5s and 20s, exit 124 both times, empty output both times) so a reader can see the second is not a longer version of a timeout that had already fired. The named test reads the capture and requires both waits to still be recorded before concluding anything. The two members are structurally different. The first takes the BOUND OFF the one call a reporting path must never reach unbounded, which is finding F-1 restored. The second leaves the bound in place and makes it UNSHORTENABLE, which is quieter and is the reason it is here: a bound no test can vary is a bound no behavioural witness can drive without waiting out twenty seconds, so in practice none gets written and the guard goes unwatched. An implementation could defend either alone."
+  }
+}
