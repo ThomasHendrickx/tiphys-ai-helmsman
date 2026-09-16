@@ -1,10 +1,12 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -1024,6 +1026,9 @@ test("a rollback preserves document keys it does not own, top level and per reco
  */
 test("publishing the cutover state replaces the destination rather than writing through it", () => {
   const root = mkdtempSync(join(tmpdir(), "tiphys-atomic-test-"));
+  /* Declared out here so the finally can release it whether or not an assertion
+     throws; see the comment at the open below for why it is held at all. */
+  let holdOriginalInode: number | undefined;
   try {
     const decoy = join(root, "decoy.json");
     writeFileSync(decoy, "DECOY, MUST NOT BE WRITTEN THROUGH\n");
@@ -1031,6 +1036,20 @@ test("publishing the cutover state replaces the destination rather than writing 
     const destination = join(root, "cutover.json");
     writeFileSync(destination, "{}\n");
     const inodeBefore = statSync(destination).ino;
+    /* HOLD A DESCRIPTOR ON THE ORIGINAL ACROSS THE DELETE, OR THE INODE
+       ASSERTION BELOW IS A CLAIM ABOUT THE ALLOCATOR AND NOT ABOUT THE CODE.
+       `rmSync` drops the last link and frees the inode, after which the number
+       is the filesystem's to hand out again; a correct replace that happens to
+       receive it back then fails the test. That is not hypothetical: it
+       reddened CI on pull request #160, a phase touching none of this, with
+       actual and expected both 9182995, while the SAME commit on the SAME
+       runner passed the identical suite minutes earlier. A POSIX inode is not
+       freed while any descriptor still refers to it, so holding one makes the
+       number un-recyclable and the assertion sound. Measured in-container, 200
+       trials per arm: reused 200/200 without a held descriptor and 0/200 with
+       one. Recorded in full at
+       delivery/tuition/T-035-an-assertion-on-an-inode-number-depends-on-the-allocator.md. */
+    holdOriginalInode = openSync(destination, "r");
     rmSync(destination);
     symlinkSync(decoy, destination);
 
@@ -1062,6 +1081,13 @@ test("publishing the cutover state replaces the destination rather than writing 
       "no temporary file may be left beside the destination",
     );
   } finally {
+    /* In the finally, not after the assertions: it still runs only once every
+       assertion above has, which is what keeps `inodeBefore` from naming
+       something else by then, AND it runs when one of them throws, so a
+       failing run does not also leak a descriptor. */
+    if (holdOriginalInode !== undefined) {
+      closeSync(holdOriginalInode);
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });

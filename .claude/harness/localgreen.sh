@@ -44,4 +44,28 @@ npm test >/tmp/claude-0/$L.test.log 2>&1; echo "npm test exit=$?"
 grep -E '^# (tests|pass|fail|skipped|cancelled)' /tmp/claude-0/$L.test.log
 echo "-- authored bytes --"
 node scripts/check-authored-bytes.mjs >/tmp/claude-0/$L.bytes.log 2>&1; echo "authored-bytes exit=$?"
+
+# THE EXIT TESTS, AND THEY ARE HERE BECAUSE CI FOUND SOMETHING THIS SCRIPT COULD
+# NOT. DR-0031: if CI tells you something you did not already know locally, that
+# is a defect in the LOCAL PROCEDURE, not a normal outcome. Pull request #160 was
+# green on every step this script ran and red on `scripts/m1-exit-test.sh --mode
+# local`, which runs the suite again inside its own harness and is therefore a
+# second, independent sample of any nondeterministic test. Running it here is
+# what would have caught that before the pull request existed.
+#
+# The M1 exit test in FULL mode is genuinely CI-only (it needs a usable `gh`).
+# Local mode is the form that runs here, and it is the form the workflow runs on
+# a pull request too.
+BASE="${TP_BASE:-origin/main}"
+PHASE_ARG=$(printf '%s' "$(git rev-parse --abbrev-ref HEAD)" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')
+echo "-- m2 exit test (pr bundle) --"
+rm -rf "/tmp/claude-0/$L-m2ev"
+scripts/m2-exit-test.sh --no-build --bundle pr \
+  --base "$(git rev-parse "$BASE")" --head "$(git rev-parse HEAD)" --phase "$PHASE_ARG" \
+  "/tmp/claude-0/$L-m2ev" >/tmp/claude-0/$L.m2.log 2>&1; echo "m2-exit-test exit=$?"
+tail -3 /tmp/claude-0/$L.m2.log
+echo "-- m1 exit test (local mode) --"
+rm -rf "/tmp/claude-0/$L-m1ev"
+scripts/m1-exit-test.sh --mode local "/tmp/claude-0/$L-m1ev" >/tmp/claude-0/$L.m1.log 2>&1; echo "m1-exit-test exit=$?"
+tail -3 /tmp/claude-0/$L.m1.log
 echo "== $L DONE =="
