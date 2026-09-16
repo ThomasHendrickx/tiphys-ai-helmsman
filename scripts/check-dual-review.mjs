@@ -22,6 +22,8 @@
  * decorrelated reviews that both REFUSED the merge passed green. The two counts
  * are printed SEPARATELY, because deregistering either one is its own Kind B
  * witness and a reader must be able to tell which guard was absent.
+ *
+ * BY ID, AND NOT THROUGH `runChecks`, is the older half of the same decision.
  * `runChecks` would
  * run every check registered for `verdict`, including the three cross-document
  * COMPLETENESS checks M3-P7 ships, which resolve `plan.yaml` and

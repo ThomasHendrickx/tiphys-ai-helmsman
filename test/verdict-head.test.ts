@@ -193,8 +193,9 @@ const gitAvailable = (() => {
  * wrong after the first fix round: the parent of the tip would then be this
  * phase's own earlier commit, which already carries the field, and the witness
  * would quietly become a comparison of the new rule against itself. Walking
- * the commits that touched the file and taking the newest one lacking the
- * field is right whatever the branch's shape becomes.
+ * every ancestor newest-first and taking the first whose TREE lacks the field
+ * is right whatever the branch's shape becomes. The next comment down says why
+ * "every ancestor" and not "every ancestor that touched the file".
  */
 function preHeadCommit(): string | undefined {
   if (!gitAvailable) {
