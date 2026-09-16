@@ -3554,7 +3554,7 @@ function treeDeclaresReviewFamilies(contextDirectory: string): boolean {
  * working tree.
  *
  * WHY THE COMMITTED BLOB IS THE ONLY ONE THAT COUNTS. This is the anti-widening
- * rule the scope auditor and `loadDeclaration` (src/gates/release.ts:812) both
+ * rule the scope auditor and `loadDeclaration` (src/gates/release.ts:817) both
  * already apply, one condition along: a phase must not be able to switch off,
  * inside its own working tree, the condition that would otherwise have refused
  * its merge. A declaration read from disk is one an implementer can add,

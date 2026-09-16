@@ -311,7 +311,7 @@ export function evaluate(directory) {
   lines.sort();
 
   /* M4-P11, AND THIS BLOCK IS A RE-MEASUREMENT RATHER THAN A PRECAUTION.
-     delivery/verification/m4-prototype-probes.md:122 flagged one claim it had
+     delivery/verification/m4-prototype-probes.md:123 flagged one claim it had
      NOT run: that a VACUOUS third status looked constructible, because the
      never-green-by-omission rewrite in `makeGateResult` fires only for
      `status === "green"`. Re-measured here, and the reading was right on both
@@ -531,7 +531,7 @@ function main(argv) {
      eleven lines, and a bundle that printed "every applicable gate is green"
      and exited 0 with the new status present, because the aggregation is `if`
      chains and not an exhaustive switch
-     (delivery/verification/m4-prototype-probes.md:104). A word the aggregate
+     (delivery/verification/m4-prototype-probes.md:109). A word the aggregate
      silently counts as green is the exact thing DR-0038 forbids. `not-applicable`
      is already neither green nor red, already has an exit code, and is already
      excluded from the green bucket by every arm of `decideAggregate`. What was
