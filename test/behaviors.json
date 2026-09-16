@@ -808,5 +808,8 @@
   "witness-rule-f-binds-an-added-member": "a member this phase ADDED that touches a spawning changed file still owes a capture",
   "single-family-regime-read-from-the-commit-not-the-worktree": "an UNCOMMITTED delivery-mode does not switch off the decorrelation requirement",
   "single-family-regime-authority-read-from-the-commit": "an UNCOMMITTED merge-authority does not switch off the decorrelation requirement",
-  "witness-rule-f-binds-an-edited-member": "a member this phase EDITED that touches a spawning changed file still owes a capture"
+  "witness-rule-f-binds-an-edited-member": "a member this phase EDITED that touches a spawning changed file still owes a capture",
+  "single-family-regime-presence-read-from-the-commit": "a charter.yaml that exists only in the working tree does not switch off the decorrelation requirement",
+  "single-family-pair-corpus-lists-a-nested-context": "a committed correlated pair is red when the context directory is NOT the repository root",
+  "single-family-unreadable-corpus-is-refused-not-empty": "a committed corpus that could not be READ is refused, never reported as an empty corpus"
 }

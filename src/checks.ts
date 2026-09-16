@@ -2995,6 +2995,22 @@ export function describeVerdictCorpusSource(source: VerdictCorpusSource): string
 }
 
 /**
+ * How to name the source ONE context document was looked for in.
+ *
+ * FIX ROUND 2, DV-001. The regime report line used to say "no charter.yaml"
+ * about a directory with a `charter.yaml` sitting in it, because the probe had
+ * moved to the commit and the sentence had not. A record that names a document
+ * and not the SOURCE it was looked for in is unfalsifiable by the person
+ * reading it, which is the same SC-011 property `describeVerdictCorpusSource`
+ * exists for one scope out.
+ */
+export function describeContextDocumentSource(source: VerdictCorpusSource): string {
+  return source.kind === "commit"
+    ? `in commit ${source.refSha}, resolved from ${source.ref}`
+    : `in the WORKING TREE, because this context has no resolvable git ref: ${source.reason}`;
+}
+
+/**
  * The verdict documents a PAIR decision is made over: `delivery/review/`.
  *
  * TWO ARMS, AND WHICH ONE RAN IS REPORTED RATHER THAN INFERRED.
@@ -3037,16 +3053,11 @@ export function loadCommittedVerdicts(
     return loadVerdictsFromWorktree(contextDirectory, source.reason);
   }
   const refSha = source.refSha;
-  const listed = listCommittedDirectory(contextDirectory, refSha, REVIEW_DIRECTORY);
+  const listed = listCommittedTree(contextDirectory, refSha, REVIEW_DIRECTORY, false);
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
-  return readCommittedVerdicts(
-    contextDirectory,
-    refSha,
-    listed.names.map((name) => `${REVIEW_DIRECTORY}/${name}`),
-    source,
-  );
+  return readCommittedVerdicts(contextDirectory, refSha, listed.paths, source);
 }
 
 /**
@@ -3074,38 +3085,58 @@ function loadPaperworkVerdicts(
     refSha,
     scope: `every verdict document under ${PAPERWORK_ROOT}/`,
   };
-  /* `-r` HERE AND NOT ON THE PAIR CORPUS. The pair's directory is flat by
-     convention and `readdirSync` never recursed it, so recursing would have
+  /* `recursive` HERE AND NOT ON THE PAIR CORPUS. The pair's directory is flat
+     by convention and `readdirSync` never recursed it, so recursing would have
      been a silent behaviour change on the arm that already worked. The
      paperwork root is a tree of phase directories and the whole point of this
-     corpus is that placement must not hide a verdict from it. */
-  const listed = gitIn(
-    ["ls-tree", "-r", "-z", "--name-only", refSha, "--", `./${PAPERWORK_ROOT}/`],
-    contextDirectory,
-  );
+     corpus is that placement must not hide a verdict from it. THE LISTING
+     ITSELF IS THE SAME FUNCTION the pair corpus uses (FIX ROUND 2, DV-002):
+     two listing idioms maintained side by side is what let one of them be
+     wrong in a nested context while the other was right. */
+  const listed = listCommittedTree(contextDirectory, refSha, PAPERWORK_ROOT, true);
   if (!listed.ok) {
-    /* An ABSENT paperwork root is an empty corpus, not a failure: a project
-       may keep no `delivery/` at all. It is distinguished from a failure by
-       asking git whether the path is there, rather than by reading a listing
-       error as an absence, which is the shape that turns "could not look" into
-       "looked and found nothing". */
-    const present = gitIn(["cat-file", "-t", `${refSha}:./${PAPERWORK_ROOT}`], contextDirectory);
-    if (!present.ok) {
-      return { ok: true, verdicts: [], source };
-    }
     return {
       ok: false,
       reason:
-        `${PAPERWORK_ROOT}/ exists in ${refSha} and its verdict documents could not be enumerated, so the ` +
+        `the verdict documents under ${PAPERWORK_ROOT}/ in ${refSha} could not be enumerated, so the ` +
         `record that would refute a single-family declaration could not be established: ${listed.reason}`,
     };
   }
-  const names = listed.stdout.split("\0").filter((name) => name !== "");
-  return readCommittedVerdicts(contextDirectory, refSha, names, source);
+  return readCommittedVerdicts(contextDirectory, refSha, listed.paths, source);
 }
 
 /**
- * List one directory's direct entries out of a commit.
+ * List one committed directory, as paths relative to the CONTEXT DIRECTORY.
+ *
+ * ONE LISTING IDIOM FOR BOTH CORPORA (FIX ROUND 2, DV-002), AND THE PATHSPEC
+ * FORM IS THE LOAD-BEARING HALF. Fix round 1 replaced one `readdirSync` with
+ * TWO different git idioms: the falsifiers' corpus listed
+ * `<sha> -- ./<dir>/` and the pair corpus listed the tree-ish `<sha>:./<dir>`.
+ * Those are not two spellings of one question. `git ls-tree` applies the
+ * CURRENT DIRECTORY as an implicit pathspec, so a tree-ish listing run from a
+ * context directory that is a SUBDIRECTORY of its repository is filtered
+ * against a prefix the named tree's own entries do not carry, and it returns
+ * NOTHING with exit 0. Measured, one commit, cwd = a context directory nested
+ * one level inside its repository, `delivery/review/` holding two committed
+ * verdicts:
+ *
+ *   git cat-file -t $S:./delivery/review              -> tree, exit 0
+ *   git ls-tree -z --name-only $S:./delivery/review   -> EMPTY, exit 0
+ *   git ls-tree -z --name-only $S -- ./delivery/review/
+ *                                                     -> both names, exit 0
+ *
+ * An empty listing is then indistinguishable from an absent directory, so
+ * "could not enumerate" became "there are none", the pair corpus came back
+ * empty, and a committed pair sharing one `produced-by` reported
+ * NOT-APPLICABLE on a conditional gate instead of red. The kernel's own
+ * repository could not see it, because the registry command runs the script
+ * with `.` at the repository root; every consumer whose tiphys context is not
+ * its repository root does see it.
+ *
+ * The pathspec form's output is relative to the current directory, which is
+ * the context directory, which is what `readCommittedVerdicts` then hands to
+ * `git show ${refSha}:./${path}`. The listing and the read therefore resolve
+ * against the SAME base, which is the property that broke.
  *
  * ABSENT, REGULAR AND UNLISTABLE ARE THREE ANSWERS, exactly as `classifyEntry`
  * gives three on the worktree arm. `git cat-file -t` is what separates them:
@@ -3114,14 +3145,35 @@ function loadPaperworkVerdicts(
  * directory", and a listing that fails for any other reason has not reached a
  * verdict and must not report one (M2-C-3).
  */
-function listCommittedDirectory(
+function listCommittedTree(
   contextDirectory: string,
   refSha: string,
   directory: string,
-): { ok: true; names: string[] } | { ok: false; reason: string } {
+  recursive: boolean,
+): { ok: true; paths: string[] } | { ok: false; reason: string } {
   const typed = gitIn(["cat-file", "-t", `${refSha}:./${directory}`], contextDirectory);
   if (!typed.ok) {
-    return { ok: true, names: [] };
+    /* ABSENT, OR COULD NOT LOOK, AND THEY ARE NOT THE SAME ANSWER. Until this
+       round a `cat-file -t` that failed for ANY reason returned an empty
+       corpus, so an object database that could not be read reported the same
+       thing as a project that keeps no `delivery/` at all, which is the
+       "could not look" reported as "looked and found nothing" shape the
+       sibling loader's comment already named. Absence is established by a
+       SECOND probe that does not mention the path: if the commit object
+       itself is readable, the only thing the first probe can have been
+       reporting is that the path is not in it. This is the same fail-closed
+       rule `readCommittedVerdicts` twenty lines down already applies to a
+       blob it was told about and cannot read. */
+    const commitReadable = gitIn(["cat-file", "-t", refSha], contextDirectory);
+    if (!commitReadable.ok) {
+      return {
+        ok: false,
+        reason:
+          `${refSha} could not be read in ${contextDirectory}, so whether ${directory}/ is committed there ` +
+          `was not established and an empty corpus must not be reported: ${commitReadable.reason}`,
+      };
+    }
+    return { ok: true, paths: [] };
   }
   const type = typed.stdout.trim();
   if (type !== "tree") {
@@ -3132,7 +3184,15 @@ function listCommittedDirectory(
     };
   }
   const listed = gitIn(
-    ["ls-tree", "-z", "--name-only", `${refSha}:./${directory}`],
+    [
+      "ls-tree",
+      ...(recursive ? ["-r"] : []),
+      "-z",
+      "--name-only",
+      refSha,
+      "--",
+      `./${directory}/`,
+    ],
     contextDirectory,
   );
   if (!listed.ok) {
@@ -3141,7 +3201,7 @@ function listCommittedDirectory(
       reason: `${refSha}:./${directory} could not be listed: ${listed.reason}`,
     };
   }
-  return { ok: true, names: listed.stdout.split("\0").filter((name) => name !== "") };
+  return { ok: true, paths: listed.stdout.split("\0").filter((name) => name !== "") };
 }
 
 /**
@@ -3760,18 +3820,30 @@ function establishDelegatedRegime(
   phase: string,
   source: VerdictCorpusSource,
 ): RegimeOutcome {
-  const charterPresent = contextDocumentPresentAt(contextDirectory, "charter.yaml", source);
+  const charterPresent = contextDocumentPresentAt(contextDirectory, CHARTER_DOCUMENT, source);
   if (!charterPresent) {
+    /* THE SENTENCE NAMES THE SOURCE, AND THE CLAIM ABOUT THE MERGE GATE NAMES
+       THE READER BOTH SIDES SHARE (FIX ROUND 2, DV-001). Fix round 1 moved
+       this PRESENCE probe to the commit and left the merge gate's refusal on
+       disk, so a `charter.yaml` written into a working tree and committed
+       nowhere passed the gate's refusal, reached this arm, and was reported as
+       "no charter.yaml" while the file sat in the directory the same line
+       names. The gate now refuses through `missingRegimeDocument` below,
+       which is this same probe, so the second half of this sentence is a
+       property of one shared function rather than a claim about another
+       program that has to be maintained by hand. */
     return {
       kind: "report",
       lines: [
         `REPORT ${checkId} ${contextDirectory} declares no delivery mode ` +
-          `(no charter.yaml), so the verdicts for phase ${phase} were NOT evaluated against a ` +
-          `merge-authority regime; scripts/check-dual-review.mjs refuses such a directory outright`,
+          `(no ${CHARTER_DOCUMENT} ${describeContextDocumentSource(source)}), so the verdicts for phase ` +
+          `${phase} were NOT evaluated against a merge-authority regime; the merge gate ` +
+          `scripts/check-dual-review.mjs refuses such a directory outright, through the same presence ` +
+          `reader and therefore against the same source`,
       ],
     };
   }
-  const charter = readContextDocumentAt(contextDirectory, "charter.yaml", source);
+  const charter = readContextDocumentAt(contextDirectory, CHARTER_DOCUMENT, source);
   if (!charter.ok) {
     return {
       kind: "violation",
@@ -3867,6 +3939,57 @@ export const REVIEW_FAMILIES_FIELD = "review-families";
 
 /** The document that carries it. */
 export const CHARTER_DOCUMENT = "charter.yaml";
+
+/**
+ * The documents that say WHICH merge-authority regime is in force.
+ *
+ * MOVED HERE FROM `scripts/check-dual-review.mjs` (FIX ROUND 2, DV-001). The
+ * script held its own copy of this list AND its own presence probe, and the
+ * probe read the WORKING TREE while `establishDelegatedRegime` read the
+ * COMMIT. Two probes of one fact against two sources is the mechanism this
+ * phase has now paid for twice: each answered correctly about its own source,
+ * so nothing ever reported a disagreement, and an uncommitted `charter.yaml`
+ * took the gate from error to GREEN on a correlated committed pair.
+ */
+export const REGIME_DOCUMENTS = [CHARTER_DOCUMENT, MODES_DOCUMENT];
+
+/**
+ * The first regime document that is NOT present at the source a decision over
+ * this context would be made from, or `undefined` when both are.
+ *
+ * WHY THE REFUSAL LIVES AT THE MERGE GATE AND THE REPORT LIVES IN THE CHECK,
+ * unchanged from M3-P9 and restated because this round moved the probe: the
+ * derived check runs on ANY verdict with ANY context, and M3-P7's verdict
+ * contexts carry a plan and a work history and no charter, so a check that
+ * reddened on an absent charter reddened eight of that phase's tests. The
+ * check therefore REPORTS, and `scripts/check-dual-review.mjs`, which is the
+ * command DR-0012's grant runs through, refuses. What changed is that the
+ * refusal and the report are now ONE probe with two callers, so they cannot
+ * answer about different sources.
+ *
+ * THE SOURCE IS A PARAMETER, not resolved here, so a caller that has already
+ * resolved one (the gate script resolves it when it loads the corpus) refuses
+ * against the SAME commit it read the verdicts from rather than a second
+ * `rev-parse` that could land elsewhere.
+ */
+export function missingRegimeDocument(
+  contextDirectory: string,
+  source: VerdictCorpusSource = resolveCorpusSource(contextDirectory),
+): { document: string; source: VerdictCorpusSource; reason: string } | undefined {
+  for (const document of REGIME_DOCUMENTS) {
+    if (!contextDocumentPresentAt(contextDirectory, document, source)) {
+      return {
+        document,
+        source,
+        reason:
+          `${join(contextDirectory, document)} does not exist ${describeContextDocumentSource(source)}, so ` +
+          `the declared mode's merge-authority is unknown and no decorrelation verdict can be reached; a ` +
+          `merge check that cannot determine the regime reports error, never green`,
+      };
+    }
+  }
+  return undefined;
+}
 
 /**
  * Where a declaration was read from, so a claim nobody can refute is at least

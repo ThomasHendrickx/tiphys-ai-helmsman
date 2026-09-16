@@ -68,13 +68,14 @@ const checksModule = await import(
   pathToFileURL(join(repoRoot, "src", "checks.ts")).href
 );
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
-const { refuseOpenForWrite, classifyEntry } = taskModule;
+const { refuseOpenForWrite } = taskModule;
 const {
   registeredChecks,
   readReviewFamilies,
   reviewFamiliesProvenanceLine,
   loadCommittedVerdicts,
   describeVerdictCorpusSource,
+  missingRegimeDocument,
   REVIEW_FAMILIES_FIELD,
   CHARTER_DOCUMENT,
 } = checksModule;
@@ -195,35 +196,39 @@ export function committedVerdictPaths(directory) {
  * re-implemented the loop in the test would be asserting about a copy.
  */
 /**
- * The documents that say WHICH merge-authority regime is in force, and which
- * this caller therefore cannot proceed without.
+ * THIS IS WHERE THE FAIL-CLOSED TEETH LIVE, and it is a deliberate placement
+ * rather than the original design. The derived check treats an ABSENT charter
+ * as "this context declares no delivery mode" and reports it, because it runs
+ * on any verdict with any context and a verdict fixture directory is not a
+ * project workspace. THIS caller is different: it is the command DR-0012's
+ * grant runs through, and a merge check that cannot determine the regime must
+ * never report green. So the refusal is here, where the merge decision is
+ * made, and not in a check that has to be usable somewhere else.
  *
- * THIS IS WHERE THE FAIL-CLOSED TEETH LIVE, and it is a deliberate move rather
- * than the original design. The derived check treats an ABSENT charter as
- * "this context declares no delivery mode" and reports it, because it runs on
- * any verdict with any context and a verdict fixture directory is not a project
- * workspace. THIS caller is different: it is the command DR-0012's grant runs
- * through, and a merge check that cannot determine the regime must never report
- * green. So the refusal is here, where the merge decision is made, and not in a
- * check that has to be usable somewhere else.
+ * THE LIST AND THE PROBE ARE NO LONGER THIS FILE'S (FIX ROUND 2, DV-001).
+ * Until this round `REGIME_DOCUMENTS` was a second copy of the list and
+ * `classifyEntry` was a second probe of the fact, and that probe read the
+ * WORKING TREE while `establishDelegatedRegime` read the COMMIT. Both answered
+ * correctly about their own source, so the disagreement was never reported: a
+ * `charter.yaml` written into a working tree and committed nowhere passed this
+ * refusal, reached a check that found no charter in the commit, and was
+ * reported GREEN on a committed pair sharing one `produced-by`. Measured, one
+ * context, one variable changed (the head this script is run from): red exit 1
+ * before the round that introduced it, green exit 0 after. So the list and the
+ * probe now live once, in `src/checks.ts`, beside the check that consumes the
+ * answer, and this file calls them.
+ *
+ * ORDERED AFTER THE DECLARATION READING, DELIBERATELY. Both are `error` and a
+ * context with nothing committed satisfies both, so the order decides only
+ * which reason a reader is given. DR-0038's "an exception read from an
+ * uncommitted file is error, never permission" is the more specific of the
+ * two, and it is the one that names what the operator actually did.
+ *
+ * THE SOURCE IS THE ONE THE CORPUS WAS READ FROM, passed rather than
+ * re-resolved, so this refusal cannot be about a different commit than the
+ * verdicts it is refusing to judge.
  */
-const REGIME_DOCUMENTS = ["charter.yaml", "assurance-modes.yaml"];
-
 export function evaluate(directory) {
-  for (const document of REGIME_DOCUMENTS) {
-    if (classifyEntry(join(directory, document)).kind === "absent") {
-      return {
-        status: "error",
-        units: 0,
-        checksRun: 0,
-        lines: [
-          `${join(directory, document)} does not exist, so the declared mode's merge-authority ` +
-            `is unknown and no decorrelation verdict can be reached; a merge check that cannot ` +
-            `determine the regime reports error, never green`,
-        ],
-      };
-    }
-  }
   const found = committedVerdictPaths(directory);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
@@ -238,6 +243,10 @@ export function evaluate(directory) {
   const familyReading = readReviewFamilies(directory);
   if (familyReading.kind === "error") {
     return { status: "error", units: 0, lines: [familyReading.reason], checksRun: 0 };
+  }
+  const missingRegime = missingRegimeDocument(directory, found.source);
+  if (missingRegime !== undefined) {
+    return { status: "error", units: 0, checksRun: 0, lines: [missingRegime.reason] };
   }
   const singleFamily =
     familyReading.kind === "declared" && familyReading.families.length === 1

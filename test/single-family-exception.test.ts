@@ -44,12 +44,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -123,6 +124,20 @@ const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).
   verdictPairApproves: { id: string };
   REVIEW_FAMILIES_FIELD: string;
   CHARTER_DOCUMENT: string;
+  /* FIX ROUND 2. The corpus loader is called DIRECTLY here, with an explicit
+     source, because the member-three arm needs a commit the object database
+     cannot produce and there is no way to stage that through the filesystem. */
+  loadCommittedVerdicts: (
+    contextDirectory: string,
+    source?: {
+      kind: "commit";
+      ref: string;
+      refSha: string;
+      scope: string;
+    },
+  ) =>
+    | { ok: true; verdicts: readonly unknown[]; source: unknown }
+    | { ok: false; reason: string };
 };
 
 const runModule = (await import(new URL("../src/gates/run.ts", import.meta.url).href)) as {
@@ -245,6 +260,27 @@ interface StageOptions {
    * the OTHER of the two documents it reads.
    */
   authorityAfterCommit?: string;
+  /**
+   * PUT THE CONTEXT INSIDE A REPOSITORY INSTEAD OF MAKING IT ONE (FIX ROUND 2,
+   * DV-002). Every other arm here stages a context that IS its own repository
+   * root, because `git init` runs in the context directory, so no arm in this
+   * file could tell a root context from a nested one. That is the `test/`
+   * exclusion fix round 1 named in its derivation, and DV-002 is the defect it
+   * predicted: `git ls-tree` applies the current directory as an implicit
+   * pathspec, so the pair corpus listed NOTHING from a nested context and a
+   * committed correlated pair reported not-applicable instead of red. With
+   * this set the repository is the PARENT and the context is `proj/` inside
+   * it, which is the shape of every consumer whose tiphys context is not its
+   * repository root.
+   */
+  nest?: boolean;
+  /**
+   * Written to disk and held out of the commit: the regime documents named
+   * here are moved aside before `git add` and moved back after it, so they
+   * exist in the WORKING TREE and in no commit. The ADDITION direction of the
+   * regime-presence class (FIX ROUND 2, DV-001).
+   */
+  regimeDocumentsUncommitted?: string[];
 }
 
 /**
@@ -254,7 +290,12 @@ interface StageOptions {
  * declaration is read from the object database and never from the tree.
  */
 function stage(options: StageOptions): string {
-  const dir = scratch();
+  /* THE REPOSITORY AND THE CONTEXT ARE TWO DIRECTORIES, and on every arm but
+     the nested one they are the same directory. `repo` is where `git init`
+     runs and where every git command below is issued; `dir` is what the check
+     is pointed at. */
+  const repo = scratch();
+  const dir = options.nest === true ? join(repo, "proj") : repo;
   mkdirSync(join(dir, "delivery", "review"), { recursive: true });
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
   let charter = readFileSync(join(repoRoot, "templates", "charter.example.yaml"), "utf8");
@@ -287,14 +328,24 @@ function stage(options: StageOptions): string {
   for (const verdict of options.verdicts) {
     place(verdict);
   }
-  git(dir, ["init", "-q", "."]);
+  git(repo, ["init", "-q", "."]);
+  /* HELD OUT OF THE COMMIT AND PUT BACK AFTER IT, and held OUTSIDE the
+     repository while it is held, so the hold itself commits nothing. */
+  const held = options.regimeDocumentsUncommitted ?? [];
+  const holdDir = scratch();
+  for (const document of held) {
+    renameSync(join(dir, document), join(holdDir, document));
+  }
   if (options.commit !== false) {
-    git(dir, ["add", "-A"]);
-    git(dir, ["commit", "-q", "-m", "stage"]);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "stage"]);
   } else {
     /* A commit must exist for HEAD to resolve; the CHARTER is what is left
        uncommitted, which is the state criterion 9 is about. */
-    git(dir, ["commit", "-q", "--allow-empty", "-m", "empty"]);
+    git(repo, ["commit", "-q", "--allow-empty", "-m", "empty"]);
+  }
+  for (const document of held) {
+    renameSync(join(holdDir, document), join(dir, document));
   }
   /* EVERYTHING BELOW THIS LINE HAPPENS AFTER THE COMMIT, which is the whole
      point of it: these are working-tree states that no commit records. */
@@ -1224,6 +1275,9 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "single-family-corpus-source-named-on-both-arms",
     "single-family-regime-read-from-the-commit-not-the-worktree",
     "single-family-regime-authority-read-from-the-commit",
+    "single-family-regime-presence-read-from-the-commit",
+    "single-family-pair-corpus-lists-a-nested-context",
+    "single-family-unreadable-corpus-is-refused-not-empty",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),
@@ -1246,4 +1300,161 @@ test("a declaration of two genuinely different families is not this exception, a
     run.stdout.includes("are not decorrelated on produced-by"),
     `the produced-by comparison did not run:\n${run.stdout}`,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* FIX ROUND 2: one mechanism, three members that fail in three places */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM, STATED ONCE FOR ALL THREE ARMS BELOW. A lookup and the
+ * decision it feeds address DIFFERENT TREES, and because the lookup answers
+ * successfully about its own tree the disagreement is never reported: the
+ * wrong answer arrives well-formed. Two coordinates can differ, and a third
+ * failure mode collapses the pair:
+ *
+ *   WHICH SNAPSHOT  the commit, or the working tree              (DV-001)
+ *   WHICH ROOT      the context directory, or the repository     (DV-002)
+ *   WHETHER IT LOOKED AT ALL, reported as "there is nothing"     (the probe)
+ *
+ * They fail in three different places and with three different outputs, which
+ * is what makes them members of a class rather than one defect written down
+ * three times. Measured at the head that introduced them,
+ * `2f3b651`, one context each, the shipped
+ * `scripts/check-dual-review.mjs`:
+ *
+ *   SNAPSHOT  green, exit 0, "no decorrelation violation and the pair approves"
+ *   ROOT      not-applicable, exit 20, "no verdict document is (corpus: ...)"
+ *
+ * In both the context held a COMMITTED pair of verdicts for one phase and one
+ * head, both carrying `produced-by: family-a`, which is DR-0012 condition 1
+ * violated in the record itself.
+ */
+
+test("a charter.yaml that exists only in the working tree does not switch off the decorrelation requirement", () => {
+  /* MEMBER ONE, THE SNAPSHOT AXIS (DV-001). Fix round 1 moved the regime's
+     PRESENCE probe to the commit and left the merge gate's refusal on disk,
+     so an actor who can write a file and has committed nothing turned a red
+     into a GREEN by ADDING an uncommitted charter to a repository that had
+     none. The gate record then printed
+     "scripts/check-dual-review.mjs refuses such a directory outright",
+     which was false of the run that printed it.
+
+     THE DIRECTION MATTERS AND IS WHY THIS EXISTS. Fix round 1 measured the
+     DELETION direction, found it fail-closed, and closed the class on it. One
+     direction of a two-directional mechanism is not the class. */
+  const dir = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+    regimeDocumentsUncommitted: ["charter.yaml"],
+  });
+  /* THE DANGEROUS STATE IS ASSERTED, not assumed: the charter is on disk and
+     in no commit, and the pair that violates DR-0012 condition 1 IS
+     committed. Without these the arm could pass by staging nothing. */
+  assert.match(readFileSync(join(dir, "charter.yaml"), "utf8"), /^delivery-mode: full$/m);
+  const tracked = spawnSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.doesNotMatch(tracked.stdout, /(^|\/)charter\.yaml$/m, tracked.stdout);
+  assert.match(tracked.stdout, /delivery\/review\/shared-family-hazard\.yaml/, tracked.stdout);
+  const run = runScript(dir);
+  assert.notEqual(run.record.status, "green", run.stdout);
+  assert.equal(run.record.status, "error", run.stdout);
+  assert.equal(run.exit, 21, run.stdout);
+  /* THE RECORD NAMES THE SOURCE IT LOOKED IN. "does not exist" about a file
+     that is sitting in the directory is the sentence this round is repairing,
+     so the absence claim has to carry the tree it is an absence from. */
+  assert.match(run.record.detail, /charter\.yaml does not exist in commit [0-9a-f]{40}/, run.record.detail);
+});
+
+test("a committed correlated pair is red when the context directory is NOT the repository root", () => {
+  /* MEMBER TWO, THE ROOT AXIS (DV-002). `git ls-tree` applies the current
+     directory as an implicit pathspec, so the pair corpus's tree-ish listing
+     came back EMPTY with exit 0 from a nested context, an empty listing is
+     indistinguishable from an absent directory, and a conditional gate
+     reported NOT-APPLICABLE over two committed verdicts that contradict each
+     other.
+
+     THIS ARM CANNOT BE STAGED BY `stage()` AS FIX ROUND 1 LEFT IT, which is
+     why no test in the phase could see the defect: `git init` ran in the
+     context directory on every arm, so every context was its own repository
+     root. `nest` is what makes a root context and a nested one a genuine pair
+     rather than two runs of the same shape.
+
+     THE FAILURE IS AT A DIFFERENT PLACE FROM MEMBER ONE and prints a
+     different sentence: not-applicable with "there is no pair of reviews to
+     compare", against green with "the pair approves". */
+  const nested = stage({
+    nest: true,
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+  });
+  assert.ok(nested.endsWith(`${sep}proj`), nested);
+  const top = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: nested,
+    encoding: "utf8",
+  });
+  assert.equal(top.status, 0, top.stderr);
+  assert.notEqual(top.stdout.trim(), nested, "the context is its own repository root after all");
+  const run = runScript(nested);
+  assert.notEqual(run.record.status, "not-applicable", run.stdout);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.match(run.stdout, /are not decorrelated on produced-by/, run.stdout);
+  /* THE CONTROL ARM, run in the same test so the two cannot drift apart: the
+     SAME verdicts in a context that IS its repository root were red before
+     this round and must stay red, or the fix would have been a swap of which
+     shape works. */
+  const root = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+  });
+  const control = runScript(root);
+  assert.equal(control.record.status, "red", control.stdout);
+  assert.equal(control.exit, 1, control.stdout);
+});
+
+test("a committed corpus that could not be READ is refused, never reported as an empty corpus", () => {
+  /* MEMBER THREE, AND IT IS THE PAIR OF COORDINATES COLLAPSING. `git cat-file
+     -t <sha>:./<dir>` fails identically for a path that is not in the tree
+     and for a commit the object database cannot produce, and the listing
+     helper returned an EMPTY corpus for both. "Could not look" reported as
+     "looked and found nothing" is the same fail-open as members one and two
+     and it arrives at the same not-applicable, from a third place: the probe
+     rather than either coordinate.
+
+     STAGED BY NAMING A COMMIT THAT IS NOT IN THIS REPOSITORY, which is the
+     only way to make the object database fail without making the working tree
+     unreadable. `loadCommittedVerdicts` takes its source as a parameter, so
+     the arm is reachable without touching the filesystem.
+
+     FAIL-CLOSED IS WHAT ITS SIBLING TWELVE LINES DOWN ALREADY DOES:
+     `readCommittedVerdicts` refuses when a blob it was told about cannot be
+     read. The tree-level probe did not, and one half of a loader being
+     fail-closed is how the other half stays unnoticed. */
+  const dir = stage({
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+    ],
+  });
+  const real = checksModule.loadCommittedVerdicts(dir);
+  assert.equal(real.ok, true, JSON.stringify(real));
+  assert.equal(real.ok === true ? real.verdicts.length : -1, 2, JSON.stringify(real));
+  /* A well-formed sha that no object in this repository carries. */
+  const absent = "0123456789abcdef0123456789abcdef01234567";
+  const unreadable = checksModule.loadCommittedVerdicts(dir, {
+    kind: "commit",
+    ref: "HEAD",
+    refSha: absent,
+    scope: join("delivery", "review"),
+  });
+  assert.equal(unreadable.ok, false, JSON.stringify(unreadable));
+  const reason = unreadable.ok === false ? unreadable.reason : "";
+  assert.match(reason, new RegExp(`${absent} could not be read`), reason);
 });
