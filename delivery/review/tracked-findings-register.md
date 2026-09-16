@@ -501,3 +501,47 @@ count is a one-line correction. The substitution claim needs the reviewer's
 comparison reproduced, or the fixtures re-derived from their sources with the
 declaration regenerated. Treating the second as settled because the first is
 would be the error this entry exists to prevent.
+
+## Two reviewer recommendations REFUSED, with a fixture rather than an argument
+
+M4-P27 fix round 1, 2026-09-16. Recorded here because a refused recommendation
+is the case most likely to be quietly reversed by a later round that does not
+know it was refused, and because both reviews agreed on the recommendation.
+
+**The recommendation, from both reviews:** require `run.status === 0` before
+parsing in `armDrain` and `armRetirement`, so an arm cannot read a stale line
+out of a failed command.
+
+**Why it was refused.** M4-P25's criterion 1 makes `tiphys cutover status` exit
+0 only when all five switches read `kernel` AND drain is clean. At cutover
+ENTRY, which is the only moment this checker runs, the switches read `current`
+BY DEFINITION, so the command exits nonzero by design. Requiring exit 0 would
+make the arm report `unreachable` at exactly the moment it is asked.
+
+**Measured, not argued.** A fixture imitating that state was run against the
+shipped checker and against a copy carrying exactly the recommended change:
+
+| build | reports |
+|---|---|
+| shipped | `ARM a drain satisfied` |
+| the recommended variant | `ARM a drain unreachable -- cutover status: exited 1` |
+
+Drain IS clean in that fixture, so the recommended change produces the wrong
+answer on the phase's own subject.
+
+**What was done instead**, and its declared cost: a shape rule, where a line
+carrying an arm's vocabulary that is not a row of the shape its contract fixes
+makes the arm unreachable, plus exit-code coherence in the one direction each
+contract makes decisive. The cost is stated rather than hidden: if M4-P25's
+informational branch-count line ever contains the word "drain", arm a reports
+unreachable until the shapes are reconciled. That is fail-closed, and it is
+written in two places in the code.
+
+**The second refusal is narrower.** Review finding 3 wanted ANY unrecognised
+line treated as unrecognised; the round scoped it to lines carrying the arm's
+vocabulary, because the wider form reddens on decoration.
+
+**Status: OPEN, and deliberately.** A refusal is not a resolution. It leaves the
+reviewers' concern (an arm reading a stale line from a failed command) addressed
+by a different mechanism than they asked for, and the next reviewer of this
+phase should test THAT mechanism rather than re-raising the original.
