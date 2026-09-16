@@ -205,6 +205,12 @@ interface StagedVerdict {
   file: string;
   /** Rewrite `produced-by` after copying. Staging, never a fixture edit. */
   producedBy?: string;
+  /** Rewrite `phase` after copying, so a document joins no pair under review. */
+  phase?: string;
+  /** Write it here instead of `delivery/review/`, as a repository-relative dir. */
+  directory?: string;
+  /** Write it under a different name than the fixture it was copied from. */
+  as?: string;
 }
 
 interface StageOptions {
@@ -216,6 +222,17 @@ interface StageOptions {
   real?: boolean;
   /** Default true. False leaves the declaration uncommitted. */
   commit?: boolean;
+  /**
+   * Written AFTER the commit, so they exist in the working tree and in no
+   * commit. This is the dangerous state CR-M4P11-001 is about, staged from the
+   * ADDITION side: an actor who can write a file but has committed nothing.
+   */
+  uncommittedVerdicts?: StagedVerdict[];
+  /**
+   * Deleted from the working tree AFTER the commit, by repository-relative
+   * path. The same dangerous state from the DELETION side.
+   */
+  deleteAfterCommit?: string[];
 }
 
 /**
@@ -237,16 +254,26 @@ function stage(options: StageOptions): string {
     )}`;
   }
   writeFileSync(join(dir, "charter.yaml"), charter);
-  for (const verdict of options.verdicts) {
+  const place = (verdict: StagedVerdict): void => {
     const from = join(options.real === true ? realVerdictDir : fixturesDir, verdict.file);
-    const to = join(dir, "delivery", "review", verdict.file);
+    const directory = join(dir, verdict.directory ?? join("delivery", "review"));
+    mkdirSync(directory, { recursive: true });
+    const to = join(directory, verdict.as ?? verdict.file);
     let body = readFileSync(from, "utf8");
     if (verdict.producedBy !== undefined) {
       const rewritten = body.replace(/^produced-by: .*$/m, `produced-by: ${verdict.producedBy}`);
       assert.notEqual(rewritten, body, `${verdict.file} has no single-line produced-by to rewrite`);
       body = rewritten;
     }
+    if (verdict.phase !== undefined) {
+      const rewritten = body.replace(/^phase: .*$/m, `phase: ${verdict.phase}`);
+      assert.notEqual(rewritten, body, `${verdict.file} has no single-line phase to rewrite`);
+      body = rewritten;
+    }
     writeFileSync(to, body);
+  };
+  for (const verdict of options.verdicts) {
+    place(verdict);
   }
   git(dir, ["init", "-q", "."]);
   if (options.commit !== false) {
@@ -256,6 +283,14 @@ function stage(options: StageOptions): string {
     /* A commit must exist for HEAD to resolve; the CHARTER is what is left
        uncommitted, which is the state criterion 9 is about. */
     git(dir, ["commit", "-q", "--allow-empty", "-m", "empty"]);
+  }
+  /* EVERYTHING BELOW THIS LINE HAPPENS AFTER THE COMMIT, which is the whole
+     point of it: these are working-tree states that no commit records. */
+  for (const verdict of options.uncommittedVerdicts ?? []) {
+    place(verdict);
+  }
+  for (const relative of options.deleteAfterCommit ?? []) {
+    rmSync(join(dir, relative));
   }
   return dir;
 }
@@ -914,6 +949,147 @@ test("a declaration listing one family twice once canonicalised is error rather 
   );
 });
 
+/* ------------------------------------------------------------------ */
+/* FIX ROUND 1: the corpus is the COMMITTED record, not the working    */
+/* tree, and not one directory of it (CR-M4P11-001, CR-M4P11-002).     */
+/*                                                                     */
+/* THE MECHANISM, stated once here because three tests share it: a     */
+/* decision assembled out of TWO SOURCES OF TRUTH can be made to       */
+/* disagree by whoever controls the source that is not committed. The  */
+/* declaration was read from the git object database and the corpus    */
+/* that refutes it was read from disk, so the exception was bought by  */
+/* an UNCOMMITTED change.                                              */
+/*                                                                     */
+/* THREE MEMBERS, STRUCTURALLY DIFFERENT, because one witness is not a */
+/* class. They differ in DIRECTION (a deletion versus an addition), in */
+/* WHICH GUARD they defeat (falsifier 1 versus DR-0012 condition 2),   */
+/* and in whether anything was uncommitted at all (member 3 commits    */
+/* everything and defeats the corpus by PLACEMENT). Measured against   */
+/* the pre-fix code at `122472b`: member 1 gave not-applicable exit    */
+/* 20, member 2 gave GREEN exit 0, member 3 gave not-applicable exit   */
+/* 20. All three are red below.                                        */
+/* ------------------------------------------------------------------ */
+
+test("an UNCOMMITTED deletion of a contradicting verdict does not buy the exception", () => {
+  const dir = stage({
+    declare: ["family-a"],
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+      {
+        file: "decorrelated-criteria.yaml",
+        as: "b-other-phase.yaml",
+        producedBy: "family-b",
+        phase: "M2-P1",
+      },
+    ],
+    deleteAfterCommit: ["delivery/review/b-other-phase.yaml"],
+  });
+  /* THE CONTROL ARM, ASSERTED RATHER THAN ASSUMED: the file really is gone
+     from the working tree and really is still in the commit. Without this the
+     test could pass because the deletion never happened. */
+  assert.throws(() => readFileSync(join(dir, "delivery", "review", "b-other-phase.yaml")));
+  const tracked = spawnSync("git", ["ls-tree", "-r", "--name-only", "HEAD"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.match(tracked.stdout, /delivery\/review\/b-other-phase\.yaml/);
+
+  const run = runScript(dir);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.ok(
+    run.stdout.includes("distinct produced-by value(s) (family-a, family-b)"),
+    `falsifier 1 did not fire over the committed corpus:\n${run.stdout}`,
+  );
+});
+
+test("an UNCOMMITTED second review does not satisfy the pair a delegated grant requires", () => {
+  const dir = stage({
+    verdicts: [{ file: "decorrelated-criteria.yaml" }],
+    uncommittedVerdicts: [{ file: "decorrelated-hazard.yaml" }],
+  });
+  /* The two documents ARE properly decorrelated, which is what makes this the
+     dangerous state rather than a trivially failing one: on the pre-fix code
+     this pair reported GREEN and authorised a merge on one committed review. */
+  const tracked = spawnSync("git", ["ls-tree", "-r", "--name-only", "HEAD"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.doesNotMatch(tracked.stdout, /decorrelated-hazard\.yaml/);
+
+  const run = runScript(dir);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.ok(
+    run.stdout.includes("DR-0012 condition 2 is a property of the PAIR"),
+    `the pair check did not refuse a corpus of one:\n${run.stdout}`,
+  );
+});
+
+test("a COMMITTED second-family verdict outside delivery/review still contradicts the declaration", () => {
+  const dir = stage({
+    declare: ["family-a"],
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml" },
+      {
+        file: "decorrelated-hazard.yaml",
+        directory: join("delivery", "evidence", "past"),
+        phase: "M2-P1",
+      },
+    ],
+  });
+  const run = runScript(dir);
+  assert.equal(run.record.status, "red", run.stdout);
+  assert.equal(run.exit, 1, run.stdout);
+  assert.ok(
+    run.stdout.includes("committed under delivery/ carry 2 distinct produced-by value(s)"),
+    `the falsifier corpus did not reach delivery/evidence/:\n${run.stdout}`,
+  );
+});
+
+test("a corpus-scoped refusal names the source that corpus was read from, on both arms", () => {
+  /* SC-011 APPLIED TO THE CORPUS. The pre-fix code printed "all N committed
+     verdict(s) carry it" about a set it had read off disk, which is a sentence
+     that is false of the commit it names in the same line.
+
+     BOTH ARMS, because a renderer that names only the arm the tests happen to
+     take is the shape that let the false sentence ship in the first place.
+     The claim is scoped to sentences that talk ABOUT THE CORPUS: a refusal
+     that compares two documents to each other ("not decorrelated on
+     produced-by") names no set and is not in scope here. */
+  const committed = stage({
+    declare: ["family-a"],
+    verdicts: [
+      { file: "decorrelated-criteria.yaml" },
+      { file: "shared-family-hazard.yaml", producedBy: "family-b" },
+    ],
+  });
+  const fromCommit = runScript(committed);
+  assert.match(
+    fromCommit.stdout,
+    /\(corpus: [^)]*read from commit [0-9a-f]{40}, resolved from HEAD\)/,
+    fromCommit.stdout,
+  );
+  assert.doesNotMatch(fromCommit.stdout, /read from the WORKING TREE/);
+
+  /* The worktree arm, staged by removing the git directory entirely rather
+     than by mocking anything: this is the only state in which the shipped
+     loader falls back, so it is the only honest way to exercise the sentence
+     it prints there. ONE verdict, because the corpus-scoped sentence on this
+     arm is the pair refusal, and a pair refusal needs a corpus of one. */
+  const noGit = stage({ verdicts: [{ file: "decorrelated-criteria.yaml" }] });
+  rmSync(join(noGit, ".git"), { recursive: true, force: true });
+  const fromTree = runScript(noGit);
+  assert.match(
+    fromTree.stdout,
+    /\(corpus: delivery\/review read from the WORKING TREE because/,
+    fromTree.stdout,
+  );
+  assert.doesNotMatch(fromTree.stdout, /read from commit/);
+});
+
 test("this phase's new behaviors are registered in test/behaviors.json", () => {
   /* BY NAME, NEVER BY COUNT (binding convention 5). `test/behaviors.json` is
      append-only and union-resolved, so a count here would be a claim about
@@ -936,6 +1112,10 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "single-family-exception-refused-when-the-falsifiers-did-not-run",
     "single-family-duplicate-declared-family-is-error",
     "single-family-two-declared-families-is-not-the-exception",
+    "single-family-corpus-read-from-the-commit-not-the-worktree",
+    "single-family-pair-corpus-read-from-the-commit-not-the-worktree",
+    "single-family-falsifier-corpus-spans-the-paperwork-root",
+    "single-family-corpus-source-named-on-both-arms",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),

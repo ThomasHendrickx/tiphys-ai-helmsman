@@ -799,5 +799,9 @@
   "single-family-exception-refused-below-two-reviews": "a declared exception reported over fewer than two verdicts is error, because DR-0038 relaxes which families produced the reviews and not how many reviews there are",
   "single-family-exception-refused-when-the-falsifiers-did-not-run": "a declared exception reported while the check carrying the two falsifiers did not run is error rather than not-applicable",
   "single-family-duplicate-declared-family-is-error": "a review-families list naming one family twice once canonicalised is error, because collapsing it would turn a two-entry document into a single-family declaration",
-  "single-family-two-declared-families-is-not-the-exception": "a review-families declaration listing two genuinely different families leaves the cross-family requirement applying unchanged"
+  "single-family-two-declared-families-is-not-the-exception": "a review-families declaration listing two genuinely different families leaves the cross-family requirement applying unchanged",
+  "single-family-corpus-read-from-the-commit-not-the-worktree": "an UNCOMMITTED deletion of a contradicting verdict does not buy the exception",
+  "single-family-pair-corpus-read-from-the-commit-not-the-worktree": "an UNCOMMITTED second review does not satisfy the pair a delegated grant requires",
+  "single-family-falsifier-corpus-spans-the-paperwork-root": "a COMMITTED second-family verdict outside delivery/review still contradicts the declaration",
+  "single-family-corpus-source-named-on-both-arms": "a corpus-scoped refusal names the source that corpus was read from, on both arms"
 }

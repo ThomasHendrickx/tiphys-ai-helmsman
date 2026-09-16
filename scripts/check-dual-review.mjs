@@ -51,7 +51,7 @@
  * which is M2-C-3 and SC-011 applied to M3's own check.
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -64,19 +64,17 @@ const resultModule = await import(
 const taskModule = await import(
   pathToFileURL(join(repoRoot, "src", "task.ts")).href
 );
-const validateModule = await import(
-  pathToFileURL(join(repoRoot, "src", "validate.ts")).href
-);
 const checksModule = await import(
   pathToFileURL(join(repoRoot, "src", "checks.ts")).href
 );
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
 const { refuseOpenForWrite, classifyEntry } = taskModule;
-const { decodeDocument, readOperatorPath } = validateModule;
 const {
   registeredChecks,
   readReviewFamilies,
   reviewFamiliesProvenanceLine,
+  loadCommittedVerdicts,
+  describeVerdictCorpusSource,
   REVIEW_FAMILIES_FIELD,
   CHARTER_DOCUMENT,
 } = checksModule;
@@ -115,9 +113,6 @@ const SINGLE_FAMILY_PRECONDITION = "single-family-declared";
    `additionalProperties: false` on that object and is not on this phase's
    files-to-touch list, so that is recorded as residue rather than done here. */
 const DECLARED_EVIDENCE = "declared: true";
-
-/** Where a project's committed review verdicts live (DR-0012 condition 1). */
-const REVIEW_DIRECTORY = join("delivery", "review");
 
 function usage() {
   return (
@@ -163,60 +158,33 @@ function parseArgs(argv) {
 }
 
 /**
- * Every verdict document committed under `<dir>/delivery/review/`.
+ * Every verdict document in the directory's committed record.
  *
- * Deliberately the same selection rule the derived check uses: a `.yaml`,
- * `.yml` or `.json` file that decodes and carries `kind: verdict`. That
- * directory also holds prose reviews in this repository, so anything else is
- * skipped rather than reported.
+ * THIS NO LONGER RE-IMPLEMENTS THE SELECTION RULE, AND THAT IS THE POINT
+ * (M4-P11 fix round 1, CR-M4P11-001). Until this round there were TWO
+ * enumerations of the corpus, one here and one in `loadCommittedVerdicts`, and
+ * the comment above this function said they were "deliberately the same
+ * selection rule". Deliberate sameness maintained by hand is exactly how the
+ * two halves of one decision drift, and both copies shared the same defect:
+ * they read the WORKING TREE, out of one hard-coded directory, while the
+ * declaration they are checked against is read from the git object database.
+ *
+ * So the second copy is gone. This calls the shipped loader, which decides
+ * commit-or-worktree ONCE, reads every candidate blob of the whole subtree out
+ * of the commit when there is one, and returns the source it used, so this
+ * script prints WHICH set it examined instead of naming a directory it may not
+ * have read.
  */
 export function committedVerdictPaths(directory) {
-  const reviewDirectory = join(directory, REVIEW_DIRECTORY);
-  const entry = classifyEntry(reviewDirectory);
-  if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, paths: [] };
+  const loaded = loadCommittedVerdicts(directory);
+  if (!loaded.ok) {
+    return { ok: false, reason: loaded.reason };
   }
-  if (entry.kind === "unexaminable") {
-    return { ok: false, reason: entry.reason };
-  }
-  let names;
-  try {
-    names = readdirSync(reviewDirectory);
-  } catch (error) {
-    if (entry.kind === "regular") {
-      return {
-        ok: false,
-        reason: `${reviewDirectory} is a regular file, not a directory`,
-      };
-    }
-    return { ok: false, reason: `${reviewDirectory} could not be listed: ${String(error)}` };
-  }
-  const paths = [];
-  for (const name of names.sort()) {
-    if (!/\.(ya?ml|json)$/i.test(name)) {
-      continue;
-    }
-    const path = join(reviewDirectory, name);
-    const read = readOperatorPath(path);
-    if (!read.ok) {
-      continue;
-    }
-    const decoded = decodeDocument(read.body, path);
-    if (!decoded.ok) {
-      continue;
-    }
-    const value = decoded.value;
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      value["kind"] !== "verdict"
-    ) {
-      continue;
-    }
-    paths.push({ path, instance: value });
-  }
-  return { ok: true, paths };
+  return {
+    ok: true,
+    paths: loaded.verdicts.map((entry) => ({ path: entry.path, instance: entry.record })),
+    source: loaded.source,
+  };
 }
 
 /**
@@ -338,9 +306,10 @@ export function evaluate(directory) {
       return {
         status: "error",
         units: found.paths.length,
+        source: found.source,
         lines: [
           `${CHARTER_DOCUMENT} declares a single review family and only ${String(found.paths.length)} verdict ` +
-            `document(s) were read under ${join(directory, REVIEW_DIRECTORY)}; DR-0038 relaxes WHICH FAMILIES ` +
+            `document(s) were read ${describeVerdictCorpusSource(found.source)} ; DR-0038 relaxes WHICH FAMILIES ` +
             `produced the two reviews and never HOW MANY reviews there are, so an exception reported over fewer ` +
             `than two reviews would assert that a pair was examined when it was not`,
           ...lines,
@@ -353,6 +322,7 @@ export function evaluate(directory) {
       return {
         status: "error",
         units: found.paths.length,
+        source: found.source,
         lines: [
           `${CHARTER_DOCUMENT} declares a single review family and ${String(selected.length)} registered check(s) ` +
             `named ${CHECK_ID} ran, so neither of DR-0038's two falsifiers was evaluated; the falsifiers live inside ` +
@@ -370,6 +340,10 @@ export function evaluate(directory) {
     status: violations.size > 0 ? "red" : "green",
     units: found.paths.length,
     lines,
+    /* THE SOURCE TRAVELS WITH THE RESULT (M4-P11 fix round 1). `main`'s
+       not-applicable arm has to name the set it found empty, and the only
+       honest name for that set is the one the loader actually used. */
+    source: found.source,
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
        the derived check and each produces a violation, so a single-family
@@ -474,7 +448,7 @@ function main(argv) {
       return 1;
     }
     process.stdout.write(
-      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}\n`,
+      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}\n`,
     );
     return found.paths.length > 0 ? 0 : 1;
   }
@@ -497,7 +471,7 @@ function main(argv) {
       status: "not-applicable",
       units: 0,
       startedAt,
-      detail: `no verdict document exists under ${join(options.directory, REVIEW_DIRECTORY)}, so there is no pair of reviews to compare`,
+      detail: `no verdict document is ${describeVerdictCorpusSource(run.source)}, so there is no pair of reviews to compare`,
     });
   }
 
@@ -625,7 +599,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 export {
   EXIT_NOT_APPLICABLE,
-  REVIEW_DIRECTORY,
   CHECK_ID,
   PAIR_CHECK_ID,
   SINGLE_FAMILY_PRECONDITION,
