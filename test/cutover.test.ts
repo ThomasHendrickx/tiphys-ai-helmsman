@@ -119,6 +119,81 @@ function hasMismatch(stdout: string): boolean {
   return /^MISMATCH /m.test(stdout);
 }
 
+/**
+ * THE GIT CONTRACT THIS MODULE PARSES, ANCHORED TO REAL CAPTURED OUTPUT.
+ *
+ * `src/cutover.ts` spawns git and reads what it prints: `git remote` to decide
+ * whether a fleet has an origin, `git status --porcelain` to decide whether a
+ * tree is dirty, and `git push` to decide whether the rolled-back state
+ * landed. Red-witness rule (f) binds every witness over that file for exactly
+ * that reason, and the assertions below are against
+ * `witness/captures/cutover-git-contracts.txt`, which holds a real run rather
+ * than a hand-written string.
+ *
+ * The test does not merely READ the capture. It reproduces each contract in a
+ * live scratch repository and requires the live result to match what was
+ * captured, so a git whose output has moved reddens here rather than silently
+ * changing what the rollback believes.
+ */
+const gitCapturePath = fileURLToPath(
+  new URL("../witness/captures/cutover-git-contracts.txt", import.meta.url),
+);
+
+test("the captured git contract this module parses is reproduced live", () => {
+  const captured = readFileSync(gitCapturePath, "utf8");
+  assert.match(captured, /git version /, "the capture must name the git it was taken with");
+
+  const root = mkdtempSync(join(tmpdir(), "tiphys-git-contract-"));
+  try {
+    mkdirSync(join(root, "retired"), { recursive: true });
+    writeFileSync(join(root, "retired", "rule.md"), "the original rule\n");
+    git(root, ["init", "-q", "-b", "main"]);
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "one"]);
+
+    /* `git remote` with nothing configured: exit 0 and EMPTY stdout. That pair
+       is what makes "no origin" decidable, and the capture records both. */
+    assert.match(captured, /## git remote, in a repository with no remote configured\nexit=0\nstdout-bytes=0/);
+    const remote = git(root, ["remote"]);
+    assert.equal(remote.status, 0);
+    assert.equal(remote.stdout, "");
+
+    /* A clean tree: exit 0 and empty stdout, so emptiness is the signal. */
+    assert.match(captured, /## git status --porcelain, clean tree\nexit=0\nstdout-bytes=0/);
+    const clean = git(root, ["status", "--porcelain"]);
+    assert.equal(clean.status, 0);
+    assert.equal(clean.stdout, "");
+
+    /* A modified tracked file: the line is " M <path>", leading space and all. */
+    assert.match(captured, /\n M retired\/rule\.md\n/);
+    writeFileSync(join(root, "retired", "rule.md"), "UNCOMMITTED WORK\n");
+    const modified = git(root, ["status", "--porcelain"]);
+    assert.equal(modified.status, 0);
+    assert.equal(modified.stdout, " M retired/rule.md\n");
+
+    /* An untracked file also shows, which is why the guard counts LINES and
+       not modifications. */
+    assert.match(captured, /\n\?\? untracked\.txt\n/);
+    writeFileSync(join(root, "untracked.txt"), "x\n");
+    assert.equal(
+      git(root, ["status", "--porcelain"]).stdout,
+      " M retired/rule.md\n?? untracked.txt\n",
+    );
+
+    /* A push to a path that is not a repository FAILS, and the capture records
+       that the exit code is 128 rather than 1. `syncFleetState` tests for
+       non-zero rather than for 1, and this is why. */
+    assert.match(captured, /does not appear to be a git repository/);
+    assert.match(captured, /## git push to a path that is not a repository\n[\s\S]*?\nexit=128\n/);
+    git(root, ["remote", "add", "origin", join(root, "absent.git")]);
+    const push = git(root, ["push", "origin", "HEAD"]);
+    assert.notEqual(push.status, 0);
+    assert.match(push.stderr, /does not appear to be a git repository/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /* -------------------------------------------------------------------- */
 /* Acceptance criterion 2: the rewrite is atomic, or nothing moves       */
 /* -------------------------------------------------------------------- */
@@ -512,9 +587,19 @@ test("a fleet with no remote refuses by default and says so out loud when allowe
   }
 });
 
+/**
+ * Trigger 2 is not one command, and the refusal has to be a REFUSAL rather
+ * than a nonzero exit reached by accident.
+ *
+ * So this asserts BOTH halves: exit 1, and `cutover.json` byte-identical. A
+ * command that fell through the refusal and rolled the switches back would
+ * still exit nonzero on a fleet with no remote, which is a green nobody
+ * earned; the byte comparison is what separates the two.
+ */
 test("cutover rollback refuses freeze-point-restore as a single command", () => {
   const scratch = scratchFleet();
   try {
+    const before = readFileSync(cutover.cutoverStatePath(scratch.fleet));
     const status = commandModule.cmdCutover([
       "rollback",
       "--trigger",
@@ -523,6 +608,10 @@ test("cutover rollback refuses freeze-point-restore as a single command", () => 
       scratch.fleetRoot,
     ]);
     assert.equal(status, 1);
+    assert.ok(
+      readFileSync(cutover.cutoverStatePath(scratch.fleet)).equals(before),
+      "the refusal must not move a switch",
+    );
   } finally {
     rmSync(scratch.root, { recursive: true, force: true });
   }
@@ -708,6 +797,7 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-rehearsal-covers-the-restore-request-input",
     "cutover-rehearsal-self-check-discriminates",
     "cutover-no-remote-refuses-by-default",
+    "cutover-git-contract-reproduced-live",
     "cutover-document-carries-three-triggers",
     "cutover-document-every-step-has-command-and-observation",
     "cutover-document-names-unrehearsable-steps",

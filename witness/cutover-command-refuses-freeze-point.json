@@ -11,8 +11,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/cutover.ts",
-      "find": "  if (triggerValue === \"freeze-point-restore\") {\n    return fail(",
-      "replace": "  if (triggerValue === \"freeze-point-restore\" && false) {\n    return fail("
+      "find": "  if (triggerValue === \"freeze-point-restore\") {\n    return fail(\n      \"freeze-point-restore is not one command: run restore-files for the file half, then \" +\n        `restore-request for the authority half, which is an OWNER action because ${UNREHEARSABLE_REASON}`,\n      1,\n    );\n  }\n",
+      "replace": ""
     },
     {
       "kind": "mutation",

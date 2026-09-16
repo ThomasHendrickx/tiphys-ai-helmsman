@@ -799,5 +799,6 @@
   "cutover-document-five-switches-flip-and-verify": "the rollback document names all five switches with how each is flipped back and how the flip is verified",
   "cutover-document-pilot-as-second-subject": "the rollback document carries the pilot as a second subject with read-only steps",
   "cutover-rehearsal-self-check-discriminates": "every rehearsal arm proves its own assertion helper discriminates before reporting a verdict",
-  "cutover-no-remote-refuses-by-default": "a fleet with no origin remote refuses the rollback publish by default and prints the reason when the refusal is waived"
+  "cutover-no-remote-refuses-by-default": "a fleet with no origin remote refuses the rollback publish by default and prints the reason when the refusal is waived",
+  "cutover-git-contract-reproduced-live": "the captured output the cutover module parses is reproduced live in a scratch repository before it is relied on"
 }
