@@ -352,3 +352,36 @@ were audited, and only against the claims the agents happened to check. No sweep
 was run over `m4-review1.js` or `m4-review2.js` for the same shape; the one
 check made was that their single cited document IS reachable from a phase
 branch, which it is. Other claims in them are unexamined.
+
+### Fourth refinement: compare to `origin/<branch>`, never to the local ref
+
+Same day, one more way to get this wrong, caught by the guard only because the
+guard was run at all.
+
+An agent finished a fix round and PUSHED. My local ref for that branch still
+pointed at the pre-round commit, because nothing had fetched it into this clone.
+The guard, comparing the worktree's HEAD to the LOCAL branch ref, reported
+`MATCH`. Both were `abde402`. The truth was on `origin` at `64a4ddd`.
+
+```
+worktree HEAD : abde402
+local ref     : abde402      <- what the guard compared against: MATCH
+origin tip    : 64a4ddd      <- the real head, five commits further on
+```
+
+Writing there would have committed on top of the pre-round tree and, on a push
+that went through, reverted the entire fix round. It is the M4-P26 incident
+reached by a completely different route.
+
+Two things saved it. Re-running the comparison against `origin/<branch>` said
+STALE. And when a commit was nonetheless made on the old base, **git refused the
+push as a non-fast-forward**, which is the only guard in this whole family that
+neither I nor an agent wrote.
+
+The stale commit was discarded with `git branch -f` onto the origin ref, nothing
+was lost because it carried only review files still held elsewhere, and the
+reviews were landed from a fresh worktree at the true head.
+
+**The comparison is against `origin/<branch>`.** A local ref is a cache of what
+this clone last heard, and in a session where agents push, it is routinely
+behind. Fetch first, or compare to the remote-tracking ref, or both.
