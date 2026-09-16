@@ -420,8 +420,10 @@ test/fixtures/harness-probe/q3-transcript-model-resolution/tamper-mechanism.json
 earlier probe's demonstration stands and is not weakened: a haiku agent claiming
 GPT-7 was caught by the transcript, because a self-report costs nothing and a
 tamper takes deliberate file access. What must not be written into M4-P7 is any
-vocabulary implying attestation. An attested level needs a signer the agent's
-uid cannot reach, and nothing in this container provides one.
+vocabulary implying attestation. An attested level would need a signer that a
+process at the agent's uid cannot write to; I looked only at the transcript tree
+and its permissions and did not find one here, which is an open question rather
+than a settled absence.
 
 ### What this amendment did NOT cover
 
