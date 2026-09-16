@@ -342,6 +342,12 @@ function checkRowStructure(row, anchorsById, repo, findings) {
   if (row.status === "FALSE" && !nonEmptyString(row.correction)) {
     fail("status FALSE requires a correction field saying what this phase changed");
   }
+  /* A GAP that does not say WHAT IS MISSING is an unresolved row wearing a
+   * verdict. The whole value of the gap rows is the list they hand M4-P24 and
+   * M4-P25, so the naming is required rather than encouraged. */
+  if (row.status === "GAP" && !nonEmptyString(row.gap)) {
+    fail("status GAP requires a gap field naming the kernel destination that does not exist");
+  }
 
   if (row.disposition === "PORT") {
     if (!nonEmptyString(row.destination)) fail("PORT requires a destination");

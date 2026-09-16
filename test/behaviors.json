@@ -788,5 +788,6 @@
   "retirement-inventory-unreadable-input-exits-two": "retirement checker exits 2 rather than green on an unreadable inventory",
   "retirement-inventory-empty-derivation-exits-two": "retirement checker exits 2 rather than green when the derivation finds no rules",
   "retirement-inventory-extraction-deterministic": "retirement extraction is deterministic and covers all three roots",
-  "retirement-inventory-roots-still-present": "retirement inventory deletes nothing from the three roots in this phase"
+  "retirement-inventory-roots-still-present": "retirement inventory deletes nothing from the three roots in this phase",
+  "retirement-inventory-gap-names-what-is-missing": "retirement checker reddens on a GAP row that does not name what is missing"
 }

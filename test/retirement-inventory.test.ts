@@ -206,6 +206,18 @@ test("retirement checker reddens when a PORT row claims a status other than PORT
   assert.match(result.stdout, new RegExp(`${rows[0].id}: disposition PORT requires status PORTED`));
 });
 
+test("retirement checker reddens on a GAP row that does not name what is missing", () => {
+  const rows = realRows().filter((r) => r.status === "GAP").slice(0, 2);
+  assert.ok(rows.length === 2, "the inventory carries GAP rows");
+  delete rows[0].gap;
+  const result = check(rows, ["--no-execute"]);
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stdout,
+    new RegExp(`${rows[0].id}: status GAP requires a gap field naming the kernel destination`),
+  );
+});
+
 test("retirement checker exits 2 rather than green on an unreadable inventory", () => {
   const missing = spawnSync(
     process.execPath,
