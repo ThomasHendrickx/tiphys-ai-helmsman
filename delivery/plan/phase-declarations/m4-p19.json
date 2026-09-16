@@ -12,6 +12,7 @@
   ],
   "declaredExtras": [
     "src/commands/pool.ts",
+    "test/doctor.test.ts",
     "delivery/plan/phase-declarations/m4-p19.json",
     "delivery/work-history/m4-p19.md"
   ],
