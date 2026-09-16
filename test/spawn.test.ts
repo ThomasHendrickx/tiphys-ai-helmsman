@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -758,4 +758,403 @@ test("spawn usage errors exit 64 and a non-fleet cwd exits 1", (t) => {
   );
   assert.equal(outside.status, 1);
   assert.match(outside.stderr, /not a fleet home/);
+});
+
+/* ------------------------------------------------------------------ */
+/* M4-P2: launch is a promise, and completion is checked rather than   */
+/* believed. Every test below drives spawnTask through the             */
+/* ExecutorAdapter seam the production type already defines, because   */
+/* the CLI can only reach the one shipped adapter and the whole point  */
+/* is what the kernel does with an adapter it did not write.           */
+/* ------------------------------------------------------------------ */
+
+/** Minimal structural view of the request an adapter is handed. */
+interface TestRequest {
+  taskId: string;
+  worktree: string;
+  command: string[];
+  hookPath: string;
+  recordPath: string;
+  deadlineSeconds: number | undefined;
+  env: Record<string, string> | undefined;
+}
+
+type TestOutcome =
+  | { kind: "completed"; exitCode: number }
+  | { kind: "launch-failed"; reason: string }
+  | { kind: "incomplete"; reason: string };
+
+interface TestAdapter {
+  name: string;
+  launch(request: TestRequest): Promise<TestOutcome>;
+}
+
+type SpawnOutcome =
+  | { ok: true; value: { exitCode: number } }
+  | { ok: false; reason: string };
+
+/**
+ * Run one spawn in process against a supplied adapter. The computed-URL
+ * dynamic import is the pattern inherited warning 4 requires for reaching
+ * src/ from test/ across the project reference.
+ */
+async function spawnWithAdapter(
+  scratch: Scratch,
+  taskId: string,
+  adapter: TestAdapter,
+): Promise<SpawnOutcome> {
+  const spawnLib = (await import(new URL("../src/spawn.ts", import.meta.url).href)) as {
+    spawnTask(fleet: unknown, options: Record<string, unknown>): Promise<SpawnOutcome>;
+  };
+  const fleetLib = (await import(new URL("../src/fleet.ts", import.meta.url).href)) as {
+    loadFleet(dir: string): unknown;
+  };
+  return spawnLib.spawnTask(fleetLib.loadFleet(scratch.fleet), {
+    taskId,
+    project: scratch.clone,
+    briefFile: scratch.briefFile,
+    shape: "ship",
+    exec: "/bin/true",
+    deadlineSeconds: undefined,
+    offline: false,
+    adapter,
+  });
+}
+
+function reasonOf(result: SpawnOutcome): string {
+  assert.equal(result.ok, false, "expected a refusal and got a success");
+  return (result as { ok: false; reason: string }).reason;
+}
+
+function scrubRootOf(scratch: Scratch, taskId: string): string {
+  return join(taskDirOf(scratch, taskId), "scrub-env");
+}
+
+/**
+ * The five harness-owned redirect targets, named here rather than
+ * imported so that a test asserting they SURVIVED does not depend on the
+ * module whose behaviour is under test (src/exec/env.ts:110).
+ */
+const REDIRECT_TARGETS = [
+  "home",
+  "xdg-config",
+  "gh-config",
+  "gitconfig-global",
+  "gitconfig-system",
+];
+
+/** Invoke the generated turn-end hook the way an honest adapter must. */
+function invokeHook(request: TestRequest, exitCode: number): void {
+  const hooked = spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
+    encoding: "utf8",
+    ...(request.env === undefined ? {} : { env: request.env }),
+  });
+  assert.equal(hooked.status, 0, `the test adapter could not run the hook: ${hooked.stderr}`);
+}
+
+test(
+  "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds",
+  async (t) => {
+    // DANGEROUS STATE: an adapter's self-report of completion believed
+    // while its agent is still running. `completed` is the one arm that
+    // DELETES something, and the thing it deletes is the redirected HOME
+    // of a child that may still be alive. Before M4-P2 the arm was safe
+    // only because `launch` was synchronous and the sole adapter wrote
+    // the turn-end record itself; an async launch removes both guarantees
+    // at once, and nothing else in the kernel looks.
+    const scratch = makeScratch(t);
+
+    const fabricating: TestAdapter = {
+      name: "fabricating-test-adapter",
+      // Resolves completed on a later microtask, having invoked nothing.
+      launch: async () => ({ kind: "completed", exitCode: 0 }),
+    };
+    const refused = await spawnWithAdapter(scratch, "t-fabricated", fabricating);
+    const reason = reasonOf(refused);
+    assert.match(reason, /fabricating-test-adapter/, reason);
+    assert.match(reason, /turn-end/, reason);
+    assert.match(reason, /was never written/, reason);
+    assert.ok(
+      reason.includes(join(taskDirOf(scratch, "t-fabricated"), "turn-end")),
+      `the refusal does not name the absent turn-end path: ${reason}`,
+    );
+    // Nothing was rolled back and nothing was removed.
+    assert.ok(existsSync(worktreeOf(scratch, "t-fabricated")), "the worktree was destroyed");
+    assert.ok(existsSync(taskDirOf(scratch, "t-fabricated")));
+    assert.ok(existsSync(join(scratch.fleet, "worktrees", "t-fabricated.pool.json")));
+    const scrub = scrubRootOf(scratch, "t-fabricated");
+    assert.ok(existsSync(scrub), "the scrub root was deleted under a live child");
+    for (const target of REDIRECT_TARGETS) {
+      assert.ok(
+        existsSync(join(scrub, target)),
+        `the redirect target ${target} was deleted under a live child`,
+      );
+    }
+
+    // THE OTHER DIRECTION, and the adapter differs in exactly one thing:
+    // it invokes hookPath first, which is what the ExecutorAdapter
+    // contract has always required of it.
+    const honest: TestAdapter = {
+      name: "honest-test-adapter",
+      launch: async (request) => {
+        invokeHook(request, 0);
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const accepted = await spawnWithAdapter(scratch, "t-honest", honest);
+    assert.equal(accepted.ok, true, accepted.ok ? "" : accepted.reason);
+    assert.equal((accepted as { ok: true; value: { exitCode: number } }).value.exitCode, 0);
+    assert.equal(
+      existsSync(scrubRootOf(scratch, "t-honest")),
+      false,
+      "the scrub root survived a genuinely completed spawn",
+    );
+  },
+);
+
+test(
+  "a turn-end record that is present but does not parse is refused just as an absent one is",
+  async (t) => {
+    // THE SECOND STRUCTURALLY DIFFERENT MEMBER of the class "the kernel
+    // trusts an adapter's account of the payload". The first member is an
+    // ABSENCE; this one is a PRESENT-BUT-WRONG artifact, and a completion
+    // check written as existsSync passes it green. Two shapes here, both
+    // present: bytes that are not JSON at all, and bytes that ARE valid
+    // JSON and are not a turn-end record, which a JSON.parse-only check
+    // would also pass green.
+    const scratch = makeScratch(t);
+
+    const garbage: TestAdapter = {
+      name: "garbage-writing-test-adapter",
+      launch: async (request) => {
+        writeFileSync(join(dirname(request.recordPath), "turn-end"), "{;");
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const first = await spawnWithAdapter(scratch, "t-garbage", garbage);
+    const firstReason = reasonOf(first);
+    assert.match(firstReason, /garbage-writing-test-adapter/, firstReason);
+    assert.match(firstReason, /does not parse as JSON/, firstReason);
+    assert.ok(existsSync(worktreeOf(scratch, "t-garbage")), "the worktree was destroyed");
+    assert.ok(existsSync(scrubRootOf(scratch, "t-garbage")), "the scrub root was deleted");
+
+    const wrongShape: TestAdapter = {
+      name: "wrong-shape-test-adapter",
+      launch: async (request) => {
+        writeFileSync(
+          join(dirname(request.recordPath), "turn-end"),
+          `${JSON.stringify({ endedAt: 12, exitCode: "0" })}\n`,
+        );
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const second = await spawnWithAdapter(scratch, "t-wrongshape", wrongShape);
+    const secondReason = reasonOf(second);
+    assert.match(secondReason, /wrong-shape-test-adapter/, secondReason);
+    assert.match(secondReason, /does not parse as a turn-end record/, secondReason);
+    assert.ok(existsSync(worktreeOf(scratch, "t-wrongshape")), "the worktree was destroyed");
+    assert.ok(existsSync(scrubRootOf(scratch, "t-wrongshape")), "the scrub root was deleted");
+  },
+);
+
+test(
+  "a rejected launch promise rolls nothing back, while a returned launch-failed still rolls everything back",
+  async (t) => {
+    // DANGEROUS STATE: a rejection destroying a worktree that holds real
+    // work, which is M1-P3's V-1 defect with a new cause. The pair below
+    // is the structurally different one the plan names: a REJECTION (the
+    // adapter told us nothing, so nothing moves) against a RETURNED
+    // launch-failed (the adapter asserted the payload never started, so
+    // the rollback is authorized). Two differently-timed rejections would
+    // be the same arm asserted twice.
+    const scratch = makeScratch(t);
+
+    const rejecting: TestAdapter = {
+      name: "rejecting-test-adapter",
+      launch: async (request) => {
+        // The payload started and left work behind before the failure.
+        writeFileSync(join(request.worktree, "implementer-work.txt"), "four rounds of it\n");
+        await new Promise((resolve) => setImmediate(resolve));
+        throw new Error("the session died after the agent had been working for an hour");
+      },
+    };
+    const rejected = await spawnWithAdapter(scratch, "t-rejected", rejecting);
+    const reason = reasonOf(rejected);
+    assert.match(reason, /rejecting-test-adapter/, reason);
+    assert.match(reason, /did not report whether the payload started/, reason);
+    assert.match(reason, /nothing was rolled back/, reason);
+    assert.match(reason, /tiphys teardown --task t-rejected/, reason);
+    assert.ok(existsSync(worktreeOf(scratch, "t-rejected")), "the worktree was destroyed");
+    assert.equal(
+      readFileSync(join(worktreeOf(scratch, "t-rejected"), "implementer-work.txt"), "utf8"),
+      "four rounds of it\n",
+      "the work in the worktree was destroyed by a rollback that should not have run",
+    );
+    assert.ok(existsSync(taskDirOf(scratch, "t-rejected")));
+    assert.ok(existsSync(join(scratch.fleet, "worktrees", "t-rejected.pool.json")));
+    assert.equal(
+      git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-rejected"]).status,
+      0,
+      "the task branch was deleted by a rollback that should not have run",
+    );
+
+    // THE COUNTERPART ARM. The adapter ASSERTS the payload never started,
+    // which is the one claim that authorizes destroying the worktree.
+    const failing: TestAdapter = {
+      name: "launch-failing-test-adapter",
+      launch: async () => ({ kind: "launch-failed", reason: "the program is not on PATH" }),
+    };
+    const failed = await spawnWithAdapter(scratch, "t-launchfailed", failing);
+    const failedReason = reasonOf(failed);
+    assert.match(failedReason, /executor launch failed/, failedReason);
+    assert.match(failedReason, /the program is not on PATH/, failedReason);
+    assert.equal(
+      existsSync(worktreeOf(scratch, "t-launchfailed")),
+      false,
+      "launch-failed stopped rolling the worktree back",
+    );
+    assert.equal(existsSync(taskDirOf(scratch, "t-launchfailed")), false);
+    assert.equal(existsSync(join(scratch.fleet, "worktrees", "t-launchfailed.pool.json")), false);
+    assert.notEqual(
+      git(scratch.clone, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "refs/heads/task/t-launchfailed",
+      ]).status,
+      0,
+      "launch-failed left the task branch behind",
+    );
+  },
+);
+
+test(
+  "spawnTask returns only after a payload the adapter awaited has written its sentinel",
+  async (t) => {
+    // C-3 WITNESSED RATHER THAN ASSERTED. The adapter awaits a real child
+    // process, so the work happens on a later turn of the event loop and
+    // a call site that did not await would return before any of it. The
+    // assertion is on FILE EXISTENCE at the moment spawnTask returns and
+    // never on elapsed time, because a timing assertion is a flake and a
+    // flake in the suite gate is a binary fact CI reads as red.
+    const scratch = makeScratch(t);
+    const sentinel = join(scratch.tmp, "payload-finished");
+    assert.equal(existsSync(sentinel), false, "precondition: no sentinel yet");
+
+    const awaiting: TestAdapter = {
+      name: "awaiting-test-adapter",
+      launch: async (request) => {
+        const exitCode = await new Promise<number>((resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            ["-e", `require("node:fs").writeFileSync(${JSON.stringify(sentinel)}, "done\\n")`],
+            { stdio: "ignore" },
+          );
+          child.on("error", reject);
+          child.on("exit", (code) => {
+            resolve(code ?? 0);
+          });
+        });
+        invokeHook(request, exitCode);
+        return { kind: "completed", exitCode };
+      },
+    };
+    const result = await spawnWithAdapter(scratch, "t-sentinel", awaiting);
+    assert.ok(
+      existsSync(sentinel),
+      "spawnTask returned before the payload the adapter awaited had finished",
+    );
+    assert.equal(result.ok, true, result.ok ? "" : result.reason);
+  },
+);
+
+test(
+  "a launch outcome resolved on a later event-loop turn is read as an outcome, not as a pending promise",
+  async (t) => {
+    // The narrowest statement of the async change: the kernel AWAITS the
+    // adapter. A call site that merely called it would see a pending
+    // promise, whose `kind` is undefined, fall past both failure arms and
+    // report success with an undefined exit code. So the assertion that
+    // distinguishes the two is on the VALUE of exitCode, not on ok alone,
+    // and 7 is chosen because it is neither 0 nor undefined.
+    const scratch = makeScratch(t);
+    const deferred: TestAdapter = {
+      name: "deferred-test-adapter",
+      launch: async (request) => {
+        await new Promise((resolve) => setImmediate(resolve));
+        invokeHook(request, 7);
+        await new Promise((resolve) => setImmediate(resolve));
+        return { kind: "completed", exitCode: 7 };
+      },
+    };
+    const result = await spawnWithAdapter(scratch, "t-deferred", deferred);
+    assert.equal(result.ok, true, result.ok ? "" : result.reason);
+    const value = (result as { ok: true; value: { exitCode: number } }).value;
+    assert.equal(typeof value.exitCode, "number", "the exit code was not read from the outcome");
+    assert.equal(value.exitCode, 7);
+    // And the turn-end record the hook wrote carries the same code, so the
+    // evidence the kernel checked is the payload's own, not the report's.
+    const turnEnd = JSON.parse(
+      readFileSync(join(taskDirOf(scratch, "t-deferred"), "turn-end"), "utf8"),
+    ) as { endedAt: string; exitCode: number };
+    assert.equal(turnEnd.exitCode, 7);
+    assert.equal(Number.isNaN(Date.parse(turnEnd.endedAt)), false);
+  },
+);
+
+/**
+ * This phase's new behavior ids. They are listed here as IDS, never as
+ * descriptions, so the descriptions appear in this file exactly once: as
+ * the test titles themselves. The resolution test below depends on that.
+ */
+const M4_P2_BEHAVIORS = [
+  "spawn-async-launch-awaited",
+  "spawn-completed-without-turn-end-is-incomplete",
+  "spawn-unparseable-turn-end-is-incomplete",
+  "spawn-rejected-launch-rolls-nothing-back",
+  "spawn-returns-after-payload-sentinel",
+];
+
+test("every spawn behavior resolves by name to a test in this file", () => {
+  /*
+   * BY NAME, NEVER BY COUNT (binding convention 5, the append-only
+   * registry rule). The set of behaviors this file owns is DERIVED at run
+   * time by matching registry descriptions against the titles in this
+   * file's own source, so a later phase appending rows to the registry
+   * cannot redden this test, and no number is pinned anywhere in it.
+   */
+  const behaviors = JSON.parse(
+    readFileSync(fileURLToPath(new URL("./behaviors.json", import.meta.url)), "utf8"),
+  ) as Record<string, string>;
+  for (const id of M4_P2_BEHAVIORS) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+
+  const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const owned = Object.entries(behaviors)
+    .filter(([, description]) => source.includes(`"${description}"`))
+    .map(([id]) => id);
+  assert.ok(
+    owned.length > 0,
+    "no registry description resolves to a test title in this file, so this " +
+      "check is vacuous and would stay green however the file was renamed",
+  );
+  for (const id of M4_P2_BEHAVIORS) {
+    assert.ok(
+      owned.includes(id),
+      `behavior ${id} is registered but its description is not a test title in this file`,
+    );
+  }
+  // The spawn behaviors that predate this phase must still resolve, which is
+  // the half a rename would break silently. They are read from the registry
+  // rather than listed, for the same reason.
+  for (const id of ["spawn-launch-failure-rollback", "spawn-adapter-throw-not-classified"]) {
+    assert.ok(
+      owned.includes(id),
+      `pre-existing behavior ${id} no longer resolves to a test title in this file`,
+    );
+  }
 });

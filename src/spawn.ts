@@ -10,10 +10,13 @@ import {
   checkHoldership,
   executorRecordPath,
   metaPath,
+  readRegularFileIfPresent,
   runStep,
+  runStepAsync,
   taskDir,
   taskDirExists,
   taskDirOccupied,
+  turnEndPath,
   writeTaskMeta,
 } from "./task.ts";
 import type { GuardResult, TaskMeta, TaskShape } from "./task.ts";
@@ -105,7 +108,26 @@ export type LaunchOutcome =
  */
 export interface ExecutorAdapter {
   readonly name: string;
-  launch(request: ExecutorRequest): LaunchOutcome;
+  /**
+   * ASYNCHRONOUS since M4-P2. An agent turn is long and a subprocess is
+   * short: a window adapter or a cloud-session adapter cannot express
+   * "the turn ended" in a synchronous return, so the signature that only
+   * ever fitted the local subprocess case is the one that changes.
+   *
+   * This is NOT permission to background (constraint C-3). The kernel
+   * AWAITS this promise inside `spawnTask`, so the command still ends
+   * after the payload does; awaiting a call is not outliving it, and
+   * delivery/plan/kernel-plan-v1.md:311 already puts process ownership in
+   * the harness rather than the kernel.
+   *
+   * The three-armed outcome is unchanged and is still the whole contract:
+   * only `launch-failed` authorises rollback, because only `launch-failed`
+   * asserts that the payload never started. An adapter that cannot tell
+   * returns `incomplete` and the kernel touches nothing. What DID change
+   * is that `completed` is no longer taken on the adapter's word: see the
+   * completion precondition in `spawnTask`.
+   */
+  launch(request: ExecutorRequest): Promise<LaunchOutcome>;
 }
 
 /** The launch record (JSON per DR-0006, shape per PR-207). */
@@ -147,6 +169,13 @@ function payloadExitCode(status: number | null, signal: NodeJS.Signals | null): 
  * auto-backgrounds anything (plan constraint C-3, FM-054), so there is
  * no daemonize path here to forget to guard.
  *
+ * `async` since M4-P2, and its BODY IS UNCHANGED: every statement below
+ * is still synchronous, `spawnSync` is still what runs both children, and
+ * the promise this now returns is already settled by the time the first
+ * `await` on it runs. The keyword is there because the INTERFACE is async
+ * for the adapters that need it, not because this adapter gained a
+ * concurrency path to get wrong.
+ *
  * It runs without a shell on purpose. Under a shell a missing payload
  * binary arrives as an ordinary exit code 127, indistinguishable from a
  * payload that ran and failed, and spawn's rollback rule turns on
@@ -154,7 +183,7 @@ function payloadExitCode(status: number | null, signal: NodeJS.Signals | null): 
  */
 export const subprocessAdapter: ExecutorAdapter = {
   name: "subprocess",
-  launch(request: ExecutorRequest): LaunchOutcome {
+  async launch(request: ExecutorRequest): Promise<LaunchOutcome> {
     const launchedAt = new Date();
     const record: ExecutorRecord = {
       adapter: "subprocess",
@@ -234,6 +263,81 @@ export const subprocessAdapter: ExecutorAdapter = {
     return { kind: "completed", exitCode };
   },
 };
+
+/**
+ * THE COMPLETION PRECONDITION (M4-P2 step 5).
+ *
+ * `completed` used to be believed because the only adapter that could
+ * return it was the one three lines above, which invokes the turn-end hook
+ * itself before returning. Once `launch` is a promise that is no longer
+ * true: any adapter may resolve `completed` while its agent is still
+ * running, and `spawnTask` would then delete the scrub root out from under
+ * a LIVE child's HOME and report success.
+ *
+ * So the kernel stops taking the adapter's word and reads the artifact the
+ * payload's own exit produces. tasks/<id>/turn-end is written by the
+ * generated hook (src/hooks.ts:57) with the payload's exit code; it is the
+ * same file the watcher wakes on. A `completed` with no readable turn-end
+ * record is refused.
+ *
+ * FOUR distinct refusals, not one, and the distinction is the point. A
+ * check written as `existsSync` is green on a present-but-corrupt record,
+ * which is a guard whose condition does not test the property that matters.
+ * Absent, unreadable, unparseable and wrongly-shaped are all "this is not
+ * evidence that the payload ended", and each says which one it was.
+ *
+ * The read goes through `readRegularFileIfPresent` rather than
+ * `readFileSync` so a FIFO at the turn-end path is a refusal and not a
+ * hang: this is the same hazard CR-520 records for meta.json, one path
+ * along.
+ *
+ * WHAT THIS DOES NOT DO: it never rolls anything back and it never removes
+ * anything. A refusal here is reported with the residue enumerated, exactly
+ * like the `incomplete` arm, because the payload demonstrably ran far
+ * enough for an adapter to claim it finished.
+ */
+function turnEndEvidence(
+  fleet: Fleet,
+  taskId: string,
+): { ok: true } | { ok: false; reason: string } {
+  const path = turnEndPath(fleet, taskId);
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return { ok: false, reason: `the turn-end record ${path} was never written` };
+  }
+  if (read.kind === "refused") {
+    return {
+      ok: false,
+      reason: `the turn-end record ${path} could not be read (${read.reason})`,
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.body);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reason: `the turn-end record ${path} does not parse as JSON (${detail})`,
+    };
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return {
+      ok: false,
+      reason: `the turn-end record ${path} does not parse as a turn-end record`,
+    };
+  }
+  const candidate = parsed as { endedAt?: unknown; exitCode?: unknown };
+  if (typeof candidate.endedAt !== "string" || !Number.isInteger(candidate.exitCode)) {
+    return {
+      ok: false,
+      reason:
+        `the turn-end record ${path} does not parse as a turn-end record ` +
+        `(it needs a string endedAt and an integer exitCode)`,
+    };
+  }
+  return { ok: true };
+}
 
 /**
  * Liveness-guard seam (plan step 4). The guard itself is M1-P5 work; in
@@ -461,22 +565,39 @@ export async function spawnTask(
   }
 
   const adapter = options.adapter ?? subprocessAdapter;
-  const launched = runStep(`launching the payload through the ${adapter.name} adapter`, () =>
-    adapter.launch({
-      taskId,
-      worktree,
-      command,
-      hookPath,
-      recordPath,
-      deadlineSeconds: options.deadlineSeconds,
-      env: childEnv,
-    }),
+  // AWAITED (M4-P2 step 4), and `runStepAsync` rather than `runStep` is
+  // load-bearing rather than cosmetic. `runStep` over a promise-returning
+  // callback returns {ok: true, value: <a pending promise>} before the
+  // adapter has done anything: the launch-failed arm below would never be
+  // reached, `outcome.kind` would be undefined on every launch, and a
+  // rejection would leave the result type entirely as an unhandled
+  // rejection with no handler to roll back or refuse.
+  const launched = await runStepAsync(
+    `launching the payload through the ${adapter.name} adapter`,
+    async () =>
+      adapter.launch({
+        taskId,
+        worktree,
+        command,
+        hookPath,
+        recordPath,
+        deadlineSeconds: options.deadlineSeconds,
+        env: childEnv,
+      }),
   );
   if (!launched.ok) {
     // An adapter that THREW rather than returning an outcome cannot tell
     // us whether the payload started, and this rollback destroys a
     // worktree. Refusing to guess is the whole lesson of V-1: the state
     // is left in place and enumerated instead.
+    //
+    // Since M4-P2 this arm also covers a REJECTED promise, and it covers
+    // it for the same reason and with the same words: a rejection is an
+    // adapter failing to report, and WHEN it rejects tells us nothing,
+    // because an adapter that rejects before the payload starts and one
+    // that rejects after it dies are indistinguishable from here. An
+    // adapter that actually knows the payload never started says so, by
+    // RETURNING launch-failed, and that arm rolls back.
     return {
       ok: false,
       reason:
@@ -497,11 +618,39 @@ export async function spawnTask(
     // is part of the state an operator inspects.
     return { ok: false, reason: outcome.reason };
   }
-  // The scrub root is ephemeral. Both children have exited (the launch is
-  // synchronous, C-3), so the harness-owned redirect targets have no
-  // further reader; removing them returns the task directory to its
-  // documented records-only shape. This removal touches ONLY the scrub
-  // root, never the worktree, so it cannot be a V-1-shaped loss.
+  // THE COMPLETION PRECONDITION (M4-P2 step 5). The only arm left is
+  // `completed`, and it is the only arm that DESTROYS something (the
+  // scrub root, which is a live child's redirected HOME while that child
+  // lives). Before M4-P2 the destruction was safe because `launch` was
+  // synchronous and the sole adapter wrote the turn-end record itself; an
+  // async `launch` lets any adapter resolve `completed` early, so the
+  // kernel checks the payload's own artifact instead of believing the
+  // report. See turnEndEvidence above for the four refusals.
+  const evidence = turnEndEvidence(fleet, taskId);
+  if (!evidence.ok) {
+    return {
+      ok: false,
+      reason:
+        `the ${adapter.name} adapter reported the payload completed with exit code ` +
+        `${String(outcome.exitCode)}, but ${evidence.reason}, so the kernel does not ` +
+        `accept that the payload ended; nothing was rolled back and nothing was ` +
+        `removed: the worktree ${worktree}, its task directory, the pool record and ` +
+        `the harness-owned redirect targets under ${scrubRoot(dir)} are all left in ` +
+        `place for inspection; when you have inspected them, close the task with ` +
+        `"tiphys teardown --task ${taskId}"`,
+    };
+  }
+
+  // The scrub root is ephemeral. Both children have exited: the turn-end
+  // record exists and parses, which is the payload's own exit writing
+  // itself down, and the launch promise has been awaited, so the harness-
+  // owned redirect targets have no further reader. That sentence used to
+  // read "the launch is synchronous, C-3", and it stopped being true the
+  // moment `launch` returned a promise; a comment asserting a dead
+  // invariant is how the next reader re-derives the defect, so the
+  // reasoning is restated rather than left. C-3 is still satisfied, by
+  // the await rather than by the signature. This removal touches ONLY the
+  // scrub root, never the worktree, so it cannot be a V-1-shaped loss.
   if (childEnv !== undefined) {
     try {
       rmSync(scrubRoot(dir), { recursive: true, force: true });

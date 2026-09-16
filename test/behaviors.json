@@ -773,5 +773,10 @@
   "doctor-kernel-artifacts-capture-contract": "the staged-install capture records the three-case contract this check ships",
   "doctor-kernel-artifacts-capture-reproduced": "a staged install of the built package reproduces the captured contract live",
   "doctor-kernel-artifacts-presence-is-not-resolvability": "presence is not resolvability: the four shapes that used to PASS are each named",
-  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them"
+  "doctor-kernel-artifacts-resolvability-capture": "the resolvability capture records the four shapes as the CLI reports them",
+  "spawn-async-launch-awaited": "a launch outcome resolved on a later event-loop turn is read as an outcome, not as a pending promise",
+  "spawn-completed-without-turn-end-is-incomplete": "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds",
+  "spawn-unparseable-turn-end-is-incomplete": "a turn-end record that is present but does not parse is refused just as an absent one is",
+  "spawn-rejected-launch-rolls-nothing-back": "a rejected launch promise rolls nothing back, while a returned launch-failed still rolls everything back",
+  "spawn-returns-after-payload-sentinel": "spawnTask returns only after a payload the adapter awaited has written its sentinel"
 }
