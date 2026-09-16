@@ -290,3 +290,29 @@ A worktree whose branch is shared and whose diff is mostly deletions should be
 REMOVED rather than committed, which is the opposite of preserve-never-reclaim
 and is not a contradiction of it: the rule protects WORK, and a stale checkout
 holds none.
+
+### The detector run in anger, same day
+
+Applied to the live repository within the hour. Three branches were shared, eight
+worktrees between them, and the direction test separated them without a judgement
+call:
+
+| worktree | branch | `diff --shortstat` vs HEAD | verdict |
+|---|---|---|---|
+| `wf_badbbac6-8f2-2` | m4-p2 | 24 insertions, **1810 deletions** | reversal |
+| `wf_2b81e806-d59-2` | m4-p23 | 71 insertions, **1321 deletions** | reversal |
+| `wf_cc74053e-aaa-1` | m4-p23 | 30 insertions, **981 deletions** | reversal |
+| `wf_2b81e806-d59-1` | m4-p26 | 79 insertions, **2401 deletions** | reversal |
+| `wf_a1849252-b71-1` | m4-p26 | 4 insertions, **952 deletions** | reversal |
+| `wf_59bd9e39-597-1` | m4-p23 | **258 insertions**, 26 deletions | REAL WORK |
+| `wf_17dfe326-121-1` | m4-p26 | clean | live agent |
+
+The five reversals were removed; the two were left. All three branch tips are
+unchanged afterwards, and no branch is checked out more than once any more.
+
+**The sixth row is why the liveness check alone is not enough either.** A
+five-minute freshness probe read `wf_59bd9e39-597-1` as NOT live, because its
+agent was inside a long tool call, while its journal still showed the round
+unfinished and its diff showed 258 lines of new work. Removing it on the
+freshness reading would have destroyed a running fix round. **Direction decided
+it; freshness would have got it wrong.**
