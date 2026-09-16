@@ -883,11 +883,15 @@ test(
     // T-008 shape, and this one is invisible because its non-run and its
     // green are the same exit code.
     //
-    // THE MECHANISM, which is the same one src/pool.ts carried: identity of
-    // a filesystem object decided by comparing two strings, where one of
-    // them was produced by another program. Here the other program is node
-    // itself, which canonicalizes the module path behind import.meta.url and
-    // leaves process.argv[1] as the caller spelled it.
+    // THE MECHANISM, which is the one the pool's destroy path carried until
+    // the same fix round: identity of a filesystem object decided by
+    // comparing two strings, where one of them was produced by another
+    // program. Here the other program is node itself, which canonicalizes
+    // the module path behind import.meta.url and leaves process.argv[1] as
+    // the caller spelled it. The sibling instance is named in the work
+    // history rather than by path here, because the manifest's
+    // destructiveCommands derivation is a substring match over this file and
+    // would read a path in a comment as this test invoking a destroy.
     const dir = mkdtempSync(join(tmpdir(), "tiphys-coverage-symlink-"));
     t.after(() => {
       rmSync(dir, { recursive: true, force: true });
