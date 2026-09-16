@@ -1,0 +1,31 @@
+{
+  "id": "M4-P19",
+  "branch": "claude/m4-p19-pool-record-reconstruction",
+  "filesToTouch": [
+    "src/pool.ts",
+    "src/teardown.ts",
+    "src/commands/teardown.ts",
+    "src/commands/doctor.ts",
+    "test/pool.test.ts",
+    "test/teardown.test.ts",
+    "test/behaviors.json"
+  ],
+  "declaredExtras": [
+    "src/commands/pool.ts",
+    "test/doctor.test.ts",
+    "delivery/plan/phase-declarations/m4-p19.json",
+    "delivery/work-history/m4-p19.md"
+  ],
+  "citations": [
+    "M4-D-12",
+    "V-1",
+    "C-1",
+    "C-2",
+    "T-003",
+    "T-008",
+    "FM-059",
+    "PR-010",
+    "EXT-F-03",
+    "EXT-F-08"
+  ]
+}
