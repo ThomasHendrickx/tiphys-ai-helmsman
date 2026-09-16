@@ -2111,7 +2111,7 @@ fact rather than a memory.
   in the final head, so nothing is unverified; what is missing is a per-head
   claim, and the fix is to stop making one.
 
-## M4 delivery, as of 2026-09-16
+## M4 delivery, as of 2026-09-16 (evening refresh)
 
 This block replaces any earlier M4 status. It records what is ON main, what is
 open, and what each remaining phase is waiting on. It is written to survive this
@@ -2119,40 +2119,62 @@ session ending, per the durability rule: a thing reported only in chat is lost.
 
 ### On main
 
-| what | pull request | main head after | post-merge push run |
-|---|---|---|---|
-| M4 paperwork, the plan at revision 3, twelve phase declarations | #150 | 85deb36 | observed GREEN |
-| M4-P13, migration-table redisposition | #152 | e8d9874 | observed GREEN |
+Seven of the twelve dispatched M4 phases have merged. Every post-merge `push`
+run in this table was watched to completion on the new `main` head, which is
+what T-009 requires and is not the same as the pull-request check being green.
 
-Both post-merge `push` runs were watched to completion, which is what T-009
-requires and is not the same as the pull-request check being green.
+| what | pull request | main head after |
+|---|---|---|
+| M4 paperwork, the plan at revision 3, twelve phase declarations | #150 | 85deb36 |
+| M4-P13, migration-table redisposition | #152 | e8d9874 |
+| M4-P16, fleet rehydration | #153 | 1b66a1a |
+| M4-P15, the kernel's root charter | #151 | 65d6bb4 |
+| M4-P20, cross-environment exclusion probe | #154 | 22701e5 |
+| M4-P19, pool reconstruction | #156 | e7342f0 |
+| orchestrator harness fix and four M4 measurements | #157 | b4dd6ff |
+| M4-P10, unreadable verdict documents are named | #158 | 0330964 |
+| M4-P26, cutover rollback | #159 | 20d82d5 |
+
+**ONE OF THOSE GREENS WAS ASSERTED BY A GUARD THAT COULD NOT GO RED**, and it is
+said here rather than left in a tuition entry, because the table above is what a
+later reader will trust. `pushwatch.sh` selected the FIRST run on the merged sha
+from a listing carrying both `gates` and `macOS smoke`, so on `b4dd6ff` it
+reported green while `gates` was still in progress. All seven merges were
+re-checked afterwards and every one carries BOTH workflows completed and
+successful on the push arm, so the table is true. The watcher has been fixed to
+require every run on the sha. Full account in
+delivery/tuition/T-030-the-push-run-watcher-watched-the-wrong-workflow.md:1.
 
 ### Open pull requests
 
 | phase | pull request | state |
 |---|---|---|
-| M4-P15, kernel charter | #151 | gates and macos-smoke green; behind main |
-| M4-P16, fleet rehydration | #153 | rebased onto e8d9874, CI running |
-| M4-P20, exclusion pre-pass | #154 | gates and macos-smoke green; behind main |
-| M4-P2, async launch | #155 | gates green, **macos-smoke RED**, fix round dispatched |
+| M4-P2, async launch | #155 | round 4 in flight; `macos-smoke` red on a fixture that assumes Linux tmp semantics |
 
-### Waiting on a fix round
+### Pushed, unmerged, and what each is waiting on
 
-| phase | why | severity |
+| phase | branch head | waiting on |
 |---|---|---|
-| M4-P2 | macOS-only: a launch-failed leaves the worktree behind. Linux green on every gate, so no local run can see it. | blocking, reaches src/spawn.ts |
-| M4-P10 | a verdict document whose `kind:` is a non-scalar is silently dropped and the gate reports green | blocking, reaches src/checks.ts and scripts/check-dual-review.mjs |
-| M4-P11 | an UNCOMMITTED charter.yaml buys a green where it used to buy a red; and listCommittedDirectory lists nothing when the context is not the repository root | two HIGH, both blocking, both shipped |
+| M4-P23, retirement inventory | `f89411e` | merged forward and 0 behind main; needs its pull request |
+| M4-P11, single-family exception | pushed | round 3 in flight |
+| M4-P27, cutover entry trigger | pushed | delta verification, not yet dispatched |
+| M4-P1, harness probe remainder | `5397fe9` | 9 behind main; fix round written, not yet dispatched |
 
-### Waiting on a delta verification
+### The chain M4-P2 blocks, stated because it is the pacing fact
 
-M4-P23, M4-P26, M4-P27. Each has had its fix round and owes an independent
-verification of it before merge.
+M4-P2 holds `src/spawn.ts`. M4-P3 and M4-P4 wait on that file; M4-P5, M4-P6 and
+M4-P7 wait on the adapter seam those three build. So five phases wait behind one
+phase on its fourth round. The round count and the reason it is not the shape
+DR-0016 escalates for are recorded at delivery/plan/m4-p2-round-count.md:1.
 
-### Verified and cleared
+### A finding that belongs to no open phase
 
-M4-P19's delta verification returns APPROVE; its one remaining finding was the
-scope gate, which the declarations landing in #150 closes.
+`tiphys doctor` selects charter documents by a raw `kind` read, so a document
+whose `kind` is unreadable is skipped silently and the command reports PASS over
+a fleet holding a broken charter. Measured with three structurally different
+members and a control. It is not M4-P10's to fix and it needs a phase of its
+own; the next free id is M4-P31 and allocating it is a plan revision. Recorded at
+delivery/verification/tracked-doctor-charter-selection.md:1.
 
 ### The constraint that sets the pace
 
