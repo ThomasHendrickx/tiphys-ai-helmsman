@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -884,6 +885,56 @@ test("a bucket value matching more than one declared kind is red naming every ma
   );
   assert.equal(clean.perKind["milestone"], 1);
 });
+
+test(
+  "the coverage gate still runs when it is invoked through a symlinked directory",
+  (t) => {
+    // DANGEROUS STATE: the gate SILENTLY DOES NOTHING AND EXITS 0. Not "the
+    // gate is absent": the file is found, parsed and executed, every
+    // definition in it is evaluated, and only the main-module guard at the
+    // bottom decides not to call main. A gate that cannot go red is the
+    // T-008 shape, and this one is invisible because its non-run and its
+    // green are the same exit code.
+    //
+    // THE MECHANISM, which is the one the pool's destroy path carried until
+    // the same fix round: identity of a filesystem object decided by
+    // comparing two strings, where one of them was produced by another
+    // program. Here the other program is node itself, which canonicalizes
+    // the module path behind import.meta.url and leaves process.argv[1] as
+    // the caller spelled it. The sibling instance is named in the work
+    // history rather than by path here, because the manifest's
+    // destructiveCommands derivation is a substring match over this file and
+    // would read a path in a comment as this test invoking a destroy.
+    const dir = mkdtempSync(join(tmpdir(), "tiphys-coverage-symlink-"));
+    t.after(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const linkedRoot = join(dir, "repo-through-a-link");
+    symlinkSync(repoRoot, linkedRoot);
+
+    // The control arm FIRST, so a green here cannot come from the gate being
+    // broken in both spellings.
+    const direct = spawnSync(process.execPath, [coverageEntry], { encoding: "utf8" });
+    assert.equal(direct.status, 64, `direct invocation: ${direct.stdout}${direct.stderr}`);
+    assert.match(direct.stderr, /usage: node src\/gates\/coverage\.ts/u, direct.stderr);
+
+    const linkedEntry = join(linkedRoot, "src", "gates", "coverage.ts");
+    const linked = spawnSync(process.execPath, [linkedEntry], { encoding: "utf8" });
+    assert.notEqual(
+      linkedEntry,
+      coverageEntry,
+      "precondition: the two invocations are different strings",
+    );
+    assert.equal(
+      linked.status,
+      64,
+      `invoked through a symlinked directory the gate produced exit ` +
+        `${String(linked.status)} and output ${JSON.stringify(linked.stdout + linked.stderr)}; ` +
+        `exit 0 with no output is the guard refusing to recognise its own file`,
+    );
+    assert.match(linked.stderr, /usage: node src\/gates\/coverage\.ts/u, linked.stderr);
+  },
+);
 
 /* -------------------------------------------------------------------- */
 /* M4-P13: the invariant the counts sentence asserts and no gate checks.  */

@@ -1,0 +1,31 @@
+{
+  "id": "spawn-completed-without-turn-end-is-incomplete",
+  "behavior": "spawn-completed-without-turn-end-is-incomplete",
+  "tests": [
+    "an adapter reporting completed without invoking the hook is refused with the scrub root intact, and the same adapter invoking the hook succeeds"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const evidence = turnEndEvidence(fleet, taskId);\n",
+      "replace": "  const evidence = { ok: true, reason: \"\" };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const read = readRegularFileIfPresent(path);\n",
+      "replace": "  const read = {\n    kind: \"present\" as const,\n    body: '{\"endedAt\":\"1970-01-01T00:00:00.000Z\",\"exitCode\":0}',\n  };\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "The completion precondition (src/spawn.ts:299) reads the file the GENERATED turn-end hook writes, and spawn runs that hook as a child process with spawnSync (src/spawn.ts:232), so red-witness rule (f) binds every witness whose members mutate src/spawn.ts. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is that hook's real output, taken 2026-09-16 on node v26.6.0 against a hook rendered by src/hooks.ts renderTurnEndHook(): an integer argument exits 0 and writes a two-key JSON record, and a NON-integer argument exits 64, writes nothing and prints \"tiphys turn-end hook: expected one integer exit-code argument\". HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test renders a hook with renderTurnEndHook() and RUNS BOTH ARMS live, asserting exit 64 with no file written for a non-integer argument and exit 0 with a parseable two-key record for an integer one, before it exercises the refusal. The bad-argument arm is the shipped route to the absent record this witness is about. The two members are structurally different: member 0 never computes the evidence at all, and member 1 computes it from a stand-in record instead of the artifact, which is the guard running and looking at the wrong thing."
+  }
+}

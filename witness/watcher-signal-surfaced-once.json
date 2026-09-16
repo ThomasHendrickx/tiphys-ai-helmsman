@@ -1,0 +1,24 @@
+{
+  "id": "watcher-signal-surfaced-once",
+  "behavior": "watcher-signal-surfaced-once",
+  "tests": [
+    "a surfaced turn-end is not surfaced again by the next pass"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/watcher.ts",
+      "find": "  runStepAsync,\n  turnEndPath,\n} from \"./task.ts\";\n",
+      "replace": "  turnEndPath,\n} from \"./task.ts\";\n\n/** A private copy, re-introduced. */\nasync function runStepAsync<T>(\n  what: string,\n  step: () => Promise<T>,\n): Promise<{ ok: true; value: T } | { ok: false; reason: string }> {\n  void what;\n  try {\n    return { ok: true, value: step() as unknown as T };\n  } catch (error) {\n    return { ok: false, reason: String(error) };\n  }\n}\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/watcher.ts",
+      "find": "  runStep,\n  runStepAsync,\n  turnEndPath,\n} from \"./task.ts\";\n",
+      "replace": "  runStep,\n  turnEndPath,\n} from \"./task.ts\";\n\n/** A private copy, re-introduced. */\nasync function runStepAsync<T>(\n  what: string,\n  step: () => Promise<T>,\n): Promise<{ ok: true; value: T } | { ok: false; reason: string }> {\n  void what;\n  try {\n    await step();\n    return { ok: false, reason: \"surfacing failed\" };\n  } catch (error) {\n    return { ok: false, reason: String(error) };\n  }\n}\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
