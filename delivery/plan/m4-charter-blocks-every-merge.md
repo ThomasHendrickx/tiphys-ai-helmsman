@@ -88,3 +88,103 @@ erroring.
   a precondition that M4 is about to satisfy. Only this one was found, by
   following a finding rather than by a systematic sweep of the registry's
   conditional entries. That sweep has not been run and should be.
+
+## Correction, 2026-09-16: the trigger is a CONFORMING verdict, not a review
+
+The section above says every M4 phase must commit two verdict documents and
+that the first to do so arms the gate. The obligation half is right and the
+trigger half was stated too widely. Measured in three arms, same command, one
+variable changed:
+
+| the review directory contains | precondition exit |
+|---|---|
+| one markdown clean-room review | **1**, "0 verdict document(s)" |
+| this repository's own 234 committed review files | **1**, "0 verdict document(s)" |
+| one schema-conforming JSON verdict | **0**, "1 verdict document(s)" |
+
+`committedVerdictPaths` filters to `.yaml`, `.yml` and `.json`, decodes each,
+and keeps only what validates as a verdict. A markdown review is skipped before
+it is ever read. The trigger is therefore not "a phase commits its reviews", it
+is "a phase commits a document conforming to schemas/verdict.schema.json:1".
+
+## What that measurement actually exposed, which is worse than the blocker
+
+`check-dual-review` has **never once asserted anything on this repository.**
+
+Not on any M1 phase, not on any M2 phase, not on any of M3's thirteen. Measured
+against origin/main: 234 files under `delivery/review/`, of which ten are
+`.yaml` or `.json`, and all ten are gate EVIDENCE captures sitting in
+subdirectories. The listing is non-recursive, so even those are invisible to
+it. At the top level, where the gate looks, there has never been a verdict
+document at all.
+
+Both halves captured, against origin/main:
+
+```
+$ git ls-tree -r --name-only origin/main delivery/review/ | wc -l
+234
+$ git ls-tree -r --name-only origin/main delivery/review/ | grep -Ec '\.(ya?ml|json)$'
+10
+$ git ls-tree -r --name-only origin/main delivery/review/ | grep -E '\.(ya?ml|json)$'
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-full-mode.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-red-witness.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/gates-summary-scope.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/red-witness-evaluations.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/units-baseline-18c335a.json
+delivery/review/evidence/clean-room-m3-p3-r8-criteria/units-head-108eed0.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/red-witness-evaluations-summary.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/red-witness-result.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/units-baseline-18c335a.json
+delivery/review/evidence/clean-room-m3-p3-r9-criteria/units-head-b5c01f0.json
+$ git ls-tree --name-only origin/main delivery/review/ | grep -E '\.(ya?ml|json)$'
+$ echo $?
+1
+```
+
+Every one of the ten is a gate-evidence capture under `evidence/`, and the
+last command, the non-recursive one that matches what `readdirSync` sees,
+returns nothing.
+
+**What this derivation does NOT cover.** It reads `origin/main` only, so a
+verdict document that existed on a branch and was never merged would not
+appear; the claim is about what reached `main`, which is the tree CI lints. It
+also does not read the twelve unmerged M4 branches. And it counts by path and
+extension rather than by validation, so a top-level `.json` that failed to
+decode would have been counted here and still skipped by the gate; since the
+top-level count is zero, that distinction does not arise.
+
+The gate is not lying about this. It reports not-applicable with a reason,
+which is exactly what M2-C-3 and SC-011 require of a gate that cannot reach its
+subject, and it is the honest behaviour. The problem is one level up:
+
+**DR-0012 makes dual cross-model clean review the CONDITION of delegated merge
+authority, and the check that would verify that condition has never run.** Every
+merge under the delegation has been made on the orchestrator's own assertion
+that the condition held. That assertion has been true as far as anyone can
+tell, and it has never been machine-checked, which are two different things and
+this project's whole method is to insist on the difference.
+
+This is not the "guard that cannot go red" shape, because the gate says
+not-applicable rather than green. It is the shape one step before it: a guard
+whose subject is never produced, so its honesty costs nothing and buys nothing.
+Thirty markdown reviews satisfy a human reading of DR-0012 and leave the
+machine check asleep.
+
+## What changes, stated as sequence rather than as a complaint
+
+1. M4-P15's root charter is **not** on the critical path for the first merge,
+   because a phase committing only markdown reviews leaves the gate dormant and
+   unblocked. It IS on the critical path for the gate ever asserting anything.
+2. Leaving it dormant is not an option this project may take. Choosing not to
+   emit the artifact a check consumes, in order to keep the check quiet, is the
+   same move as deleting the check, with better manners.
+3. So the order is: M4-P15 lands the charter, then M4 phases commit a
+   conforming verdict document ALONGSIDE their markdown review, and the gate
+   arms for the first time in the repository's history.
+4. M4-P11 matters exactly at step 3 and not before. The decorrelation check
+   compares `produced-by`, and this orchestrator's two reviewers are both
+   Claude models, so the first real run of this gate is also the first time
+   DR-0038's declared single-family exception has to hold up.
+
+Step 3 is the one that has never been rehearsed, which by T-025's title is
+precisely the one to expect trouble from.
