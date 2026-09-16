@@ -1,0 +1,28 @@
+{
+  "id": "resume-rebuilds-only-what-is-absent",
+  "behavior": "resume-rebuilds-only-what-is-absent",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "resume rebuilds only the absent ephemeral directory and leaves the present ones untouched"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/resume-destroy-and-recreate.patch"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/resume.ts",
+      "find": "    if (!step.rebuild) {\n      continue;\n    }",
+      "replace": "    if (planned.steps.every((other) => !other.rebuild)) {\n      continue;\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/resume.ts",
+      "find": "      steps.push({ name, rebuild: false });",
+      "replace": "      steps.push({ name, rebuild: true });"
+    }
+  ]
+}
