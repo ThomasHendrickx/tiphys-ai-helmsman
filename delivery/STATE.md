@@ -1801,6 +1801,33 @@ and `A-3` meant three, one of them a literal string inside
 
 ## Tracked obligations, sequenced
 
+- **`process.exit()` TRUNCATES A PIPED GATE REPORT AT 64 KiB, IN THREE SHIPPED
+  MODULES, AND NO M4 PHASE OWNS THEM.** Raised by the M4-P23 reviewer as a MEDIUM
+  it could not force; forced and bounded on 2026-09-16 in
+  delivery/verification/process-exit-truncates-a-piped-gate-report.md:1. The
+  sites are src/gates/credentials.ts:691, src/gates/red-witness.ts:574 and
+  src/gates/suite.ts:1142, all reached by `tiphys gates run`, which spawns them
+  as subprocesses whose stdout is a pipe. Measured: 58,890 bytes survive intact,
+  118,890 bytes arrive as 65,466. To a FILE nothing is lost, which is why it
+  survives casual testing.
+
+  **LATENT, not live, and the number matters.** The largest gate stdout in any
+  captured evidence here is 2,425 bytes, thirty times below the trigger, so no
+  gate is losing evidence today. The plausible future trigger is `suite`, whose
+  subject is another program's output. The verdict cannot change through this
+  path because the exit code survives; what is lost is the evidence.
+
+  Needs a phase that owns `src/gates/`. No M4 phase does: the twenty-seven are
+  plugin, fleet and cutover work. The fix is three one-line changes to
+  `process.exitCode`, and its red witness already exists as the measured table.
+
+- **`delivery/plan/m4-conflict-pre-pass.md:60` IS A BLANK LINE.** Found by the
+  same reviewer while checking twenty-two citations by hand, hit rate 21 of 22.
+  The wave-1b row naming M4-P23 is four lines further down. It is IN RANGE, so
+  the citations gate stays green and the citation points at nothing, which is
+  the silent-resolution trap CLAUDE.md:155 describes: the citation that reddens
+  is not the dangerous one.
+
 - **DR-0022 is DECIDED (owner, 2026-08-09): option A2.** `commonmark` for block
   structure, `sourcepos` slicing for text, acceptance criterion "unit sets
   byte-identical on all nineteen records". M3-P3 round 6 is executing it on
