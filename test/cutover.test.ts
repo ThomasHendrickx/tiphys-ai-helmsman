@@ -1,10 +1,15 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -571,6 +576,7 @@ test("a fleet with no remote refuses by default and says so out loud when allowe
     const outcome = cutover.syncFleetState(scratch.fleetRoot, {
       allowNoRemote: true,
       message: "test",
+      paths: ["cutover.json"],
     });
     assert.equal(outcome.ok, true);
     if (outcome.ok) {
@@ -580,7 +586,10 @@ test("a fleet with no remote refuses by default and says so out loud when allowe
         /has no origin remote, so the rollback is committed locally and NOT published/,
       );
     }
-    const strict = cutover.syncFleetState(scratch.fleetRoot, { message: "test" });
+    const strict = cutover.syncFleetState(scratch.fleetRoot, {
+      message: "test",
+      paths: ["cutover.json"],
+    });
     assert.equal(strict.ok, false, "without the flag the same fleet is a refusal");
   } finally {
     rmSync(scratch.root, { recursive: true, force: true });
@@ -805,6 +814,16 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "cutover-document-file-half-cheap-authority-half-owner",
     "cutover-document-five-switches-flip-and-verify",
     "cutover-document-pilot-as-second-subject",
+    "cutover-rollback-is-monotone-and-idempotent",
+    "cutover-rollback-leaves-an-unmoved-switch-byte-identical",
+    "cutover-rollback-preserves-document-keys-it-does-not-own",
+    "cutover-publish-replaces-the-destination",
+    "cutover-drain-counts-the-undecidable",
+    "cutover-rollback-commit-is-scoped-to-the-switch-file",
+    "cutover-restore-removes-post-freeze-additions-and-verifies",
+    "cutover-port-verdict-refuses-an-unreadable-row-or-a-killed-witness",
+    "cutover-restore-request-refuses-a-present-non-list",
+    "cutover-restore-request-out-refuses-a-non-regular-path",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),
@@ -820,4 +839,598 @@ test("the rollback document carries the pilot as a second subject with read-only
     assert.ok(document.includes(prefix), `the document has no ${prefix}`);
   }
   assert.match(document, /read-only/);
+});
+
+/* ==================================================================== */
+/* FIX ROUND 1. ONE MECHANISM, NINE SITES.                              */
+/*                                                                      */
+/* The defect both clean-room reviews found, in one sentence: A BENIGN   */
+/* OUTCOME (a positive verdict, or a write) WAS PRODUCED BY AN ARM       */
+/* REACHED BY FALLING THROUGH A TEST RATHER THAN BY A POSITIVE FACT      */
+/* BEING ESTABLISHED, so the outcome's extent was wider or narrower than */
+/* the sentence describing it, and nothing tested the difference.        */
+/*                                                                      */
+/* The tests below are that difference. Each names the DANGEROUS STATE   */
+/* it was demonstrated red against, and each class carries at least two  */
+/* structurally different members, because one member is not a class.    */
+/* ==================================================================== */
+
+/**
+ * CLASS: a rollback never hands authority forward, and never rewrites a
+ * switch it does not move.
+ *
+ * MEMBER A, the target computed from state the action rewrote. `restoreTo` is
+ * the value a switch held before its last flip, and a rollback sets it to the
+ * value the switch is leaving. So after one `retirement-unmet` rollback every
+ * switch reads `current` with `restoreTo: "kernel"`, and a target read
+ * straight off `restoreTo` moves all five FORWARD on the second run. That is
+ * not a hypothetical run: trigger 1 step 1 exits nonzero when the push does
+ * not land, after the local write, and the documented response is to run the
+ * command again.
+ *
+ * Demonstrated red against the shipped implementation: the second run
+ * reported five changes and wrote five `kernel` values, and the module header
+ * says "does not write switches to `kernel`".
+ */
+test("a second rollback is a no-op and never moves a switch forward to kernel", () => {
+  const scratch = scratchFleet();
+  try {
+    const first = cutover.applyRollback(scratch.fleet, "retirement-unmet", {
+      now: "2026-09-16T10:00:00.000Z",
+      by: "test",
+      reason: "retirement criteria unmet",
+    });
+    assert.equal(first.ok, true, JSON.stringify(first));
+    assert.equal((first as { changes: unknown[] }).changes.length, 5);
+
+    const second = cutover.applyRollback(scratch.fleet, "retirement-unmet", {
+      now: "2026-09-16T11:00:00.000Z",
+      by: "test",
+      reason: "retry after a push that did not land",
+    });
+    assert.equal(second.ok, true, JSON.stringify(second));
+    assert.deepEqual(
+      (second as { changes: unknown[] }).changes,
+      [],
+      "the second run must report no change at all",
+    );
+    const read = cutover.readCutoverState(scratch.fleet);
+    assert.equal(read.kind, "read");
+    if (read.kind === "read") {
+      for (const name of cutover.CUTOVER_SWITCHES) {
+        assert.equal(read.state.switches[name].state, "current", name);
+      }
+    }
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER B of the same class, structurally different: the WRITE rather than
+ * the target. A switch this rollback does not move must come out of it
+ * byte-identical, `flippedAt`, `flippedBy`, `reason` and `restoreTo` included.
+ *
+ * The dangerous state is a half-rolled-back fleet: one switch already at
+ * `current` carrying `restoreTo: "kernel"` and the record of when it left,
+ * beside four still at `kernel`. The shipped implementation rebuilt every
+ * record unconditionally, so a rollback that reported four changes silently
+ * rewrote a fifth, destroying the one fact a later freeze-point restore reads.
+ */
+test("a switch the rollback does not move is left byte-identical", () => {
+  const mixed = frozenState() as { switches: Record<string, Record<string, unknown>> };
+  mixed["switches"]["closeout"] = {
+    state: "current",
+    flippedAt: "2026-09-14T08:00:00.000Z",
+    flippedBy: "an earlier rollback",
+    reason: "closeout was handed back first",
+    restoreTo: "kernel",
+  };
+  const untouched = JSON.parse(JSON.stringify(mixed["switches"]["closeout"])) as unknown;
+  const scratch = scratchFleet({ state: mixed });
+  try {
+    const outcome = cutover.applyRollback(scratch.fleet, "freeze-point-restore", {
+      now: "2026-09-16T10:00:00.000Z",
+      by: "test",
+      reason: "freeze-point restore",
+    });
+    assert.equal(outcome.ok, true, JSON.stringify(outcome));
+    assert.deepEqual(
+      (outcome as { changes: { name: string }[] }).changes.map((change) => change.name),
+      ["planning-and-scope", "review-and-arbitration", "credentials-and-refs", "salvage-and-recovery"],
+      "closeout was already current and must not appear as a change",
+    );
+    const read = cutover.readCutoverState(scratch.fleet);
+    assert.equal(read.kind, "read");
+    if (read.kind === "read") {
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(read.state.switches["closeout"])) as unknown,
+        untouched,
+        "an unmoved switch must come out of the rollback exactly as it went in",
+      );
+    }
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: the rollback writes the SWITCHES, and the file keeps everything else.
+ *
+ * `CutoverState` names `switches` and nothing else, so serialising the typed
+ * view deletes every other key the document held. M4-P25 owns the schema and
+ * may add top-level keys; this phase must not delete them and must not refuse
+ * them either, because refusing would be deciding M4-P25's schema from here.
+ *
+ * MEMBER A: an unknown TOP-LEVEL key. MEMBER B, structurally different: an
+ * unknown key inside a switch RECORD that the rollback does move, which the
+ * top-level carry does not reach and which only the record spread preserves.
+ */
+test("a rollback preserves document keys it does not own, top level and per record", () => {
+  const document = frozenState() as {
+    switches: Record<string, Record<string, unknown>>;
+  } & Record<string, unknown>;
+  document["schemaVersion"] = 3;
+  document["pilot"] = { fleet: "tiphys-ai-helmsman-fleet", note: "DR-0037" };
+  document["switches"]["planning-and-scope"]["ticket"] = "A-9";
+  const scratch = scratchFleet({ state: document });
+  try {
+    const outcome = cutover.applyRollback(scratch.fleet, "drain-reversal", {
+      now: "2026-09-16T10:00:00.000Z",
+      by: "test",
+      reason: "drain reversal",
+    });
+    assert.equal(outcome.ok, true, JSON.stringify(outcome));
+    const onDisk = JSON.parse(
+      readFileSync(cutover.cutoverStatePath(scratch.fleet), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal(onDisk["schemaVersion"], 3, "an unknown top-level key must survive");
+    assert.deepEqual(
+      onDisk["pilot"],
+      { fleet: "tiphys-ai-helmsman-fleet", note: "DR-0037" },
+      "an unknown top-level object must survive",
+    );
+    const moved = (onDisk["switches"] as Record<string, Record<string, unknown>>)[
+      "planning-and-scope"
+    ];
+    assert.equal(moved["state"], "current", "the switch must still have moved");
+    assert.equal(moved["ticket"], "A-9", "an unknown key inside a MOVED record must survive");
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: the atomic publish REPLACES the destination and never writes through
+ * it.
+ *
+ * This is the guard that could not go red. The shipped
+ * `cutover-rollback-atomic` witness injects a throw in the in-memory observer,
+ * which is red against a per-switch publish and against a missing try/catch,
+ * and says nothing about the rename. Measured by a clean-room reviewer:
+ * `publishCutoverState` replaced by `mkdirSync` plus a plain
+ * `writeFileSync(path, body)` left `node --test test/cutover.test.ts` at 27
+ * tests, 27 pass, 0 fail, exit 0. The ATOMIC claim was carried by prose.
+ *
+ * MEMBER A below is a symlink at the destination: an in-place write follows it
+ * and clobbers the target, a rename replaces it. MEMBER B is the destination's
+ * inode plus the absence of a leftover temporary, which is red against a
+ * copy-over publish that a symlink test alone would also catch but for a
+ * different reason. Neither depends on file modes, because the suite runs as a
+ * uid that ignores them.
+ */
+test("publishing the cutover state replaces the destination rather than writing through it", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-atomic-test-"));
+  try {
+    const decoy = join(root, "decoy.json");
+    writeFileSync(decoy, "DECOY, MUST NOT BE WRITTEN THROUGH\n");
+    const decoyBefore = readFileSync(decoy);
+    const destination = join(root, "cutover.json");
+    writeFileSync(destination, "{}\n");
+    const inodeBefore = statSync(destination).ino;
+    rmSync(destination);
+    symlinkSync(decoy, destination);
+
+    cutover.publishCutoverState(destination, frozenState() as Record<string, unknown>);
+
+    assert.equal(
+      lstatSync(destination).isSymbolicLink(),
+      false,
+      "the destination must be replaced, not written through",
+    );
+    assert.ok(
+      readFileSync(decoy).equals(decoyBefore),
+      "the symlink target must be byte-identical: an in-place write would have clobbered it",
+    );
+    assert.notEqual(
+      statSync(destination).ino,
+      inodeBefore,
+      "the destination must be a new inode, which an in-place write does not produce",
+    );
+    assert.deepEqual(
+      (JSON.parse(readFileSync(destination, "utf8")) as { switches: Record<string, unknown> })
+        .switches["closeout"],
+      (frozenState() as { switches: Record<string, unknown> }).switches["closeout"],
+      "and the published content must be the state that was handed in",
+    );
+    assert.deepEqual(
+      readdirSync(root).filter((name) => name.startsWith(".cutover.")),
+      [],
+      "no temporary file may be left beside the destination",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: drain counts what it cannot decide.
+ *
+ * A drain predicate answers "is it safe to enter cutover". Every arm that
+ * treats an undecidable entry as finished reports a clean drain over work that
+ * may still be running, and a predicate that reads quiet at full speed is the
+ * guard that cannot go red.
+ *
+ * FOUR structurally different members, three of which the shipped code read as
+ * finished:
+ *   A. the turn-end file is a NAMED PIPE, so `classifyEntry` calls it
+ *      irregular. The shipped arm counted only `absent` and `dangling`, so a
+ *      task whose turn-end is the T-003 hazard shape read as finished.
+ *   B. meta.json is a NAMED PIPE, so the read is refused. The shipped arm was
+ *      `if (metaRead.kind !== "read") continue`, so present-and-unreadable
+ *      read as finished, while the neighbouring arm for unparseable JSON got
+ *      the rule right in its own comment.
+ *   C. meta.json parses and carries a status outside the closed vocabulary.
+ *      The shipped test was `status !== "open"`, so a typo, a number and a
+ *      missing field all read as finished.
+ *   D. the tasks directory cannot be enumerated at all. The shipped
+ *      `listDirectoryNames` returned `[]` for both "empty" and "could not be
+ *      read", so an unreadable `tasks/` reported a CLEAN DRAIN over an unknown
+ *      number of open tasks. No reviewer named this one; it came out of the
+ *      derivation.
+ */
+test("drain counts the entries it cannot decide rather than reading them as finished", () => {
+  const scratch = scratchFleet();
+  try {
+    const tasks = join(scratch.fleetRoot, "tasks");
+    /* A: turn-end is a named pipe. */
+    mkdirSync(join(tasks, "pipe-turn-end"), { recursive: true });
+    writeFileSync(join(tasks, "pipe-turn-end", "meta.json"), '{"id":"pipe-turn-end","status":"open"}\n');
+    assert.equal(
+      spawnSync("mkfifo", [join(tasks, "pipe-turn-end", "turn-end")]).status,
+      0,
+      "the fixture needs a real named pipe",
+    );
+    /* B: meta.json is a named pipe. */
+    mkdirSync(join(tasks, "pipe-meta"), { recursive: true });
+    assert.equal(spawnSync("mkfifo", [join(tasks, "pipe-meta", "meta.json")]).status, 0);
+    /* C: a status outside the closed vocabulary. */
+    mkdirSync(join(tasks, "odd-status"), { recursive: true });
+    writeFileSync(join(tasks, "odd-status", "meta.json"), '{"id":"odd-status","status":"finished"}\n');
+    /* Control, so the test is not green by counting everything: a genuinely
+       closed task and an open one with a regular turn-end are NOT counted. */
+    mkdirSync(join(tasks, "really-closed"), { recursive: true });
+    writeFileSync(join(tasks, "really-closed", "meta.json"), '{"id":"really-closed","status":"closed"}\n');
+    mkdirSync(join(tasks, "really-done"), { recursive: true });
+    writeFileSync(join(tasks, "really-done", "meta.json"), '{"id":"really-done","status":"open"}\n');
+    writeFileSync(join(tasks, "really-done", "turn-end"), '{"exitCode":0}\n');
+
+    const items = cutover.inFlightItems(scratch.fleet);
+    assert.deepEqual(
+      items.map((item) => `${item.kind}/${item.id}`),
+      ["task/odd-status", "task/pipe-meta", "task/pipe-turn-end"],
+      JSON.stringify(items, null, 2),
+    );
+    assert.match(
+      items.find((item) => item.id === "pipe-turn-end")?.detail ?? "",
+      /turn-end could not be examined/,
+    );
+    assert.match(
+      items.find((item) => item.id === "pipe-meta")?.detail ?? "",
+      /meta.json could not be examined/,
+    );
+    assert.match(
+      items.find((item) => item.id === "odd-status")?.detail ?? "",
+      /is not one of open or closed/,
+    );
+
+    /* D: the whole directory stops being enumerable. Done by replacing it with
+       a regular file, which does not depend on the uid the suite runs as. */
+    rmSync(tasks, { recursive: true, force: true });
+    writeFileSync(tasks, "not a directory\n");
+    const blind = cutover.inFlightItems(scratch.fleet);
+    assert.equal(
+      blind.some((item) => item.kind === "unexaminable"),
+      true,
+      "an unenumerable tasks directory must never read as a clean drain",
+    );
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: the rollback commit carries the file the rollback changed, and
+ * nothing else.
+ *
+ * Trigger 1 fires precisely when in-flight work exists, so the fleet is dirty
+ * BY CONSTRUCTION when this command runs. Staging everything at the fleet root
+ * therefore commits and pushes somebody else's half-written work under the
+ * message "cutover rollback", which is a write whose extent is wider than the
+ * sentence describing it.
+ *
+ * MEMBER A: an unrelated tracked file is modified and an untracked scratch
+ * file exists; both must survive the rollback untouched and out of the commit.
+ * MEMBER B, structurally different: the index already holds a staged path that
+ * this rollback did not stage, which a scoped staging does not remove, so the
+ * whole sync is refused and nothing is committed.
+ */
+test("the rollback commit carries cutover.json and nothing else", () => {
+  const scratch = scratchFleet({ withRemote: true });
+  try {
+    writeFileSync(join(scratch.fleetRoot, "backlog.md"), "# backlog\nhalf-written line\n");
+    writeFileSync(join(scratch.fleetRoot, "operator-scratch.txt"), "not mine to publish\n");
+    const status = commandModule.cmdCutover([
+      "rollback",
+      "--trigger",
+      "drain-reversal",
+      "--fleet",
+      scratch.fleetRoot,
+    ]);
+    assert.equal(status, 0, "the rollback itself must succeed");
+    const committed = git(scratch.fleetRoot, ["show", "--name-only", "--format=", "HEAD"])
+      .stdout.split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    assert.deepEqual(committed, ["cutover.json"], "the commit must name one file");
+    const dirty = git(scratch.fleetRoot, ["status", "--porcelain"])
+      .stdout.split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .sort();
+    assert.deepEqual(
+      dirty,
+      ["?? operator-scratch.txt", "M backlog.md"],
+      "the operator's work must still be exactly as dirty as it was",
+    );
+
+    /* MEMBER B: a pre-existing index is a refusal, not something to absorb. */
+    assert.equal(git(scratch.fleetRoot, ["add", "--", "backlog.md"]).status, 0);
+    const headBefore = git(scratch.fleetRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    const refused = cutover.syncFleetState(scratch.fleetRoot, {
+      message: "cutover rollback: drain-reversal",
+      paths: ["cutover.json"],
+    });
+    assert.equal(refused.ok, false, JSON.stringify(refused));
+    if (!refused.ok) {
+      assert.match(refused.reason, /already holds 1 staged path/);
+      assert.match(refused.reason, /nothing was committed/);
+      assert.match(refused.reason, /backlog\.md/);
+    }
+    assert.equal(
+      git(scratch.fleetRoot, ["rev-parse", "HEAD"]).stdout.trim(),
+      headBefore,
+      "the refusal must leave HEAD where it was",
+    );
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: RESTORED is a claim about the whole root, and it is measured.
+ *
+ * Checking a tree out over a path writes what the sha held and removes
+ * NOTHING, so every file added under the root after the freeze survives. The
+ * shipped command printed `RESTORED` over that hybrid tree.
+ *
+ * MEMBER A: a file added after the freeze. MEMBER B, structurally different: a
+ * file RENAMED after the freeze, where the checkout brings the old name back
+ * and leaves the new one, so the root ends up carrying BOTH. The assertion
+ * that settles both is the same one the code now makes for itself: the root
+ * is byte-for-byte the sha's version of it.
+ */
+test("restoring a retirement root removes what was added after the freeze and verifies the result", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-restore-verify-"));
+  try {
+    mkdirSync(join(root, "retired"), { recursive: true });
+    writeFileSync(join(root, "retired", "rule.md"), "the original rule\n");
+    writeFileSync(join(root, "retired", "moved.md"), "a rule that will be renamed\n");
+    git(root, ["init", "-q", "-b", "main"]);
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "pre-freeze"]);
+    const preFreeze = git(root, ["rev-parse", "HEAD"]).stdout.trim();
+
+    /* MEMBER A: a file that did not exist at the freeze. */
+    mkdirSync(join(root, "retired", "kernel"), { recursive: true });
+    writeFileSync(join(root, "retired", "kernel", "ported.md"), "the kernel rule\n");
+    /* MEMBER B: a rename, which is an addition and a deletion at once. */
+    git(root, ["mv", join("retired", "moved.md"), join("retired", "renamed.md")]);
+    writeFileSync(join(root, "retired", "rule.md"), "the ported rule\n");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "retire"]);
+
+    const restored = cutover.restoreRetirementRoots(root, preFreeze, ["retired"]);
+    assert.equal(restored.ok, true, JSON.stringify(restored));
+    if (restored.ok) {
+      assert.deepEqual(
+        [...restored.removed].sort(),
+        ["retired/kernel/ported.md", "retired/renamed.md"],
+        "both post-freeze additions must be named as removed",
+      );
+    }
+    assert.equal(readFileSync(join(root, "retired", "rule.md"), "utf8"), "the original rule\n");
+    assert.equal(readFileSync(join(root, "retired", "moved.md"), "utf8"), "a rule that will be renamed\n");
+    assert.equal(existsSync(join(root, "retired", "renamed.md")), false, "the renamed copy must be gone");
+    assert.equal(existsSync(join(root, "retired", "kernel", "ported.md")), false, "the added file must be gone");
+    /* THE VERDICT, MEASURED RATHER THAN ASSUMED. This is the assertion the
+       shipped implementation failed while returning ok and printing RESTORED. */
+    const residue = git(root, ["diff", "--name-only", preFreeze, "--", "retired"]).stdout.trim();
+    assert.equal(residue, "", `the root must match ${preFreeze} exactly, and it differs in: ${residue}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: `ported` is reached from a positive test, never from a fallthrough.
+ *
+ * `readRetirementInventory` casts whatever the fixture's `rows` array holds,
+ * and the shipped first line asked only whether the disposition was NOT the
+ * word `PORT`. So every unreadable row - a string, a number, a misspelt
+ * disposition, a row with no id - returned `ported`, which is the verdict "this
+ * retirement is complete" over a row nobody could read. Trigger 3 is the
+ * trigger that exists to catch a cutover completed on paperwork.
+ *
+ * THREE structurally different members: a misspelt disposition, a row that is
+ * not an object at all, and a witness that was KILLED BY A SIGNAL, where
+ * `status` is null, null is not 0, and the shipped nonzero arm therefore
+ * accepted a dead witness as a red one.
+ */
+test("an unreadable retirement row is unported, and a witness killed by a signal is not a red witness", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-port-closed-"));
+  try {
+    writeFileSync(join(root, "strong.mjs"), "process.exit(1);\n");
+    writeFileSync(join(root, "suicide.mjs"), 'process.kill(process.pid, "SIGKILL");\n');
+
+    const misspelt = cutover.evaluatePortRow(
+      { id: "R-CASE", disposition: "port" as unknown as "PORT", destination: "strong.mjs" },
+      root,
+    );
+    assert.equal(misspelt.verdict, "unported");
+    assert.match(misspelt.reason, /is not one of PORT, DELETE, KEEP/);
+
+    const notAnObject = cutover.evaluatePortRow(
+      "R-JUST-A-STRING" as unknown as Parameters<typeof cutover.evaluatePortRow>[0],
+      root,
+    );
+    assert.equal(notAnObject.verdict, "unported");
+    assert.match(notAnObject.reason, /not an object/);
+
+    const killed = cutover.evaluatePortRow(
+      {
+        id: "R-KILLED",
+        disposition: "PORT",
+        destination: "suicide.mjs",
+        negativeWitness: [process.execPath, "suicide.mjs"],
+      },
+      root,
+    );
+    assert.equal(killed.verdict, "unported", JSON.stringify(killed));
+    assert.match(killed.reason, /killed by SIGKILL/);
+
+    /* Control: the ported arm is still reachable, so this is the guard working
+       and not the verdict being nailed to `unported`. */
+    const ported = cutover.evaluatePortRow(
+      {
+        id: "R-STRONG",
+        disposition: "PORT",
+        destination: "strong.mjs",
+        negativeWitness: [process.execPath, "strong.mjs"],
+      },
+      root,
+    );
+    assert.equal(ported.verdict, "ported", JSON.stringify(ported));
+    const keep = cutover.evaluatePortRow({ id: "R-KEEP", disposition: "KEEP" }, root);
+    assert.equal(keep.verdict, "ported");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * CLASS: the owner request is refused when a captured list is present but
+ * unreadable.
+ *
+ * Criterion 6 asks for an absent key and a present-but-empty value. There is a
+ * third arm one level up that neither member reaches: a key that is present,
+ * NOT empty, and not a list. `isEmptyValue` passes a non-empty string, and the
+ * shipped loop then did `if (!Array.isArray(list)) continue`, so the request
+ * was generated with zero fields read from that key and reported as complete.
+ * An owner request with a hole in it is worse than no request: it looks
+ * complete. No reviewer named this one; it came out of the derivation.
+ *
+ * MEMBER A is a string where a list belongs, MEMBER B a non-empty object.
+ */
+test("the owner restore request is refused when a captured list is present but is not a list", () => {
+  const asString = completeCapture();
+  asString["rules"] = "see the wiki";
+  const stringOutcome = cutover.generateRestoreRequest(asString);
+  assert.equal(stringOutcome.ok, false, JSON.stringify(stringOutcome));
+  if (!stringOutcome.ok) {
+    assert.ok(
+      stringOutcome.reasons.some((reason) => /field rules is present but is not a list/.test(reason)),
+      stringOutcome.reasons.join("; "),
+    );
+  }
+
+  const asObject = completeCapture();
+  asObject["credentialGrants"] = { "npm-publish": "still granted" };
+  const objectOutcome = cutover.generateRestoreRequest(asObject);
+  assert.equal(objectOutcome.ok, false, JSON.stringify(objectOutcome));
+  if (!objectOutcome.ok) {
+    assert.ok(
+      objectOutcome.reasons.some((reason) =>
+        /field credentialGrants is present but is not a list/.test(reason),
+      ),
+      objectOutcome.reasons.join("; "),
+    );
+  }
+});
+
+/**
+ * CLASS: every write in this phase goes to a path whose type was established.
+ *
+ * `--out` was the one write that did not. Opening a named pipe for writing
+ * blocks exactly as reading one does, which is why src/task.ts holds ONE
+ * answer to "may this path be opened" and every other reader and writer in the
+ * kernel goes through it. This site did not, and the derivation found it
+ * rather than a reviewer.
+ *
+ * The named pipe below has no reader, so the assertion that matters is that
+ * this test RETURNS: a plain write would hang here and the suite would hit its
+ * own timeout rather than fail.
+ */
+test("the owner restore request refuses to write to a path that is not a regular file", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-request-out-"));
+  try {
+    const capturePath = join(root, "pre-freeze-ruleset.json");
+    writeFileSync(capturePath, `${JSON.stringify(completeCapture(), null, 2)}\n`);
+    /* ORDER IS DELIBERATE. The directory member is asserted FIRST because a
+       write to the named pipe below has no reader: with the guard removed the
+       run HANGS rather than failing, measured at 180 seconds with no exit, and
+       a witness member that hangs is a gate that never finishes rather than
+       one that goes red. The directory arm fails fast against exactly the same
+       missing guard. */
+    const directory = join(root, "a-directory");
+    mkdirSync(directory, { recursive: true });
+    assert.notEqual(
+      commandModule.cmdCutover(["restore-request", "--ruleset", capturePath, "--out", directory]),
+      0,
+      "a write to a directory must be refused rather than thrown out of the command",
+    );
+
+    const fifo = join(root, "request.txt");
+    assert.equal(spawnSync("mkfifo", [fifo]).status, 0, "the fixture needs a real named pipe");
+
+    const status = commandModule.cmdCutover([
+      "restore-request",
+      "--ruleset",
+      capturePath,
+      "--out",
+      fifo,
+    ]);
+    assert.notEqual(status, 0, "a write to a named pipe must be refused, not attempted");
+
+    /* Control: the same command writes a regular path and exits 0, so the
+       refusal is the guard and not the command being broken. */
+    const regular = join(root, "request-regular.txt");
+    assert.equal(
+      commandModule.cmdCutover(["restore-request", "--ruleset", capturePath, "--out", regular]),
+      0,
+    );
+    assert.match(readFileSync(regular, "utf8"), /OWNER ACTION/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

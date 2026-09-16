@@ -1,24 +1,24 @@
 {
-  "id": "cutover-port-verdict-witnessed",
-  "behavior": "cutover-port-verdict-needs-a-red-negative-witness",
+  "id": "cutover-restore-request-present-non-list",
+  "behavior": "cutover-restore-request-refuses-a-present-non-list",
   "class": "classification",
   "deterministic": true,
   "repeats": 2,
   "tests": [
-    "a PORT row whose destination exists but whose negative witness exits 0 is unported"
+    "the owner restore request is refused when a captured list is present but is not a list"
   ],
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {",
-      "replace": "  if (row.destination !== undefined) {\n    return { id: row.id, verdict: \"ported\", reason: \"destination exists\" };\n  }\n  if (row.negativeWitness === undefined || row.negativeWitness.length === 0) {"
+      "find": "      if (listName in capture) {\n        reasons.push(\n          `field ${listName} is present but is not a list, so no pre-flip value could be read from it`,\n        );\n      }\n      continue;",
+      "replace": "      continue;"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  if (run.status === 0) {\n    return {\n      id,\n      verdict: \"unported\",",
-      "replace": "  if (run.status !== 0) {\n    return {\n      id,\n      verdict: \"unported\","
+      "find": "      if (listName in capture) {",
+      "replace": "      if (listName === \"rules\" && false) {"
     }
   ],
   "consumesExternalOutput": {
