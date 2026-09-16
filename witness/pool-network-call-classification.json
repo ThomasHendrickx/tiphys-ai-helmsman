@@ -1,0 +1,29 @@
+{
+  "id": "pool-network-call-classification",
+  "behavior": "pool-network-calls-are-classified",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "every socket-opening git call is classified, and the ref probe carries its bound"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  const advertised = runGit(\n    project,\n    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n    networkTimeoutMs(),\n  );",
+      "replace": "  const advertised = runGit(\n    project,\n    [\"ls-remote\", \"--symref\", remote, \"HEAD\"],\n  );"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  const fetch = await runGitRetrying(project, [\n    \"fetch\",\n    remote.value,\n    `+refs/heads/${branch.value}:${trackingRef}`,\n  ]);",
+      "replace": "  const fetch = await runGitRetrying(project, [\n    \"fetch\",\n    remote.value,\n    `+refs/heads/${branch.value}:${trackingRef}`,\n  ], networkTimeoutMs());"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git, as `git ls-remote --symref <remote> HEAD` against a TCP listener that accepts and never speaks",
+    "captures": ["witness/captures/m4-p19-git-ls-remote-silent-listener.txt"],
+    "provenance": "Rule (f) binds this witness because the mutated module src/pool.ts matches the spawn grep, and the obligation is met rather than waved at. The named test asserts over SOURCE TEXT, which is the right altitude for a classification; the PREMISE underneath it is a claim about another program, that git does not give up on a stalled peer by itself, and that premise is the capture, taken 2026-09-16 on git 2.43.0 at two different waits (5s and 20s, exit 124 both times, empty output both times) so a reader can see the second is not a longer version of a timeout that had already fired. The named test reads the capture and requires both waits to still be recorded before it will conclude anything. The two members are structurally different and point in OPPOSITE directions: the first removes a bound from a ref-advertisement call, whose harm is a hang, and the second adds one to an object-transfer call, whose harm is a legitimate large fetch aborted mid-flight. A classification guard that could only catch the first would let the second land, and the second is the one an over-eager reading of finding F-1 produces."
+  }
+}

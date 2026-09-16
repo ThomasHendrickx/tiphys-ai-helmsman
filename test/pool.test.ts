@@ -1400,6 +1400,22 @@ async function silentListener(t: {
   return address.port;
 }
 
+/**
+ * THE SPAWN BOUND ON THE CHILD, named rather than written twice as a
+ * literal. It is not the bound under test: it is the thing that makes a
+ * FAILURE of the bound under test show up as a killed child with a null
+ * status instead of as a test run that never ends. A witness that hangs
+ * when its behaviour is absent is a guard that cannot go red, in the most
+ * literal way available.
+ *
+ * Its sibling in test/teardown.test.ts carries the same value for the
+ * same reason. Twenty seconds is the shipped NETWORK_TIMEOUT_MS
+ * (src/pool.ts:111), and the bound here is generous against it because
+ * the fixture also builds a fleet: these tests measure whether the
+ * process TERMINATES, never how fast it is.
+ */
+const SPAWN_BOUND_MS = 20_000;
+
 test("pool list returns against a remote that accepts and never answers", async (t) => {
   // The measured hang itself, as a witness. The child is given a spawn
   // timeout, so the DANGEROUS state shows up as a killed child with a
@@ -1416,7 +1432,10 @@ test("pool list returns against a remote that accepts and never answers", async 
     `git://127.0.0.1:${String(port)}/nope.git`,
   ]);
 
-  const listed = runCli(["pool", "list"], { cwd: scratch.fleet, timeout: 20_000 });
+  const listed = runCli(["pool", "list"], {
+    cwd: scratch.fleet,
+    timeout: SPAWN_BOUND_MS,
+  });
   assert.equal(
     listed.status,
     0,
@@ -1440,6 +1459,207 @@ test("this fix round's new pool behaviors are registered in test/behaviors.json"
     "pool-list-reconstruction-is-network-free",
     "doctor-check-worktrees-is-network-free",
     "pool-list-returns-against-a-silent-remote",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19 FIX ROUND, SECOND PASS: the CLASSIFICATION itself is checked.
+ *
+ * The first pass derived which git verbs open a socket, split them into
+ * "ref advertisement, so bound it" and "object transfer, so do not",
+ * decided which callers may reach the network, and wrote all of that
+ * down in the work history as a TABLE. A table is prose. The mechanism
+ * this whole round is about is A BOUNDARY STATED IN PROSE THAT NOTHING
+ * WALKS, so leaving the classification in a document repeats the defect
+ * one level up: the next person to add a `git fetch` to a reporting path,
+ * or to drop the bound from `ls-remote`, gets no red anywhere.
+ *
+ * The two tests below execute the table. They assert over SOURCE TEXT,
+ * which is the right altitude for a classification: the behavioural
+ * tests above already prove that TODAY's reporting paths stay off the
+ * network, and these prove that a call added TOMORROW has to be
+ * classified before it can land.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Git verbs that open a socket, split by whether a legitimate one is
+ * bounded by round-trip latency or by how much data there is to move.
+ * `clone` and `pull` appear although neither module uses one: the point
+ * of a classification is to have an answer ready for the call that has
+ * not been written yet.
+ */
+const REF_ADVERTISEMENT_VERBS = new Set(["ls-remote"]);
+const OBJECT_TRANSFER_VERBS = new Set(["clone", "fetch", "pull", "push"]);
+
+interface NetworkCall {
+  where: string;
+  verb: string;
+  text: string;
+}
+
+/** Every literal network verb handed to a git runner in the named files. */
+function scanNetworkCalls(repoRoot: string, relatives: string[]): NetworkCall[] {
+  const found: NetworkCall[] = [];
+  for (const relative of relatives) {
+    const lines = readFileSync(join(repoRoot, relative), "utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      // BOTH runners. src/pool.ts reaches the network through
+      // `runGitRetrying` as well as `runGit`, and a scan that looked only
+      // for the second would return an empty result indistinguishable
+      // from an absence of defects.
+      const opened = /\brunGit(?:Retrying)?\(/.exec(lines[index] as string);
+      if (opened === null) {
+        continue;
+      }
+      const window = lines.slice(index, index + 16).join("\n");
+      const call = window.slice(window.indexOf(opened[0]));
+      const verbs = call.matchAll(/"([a-z-]+)"/g);
+      for (const match of verbs) {
+        const verb = match[1] as string;
+        if (REF_ADVERTISEMENT_VERBS.has(verb) || OBJECT_TRANSFER_VERBS.has(verb)) {
+          found.push({
+            where: `${relative}:${String(index + 1)}`,
+            verb,
+            text: call,
+          });
+          break;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * The premise the whole classification rests on is a claim about ANOTHER
+ * PROGRAM: that git does not give up on a stalled peer by itself. That is
+ * measured, not reasoned, and the measurement is this capture. Reading it
+ * here is what stops the two source-text tests below from being
+ * assertions about a belief.
+ */
+function requireStalledRemoteCapture(repoRoot: string): void {
+  const capture = readFileSync(
+    join(repoRoot, "witness", "captures", "m4-p19-git-ls-remote-silent-listener.txt"),
+    "utf8",
+  );
+  for (const wait of ["timeout 5 git ls-remote", "timeout 20 git ls-remote"]) {
+    assert.ok(
+      capture.includes(wait),
+      `the capture no longer records the "${wait}" arm, so the premise that git ` +
+        `does not give up on its own is no longer measured anywhere`,
+    );
+  }
+  assert.equal(
+    (capture.match(/exit: 124/g) ?? []).length,
+    2,
+    "the capture no longer records git still waiting at BOTH measured waits",
+  );
+}
+
+test("every socket-opening git call is classified, and the ref probe carries its bound", () => {
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  requireStalledRemoteCapture(repoRoot);
+  const calls = scanNetworkCalls(repoRoot, ["src/pool.ts", "src/teardown.ts"]);
+  const bounded = calls.filter((call) => REF_ADVERTISEMENT_VERBS.has(call.verb));
+  const transfer = calls.filter((call) => OBJECT_TRANSFER_VERBS.has(call.verb));
+
+  // THE SCAN MUST FIND BOTH CLASSES, or it is a guard that cannot go red.
+  // A rename of the runner, or of the verbs, leaves it green and empty
+  // otherwise, which is the shape T-008's postscript names.
+  assert.ok(
+    bounded.length >= 1 && transfer.length >= 2,
+    `the scan found ${String(bounded.length)} ref-advertisement and ` +
+      `${String(transfer.length)} object-transfer call(s), so it is no longer ` +
+      `looking at the right thing: ${calls.map((c) => `${c.where} ${c.verb}`).join(", ")}`,
+  );
+
+  // A ref advertisement is bounded by round-trip latency, so a legitimate
+  // one cannot run long and a wall-clock bound cannot abort real work.
+  const unboundedProbes = bounded
+    .filter((call) => !call.text.includes("networkTimeoutMs"))
+    .map((call) => `${call.where} git ${call.verb}`);
+  assert.deepEqual(
+    unboundedProbes,
+    [],
+    `a ref-advertisement call with no bound: ${unboundedProbes.join(", ")}`,
+  );
+
+  // An object transfer's legitimate duration is set by how much data
+  // there is, so a wall-clock bound on one would kill real work. They are
+  // deliberately unbounded, and the test says so rather than leaving a
+  // reader to wonder whether they were missed.
+  const boundedTransfers = transfer
+    .filter((call) => call.text.includes("networkTimeoutMs"))
+    .map((call) => `${call.where} git ${call.verb}`);
+  assert.deepEqual(
+    boundedTransfers,
+    [],
+    `an object-transfer call carries a wall-clock bound, which would abort a ` +
+      `legitimate large transfer: ${boundedTransfers.join(", ")}`,
+  );
+});
+
+test("only the destroying caller holds the network licence for reconstruction", () => {
+  /*
+   * The other half of the classification. `reconstructPoolRecord` takes a
+   * REQUIRED `network` flag with no default, and which callers may set it
+   * true is the decision this round made. Reporting paths may not, and
+   * the behavioural tests above prove that of the two that exist today.
+   * This proves it of every caller there will ever be, by reading them
+   * all rather than by naming the two.
+   */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  requireStalledRemoteCapture(repoRoot);
+  const callers: Array<{ where: string; networkTrue: boolean }> = [];
+  for (const relative of ["src/pool.ts", "src/teardown.ts", "src/commands/pool.ts",
+                          "src/commands/teardown.ts", "src/commands/doctor.ts"]) {
+    const lines = readFileSync(join(repoRoot, relative), "utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index] as string;
+      // The DEFINITION is not a call. It is the only occurrence followed
+      // by a newline rather than an argument list on the same line.
+      if (!line.includes("reconstructPoolRecord(fleet")) {
+        continue;
+      }
+      const call = lines.slice(index, index + 4).join("\n");
+      callers.push({
+        where: `${relative}:${String(index + 1)}`,
+        networkTrue: /network:\s*true/.test(call),
+      });
+    }
+  }
+  assert.ok(
+    callers.length >= 2,
+    `the scan found ${String(callers.length)} reconstruction call site(s), so it is ` +
+      `no longer looking at the right thing`,
+  );
+  const licensed = callers.filter((caller) => caller.networkTrue).map((c) => c.where);
+  assert.deepEqual(
+    licensed,
+    licensed.filter((where) => where.startsWith("src/teardown.ts:")),
+    `a caller outside src/teardown.ts holds the network licence: ${licensed.join(", ")}`,
+  );
+  assert.equal(
+    licensed.length,
+    1,
+    `expected exactly one licensed caller, found: ${licensed.join(", ") || "none"}`,
+  );
+});
+
+test("this fix round's classification behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-network-calls-are-classified",
+    "pool-reconstruction-network-licence-is-single",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),

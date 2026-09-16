@@ -24,6 +24,18 @@ const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
 const SALVAGE_PREFIX = "WIP-UNREVIEWED (do not treat as reviewed):";
 
+/**
+ * THE SPAWN BOUND ON THE CHILD. Sibling of the constant of the same name
+ * in test/pool.test.ts, and carrying the same value for the same reason:
+ * it is not the bound under test, it is what makes a FAILURE of the bound
+ * under test show up as a killed child rather than as a suite that never
+ * finishes. Twenty seconds is the shipped NETWORK_TIMEOUT_MS
+ * (src/pool.ts:111), and the tests that pass it override the shipped
+ * bound down to 1500ms, so the margin is more than ten times the value
+ * being waited on.
+ */
+const SPAWN_BOUND_MS = 20_000;
+
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: "Teardown Test",
   GIT_AUTHOR_EMAIL: "teardown-test@tiphys.invalid",
@@ -1119,6 +1131,107 @@ test("teardown --from-reconstructed refuses a dirty SCOUT worktree and removes n
   assert.deepEqual(recordFilesIn(scratch), []);
 });
 
+/* ------------------------------------------------------------------ *
+ * SECOND PASS: the two regions the first pass listed as UNCOVERED.
+ *
+ * Its section 13 named them honestly rather than ticking them: item 4,
+ * a SCOUT WITH COMMITS torn down through the reconstructed path, was
+ * READ FROM SOURCE and never run; item 5, `--salvage` combined with
+ * `--from-reconstructed` on a scout, was read the same way. Both sit
+ * BEHIND the new dirty refusal, which is exactly why neither was reached
+ * by the tests that pass: the refusal that was just added shadows them.
+ * A region behind a new guard is the region most likely to be wrong and
+ * least likely to be exercised.
+ * ------------------------------------------------------------------ */
+
+test("a clean scout with commits is still refused through the reconstructed path", (t) => {
+  // UNCOVERED ITEM 4, now run. The tree is made CLEAN deliberately: the
+  // dirty refusal added by the first pass fires before this check, so a
+  // dirty fixture would be refused for the WRONG REASON and the test
+  // would pass without ever reaching the commits gate. That distinction
+  // is the whole point of driving it rather than reading it.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-recon-commits", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-recon-commits"), "report.md"),
+    "# Scout report\n",
+  );
+  const tip = commitInWorktree(scratch, "s-recon-commits", "scratch-finding.md");
+  assert.equal(
+    porcelainOf(scratch, "s-recon-commits"),
+    "",
+    "precondition: the worktree is CLEAN, so the dirty refusal cannot fire",
+  );
+  reclaimRecord(scratch, "s-recon-commits");
+
+  const refused = teardown(scratch, "s-recon-commits", ["--from-reconstructed"]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /has commits on its scratch branch/, refused.stderr);
+  // The tip is NAMED, and it is the tip the test made rather than one the
+  // message could have invented: the baseSha it is compared against comes
+  // from meta.json on this path, not from a pool record, and that
+  // substitution is what the first pass recorded as unverified.
+  assert.ok(
+    refused.stderr.includes(tip),
+    `the refusal does not name the branch tip ${tip}: ${refused.stderr}`,
+  );
+  assert.ok(existsSync(worktreeOf(scratch, "s-recon-commits")));
+  assert.equal(metaStatus(scratch, "s-recon-commits"), "open");
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("--salvage does not open the reconstructed scout path, because a scout never pushes", (t) => {
+  // UNCOVERED ITEM 5, now run. `--salvage` is the escape from the SHIP
+  // dirty refusal, and the first pass reasoned from source that it is not
+  // an escape from the scout one. Reasoning is what this round exists to
+  // stop accepting, so the combination is driven.
+  const scratch = makeScratch(t);
+  assert.equal(spawnTask(scratch, "s-recon-salv", "scout").status, 0);
+  writeFileSync(
+    join(taskDirOf(scratch, "s-recon-salv"), "report.md"),
+    "# Scout report\n",
+  );
+  const before = dirtyWorktree(scratch, "s-recon-salv");
+  const refsBefore = gitOk(scratch.upstream, ["show-ref"]);
+  reclaimRecord(scratch, "s-recon-salv");
+
+  const refused = teardown(scratch, "s-recon-salv", [
+    "--from-reconstructed",
+    "--salvage",
+  ]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /uncommitted changes or untracked files/, refused.stderr);
+  assert.ok(existsSync(join(worktreeOf(scratch, "s-recon-salv"), "important.md")));
+  assert.equal(porcelainOf(scratch, "s-recon-salv"), before);
+  // AND NOTHING WAS PUSHED. The salvage path's whole action is a commit
+  // plus a push, so the upstream's ref list is where its side effect
+  // would show; comparing it before and after is what distinguishes
+  // "refused" from "refused after pushing".
+  assert.equal(
+    gitOk(scratch.upstream, ["show-ref"]),
+    refsBefore,
+    "the refused salvage changed the upstream's refs",
+  );
+  assert.equal(metaStatus(scratch, "s-recon-salv"), "open");
+});
+
+test("this second pass's teardown behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "teardown-from-reconstructed-refuses-committed-scout",
+    "teardown-salvage-never-rescues-a-reconstructed-scout",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
 test("the with-record scout path still discards, so the asymmetry is measured not asserted", (t) => {
   // THE CONTROL for the test above, and the reason the source comment
   // calls the reconstructed path STRICTER rather than equal. PR-010
@@ -1238,7 +1351,7 @@ test("teardown --from-reconstructed gives up on a remote that never answers", as
     "t-recon-hang",
     ["--from-reconstructed"],
     { ...baseEnv(), TIPHYS_GIT_NETWORK_TIMEOUT_MS: "1500" },
-    20_000,
+    SPAWN_BOUND_MS,
   );
   assert.equal(
     refused.status,

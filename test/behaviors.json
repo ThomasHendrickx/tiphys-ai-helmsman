@@ -792,5 +792,9 @@
   "teardown-from-reconstructed-refuses-dirty-scout": "teardown --from-reconstructed refuses a dirty SCOUT worktree and removes nothing",
   "teardown-with-record-scout-still-discards": "the with-record scout path still discards, so the asymmetry is measured not asserted",
   "teardown-from-reconstructed-bounds-the-remote-probe": "teardown --from-reconstructed gives up on a remote that never answers",
-  "teardown-network-timeout-override-is-validated": "a malformed network-timeout override is ignored rather than honoured"
+  "teardown-network-timeout-override-is-validated": "a malformed network-timeout override is ignored rather than honoured",
+  "pool-network-calls-are-classified": "every socket-opening git call is classified, and the ref probe carries its bound",
+  "pool-reconstruction-network-licence-is-single": "only the destroying caller holds the network licence for reconstruction",
+  "teardown-from-reconstructed-refuses-committed-scout": "a clean scout with commits is still refused through the reconstructed path",
+  "teardown-salvage-never-rescues-a-reconstructed-scout": "--salvage does not open the reconstructed scout path, because a scout never pushes"
 }
