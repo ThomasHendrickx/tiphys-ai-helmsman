@@ -314,3 +314,54 @@ correctness disposition names it.
 but the owner's cap is two agents and M4-P5 holds the other slot. M4-P9 collides
 with M4-P5 on `package.json`. M4-P18, M4-P21, M4-P22, M4-P12, M4-P24 and M4-P25
 are all free of this pair and wait only on a slot.
+
+## Wave 9, 2026-09-17: M4-P6 and M4-P30, written early and RE-CHECKED at dispatch
+
+This one is written before the wave it governs is dispatchable, because both
+agent slots are held by wave 8 and the paperwork would otherwise be a separate
+pull request under DR-0031. **The in-flight check below is re-run at dispatch**,
+against whatever is actually open then; what is recorded here is the file-level
+derivation, which does not move.
+
+| unit | files it may touch |
+|---|---|
+| M4-P6 | `plugin/src/hooks/turn-end.ts`, `plugin/src/hooks/tool-call-observer.ts`, `plugin/src/status.ts`, `plugin/.claude-plugin/plugin.json`, `plugin/src/adapter.ts`, `test/plugin-hooks.test.ts`, `test/fixtures/plugin-hook-payloads/` |
+| M4-P30 | `src/commands/doctor.ts`, `test/doctor.test.ts`, `assurance-modes.yaml`, `delivery/evidence/m4-fleet-bringup/` |
+
+**Intersection: EMPTY.** M4-P6's list is at
+delivery/plan/kernel-plan-m4.md:919. M4-P30 does not restate its own files and
+says so; its section points at 3.4, whose files-to-touch block is at
+delivery/plan/kernel-plan-m4.md:2423, and the id moved from M4-P15 to M4-P30
+when the charter was split out.
+
+**Disjoint from wave 8 as well**, which matters because wave 8 may still be
+unmerged when this dispatches: M4-P8 holds `src/spawn.ts`, `src/exec/env.ts`,
+`src/gates/credentials.ts`, `src/task.ts` and
+`scripts/credential-witness.mjs`; M4-P18 holds `src/commands/sync.ts`,
+`src/cli.ts`, `src/status.ts`, `src/commands/init.ts` and `AGENTS.md`. Neither
+touches a file in either list above. Note that M4-P6's `plugin/src/status.ts`
+and M4-P18's `src/status.ts` are different files.
+
+**M4-P6 DEPENDS ON M4-P5 BEING MERGED**, because every one of its paths is under
+`plugin/`, which M4-P5 creates. It is not dispatchable before that, and the
+dependency is a hard one rather than a preference.
+
+**Why this pair and not the obvious one.** M4-P6 and M4-P7 look like the natural
+pair once `plugin/` exists, and they are NOT disjoint: both edit
+`plugin/src/adapter.ts`, M4-P6 to wire the turn-end invocation and M4-P7 to wire
+the model-resolution writer. No dependency list in the plan carries that
+pairing, so it is recorded here. M4-P7 follows M4-P6, not beside it.
+
+**The generator check.** Neither unit adds or changes a gate row, so no drift
+chain moves: `render-agent-rules-gates.mjs` and `check-brief-drift.mjs` both
+read `gate-registry.yaml`, which neither list contains. M4-P30 edits
+`assurance-modes.yaml` for the fix-round ceiling; that file is not a generator
+input for `CLAUDE.md` or `roles/`.
+
+**Not dispatched, and why.** M4-P7 collides with M4-P6 as above. M4-P9 collides
+with M4-P18 on `AGENTS.md` and also needs `plugin/`. M4-P29 collides with M4-P8
+on `src/gates/credentials.ts`. M4-P21 collides with M4-P18 on
+`src/commands/init.ts`. M4-P22 collides with M4-P8 on `src/spawn.ts` AND with
+M4-P30 on `src/commands/doctor.ts`, which makes it the most contended phase
+left. M4-P12, M4-P24 and M4-P25 collide with M4-P18 on `src/cli.ts` under
+DR-0046.
