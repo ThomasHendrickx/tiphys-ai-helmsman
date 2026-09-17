@@ -2326,3 +2326,38 @@ pre-decision recommendation rather than a second live proposal.
 
 DECIDED: the plugin tree is `plugin/`. Both briefs say so, and neither phase
 creates `packages/`.
+
+### The unpushed-work sweep over-reports, measured 2026-09-17
+
+The hourly floor's step 4 says to check a dead agent's clone for commits it
+made and never pushed. That check has cost this project two real losses, so it
+is run on every wake. The obvious form of it is WRONG in this environment and
+produced three false alarms in one sweep:
+
+```
+git -C <clone> log --oneline @{u}..HEAD | wc -l
+```
+
+Measured: `fix-m4-p2-macos/clone` reported **82** unpushed commits,
+`fix-m4-p11/clone` **7**, `r3-m4-p11/clone` **1**. All three heads were already
+on `origin`. The cause is that every agent clone is made with
+`git clone --no-local` from the local repository and then has its origin
+re-pointed, so its remote-tracking refs are frozen at clone time and never
+learn about anything pushed afterwards, including its own pushes.
+
+The form that answers the question asks the ORCHESTRATOR'S clone, after
+fetching the branch, whether the sha is reachable from any remote ref:
+
+```
+git fetch origin 'refs/heads/<branch>:refs/remotes/origin/<branch>' -q
+git branch -r --contains <sha>
+```
+
+Empty output is the alarm. All three shas above printed a remote branch.
+
+**A squash merge makes this worse in the opposite direction and both readings
+have to be held at once.** A squash-merged phase branch is NOT an ancestor of
+`main`, so `--contains` against `origin/main` says nothing about whether the
+work landed; the branch ref is what carries it. Ask the branch, not `main`, and
+confirm the LANDING separately by looking for the phase's own artifacts in
+`main`'s tree.
