@@ -631,3 +631,54 @@ test("the at-most-one-live-lease assertion is satisfiable within one fleet home"
   );
   assertHoldsLiveLease(home, winners[0] as OutcomeShape);
 });
+
+/* ================================================================== */
+/* GROUP 4: the expiry guard, AFTER it fired.                          */
+/* ================================================================== */
+
+/**
+ * THIS TEST KEEPS ITS NAME AND ITS ASSERTION IS NOW THE OPPOSITE ONE, and
+ * both halves of that sentence are deliberate.
+ *
+ * It was written by M4-P20 to assert that `src/exclusion.ts` was still
+ * ABSENT, so that the skip gating the two witnesses above could not outlive
+ * the thing it waited for. M4-P21 made it fire. The obvious response, and the
+ * one taken first, was to delete it and its row from `test/behaviors.json`;
+ * the `suite` gate refused that, because the behavior registry is APPEND-ONLY
+ * (CLAUDE.md, binding convention 5) and a deleted row is a finding. That rule
+ * is right: a phase that may remove rows can retire a guard by deleting the
+ * evidence that it ever existed.
+ *
+ * So the name stays and the guard is re-pointed at the post-expiry state. It
+ * now asserts that the module IS present and that nothing in this file skips
+ * on it, which is a live property rather than a historical one: re-introduce
+ * a `skip:` option here, or delete the mechanism, and this reddens again.
+ */
+test("the cross-environment exclusion gate expires when the mechanism module lands", () => {
+  assert.equal(
+    existsSync(exclusionModule),
+    true,
+    "src/exclusion.ts is the cross-environment exclusion mechanism and the two " +
+      "witnesses in group 3 assert its behaviour; if it has been removed, they " +
+      "are measuring nothing and this file's history explains why",
+  );
+  /* The needle is the OPTIONS-OBJECT form, an opening brace then the skip
+     key, and not the bare words. This file discusses the retired gate by name
+     in its header and in the comment above, so a substring check for those
+     words would match this file's own prose and redden forever, which is a
+     guard that can only go red. Requiring the brace makes it match
+     node:test's option object and nothing written about it, and it is why
+     this sentence spells the form out instead of quoting it. */
+  const ownSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const skipOption = /\{\s*skip:/;
+  assert.equal(
+    skipOption.test(ownSource),
+    false,
+    "the gate this test was written to expire has come back: a witness in this " +
+      "file is skipped again, which is a guard that cannot go red",
+  );
+  /* And the control, so the needle is known to be capable of matching: the
+     exact form it looks for, assembled here rather than written as a literal
+     option so that this line is not itself the thing being detected. */
+  assert.equal(skipOption.test(["{ ", "skip: ", "aReason }"].join("")), true);
+});

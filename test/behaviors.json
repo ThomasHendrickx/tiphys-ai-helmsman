@@ -859,6 +859,7 @@
   "cross-environment-exclusion-single-holder-concurrent": "cross-environment exclusion allows at most one live lease when two clones acquire at once",
   "cross-environment-exclusion-single-holder-from-pushed-fleet": "cross-environment exclusion allows at most one live lease for a clone made from a pushed fleet",
   "cross-environment-exclusion-assertion-satisfiable": "the at-most-one-live-lease assertion is satisfiable within one fleet home",
+  "cross-environment-exclusion-gate-expires": "the cross-environment exclusion gate expires when the mechanism module lands",
   "charter-root-present-regime-determinable": "the repository root carries a charter, so the merge check can determine the regime",
   "charter-root-reaches-a-verdict": "with a committed pair of verdicts the root charter is what lets the check reach a verdict",
   "charter-root-absent-errors-fail-closed": "removing the root charter from that same context makes the merge check error rather than green",
