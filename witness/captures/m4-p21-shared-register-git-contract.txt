@@ -1,0 +1,73 @@
+git: git version 2.43.0
+node: v26.6.0
+
+--- commit-tree with no git identity in scope ---
+exit: 128
+stdout: <empty>
+stderr:
+  fatal: empty ident name (for <>) not allowed
+
+--- commit-tree under the command-scoped machine identity ---
+exit: 0
+stdout: 6e20b05e193bc8dac948583288dc08d83c4e0adf
+stderr:
+  <empty>
+
+--- push --force-with-lease=<ref>: (expecting absence), register absent ---
+exit: 0
+stdout: <empty>
+stderr:
+  fatal: expected 'acknowledgments', received 'packfile'
+  warning: push negotiation failed; proceeding anyway with push
+  To /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git
+   * [new branch]      6e20b05e193bc8dac948583288dc08d83c4e0adf -> tiphys/lease
+
+register after A: 6e20b05e193bc8dac948583288dc08d83c4e0adf
+
+--- push --force-with-lease=<ref>: (expecting absence), register already held ---
+exit: 1
+stdout: <empty>
+stderr:
+  fatal: expected 'acknowledgments', received 'packfile'
+  warning: push negotiation failed; proceeding anyway with push
+  To /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git
+   ! [rejected]        07e804ff8ff2f823ef1884930377ba97bec2c64e -> tiphys/lease (stale info)
+  error: failed to push some refs to '/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git'
+
+--- push --force-with-lease=<ref>:<a sha the register does not hold> ---
+exit: 1
+stdout: <empty>
+stderr:
+  fatal: expected 'acknowledgments', received 'packfile'
+  warning: push negotiation failed; proceeding anyway with push
+  To /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git
+   ! [rejected]        07e804ff8ff2f823ef1884930377ba97bec2c64e -> tiphys/lease (stale info)
+  error: failed to push some refs to '/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git'
+
+--- push --force-with-lease=<ref>:<the exact sha the register holds> ---
+exit: 0
+stdout: <empty>
+stderr:
+  fatal: expected 'acknowledgments', received 'packfile'
+  warning: push negotiation failed; proceeding anyway with push
+  To /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/remote.git
+   + 6e20b05...07e804f 07e804ff8ff2f823ef1884930377ba97bec2c64e -> tiphys/lease (forced update)
+
+register after B: 07e804ff8ff2f823ef1884930377ba97bec2c64e
+
+--- ls-remote against a path that is not a repository ---
+exit: 128
+stdout: <empty>
+stderr:
+  fatal: '/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p21/capscratch/absent.git' does not appear to be a git repository
+  fatal: Could not read from remote repository.
+  
+  Please make sure you have the correct access rights
+  and the repository exists.
+
+--- ls-remote for a ref the remote does not carry ---
+exit: 0
+stdout: <empty>
+stderr:
+  <empty>
+

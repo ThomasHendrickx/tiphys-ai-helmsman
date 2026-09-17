@@ -1,0 +1,31 @@
+{
+  "id": "shared-exclusion-init-declares-only-on-request",
+  "behavior": "shared-exclusion-init-declares-only-on-request",
+  "tests": [
+    "tiphys init writes the shared exclusion declaration only when it is asked for"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  const sharedExclusion = args.length !== rest.length;",
+      "replace": "  const sharedExclusion = true;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "        ref: DEFAULT_SHARED_REF,",
+      "replace": "        ref: \"refs/tiphys/lease\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git ls-remote / git commit-tree / git push --force-with-lease=<ref>:<sha>",
+    "captures": [
+      "witness/captures/m4-p21-shared-register-git-contract.txt"
+    ],
+    "provenance": "src/exclusion.ts and src/commands/init.ts both spawn git and read its verdicts, so SPAWN_GREP matches them and red-witness rule (f) binds every witness whose members touch them. The cited capture is a REAL forced contention on a bare repository, captured 2026-09-17 with git 2.43.0 and node v26.6.0: it records that git commit-tree exits 128 with `fatal: empty ident name` when no identity is in scope, that the exact-sha --force-with-lease form is ACCEPTED against the value the register holds and REFUSED with `! [rejected] ... (stale info)` against any other, that ls-remote against a path that is not a repository exits 128 while ls-remote for an absent ref exits 0 with empty output, and that the FIRST stderr line of every push here is a push negotiation warning that is byte-identical on the accepted and the refused arms. That last fact is why src/exclusion.ts selects git's own `! [rejected]` marker instead of the first line, and it is the reason a hand-written expectation would have been indistinguishable from a fabricated one (T-003). The named test reads the capture and then reproduces the accept and refuse arms against a live scratch repository. Member 0 switches the layer on for every fleet home ever created, which is the inference the criterion forbids and the hazard H-D carve-out depends on. Member 1 declares the ref the plan's prose names, `refs/tiphys/lease`, which was re-measured for this phase against the real remote and returns HTTP 403: a fleet declared that way can never write its register and every acquire fails closed forever. One is a default flipped, the other a value that is wrong only against the remote, so they fail in different places."
+  }
+}

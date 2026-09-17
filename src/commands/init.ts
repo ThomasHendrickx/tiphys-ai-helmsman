@@ -8,6 +8,11 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
+import {
+  DEFAULT_SHARED_REF,
+  DEFAULT_SHARED_REMOTE,
+  SHARED_EXCLUSION_FIELD,
+} from "../exclusion.ts";
 import { FLEET_DIRS, FLEET_IGNORED } from "../fleet.ts";
 import { DURABLE_STATUS_DIR } from "../status.ts";
 import { readOwnVersion } from "../version.ts";
@@ -69,14 +74,30 @@ function runGit(
 }
 
 /**
- * tiphys init <dir>: create a fleet home in an empty or absent directory
- * (kernel plan v1, M1-P2 step 2). Substrate-neutral: pure filesystem and
- * git (DR-0007).
+ * THE OPT-IN FLAG FOR THE SHARED EXCLUSION REGISTER (M4-P21 criterion 1).
+ *
+ * The layer is DECLARED, never inferred, and the declaration lives in the
+ * fleet home's own `package.json` because that file is already the fleet's
+ * owner-controlled pin file. Without this flag `init` writes exactly the
+ * package.json it wrote before, with no `tiphys` section at all, so a fleet
+ * created today behaves exactly as it did and `src/exclusion.ts` returns
+ * before spawning anything. That default is the H-D carve-out in the plan's
+ * hazard table: a fleet that cannot reach a remote is not forced to switch
+ * the layer off globally, because it was never on.
+ */
+const SHARED_EXCLUSION_FLAG = "--shared-exclusion";
+
+/**
+ * tiphys init <dir> [--shared-exclusion]: create a fleet home in an empty or
+ * absent directory (kernel plan v1, M1-P2 step 2). Substrate-neutral: pure
+ * filesystem and git (DR-0007).
  */
 export function cmdInit(args: string[]): number {
-  const [dir, ...extra] = args;
+  const rest = args.filter((arg) => arg !== SHARED_EXCLUSION_FLAG);
+  const sharedExclusion = args.length !== rest.length;
+  const [dir, ...extra] = rest;
   if (dir === undefined || extra.length > 0) {
-    process.stderr.write("usage: tiphys init <dir>\n");
+    process.stderr.write(`usage: tiphys init <dir> [${SHARED_EXCLUSION_FLAG}]\n`);
     return EX_USAGE;
   }
   const root = resolve(dir);
@@ -130,7 +151,7 @@ export function cmdInit(args: string[]): number {
      for. `readOwnVersion()` is the same reader `tiphys version` uses, so the
      fleet home is pinned to the kernel that initialized it rather than to a
      number typed here. */
-  const fleetPackageJson = {
+  const fleetPackageJson: Record<string, unknown> = {
     name: "tiphys-fleet-home",
     version: "0.0.0",
     private: true,
@@ -140,6 +161,19 @@ export function cmdInit(args: string[]): number {
       [KERNEL_PACKAGE_NAME]: readOwnVersion(),
     },
   };
+  if (sharedExclusion) {
+    /* The declared form is written out in full rather than as `true` so the
+       owner can see, and edit, the remote and the ref this fleet's shared
+       lease lives on. The ref is a BRANCH because only refs/heads/* is
+       pushable against the remote this kernel is built for (CLAUDE.md
+       standing warning 14, re-measured for M4-P21). */
+    fleetPackageJson["tiphys"] = {
+      sharedExclusion: {
+        remote: DEFAULT_SHARED_REMOTE,
+        ref: DEFAULT_SHARED_REF,
+      },
+    };
+  }
   writeFileSync(
     join(root, "package.json"),
     `${JSON.stringify(fleetPackageJson, null, 2)}\n`,
@@ -170,5 +204,10 @@ export function cmdInit(args: string[]): number {
   }
 
   process.stdout.write(`initialized fleet home at ${root}\n`);
+  if (sharedExclusion) {
+    process.stdout.write(
+      `declared ${SHARED_EXCLUSION_FIELD} on ${DEFAULT_SHARED_REMOTE} at ${DEFAULT_SHARED_REF}\n`,
+    );
+  }
   return 0;
 }

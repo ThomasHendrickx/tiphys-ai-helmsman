@@ -50,20 +50,22 @@ import { fileURLToPath } from "node:url";
  *
  *   3. THE PROPERTY WITNESSES, members A and B. These assert what must
  *      become true: at most ONE of the two environments ends up holding a
- *      live lease. They are RED against today's code, which is the point.
- *      They are GATED on the mechanism being present so the branch builds,
- *      and the gate carries its reason, which the `suite` gate requires.
+ *      live lease.
  *
- *      THE TRADE-OFF, stated plainly: a skipped test is a guard that cannot
- *      go red, which is the exact shape T-008's postscript and the ASCII
- *      check's history record as green and worthless. Two things bound it.
- *      Group 2 asserts the dangerous state from the other side, so the
- *      transition is detectable without this gate. And group 4 makes the
- *      gate SELF-EXPIRING.
+ *      M4-P21 LANDED AND THEY ARE NOW GREEN, WHICH IS WHY THE GATE AND ITS
+ *      EXPIRY GUARD ARE GONE. They ran SKIPPED while `src/exclusion.ts` did
+ *      not exist, and a fourth group existed solely to redden the day the
+ *      module landed so the skip could not outlive the thing it waited for.
+ *      That day came: the gate, the `skip: witnessGate` options and the
+ *      expiry guard were removed together in the phase that built the
+ *      mechanism, and the two witnesses below now run on every suite.
  *
- *   4. THE EXPIRY GUARD. It asserts that the mechanism module is still
- *      absent. The day M4-P21 adds it, this test goes RED, which is how the
- *      skip is prevented from outliving the thing it is waiting for.
+ *      WHAT CHANGED IN THEM, and it is the only change: each environment is
+ *      made to DECLARE the shared exclusion layer, because M4-P21 criterion
+ *      1 makes it opt-in per fleet home. A witness for an opt-in mechanism
+ *      has to opt in, and group 2 is what asserts that the DEFAULT is still
+ *      today's behaviour. So the two groups now measure the two sides of
+ *      one switch rather than the same side twice.
  *
  * C-2 (binding): nothing in this file reads a pid, probes process liveness,
  * sends a signal, or reads /proc. Every observation is a file on disk, a
@@ -82,23 +84,14 @@ import { fileURLToPath } from "node:url";
 const sourceEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 
 /**
- * The module M4-P21 is planned to add (kernel plan M4, M4-P21's
- * files-to-touch list). Its presence is the gate for group 3 and the
- * expiry condition for group 4.
+ * The module M4-P21 added (kernel plan M4, M4-P21's files-to-touch list).
+ * Group 3 was gated on its absence and is no longer gated on anything; the
+ * constant remains so the two witnesses below can state, in the assertion
+ * message a failure prints, which mechanism they are measuring.
  */
 const exclusionModule = fileURLToPath(
   new URL("../src/exclusion.ts", import.meta.url),
 );
-
-const mechanismPresent = existsSync(exclusionModule);
-
-const GATE_REASON =
-  "cross-environment exclusion has no mechanism yet: src/exclusion.ts is absent " +
-  "and M4-P21 is the phase that adds it. This witness is RED against today's " +
-  "code by construction, which is what M4-P20 exists to establish. See the " +
-  "expiry guard in this file, which reddens the day the module lands.";
-
-const witnessGate: false | string = mechanismPresent ? false : GATE_REASON;
 
 interface LeaseShape {
   holderId: string;
@@ -507,13 +500,24 @@ test("a fleet clone made from a pushed fleet acquires a second live lease invisi
   assert.equal(lockLib.isExpired(readLeaseFile(homeB), nowMs), false);
 });
 
+/**
+ * Opt in to the shared exclusion register in one environment's own fleet
+ * home (M4-P21 criterion 1: declaration, never inference). The field is the
+ * one `tiphys init --shared-exclusion` writes and `src/exclusion.ts` reads.
+ */
+function declareSharedExclusion(home: string): void {
+  const path = join(home, "package.json");
+  const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  document["tiphys"] = { sharedExclusion: true };
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+}
+
 /* ================================================================== */
-/* GROUP 3: the property witnesses. RED against today's code, gated.   */
+/* GROUP 3: the property witnesses. GREEN since M4-P21, ungated.       */
 /* ================================================================== */
 
 test(
   "cross-environment exclusion allows at most one live lease when two clones acquire at once",
-  { skip: witnessGate },
   async (t) => {
     const root = makeTempDir(t);
     const remote = makeBareRemote(root, "fleet.git");
@@ -526,6 +530,8 @@ test(
 
     prepareStateDir(homeA);
     prepareStateDir(homeB);
+    declareSharedExclusion(homeA);
+    declareSharedExclusion(homeB);
 
     const [outcomeA, outcomeB] = await Promise.all([
       lockLib.acquireLease(lockPathFor(homeA)),
@@ -536,15 +542,18 @@ test(
     assert.equal(
       winners.length,
       1,
-      "exactly one environment may hold the fleet lease; " +
+      `exactly one environment may hold the fleet lease (mechanism ${exclusionModule}); ` +
         `A ok=${String(outcomeA.ok)} B ok=${String(outcomeB.ok)}`,
     );
+    // The loser holds no local lease either: the refusal happens before the
+    // lock file is written, which is what makes the layer fail closed.
+    const loser = outcomeA.ok ? homeB : homeA;
+    assert.equal(existsSync(lockPathFor(loser)), false);
   },
 );
 
 test(
   "cross-environment exclusion allows at most one live lease for a clone made from a pushed fleet",
-  { skip: witnessGate },
   async (t) => {
     const root = makeTempDir(t);
     const remote = makeBareRemote(root, "fleet.git");
@@ -552,6 +561,10 @@ test(
 
     const homeA = cloneFleet(root, remote, "env-a");
     prepareStateDir(homeA);
+    // A declares the layer BEFORE it acquires and then publishes the
+    // declaration, so environment B inherits the opt-in the way a real
+    // second environment would: from the fleet's own tracked package.json.
+    declareSharedExclusion(homeA);
     const outcomeA = await lockLib.acquireLease(lockPathFor(homeA));
     assert.equal(outcomeA.ok, true, "the first environment acquires");
 
@@ -564,13 +577,22 @@ test(
     const precondition = sameFleetPrecondition(homeA, homeB);
     assert.equal(precondition.ok, true, precondition.reason);
     prepareStateDir(homeB);
+    // The opt-in travelled in the published package.json, so B does not have
+    // to be told: asserted, rather than re-declared here, because a second
+    // declaration would hide it if it had not.
+    const published = JSON.parse(
+      readFileSync(join(homeB, "package.json"), "utf8"),
+    ) as { tiphys?: { sharedExclusion?: unknown } };
+    assert.equal(published.tiphys?.sharedExclusion, true);
 
     const outcomeB = await lockLib.acquireLease(lockPathFor(homeB));
     assert.equal(
       outcomeB.ok,
       false,
-      "an environment cloned from a fleet whose lease is held must be refused",
+      `an environment cloned from a fleet whose lease is held must be refused ` +
+        `(mechanism ${exclusionModule})`,
     );
+    assert.equal(existsSync(lockPathFor(homeB)), false);
   },
 );
 
@@ -611,18 +633,52 @@ test("the at-most-one-live-lease assertion is satisfiable within one fleet home"
 });
 
 /* ================================================================== */
-/* GROUP 4: the expiry guard for group 3's gate.                       */
+/* GROUP 4: the expiry guard, AFTER it fired.                          */
 /* ================================================================== */
 
+/**
+ * THIS TEST KEEPS ITS NAME AND ITS ASSERTION IS NOW THE OPPOSITE ONE, and
+ * both halves of that sentence are deliberate.
+ *
+ * It was written by M4-P20 to assert that `src/exclusion.ts` was still
+ * ABSENT, so that the skip gating the two witnesses above could not outlive
+ * the thing it waited for. M4-P21 made it fire. The obvious response, and the
+ * one taken first, was to delete it and its row from `test/behaviors.json`;
+ * the `suite` gate refused that, because the behavior registry is APPEND-ONLY
+ * (CLAUDE.md, binding convention 5) and a deleted row is a finding. That rule
+ * is right: a phase that may remove rows can retire a guard by deleting the
+ * evidence that it ever existed.
+ *
+ * So the name stays and the guard is re-pointed at the post-expiry state. It
+ * now asserts that the module IS present and that nothing in this file skips
+ * on it, which is a live property rather than a historical one: re-introduce
+ * a `skip:` option here, or delete the mechanism, and this reddens again.
+ */
 test("the cross-environment exclusion gate expires when the mechanism module lands", () => {
   assert.equal(
-    mechanismPresent,
-    false,
-    "src/exclusion.ts now exists, so the cross-environment exclusion mechanism " +
-      "has landed and the skip in this file is no longer justified. Remove the " +
-      "gate (the `skip: witnessGate` options on the two group 3 witnesses), " +
-      "delete this guard test and its row in test/behaviors.json, and let the " +
-      "witnesses run. This test exists so that gate cannot outlive the thing " +
-      "it waits for.",
+    existsSync(exclusionModule),
+    true,
+    "src/exclusion.ts is the cross-environment exclusion mechanism and the two " +
+      "witnesses in group 3 assert its behaviour; if it has been removed, they " +
+      "are measuring nothing and this file's history explains why",
   );
+  /* The needle is the OPTIONS-OBJECT form, an opening brace then the skip
+     key, and not the bare words. This file discusses the retired gate by name
+     in its header and in the comment above, so a substring check for those
+     words would match this file's own prose and redden forever, which is a
+     guard that can only go red. Requiring the brace makes it match
+     node:test's option object and nothing written about it, and it is why
+     this sentence spells the form out instead of quoting it. */
+  const ownSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const skipOption = /\{\s*skip:/;
+  assert.equal(
+    skipOption.test(ownSource),
+    false,
+    "the gate this test was written to expire has come back: a witness in this " +
+      "file is skipped again, which is a guard that cannot go red",
+  );
+  /* And the control, so the needle is known to be capable of matching: the
+     exact form it looks for, assembled here rather than written as a literal
+     option so that this line is not itself the thing being detected. */
+  assert.equal(skipOption.test(["{ ", "skip: ", "aReason }"].join("")), true);
 });

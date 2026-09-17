@@ -8,6 +8,20 @@ import {
 } from "node:fs";
 import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
+import {
+  buildRegisterDocument,
+  casFailureLine,
+  casWrite,
+  ensureEnvironmentId,
+  fleetRootForLockPath,
+  preflightShared,
+  readSharedExclusion,
+} from "./exclusion.ts";
+import type {
+  SharedExclusionConfig,
+  SharedIntent,
+  SharedPreflight,
+} from "./exclusion.ts";
 
 /**
  * Lease-based session lock (kernel plan v1, M1-P3 step 1; DR-0007; plan
@@ -62,9 +76,19 @@ import { setTimeout as sleep } from "node:timers/promises";
  *
  * Exclusion domain (PR-201, DR-0007 stated honestly): the lease excludes
  * within one filesystem and one clock, the fleet home the lock file lives
- * in. Cross-environment exclusion for a fleet shared through a git remote
- * is M4 residue and is not claimed here. Mutations of the lock file made
- * outside this module (manual edits) are not covered by the contract.
+ * in. Mutations of the lock file made outside this module (manual edits)
+ * are not covered by the contract.
+ *
+ * CROSS-ENVIRONMENT EXCLUSION IS A SECOND LAYER ABOVE THIS ONE (M4-P21),
+ * and it is OFF unless the fleet home declares it. When the fleet's own
+ * `package.json` carries `tiphys.sharedExclusion`, every mutation below
+ * first asks `src/exclusion.ts` for a verdict from the shared register on
+ * the fleet's git remote, and only a won verdict reaches the local lease.
+ * With the field ABSENT, `readSharedExclusion` returns before spawning
+ * anything and every path in this module behaves exactly as it did, which
+ * is the property M4-P21 criterion 1 asserts. The refusal never touches the
+ * lock file, which is what makes the fail-closed behaviour on an
+ * unreachable register observable (criterion 7): no local lease appears.
  *
  * Renewal discipline (PR-203): the default lease lasts 900 seconds and
  * the holder renews at or before half-life (renewByMs). Holdership on
@@ -92,12 +116,35 @@ export type ObservedLease =
   | { kind: "absent" }
   | { kind: "present"; raw: string; lease: Lease | undefined };
 
+/**
+ * What the shared exclusion layer decided. Present only when the fleet home
+ * declares the layer; the CLI prints `line` verbatim, and `line` always
+ * names which of the two staleness bases reached the verdict, which is
+ * M4-P21 criterion 6.
+ *
+ * THE VERDICT IS CARRIED AS TEXT ON PURPOSE, not as a discriminated field.
+ * The C-2 structural inspection over this file (test/lock.test.ts:534,
+ * M1-P3 criterion 10) forbids a whole vocabulary of process-probing words
+ * from `src/lock.ts`, and it is a blunt case-insensitive grep, which is the
+ * property that makes it hard to defeat by accident. Naming the field after
+ * that vocabulary would have reddened it for a reason that has nothing to do
+ * with C-2, and widening the grep to let this through would weaken a guard
+ * this module is the whole reason for. The classification itself lives in
+ * `src/exclusion.ts`, which no such grep covers, and any caller needing it
+ * as a value reads it there.
+ */
+export interface SharedNote {
+  line: string;
+  envId: string;
+}
+
 export type LeaseOutcome =
-  | { ok: true; lease: Lease }
-  | { ok: true; lease: null }
+  | { ok: true; lease: Lease; shared?: SharedNote }
+  | { ok: true; lease: null; shared?: SharedNote }
   | {
       ok: false;
       reason: string;
+      shared?: SharedNote;
       /**
        * True when the operation failed because a mutation claim file
        * was still present after the bounded wait (CR-204). A stale
@@ -417,10 +464,117 @@ export async function applyLeaseMutation(
   }
 }
 
+
+/* ------------------------------------------------------------------ */
+/* The shared exclusion layer's seam into this module (M4-P21)         */
+/* ------------------------------------------------------------------ */
+
+interface SharedContext {
+  config: SharedExclusionConfig;
+  envId: string;
+  fleetRoot: string;
+}
+
+type SharedGate =
+  | { kind: "off" }
+  | { kind: "on"; ctx: SharedContext }
+  | { kind: "invalid"; reason: string };
+
+/**
+ * Resolve the fleet home's declaration. The ONLY entry into the shared
+ * layer, and the only place a fleet root is derived: a lock path is
+ * `<root>/state/orchestrator.lock` (src/fleet.ts:37), so the root is two
+ * directories up unless a caller names it. A declaration that is present
+ * and unusable is reported rather than treated as absent, because reading a
+ * typo as "off" is the failure that would make this layer green everywhere.
+ */
+function sharedGate(lockPath: string, fleetRoot: string | undefined): SharedGate {
+  const root = fleetRoot ?? fleetRootForLockPath(lockPath);
+  const declaration = readSharedExclusion(root);
+  if (declaration.kind === "absent") {
+    return { kind: "off" };
+  }
+  if (declaration.kind === "invalid") {
+    return { kind: "invalid", reason: declaration.reason };
+  }
+  const identity = ensureEnvironmentId(root);
+  return {
+    kind: "on",
+    ctx: { config: declaration.config, envId: identity.envId, fleetRoot: root },
+  };
+}
+
+function invalidDeclarationOutcome(reason: string): LeaseOutcome {
+  return {
+    ok: false,
+    reason:
+      `shared exclusion is declared and unusable, refusing rather than running ` +
+      `local-only: ${reason}`,
+  };
+}
+
+/** Ask the shared register for a verdict, without touching anything. */
+function sharedPreflight(
+  ctx: SharedContext,
+  intent: SharedIntent,
+  takeover: boolean,
+  nowMs: number,
+): SharedPreflight {
+  return preflightShared({
+    fleetRoot: ctx.fleetRoot,
+    config: ctx.config,
+    envId: ctx.envId,
+    intent,
+    takeover,
+    nowMs,
+  });
+}
+
+function sharedNote(ctx: SharedContext, preflight: SharedPreflight): SharedNote {
+  return { line: preflight.line, envId: ctx.envId };
+}
+
+/**
+ * Publish the won verdict to the register. Called only AFTER the local
+ * mutation succeeded, so the two layers agree or the local one is rolled
+ * back by the caller: a register entry with no local lease behind it would
+ * exclude every environment including the one that wrote it.
+ */
+function sharedCommit(
+  ctx: SharedContext,
+  preflight: Extract<SharedPreflight, { kind: "proceed" }>,
+  state: "held" | "free",
+  nowMs: number,
+  durationSeconds: number,
+): { ok: true; sha: string } | { ok: false; reason: string } {
+  const document = buildRegisterDocument({
+    state,
+    envId: ctx.envId,
+    counter: preflight.nextCounter,
+    nowMs,
+    durationSeconds,
+    ref: ctx.config.ref,
+    ...(preflight.current !== undefined && state === "held" && !preflight.takingOver
+      ? { acquiredAt: preflight.current.acquiredAt }
+      : {}),
+  });
+  const outcome = casWrite(ctx.fleetRoot, ctx.config, preflight.expectedSha, document);
+  if (outcome.kind === "won") {
+    return { ok: true, sha: outcome.sha };
+  }
+  return { ok: false, reason: casFailureLine(ctx.config.ref, outcome) };
+}
+
 export interface AcquireOptions {
   takeover?: boolean;
   durationSeconds?: number;
   nowMs?: number;
+  /**
+   * The fleet home this lock belongs to. Derived from lockPath when absent;
+   * named explicitly only by callers whose lock path is not the fleet's
+   * canonical one.
+   */
+  fleetRoot?: string;
   /**
    * Staging seam for deterministic race witnesses: the decision is made
    * against this pre-observed state instead of a fresh read, and the
@@ -452,6 +606,29 @@ export async function acquireLease(
   const nowMs = options.nowMs ?? Date.now();
   const durationSeconds =
     options.durationSeconds ?? DEFAULT_LEASE_DURATION_SECONDS;
+
+  /* THE SHARED LAYER RUNS FIRST AND MUTATES NOTHING (M4-P21 criteria 1 and
+     7). Off unless declared, so the read below is the whole cost for every
+     fleet that has not opted in. A refusal returns here, before the local
+     lease file can be created, which is the fail-closed property: an
+     unreachable register leaves no local lock behind to be mistaken for
+     exclusion that is not there. */
+  const gate = sharedGate(lockPath, options.fleetRoot);
+  if (gate.kind === "invalid") {
+    return invalidDeclarationOutcome(gate.reason);
+  }
+  let preflight: SharedPreflight | undefined;
+  if (gate.kind === "on") {
+    preflight = sharedPreflight(gate.ctx, "acquire", options.takeover === true, nowMs);
+    if (preflight.kind === "refused") {
+      return {
+        ok: false,
+        reason: preflight.line,
+        shared: sharedNote(gate.ctx, preflight),
+      };
+    }
+  }
+
   const observed = options.observed ?? observeLease(lockPath);
 
   if (observed.kind === "present") {
@@ -496,12 +673,45 @@ export async function acquireLease(
     }
     return { ok: false, reason: `lock held (${result.reason})` };
   }
+
+  if (gate.kind === "on" && preflight !== undefined && preflight.kind === "proceed") {
+    const published = sharedCommit(gate.ctx, preflight, "held", nowMs, durationSeconds);
+    if (!published.ok) {
+      /* The register refused after the local lease was written, so the local
+         lease is rolled back through the SAME mutation primitive. Leaving it
+         would make this environment believe it holds a fleet another
+         environment holds, which is the exact state this layer exists to
+         prevent. */
+      await applyLeaseMutation(
+        lockPath,
+        { kind: "present", raw: renderLease(lease), lease },
+        null,
+        randomUUID(),
+      );
+      const line = `shared exclusion refused acquire: ${published.reason}; the local lease was rolled back`;
+      return {
+        ok: false,
+        reason: line,
+        shared: { line, envId: gate.ctx.envId },
+      };
+    }
+    return {
+      ok: true,
+      lease,
+      shared: {
+        line: `${preflight.line}; register now ${published.sha}`,
+        envId: gate.ctx.envId,
+      },
+    };
+  }
   return { ok: true, lease };
 }
 
 export interface RenewOptions {
   durationSeconds?: number;
   nowMs?: number;
+  /** See AcquireOptions.fleetRoot. */
+  fleetRoot?: string;
   /** Staging seam for deterministic race witnesses; see AcquireOptions. */
   observed?: ObservedLease;
 }
@@ -519,6 +729,21 @@ export async function renewLease(
   options: RenewOptions = {},
 ): Promise<LeaseOutcome> {
   const nowMs = options.nowMs ?? Date.now();
+  const gate = sharedGate(lockPath, options.fleetRoot);
+  if (gate.kind === "invalid") {
+    return invalidDeclarationOutcome(gate.reason);
+  }
+  let preflight: SharedPreflight | undefined;
+  if (gate.kind === "on") {
+    preflight = sharedPreflight(gate.ctx, "renew", false, nowMs);
+    if (preflight.kind === "refused") {
+      return {
+        ok: false,
+        reason: preflight.line,
+        shared: sharedNote(gate.ctx, preflight),
+      };
+    }
+  }
   const observed = options.observed ?? observeLease(lockPath);
   if (observed.kind === "absent") {
     return { ok: false, reason: "renew refused: no lease present" };
@@ -567,12 +792,38 @@ export async function renewLease(
     }
     return { ok: false, reason: `renew ${result.reason}` };
   }
+  if (gate.kind === "on" && preflight !== undefined && preflight.kind === "proceed") {
+    /* A RENEW ADVANCES THE FENCING COUNTER, and that is the whole of what
+       makes another environment's staleness judgement safe under clock skew
+       (criterion 5). The observer sees an increment, never a timestamp. */
+    const published = sharedCommit(gate.ctx, preflight, "held", nowMs, durationSeconds);
+    if (!published.ok) {
+      const line = `shared exclusion refused renew: ${published.reason}`;
+      return {
+        ok: false,
+        reason: line,
+        shared: { line, envId: gate.ctx.envId },
+      };
+    }
+    return {
+      ok: true,
+      lease,
+      shared: {
+        line: `${preflight.line}; register now ${published.sha}`,
+        envId: gate.ctx.envId,
+      },
+    };
+  }
   return { ok: true, lease };
 }
 
 export interface ReleaseOptions {
   /** Staging seam for deterministic race witnesses; see AcquireOptions. */
   observed?: ObservedLease;
+  /** See AcquireOptions.fleetRoot. */
+  fleetRoot?: string;
+  /** Decision clock, for the shared layer. Defaults to Date.now(). */
+  nowMs?: number;
 }
 
 /**
@@ -587,6 +838,27 @@ export async function releaseLease(
   holderId: string,
   options: ReleaseOptions = {},
 ): Promise<LeaseOutcome> {
+  const nowMs = options.nowMs ?? Date.now();
+  const gate = sharedGate(lockPath, options.fleetRoot);
+  if (gate.kind === "invalid") {
+    return invalidDeclarationOutcome(gate.reason);
+  }
+  let preflight: SharedPreflight | undefined;
+  if (gate.kind === "on") {
+    /* CRITERION 8. A release by a non-holder is refused HERE, before any
+       write, so the register sha is byte-identical before and after. The
+       refusal is the register's own comparison, not a local one: a clone
+       whose local lease says it holds the fleet still loses to a register
+       that names another environment. */
+    preflight = sharedPreflight(gate.ctx, "release", false, nowMs);
+    if (preflight.kind === "refused") {
+      return {
+        ok: false,
+        reason: preflight.line,
+        shared: sharedNote(gate.ctx, preflight),
+      };
+    }
+  }
   const observed = options.observed ?? observeLease(lockPath);
   if (observed.kind === "absent") {
     return { ok: false, reason: "release refused: no lease present" };
@@ -614,6 +886,31 @@ export async function releaseLease(
       return { ok: false, reason: result.reason, claimTimeout: true };
     }
     return { ok: false, reason: `release ${result.reason}` };
+  }
+  if (gate.kind === "on" && preflight !== undefined && preflight.kind === "proceed") {
+    const published = sharedCommit(
+      gate.ctx,
+      preflight,
+      "free",
+      nowMs,
+      observed.lease.durationSeconds,
+    );
+    if (!published.ok) {
+      const line = `shared exclusion could not publish the release: ${published.reason}`;
+      return {
+        ok: false,
+        reason: line,
+        shared: { line, envId: gate.ctx.envId },
+      };
+    }
+    return {
+      ok: true,
+      lease: null,
+      shared: {
+        line: `${preflight.line}; register now ${published.sha}`,
+        envId: gate.ctx.envId,
+      },
+    };
   }
   return { ok: true, lease: null };
 }
