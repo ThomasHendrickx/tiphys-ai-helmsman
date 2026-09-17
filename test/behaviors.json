@@ -1074,5 +1074,13 @@
   "plugin-observer-records-payload-verbatim": "the observer's line round-trips the captured hook payload and adds only a receipt",
   "plugin-observer-log-never-read-as-state": "the compiled plugin appends to the tool-call log and never reads it",
   "plugin-status-line-delivered-and-valid": "an agent turn delivers a status record that validates, and the current document is the read path",
-  "plugin-status-failure-does-not-fail-turn": "a status emit that fails leaves the turn outcome unchanged and the turn-end record written"
+  "plugin-status-failure-does-not-fail-turn": "a status emit that fails leaves the turn outcome unchanged and the turn-end record written",
+  "payload-credentials-escape-hatch-refused-on-project": "spawnTask refuses the credential escape hatch on a project payload, naming both fields, and accepts it on an orchestrator payload",
+  "payload-credentials-payload-class-required": "spawnTask refuses a spawn that declares no payload class and creates nothing",
+  "payload-credentials-extension-vocabulary-refused": "buildChildEnv refuses an allowlist extension naming a gh token variable and one naming a code-execution variable, each reason naming the entry",
+  "payload-credentials-extension-reason-is-data": "an allowlist extension with a blank reason is refused naming the entry, and the same entry with a reason reaches meta.json verbatim",
+  "payload-credentials-child-written-witness": "the child-written credential probe reddens against an adapter that widens the environment after the kernel handed it over",
+  "payload-credentials-handover-name-set-compared": "a spawn refuses when the adapter reports launching with a different environment name set than the kernel handed it",
+  "payload-credentials-vocabulary-single-source": "the refused-extension vocabulary resolves whichever of the kernel and the gate module is imported first",
+  "payload-credentials-handover-three-states": "compareHandover distinguishes a compared handover from an unreported one and from one there was never anything to compare"
 }
