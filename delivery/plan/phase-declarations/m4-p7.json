@@ -1,0 +1,25 @@
+{
+  "id": "M4-P7",
+  "branch": "claude/m4-p7-model-resolution",
+  "filesToTouch": [
+    "schemas/model-resolution.schema.json",
+    "src/validate.ts",
+    "src/model-resolution.ts",
+    "plugin/src/model-resolution.ts",
+    "plugin/src/vocabulary.ts",
+    "plugin/src/adapter.ts",
+    "test/model-resolution.test.ts",
+    "witness/"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p7.json",
+    "delivery/work-history/m4-p7.md"
+  ],
+  "citations": ["DR-0027", "DR-0031", "DR-0040", "T-009", "T-032", "C-1", "C-2", "C-3"],
+  "gateClasses": {
+    "correctness": { "gates": ["suite", "typecheck", "red-witness"] },
+    "scope": { "gates": ["scope"] },
+    "review": { "gates": ["check-dual-review"] }
+  }
+}
