@@ -342,8 +342,13 @@ with `git diff --name-only origin/main...<branch>`:
 **The generator and drift checks, done separately from the intersection.**
 
 - `src/gates/credentials.ts` backs two registry gates, `credential-scrub` at
-  gate-registry.yaml:79 and `credential-token` at gate-registry.yaml:87. Both
-  rows already exist in the registry AND the manifest, and M4-P8's plan line
+  `gate-registry.yaml:79` and `credential-token` at `gate-registry.yaml:87`.
+  Those two are QUOTED, not cited, and the reason is a rule this document paid
+  for: the citations gate declares root-level `*.md` and `*.json` and nothing
+  else at the root, so a root-level `.yaml` path resolves against no declared
+  root and reddens. Measured 2026-09-17, run 35203631442 on this branch's first
+  head. The declared root list is at src/gates/citations.ts:201.
+  Both rows already exist in the registry AND the manifest, and M4-P8's plan line
   says it exports the vocabulary only. So no gate row is added and no drift
   chain moves. If M4-P8's step 4 turns out to need a NEW gate arm, that is an
   escalation, not a quiet registry edit, because a registry-only gate does not
