@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-fleet-home-wins-over-project",
+  "behavior": "spawn-adapter-fleet-home-wins-over-project",
+  "tests": [
+    "with the same adapter name in the fleet home and the project clone, the fleet home copy is the one that launches"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  const requireFromFleet = createRequire(fleet.packageJsonPath);",
+      "replace": "  const requireFromFleet = createRequire(`${fleet.projectsDir}/demo/package.json`);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "    resolved = requireFromFleet.resolve(specifier);",
+      "replace": "    try {\n      resolved = createRequire(`${fleet.projectsDir}/demo/package.json`).resolve(specifier);\n    } catch {\n      resolved = requireFromFleet.resolve(specifier);\n    }"
+    }
+  ]
+}

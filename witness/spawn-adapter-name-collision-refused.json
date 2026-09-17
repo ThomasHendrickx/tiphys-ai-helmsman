@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-name-collision-refused",
+  "behavior": "spawn-adapter-name-collision-refused",
+  "tests": [
+    "a loaded adapter claiming the built-in adapter name is refused and the built-in one still launches"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  if (name === BUILT_IN_ADAPTER_NAME) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "export const BUILT_IN_ADAPTER_NAME = \"subprocess\";",
+      "replace": "export const BUILT_IN_ADAPTER_NAME = \"subprocess-builtin\";"
+    }
+  ]
+}

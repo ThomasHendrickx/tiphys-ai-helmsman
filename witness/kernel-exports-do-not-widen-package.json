@@ -1,0 +1,24 @@
+{
+  "id": "kernel-exports-do-not-widen-package",
+  "behavior": "kernel-exports-do-not-widen-package",
+  "tests": [
+    "the kernel entry point publishes the adapter contract and the exports map refuses every internal subpath"
+  ],
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/index.ts",
+      "find": "export { requirableRequestFields } from \"./spawn.ts\";",
+      "replace": "export {} from \"./spawn.ts\";"
+    },
+    {
+      "kind": "mutation",
+      "file": "package.json",
+      "find": "    \"./package.json\": \"./package.json\"",
+      "replace": "    \"./package.json\": \"./package.json\",\n    \"./*\": \"./*\""
+    }
+  ]
+}
