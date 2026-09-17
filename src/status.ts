@@ -11,25 +11,50 @@
  * CONSTRAINT C-1, NAMED BECAUSE IT DECIDES THE SHAPE OF THIS MODULE.
  * "Never read current state from the tail of an append-only log." The stream
  * at `state/status/stream.jsonl` is the HISTORY and is append-only. The
- * current state is `state/status/current.json`, a whole document rewritten
+ * current state is `status/current.json`, a whole document rewritten
  * atomically on every emit. `readCurrent` opens `current.json` and nothing
  * else; it does not know the stream's path. A truncated, corrupted or
  * half-written stream therefore cannot change what `tiphys status show`
  * reports, and that is the property criterion 7 witnesses in both directions.
  *
+ * THE SPLIT (M4-D-13, decided in the M4-P18 plan section). The two documents
+ * used to sit side by side under the gitignored `state/` prefix, so the one
+ * sentence that says where the pipeline stands did not survive a fleet being
+ * reclaimed: AGENTS.md's `fleet-state-commit-discipline` clause names "the
+ * state file that says where the pipeline stands" as DURABLE, and an ignored
+ * path can be neither committed nor pushed. So the pointer moved OUT of
+ * `state/` to a tracked path and the stream stayed, because the stream is
+ * history that a restart rebuilds.
+ *
+ * C-1 IS THE REASON FOR THE SPLIT AND NOT A CONSTRAINT IT HAS TO DODGE.
+ * `readCurrent` opens the whole document and has no code path that reaches
+ * the stream, so moving the document changes WHERE it lives and changes
+ * NOTHING about how current state is read. The pair of witnesses in
+ * test/status.test.ts is re-pointed at the new layout and still reddens
+ * under the same mutation: `readCurrent` aimed at STREAM_FILE.
+ *
  * ATOMIC REWRITE means write a temp file beside the target and rename. A
  * rename within one directory is atomic on POSIX, so a reader either sees the
  * whole previous document or the whole new one and never a partial write.
+ * The temp file is created beside the DURABLE document, so the two paths in
+ * the rename stay inside one directory after the split.
  */
 
 import { mkdirSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "./task.ts";
 
-/** Where the status files live inside a fleet home. */
+/**
+ * Where the status files live inside a fleet home, and the two directories
+ * are on OPPOSITE sides of the fleet `.gitignore` by design (M4-D-13).
+ * `STATUS_DIR` is under the ignored `state/` prefix and holds the rebuilt
+ * history; `DURABLE_STATUS_DIR` is tracked and holds the one document a
+ * restart must not lose.
+ */
 export const STATUS_DIR = join("state", "status");
+export const DURABLE_STATUS_DIR = "status";
 export const STREAM_FILE = join(STATUS_DIR, "stream.jsonl");
-export const CURRENT_FILE = join(STATUS_DIR, "current.json");
+export const CURRENT_FILE = join(DURABLE_STATUS_DIR, "current.json");
 
 /**
  * The five supervisor-actionable states, blueprint section 5. Duplicated
@@ -96,8 +121,12 @@ export type EmitOutcome =
  * names an event no record supports.
  */
 export function emitStatus(fleetRoot: string, record: StatusRecord): EmitOutcome {
-  const directory = join(fleetRoot, STATUS_DIR);
-  mkdirSync(directory, { recursive: true });
+  /* TWO DIRECTORIES SINCE THE SPLIT, and both are created before either is
+     written: the ephemeral one is rebuilt by `tiphys resume` after a reclaim
+     and the durable one comes across in a clone, so on any given fleet home
+     either can be the one that is absent. */
+  mkdirSync(join(fleetRoot, STATUS_DIR), { recursive: true });
+  mkdirSync(join(fleetRoot, DURABLE_STATUS_DIR), { recursive: true });
   const streamPath = join(fleetRoot, STREAM_FILE);
   const currentPath = join(fleetRoot, CURRENT_FILE);
   const temporaryPath = `${currentPath}.tmp`;
