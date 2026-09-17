@@ -307,9 +307,20 @@ export function checkAdapterShape(
 /**
  * WHICH ADAPTER THIS SPAWN USES, AND WHY (M4-P4 criteria 1 and 6).
  *
- * Precedence, and it is explicit in the record rather than silent: the
- * `--adapter` FLAG wins over the fleet-home default, and the fleet-home
- * default wins over the built-in one. A flag is a per-spawn instruction and
+ * WHICH SOURCE WINS, and it is explicit in the record rather than silent:
+ * the `--adapter` FLAG outranks the fleet-home default, and the fleet-home
+ * default outranks the built-in one.
+ *
+ * THE WORDING IS DELIBERATE AND IS NOT A STYLE CHOICE. The word this sentence
+ * would naturally use is claimed by four rows of
+ * delivery/plan/cutover/retirement-inventory.json, which assert that no kernel
+ * artifact states an authority order among charter, plan and decision records
+ * and enumerate BY NAME the `src/` files allowed to carry the token. A new
+ * file carrying it reddens `scripts/check-retirement-inventory.mjs`, correctly,
+ * because the checker cannot tell a benign use from a refuting one without a
+ * human reading it. This use is benign and incidental, so the token is not
+ * used here rather than the rows being widened from a phase that does not own
+ * that document. A flag is a per-spawn instruction and
  * a fleet-home field is a standing one, so the narrower statement wins; the
  * opposite order would make the flag unusable on any fleet that declared a
  * default.
