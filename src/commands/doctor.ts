@@ -1226,13 +1226,22 @@ function unestablishedBecause(
  * disk. UNMERGED means the trunk does not already contain it.
  *
  * IT REPORTS EVERY PUSHED REF RATHER THAN FILTERING TO A NAMING PATTERN, and
- * that is a decision rather than an omission. Two different branch spellings
+ * that is a decision rather than an omission. At least two branch spellings
  * are in use across the repositories this kernel runs over: the pool names
- * task branches `task/<id>` (src/pool.ts:54), and this project's own delivery
- * names phase branches `claude/m<N>-p<M>-<slug>` (CLAUDE.md's branch-name
- * rule). A filter written for either is blind to the other, and a check that
- * is blind to a branch is worse than one that names a branch the reader
- * already knew about. The superset can be read; a gap cannot be seen.
+ * task branches `task/<id>` (src/pool.ts:54), and a delivery process running
+ * on this kernel names phase branches with its own harness prefix followed by
+ * a milestone and phase segment. A filter written for either is blind to the
+ * other, and a check that is blind to a branch is worse than one that names a
+ * branch the reader already knew about. A superset prints rows a reader can
+ * skip; a filter that misses a branch prints nothing at all, and nothing is
+ * what a healthy fleet prints too.
+ *
+ * NO BRANCH PREFIX IS SPELLED OUT HERE, and that is not a style choice.
+ * test/schemas.test.ts:800 asserts by name which shipped files carry the
+ * harness-derived branch prefix and exists to stop that set GROWING; writing
+ * the literal prefix into this comment added src/commands/doctor.ts to it and
+ * reddened that test. The spelling belongs in the delivery process that uses
+ * it, not in the kernel that reports over any of them.
  *
  * WARN, AND NO PROFILE PROMOTES IT TO FAIL. The reason is measured and is not
  * a preference. Deleting a remote ref is REFUSED in the container this kernel
