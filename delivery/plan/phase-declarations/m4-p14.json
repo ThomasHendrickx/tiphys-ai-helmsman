@@ -1,0 +1,27 @@
+{
+  "id": "M4-P14",
+  "branch": "claude/m4-p14-gate-classes",
+  "filesToTouch": [
+    "src/gates/schemas/phase-declaration.schema.json",
+    "src/gates/gate-classes.ts",
+    "src/gates/scope.ts",
+    "gate-registry.yaml",
+    "gates.manifest.json",
+    "CLAUDE.md",
+    "roles/implementer.md",
+    "test/gate-registry.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p14.json",
+    "delivery/work-history/m4-p14.md"
+  ],
+  "citations": [
+    "R-041",
+    "R-094",
+    "DR-0029",
+    "DR-0028",
+    "DR-0027",
+    "DR-0031"
+  ]
+}

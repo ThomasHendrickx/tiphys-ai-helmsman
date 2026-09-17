@@ -166,3 +166,41 @@ one root file and its own paperwork; M4-P11 touches three source files none of
 which M4-P15 names. No generator couples them (`charter.yaml` is not rendered
 from anything and nothing renders from it; the `agent-rules-drift` chain runs
 `gate-registry.yaml` to `CLAUDE.md` and neither is touched here).
+
+## Wave 4, 2026-09-17, and every earlier block is gone
+
+Written BEFORE dispatch, per rule 5.
+
+**Nothing is live.** Every phase dispatched in M4 has merged: M4-P1, M4-P2,
+M4-P10, M4-P11, M4-P13, M4-P15, M4-P16, M4-P19, M4-P20, M4-P23, M4-P26, M4-P27.
+So every "blocked by direct file overlap with a live unit" entry above is
+discharged, and the only constraints left are between the units dispatched
+together.
+
+| unit | files it may touch |
+|---|---|
+| M4-P3 | `src/spawn.ts`, `src/commands/spawn.ts`, `schemas/executor-record.schema.json` (new), `src/validate.ts`, `test/spawn.test.ts`, `test/schemas.test.ts`, `package.json` (verify only), its declaration |
+| M4-P14 | `src/gates/schemas/phase-declaration.schema.json`, `src/gates/gate-classes.ts` (new) or `src/gates/scope.ts`, `gate-registry.yaml`, `gates.manifest.json`, `CLAUDE.md`, `roles/implementer.md`, its declaration |
+
+**Intersection: EMPTY.** No path appears on both lists.
+
+**The generator check, which set intersection cannot do.** M4-P14 owns the whole
+drift chain: `gate-registry.yaml` renders `CLAUDE.md` (`agent-rules-drift`) and
+`roles/implementer.md` (`brief-drift`). M4-P3 touches none of those three. The
+two schema files are in DIFFERENT trees, `schemas/` at the root versus
+`src/gates/schemas/`, and `manifest-self-check` validates only the second, so
+M4-P3's new root schema is outside that generator chain too. Checked, not assumed.
+
+`test/behaviors.json` may be appended by both. That is append-only and
+union-resolved and never re-serialises phases.
+
+**Not dispatched and why.** M4-P4 and M4-P8 collide with M4-P3 on `src/spawn.ts`.
+M4-P22 and M4-P21 collide with it too. M4-P5, M4-P6 and M4-P7 are
+dependency-blocked on the adapter seam M4-P3 and M4-P4 build. M4-P12, M4-P18,
+M4-P24 and M4-P25 all name `src/cli.ts`, which DR-0046 leaves serialised for the
+rest of M4; M4-P12 also collides with M4-P14 on `gate-registry.yaml` and
+`CLAUDE.md`. M4-P17 collides with M4-P18 and M4-P21 on `src/commands/doctor.ts`
+and is held for a pair of its own.
+
+**Two agents, one wave, therefore two run at once**, which is the owner's cap
+under DR-0044.

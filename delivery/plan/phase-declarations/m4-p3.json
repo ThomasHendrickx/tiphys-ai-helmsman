@@ -1,0 +1,27 @@
+{
+  "id": "M4-P3",
+  "branch": "claude/m4-p3-request-contract",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/commands/spawn.ts",
+    "src/validate.ts",
+    "schemas/executor-record.schema.json",
+    "test/spawn.test.ts",
+    "test/schemas.test.ts",
+    "package.json"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p3.json",
+    "delivery/work-history/m4-p3.md"
+  ],
+  "citations": [
+    "M4-D-05",
+    "DR-0036",
+    "DR-0027",
+    "DR-0031",
+    "C-1",
+    "C-2",
+    "C-3"
+  ]
+}
