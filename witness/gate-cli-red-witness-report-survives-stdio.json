@@ -1,0 +1,24 @@
+{
+  "id": "gate-cli-red-witness-report-survives-stdio",
+  "behavior": "gate-cli-red-witness-report-survives-stdio",
+  "tests": [
+    "the red-witness gate CLI delivers a report larger than a parent's stdio buffer without truncating it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "  process.exitCode = main(process.argv.slice(2));",
+      "replace": "  process.exit(main(process.argv.slice(2)));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "  // witness/captures/m4-p29-gate-cli-stdio.txt.\n  process.exitCode = main(process.argv.slice(2));",
+      "replace": "  // witness/captures/m4-p29-gate-cli-stdio.txt.\n  const status = main(process.argv.slice(2));\n  process.exitCode = status;\n  process.exit();"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
