@@ -1037,5 +1037,16 @@
   "executor-record-validates": "the launch record a real spawn wrote validates under --type executor-record, one missing adapter is refused naming the field, and --type auto cannot resolve it",
   "executor-record-rejects-undeclared-fields": "an executor record carrying an undeclared model field is refused, and is accepted once additionalProperties is removed",
   "executor-record-echoes-requested-tier": "the launch record echoes the requested tier and role byte for byte from the flags",
-  "kernel-carries-no-vendor-model-names": "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration"
+  "kernel-carries-no-vendor-model-names": "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration",
+  "doctor-lock-expired-is-fail": "doctor reports CHECK lock FAIL and exits 1 for a lease that expired one second ago",
+  "doctor-lock-expiry-boundary-agrees-with-the-module": "the lock check and the lock module agree at the inclusive expiry boundary",
+  "doctor-tasks-open-count": "doctor CHECK tasks names the open task and counts it against the total",
+  "doctor-tasks-unestablished-is-not-a-pass": "a task whose state cannot be established is named, never silently skipped",
+  "doctor-tasks-no-log-tail-or-process-probe": "the tasks check reads meta.json and turn-end only, never a log tail or a process",
+  "doctor-branches-unmerged-named": "doctor CHECK branches names a pushed branch that is not merged",
+  "doctor-new-conditions-are-never-promoted": "no profile promotes this phase's new conditions to FAIL",
+  "doctor-remote-reports-unpushed": "doctor CHECK remote reports unpushed commits where it used to name the configured remote",
+  "doctor-remote-fetch-failure-is-not-a-pass": "a fetch that fails is its own verdict and never PASS",
+  "doctor-remote-returns-against-a-silent-remote": "doctor returns against a remote that accepts and never answers",
+  "doctor-diagnosis-survives-a-failing-check": "a FAILing check still leaves the whole diagnosis printed and the advisory last"
 }

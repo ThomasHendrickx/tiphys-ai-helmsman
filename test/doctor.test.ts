@@ -87,11 +87,14 @@ const CHECK_NAMES = [
   "kernel-artifacts",
   /* M4-P19: post-reclaim pool entries, reported by id. */
   "worktrees",
+  /* M4-P17: the two checks AGENTS.md:310 required and the kernel lacked. */
+  "tasks",
+  "branches",
 ];
 
 function runCli(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {},
 ) {
   return spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
@@ -1004,4 +1007,649 @@ test("a staged install of the built package reproduces the captured contract liv
     brokenGeneric.stdout,
   );
   assert.equal(brokenGeneric.status, 0, "the unpromoted arm must not fail the fleet");
+});
+
+/* ------------------------------------------------------------------ */
+/* M4-P17: the post-reclaim checks, and the lock verdict that was wrong */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two modules this phase makes agree with each other, imported through
+ * computed URLs for the reason recorded at the head of this file (TS2878
+ * across the project reference).
+ */
+interface LeaseShape {
+  holderId: string;
+  hostname: string;
+  acquiredAt: string;
+  expiresAt: string;
+  durationSeconds: number;
+  token: string;
+}
+const { lockCheckFor, PROFILES } = (await import(
+  new URL("../src/commands/doctor.ts", import.meta.url).href
+)) as {
+  lockCheckFor: (
+    holderId: string,
+    expiresAt: string,
+    nowMs: number,
+  ) => { name: string; status: string; detail: string; condition?: string };
+  PROFILES: Record<string, readonly string[]>;
+};
+const { isExpired } = (await import(
+  new URL("../src/lock.ts", import.meta.url).href
+)) as { isExpired: (lease: LeaseShape, nowMs: number) => boolean };
+
+const P17_IDENTITY = {
+  GIT_AUTHOR_NAME: "Doctor Test",
+  GIT_AUTHOR_EMAIL: "doctor-test@tiphys.invalid",
+  GIT_COMMITTER_NAME: "Doctor Test",
+  GIT_COMMITTER_EMAIL: "doctor-test@tiphys.invalid",
+};
+
+/** git in a scratch repository, with a command-scoped identity (warning 5). */
+function git(cwd: string, args: string[]): string {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...P17_IDENTITY },
+  });
+  assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+  return (result.stdout ?? "").trim();
+}
+
+/** A fleet home with a file:// remote it has been pushed to, in sync. */
+function fleetWithRemote(t: { after(fn: () => void): void }): {
+  fleet: string;
+  remote: string;
+} {
+  const lab = makeTempDir(t);
+  const fleet = join(lab, "fleet");
+  assert.equal(runCli(["init", fleet]).status, 0);
+  const remote = join(lab, "fleet-remote.git");
+  git(lab, ["init", "--bare", "--quiet", "--initial-branch=main", remote]);
+  git(fleet, ["remote", "add", "origin", `file://${remote}`]);
+  git(fleet, ["push", "--quiet", "-u", "origin", "HEAD"]);
+  return { fleet, remote };
+}
+
+/** One CHECK line by name, or undefined when doctor did not print it. */
+function checkLine(stdout: string, name: string): string | undefined {
+  return stdout.split("\n").find((line) => line.startsWith(`CHECK ${name} `));
+}
+
+/** An expired lease record, written at the lease path. */
+function writeLease(fleet: string, holderId: string, expiresAt: string): void {
+  writeFileSync(
+    join(fleet, "state", "orchestrator.lock"),
+    `${JSON.stringify(
+      {
+        holderId,
+        hostname: "doctor-test-host",
+        acquiredAt: new Date(Date.parse(expiresAt) - 60_000).toISOString(),
+        expiresAt,
+        durationSeconds: 60,
+        token: "doctor-test-token",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/**
+ * THE TWO CAPTURES THIS PHASE'S ASSERTIONS ARE ANCHORED TO.
+ *
+ * Every check added or corrected here reports over ANOTHER PROGRAM'S output:
+ * `CHECK remote` parses `git rev-list --left-right --count` and reads `git
+ * fetch`'s exit code, `CHECK branches` reads `git merge-base --is-ancestor`'s
+ * exit code, and all of them are printed by the tiphys CLI itself. The
+ * red-witness rule's clause (f) binds here for exactly that reason, so the
+ * expected strings below are not written by hand: they are read out of real
+ * recorded runs and the live run is compared against them.
+ *
+ * The rev-list counts are TAB separated, which is the kind of byte a
+ * hand-written expectation loses; recording it is most of the point.
+ *
+ * Both captures were taken on 2026-09-17, node v26.6.0, git 2.43.0, by
+ * a script kept with the phase's work history. The only alteration in either
+ * is that the lab's absolute path is rendered `<LAB>` in the two lines that
+ * carried it, which the capture says in its own text.
+ */
+const P17_CLI_CAPTURE = readFileSync(
+  join(repoRoot, "witness", "captures", "m4-p17-doctor-cli.txt"),
+  "utf8",
+);
+const P17_GIT_CAPTURE = readFileSync(
+  join(repoRoot, "witness", "captures", "m4-p17-git-remote-comparison.txt"),
+  "utf8",
+);
+
+/** The lines a capture recorded under one `== heading ==`. */
+function capturedBlock(capture: string, heading: string): string[] {
+  const lines = capture.split("\n");
+  const at = lines.indexOf(`== ${heading} ==`);
+  assert.ok(at >= 0, `the capture no longer records "${heading}"`);
+  /* A BLOCK ENDS AT THE NEXT HEADING, NOT AT THE NEXT BLANK LINE. git's own
+     failure message carries a blank line in the middle of it, so a
+     blank-terminated reader truncates exactly the block whose exit code
+     matters most. Empty lines are dropped rather than ending the block. */
+  const block: string[] = [];
+  for (let index = at + 1; index < lines.length; index += 1) {
+    const line = lines[index] as string;
+    if (line.startsWith("== ") && line.endsWith(" ==")) {
+      break;
+    }
+    if (line !== "") {
+      block.push(line);
+    }
+  }
+  assert.ok(block.length > 0, `the capture records "${heading}" with nothing under it`);
+  return block;
+}
+
+/** The single CHECK line a doctor-CLI capture block recorded, and its exit. */
+function capturedCheck(heading: string): { line: string; exit: number } {
+  const block = capturedBlock(P17_CLI_CAPTURE, heading);
+  const line = block.find((entry) => entry.startsWith("CHECK "));
+  const exit = block.find((entry) => entry.startsWith("exit="));
+  assert.ok(line !== undefined, `no CHECK line recorded under "${heading}"`);
+  assert.ok(exit !== undefined, `no exit code recorded under "${heading}"`);
+  return { line, exit: Number(exit.slice("exit=".length)) };
+}
+
+/*
+ * CRITERION 1. THE DANGEROUS STATE IS THE EXPIRED LEASE ITSELF, not an
+ * absent feature: before this phase this exact input printed
+ * `CHECK lock PASS lease held by ... (expired)` and doctor exited 0, so a
+ * fleet whose orchestrator had died holding the lease read as healthy to
+ * anyone scanning for FAIL lines.
+ *
+ * THE ASSERTION IS THE STATUS TOKEN AND THE EXIT CODE. The plan says in
+ * terms that a test asserting only that the detail contains the word
+ * `expired` is green against the old code and is refused at review, and it
+ * is right: the old detail contained that word.
+ */
+test("doctor reports CHECK lock FAIL and exits 1 for a lease that expired one second ago", (t) => {
+  const fleet = initFleet(t);
+  const expiresAt = new Date(Date.now() - 1000).toISOString();
+  writeLease(fleet, "orchestrator-p17", expiresAt);
+
+  const result = runCli(["doctor"], { cwd: fleet });
+  const line = checkLine(result.stdout, "lock");
+  assert.ok(line !== undefined, result.stdout);
+  const parsed = /^CHECK lock (PASS|WARN|FAIL) (.+)$/.exec(line);
+  assert.ok(parsed !== null, line);
+  assert.equal(parsed[1], "FAIL", line);
+  assert.equal(result.status, 1, result.stdout);
+  // The detail names the holder and the expiry, because the remedy needs
+  // both: who to ask before breaking the lease, and when it lapsed.
+  assert.ok((parsed[2] as string).includes("orchestrator-p17"), line);
+  assert.ok((parsed[2] as string).includes(expiresAt), line);
+
+  // AND THE SAME VERDICT, ANCHORED TO A REAL RECORDED RUN. A fixed past
+  // instant makes the line reproducible byte for byte, so this arm compares
+  // against captured output of the CLI rather than against a sentence
+  // written here to match the implementation.
+  const recorded = capturedCheck("lock: a lease that expired at a fixed past instant");
+  writeLease(fleet, "orchestrator-p17", "2026-01-01T00:00:00.000Z");
+  const replayed = runCli(["doctor"], { cwd: fleet });
+  assert.equal(checkLine(replayed.stdout, "lock"), recorded.line, replayed.stdout);
+  assert.equal(replayed.status, recorded.exit, replayed.stdout);
+});
+
+/*
+ * CRITERION 2, the second member of the class and structurally different
+ * from the first: the INCLUSIVE BOUNDARY rather than the interior.
+ *
+ * `Date.now()` cannot be driven to a chosen millisecond from outside a
+ * process, so this member is unreachable through the CLI: by the time the
+ * child runs, "exactly now" has become "a moment ago" and the case under
+ * test is criterion 1's again. `lockCheckFor` takes the clock as a
+ * parameter for exactly this reason.
+ *
+ * AND IT IS AN AGREEMENT TEST, not a second opinion. The property the plan
+ * asks for is that doctor "agree with the lock module rather than carry a
+ * second comparison", so the verdict is compared against `isExpired` at
+ * every offset including zero. A doctor carrying its own `<` agrees at
+ * every other offset and disagrees at exactly one millisecond, which is a
+ * gap no reviewer finds by reading.
+ */
+test("the lock check and the lock module agree at the inclusive expiry boundary", () => {
+  const expiresAt = "2026-06-01T12:00:00.000Z";
+  const expiryMs = Date.parse(expiresAt);
+  const lease: LeaseShape = {
+    holderId: "boundary-holder",
+    hostname: "boundary-host",
+    acquiredAt: "2026-06-01T11:59:00.000Z",
+    expiresAt,
+    durationSeconds: 60,
+    token: "boundary-token",
+  };
+  const disagreements: string[] = [];
+  for (const offset of [-60_000, -1, 0, 1, 60_000]) {
+    const nowMs = expiryMs + offset;
+    const doctorSaysExpired = lockCheckFor(lease.holderId, expiresAt, nowMs).status === "FAIL";
+    const moduleSaysExpired = isExpired(lease, nowMs);
+    if (doctorSaysExpired !== moduleSaysExpired) {
+      disagreements.push(
+        `offset ${String(offset)}ms: doctor ${String(doctorSaysExpired)}, isExpired ${String(moduleSaysExpired)}`,
+      );
+    }
+  }
+  assert.deepEqual(disagreements, [], disagreements.join("; "));
+  // And the boundary itself, stated rather than left implicit in the loop:
+  // `<=` makes expiry inclusive, so "exactly now" is expired.
+  assert.equal(lockCheckFor(lease.holderId, expiresAt, expiryMs).status, "FAIL");
+  assert.equal(lockCheckFor(lease.holderId, expiresAt, expiryMs - 1).status, "PASS");
+});
+
+/*
+ * CRITERION 3. Three tasks, one of them open, and the line the plan
+ * specifies verbatim.
+ */
+test("doctor CHECK tasks names the open task and counts it against the total", (t) => {
+  const fleet = initFleet(t);
+  for (const id of ["t-closed-a", "t-closed-b", "t-open"]) {
+    mkdirSync(join(fleet, "tasks", id), { recursive: true });
+    writeFileSync(join(fleet, "tasks", id, "meta.json"), `{"taskId":"${id}"}\n`);
+  }
+  writeFileSync(join(fleet, "tasks", "t-closed-a", "turn-end"), "0\n");
+  writeFileSync(join(fleet, "tasks", "t-closed-b", "turn-end"), "0\n");
+
+  const recorded = capturedCheck("tasks: three tasks, one of them open");
+  // The plan's line, verbatim, and the same line a real run produced.
+  assert.equal(recorded.line, "CHECK tasks WARN 1 open of 3 (t-open)", recorded.line);
+  const result = runCli(["doctor"], { cwd: fleet });
+  assert.equal(checkLine(result.stdout, "tasks"), recorded.line, result.stdout);
+  // WARN, so the exit code does not move: an open task is the ordinary
+  // state of a working fleet, not a defect.
+  assert.equal(result.status, nodeFloorMet ? 0 : 1, result.stdout);
+});
+
+/*
+ * CRITERION 3, the half that makes the check worth having: ESTABLISHED,
+ * ABSENT and UNUSABLE never print the same word.
+ *
+ * THE DANGEROUS STATE IS A CHECK THAT SKIPS WHAT IT CANNOT READ. The kernel
+ * carries a live instance of exactly that (the retention check's raw `kind`
+ * read, tracked at delivery/verification/tracked-doctor-charter-selection.md:1),
+ * where an unreadable document is skipped and the command then reports PASS
+ * over a fleet it could not examine. A tasks check written the same way
+ * would report `0 open of 0` over the fixture below.
+ *
+ * THREE STRUCTURALLY DIFFERENT MEMBERS, because one is not a class: a task
+ * directory with no meta.json at all, a meta.json that is a DIRECTORY (so
+ * the path exists and is not readable as a record), and a turn-end that is
+ * a directory (so whether the turn ended cannot be established even though
+ * the task record is fine).
+ */
+test("a task whose state cannot be established is named, never silently skipped", (t) => {
+  const fleet = initFleet(t);
+  // An ordinary open task, so the count has something true to say.
+  mkdirSync(join(fleet, "tasks", "t-real"), { recursive: true });
+  writeFileSync(join(fleet, "tasks", "t-real", "meta.json"), '{"taskId":"t-real"}\n');
+  // Member 1: no meta.json.
+  mkdirSync(join(fleet, "tasks", "t-nometa"), { recursive: true });
+  // Member 2: meta.json is a directory.
+  mkdirSync(join(fleet, "tasks", "t-dirmeta", "meta.json"), { recursive: true });
+  // Member 3: the record is fine and turn-end is a directory.
+  mkdirSync(join(fleet, "tasks", "t-dirturn"), { recursive: true });
+  writeFileSync(join(fleet, "tasks", "t-dirturn", "meta.json"), '{"taskId":"t-dirturn"}\n');
+  mkdirSync(join(fleet, "tasks", "t-dirturn", "turn-end"), { recursive: true });
+
+  const recorded = capturedCheck("tasks: one open, three whose state cannot be established");
+  const result = runCli(["doctor"], { cwd: fleet });
+  const line = checkLine(result.stdout, "tasks");
+  assert.ok(line !== undefined, result.stdout);
+  assert.equal(line, recorded.line, result.stdout);
+  assert.match(line, /^CHECK tasks WARN /, line);
+  // The total counts all four candidates, so none of them was dropped.
+  assert.match(line, /1 open of 4 \(t-real\)/, line);
+  assert.match(line, /3 not established/, line);
+  for (const id of ["t-nometa", "t-dirmeta", "t-dirturn"]) {
+    assert.ok(line.includes(id), `${id} was not named: ${line}`);
+  }
+  // And it is not a PASS, which is the whole point.
+  assert.doesNotMatch(line, /^CHECK tasks PASS /, line);
+});
+
+/*
+ * CRITERION 3's constraint half. C-1 and C-2 are asserted over the SOURCE
+ * of the check, because a violation of either is invisible in the output:
+ * a check that shelled out to `ps` would print the same line.
+ */
+test("the tasks check reads meta.json and turn-end only, never a log tail or a process", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/commands/doctor.ts", import.meta.url)),
+    "utf8",
+  );
+  const start = source.indexOf("export function checkTasks(");
+  const end = source.indexOf("export function checkBranches(");
+  assert.ok(start > 0 && end > start, "checkTasks could not be located");
+  const body = source.slice(start, end);
+  for (const forbidden of ["/proc", "process.kill", "pid", "stream.jsonl"]) {
+    assert.equal(body.includes(forbidden), false, `checkTasks mentions ${forbidden}`);
+  }
+  // The scan must be looking at the right thing, or it is green and empty
+  // whatever the body says (T-008's postscript).
+  for (const required of ["meta.json", "turn-end", "classifyEntry"]) {
+    assert.ok(body.includes(required), `checkTasks no longer mentions ${required}`);
+  }
+});
+
+/*
+ * CRITERION 5. A branch that is pushed and not merged is reported by name,
+ * and the exit code does not move.
+ */
+test("doctor CHECK branches names a pushed branch that is not merged", (t) => {
+  const { fleet } = fleetWithRemote(t);
+  const mergedRecorded = capturedCheck("branches: one pushed branch, merged");
+  const merged = runCli(["doctor"], { cwd: fleet });
+  assert.equal(checkLine(merged.stdout, "branches"), mergedRecorded.line, merged.stdout);
+
+  git(fleet, ["checkout", "--quiet", "-b", "task/t-unmerged"]);
+  writeFileSync(join(fleet, "backlog.md"), "an unmerged change\n");
+  git(fleet, ["commit", "--quiet", "-am", "unmerged work"]);
+  git(fleet, ["push", "--quiet", "origin", "task/t-unmerged"]);
+  git(fleet, ["checkout", "--quiet", "main"]);
+
+  /* THE CHECK'S INPUT IS ANOTHER PROGRAM'S EXIT CODE, so the contract is
+     read out of a real capture and reproduced live before the verdict is
+     believed. `--is-ancestor` answers 0 for merged and 1 for unmerged, and a
+     check that read those the other way round, or that treated any nonzero
+     as unmerged, would be wrong in a way no output shows. */
+  const ancestorArms = [
+    { heading: "git merge-base --is-ancestor origin/task/t-unmerged origin/main", args: ["origin/task/t-unmerged", "origin/main"] },
+    { heading: "git merge-base --is-ancestor origin/main origin/main", args: ["origin/main", "origin/main"] },
+  ];
+  for (const arm of ancestorArms) {
+    const recordedExit = Number(
+      (capturedBlock(P17_GIT_CAPTURE, arm.heading).find((entry) => entry.startsWith("exit: ")) ?? "")
+        .slice("exit: ".length),
+    );
+    const live = spawnSync("git", ["-C", fleet, "merge-base", "--is-ancestor", ...arm.args], {
+      encoding: "utf8",
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    });
+    assert.equal(live.status, recordedExit, `${arm.heading} no longer exits ${String(recordedExit)}`);
+  }
+
+  const recorded = capturedCheck("branches: a pushed branch that is not merged");
+  const result = runCli(["doctor"], { cwd: fleet });
+  const line = checkLine(result.stdout, "branches");
+  assert.ok(line !== undefined, result.stdout);
+  assert.equal(line, recorded.line, result.stdout);
+  assert.equal(result.status, merged.status, "the branches check moved doctor's exit code");
+  assert.equal(result.status, recorded.exit, result.stdout);
+});
+
+/*
+ * CRITERION 5's binding half, and the reason it is a test rather than a
+ * comment. Remote branch deletion is REFUSED in the container this kernel
+ * is built in, and `git push --dry-run --delete` exits 0 whether it is
+ * allowed or not (CLAUDE.md standing warning 14), so a promotable branch
+ * check would make `--for full` unpassable on the kernel's own fleet with
+ * no remedy its operator could reach. The assertion walks every profile
+ * rather than naming `full`, so a profile added later cannot promote these
+ * by accident.
+ */
+test("no profile promotes this phase's new conditions to FAIL", () => {
+  const introduced = [
+    "tasks-open",
+    "tasks-not-established",
+    "branches-unmerged",
+    "branches-not-established",
+    "remote-diverged",
+    "remote-untracked",
+    "remote-not-a-fleet",
+  ];
+  const promoted: string[] = [];
+  for (const [profile, conditions] of Object.entries(PROFILES)) {
+    for (const condition of conditions) {
+      if (introduced.includes(condition)) {
+        promoted.push(`${profile} promotes ${condition}`);
+      }
+    }
+  }
+  assert.deepEqual(promoted, [], promoted.join("; "));
+  // The walk must see something, or it is green over an empty table.
+  assert.ok(
+    Object.values(PROFILES).some((conditions) => conditions.length > 0),
+    "no profile promotes anything, so this assertion is vacuous",
+  );
+});
+
+/*
+ * CRITERION 6, MEMBER A. The dangerous state is a fleet whose work is only
+ * on this disk. Before this phase that fleet printed
+ * `CHECK remote PASS remote configured (origin)`, because the old check
+ * read a config file and never touched the remote.
+ */
+test("doctor CHECK remote reports unpushed commits where it used to name the configured remote", (t) => {
+  const { fleet } = fleetWithRemote(t);
+  const synced = runCli(["doctor"], { cwd: fleet });
+  assert.equal(
+    checkLine(synced.stdout, "remote"),
+    capturedCheck("remote: pushed and in sync").line,
+    synced.stdout,
+  );
+
+  for (const name of ["one", "two"]) {
+    writeFileSync(join(fleet, `${name}.md`), `${name}\n`);
+    git(fleet, ["add", "-A"]);
+    git(fleet, ["commit", "--quiet", "-m", name]);
+  }
+
+  /* THE SEPARATOR IS A TAB, and that is why this is read out of a capture
+     rather than written here. A hand-written expectation of "0 2" is the
+     shape CLAUDE.md warning 10 exists for: it would agree with a parser
+     splitting on a single space and disagree with git. */
+  const liveCounts = spawnSync(
+    "git",
+    ["-C", fleet, "rev-list", "--left-right", "--count", "origin/main...HEAD"],
+    { encoding: "utf8", env: { ...process.env, LC_ALL: "C", LANG: "C" } },
+  );
+  assert.equal(liveCounts.status, 0, liveCounts.stderr);
+  const countsLine = (liveCounts.stdout ?? "").split("\n")[0] as string;
+  assert.ok(
+    countsLine.includes("\t"),
+    `git separated the counts with ${JSON.stringify(countsLine)}, not a tab`,
+  );
+  assert.deepEqual(
+    capturedBlock(
+      P17_GIT_CAPTURE,
+      "git rev-list --left-right --count origin/main...HEAD, two commits ahead",
+    ).slice(0, 1),
+    [countsLine],
+    "the live rev-list output is not the one the capture recorded",
+  );
+
+  const recorded = capturedCheck("remote: two commits that have never been pushed");
+  assert.equal(recorded.line, "CHECK remote WARN 2 unpushed, 0 behind origin/main", recorded.line);
+  const result = runCli(["doctor"], { cwd: fleet });
+  const line = checkLine(result.stdout, "remote");
+  assert.ok(line !== undefined, result.stdout);
+  assert.equal(line, recorded.line, result.stdout);
+  assert.doesNotMatch(line, /^CHECK remote PASS /, line);
+});
+
+/*
+ * CRITERION 6, MEMBER B, structurally different: the fetch itself fails.
+ *
+ * THE IMPLEMENTATION THE PLAN NAMES AS WRONG is one that swallows the
+ * fetch failure and falls back to the old non-empty-list test. That
+ * implementation is GREEN in member A as well as here, which is why
+ * member B exists: it is the arm that separates "the check asked the
+ * remote" from "the check read a config file".
+ */
+test("a fetch that fails is its own verdict and never PASS", (t) => {
+  const { fleet } = fleetWithRemote(t);
+  const absent = join(makeTempDir(t), "not-a-repository.git");
+  assert.equal(existsSync(absent), false, "precondition: the remote must not exist");
+  git(fleet, ["remote", "set-url", "origin", `file://${absent}`]);
+
+  const result = runCli(["doctor"], { cwd: fleet });
+  const line = checkLine(result.stdout, "remote");
+  assert.ok(line !== undefined, result.stdout);
+  assert.doesNotMatch(line, /^CHECK remote PASS /, line);
+  assert.match(line, /^CHECK remote FAIL /, line);
+  // git's own words, not a sentence written here to match the code.
+  const real = spawnSync("git", ["-C", fleet, "fetch", "--quiet", "origin"], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C", LANG: "C" },
+  });
+  /* THE RECORDED CONTRACT: a fetch of a remote that is there exits 0, and a
+     fetch of one that is not exits 128. Both arms are read out of the capture
+     and reproduced live, so "the fetch failed" is a measured fact about git
+     rather than an assumption about what nonzero means. */
+  const recordedGood = capturedBlock(P17_GIT_CAPTURE, "git fetch --quiet origin, a remote that is there");
+  const recordedBad = capturedBlock(P17_GIT_CAPTURE, "git fetch --quiet origin, a remote that is not there");
+  assert.ok(recordedGood.includes("exit: 0"), recordedGood.join("\n"));
+  assert.ok(recordedBad.includes("exit: 128"), recordedBad.join("\n"));
+  assert.equal(real.status, 128, `the control fetch exited ${String(real.status)}: ${real.stderr}`);
+  assert.notEqual(real.status, 0, "the control fetch succeeded, so this fixture is not dangerous");
+  const captured = (real.stderr ?? "")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry !== "");
+  assert.ok(captured !== undefined && captured !== "", "the control fetch printed no stderr");
+  assert.ok(
+    line.includes(captured),
+    `doctor's detail does not carry git's own first stderr line.\n` +
+      `captured: ${captured}\nline: ${line}`,
+  );
+  assert.equal(result.status, 1, result.stdout);
+});
+
+/**
+ * A TCP listener that accepts a connection and then says nothing, ever.
+ * A CLOSED port fails fast and would leave the test below green against
+ * the dangerous state, which is why the listener is real. The same shape
+ * is used in test/pool.test.ts for the same reason.
+ */
+async function silentListener(t: {
+  after(fn: () => void | Promise<void>): void;
+}): Promise<number> {
+  const net = await import("node:net");
+  const sockets: Array<{ destroy(): void }> = [];
+  const server = net.createServer((socket) => {
+    sockets.push(socket);
+  });
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      done();
+    });
+  });
+  t.after(
+    () =>
+      new Promise<void>((done) => {
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+        server.close(() => {
+          done();
+        });
+      }),
+  );
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object", "the listener reported no address");
+  return address.port;
+}
+
+/*
+ * CRITERION 6's third member, and the one that pays for the bound. doctor
+ * is the command an operator runs when a fleet is ALREADY misbehaving, so
+ * a fetch that never returns costs the entire diagnosis rather than one
+ * line. M4-P19 measured this exact shape against `pool list` and `doctor`
+ * and found both still running at 25 seconds.
+ *
+ * The child carries a spawn timeout so that a FAILURE of the bound under
+ * test shows up as a killed child rather than as a test run that never
+ * ends: a witness that hangs when its behaviour is absent is a guard that
+ * cannot go red, in the most literal way available.
+ */
+test("doctor returns against a remote that accepts and never answers", async (t) => {
+  const { fleet } = fleetWithRemote(t);
+  const port = await silentListener(t);
+  git(fleet, ["remote", "set-url", "origin", `git://127.0.0.1:${String(port)}/nope.git`]);
+
+  const started = Date.now();
+  const result = runCli(["doctor"], {
+    cwd: fleet,
+    env: { ...process.env, TIPHYS_GIT_NETWORK_TIMEOUT_MS: "3000" },
+    timeout: 15_000,
+  });
+  const elapsed = Date.now() - started;
+  assert.notEqual(
+    result.status,
+    null,
+    `doctor did not return against a silent remote and was killed after ${String(elapsed)}ms`,
+  );
+  const line = checkLine(result.stdout, "remote");
+  assert.ok(line !== undefined, result.stdout);
+  assert.match(line, /^CHECK remote FAIL /, line);
+  assert.match(line, /did not answer within 3000ms and was killed/, line);
+  // The rest of the diagnosis survived the failed probe.
+  assert.ok(checkLine(result.stdout, "layout") !== undefined, result.stdout);
+  assert.ok(checkLine(result.stdout, "kernel-artifacts") !== undefined, result.stdout);
+});
+
+/*
+ * CRITERION 7. Adding checks did not change what doctor is: one line per
+ * check, the exit code decided by FAIL alone, and the advisory after the
+ * diagnosis rather than in front of it (CR-523).
+ */
+test("a FAILing check still leaves the whole diagnosis printed and the advisory last", (t) => {
+  const fleet = initFleet(t);
+  // An open task, so the watcher advisory has something to say.
+  mkdirSync(join(fleet, "tasks", "t-advisory"), { recursive: true });
+  writeFileSync(join(fleet, "tasks", "t-advisory", "meta.json"), '{"taskId":"t-advisory"}\n');
+  writeLease(fleet, "orchestrator-p17", new Date(Date.now() - 1000).toISOString());
+
+  const result = runCli(["doctor"], { cwd: fleet });
+  const printed = [...checkLines(result.stdout).keys()];
+  assert.deepEqual(
+    printed,
+    runChecks(fleet).map((check) => check.name),
+    "doctor printed a different set of checks than runChecks computed",
+  );
+  assert.equal(result.status, 1, result.stdout);
+  // Exactly one FAIL, so the new checks did not join the lock in failing.
+  assert.deepEqual(
+    [...checkLines(result.stdout).entries()]
+      .filter(([, value]) => value.status === "FAIL")
+      .map(([name]) => name),
+    ["lock"],
+    result.stdout,
+  );
+  // The advisory is on stderr and the diagnosis is whole, which is the
+  // property CR-523 bought: a defect in an advisory must not cost the
+  // diagnosis.
+  assert.match(result.stderr, /watcher stale:/, result.stderr);
+});
+
+test("this phase's new doctor behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "doctor-lock-expired-is-fail",
+    "doctor-lock-expiry-boundary-agrees-with-the-module",
+    "doctor-tasks-open-count",
+    "doctor-tasks-unestablished-is-not-a-pass",
+    "doctor-tasks-no-log-tail-or-process-probe",
+    "doctor-branches-unmerged-named",
+    "doctor-new-conditions-are-never-promoted",
+    "doctor-remote-reports-unpushed",
+    "doctor-remote-fetch-failure-is-not-a-pass",
+    "doctor-remote-returns-against-a-silent-remote",
+    "doctor-diagnosis-survives-a-failing-check",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
 });

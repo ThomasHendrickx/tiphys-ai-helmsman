@@ -1,0 +1,32 @@
+{
+  "id": "doctor-remote-fetch-failure-is-not-a-pass",
+  "behavior": "doctor-remote-fetch-failure-is-not-a-pass",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a fetch that fails is its own verdict and never PASS"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (fetched.status !== 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      status: \"FAIL\",\n      detail:\n        `git fetch ${remote} did not succeed, so this fleet's push target could not be ` +",
+      "replace": "      status: \"PASS\",\n      detail:\n        `git fetch ${remote} did not succeed, so this fleet's push target could not be ` +"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git fetch --quiet <remote>, and the tiphys CLI that reports its exit code",
+    "captures": [
+      "witness/captures/m4-p17-git-remote-comparison.txt",
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. The git capture records the commands the check PARSES, with their exit codes and their real separators: `git rev-list --left-right --count` answers two counts separated by a TAB, `git fetch` exits 0 against a remote that is there and 128 against one that is not, and `git merge-base --is-ancestor` exits 0 for merged and 1 for unmerged. Those are facts about git, not about this kernel, and the named test reproduces each of them live before believing the verdict built on them. The two members are the two ways the plan says this check can be wrong, and they are structurally different: member 0 SWALLOWS the failure and falls through to compare against a stale tracking ref, which prints `in sync` over a remote that could not be reached; member 1 NOTICES the failure and reports it green anyway. Member 0 is the implementation the plan names by hand as the guard-that-cannot-go-red shape."
+  }
+}

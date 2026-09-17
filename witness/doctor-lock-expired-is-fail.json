@@ -1,0 +1,31 @@
+{
+  "id": "doctor-lock-expired-is-fail",
+  "behavior": "doctor-lock-expired-is-fail",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "doctor reports CHECK lock FAIL and exits 1 for a lease that expired one second ago"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/lock.ts",
+      "find": "  return Date.parse(expiresAt) <= nowMs;",
+      "replace": "  return false;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (expiryHasPassed(expiresAt, nowMs)) {",
+      "replace": "  if (false) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the tiphys CLI: `node bin/tiphys.ts doctor` over a fleet home",
+    "captures": [
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. THE DANGEROUS STATE THIS WITNESS REDDENS AGAINST IS THE SHIPPED BEHAVIOUR THIS PHASE CORRECTS: before it, that exact lease printed `CHECK lock PASS ... (expired)` and doctor exited 0. The two members are structurally different halves of the same correction: member 0 defangs the comparison inside src/lock.ts so nothing is ever expired, and member 1 leaves the comparison intact and removes the arm in doctor that acts on it. An implementation could defeat either alone."
+  }
+}
