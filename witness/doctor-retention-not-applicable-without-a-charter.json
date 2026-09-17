@@ -2,27 +2,27 @@
   "id": "doctor-retention-not-applicable-without-a-charter",
   "behavior": "doctor-retention-not-applicable-without-a-charter",
   "tests": [
-    "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created"
+    "doctor promotes a not-applicable retention to FAIL under --for full and leaves it a WARN under every profile below, in a fleet that tiphys init just created"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "        condition: \"retention-not-applicable\",",
-      "replace": "        condition: \"retention-undeclared\","
+      "find": "    \"retention-undeclared\",\n    \"retention-not-applicable\",\n",
+      "replace": "    \"retention-undeclared\",\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    \"retention-undeclared\",",
-      "replace": "    \"retention-undeclared\",\n    \"retention-not-applicable\","
+      "find": "     three. */\n  generic: [],",
+      "replace": "     three. */\n  generic: [\"retention-not-applicable\"],"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "        status: \"WARN\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,",
-      "replace": "        status: \"PASS\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,"
+      "find": "      /* NO YAML AT ALL in charter/, which is what `tiphys init` leaves. WARN\n         below `full`, promoted there. */\n      return {\n        name: \"retention\",\n        status: \"WARN\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,",
+      "replace": "      /* NO YAML AT ALL in charter/, which is what `tiphys init` leaves. WARN\n         below `full`, promoted there. */\n      return {\n        name: \"retention\",\n        status: \"PASS\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,"
     }
   ],
   "deterministic": true,
@@ -32,6 +32,6 @@
     "captures": [
       "witness/captures/doctor-git-check-ignore-resolution.txt"
     ],
-    "provenance": "Rule (f) is derived per FILE: this witness mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms this test guards return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the test asserts that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per way the fix can be undone: folding the new condition id back into the promoted one (the original defect), promoting the new condition in the profile table instead (same outcome, different file region), and turning the not-applicable verdict into a silent PASS (the SC-011 shape the split must not reintroduce)."
+    "provenance": "Rule (f) is derived per FILE: every member below mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms these tests guard return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the tests assert that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per way the promotion can be undone. Member 0 takes the condition out of the `full` list, which is the exact state M4-P30 reversed and the guard that could not go red. Member 1 leaves it in the table and attaches it to `generic` as well, so the promotion is over-applied rather than removed and the arm that keeps a fresh `tiphys init` fleet usable below full reddens instead. Member 2 touches no profile at all: it turns the not-applicable verdict into a silent PASS, and since only a WARN is ever promoted the promotion machinery then never fires, which is the SC-011 shape the split must not reintroduce."
   }
 }

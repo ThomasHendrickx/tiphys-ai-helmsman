@@ -43,6 +43,13 @@ export interface CheckResult {
  * and grows at M2/M3 with the gate registry.
  */
 export const PROFILES: Record<string, readonly string[]> = {
+  /* THESE THREE PROMOTE NOTHING ABOUT A CHARTER, and M4-P30 left that alone
+     while changing `full`. Nothing below `full` resolves roles, checklists or
+     retention duties out of a charter, so a fleet that has none is not broken
+     in these modes and must keep exiting 0 there; `tiphys init` writes no
+     charter, so the first thing a new user does would otherwise fail. A later
+     profile that adds a retention condition here reddens a test that walks all
+     three. */
   generic: [],
   "local-only": [],
   "direct-pr": ["gh-missing"],
@@ -50,9 +57,27 @@ export const PROFILES: Record<string, readonly string[]> = {
      whose charter declares no retention paths is not ready for full mode. The
      generic profile leaves it a WARN, which is the state a fleet legitimately
      sits in before its charter is written.
-     NOT promoted, and deliberately: `retention-not-applicable`, the state of a
-     fleet that has no charter document at all. See checkRetention's header for
-     why the two are separate conditions rather than one. */
+     M4-P30 PROMOTES `retention-not-applicable` HERE TOO, REVERSING THE LINE
+     THAT STOOD ABOVE IT UNTIL THIS PHASE. What that line said was that a fleet
+     with NO charter document at all is left a WARN under `full` as well, and
+     the reason given was the sentence immediately above: the generic profile
+     leaves it a WARN because that is the state a fleet legitimately sits in
+     before its charter is written. THAT REASON IS ABOUT THE GENERIC PROFILE.
+     Carried into `full` it makes `tiphys doctor --for full` exit 0 on a fleet
+     that has no charter, which is a guard that cannot go red against the state
+     it exists to detect: the fleet bring-up measured it on the kernel's own
+     fleet home, fully configured, and got exit 0 with ZERO FAIL lines and one
+     WARN line about retention (delivery/evidence/m4-fleet-bringup/bringup.md:1,
+     record `C5.1-arm5-before-charter-emptied`). `full` is the mode whose
+     pipeline resolves roles, checklists and retention duties out of a charter,
+     so a fleet with no charter is not ready for it, and unlike the branch check
+     the remedy IS reachable by the operator: write the charter.
+     THE TWO CONDITIONS STAY SEPARATE, which is the half a one-line fix loses.
+     `retention-not-applicable` (no charter document) and `retention-undeclared`
+     (a charter, or YAML in charter/, that declares no retention paths) keep
+     their own ids AND their own detail strings, so promoting both does not make
+     "nobody has written a charter yet" and "somebody configured this wrongly"
+     print the same sentence. See checkRetention's header. */
   /* M3-P13: `kernel-artifacts-incomplete` is promoted here, so a fleet whose
      installed kernel has lost roles/, schemas/, checklists/ or AGENTS.md is not
      ready for full mode. It is NOT promoted below full, deliberately: the
@@ -73,6 +98,7 @@ export const PROFILES: Record<string, readonly string[]> = {
     "gh-missing",
     "remote-missing",
     "retention-undeclared",
+    "retention-not-applicable",
     "kernel-artifacts-incomplete",
   ],
   watch: ["beacon-absent", "beacon-stale"],
@@ -672,13 +698,25 @@ function checkIdentity(root: string): CheckResult {
  * fields are project facts init does not hold. Folding that state into
  * `retention-undeclared` made `tiphys doctor --for full` exit nonzero on every
  * freshly initialized fleet, which is the first thing a new user does. So it
- * gets its own condition, `retention-not-applicable`, which the `full` profile
- * does NOT promote. It is still a WARN and still names its reason, so it never
- * prints the same word as "declared, present and tracked": the plan's hazard
- * row for this check permits exactly "FAIL or not-applicable-with-a-reason,
- * never a silent pass". The SC-011 arm the row is aimed at, a charter that
- * EXISTS and declares no retention paths, keeps `retention-undeclared` and
- * keeps its promotion.
+ * gets its own condition, `retention-not-applicable`. It is still a WARN and
+ * still names its reason, so it never prints the same word as "declared,
+ * present and tracked": the plan's hazard row for this check permits exactly
+ * "FAIL or not-applicable-with-a-reason, never a silent pass". The SC-011 arm
+ * the row is aimed at, a charter that EXISTS and declares no retention paths,
+ * keeps `retention-undeclared` and keeps its promotion.
+ *
+ * WHAT M4-P30 CHANGED, AND WHAT IT DID NOT. Until this phase the paragraph
+ * above ended "which the `full` profile does NOT promote", and that is now
+ * false: `full` promotes BOTH conditions (see the PROFILES table's own note).
+ * What survives unchanged is the separation the paragraph was written to
+ * protect. The two states keep separate condition ids and separate detail
+ * strings, so a reader of a FAIL line can still tell "nobody has written a
+ * charter here yet" from "somebody put YAML in charter/ that is not a
+ * charter", and the promotion is what M3-P8 fix round 2 could not have: a
+ * state is only promoted where the operator's remedy exists. Below `full`
+ * nothing resolves anything out of a charter, so nothing below `full`
+ * promotes it and a fresh `tiphys init` fleet still exits 0 under the
+ * generic profile.
  */
 function checkRetention(root: string): CheckResult {
   const charterDir = join(root, "charter");
@@ -774,9 +812,21 @@ function checkRetention(root: string): CheckResult {
     /* NOT APPLICABLE versus UNDECLARED, and the difference is whether anyone
        has written a charter yet. An empty charter/ is a fleet before
        realization; YAML that is present but carries no `kind: charter` is a
-       fleet someone has configured wrongly, which stays the promoted
-       condition. */
+       fleet someone has configured wrongly.
+       SINCE M4-P30 THE `full` PROFILE PROMOTES BOTH, AND THE SPLIT IS WHAT
+       SURVIVES THAT. It would be one line shorter to return one condition with
+       one sentence now that both arms exit nonzero under the same profile, and
+       that is the edit this comment exists to refuse: the two states have
+       DIFFERENT REMEDIES. The first is an owner writing the charter the fleet
+       has been waiting for; the second is somebody removing or fixing a
+       document that is in charter/ and is not a charter. A FAIL line that
+       cannot tell a reader which of those to do is a diagnosis that has lost
+       the thing it was for. The condition ids and the detail strings are both
+       kept distinct, and a test asserts it on one fleet with one variable
+       changed. */
     if (candidates === 0) {
+      /* NO YAML AT ALL in charter/, which is what `tiphys init` leaves. WARN
+         below `full`, promoted there. */
       return {
         name: "retention",
         status: "WARN",
@@ -784,6 +834,9 @@ function checkRetention(root: string): CheckResult {
         condition: "retention-not-applicable",
       };
     }
+    /* YAML IS PRESENT AND NONE OF IT IS A CHARTER. The count is in the detail
+       because it is the difference between one stray file and a directory
+       somebody filled with the wrong documents. */
     return {
       name: "retention",
       status: "WARN",

@@ -1202,10 +1202,16 @@ test("a full mode with no escalation-bounds is rejected naming the field, and is
   assert.notDeepEqual(validateModule.validateToLines(readSchema(schemaName), document), []);
 
   /* THE OTHER DIRECTION, and the values are asserted rather than only their
-     presence: a bound whose limits do not match DR-0012's records a regime
-     nobody granted. */
+     presence: a bound whose limits do not match the decisions in force records
+     a regime nobody granted.
+     THE FIX-ROUND LIMIT IS 3, NOT 2, SINCE M4-P30. DR-0012's bound was two
+     rounds after the first dual review; DR-0035 replaced the single bound with
+     a table running from one round to three, so the number this file ships is
+     that table's CEILING and 2 would be wrong for a large subject at high
+     impact. The recurrence limit is untouched: DR-0035 says nothing about it
+     and DR-0012 still treats any recurrence as the trigger. */
   const bounds = modeNamed(loadModes(), "full")["escalation-bounds"] as Record<string, unknown>;
-  assert.equal(bounds["max-fix-rounds-after-review"], 2);
+  assert.equal(bounds["max-fix-rounds-after-review"], 3);
   assert.equal(bounds["recurrence-of-high-in-one-component"], 1);
 });
 

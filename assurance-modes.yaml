@@ -108,7 +108,8 @@ modes:
       blueprint section 8 (the mode and its pipeline); process doc section 9
       item 3 enumerated (R-096); T-003 for the fix-round-verification stage;
       DR-0012 and DR-0015 for the merge authority actually in force; DR-0016
-      for the escalation response; T-007 and D-M3-32 for the review contracts.
+      for the escalation response; DR-0035 for the fix-round ceiling; T-007 and
+      D-M3-32 for the review contracts.
     # ORDER IS LOAD-BEARING. R-024: an adversarial plan review happens before
     # anyone builds, which is a property of this sequence and not of its set,
     # and `mode-stage-order` is the check that says so.
@@ -193,8 +194,28 @@ modes:
         verdict.
     # DR-0012's two limits with DR-0016's response. DATA THE ORCHESTRATOR BRIEF
     # CITES, NOT AN ENFORCEMENT ENGINE: nothing in M3 counts fix rounds.
+    #
+    # THE FIX-ROUND NUMBER IS DR-0035'S CEILING OF 3, NOT DR-0012'S 2 (M4-P30).
+    # DR-0035 replaced the single bound with a table: the dial is the number of
+    # rounds between the clean-room reviewer and the implementer, and it runs
+    # from one round (a zero or small subject) to three (a large subject at
+    # high impact). A single integer cannot carry a table, so what this field
+    # records is the CEILING, which is the only reading under which the value
+    # is true of every phase rather than wrong for some of them. Writing 2 here
+    # made this file state a bound DR-0035 had already lifted, and the kernel's
+    # own charter had to go out of its way to avoid repeating it: charter.yaml
+    # names the BUDGET rather than a number precisely because the two documents
+    # disagreed. They no longer do.
+    #
+    # NOTHING READS THIS VALUE, and the derivation is published rather than
+    # asserted: `grep -rn 'max-fix-rounds-after-review' --include='*.ts'
+    # --include='*.mjs' src/ bin/ scripts/` returns zero hits, so no code path
+    # branches on it. The readers are this file's schema, the test that pins
+    # the shipped values, and `tiphys mode show`, which prints whatever is
+    # here. See delivery/work-history/m4-p30.md:1 for the full output and for
+    # the regions that derivation did NOT cover.
     escalation-bounds:
-      max-fix-rounds-after-review: 2
+      max-fix-rounds-after-review: 3
       recurrence-of-high-in-one-component: 1
       on-exceeded: fresh-implementer-and-third-contract
 
