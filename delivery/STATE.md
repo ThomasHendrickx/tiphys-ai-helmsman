@@ -2211,3 +2211,196 @@ budget used as a catastrophic-backtracking proxy at src/gates/coverage.ts:235,
 which trips on `^(?:M([0-9]+))$` against a two-character value. The message
 refutes itself. Never attribute such a red to load by judgement: re-run, and
 check whether the failing test is even in the branch's changed set.
+
+## Standing at 2026-09-17, 09:30 UTC (supersedes the tables above)
+
+The tables earlier in this file are the record of 2026-09-16 and are left in
+place. This section is the current standing and it is derived from git, not
+from memory.
+
+### Merged: 16 of 30 M4 phases
+
+M4-P1, M4-P2, M4-P3, M4-P4, M4-P10, M4-P11, M4-P13, M4-P14, M4-P15, M4-P16,
+M4-P17, M4-P19, M4-P20, M4-P23, M4-P26, M4-P27.
+
+`main` is at `60dac17`. Every post-merge `push` run behind that head was
+watched to completion, which T-009 requires and which a green pull-request
+check is not evidence for.
+
+The derivation, so a later reader can re-run it rather than trust the list:
+
+```
+git log --oneline origin/main | grep -oE 'M4-P[0-9]+' | sort -u
+```
+
+**That command over-reports, and the trap is worth naming because it caught
+this update.** A wave paperwork commit carries the phase id of the phase it
+declares, so `M4-P5` and `M4-P28` both appear in its output while their pull
+requests are still open. Cross-check each id against a MERGED pull request
+before counting it.
+
+### In CI, not yet merged
+
+| phase | pull request | what it ships |
+|---|---|---|
+| M4-P5 | #175 | the plugin workspace, the manifest, and the Claude Code adapter |
+| M4-P28 | #176 | the coverage gate stops measuring machine load |
+| wave 8 paperwork | #177 | the pre-pass and declarations for M4-P8 and M4-P18 |
+
+### Not started: 12 phases
+
+M4-P6, M4-P7, M4-P8, M4-P9, M4-P12, M4-P18, M4-P21, M4-P22, M4-P24, M4-P25,
+M4-P29, M4-P30.
+
+### What blocks what, which is the pacing fact
+
+- **M4-P5 is the unblocker.** M4-P6 and M4-P7 both create files under
+  `plugin/`, which M4-P5 creates. M4-P9 needs the same package skeleton. Three
+  phases wait on #175.
+- **`src/cli.ts` is a single-writer file through M4 under DR-0046.** M4-P12,
+  M4-P18, M4-P24 and M4-P25 all claim it, so at most one of them is ever in
+  flight. M4-P18 takes that slot in wave 8.
+- **`src/spawn.ts`** is claimed by M4-P8 and M4-P22. M4-P8 takes it first.
+- **`src/commands/init.ts`** is claimed by M4-P18 and M4-P21.
+- **`src/gates/credentials.ts`** is claimed by M4-P8 and M4-P29.
+
+So the remaining ten phases after wave 8 are not ten parallel slots. The
+file-level contention above, not the agent cap, is what serialises them, and
+the wave pre-passes in delivery/plan/m4-conflict-pre-pass.md:1 are where each
+pairing is proven before dispatch.
+
+### Agent cap
+
+Two concurrent agents, per the owner's instruction recorded as DR-0044. The
+workflow cap is `min(16, CPUs - 2)` and `nproc` returns 4, so one workflow
+gives exactly two. Wave 8 is one workflow of two units, which matches.
+
+### The full contention map for the remaining phases, measured 2026-09-17
+
+Read from each phase's own files-to-touch line in the plan. It is written down
+here because every wave pre-pass so far has had to re-derive it, and because
+three of these pairings are not visible in any dependency list.
+
+| file | claimed by |
+|---|---|
+| `src/cli.ts` | M4-P12, M4-P18, M4-P24, M4-P25 (DR-0046 serialises them) |
+| `src/spawn.ts` | M4-P8, M4-P22 |
+| `src/commands/init.ts` | M4-P18, M4-P21 |
+| `src/gates/credentials.ts` | M4-P8, M4-P29 |
+| `src/commands/doctor.ts`, `test/doctor.test.ts` | M4-P22, M4-P30 |
+| `plugin/src/adapter.ts` | M4-P6, M4-P7 |
+| `AGENTS.md` | M4-P9, M4-P18 |
+
+The last two are the ones no dependency list carries. **M4-P6 and M4-P7 both
+edit `plugin/src/adapter.ts`**, so the two phases that look like the obvious
+pair after M4-P5 lands cannot run together. **M4-P9 edits `AGENTS.md`**, which
+M4-P18 is editing in wave 8, so M4-P9 waits on M4-P18 as well as on M4-P5.
+
+### A plan inconsistency M4-P9 will hit, recorded before it costs a round
+
+M4-P9's files-to-touch line at delivery/plan/kernel-plan-m4.md:1581 says it
+creates `packages/claude-code-plugin/` as a whole tree, and its dependency note
+recommends that location because DR-0040 decided one repository and two packages
+and named no directory. **M4-P5 shipped the workspace at `plugin/`**, not at
+`packages/claude-code-plugin/`, and M4-P6 and M4-P7 both name `plugin/` paths.
+
+So the plan's own text now points two ways. M4-P9's brief must say which one is
+real, and the answer is `plugin/`, because that is what merged and what two
+other phases already build on. This is recorded rather than asked: the options
+are not comparable, so under DR-0016 there is nothing to escalate.
+
+The same line also has M4-P9 editing `package.json` for `workspaces` "only if
+the adapter phase has not already added it". M4-P5 did add it, so that clause
+resolves to no edit, and M4-P9's declaration should not carry `package.json`.
+
+**The plan answers this itself, which is why it is a decision and not a
+question.** delivery/plan/kernel-plan-m4.md:1192 raises "where does the plugin
+tree live" as an open item, recommends `plugin/`, gives the reason (`packages/`
+implies a third and fourth package and DR-0040 is explicit that the second one
+is "for now"), prices the cost of being wrong at one directory move, and hands
+it to the orchestrator with "no escalation". M4-P5 then shipped `plugin/`. So
+the two lines still naming `packages/claude-code-plugin/`, at
+delivery/plan/kernel-plan-m4.md:1581 for M4-P9 and
+delivery/plan/kernel-plan-m4.md:3203 for M4-P24, are stale echoes of the
+pre-decision recommendation rather than a second live proposal.
+
+DECIDED: the plugin tree is `plugin/`. Both briefs say so, and neither phase
+creates `packages/`.
+
+### The unpushed-work sweep over-reports, measured 2026-09-17
+
+The hourly floor's step 4 says to check a dead agent's clone for commits it
+made and never pushed. That check has cost this project two real losses, so it
+is run on every wake. The obvious form of it is WRONG in this environment and
+produced three false alarms in one sweep:
+
+```
+git -C <clone> log --oneline @{u}..HEAD | wc -l
+```
+
+Measured: `fix-m4-p2-macos/clone` reported **82** unpushed commits,
+`fix-m4-p11/clone` **7**, `r3-m4-p11/clone` **1**. All three heads were already
+on `origin`. The cause is that every agent clone is made with
+`git clone --no-local` from the local repository and then has its origin
+re-pointed, so its remote-tracking refs are frozen at clone time and never
+learn about anything pushed afterwards, including its own pushes.
+
+The form that answers the question asks the ORCHESTRATOR'S clone, after
+fetching the branch, whether the sha is reachable from any remote ref:
+
+```
+git fetch origin 'refs/heads/<branch>:refs/remotes/origin/<branch>' -q
+git branch -r --contains <sha>
+```
+
+Empty output is the alarm. All three shas above printed a remote branch.
+
+**A squash merge makes this worse in the opposite direction and both readings
+have to be held at once.** A squash-merged phase branch is NOT an ancestor of
+`main`, so `--contains` against `origin/main` says nothing about whether the
+work landed; the branch ref is what carries it. Ask the branch, not `main`, and
+confirm the LANDING separately by looking for the phase's own artifacts in
+`main`'s tree.
+
+### Correction: pull request 177's description overstated what it carried
+
+Recorded here rather than only in a comment, because the merge commit on `main`
+carries the same overstatement and a later reader will meet that first.
+
+Pull request 177 merged as `9d0a6b8` with the title "Wave 8 and wave 9
+paperwork" and a body claiming four declarations: `m4-p8.json`, `m4-p18.json`,
+`m4-p6.json` and `m4-p30.json`. **It carried two.** Measured on `main` at
+`9d0a6b8`:
+
+```
+ls delivery/plan/phase-declarations/ | grep -E 'm4-p(6|8|18|30)\.json'
+  m4-p18.json
+  m4-p8.json
+grep -c '^## Wave 9' delivery/plan/m4-conflict-pre-pass.md
+  0
+```
+
+The wave 9 pre-pass and the two missing declarations were committed on a
+different branch, `claude/state-2026-09-17`, along with this file's updates.
+The pull request body was written from memory of what had been authored that
+hour, not from the branch's diff.
+
+**This is the same defect as the one recorded for pull request 161**, where a
+merge message described an inode hotfix whose code was on an unpushed commit.
+Twice now the failure is identical: the description was composed from what the
+author had written, and the branch is what the reader gets.
+
+**The mechanism, and it is mechanical to close.** A pull request body is a claim
+about a DIFF, so it is checked against the diff before opening:
+
+```
+git diff --name-status origin/main...<branch>
+```
+
+Every artifact the body names must appear in that output. Reading the branch's
+own commit log is NOT the check, because a commit made on a sibling branch in
+the same hour reads exactly like one made here.
+
+Nothing was lost: the missing paperwork is in this pull request. What was
+briefly wrong is the record, which is the thing this project treats as the
+deliverable.
