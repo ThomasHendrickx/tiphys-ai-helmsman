@@ -1,0 +1,38 @@
+{
+  "id": "M4-P28",
+  "branch": "claude/m4-p28-coverage-instrument",
+  "filesToTouch": [
+    "src/gates/coverage.ts",
+    "test/coverage-gate.test.ts",
+    "witness/coverage-regex-interrupt-not-a-verdict.json"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p28.json",
+    "delivery/work-history/m4-p28.md"
+  ],
+  "citations": [
+    "DR-0027",
+    "DR-0031",
+    "M2-C-3",
+    "T-008"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "red-witness"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}
