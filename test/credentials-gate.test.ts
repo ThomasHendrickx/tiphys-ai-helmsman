@@ -1176,7 +1176,7 @@ test("the egress vocabulary excludes the names measured to grant no reach, and d
    *
    * `CURL_CA_BUNDLE` is a TLS-trust channel and not an egress grant: M4-P8's
    * arm C added it on top of arm B and measured the same HTTP 200 arm B
-   * already had (delivery/work-history/m4-p8.md:118).
+   * already had (delivery/work-history/m4-p8.md:117).
    *
    * THE INVARIANT. `src/exec/env.ts` imports `isDangerousEnvName` and
    * REFUSES any allowlist extension naming a member of it. Folding the proxy

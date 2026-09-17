@@ -245,7 +245,7 @@ export const DANGEROUS_ENV_VOCABULARY: readonly string[] = [
  * it, so listing them would redden a child that is strictly less capable.
  * `CURL_CA_BUNDLE` is a TLS-trust channel and not an egress grant: M4-P8's
  * arm C added it on top of arm B and measured the same HTTP 200 arm B
- * already had (delivery/work-history/m4-p8.md:118), so it buys no reach,
+ * already had (delivery/work-history/m4-p8.md:117), so it buys no reach,
  * and its node-side sibling `NODE_EXTRA_CA_CERTS` is already covered by
  * `DANGEROUS_ENV_VOCABULARY` above.
  *

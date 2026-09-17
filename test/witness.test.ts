@@ -51,7 +51,7 @@ type GateStatusName = Parameters<typeof exitCodeForStatus>[0];
  * THE PATH IS BOUND ONCE AND READ THROUGH THE BINDING, which is the spelling
  * test/credentials-gate.test.ts and test/suite-gate.test.ts already use, and
  * the choice is recorded rather than left to look accidental. `deriveTextAssertions`
- * (src/witness/run.ts:609) flags a file as text-asserting from an INLINE
+ * (src/witness/run.ts:610) flags a file as text-asserting from an INLINE
  * document-path literal inside the read call; the same read through a bound
  * `fileURLToPath(new URL(...))` is not flagged. Measured both ways on this
  * file. Writing it inline flipped the whole file to text-asserting and
