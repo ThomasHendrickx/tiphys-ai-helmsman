@@ -204,3 +204,45 @@ and is held for a pair of its own.
 
 **Two agents, one wave, therefore two run at once**, which is the owner's cap
 under DR-0044.
+
+## Wave 5, 2026-09-17
+
+Written BEFORE dispatch, per rule 5. Nothing is live; M4-P3 and M4-P14 have both
+merged.
+
+| unit | files it may touch |
+|---|---|
+| M4-P4 | `src/spawn.ts`, `src/commands/spawn.ts`, `src/adapters/load.ts` (new), `src/index.ts` (new), `package.json`, `tsconfig.src.json` (verify first), `test/spawn.test.ts`, `test/adapter-load.test.ts` |
+| M4-P17 | `src/commands/doctor.ts`, `src/lock.ts`, `src/pool.ts`, `test/doctor.test.ts` |
+
+**Intersection: EMPTY.**
+
+**M4-P17's list is NARROWER than an earlier grep suggested, and the difference
+matters.** A keyword scan of the plan attributed `src/cli.ts`,
+`src/commands/init.ts`, `src/commands/sync.ts` and `src/status.ts` to it; those
+belong to M4-P18, whose section follows immediately. M4-P17 touches
+`src/commands/doctor.ts`, `src/lock.ts`, `src/pool.ts` and its test. Read from
+the section's own files-to-touch line, not from a window around it. So M4-P17
+does NOT take `src/cli.ts`, and DR-0046's serialisation of that file is not
+engaged by this wave at all.
+
+**The generator check.** Neither unit touches `gate-registry.yaml`, `CLAUDE.md`
+or `roles/implementer.md`, so the drift chain is idle. M4-P4 edits
+`package.json`'s `exports` and `types`, which changes WHAT THE PACKAGE PUBLISHES,
+and `check-agents-references` resolves every `AGENTS.md` reference against the
+published set. Neither unit edits `AGENTS.md`, so that coupling cannot fire
+across the pair, but M4-P4 owns it and must re-run that gate itself.
+
+**M4-P14's new `gate-classes` gate binds from now on**: every declaration needs a
+`gateClasses` disposition or the gate reddens on it. Both declarations here carry
+one.
+
+**Not dispatched and why.** M4-P8 and M4-P22 collide with M4-P4 on
+`src/spawn.ts`. M4-P21 collides with both units, on `src/spawn.ts` and on
+`src/commands/doctor.ts`. M4-P18 collides with M4-P17 on `src/commands/doctor.ts`
+and `src/pool.ts`. M4-P5, M4-P6 and M4-P7 are dependency-blocked on the adapter
+seam M4-P4 builds, which is why M4-P4 leads this wave. M4-P12, M4-P24 and M4-P25
+share `src/cli.ts` and stay serialised under DR-0046.
+
+**Two agents, one wave, therefore two run at once**, the owner's cap under
+DR-0044.
