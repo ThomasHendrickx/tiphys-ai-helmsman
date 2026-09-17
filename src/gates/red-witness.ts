@@ -572,5 +572,18 @@ const invokedDirectly = (() => {
 })();
 
 if (invokedDirectly) {
-  process.exit(main(process.argv.slice(2)));
+  // `process.exitCode`, NEVER `process.exit(main(...))` (M4-P29). The
+  // registry invokes this gate as a SUBPROCESS, so its stdout is a PIPE,
+  // and a write to a pipe is queued rather than completed: `process.exit`
+  // terminates without draining that queue, so everything past the first
+  // pipe buffer is DISCARDED. This gate is the measured instance, not a
+  // hypothetical one: its single stdout line carries the whole `detail`,
+  // and `detail` grows with the number of uncovered sources and the number
+  // of red witnesses. At the pre-fix parent commit a real run of this CLI
+  // over a 900-file diff meant to write 176,530 bytes, wrote 176,530
+  // through a file redirection, and delivered 65,536 through `| cat`, one
+  // pipe buffer exactly. The exit code survived either way, so the loss is
+  // silent and is EVIDENCE rather than verdict. Assigning `process.exitCode`
+  // lets the process end normally, which drains the queue first.
+  process.exitCode = main(process.argv.slice(2));
 }

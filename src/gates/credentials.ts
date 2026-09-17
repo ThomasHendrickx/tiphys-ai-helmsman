@@ -56,6 +56,14 @@ import type { GateResult, GateStatus } from "./result.ts";
  *     ssh(1), node(1) and bash(1) document (DANGEROUS_ENV_VOCABULARY;
  *     see that constant for the per-name source).
  *
+ * A SECOND ALLOWLIST-INDEPENDENT TRIPWIRE WAS ADDED IN M4-P29, and its
+ * absence was a measured defect rather than an omission: this gate greened
+ * `HTTPS_PROXY`, the one name M4-P8 measured as the difference between
+ * HTTP 403 and HTTP 200 against `api.github.com/user` from inside a
+ * scrubbed child. The walk is `EGRESS_ENV_VOCABULARY` below; read its
+ * comment for what the addition does and does NOT close, because the
+ * per-invocation extension route stays outside this gate's view.
+ *
  * WHY THIS IS A TRIPWIRE, NOT THE SCRUB. The scrub is the allowlist in
  * src/exec/env.ts: nothing outside it can appear in a child by
  * construction, so the allowlist is the real defense. This tripwire is a
@@ -184,6 +192,85 @@ export const DANGEROUS_ENV_VOCABULARY: readonly string[] = [
 ];
 
 /**
+ * THE EGRESS VOCABULARY (M4-P29, and this comment is the record of why it
+ * exists as a SEPARATE list rather than as more rows of the one above).
+ *
+ * WHAT WAS MEASURED. delivery/verification/m4-prototype-probes.md:46
+ * recorded that this gate's verdict is INVERTED with respect to real
+ * capability: it reddens `GIT_CONFIG_*`, which in that container bought
+ * only URL rewriting, and it greens `HTTPS_PROXY`, which bought full
+ * GitHub reach. M4-P8 then measured the same thing from the other side,
+ * four arms through `spawnTask` differing only in the allowlist extension
+ * (delivery/work-history/m4-p8.md:116): arm A, ten variables, HTTP 403
+ * from `api.github.com/user`; arm B, the same ten plus `HTTPS_PROXY`,
+ * HTTP 200. One variable, and it is the one nothing in this module knew
+ * about. A gate that cannot go red for the case that matters is the shape
+ * this repository keeps paying for.
+ *
+ * WHAT THIS FIXES AND WHAT IT DOES NOT, stated here rather than left to be
+ * discovered. It closes the case where the DEFAULT allowlist in
+ * src/exec/env.ts gains an egress name: this tripwire is
+ * allowlist-INDEPENDENT, exactly like the two above it, so the widening
+ * costs a red instead of buying a green. It does NOT close the case
+ * M4-P8's arm B actually used, which is a PER-INVOCATION
+ * `extraAllowlist`: that argument is runtime data of one spawn, this gate
+ * probes the constructed default child, and no probe of a default can see
+ * an argument a caller has not passed yet. Closing that half means
+ * auditing the extension record a task writes, which is a different gate
+ * and a different phase.
+ *
+ * WHY A SEPARATE LIST. `DANGEROUS_ENV_VOCABULARY` is not only this gate's
+ * tripwire: src/exec/env.ts imports `isDangerousEnvName` and REFUSES an
+ * allowlist extension naming any member. Adding the proxy names there
+ * would therefore refuse M4-P8's one audited, reasoned extension as a side
+ * effect of a data edit in this file, in a module this phase does not
+ * touch. Whether an egress name may ever be extended is a kernel design
+ * question with an owner-facing cost, not a consequence to take by
+ * accident, so the two lists stay separate and `isDangerousEnvName` is
+ * byte-for-byte what it was.
+ *
+ * THE WALK, per name, from the consuming programs' own documentation
+ * (curl(1) "ENVIRONMENT", git(1) "http_proxy", wget(1) "ENVIRONMENT"):
+ * each of these names a proxy a child's HTTP client will route through,
+ * in both the upper-case and lower-case spellings those pages document.
+ *
+ *   HTTP_PROXY / http_proxy   - proxy for http:// requests.
+ *   HTTPS_PROXY / https_proxy - proxy for https:// requests. THE MEASURED
+ *                               NAME: arm A 403 against arm B 200.
+ *   ALL_PROXY / all_proxy     - proxy for every scheme.
+ *   FTP_PROXY / ftp_proxy     - proxy for ftp:// requests.
+ *
+ * TWO NAMES ARE DELIBERATELY ABSENT, and both absences are measured rather
+ * than assumed. `NO_PROXY` / `no_proxy` NARROW reach instead of granting
+ * it, so listing them would redden a child that is strictly less capable.
+ * `CURL_CA_BUNDLE` is a TLS-trust channel and not an egress grant: M4-P8's
+ * arm C added it on top of arm B and measured the same HTTP 200 arm B
+ * already had (delivery/work-history/m4-p8.md:118), so it buys no reach,
+ * and its node-side sibling `NODE_EXTRA_CA_CERTS` is already covered by
+ * `DANGEROUS_ENV_VOCABULARY` above.
+ *
+ * LIKE THE LIST ABOVE THIS IS A BOUNDED DENYLIST. The allowlist in
+ * src/exec/env.ts is still the real defense; this makes a widening cost a
+ * red for the names walked here, it does not enumerate every way a child
+ * could be handed network reach.
+ */
+export const EGRESS_ENV_VOCABULARY: readonly string[] = [
+  "HTTP_PROXY",
+  "http_proxy",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "FTP_PROXY",
+  "ftp_proxy",
+];
+
+/** Whether a variable name is in the walked egress vocabulary. */
+export function isEgressEnvName(name: string): boolean {
+  return EGRESS_ENV_VOCABULARY.includes(name);
+}
+
+/**
  * git-config(1)'s numbered environment config-injection members:
  * GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n> for n in [0, COUNT). The
  * index is git's own documented closed shape (a non-negative integer), so
@@ -292,6 +379,7 @@ export function probeCredentialSources(
   const names = Object.keys(env).filter((name) => env[name] !== undefined);
   const tokens = names.filter((name) => GH_TOKEN_VARIABLES.includes(name));
   const dangerous = names.filter((name) => isDangerousEnvName(name));
+  const egress = names.filter((name) => isEgressEnvName(name));
   const strays = names.filter((name) => !permitted.has(name));
   if (tokens.length > 0) {
     probes.push(
@@ -309,6 +397,19 @@ export function probeCredentialSources(
         `credential- or code-execution-capable variable(s) from the walked vocabulary present in the child environment: ${dangerous.join(", ")}`,
       ),
     );
+  } else if (egress.length > 0) {
+    // ALLOWLIST-INDEPENDENT, and that placement is the whole point: it sits
+    // ABOVE the stray check so it still fires on a name the allowlist has
+    // been widened to permit. Below it, a widened allowlist would make the
+    // name non-stray and this probe would report clean, which is the green
+    // M4-P8's arm B measured while the child had HTTP 200 to the GitHub API.
+    probes.push(
+      probe(
+        "environment",
+        "resolvable",
+        `network-egress variable(s) from the walked proxy vocabulary present in the child environment: ${egress.join(", ")}`,
+      ),
+    );
   } else if (strays.length > 0) {
     probes.push(
       probe(
@@ -322,7 +423,7 @@ export function probeCredentialSources(
       probe(
         "environment",
         "clean",
-        `${String(names.length)} variable(s), all inside the constructed contract, no gh token or walked-vocabulary variable`,
+        `${String(names.length)} variable(s), all inside the constructed contract, no gh token, no walked-vocabulary variable and no walked proxy variable`,
       ),
     );
   }
@@ -704,10 +805,25 @@ function gateMain(argv: string[]): number {
 
 // Main guard: run as a gate subprocess when executed directly, inert on
 // import (tests import the probe functions without running a gate).
+//
+// `process.exitCode`, NEVER `process.exit(gateMain(...))` (M4-P29). The
+// registry invokes this gate as a SUBPROCESS, so its stderr is a PIPE, and
+// a write to a pipe is queued rather than completed: `process.exit`
+// terminates without draining that queue, so everything past the first
+// pipe buffer is DISCARDED. This module writes NOTHING to stdout, so the
+// measured instance here is STDERR, which the plan section states it did
+// not examine: a 131,143-byte usage refusal from `gateMain` arrived as
+// 65,536 bytes through `| cat` at the pre-fix parent commit and arrives
+// whole after this change, one pipe buffer exactly. It arrives whole
+// through a file redirection either way, which is why the defect survives
+// casual testing. Assigning `process.exitCode` lets the process end
+// normally, which drains the queue first. The same rule holds for stdout
+// and is why src/gates/citations.ts, src/gates/scope.ts and
+// src/gates/gate-classes.ts already read this way.
 const entry = process.argv[1];
 if (entry !== undefined) {
   const isMain = pathsIdentifySameObject(fileURLToPath(import.meta.url), entry);
   if (isMain) {
-    process.exit(gateMain(process.argv.slice(2)));
+    process.exitCode = gateMain(process.argv.slice(2));
   }
 }

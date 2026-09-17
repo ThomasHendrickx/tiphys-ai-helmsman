@@ -1,0 +1,62 @@
+M4-P29: the real stdio contract of the three gate CLIs whose entry points this
+phase changed, and the truncation each one showed before the change.
+
+Captured 2026-09-17 in the kernel container on node v26.6.0
+(/tmp/claude-0/n26/bin/node), Linux 6.18.44, git 2.43.0,
+/proc/sys/net/core/wmem_default = 212992. Every byte below was produced by
+running the command shown and redirecting the stream shown; nothing here is
+hand-written to match an implementation (CLAUDE.md red-witness rule, strong
+form; standing warning 10).
+
+WHY THIS FILE EXISTS. Red-witness rule (f) binds every witness whose members
+touch src/gates/suite.ts or src/gates/credentials.ts, because both files spawn
+another program and parse what it prints. The behaviour those witnesses guard
+is what the gate ITSELF prints, so the captured contract below is the gate's
+own output, and the named tests reproduce the relevant block live before
+asserting anything about report size.
+
+THE MEASURED TRUNCATION. One invocation of each CLI, differing only in what
+fd 1 or fd 2 points at, at the pre-fix parent commit (the entry point reading
+`process.exit(main(...))`) and after the change (`process.exitCode = ...`).
+"wrote" is the length the gate recorded in its own result file, or, for the
+credentials usage refusal which writes no result file, the length delivered to
+a regular file.
+
+  gate           stream  reader            wrote    pre-fix   post-fix
+  red-witness    stdout  regular file      176510   176530    176530
+  red-witness    stdout  shell pipe (cat)  176510    65536    176530
+  red-witness    stdout  spawnSync         434510   146176    434530
+  suite          stdout  spawnSync         451014   182750    451014
+  credentials    stderr  regular file      130143   130143    130143
+  credentials    stderr  shell pipe (cat)  130143    65536    130143
+
+Two readings that are easy to get wrong and are stated rather than left to be
+inferred. A REGULAR FILE never truncates, which is why this defect survives
+casual testing. And a spawnSync parent does not hand a child a pipe: it hands
+it a SOCKETPAIR, whose send buffer here is 212992 bytes, so the ceiling on that
+path is around 146 KiB rather than the 65536 a shell pipe gives. The registry
+runner invokes gates with spawnSync (src/gates/run.ts:1528), so the socketpair
+row is the runner's real path and the pipe row is what a shell pipeline, a tee
+or a CI log collector gives. The exit code was correct in EVERY row before and
+after, which is why the loss is silent.
+
+--- BEGIN credential-scrub-usage-stderr ---
+credentials gate: unknown argument --frob
+usage: node src/gates/credentials.ts credential-scrub|credential-token --result <path> --evidence <dir>
+--- END credential-scrub-usage-stderr ---
+
+Command for the block above, exit 64:
+
+  node src/gates/credentials.ts credential-scrub --result R --evidence E --frob
+
+--- BEGIN suite-red-stdout ---
+suite: red (2 tests reported)
+1 finding(s): behavior no-such-row does not resolve: no reported test is named "no reported test is named this"
+--- END suite-red-stdout ---
+
+Command for the block above, exit 1, in a scratch fixture whose test script is
+`node --test "test/**/*.test.ts"`, whose only test file declares `alpha passes`
+and `beta skipped`, and whose test/behaviors.json holds the single row
+"no-such-row": "no reported test is named this":
+
+  node src/gates/suite.ts --result R --evidence E --base <the base commit>

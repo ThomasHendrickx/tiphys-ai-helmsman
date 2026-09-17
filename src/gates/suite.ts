@@ -1163,5 +1163,14 @@ const invokedDirectly =
   pathsIdentifySameObject(fileURLToPath(import.meta.url), process.argv[1]);
 
 if (invokedDirectly) {
-  process.exit(runSuiteGate(process.argv.slice(2)));
+  // `process.exitCode`, NEVER `process.exit(runSuiteGate(...))` (M4-P29).
+  // The registry invokes this gate as a SUBPROCESS, so its stdout is a
+  // PIPE, and a write to a pipe is queued rather than completed:
+  // `process.exit` terminates without draining that queue, so everything
+  // past the first pipe buffer is DISCARDED. This gate is the one the plan
+  // names as the plausible future trigger, because its `detail` carries up
+  // to ten findings and every finding quotes text this gate read out of
+  // another program's report. Assigning `process.exitCode` lets the process
+  // end normally, which drains the queue first.
+  process.exitCode = runSuiteGate(process.argv.slice(2));
 }

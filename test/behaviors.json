@@ -1095,5 +1095,13 @@
   "sync-usage-errors": "sync usage errors exit 64 and name the option",
   "sync-parsers-read-real-git-output": "the two porcelain parsers read git's real captured output rather than a hand-written shape",
   "status-durable-document-tracked": "the durable status document is tracked and the stream stays ignored, which is the whole of M4-D-13",
-  "init-tracks-durable-status-directory": "init tracks the durable status directory in the bootstrap commit, so a clone of a fleet home carries it"
+  "init-tracks-durable-status-directory": "init tracks the durable status directory in the bootstrap commit, so a clone of a fleet home carries it",
+  "gate-cli-red-witness-report-survives-stdio": "the red-witness gate CLI delivers a report larger than a parent's stdio buffer without truncating it",
+  "gate-cli-red-witness-exit-codes-round-trip": "every red-witness gate CLI arm exits the code its own result record implies",
+  "gate-cli-suite-report-survives-stdio": "the suite gate CLI delivers a report larger than a parent's stdio buffer without truncating it",
+  "gate-cli-suite-exit-codes-round-trip": "every suite gate CLI arm exits the code its own result record implies",
+  "gate-cli-credentials-report-survives-pipe": "the credentials gate CLI delivers a report larger than one pipe buffer intact through a pipe",
+  "gate-cli-credentials-exit-codes-round-trip": "every credentials gate CLI arm exits the code its own result record implies",
+  "credential-scrub-egress-tripwire": "credential-scrub reddens on a permitted network-egress variable, which is the name the gate used to green",
+  "credential-scrub-egress-vocabulary-bounds": "the egress vocabulary excludes the names measured to grant no reach, and does not widen the extension refusal"
 }
