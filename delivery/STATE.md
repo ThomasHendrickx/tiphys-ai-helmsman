@@ -2274,3 +2274,41 @@ pairing is proven before dispatch.
 Two concurrent agents, per the owner's instruction recorded as DR-0044. The
 workflow cap is `min(16, CPUs - 2)` and `nproc` returns 4, so one workflow
 gives exactly two. Wave 8 is one workflow of two units, which matches.
+
+### The full contention map for the remaining phases, measured 2026-09-17
+
+Read from each phase's own files-to-touch line in the plan. It is written down
+here because every wave pre-pass so far has had to re-derive it, and because
+three of these pairings are not visible in any dependency list.
+
+| file | claimed by |
+|---|---|
+| `src/cli.ts` | M4-P12, M4-P18, M4-P24, M4-P25 (DR-0046 serialises them) |
+| `src/spawn.ts` | M4-P8, M4-P22 |
+| `src/commands/init.ts` | M4-P18, M4-P21 |
+| `src/gates/credentials.ts` | M4-P8, M4-P29 |
+| `src/commands/doctor.ts`, `test/doctor.test.ts` | M4-P22, M4-P30 |
+| `plugin/src/adapter.ts` | M4-P6, M4-P7 |
+| `AGENTS.md` | M4-P9, M4-P18 |
+
+The last two are the ones no dependency list carries. **M4-P6 and M4-P7 both
+edit `plugin/src/adapter.ts`**, so the two phases that look like the obvious
+pair after M4-P5 lands cannot run together. **M4-P9 edits `AGENTS.md`**, which
+M4-P18 is editing in wave 8, so M4-P9 waits on M4-P18 as well as on M4-P5.
+
+### A plan inconsistency M4-P9 will hit, recorded before it costs a round
+
+M4-P9's files-to-touch line at delivery/plan/kernel-plan-m4.md:1581 says it
+creates `packages/claude-code-plugin/` as a whole tree, and its dependency note
+recommends that location because DR-0040 decided one repository and two packages
+and named no directory. **M4-P5 shipped the workspace at `plugin/`**, not at
+`packages/claude-code-plugin/`, and M4-P6 and M4-P7 both name `plugin/` paths.
+
+So the plan's own text now points two ways. M4-P9's brief must say which one is
+real, and the answer is `plugin/`, because that is what merged and what two
+other phases already build on. This is recorded rather than asked: the options
+are not comparable, so under DR-0016 there is nothing to escalate.
+
+The same line also has M4-P9 editing `package.json` for `workspaces` "only if
+the adapter phase has not already added it". M4-P5 did add it, so that clause
+resolves to no edit, and M4-P9's declaration should not carry `package.json`.
