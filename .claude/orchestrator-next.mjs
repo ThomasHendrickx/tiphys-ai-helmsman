@@ -234,6 +234,8 @@ function newestMtime(dir) {
  * An empty derivation is a FAILURE, not an empty milestone, and it exits
  * nonzero saying so. Reporting "0/0 merged, nothing left" would be this
  * script's own false green. */
+let planUnread = null;
+
 function derivePhaseNumbers() {
   const found = new Set();
   const harvest = (text, re) => {
@@ -266,6 +268,46 @@ function derivePhaseNumbers() {
     git(["branch", "--list", `claude/${MILESTONE}-p*`]),
     new RegExp(`^[*+]?\\s*claude/${MILESTONE}-p([0-9]+)-`),
   );
+  /* FIFTH SOURCE, THE PLAN, and without it this script reports a FINISHED
+   * MILESTONE while phases are still unbuilt.
+   *
+   * Measured 2026-09-17 at main d938557: exit 3, "all phases merged", with
+   * SIX phases (M4-P9, M4-P12, M4-P21, M4-P22, M4-P24, M4-P25) not started.
+   * That is this script's own false green, in the one script whose whole job
+   * is to be the stop condition that cannot be reported around.
+   *
+   * The four sources above are all EVIDENCE OF WORK: a declaration, a work
+   * history, a remote branch, a local branch. Every one of them appears only
+   * once a phase has been STARTED. The comment above says the branch source
+   * covers "a planned but undispatched phase", and that is wrong: a branch
+   * exists only after dispatch. So a phase the plan names and nobody has
+   * touched was invisible to all four, and the milestone looked complete when
+   * the LAST STARTED phase merged rather than when the last PLANNED one did.
+   *
+   * The plan is the only source that names a phase before anyone works on it.
+   * Two patterns, because the plan spells a phase id in two places: a section
+   * heading (`### M4-P7:`, sometimes numbered `### 4.2.3 M4-P8:`) and the
+   * `- id:` line inside a phase entry.
+   *
+   * WHY THE STRICT PATTERNS AND NOT A BARE `M4-P[0-9]+` GREP: prose names ids
+   * that are not phases, for example "the next free id is M4-P31". Measured on
+   * this plan both forms return the SAME 30 ids, which is the control that
+   * says the strict form drops nothing today; the strict form is kept because
+   * the loose one has no such guarantee on a later revision.
+   *
+   * A MISSING PLAN IS REPORTED, NEVER SILENTLY ZERO. gitTry rather than git,
+   * and the reason is pushed onto hardErrors below. */
+  const planPath = `delivery/plan/kernel-plan-${MILESTONE}.md`;
+  const plan = gitTry(["show", `origin/main:${planPath}`]);
+  if (plan.ok) {
+    harvest(
+      plan.out,
+      new RegExp(`^#{2,4} (?:[0-9.]+ )?${MILESTONE.toUpperCase()}-P([0-9]+)[: ]`, "i"),
+    );
+    harvest(plan.out, new RegExp(`^- id: ${MILESTONE.toUpperCase()}-P([0-9]+) *$`, "i"));
+  } else {
+    planUnread = `${planPath} could not be read from origin/main (${plan.err}), so a phase the plan names and nobody has started yet is INVISIBLE to this run; the count below is of STARTED phases only`;
+  }
   return [...found].sort((a, b) => a - b);
 }
 
@@ -285,6 +327,7 @@ const WORKTREES = worktreesByBranch();
 const phases = [];
 /* Counts that could NOT be taken. Never silently zero: see gitTry. */
 const hardErrors = [];
+if (planUnread !== null) hardErrors.push(planUnread);
 for (const n of phaseNumbers) {
   const id = `${MILESTONE}-p${n}`;
   const merged = onMain(`delivery/work-history/${id}.md`);
