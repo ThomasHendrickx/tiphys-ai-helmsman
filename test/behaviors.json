@@ -1058,5 +1058,13 @@
   "spawn-adapter-default-recorded-explicitly": "the launch record names the built-in adapter, the fleet home default, and the flag that outranks it",
   "kernel-exports-executor-types": "a consumer importing the executor contract from the package name type-checks and loads against the built dist",
   "kernel-exports-do-not-widen-package": "the kernel entry point publishes the adapter contract and the exports map refuses every internal subpath",
-  "coverage-regex-interrupt-not-a-verdict": "an interrupted regex that consumed little CPU is reported as undetermined, never as catastrophic backtracking"
+  "coverage-regex-interrupt-not-a-verdict": "an interrupted regex that consumed little CPU is reported as undetermined, never as catastrophic backtracking",
+  "plugin-package-not-in-kernel-tarball": "the kernel tarball lists no path under the plugin workspace",
+  "plugin-tests-run-under-npm-test": "the suite invocation the suite gate runs reaches the plugin's tests",
+  "plugin-imports-kernel-by-package-name": "the plugin imports the kernel by package name in both its sources and its compiled output",
+  "plugin-adapter-satisfies-interface": "the plugin's default export is an adapter the kernel's own loader accepts",
+  "plugin-adapter-record-before-payload": "the launch record is on disk before the payload starts, and the payload says so",
+  "plugin-adapter-launch-failure-is-launch-failed": "a launch record that cannot be written is launch-failed and the payload never ran",
+  "plugin-spawn-writes-turn-end-both-exit-codes": "tiphys spawn through the plugin adapter writes turn-end for a zero and a nonzero payload exit code",
+  "plugin-manifest-parses-and-matches-package": "the plugin manifest parses and its version matches the package"
 }
