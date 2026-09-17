@@ -1,0 +1,766 @@
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+/**
+ * THE SHARED EXCLUSION REGISTER (kernel plan M4, M4-P21).
+ *
+ * `src/lock.ts` states its own exclusion domain honestly at src/lock.ts:63:
+ * the lease excludes within ONE filesystem and ONE clock. Two environments
+ * that clone one fleet remote each get their own `state/orchestrator.lock`
+ * and BOTH acquire it, because `state/` is gitignored (src/fleet.ts:28) so
+ * the lease artifact never travels. M4-P20 measured that dangerous state and
+ * committed the captures; this module is the second exclusion layer that
+ * closes it.
+ *
+ * WHAT THE REGISTER IS. A compare-and-swap register on a dedicated git ref
+ * of the fleet's shared remote. The ref's value is a commit whose only file
+ * is `lease.json`; a write is `git push --force-with-lease=<ref>:<exact sha>`
+ * and the remote decides the race. M4-D-11 was PROTOTYPE-BLOCKED and M4-P20's
+ * probe closed it (delivery/verification/cross-environment-exclusion-probe.md:1).
+ * Three of that probe's findings are load-bearing here and are implemented
+ * rather than remembered:
+ *
+ *   1. ONLY `refs/heads/*` IS PUSHABLE. Tags, notes and custom namespaces are
+ *      refused with HTTP 403 (CLAUDE.md standing warning 14, re-measured for
+ *      this phase). So the "dedicated ref" is a dedicated BRANCH and the
+ *      default is `refs/heads/tiphys/lease`, which is visible in branch
+ *      listings and subject to any `refs/heads/**` ruleset.
+ *   2. THE EXPECTATION MUST BE AN EXPLICIT SHA. The bare `--force-with-lease`
+ *      form takes its expectation from the remote-tracking ref, so a routine
+ *      fetch re-arms it; the probe measured it CLOBBERING a live holder with
+ *      exit 0. `casWrite` below never emits the bare form.
+ *   3. NONZERO DOES NOT MEAN "I LOST". A transport failure exits 1 too, so
+ *      the result has THREE states and the indeterminate one is resolved by
+ *      re-reading the register rather than assumed either way.
+ *
+ * WHY THE STALENESS SIGNAL IS A COUNTER AND NOT A CLOCK (M4-P21 criterion 6).
+ * Two environments bring two clocks and `isExpired` compares a lease
+ * timestamp against the local one (src/lock.ts:171). Comparing one
+ * environment's wall clock against another's is exactly the measurement this
+ * layer must not make. So the register carries a MONOTONIC FENCING COUNTER
+ * that every write increments, and a holder is judged stale only when that
+ * counter has not moved across a duration measured entirely on the OBSERVING
+ * environment's own clock (two readings of one clock, never one reading of
+ * two). Where the register is reachable the counter decides and the command
+ * says `signal=counter`. Where it is not reachable there is no counter to
+ * read, only the local clock, and a clock is not a cross-environment signal:
+ * the command says `signal=clock` and REFUSES rather than falling back to
+ * local-only exclusion, which is the vacuous green this layer exists to
+ * prevent (criterion 7).
+ *
+ * C-2 (binding): nothing here reads a run identifier of a running program,
+ * probes liveness, sends a signal, or reads the kernel's virtual filesystem.
+ * Environment identity is a random id written once to a TRACKED fleet file
+ * (criterion 3), so it survives a reclaim and travels with a clone of the
+ * fleet; exclusion is decided by the register's counter and by git's own
+ * compare-and-swap verdict, never by anything about a machine.
+ *
+ * DECLARATION, NOT INFERENCE (criterion 1). The layer is entered only when
+ * the fleet home's own `package.json` declares it. With the field absent
+ * every function here returns "absent" before any subprocess is spawned, so
+ * a fleet that cannot reach a remote is not forced to switch the layer off
+ * globally and today's behaviour is unchanged for everyone else.
+ */
+
+/** The dotted path of the opt-in field inside the fleet home's package.json. */
+export const SHARED_EXCLUSION_FIELD = "tiphys.sharedExclusion";
+
+/** The remote a declaration defaults to. */
+export const DEFAULT_SHARED_REMOTE = "origin";
+
+/**
+ * The register ref a declaration defaults to. A BRANCH, deliberately: see
+ * finding 1 in this file's header. The plan's prose names `refs/tiphys/lease`
+ * and that namespace is refused by the shared remote this kernel is built
+ * against, so the default is the pushable form and the ref stays
+ * configurable for a remote with different rules.
+ */
+export const DEFAULT_SHARED_REF = "refs/heads/tiphys/lease";
+
+/** The file inside the register commit that carries the lease document. */
+export const REGISTER_DOCUMENT_NAME = "lease.json";
+
+/**
+ * The TRACKED fleet file carrying this environment's identity (criterion 3).
+ * It sits at the fleet root, outside the gitignored set at src/fleet.ts:28,
+ * so an environment that commits it keeps its identity across a reclaim and
+ * a clone of that commit reads the same id.
+ */
+export const ENVIRONMENT_ID_FILE = "tiphys-environment.json";
+
+/**
+ * Where this environment records what it last saw in the register. It lives
+ * under the gitignored `state/` prefix ON PURPOSE: it is a measurement taken
+ * on THIS environment's clock and it must never travel, or the duration it
+ * carries would be compared against a clock that did not produce it.
+ */
+export const OBSERVATION_FILE = join("state", "shared-lease.observed.json");
+
+/** How long the counter must stand still before a holder is judged stale. */
+export const DEFAULT_STALE_WINDOW_SECONDS = 900;
+
+export interface SharedExclusionConfig {
+  remote: string;
+  ref: string;
+  staleWindowSeconds: number;
+}
+
+export type SharedExclusionDeclaration =
+  | { kind: "absent" }
+  | { kind: "declared"; config: SharedExclusionConfig }
+  | { kind: "invalid"; reason: string };
+
+/** The register's value: one lease document per register commit. */
+export interface SharedLeaseDocument {
+  state: "held" | "free";
+  envId: string;
+  counter: number;
+  acquiredAt: string;
+  expiresAt: string;
+  durationSeconds: number;
+  ref: string;
+}
+
+export type RegisterRead =
+  | { kind: "absent" }
+  | { kind: "present"; sha: string; document: SharedLeaseDocument }
+  | { kind: "corrupt"; sha: string; reason: string }
+  | { kind: "unreachable"; reason: string };
+
+export type CasOutcome =
+  | { kind: "won"; sha: string }
+  | { kind: "lost"; reason: string }
+  | { kind: "indeterminate"; reason: string };
+
+/** What this environment last saw, timed on this environment's own clock. */
+export interface RegisterObservation {
+  sha: string;
+  counter: number;
+  firstSeenMs: number;
+}
+
+/** Which of the two signals decided a shared-exclusion verdict. */
+export type ExclusionSignal = "counter" | "clock";
+
+export type SharedPreflight =
+  | {
+      kind: "proceed";
+      signal: ExclusionSignal;
+      expectedSha: string;
+      nextCounter: number;
+      takingOver: boolean;
+      line: string;
+      /** The document the register currently holds, when it holds one. */
+      current?: SharedLeaseDocument;
+    }
+  | { kind: "refused"; signal: ExclusionSignal; line: string };
+
+/* ------------------------------------------------------------------ */
+/* Declaration                                                         */
+/* ------------------------------------------------------------------ */
+
+function readJsonFile(path: string): { ok: true; value: unknown } | { ok: false; absent: boolean; reason: string } {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      ok: false,
+      absent: code === "ENOENT" || code === "ENOTDIR",
+      reason: `${path} could not be read: ${String(error)}`,
+    };
+  }
+  try {
+    return { ok: true, value: JSON.parse(raw) as unknown };
+  } catch (error) {
+    return { ok: false, absent: false, reason: `${path} does not parse as JSON: ${String(error)}` };
+  }
+}
+
+function positiveNumber(value: unknown, fallback: number): number | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function nonEmptyString(value: unknown, fallback: string): string | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "string" || value === "") {
+    return undefined;
+  }
+  return value;
+}
+
+/**
+ * Read the fleet home's declaration. Absent means the layer is off and no
+ * subprocess is spawned anywhere below; `false` is the same answer written
+ * explicitly. A field that is present and unreadable is INVALID rather than
+ * absent, because silently treating a typo as "off" is the shape that makes
+ * a guard green everywhere and protective nowhere.
+ */
+export function readSharedExclusion(fleetRoot: string): SharedExclusionDeclaration {
+  const read = readJsonFile(join(fleetRoot, "package.json"));
+  if (!read.ok) {
+    if (read.absent) {
+      return { kind: "absent" };
+    }
+    return { kind: "invalid", reason: read.reason };
+  }
+  const root = read.value as Record<string, unknown> | null;
+  if (root === null || typeof root !== "object") {
+    return { kind: "absent" };
+  }
+  const section = root["tiphys"];
+  if (section === undefined) {
+    return { kind: "absent" };
+  }
+  if (section === null || typeof section !== "object" || Array.isArray(section)) {
+    return { kind: "invalid", reason: `${SHARED_EXCLUSION_FIELD}: the "tiphys" section must be an object` };
+  }
+  const declared = (section as Record<string, unknown>)["sharedExclusion"];
+  if (declared === undefined || declared === false) {
+    return { kind: "absent" };
+  }
+  const raw: Record<string, unknown> =
+    declared === true ? {} : (declared as Record<string, unknown>);
+  if (declared !== true && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
+    return {
+      kind: "invalid",
+      reason: `${SHARED_EXCLUSION_FIELD} must be true or an object, not ${JSON.stringify(declared)}`,
+    };
+  }
+  const remote = nonEmptyString(raw["remote"], DEFAULT_SHARED_REMOTE);
+  const ref = nonEmptyString(raw["ref"], DEFAULT_SHARED_REF);
+  const staleWindowSeconds = positiveNumber(
+    raw["staleWindowSeconds"],
+    DEFAULT_STALE_WINDOW_SECONDS,
+  );
+  if (remote === undefined || ref === undefined || staleWindowSeconds === undefined) {
+    return {
+      kind: "invalid",
+      reason:
+        `${SHARED_EXCLUSION_FIELD} carries an unusable remote, ref or ` +
+        `staleWindowSeconds: ${JSON.stringify(declared)}`,
+    };
+  }
+  if (!ref.startsWith("refs/")) {
+    return {
+      kind: "invalid",
+      reason: `${SHARED_EXCLUSION_FIELD}.ref must be a full ref name, got ${ref}`,
+    };
+  }
+  return { kind: "declared", config: { remote, ref, staleWindowSeconds } };
+}
+
+/** The fleet root a lock path belongs to: <root>/state/orchestrator.lock. */
+export function fleetRootForLockPath(lockPath: string): string {
+  return dirname(dirname(lockPath));
+}
+
+/* ------------------------------------------------------------------ */
+/* Environment identity (criterion 3)                                  */
+/* ------------------------------------------------------------------ */
+
+export interface EnvironmentIdentity {
+  envId: string;
+  /** True when this call generated the id rather than reading one. */
+  generated: boolean;
+  path: string;
+}
+
+/**
+ * Read the environment id, or generate one and write it. The id is random
+ * and is generated EXACTLY ONCE per fleet home: every later call reads the
+ * file. Nothing about the machine enters it.
+ */
+export function ensureEnvironmentId(fleetRoot: string): EnvironmentIdentity {
+  const path = join(fleetRoot, ENVIRONMENT_ID_FILE);
+  const read = readJsonFile(path);
+  if (read.ok) {
+    const value = read.value as Record<string, unknown> | null;
+    const existing = value === null ? undefined : value["envId"];
+    if (typeof existing === "string" && existing !== "") {
+      return { envId: existing, generated: false, path };
+    }
+  }
+  const envId = randomUUID();
+  const document = {
+    envId,
+    purpose:
+      "Tiphys environment identity for the shared exclusion register. Random, " +
+      "generated once, and tracked so it survives a reclaim. It says nothing " +
+      "about any machine.",
+  };
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+  return { envId, generated: true, path };
+}
+
+/* ------------------------------------------------------------------ */
+/* git plumbing                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE COMMAND-SCOPED IDENTITY THE REGISTER COMMIT IS WRITTEN UNDER.
+ *
+ * `git commit-tree` REFUSES without an author, and CI runners carry no git
+ * identity (CLAUDE.md standing warning 5), so a register write that relied
+ * on ambient configuration would work on a developer's machine and fail on
+ * every runner. These are the same two strings `tiphys init` already uses
+ * for the fleet bootstrap commit (EXT-F-02 option B): set as command-scoped
+ * environment variables on the invocation only, never written to user or
+ * global git configuration. They are repeated here rather than imported
+ * because `src/commands/init.ts` imports THIS module for the opt-in field,
+ * and a test pins the two copies equal so a drift reddens instead of
+ * surfacing as a runner-only failure.
+ */
+export const REGISTER_IDENTITY_NAME = "Tiphys Fleet";
+export const REGISTER_IDENTITY_EMAIL = "fleet@tiphys.invalid";
+
+interface GitResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+function git(cwd: string, args: string[], input?: string): GitResult {
+  const result = spawnSync("git", ["-C", cwd, ...args], {
+    encoding: "utf8",
+    input,
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_AUTHOR_NAME: REGISTER_IDENTITY_NAME,
+      GIT_AUTHOR_EMAIL: REGISTER_IDENTITY_EMAIL,
+      GIT_COMMITTER_NAME: REGISTER_IDENTITY_NAME,
+      GIT_COMMITTER_EMAIL: REGISTER_IDENTITY_EMAIL,
+    },
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+/**
+ * The line of a git stderr block carrying git's OWN rejection marker.
+ *
+ * NOT "the first line", and M4-P20 paid for the difference: with
+ * `push.negotiate` true, git 2.43.0 emits a negotiation warning as the first
+ * stderr line of EVERY file-transport push, accepted and refused alike, so a
+ * signature taken from the first line cannot tell accept from refuse. The
+ * marker below is git's own text, never this module's, so the refusal
+ * signature stays captured rather than hand-written (T-003).
+ */
+export function rejectionLine(stderr: string): string | undefined {
+  const lines = stderr.split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines.find((line) => line.startsWith("! [rejected]"));
+}
+
+function firstLine(text: string): string {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines[0] ?? "git printed nothing";
+}
+
+/* ------------------------------------------------------------------ */
+/* Reading the register                                                */
+/* ------------------------------------------------------------------ */
+
+function parseRegisterDocument(raw: string): SharedLeaseDocument | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const candidate = parsed as Partial<SharedLeaseDocument>;
+  if (
+    (candidate.state !== "held" && candidate.state !== "free") ||
+    typeof candidate.envId !== "string" ||
+    candidate.envId === "" ||
+    typeof candidate.counter !== "number" ||
+    !Number.isInteger(candidate.counter) ||
+    candidate.counter < 1 ||
+    typeof candidate.acquiredAt !== "string" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.durationSeconds !== "number" ||
+    typeof candidate.ref !== "string"
+  ) {
+    return undefined;
+  }
+  return candidate as SharedLeaseDocument;
+}
+
+export function renderRegisterDocument(document: SharedLeaseDocument): string {
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+/**
+ * Read the register. `ls-remote` establishes the value the compare-and-swap
+ * will be armed against, then the object is fetched so the document can be
+ * read. A failure at either step is UNREACHABLE, never "absent": the two
+ * must not be conflated, because "absent" means "nobody holds the lease" and
+ * would license an acquire.
+ */
+export function readRegister(fleetRoot: string, config: SharedExclusionConfig): RegisterRead {
+  const listed = git(fleetRoot, ["ls-remote", config.remote, config.ref]);
+  if (listed.status !== 0) {
+    return { kind: "unreachable", reason: firstLine(listed.stderr) };
+  }
+  const line = listed.stdout.split("\n").map((entry) => entry.trim()).find(Boolean);
+  if (line === undefined) {
+    return { kind: "absent" };
+  }
+  const sha = line.split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(sha)) {
+    return { kind: "unreachable", reason: `ls-remote returned an unreadable line: ${line}` };
+  }
+  const fetched = git(fleetRoot, ["fetch", "--quiet", config.remote, config.ref]);
+  if (fetched.status !== 0) {
+    return { kind: "unreachable", reason: firstLine(fetched.stderr) };
+  }
+  const shown = git(fleetRoot, ["cat-file", "-p", `${sha}:${REGISTER_DOCUMENT_NAME}`]);
+  if (shown.status !== 0) {
+    return {
+      kind: "corrupt",
+      sha,
+      reason: `${config.ref} at ${sha} carries no ${REGISTER_DOCUMENT_NAME}: ${firstLine(shown.stderr)}`,
+    };
+  }
+  const document = parseRegisterDocument(shown.stdout);
+  if (document === undefined) {
+    return { kind: "corrupt", sha, reason: `${config.ref} at ${sha} does not parse as a lease document` };
+  }
+  return { kind: "present", sha, document };
+}
+
+/**
+ * One compare-and-swap write. `expectedSha` is the value the caller read;
+ * the empty string means "I expect the register to be absent". The EXACT-SHA
+ * form is the only form emitted (finding 2 in this file's header).
+ */
+export function casWrite(
+  fleetRoot: string,
+  config: SharedExclusionConfig,
+  expectedSha: string,
+  document: SharedLeaseDocument,
+): CasOutcome {
+  const blob = git(fleetRoot, ["hash-object", "-w", "--stdin"], renderRegisterDocument(document));
+  if (blob.status !== 0) {
+    return { kind: "indeterminate", reason: `could not write the lease blob: ${firstLine(blob.stderr)}` };
+  }
+  const tree = git(
+    fleetRoot,
+    ["mktree"],
+    `100644 blob ${blob.stdout.trim()}\t${REGISTER_DOCUMENT_NAME}\n`,
+  );
+  if (tree.status !== 0) {
+    return { kind: "indeterminate", reason: `could not write the lease tree: ${firstLine(tree.stderr)}` };
+  }
+  const commit = git(fleetRoot, [
+    "commit-tree",
+    tree.stdout.trim(),
+    "-m",
+    `tiphys shared lease ${document.state} ${document.envId} counter ${String(document.counter)}`,
+  ]);
+  if (commit.status !== 0) {
+    return { kind: "indeterminate", reason: `could not write the lease commit: ${firstLine(commit.stderr)}` };
+  }
+  const sha = commit.stdout.trim();
+  const pushed = git(fleetRoot, [
+    "push",
+    `--force-with-lease=${config.ref}:${expectedSha}`,
+    config.remote,
+    `${sha}:${config.ref}`,
+  ]);
+  if (pushed.status === 0) {
+    return { kind: "won", sha };
+  }
+  const rejected = rejectionLine(pushed.stderr);
+  if (rejected !== undefined) {
+    return { kind: "lost", reason: rejected };
+  }
+  /* NONZERO DOES NOT MEAN "I LOST" (finding 3). A transport failure exits 1
+     with no rejection marker, so the register is re-read: a value that is no
+     longer the expected one settles it as a loss, and anything else is
+     reported as INDETERMINATE rather than guessed in either direction. */
+  const after = readRegister(fleetRoot, config);
+  if (after.kind === "present" && after.sha !== expectedSha && after.sha !== sha) {
+    return { kind: "lost", reason: `${config.ref} moved to ${after.sha} while this write was in flight` };
+  }
+  if (after.kind === "present" && after.sha === sha) {
+    return { kind: "won", sha };
+  }
+  return {
+    kind: "indeterminate",
+    reason: `push failed without a rejection marker: ${firstLine(pushed.stderr)}`,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* The counter signal                                                  */
+/* ------------------------------------------------------------------ */
+
+export function readObservation(fleetRoot: string): RegisterObservation | undefined {
+  const read = readJsonFile(join(fleetRoot, OBSERVATION_FILE));
+  if (!read.ok) {
+    return undefined;
+  }
+  const value = read.value as Partial<RegisterObservation> | null;
+  if (
+    value === null ||
+    typeof value.sha !== "string" ||
+    typeof value.counter !== "number" ||
+    typeof value.firstSeenMs !== "number"
+  ) {
+    return undefined;
+  }
+  return { sha: value.sha, counter: value.counter, firstSeenMs: value.firstSeenMs };
+}
+
+export function writeObservation(fleetRoot: string, observation: RegisterObservation): void {
+  const path = join(fleetRoot, OBSERVATION_FILE);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(observation, null, 2)}\n`, "utf8");
+}
+
+export interface CounterJudgement {
+  stale: boolean;
+  /** How long the counter has stood still, on THIS environment's clock. */
+  unchangedForMs: number;
+  observation: RegisterObservation;
+}
+
+/**
+ * Judge a holder by the FENCING COUNTER, using two readings of ONE clock.
+ *
+ * A holder is stale only when the register's sha and counter are the same
+ * ones this environment first saw at `firstSeenMs` and that much of ITS OWN
+ * time has passed. Any advance of the counter resets the measurement, which
+ * is what makes a renewing holder safe no matter how far its clock is from
+ * this one: the renewal is visible as an increment, and an increment is not
+ * a timestamp.
+ */
+export function judgeByCounter(
+  previous: RegisterObservation | undefined,
+  sha: string,
+  counter: number,
+  nowMs: number,
+  staleWindowMs: number,
+): CounterJudgement {
+  if (previous !== undefined && previous.sha === sha && previous.counter === counter) {
+    const unchangedForMs = Math.max(0, nowMs - previous.firstSeenMs);
+    return { stale: unchangedForMs >= staleWindowMs, unchangedForMs, observation: previous };
+  }
+  return {
+    stale: false,
+    unchangedForMs: 0,
+    observation: { sha, counter, firstSeenMs: nowMs },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* The decisions the lock layer asks for                               */
+/* ------------------------------------------------------------------ */
+
+export type SharedIntent = "acquire" | "renew" | "release";
+
+export interface SharedPreflightInput {
+  fleetRoot: string;
+  config: SharedExclusionConfig;
+  envId: string;
+  intent: SharedIntent;
+  takeover: boolean;
+  nowMs: number;
+}
+
+function unreachableLine(config: SharedExclusionConfig, reason: string, intent: SharedIntent): string {
+  return (
+    `shared exclusion refused ${intent}: register ${config.ref} on ${config.remote} is ` +
+    `unreachable (${reason}); signal=clock, because no fencing counter could be read and ` +
+    `a local clock is not a cross-environment signal, so this refuses instead of falling ` +
+    `back to local-only exclusion`
+  );
+}
+
+/**
+ * Decide whether the caller may proceed, WITHOUT touching anything. Every
+ * refusal here happens before the local lease file is created, which is what
+ * makes criterion 7's fail-closed assertion observable: an unreachable
+ * register leaves no local lock behind.
+ */
+export function preflightShared(input: SharedPreflightInput): SharedPreflight {
+  const { config, envId, intent, nowMs } = input;
+  const read = readRegister(input.fleetRoot, config);
+  if (read.kind === "unreachable") {
+    return { kind: "refused", signal: "clock", line: unreachableLine(config, read.reason, intent) };
+  }
+  if (read.kind === "corrupt") {
+    return {
+      kind: "refused",
+      signal: "counter",
+      line:
+        `shared exclusion refused ${intent}: register ${config.ref} at ${read.sha} is not a ` +
+        `lease document (${read.reason}); signal=counter, no counter could be established, ` +
+        `inspect the ref manually`,
+    };
+  }
+  if (read.kind === "absent") {
+    if (intent !== "acquire") {
+      return {
+        kind: "refused",
+        signal: "counter",
+        line:
+          `shared exclusion refused ${intent}: register ${config.ref} on ${config.remote} ` +
+          `holds no lease, so there is nothing for environment ${envId} to ${intent}; ` +
+          `signal=counter`,
+      };
+    }
+    return {
+      kind: "proceed",
+      signal: "counter",
+      expectedSha: "",
+      nextCounter: 1,
+      takingOver: false,
+      line:
+        `shared exclusion: register ${config.ref} on ${config.remote} was absent, claiming ` +
+        `it for environment ${envId} at counter 1; signal=counter`,
+    };
+  }
+
+  const document = read.document;
+  const judged = judgeByCounter(
+    readObservation(input.fleetRoot),
+    read.sha,
+    document.counter,
+    nowMs,
+    config.staleWindowSeconds * 1000,
+  );
+  writeObservation(input.fleetRoot, judged.observation);
+  const nextCounter = document.counter + 1;
+  const held = document.state === "held";
+
+  if (intent === "renew" || intent === "release") {
+    if (!held || document.envId !== envId) {
+      return {
+        kind: "refused",
+        signal: "counter",
+        line:
+          `shared exclusion refused ${intent}: register ${config.ref} is ${document.state} by ` +
+          `environment ${document.envId} at counter ${String(document.counter)}, not by ${envId}; ` +
+          `signal=counter, the register sha ${read.sha} is left unchanged`,
+      };
+    }
+    return {
+      kind: "proceed",
+      signal: "counter",
+      expectedSha: read.sha,
+      nextCounter,
+      takingOver: false,
+      current: document,
+      line:
+        `shared exclusion: ${intent} by environment ${envId} advances ${config.ref} to counter ` +
+        `${String(nextCounter)}; signal=counter`,
+    };
+  }
+
+  if (!held) {
+    return {
+      kind: "proceed",
+      signal: "counter",
+      expectedSha: read.sha,
+      nextCounter,
+      takingOver: false,
+      current: document,
+      line:
+        `shared exclusion: register ${config.ref} was released by environment ${document.envId}, ` +
+        `claiming it for ${envId} at counter ${String(nextCounter)}; signal=counter`,
+    };
+  }
+
+  if (!judged.stale) {
+    return {
+      kind: "refused",
+      signal: "counter",
+      line:
+        `shared exclusion refused acquire: register ${config.ref} is held by environment ` +
+        `${document.envId} until ${document.expiresAt}; signal=counter, fencing counter ` +
+        `${String(document.counter)} has stood still for ${String(judged.unchangedForMs)}ms of the ` +
+        `${String(config.staleWindowSeconds * 1000)}ms this environment requires, and no clock ` +
+        `comparison was made`,
+    };
+  }
+
+  if (!input.takeover) {
+    return {
+      kind: "refused",
+      signal: "counter",
+      line:
+        `shared exclusion refused acquire: register ${config.ref} is held by environment ` +
+        `${document.envId} and its fencing counter ${String(document.counter)} has stood still for ` +
+        `${String(judged.unchangedForMs)}ms, which is stale; signal=counter, takeover is explicit: ` +
+        `lock acquire --take-over`,
+    };
+  }
+
+  return {
+    kind: "proceed",
+    signal: "counter",
+    expectedSha: read.sha,
+    nextCounter,
+    takingOver: true,
+    current: document,
+    line:
+      `shared exclusion: taking over ${config.ref} from environment ${document.envId}, whose ` +
+      `fencing counter ${String(document.counter)} stood still for ${String(judged.unchangedForMs)}ms; ` +
+      `environment ${envId} advances it to ${String(nextCounter)}; signal=counter`,
+  };
+}
+
+/**
+ * The one line a register write that was NOT won reports. It lives here
+ * rather than at the call site in `src/lock.ts` because it names the
+ * staleness basis, and the C-2 structural inspection over that file
+ * (test/lock.test.ts:534) forbids that vocabulary there; keeping the
+ * sentence in one place also means a reader sees the same wording whichever
+ * mutation lost.
+ */
+export function casFailureLine(ref: string, outcome: CasOutcome): string {
+  if (outcome.kind === "won") {
+    return `the compare-and-swap on ${ref} was won`;
+  }
+  return (
+    `the compare-and-swap on ${ref} was ${outcome.kind}: ${outcome.reason}; ` +
+    `signal=counter`
+  );
+}
+
+/** Build the document a won preflight should publish. */
+export function buildRegisterDocument(input: {
+  state: "held" | "free";
+  envId: string;
+  counter: number;
+  nowMs: number;
+  durationSeconds: number;
+  ref: string;
+  acquiredAt?: string;
+}): SharedLeaseDocument {
+  return {
+    state: input.state,
+    envId: input.envId,
+    counter: input.counter,
+    acquiredAt: input.acquiredAt ?? new Date(input.nowMs).toISOString(),
+    expiresAt: new Date(input.nowMs + input.durationSeconds * 1000).toISOString(),
+    durationSeconds: input.durationSeconds,
+    ref: input.ref,
+  };
+}

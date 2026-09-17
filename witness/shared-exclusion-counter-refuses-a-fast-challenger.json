@@ -1,0 +1,31 @@
+{
+  "id": "shared-exclusion-counter-refuses-a-fast-challenger",
+  "behavior": "shared-exclusion-counter-refuses-a-fast-challenger",
+  "tests": [
+    "a takeover is refused by the fencing counter when the challenger clock runs ten minutes ahead"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/exclusion.ts",
+      "find": "  if (!judged.stale) {",
+      "replace": "  if (Date.parse(document.expiresAt) > nowMs) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/lock.ts",
+      "find": "  const root = fleetRoot ?? fleetRootForLockPath(lockPath);",
+      "replace": "  const root = \"/tiphys-defanged-fleet-root\";"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git ls-remote / git commit-tree / git push --force-with-lease=<ref>:<sha>",
+    "captures": [
+      "witness/captures/m4-p21-shared-register-git-contract.txt"
+    ],
+    "provenance": "src/exclusion.ts and src/commands/init.ts both spawn git and read its verdicts, so SPAWN_GREP matches them and red-witness rule (f) binds every witness whose members touch them. The cited capture is a REAL forced contention on a bare repository, captured 2026-09-17 with git 2.43.0 and node v26.6.0: it records that git commit-tree exits 128 with `fatal: empty ident name` when no identity is in scope, that the exact-sha --force-with-lease form is ACCEPTED against the value the register holds and REFUSED with `! [rejected] ... (stale info)` against any other, that ls-remote against a path that is not a repository exits 128 while ls-remote for an absent ref exits 0 with empty output, and that the FIRST stderr line of every push here is a push negotiation warning that is byte-identical on the accepted and the refused arms. That last fact is why src/exclusion.ts selects git's own `! [rejected]` marker instead of the first line, and it is the reason a hand-written expectation would have been indistinguishable from a fabricated one (T-003). The named test reads the capture and then reproduces the accept and refuse arms against a live scratch repository. Member 0 is the defect this criterion exists to catch and nothing else would find it: staleness decided by comparing the holder's expiry timestamp against the CHALLENGER's clock, which is an implementation that looks correct and hands the fleet to whichever environment runs fast. Member 1 removes the layer entirely. A tolerance widened instead of a counter passes neither."
+  }
+}

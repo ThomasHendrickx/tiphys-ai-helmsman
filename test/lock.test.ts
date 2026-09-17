@@ -854,3 +854,45 @@ test("lock subcommand usage errors exit 64", (t) => {
   assert.equal(outside.status, 1);
   assert.match(outside.stderr, /not a fleet home/);
 });
+
+/**
+ * M4-P21: THE DECLARATION IS READ FAIL-CLOSED.
+ *
+ * The shared exclusion layer is off unless the fleet home declares it, and
+ * the dangerous reading of that rule is to treat an UNUSABLE declaration as
+ * an absent one. That would make a typo in `tiphys.sharedExclusion` silently
+ * downgrade a fleet to local-only exclusion, which is the vacuous green the
+ * whole layer exists to prevent (plan hazard H-B), and nothing would print.
+ * So a declared-and-unreadable field refuses, and a truly absent one does
+ * not: both arms are asserted here because only the pair distinguishes
+ * "fail closed" from "refuse everything".
+ */
+test("an unusable shared exclusion declaration refuses rather than running local-only exclusion", (t) => {
+  const fleet = initFleet(t);
+  const packageJsonPath = join(fleet, "package.json");
+  const original = readFileSync(packageJsonPath, "utf8");
+
+  // The control arm first: no declaration, so today's behaviour stands.
+  const before = runCli(["lock", "acquire", "--duration", "300"], { cwd: fleet });
+  assert.equal(before.status, 0, before.stderr);
+  const holder = parseAcquired(before.stdout).holderId;
+  assert.equal(
+    runCli(["lock", "release", "--holder", holder], { cwd: fleet }).status,
+    0,
+  );
+
+  for (const broken of ['{"tiphys": {"sharedExclusion": "yes"}}', '{"tiphys": []}']) {
+    writeFileSync(packageJsonPath, `${broken}\n`, "utf8");
+    const refused = runCli(["lock", "acquire"], { cwd: fleet });
+    assert.equal(refused.status, 1, `${refused.stdout}${refused.stderr}`);
+    assert.match(refused.stderr, /shared exclusion is declared and unusable/);
+    assert.ok(
+      !existsSync(lockFile(fleet)),
+      "an unusable declaration must not leave a local lease behind",
+    );
+  }
+
+  writeFileSync(packageJsonPath, original, "utf8");
+  const after = runCli(["lock", "acquire", "--duration", "300"], { cwd: fleet });
+  assert.equal(after.status, 0, after.stderr);
+});

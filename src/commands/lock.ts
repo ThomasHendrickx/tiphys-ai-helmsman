@@ -103,6 +103,49 @@ async function maybeHoldForTest(
   return { observed, nowMs };
 }
 
+/**
+ * THE DECISION-CLOCK SEAM (M4-P21 criteria 4 and 5). When
+ * TIPHYS_LOCK_TEST_NOW_MS carries a finite number of milliseconds, every
+ * mutating subcommand decides against that instant instead of `Date.now()`,
+ * by feeding the EXISTING `nowMs` option the lease library already takes
+ * (src/lock.ts:568). It exists because the two clock-skew witnesses must
+ * move ONE environment's clock ten minutes without touching a system clock,
+ * which the plan requires by name, and because criterion 6 is about what the
+ * COMMAND prints, so the skew has to reach the command rather than only the
+ * library. Inert unless the variable is set, exactly like the hold point
+ * above, and a value that does not parse is a loud refusal rather than a
+ * silent fall back to the real clock: a seam that quietly ignores its input
+ * would make a skew witness green while measuring no skew at all.
+ */
+function testClockMs(): number | undefined {
+  const raw = process.env.TIPHYS_LOCK_TEST_NOW_MS;
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(
+      `lock test clock: TIPHYS_LOCK_TEST_NOW_MS=${raw} does not parse as a ` +
+        `number of milliseconds; this run would have measured the real clock ` +
+        `and is not evidence`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Emit the shared exclusion layer's verdict line. One line, and it always
+ * names the SIGNAL that reached the verdict (criterion 6): `signal=counter`
+ * where the register was reachable and its fencing counter decided, or
+ * `signal=clock` where it was not and the command therefore refused rather
+ * than deciding cross-environment exclusion on a local clock.
+ */
+function reportShared(outcome: { shared?: { line: string } }): void {
+  if (outcome.shared !== undefined) {
+    process.stdout.write(`${outcome.shared.line}\n`);
+  }
+}
+
 function usageError(message?: string): number {
   if (message !== undefined) {
     process.stderr.write(`tiphys lock: ${message}\n`);
@@ -188,7 +231,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         takeover: flags.takeover,
         durationSeconds: flags.durationSeconds,
         observed: held?.observed,
-        nowMs: held?.nowMs,
+        nowMs: testClockMs() ?? held?.nowMs,
       });
       if (!outcome.ok) {
         return failure(outcome);
@@ -198,6 +241,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         throw new Error("unreachable: acquire produced no lease");
       }
       process.stdout.write(`acquired ${lease.holderId} expires ${lease.expiresAt}\n`);
+      reportShared(outcome);
       return 0;
     }
     case "renew": {
@@ -208,7 +252,7 @@ export async function cmdLock(args: string[]): Promise<number> {
       const outcome = await renewLease(lockPath, flags.holder, {
         durationSeconds: flags.durationSeconds,
         observed: held?.observed,
-        nowMs: held?.nowMs,
+        nowMs: testClockMs() ?? held?.nowMs,
       });
       if (!outcome.ok) {
         return failure(outcome);
@@ -218,6 +262,7 @@ export async function cmdLock(args: string[]): Promise<number> {
         throw new Error("unreachable: renew produced no lease");
       }
       process.stdout.write(`renewed ${lease.holderId} expires ${lease.expiresAt}\n`);
+      reportShared(outcome);
       return 0;
     }
     case "release": {
@@ -225,13 +270,19 @@ export async function cmdLock(args: string[]): Promise<number> {
         return usageError("release requires --holder <id> and no other flags");
       }
       const held = await maybeHoldForTest(lockPath);
-      const outcome = await releaseLease(lockPath, flags.holder, {
+      const releaseOptions: { observed?: ObservedLease; nowMs?: number } = {
         observed: held?.observed,
-      });
+      };
+      const releaseClock = testClockMs();
+      if (releaseClock !== undefined) {
+        releaseOptions.nowMs = releaseClock;
+      }
+      const outcome = await releaseLease(lockPath, flags.holder, releaseOptions);
       if (!outcome.ok) {
         return failure(outcome);
       }
       process.stdout.write(`released ${flags.holder}\n`);
+      reportShared(outcome);
       return 0;
     }
     case "status": {
