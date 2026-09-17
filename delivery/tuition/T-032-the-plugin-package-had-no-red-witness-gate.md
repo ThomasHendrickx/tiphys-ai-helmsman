@@ -108,3 +108,63 @@ A guard scoped by a hand-written path list is a guard with an expiry date. When
 a new top-level tree of shipped code appears, the question is not "does the
 build cover it" but "which enumerations now omit it", and the answer is found
 by listing every enumeration rather than by checking the one that complained.
+
+## Postscript, same day: the fix was HALF a fix, and its own not-covered section said so
+
+The section above ends with "this adds one path to one list, which is the same
+hand-written enumeration one entry longer". That was true and it understated
+the problem, because there were TWO lists and only one was widened.
+
+`red-witness` has a PRECONDITION, which decides whether the gate RUNS, and an
+`isAuditedSource` predicate at src/gates/red-witness.ts:164, which decides what
+it REQUIRES. The fix above widened the first. The second still read:
+
+```
+return path.startsWith("src/") || path.startsWith("bin/");
+```
+
+So from that fix until this postscript, a diff touching only `plugin/` **ran
+the gate and took no coverage obligation from it**. M4-P6 shipped eight
+witnesses voluntarily and was green; a plugin phase shipping ZERO would have
+been green too, which is the same guard-that-cannot-go-red one level in.
+
+Found by the M4-P29 implementer while reading that file for an unrelated
+reason, and reported in its not-covered section rather than fixed, which is
+correct: it is not that phase's file to widen.
+
+### Why `plugin/src/` and not `plugin/`
+
+This list is the coverage obligation, so bare `plugin/` would pull in
+`plugin/package.json` and `plugin/tsconfig.json`, which no witness mutates and
+which would then redden every plugin phase for its own packaging. `src/` and
+`bin/` are source trees; the plugin package's source tree is `plugin/src/`.
+
+The two lists are therefore DELIBERATELY different now, and that is worth
+stating because the obvious tidy-up is to make them equal: the precondition is
+`src/`, `bin/`, `plugin/` and the obligation is `src/`, `bin/`, `plugin/src/`.
+Running on a packaging-only change is right; requiring a witness for it is not.
+
+### The witness, and it is not a green/red pair
+
+Both arms are RED overall, so comparing exit codes shows NOTHING. The
+difference is in the REASONS, and the four reasons the two arms share are
+artifacts of driving an old diff against today's witness corpus, which makes
+them a control: they are constant, so the single difference is attributable.
+
+Driven against M4-P5's merge, which shipped `plugin/src/adapter.ts` and
+`plugin/src/index.ts` and zero witness specs:
+
+| | reasons reported |
+|---|---|
+| before | 4, none about uncovered source |
+| after | 5, the first being `source changed with no witness spec covering it: plugin/src/index.ts` |
+
+Re-controlled against M4-P6's merge, which DID ship eight specs: green before
+and green after, so the change does not redden the merged history.
+
+### The rule this adds to the one above
+
+When a guard has a "does it run" list and a "what does it require" list, a new
+tree has to be added to BOTH, and they are not always the same string. Widening
+only the first buys a gate that executes and demands nothing, which reports as
+a clean run.
