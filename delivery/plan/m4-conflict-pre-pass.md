@@ -246,3 +246,38 @@ share `src/cli.ts` and stay serialised under DR-0046.
 
 **Two agents, one wave, therefore two run at once**, the owner's cap under
 DR-0044.
+
+## Wave 6, 2026-09-17: one unit into a free slot
+
+Written BEFORE dispatch, per rule 5. M4-P17's fix round is live and holds one of
+the two agent slots, so this wave adds ONE unit rather than a pair.
+
+| unit | files it may touch |
+|---|---|
+| M4-P17 (live, fix round) | `src/commands/doctor.ts`, `src/lock.ts`, `src/pool.ts`, `test/doctor.test.ts` |
+| M4-P5 | `plugin/**` (new workspace), `package.json`, `package-lock.json`, `tsconfig.src.json`, `test/plugin-package.test.ts`, `test/plugin-adapter.test.ts` |
+
+**Intersection: EMPTY.**
+
+**M4-P7 was the obvious pick and it is BLOCKED, which a files-to-touch reading
+catches and a dependency list does not.** The earlier waves recorded M4-P5, M4-P6
+and M4-P7 as dependency-blocked on the adapter seam, and M4-P4 landing discharged
+that. But M4-P7 also creates `plugin/src/model-resolution.ts`,
+`plugin/src/vocabulary.ts` and edits `plugin/src/adapter.ts`, and the `plugin/`
+workspace does not exist until M4-P5 creates it. So M4-P7 waits on M4-P5 for a
+second, independent reason, and M4-P5 is the unit that unblocks both it and
+M4-P6.
+
+**The generator check.** M4-P5 touches no file in the `gate-registry.yaml` to
+`CLAUDE.md` to `roles/implementer.md` chain. It DOES edit `package.json`
+(`workspaces`) and `tsconfig.src.json` (a project reference), both of which reach
+gates: `license` inventories production packages from the pack listing, and the
+new `typecheck` gate runs `tsc -b` over the referenced projects. M4-P5 owns both
+and must re-run them; M4-P17 touches neither, so neither can fire across the pair.
+
+`red-witness` will report NOT APPLICABLE for M4-P5, because its precondition is a
+changed path under `src/` or `bin/` and this phase's code lands under `plugin/`.
+Its `gateClasses` correctness disposition therefore names `suite` and `typecheck`
+rather than `red-witness`. That is a real gap in the class vocabulary M4-P14 just
+shipped, recorded here rather than worked around: a phase can ship code that the
+red-witness gate structurally cannot see.
