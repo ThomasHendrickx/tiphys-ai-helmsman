@@ -144,9 +144,29 @@ function errorOutcome(startedAt: string, detail: string): RedWitnessOutcome {
   };
 }
 
-/** True when the repo-relative path is a phase-audited source path. */
+/**
+ * True when the repo-relative path is a phase-audited source path.
+ *
+ * WHY `plugin/src/` AND NOT `plugin/`. This list is the COVERAGE OBLIGATION:
+ * a changed path here must be touched by some witness's dangerous state or the
+ * gate reports it uncovered. `src/` and `bin/` are source trees, and the plugin
+ * package's source tree is `plugin/src/`. Adding bare `plugin/` would pull in
+ * `plugin/package.json` and `plugin/tsconfig.json`, which no witness mutates
+ * and which would therefore redden every plugin phase for its own packaging.
+ *
+ * WHY IT IS NOT THE SAME LIST AS THE GATE'S PRECONDITION, which reads
+ * `src/`, `bin/`, `plugin/`. The precondition decides whether the gate RUNS.
+ * This decides what it REQUIRES. T-032 widened the first and left the second,
+ * so from that fix until this one a diff touching only `plugin/` ran the gate
+ * and took no obligation from it: a plugin phase shipping ZERO witnesses was
+ * green. Found by M4-P29 while reading this file for a different reason.
+ */
 function isAuditedSource(path: string): boolean {
-  return path.startsWith("src/") || path.startsWith("bin/");
+  return (
+    path.startsWith("src/") ||
+    path.startsWith("bin/") ||
+    path.startsWith("plugin/src/")
+  );
 }
 
 /**
