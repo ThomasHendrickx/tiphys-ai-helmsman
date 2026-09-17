@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-git-carve-out-is-segment-wise",
+  "behavior": "project-write-block-git-carve-out-is-segment-wise",
+  "tests": [
+    "the .git carve-out is segment-wise and does not cover gitignore or a github directory"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  return firstSegmentUnder(root, path) === \".git\";\n",
+      "replace": "  return relative(root, path).includes(\".git\");\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const segments = rest.split(sep);\n  return segments[0];\n",
+      "replace": "  const segments = rest.split(sep);\n  return (segments[0] as string).startsWith(\".git\") ? \".git\" : segments[0];\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -146,6 +146,27 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      src/checks.ts is Kind B and reaches agreement between sibling fields, and
      nothing runs it until the type resolves here. */
   ["model-resolution", "model-resolution.schema.json"],
+  /* M4-P9 step 4. <fleet>/write-bypass.json, the infrastructure-hotfix bypass
+     the project-write block reads.
+
+     THE ROW IS WHAT MAKES THE DECLARATION CHECKABLE BEFORE IT IS TRUSTED. The
+     hook reads the document defensively and refuses on anything it cannot use,
+     which is the right behaviour at decision time and a terrible way to find
+     out you mistyped an expiry: the orchestrator learns at the moment its own
+     hotfix is refused. With this row an author runs `tiphys validate --type
+     write-bypass <file>` and is told which pointer is wrong, before the
+     document is in front of a hook.
+
+     A bypass declaration DOES carry a `kind`, required and `const`, so one row
+     serves `--type` and `resolveAutoType` together (M3R-001), unlike the
+     executor record above.
+
+     WHAT THE ROW CANNOT DO, stated rather than left to be discovered: the
+     schema reaches the SHAPE and never the WINDOW. Whether `expiresAt` is in
+     the future is a comparison against a clock, and `decideWrite` takes `now`
+     as a parameter precisely so that comparison is testable at the boundary
+     rather than hidden inside a validator. */
+  ["write-bypass", "write-bypass.schema.json"],
 ]);
 
 /**

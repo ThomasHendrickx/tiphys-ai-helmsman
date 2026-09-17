@@ -1114,5 +1114,16 @@
   "model-resolution-observed-provenance-must-agree": "a record whose observation contradicts the echoed request is refused by the reader",
   "model-resolution-empty-observation-is-unresolved": "an observation channel that answers nothing is unresolved and never a fallback to the self-report",
   "model-resolution-charter-override-resolved": "a charter overrides the tier of a role that allows it and not of a role that forbids it",
-  "model-resolution-family-token-reaches-verdict": "the family token copied into a verdict equals the record's byte for byte"
+  "model-resolution-family-token-reaches-verdict": "the family token copied into a verdict equals the record's byte for byte",
+  "project-write-block-refuses-working-tree-write": "a Write into a project working tree is refused and the same write lands when the hook is absent",
+  "project-write-block-permits-ref-update": "a real git merge --ff-only moves the ref and the block permits every path it wrote",
+  "project-write-block-git-carve-out-is-segment-wise": "the .git carve-out is segment-wise and does not cover gitignore or a github directory",
+  "project-write-block-expired-bypass-does-not-permit": "an expired bypass does not permit a write its path list covers and names the declaration",
+  "project-write-block-out-of-scope-bypass-does-not-permit": "a current bypass does not permit a write outside its path list and names the declaration",
+  "project-write-block-evidence-log-is-never-read": "deleting the entire evidence log changes no decision over the bypass fixture set",
+  "project-write-block-unresolvable-root-is-refused": "a request whose project root cannot be resolved is refused and the wrapper exits two",
+  "project-write-block-agent-turn-leaves-the-clone-unchanged": "the captured agent turn changed nothing in the project clone and its payload is refused",
+  "project-write-block-bash-payload-carries-no-target": "the captured Bash payload carries no write target and the Write and Edit payloads do",
+  "project-write-block-manifest-matcher-matches-adjudicated-tools": "the plugin manifest registers the project-write block for exactly the adjudicated tools",
+  "write-bypass-type-is-registered-and-requires-an-expiry": "the write-bypass type validates a declaration and refuses one with no expiry"
 }

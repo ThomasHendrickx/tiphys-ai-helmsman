@@ -1,0 +1,24 @@
+{
+  "id": "write-bypass-type-is-registered-and-requires-an-expiry",
+  "behavior": "write-bypass-type-is-registered-and-requires-an-expiry",
+  "tests": [
+    "the write-bypass type validates a declaration and refuses one with no expiry"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"write-bypass\", \"write-bypass.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/write-bypass.schema.json",
+      "find": "    \"expiresAt\",\n    \"declaredBy\",\n",
+      "replace": "    \"declaredBy\",\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

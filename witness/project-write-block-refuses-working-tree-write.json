@@ -1,0 +1,32 @@
+{
+  "id": "project-write-block-refuses-working-tree-write",
+  "behavior": "project-write-block-refuses-working-tree-write",
+  "tests": [
+    "a Write into a project working tree is refused and the same write lands when the hook is absent"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "    return { verdict: \"refuse\", reason: `${refusal}, and no write bypass is declared` };\n",
+      "replace": "    return { verdict: \"permit\", reason: `${refusal}, and no write bypass is declared` };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  return firstSegmentUnder(root, path) === \".git\";\n",
+      "replace": "  return true;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude 2.1.273, as the PreToolUse payload source and as the measured exit-code protocol",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt",
+      "witness/captures/m4-p9-end-to-end-agent-turn.txt"
+    ],
+    "provenance": "The block rule the test plays a tool call by is M4-P1's measurement, hook exit 0 leaving the file changed and hook exit 2 leaving it unchanged, and the payload shape the test builds is the one step 1 captured verbatim from the shipped binary rather than one chosen to match the parser."
+  }
+}
