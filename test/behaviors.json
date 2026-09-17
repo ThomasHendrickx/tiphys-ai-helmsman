@@ -1029,5 +1029,6 @@
   "gate-classes-escape-needs-its-datum": "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied",
   "typecheck-units-derived-from-the-compiler": "the typecheck gate reports units the compiler printed and reddens naming the file when one deliberate type error is introduced",
   "gate-classes-unreadable-registry-is-error": "gate-classes reports error rather than green when the registry that defines the legal gate ids cannot be read",
-  "phase-declaration-carries-the-class-vocabulary": "a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green"
+  "phase-declaration-carries-the-class-vocabulary": "a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green",
+  "phase-declaration-class-escape-vocabulary-is-closed": "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied"
 }

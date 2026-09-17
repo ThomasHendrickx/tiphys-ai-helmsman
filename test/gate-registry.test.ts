@@ -1722,6 +1722,7 @@ test("the M4-P14 gate class behaviors are registered in test/behaviors.json and 
     "typecheck-units-derived-from-the-compiler",
     "gate-classes-unreadable-registry-is-error",
     "phase-declaration-carries-the-class-vocabulary",
+    "phase-declaration-class-escape-vocabulary-is-closed",
   ];
   const testNames = new Set<string>();
   const testDir = join(repoRoot, "test");
