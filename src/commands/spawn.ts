@@ -196,6 +196,16 @@ export async function cmdSpawn(args: string[]): Promise<number> {
     exec: flags.exec,
     deadlineSeconds: flags.deadlineSeconds,
     offline: flags.offline,
+    /*
+     * PROJECT, ALWAYS, AND THE CLI HAS NO FLAG TO SAY OTHERWISE (M4-P8
+     * step 2). `tiphys spawn` launches a payload into a project worktree,
+     * and the declared credential escape hatch is not reachable from this
+     * command at all: `allowPrCredentials` is a library-seam field with no
+     * flag behind it, which is exactly why the orchestrator class is not
+     * offered here. An operator who could type --payload-class orchestrator
+     * would be able to ask for the pairing spawnTask exists to refuse.
+     */
+    payloadClass: "project",
     role: flags.role,
     declaredTier: flags.tier,
     phaseId: flags.phase,

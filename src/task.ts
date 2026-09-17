@@ -203,6 +203,93 @@ export function readRegularFileIfPresent(path: string): RegularRead {
 export type TaskShape = "ship" | "scout";
 export type TaskStatus = "open" | "closed";
 
+/**
+ * WHOSE AUTHORITY A PAYLOAD RUNS UNDER (M4-P8 step 2).
+ *
+ * `orchestrator` is the process that plans, reviews and merges, and is the
+ * only payload class the declared credential escape hatch was ever written
+ * for (SpawnOptions.allowPrCredentials, M2-P8 criterion 1: "for the
+ * orchestrator's own spawns, never for an implementer payload"). `project`
+ * is every payload that works inside a project clone.
+ *
+ * It is DECLARED, never derived. The kernel cannot infer it from a command,
+ * a role or a branch without holding a vocabulary for one of those, and a
+ * derived answer would be wrong in the one direction that matters.
+ */
+export type PayloadClass = "orchestrator" | "project";
+
+/** One granted allowlist extension, as it is recorded in meta.json. */
+export interface CredentialExtensionRecord {
+  name: string;
+  reason: string;
+}
+
+/**
+ * THE HANDOVER COMPARISON (M4-P8 criterion 6): the name set the kernel
+ * handed the adapter against the name set the adapter reported launching
+ * with.
+ *
+ * `status` says which question was answerable, and it is three-valued on
+ * purpose rather than a boolean that quietly means two different things:
+ *
+ *   compared        both sets were in hand and were compared by NAME.
+ *   unreported      the adapter returned no name set. That is not a
+ *                   difference and it is not evidence of one; every
+ *                   adapter written before this phase reports nothing.
+ *                   The child-written probe (scripts/credential-witness.mjs)
+ *                   is the half that does not depend on an adapter's
+ *                   self-report, which is the point of criterion 5.
+ *   not-applicable  the spawn ran under the declared escape hatch, so the
+ *                   kernel handed over no environment at all and there is
+ *                   nothing a difference could be measured against.
+ */
+export interface CredentialHandoverRecord {
+  status: "compared" | "unreported" | "not-applicable";
+  /** Names the adapter reported that the kernel did not hand over. */
+  added: string[];
+  /** Names the kernel handed over that the adapter did not report. */
+  removed: string[];
+}
+
+/**
+ * THE CREDENTIAL DECISION FOR ONE SPAWN (M4-P8 step 6), recorded in the
+ * file the kernel already owns rather than in a new one across a new seam.
+ *
+ * The hazard this phase names is "a credential reaches a project payload
+ * and no artifact says so". Every arm of the decision is therefore written
+ * down even when it is the boring one: the payload class, whether the
+ * scrub ran, every widening with the reason it was granted, the handover
+ * comparison, and the refusal if one fired after this record existed.
+ */
+export interface TaskCredentialRecord {
+  payloadClass: PayloadClass;
+  /**
+   * `scrubbed` when buildChildEnv constructed the environment, `inherited`
+   * when allowPrCredentials handed the parent's environment over unchanged.
+   */
+  scrubMode: "scrubbed" | "inherited";
+  /** Every granted extension, in the order the caller declared them. */
+  extensions: CredentialExtensionRecord[];
+  /**
+   * ABSENT UNTIL THE LAUNCH HAS REPORTED, and the absence is a fact rather
+   * than an omission: this record is written BEFORE the payload starts,
+   * which is what makes a failure to write it safe to roll back, and at
+   * that moment no adapter has launched anything to compare. It is the same
+   * reason `ExecutorRecord` carries no resolved model.
+   */
+  handover?: CredentialHandoverRecord;
+  /**
+   * The refusal that fired AFTER this record was written, if one did.
+   *
+   * The step-5 refusal (the escape hatch asked for on a project payload) is
+   * deliberately absent from this field and cannot appear in it: that one
+   * refuses before the task directory exists, so there is no meta.json to
+   * record it in, and creating one would undo the property that a refused
+   * spawn creates nothing.
+   */
+  refusal?: string;
+}
+
 export const TASK_SHAPES: readonly TaskShape[] = ["ship", "scout"];
 
 /**
@@ -226,6 +313,12 @@ export const TASK_SHAPES: readonly TaskShape[] = ["ship", "scout"];
  *   produced in M1-P3.
  * - status: open at spawn, closed by a successful teardown.
  * - createdAt: ISO-8601 timestamp of the spawn.
+ * - credentials: the M4-P8 credential decision for this spawn. OPTIONAL in
+ *   the type, and the optionality is about READING rather than writing:
+ *   every spawn from M4-P8 on writes it, and `readTaskMeta` deliberately
+ *   does not require it, so a record written by an earlier kernel still
+ *   reads instead of becoming an unreadable task whose worktree nobody can
+ *   tear down. Consumers that need it check for it.
  */
 export interface TaskMeta {
   id: string;
@@ -237,6 +330,7 @@ export interface TaskMeta {
   baseOffline: boolean;
   status: TaskStatus;
   createdAt: string;
+  credentials?: TaskCredentialRecord;
 }
 
 export function taskDir(fleet: Fleet, taskId: string): string {

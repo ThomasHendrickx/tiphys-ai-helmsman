@@ -7,7 +7,10 @@
     "src/gates/credentials.ts",
     "src/task.ts",
     "scripts/credential-witness.mjs",
-    "test/payload-credentials.test.ts"
+    "test/payload-credentials.test.ts",
+    "src/commands/spawn.ts",
+    "test/spawn.test.ts",
+    "test/credentials-gate.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",

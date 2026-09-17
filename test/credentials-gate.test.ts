@@ -112,6 +112,8 @@ interface SpawnModule {
       deadlineSeconds: number | undefined;
       offline: boolean;
       allowPrCredentials?: boolean;
+      /* M4-P8: required on the real SpawnOptions, with no default. */
+      payloadClass: "orchestrator" | "project";
     },
   ) => Promise<
     | { ok: true; value: { meta: unknown; exitCode: number } }
@@ -362,6 +364,9 @@ test("spawn --allow-pr-credentials passes the parent environment through unchang
       deadlineSeconds: undefined,
       offline: false,
       allowPrCredentials: true,
+      /* M4-P8 step 5: the declared escape hatch is the orchestrator's, and
+         spawnTask now refuses it on any other payload class. */
+      payloadClass: "orchestrator",
     });
     assert.equal(result.ok, true, result.ok ? "" : result.reason);
   } finally {

@@ -3,7 +3,8 @@ import { mkdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs
 import { constants } from "node:os";
 import { BUILT_IN_ADAPTER_NAME, selectAdapter } from "./adapters/load.ts";
 import { assembleBrief } from "./brief.ts";
-import { buildChildEnv, scrubRoot } from "./exec/env.ts";
+import { buildChildEnv, refuseExtraAllowlist, scrubRoot } from "./exec/env.ts";
+import type { ChildEnvExtension } from "./exec/env.ts";
 import type { Fleet } from "./fleet.ts";
 import { writeTurnEndHook } from "./hooks.ts";
 import { poolCreate, poolDestroy, worktreePath } from "./pool.ts";
@@ -20,7 +21,14 @@ import {
   turnEndPath,
   writeTaskMeta,
 } from "./task.ts";
-import type { GuardResult, TaskMeta, TaskShape } from "./task.ts";
+import type {
+  CredentialHandoverRecord,
+  GuardResult,
+  PayloadClass,
+  TaskCredentialRecord,
+  TaskMeta,
+  TaskShape,
+} from "./task.ts";
 
 /**
  * tiphys spawn (kernel plan v1, M1-P4 step 4): worktree, brief, turn-end
@@ -173,6 +181,12 @@ export function requirableRequestFields(): readonly string[] {
       exec: "",
       deadlineSeconds: undefined,
       offline: false,
+      // M4-P8: a REQUIRED SpawnOptions field, and deliberately NOT a
+      // requirable request field. `requestFieldPresence` maps names an
+      // adapter may declare in `requires`, and every one of them is a field
+      // of `ExecutorRequest`; the payload class never crosses that seam, so
+      // it appears here only because the literal must typecheck.
+      payloadClass: "project",
       role: undefined,
       declaredTier: undefined,
       phaseId: undefined,
@@ -258,11 +272,119 @@ export function checkAdapterRequirements(
 }
 
 /**
+ * THE CREDENTIAL POLICY CHECK (M4-P8 steps 2, 3 and 5), and it runs before
+ * ANYTHING is resolved, loaded or created.
+ *
+ * Three refusals, in this order, and the order is the fail-closed one:
+ *
+ *   1. an absent or unrecognised `payloadClass`. Checked first so that
+ *      refusal 2 never has to reason about an unknown value: without this,
+ *      `payloadClass !== "project"` would read an omission as permission.
+ *   2. the declared escape hatch asked for on a PROJECT payload. This is
+ *      the pairing the phase exists to refuse: `allowPrCredentials` hands
+ *      the parent environment over UNCHANGED (see ExecutorRequest.env),
+ *      credentials and all, and M2-P8 criterion 1 wrote it for the
+ *      orchestrator's own spawns only. Until this phase the option was
+ *      reachable from the library seam with nothing between it and a
+ *      project payload.
+ *   3. an extension entry the child must not carry, which is the same
+ *      vocabulary check `buildChildEnv` makes, made EARLIER. The
+ *      duplication is deliberate and is not two implementations: both call
+ *      `refuseExtraAllowlist`. Making it here as well is what keeps a
+ *      rejected widening from costing a worktree, a branch and a pool
+ *      record, because `buildChildEnv` does not run until after pool
+ *      create.
+ *
+ * It returns a reason rather than throwing, because every refusal on this
+ * path must be able to say "nothing was created" in the same sentence.
+ */
+export function checkCredentialPolicy(
+  options: SpawnOptions,
+): { ok: true } | { ok: false; reason: string } {
+  const declared: readonly PayloadClass[] = ["orchestrator", "project"];
+  if (!declared.includes(options.payloadClass)) {
+    return {
+      ok: false,
+      reason:
+        `this spawn declares no payload class (payloadClass was ` +
+        `${JSON.stringify(options.payloadClass)}); it is required and has no ` +
+        `default, because an omitted class would otherwise take the ` +
+        `orchestrator's authority by default: pass one of ` +
+        `${declared.join(", ")}; nothing was created`,
+    };
+  }
+  if (options.allowPrCredentials === true && options.payloadClass === "project") {
+    return {
+      ok: false,
+      reason:
+        `allowPrCredentials is the declared escape hatch from the credential ` +
+        `scrub and hands the parent environment over unchanged, so it may not ` +
+        `be combined with payloadClass "project": a project payload never ` +
+        `receives the orchestrator's credentials; nothing was created`,
+    };
+  }
+  const extensionRefusal = refuseExtraAllowlist(options.extraAllowlist ?? []);
+  if (extensionRefusal !== undefined) {
+    return { ok: false, reason: `${extensionRefusal}; nothing was created` };
+  }
+  return { ok: true };
+}
+
+/**
+ * COMPARE THE HANDOVER BY NAME SET (M4-P8 criterion 6).
+ *
+ * `handed` is what the kernel built and passed, `reported` is what the
+ * adapter says it launched with. Neither side's VALUES are compared: a
+ * value comparison would put credential material into a record an operator
+ * reads, and the property under test is which names crossed.
+ */
+export function compareHandover(
+  handed: Record<string, string> | undefined,
+  reported: readonly string[] | undefined,
+): CredentialHandoverRecord {
+  if (handed === undefined) {
+    return { status: "not-applicable", added: [], removed: [] };
+  }
+  if (reported === undefined) {
+    return { status: "unreported", added: [], removed: [] };
+  }
+  const handedNames = new Set(Object.keys(handed));
+  const reportedNames = new Set(reported);
+  return {
+    status: "compared",
+    added: [...reportedNames].filter((name) => !handedNames.has(name)).sort(),
+    removed: [...handedNames].filter((name) => !reportedNames.has(name)).sort(),
+  };
+}
+
+/**
  * Launch outcomes. The distinction between a payload that never started
  * and one that did is load-bearing: only the first authorizes rollback.
  */
 export type LaunchOutcome =
-  | { kind: "completed"; exitCode: number }
+  | {
+      kind: "completed";
+      exitCode: number;
+      /**
+       * THE NAMES THE ADAPTER REPORTS IT ACTUALLY LAUNCHED WITH (M4-P8
+       * criterion 6). Optional, and the optionality is honest rather than
+       * lenient: an adapter written before this phase reports nothing, and
+       * a kernel that refused every silent adapter would be refusing on an
+       * absence of evidence. What the kernel DOES refuse is a reported set
+       * that DIFFERS from the one it handed over, which is the adapter
+       * saying, in its own record, that it widened the environment.
+       *
+       * It is NOT on `ExecutorRecord`: that document has a shipped schema
+       * with `additionalProperties: false`, and this value is a report to
+       * the kernel rather than a durable launch fact for an operator.
+       *
+       * A DISHONEST ADAPTER IS NOT CAUGHT HERE, and nothing in this field
+       * pretends otherwise: an adapter that widens `env` and reports the
+       * kernel's set is caught by the child-written probe instead, which
+       * is why criterion 5 asserts on a file the CHILD wrote.
+       */
+      launchedEnvNames?: readonly string[];
+    }
   | { kind: "launch-failed"; reason: string }
   | { kind: "incomplete"; reason: string };
 
@@ -490,7 +612,18 @@ export const subprocessAdapter: ExecutorAdapter = {
           `directory are left in place`,
       };
     }
-    return { kind: "completed", exitCode };
+    // WHAT THIS ADAPTER ACTUALLY LAUNCHED WITH (M4-P8 criterion 6), read
+    // off `request.env` at the point of report rather than recomputed from
+    // the option object: the two spawnSync calls above spread that same
+    // value, so a mutation between the handover and the launch shows up
+    // here. Sorted so the comparison is over a set, not an insertion order.
+    return {
+      kind: "completed",
+      exitCode,
+      ...(request.env === undefined
+        ? {}
+        : { launchedEnvNames: Object.keys(request.env).sort() }),
+    };
   },
 };
 
@@ -606,6 +739,34 @@ export interface SpawnOptions {
    */
   allowPrCredentials?: boolean;
   /**
+   * WHOSE AUTHORITY THIS PAYLOAD RUNS UNDER (M4-P8 step 2). REQUIRED, and
+   * there is NO DEFAULT anywhere on this path, in the type or at runtime.
+   *
+   * A default would be the whole defect: `allowPrCredentials` is reachable
+   * from the library seam, which is where the plugin sits, and the pairing
+   * this field exists to refuse is the escape hatch on a project payload.
+   * If omission meant "orchestrator", a caller would acquire the
+   * orchestrator's authority by leaving a field out, which is the quietest
+   * way there is to reach a credential. `spawnTask` therefore refuses an
+   * absent or unrecognised value before it creates or loads anything,
+   * rather than trusting the type: TypeScript is a compile-time promise and
+   * the consumer that matters here is a JavaScript plugin.
+   */
+  payloadClass: PayloadClass;
+  /**
+   * PER-INVOCATION ALLOWLIST EXTENSIONS, EACH WITH THE REASON IT WAS
+   * GRANTED (M4-P8 step 3). Absent means none, which is the measured
+   * minimum for model authentication in the probed container
+   * (delivery/verification/m4-prototype-probes.md:33).
+   *
+   * The reason is DATA and a blank one is refused, so a widening cannot be
+   * granted without leaving behind something a later reader can check; the
+   * granted set is copied into meta.json verbatim. The kernel refuses any
+   * entry naming a variable in the walked gh-token or dangerous vocabulary,
+   * so this field cannot be used to re-admit a credential.
+   */
+  extraAllowlist?: readonly ChildEnvExtension[];
+  /**
    * The three caller-supplied request fields (M4-P3 criterion 1, M4-D-05).
    * Each is `string | undefined` because nothing in the kernel produces one;
    * `briefPath` is not here because `assembleBrief` does produce it.
@@ -661,6 +822,16 @@ export async function spawnTask(
   options: SpawnOptions,
 ): Promise<SpawnResult> {
   const { taskId } = options;
+
+  // THE CREDENTIAL POLICY IS CHECKED BEFORE THE ADAPTER IS EVEN RESOLVED
+  // (M4-P8 step 5). Adapter selection reads the fleet home and may EVALUATE
+  // a module the kernel did not write (M4-P4), so a spawn whose credential
+  // shape is already refused must not get that far: the refusal creates
+  // nothing, loads nothing and runs nothing.
+  const credentials = checkCredentialPolicy(options);
+  if (!credentials.ok) {
+    return { ok: false, reason: credentials.reason };
+  }
 
   // THE ADAPTER IS RESOLVED FIRST (M4-P3), earlier than it used to be, and
   // the move is the point rather than a tidy-up: both checks below must
@@ -818,6 +989,22 @@ export async function spawnTask(
   const briefPath = brief.value.value;
   createdFiles.push(briefPath);
 
+  // THE CREDENTIAL DECISION, WRITTEN DOWN (M4-P8 step 6). The hazard this
+  // phase names is a credential reaching a project payload with NO ARTIFACT
+  // SAYING SO, so the record is written on every spawn, including the
+  // boring one where nothing was widened and the scrub ran. The extensions
+  // are copied verbatim, reason and all: a widening whose justification
+  // exists only in the caller's source is not auditable from the task
+  // directory an operator opens.
+  const credentialRecord: TaskCredentialRecord = {
+    payloadClass: options.payloadClass,
+    scrubMode: options.allowPrCredentials === true ? "inherited" : "scrubbed",
+    extensions: (options.extraAllowlist ?? []).map((entry) => ({
+      name: entry.name,
+      reason: entry.reason,
+    })),
+  };
+
   const meta: TaskMeta = {
     id: taskId,
     project: poolRecord.project,
@@ -828,6 +1015,7 @@ export async function spawnTask(
     baseOffline: poolRecord.offline,
     status: "open",
     createdAt: new Date().toISOString(),
+    credentials: credentialRecord,
   };
   const wroteMeta = runStep(`writing ${metaPath(fleet, taskId)}`, () => {
     writeTaskMeta(fleet, meta);
@@ -858,7 +1046,16 @@ export async function spawnTask(
   if (options.allowPrCredentials !== true) {
     const built = runStep(
       `constructing the scrubbed child environment for task ${taskId}`,
-      () => buildChildEnv({ parentEnv: process.env, scrubDir: scrubRoot(dir) }),
+      () =>
+        buildChildEnv({
+          parentEnv: process.env,
+          scrubDir: scrubRoot(dir),
+          // M4-P8 step 3: the per-invocation extension finally has a way to
+          // reach this call. Before this phase `extraAllowlist` existed as
+          // data and NOTHING passed one, so the field was unreachable from
+          // every production path.
+          extraAllowlist: options.extraAllowlist ?? [],
+        }),
     );
     if (!built.ok) {
       return rollback(built.reason);
@@ -956,6 +1153,53 @@ export async function spawnTask(
         `accept that the payload ended; nothing was rolled back and nothing was ` +
         `removed: ${residue} left in place for inspection; when you have inspected ` +
         `them, close the task with "tiphys teardown --task ${taskId}"`,
+    };
+  }
+
+  // THE HANDOVER CHECK (M4-P8 criterion 6). src/spawn.ts's request contract
+  // has always FORBIDDEN an adapter widening `env` on its own, in prose,
+  // and nothing checked it. The adapter now reports the name set it
+  // launched with and the kernel compares it, by NAME, against the set it
+  // handed over.
+  //
+  // IT RUNS AFTER THE PAYLOAD HAS RUN, so it never rolls anything back: the
+  // worktree may hold real work by now (the V-1 rule), and the refusal's
+  // job is to make the widening impossible to miss, not to destroy
+  // evidence of it. The comparison is recorded in meta.json whichever way
+  // it goes, so a clean handover is an artifact too.
+  const handover = compareHandover(childEnv, outcome.launchedEnvNames);
+  credentialRecord.handover = handover;
+  const widened = handover.added.length > 0 || handover.removed.length > 0;
+  if (widened) {
+    credentialRecord.refusal =
+      `the ${adapter.name} adapter launched with an environment that differs ` +
+      `from the one the kernel handed it` +
+      (handover.added.length === 0 ? "" : `; added ${handover.added.join(", ")}`) +
+      (handover.removed.length === 0 ? "" : `; removed ${handover.removed.join(", ")}`);
+  }
+  const rewroteMeta = runStep(`updating ${metaPath(fleet, taskId)}`, () => {
+    writeTaskMeta(fleet, meta);
+  });
+  if (!rewroteMeta.ok) {
+    // The payload ran, so nothing is rolled back here either; the record
+    // simply could not be completed and says so rather than being silently
+    // left at its pre-launch contents.
+    return {
+      ok: false,
+      reason:
+        `the payload exited ${String(outcome.exitCode)} but the credential ` +
+        `record could not be completed (${rewroteMeta.reason}); the worktree ` +
+        `${worktree}, its task directory and the pool record are left in place`,
+    };
+  }
+  if (widened) {
+    return {
+      ok: false,
+      reason:
+        `${credentialRecord.refusal ?? ""}; an adapter never widens the child ` +
+        `environment it was given (see ExecutorRequest.env), and the difference ` +
+        `is recorded in ${metaPath(fleet, taskId)}; nothing was rolled back ` +
+        `because the payload had already run`,
     };
   }
 
