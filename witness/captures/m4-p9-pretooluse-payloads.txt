@@ -1,0 +1,91 @@
+M4-P9 STEP 1: WHAT A PreToolUse HOOK ACTUALLY RECEIVES, VERBATIM
+
+Nothing below was typed by hand. A PreToolUse hook registered for
+Write|Edit|NotebookEdit|Bash appended its RAW stdin bytes, base64 encoded,
+one line per firing; the payload sections are those bytes decoded. The
+probe selected no fields at all, which is the difference from M4-P1's
+marker: that one kept five fields it read off the payload, so session_id
+and transcript_path were never captured and could not be reasoned about.
+
+Binary: /opt/claude-code/bin/claude --version -> 2.1.273 (Claude Code)
+Invocation per arm:
+  claude -p <prompt> --plugin-dir <lab>/plugin --allowedTools <tool> \
+    --permission-mode bypassPermissions
+with IS_SANDBOX=1 exported for the child, which is the same root-gate
+satisfaction M4-P1 recorded and declared (delivery/work-history/m4-p1.md:182).
+The hook exited 0 on every arm below, so every arm's write LANDED and the
+payloads are what a permitted call carries.
+
+WHAT IT SETTLES, and it settles the one thing the phase was blocked on:
+Write and Edit carry tool_input.file_path, ABSOLUTE. Bash carries
+tool_input.command, a raw shell string, and nothing that names a file; the
+heredoc arm is there because a heredoc is the form most likely to differ,
+and it does not. Every arm carries a top-level cwd.
+
+======================================================================
+=== arm: write-exit0 (allowed tool Write) ===
+arm: write-exit0
+allowed-tool: Write
+hook-exit-configured: 0
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+payload lines: 1
+--- stdout ---
+WROTE
+--- stderr (first 10 lines) ---
+--- payload (verbatim) ---
+{"session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project","scratchpad_dir":"/tmp/claude-0/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad","prompt_id":"7f8e57b3-fe18-4381-a37f-3e8049592ed2","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project/app.txt","content":"HOTFIX\n"},"tool_use_id":"toolu_01FPMzWyqwAw4AbTdXRtfrrR"}
+
+======================================================================
+=== arm: edit-exit0 (allowed tool Edit) ===
+arm: edit-exit0
+allowed-tool: Edit
+hook-exit-configured: 0
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+payload lines: 2
+--- stdout ---
+WROTE
+--- stderr (first 10 lines) ---
+--- payload (verbatim) ---
+{"session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project","scratchpad_dir":"/tmp/claude-0/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad","prompt_id":"c08bfcaa-67cf-4a92-8caa-1477b09171d5","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls -la app.txt 2>&1","description":"Check if app.txt exists in current directory"},"tool_use_id":"toolu_01JoNkBHQeqWd1EeX6JyyZ2S"}
+--- payload (verbatim) ---
+{"session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project","scratchpad_dir":"/tmp/claude-0/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad","prompt_id":"c08bfcaa-67cf-4a92-8caa-1477b09171d5","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project/app.txt","old_string":"ORIGINAL","new_string":"HOTFIX","replace_all":false},"tool_use_id":"toolu_01TvWDykACdm5vGSYCD97qKL"}
+
+======================================================================
+=== arm: bash-exit0 (allowed tool Bash) ===
+arm: bash-exit0
+allowed-tool: Bash
+hook-exit-configured: 0
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+payload lines: 1
+--- stdout ---
+WROTE
+--- stderr (first 10 lines) ---
+--- payload (verbatim) ---
+{"session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project","scratchpad_dir":"/tmp/claude-0/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad","prompt_id":"1c8563c6-2d1a-488d-a5bc-16ad82285d58","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo HOTFIX > app.txt","description":"Write HOTFIX to app.txt"},"tool_use_id":"toolu_01FmmfFE4WjfWXLD4DVBAMRp"}
+
+======================================================================
+=== arm: bash-heredoc-exit0 (allowed tool Bash) ===
+arm: bash-heredoc-exit0
+allowed-tool: Bash
+hook-exit-configured: 0
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+payload lines: 1
+--- stdout ---
+WROTE
+--- stderr (first 10 lines) ---
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+--- payload (verbatim) ---
+{"session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","cwd":"/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w11-m4-p9/probe/project","scratchpad_dir":"/tmp/claude-0/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-w11-m4-p9-probe-project/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad","prompt_id":"5820033e-fa8b-468d-8734-73b1fd25a3f5","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat > app.txt <<EOF\nHOTFIX\nEOF","description":"Write HOTFIX line to app.txt via heredoc"},"tool_use_id":"toolu_01WZYo3n3n2Fbvhz2DiieXNQ"}
+

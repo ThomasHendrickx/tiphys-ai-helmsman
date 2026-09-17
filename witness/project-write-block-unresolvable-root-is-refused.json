@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-unresolvable-root-is-refused",
+  "behavior": "project-write-block-unresolvable-root-is-refused",
+  "tests": [
+    "a request whose project root cannot be resolved is refused and the wrapper exits two"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (projectRoots.kind === \"unresolved\") {\n    return {\n      verdict: \"refuse\",\n",
+      "replace": "  if (projectRoots.kind === \"unresolved\") {\n    return {\n      verdict: \"permit\",\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "    return {\n      exitCode: EXIT_REFUSE,\n      stderr:\n        `tiphys project-write block: the project root could not be resolved ` +\n",
+      "replace": "    return {\n      exitCode: EXIT_PERMIT,\n      stderr:\n        `tiphys project-write block: the project root could not be resolved ` +\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -311,6 +311,31 @@ content of this clause: a ref update is a recorded, reversible act over reviewed
 commits, and a file edit is unreviewed work by the one role whose independence
 every later check assumes.
 
+WHICH MECHANISM ENFORCES IT, replacing nothing above. The clause was a sentence
+you were trusted to remember until M4-P9 shipped a `PreToolUse` hook for it. The
+hook draws exactly the line the two paragraphs above draw, and it draws it over
+the TARGET rather than over a tool name, because "designated merge tooling" has
+no referent in this kernel: a write resolving inside a project working tree and
+outside that clone's `.git/` is REFUSED, and a write under `.git/` is the ref
+update and is PERMITTED. Its refusal is an exit code, not a warning.
+
+THE HOTFIX CARVE-OUT IS A DECLARED ACT AND IT EXPIRES. When the pipeline is
+wedged and the fix has to be made in the tree, you write one declaration naming
+the project, the paths, the reason and an ABSOLUTE EXPIRY INSTANT, validated by
+`schemas/write-bypass.schema.json#properties.expiresAt`. Nothing about it is
+optional: a bypass with no expiry is a block switched off permanently by the
+first hotfix, which is why the expiry is required rather than encouraged. Every
+write it permits is appended to a separate evidence log, and NO DECISION EVER
+READS THAT LOG, which is constraint C-1 and is the reason the declaration and
+the evidence are two files rather than one.
+
+WHAT IT DOES NOT COVER, stated here because a partial guard read as a total one
+is worse than none. The hook adjudicates the file-writing tools. A shell command
+is NOT adjudicated, because the payload a shell tool call delivers carries the
+command string and no resolvable write target, which was measured rather than
+assumed. So the hook makes an accidental edit impossible and a deliberate one
+through a shell still yours to not do.
+
 ## clause fleet-resume-specification: what survives reclamation, what is rebuilt, and what doctor reports
 
 Assigned to this document by plan v1 PR-201. THIS CLAUSE IS A SPECIFICATION AND

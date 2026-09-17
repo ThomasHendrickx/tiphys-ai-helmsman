@@ -1,0 +1,31 @@
+{
+  "id": "project-write-block-agent-turn-leaves-the-clone-unchanged",
+  "behavior": "project-write-block-agent-turn-leaves-the-clone-unchanged",
+  "tests": [
+    "the captured agent turn changed nothing in the project clone and its payload is refused"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (isGitInternal(root, target)) {\n",
+      "replace": "  if (isGitInternal(root, target) || true) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const root = containingProjectRoot(projectRoots.roots, target);\n",
+      "replace": "  const root = undefined as string | undefined;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude 2.1.273, three real agent turns in a real git clone inside a real fleet home",
+    "captures": [
+      "witness/captures/m4-p9-end-to-end-agent-turn.txt"
+    ],
+    "provenance": "The capture carries the two blocked arms AND the hook-absent control arm that changed the file, plus the payloads, which the test replays through the shipped decision so the capture cannot drift away from the code it is evidence for."
+  }
+}

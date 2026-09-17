@@ -1128,5 +1128,16 @@
   "shared-exclusion-captured-cas-contract": "the captured git compare-and-swap contract is reproduced by a live scratch repository",
   "shared-exclusion-register-identity-pinned": "the register commit identity matches the fleet bootstrap identity",
   "shared-exclusion-init-declares-only-on-request": "tiphys init writes the shared exclusion declaration only when it is asked for",
-  "shared-exclusion-unusable-declaration-refuses": "an unusable shared exclusion declaration refuses rather than running local-only exclusion"
+  "shared-exclusion-unusable-declaration-refuses": "an unusable shared exclusion declaration refuses rather than running local-only exclusion",
+  "project-write-block-refuses-working-tree-write": "a Write into a project working tree is refused and the same write lands when the hook is absent",
+  "project-write-block-permits-ref-update": "a real git merge --ff-only moves the ref and the block permits every path it wrote",
+  "project-write-block-git-carve-out-is-segment-wise": "the .git carve-out is segment-wise and does not cover gitignore or a github directory",
+  "project-write-block-expired-bypass-does-not-permit": "an expired bypass does not permit a write its path list covers and names the declaration",
+  "project-write-block-out-of-scope-bypass-does-not-permit": "a current bypass does not permit a write outside its path list and names the declaration",
+  "project-write-block-evidence-log-is-never-read": "deleting the entire evidence log changes no decision over the bypass fixture set",
+  "project-write-block-unresolvable-root-is-refused": "a request whose project root cannot be resolved is refused and the wrapper exits two",
+  "project-write-block-agent-turn-leaves-the-clone-unchanged": "the captured agent turn changed nothing in the project clone and its payload is refused",
+  "project-write-block-bash-payload-carries-no-target": "the captured Bash payload carries no write target and the Write and Edit payloads do",
+  "project-write-block-manifest-matcher-matches-adjudicated-tools": "the plugin manifest registers the project-write block for exactly the adjudicated tools",
+  "write-bypass-type-is-registered-and-requires-an-expiry": "the write-bypass type validates a declaration and refuses one with no expiry"
 }

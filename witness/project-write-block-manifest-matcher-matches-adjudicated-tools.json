@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-manifest-matcher-matches-adjudicated-tools",
+  "behavior": "project-write-block-manifest-matcher-matches-adjudicated-tools",
+  "tests": [
+    "the plugin manifest registers the project-write block for exactly the adjudicated tools"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/.claude-plugin/plugin.json",
+      "find": "        \"matcher\": \"Write|Edit|MultiEdit|NotebookEdit\",\n",
+      "replace": "        \"matcher\": \"Write|MultiEdit|NotebookEdit\",\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "export const ADJUDICATED_TOOLS = [\"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\"] as const;\n",
+      "replace": "export const ADJUDICATED_TOOLS = [\"Write\", \"MultiEdit\", \"NotebookEdit\"] as const;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

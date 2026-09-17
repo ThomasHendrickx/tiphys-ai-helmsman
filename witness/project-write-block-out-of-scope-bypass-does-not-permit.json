@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-out-of-scope-bypass-does-not-permit",
+  "behavior": "project-write-block-out-of-scope-bypass-does-not-permit",
+  "tests": [
+    "a current bypass does not permit a write outside its path list and names the declaration"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (!covers) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "    return isInside(projectRoot, listed) && isInside(listed, targetPath);\n",
+      "replace": "    return isInside(projectRoot, listed);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

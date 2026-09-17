@@ -1,0 +1,31 @@
+{
+  "id": "project-write-block-bash-payload-carries-no-target",
+  "behavior": "project-write-block-bash-payload-carries-no-target",
+  "tests": [
+    "the captured Bash payload carries no write target and the Write and Edit payloads do"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (typeof filePath === \"string\" && filePath !== \"\") {\n    return { ok: true, tool, cwd, targetPath: filePath };\n  }\n  return { ok: true, tool, cwd };\n",
+      "replace": "  if (typeof filePath === \"string\" && filePath !== \"\") {\n    return { ok: true, tool, cwd, targetPath: filePath };\n  }\n  const command =\n    typeof input === \"object\" && input !== null && !Array.isArray(input)\n      ? (input as Record<string, unknown>)[\"command\"]\n      : undefined;\n  if (typeof command === \"string\") {\n    return { ok: true, tool, cwd, targetPath: join(cwd, command) };\n  }\n  return { ok: true, tool, cwd };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "      ? (input as Record<string, unknown>)[\"file_path\"]\n",
+      "replace": "      ? (input as Record<string, unknown>)[\"file\"]\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude 2.1.273, whose PreToolUse payloads step 1 of this phase captured raw for Write, Edit and Bash including a heredoc arm",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt"
+    ],
+    "provenance": "The payloads are parsed back out of the capture on every run rather than restated in the test, so the measurement that scopes criterion 6 cannot drift away from the bytes the shipped binary sent."
+  }
+}
