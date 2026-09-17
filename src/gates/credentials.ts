@@ -104,6 +104,26 @@ export interface SourceProbe {
 }
 
 /**
+ * THIS VOCABULARY IS NOW READ BY THE KERNEL AS WELL AS BY THIS GATE
+ * (M4-P8 step 4, and this comment IS the record that step requires).
+ *
+ * `src/exec/env.ts` imports `GH_TOKEN_VARIABLES` and `isDangerousEnvName`
+ * from here to refuse a per-invocation allowlist extension naming one of
+ * them. The plan offered two shapes, move the vocabulary to a third module
+ * or export it from here, and the choice taken is EXPORT FROM HERE: the
+ * walk above, the per-name sources below and the constants stay in one
+ * file, so a future editor extending the vocabulary cannot extend it
+ * somewhere the other reader does not see. What is forbidden is a second
+ * copy: two lists drift, and they drift silently toward the permissive
+ * side.
+ *
+ * NOTHING ABOUT WHAT EITHER GATE DECIDES CHANGES WITH THAT IMPORT. The
+ * constants, the pattern and `isDangerousEnvName` are byte-identical to
+ * their M2-P8 form; the only difference is that a second module now reads
+ * them.
+ */
+
+/**
  * gh's documented token vocabulary (see the module comment for the walk).
  * Never permitted in a child environment, allowlisted or not.
  */
