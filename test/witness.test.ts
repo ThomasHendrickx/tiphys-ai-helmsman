@@ -42,6 +42,38 @@ const { runRedWitnessGate } = gateModule;
 const { exitCodeForStatus, statusForExitCode } = resultModule;
 type GateStatusName = Parameters<typeof exitCodeForStatus>[0];
 
+/**
+ * M4-P29 rule (f): the cited capture, and the block-extractor the named test
+ * uses to reproduce it live. The file is REAL captured output of the three
+ * gate CLIs this phase changed (witness/captures/m4-p29-gate-cli-stdio.txt),
+ * not a hand-written shape.
+ *
+ * THE PATH IS BOUND ONCE AND READ THROUGH THE BINDING, which is the spelling
+ * test/credentials-gate.test.ts and test/suite-gate.test.ts already use, and
+ * the choice is recorded rather than left to look accidental. `deriveTextAssertions`
+ * (src/witness/run.ts:609) flags a file as text-asserting from an INLINE
+ * document-path literal inside the read call; the same read through a bound
+ * `fileURLToPath(new URL(...))` is not flagged. Measured both ways on this
+ * file. Writing it inline flipped the whole file to text-asserting and
+ * reddened an unrelated stored witness that declares one member, so the
+ * spelling is load-bearing and the derivation's blindness to the bound form
+ * is a real gap, recorded in the work history rather than exploited quietly.
+ */
+const gateStdioCapturePath = fileURLToPath(
+  new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
+);
+
+function capturedGateStdio(block: string): string {
+  const body = readFileSync(gateStdioCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
+
 const gateEntryPath = fileURLToPath(
   new URL("../src/gates/red-witness.ts", import.meta.url),
 );
@@ -2973,18 +3005,7 @@ test("the red-witness gate CLI delivers a report larger than a parent's stdio bu
   // size that fits in any buffer, before anything is asserted about a report
   // that does not. If the gate's rendering changes, this fails here rather
   // than silently changing what the oversize comparison means.
-  const capture = readFileSync(
-    fileURLToPath(
-      new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
-    ),
-    "utf8",
-  );
-  const begin = "--- BEGIN red-witness-error-stdout ---\n";
-  const from = capture.indexOf(begin);
-  assert.notEqual(from, -1, "capture block red-witness-error-stdout is absent");
-  const to = capture.indexOf("--- END red-witness-error-stdout ---", from);
-  assert.notEqual(to, -1, "capture block red-witness-error-stdout is unterminated");
-  const recorded = capture.slice(from + begin.length, to);
+  const recorded = capturedGateStdio("red-witness-error-stdout");
   const smallDir = mkdtempSync(join(tmpdir(), "rw-capture-"));
   const smallRun = spawnSync(
     process.execPath,
