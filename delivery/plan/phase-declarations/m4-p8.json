@@ -1,0 +1,45 @@
+{
+  "id": "M4-P8",
+  "branch": "claude/m4-p8-payload-credentials",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/exec/env.ts",
+    "src/gates/credentials.ts",
+    "src/task.ts",
+    "scripts/credential-witness.mjs",
+    "test/payload-credentials.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p8.json",
+    "delivery/work-history/m4-p8.md"
+  ],
+  "citations": [
+    "M4-D-07",
+    "DR-0027",
+    "DR-0031",
+    "T-009",
+    "C-1",
+    "C-2",
+    "C-3"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck",
+        "red-witness"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}
