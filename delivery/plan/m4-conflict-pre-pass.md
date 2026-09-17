@@ -422,3 +422,60 @@ on `src/gates/credentials.ts`. M4-P21 collides with M4-P18 on
 M4-P30 on `src/commands/doctor.ts`, which makes it the most contended phase
 left. M4-P12, M4-P24 and M4-P25 collide with M4-P18 on `src/cli.ts` under
 DR-0046.
+
+## Wave 10, 2026-09-17: M4-P7 and M4-P29
+
+Written BEFORE dispatch, per rule 5.
+
+| unit | files it may touch |
+|---|---|
+| M4-P7 | `schemas/model-resolution.schema.json`, `src/validate.ts`, `src/model-resolution.ts`, `plugin/src/model-resolution.ts`, `plugin/src/vocabulary.ts`, `plugin/src/adapter.ts`, `test/model-resolution.test.ts`, `witness/` |
+| M4-P29 | `src/gates/credentials.ts`, `src/gates/red-witness.ts`, `src/gates/suite.ts`, `test/credentials-gate.test.ts`, `test/witness.test.ts`, `test/suite-gate.test.ts`, `witness/` |
+
+**Intersection: EMPTY except `witness/`, and that exception is stated rather
+than waved through.** Both lists are read from the plan, M4-P7 at
+delivery/plan/kernel-plan-m4.md:1049 and M4-P29 at
+delivery/plan/kernel-plan-m4.md:3819.
+
+**`witness/` IS SHARED, AND IT IS SAFE FOR THE SAME REASON THE REGISTRIES ARE.**
+Every wave since M4-P18 has had phases add their own specs under it, and a
+witness spec is a whole file named after the behaviour it guards, so two phases
+append disjoint filenames and never edit a shared document. That makes it
+append-only in exactly the sense CLAUDE.md's rule 5 means, and it does not
+re-serialise the pair. What WOULD re-serialise them is a phase editing another
+phase's existing spec, and neither of these does: M4-P7 ships new
+`model-resolution-*` specs, M4-P29 ships new gate-CLI ones.
+
+**Checked against the pull request still in CI.** #182 (M4-P30) changes
+`src/commands/doctor.ts`, `scripts/m1-exit-test.sh`, `charter.yaml`,
+`schemas/assurance-modes.schema.json`, `test/assurance-modes.test.ts`,
+`test/doctor.test.ts`, `assurance-modes.yaml` and its evidence tree. No overlap
+with either unit. Note that M4-P7 and M4-P30 both touch `schemas/`, and they
+touch DIFFERENT DOCUMENTS in it: `model-resolution.schema.json` is created by
+one and `assurance-modes.schema.json` is edited by the other.
+
+**The generator check.** M4-P29 edits three gate COMMANDS' source but adds no
+gate row, so `gate-registry.yaml` does not move and neither drift chain does.
+M4-P7 registers a new `--type` in `src/validate.ts`; that table is not
+generated from anything and nothing is generated from it. Both phases must
+register the new type in BOTH the `--type` table and the `auto` resolver, which
+is the split this repository has paid for twice.
+
+**M4-P29 CARRIES TWO ITEMS M4-P8 RAISED AND DID NOT FIX**, and they are its
+scope rather than a discovery it will make:
+
+1. **The `credential-scrub` gate's verdict is inverted.** It greens
+   `HTTPS_PROXY`, which grants real GitHub reach, and reddens `GIT_CONFIG_*`,
+   which grants only URL rewriting. Measured by M4-P8 from the other side: an
+   extension arm took `HTTPS_PROXY` through the audited route, that child got
+   HTTP 200 from `api.github.com/user`, and the gate stayed green with 7 units.
+2. **M4-P8 shipped no witness spec under `witness/`**, so its own red witnesses
+   live as captures in a work history rather than as specs the gate
+   re-evaluates. Its `red-witness` line read `0 own`.
+
+**Not dispatched, and why.** M4-P9 collides with M4-P7 on `plugin/src/` and is
+the other claimant of the plugin surface; it follows M4-P7 rather than running
+beside it. M4-P21 and M4-P22 collide on `src/exclusion.ts`, and M4-P22 also
+collides with the merged M4-P8 on `src/spawn.ts`, which is a merge-order
+constraint rather than a concurrency one now. M4-P12, M4-P24 and M4-P25 share
+`src/cli.ts` under DR-0046.
