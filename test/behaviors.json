@@ -1037,5 +1037,13 @@
   "executor-record-validates": "the launch record a real spawn wrote validates under --type executor-record, one missing adapter is refused naming the field, and --type auto cannot resolve it",
   "executor-record-rejects-undeclared-fields": "an executor record carrying an undeclared model field is refused, and is accepted once additionalProperties is removed",
   "executor-record-echoes-requested-tier": "the launch record echoes the requested tier and role byte for byte from the flags",
-  "kernel-carries-no-vendor-model-names": "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration"
+  "kernel-carries-no-vendor-model-names": "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration",
+  "spawn-adapter-flag-resolves-from-fleet-home": "the --adapter flag resolves the adapter from the fleet home and the launch record names it",
+  "spawn-adapter-project-clone-not-a-root": "an adapter that exists only in the project clone is refused naming the fleet home, and the module is never evaluated",
+  "spawn-adapter-fleet-home-wins-over-project": "with the same adapter name in the fleet home and the project clone, the fleet home copy is the one that launches",
+  "spawn-adapter-shape-refused-creates-nothing": "a module that is not an adapter is refused before a worktree, a branch, a task directory or a pool record exists",
+  "spawn-adapter-name-collision-refused": "a loaded adapter claiming the built-in adapter name is refused and the built-in one still launches",
+  "spawn-adapter-default-recorded-explicitly": "the launch record names the built-in adapter, the fleet home default, and the flag that outranks it",
+  "kernel-exports-executor-types": "a consumer importing the executor contract from the package name type-checks and loads against the built dist",
+  "kernel-exports-do-not-widen-package": "the kernel entry point publishes the adapter contract and the exports map refuses every internal subpath"
 }
