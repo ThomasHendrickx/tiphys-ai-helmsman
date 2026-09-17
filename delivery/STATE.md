@@ -2211,3 +2211,66 @@ budget used as a catastrophic-backtracking proxy at src/gates/coverage.ts:235,
 which trips on `^(?:M([0-9]+))$` against a two-character value. The message
 refutes itself. Never attribute such a red to load by judgement: re-run, and
 check whether the failing test is even in the branch's changed set.
+
+## Standing at 2026-09-17, 09:30 UTC (supersedes the tables above)
+
+The tables earlier in this file are the record of 2026-09-16 and are left in
+place. This section is the current standing and it is derived from git, not
+from memory.
+
+### Merged: 16 of 30 M4 phases
+
+M4-P1, M4-P2, M4-P3, M4-P4, M4-P10, M4-P11, M4-P13, M4-P14, M4-P15, M4-P16,
+M4-P17, M4-P19, M4-P20, M4-P23, M4-P26, M4-P27.
+
+`main` is at `60dac17`. Every post-merge `push` run behind that head was
+watched to completion, which T-009 requires and which a green pull-request
+check is not evidence for.
+
+The derivation, so a later reader can re-run it rather than trust the list:
+
+```
+git log --oneline origin/main | grep -oE 'M4-P[0-9]+' | sort -u
+```
+
+**That command over-reports, and the trap is worth naming because it caught
+this update.** A wave paperwork commit carries the phase id of the phase it
+declares, so `M4-P5` and `M4-P28` both appear in its output while their pull
+requests are still open. Cross-check each id against a MERGED pull request
+before counting it.
+
+### In CI, not yet merged
+
+| phase | pull request | what it ships |
+|---|---|---|
+| M4-P5 | #175 | the plugin workspace, the manifest, and the Claude Code adapter |
+| M4-P28 | #176 | the coverage gate stops measuring machine load |
+| wave 8 paperwork | #177 | the pre-pass and declarations for M4-P8 and M4-P18 |
+
+### Not started: 12 phases
+
+M4-P6, M4-P7, M4-P8, M4-P9, M4-P12, M4-P18, M4-P21, M4-P22, M4-P24, M4-P25,
+M4-P29, M4-P30.
+
+### What blocks what, which is the pacing fact
+
+- **M4-P5 is the unblocker.** M4-P6 and M4-P7 both create files under
+  `plugin/`, which M4-P5 creates. M4-P9 needs the same package skeleton. Three
+  phases wait on #175.
+- **`src/cli.ts` is a single-writer file through M4 under DR-0046.** M4-P12,
+  M4-P18, M4-P24 and M4-P25 all claim it, so at most one of them is ever in
+  flight. M4-P18 takes that slot in wave 8.
+- **`src/spawn.ts`** is claimed by M4-P8 and M4-P22. M4-P8 takes it first.
+- **`src/commands/init.ts`** is claimed by M4-P18 and M4-P21.
+- **`src/gates/credentials.ts`** is claimed by M4-P8 and M4-P29.
+
+So the remaining ten phases after wave 8 are not ten parallel slots. The
+file-level contention above, not the agent cap, is what serialises them, and
+the wave pre-passes in delivery/plan/m4-conflict-pre-pass.md:1 are where each
+pairing is proven before dispatch.
+
+### Agent cap
+
+Two concurrent agents, per the owner's instruction recorded as DR-0044. The
+workflow cap is `min(16, CPUs - 2)` and `nproc` returns 4, so one workflow
+gives exactly two. Wave 8 is one workflow of two units, which matches.
