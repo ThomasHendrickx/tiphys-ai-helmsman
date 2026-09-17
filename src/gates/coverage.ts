@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathsIdentifySameObject } from "../path-identity.ts";
-import { cpus, loadavg } from "node:os";
 import { Script, createContext } from "node:vm";
+import { cpus, loadavg } from "node:os";
 import {
   readRegularFileIfPresent,
   refuseOpenForWrite,
