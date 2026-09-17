@@ -1,0 +1,56 @@
+{
+  "id": "M4-P14",
+  "branch": "claude/m4-p14-gate-classes",
+  "filesToTouch": [
+    "src/gates/schemas/phase-declaration.schema.json",
+    "src/gates/gate-classes.ts",
+    "gate-registry.yaml",
+    "gates.manifest.json",
+    "CLAUDE.md",
+    "roles/implementer.md",
+    "test/gate-registry.test.ts",
+    "scripts/m2-exit-test.sh"
+  ],
+  "declaredExtras": [
+    "delivery/plan/phase-declarations/m4-p14.json",
+    "witness/gate-classes-missing-declaration-red.json",
+    "witness/gate-classes-escape-needs-its-datum.json",
+    "witness/typecheck-units-derived-from-the-compiler.json",
+    "witness/gate-classes-unreadable-registry-is-error.json",
+    "witness/captures/gate-classes-missing-declaration.txt",
+    "witness/captures/gate-classes-escape-arms.txt",
+    "witness/captures/typecheck-tsc-listfiles-red.txt",
+    "witness/captures/typecheck-tsc-listfiles-green.txt"
+  ],
+  "citations": [
+    "DR-0028",
+    "DR-0029",
+    "R-041",
+    "R-043",
+    "R-044",
+    "R-094",
+    "M2-C-2",
+    "M2-C-3",
+    "M2-C-6",
+    "D-11",
+    "T-009"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}

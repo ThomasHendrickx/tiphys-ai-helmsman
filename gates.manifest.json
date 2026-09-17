@@ -184,6 +184,42 @@
       ],
       "unitLabel": "generated brief gate rows compared",
       "applicability": "required"
+    },
+    {
+      "id": "typecheck",
+      "command": [
+        "node",
+        "src/gates/gate-classes.ts",
+        "typecheck",
+        "--project",
+        "tsconfig.src.json",
+        "--project",
+        "tsconfig.test.json"
+      ],
+      "unitLabel": "source files type-checked",
+      "applicability": "required"
+    },
+    {
+      "id": "gate-classes",
+      "command": [
+        "node",
+        "src/gates/gate-classes.ts",
+        "gate-classes",
+        "--declarations",
+        "delivery/plan/phase-declarations",
+        "--registry",
+        "gate-registry.yaml"
+      ],
+      "unitLabel": "declared gate classes checked",
+      "applicability": "required",
+      "parameters": [
+        "phase"
+      ],
+      "precondition": {
+        "id": "gate-classes-branch-is-a-phase-branch",
+        "kind": "branch-matches",
+        "pattern": "claude/m[0-9]+-p[0-9]+-.*"
+      }
     }
   ],
   "destructiveCommands": [

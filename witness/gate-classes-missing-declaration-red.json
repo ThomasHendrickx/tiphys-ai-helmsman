@@ -1,0 +1,31 @@
+{
+  "id": "gate-classes-missing-declaration-red",
+  "behavior": "gate-classes-missing-declaration-red",
+  "tests": [
+    "a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  if (entry === undefined) {\n    return {\n      name,\n      ok: false,",
+      "replace": "  if (entry === undefined) {\n    return {\n      name,\n      ok: true,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  const failed = verdicts.filter((verdict) => !verdict.ok);",
+      "replace": "  const failed: ClassVerdict[] = [];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "src/gates/gate-classes.ts itself, run as a gate subprocess, whose stdout and GateResult record the named test ingests",
+    "captures": [
+      "witness/captures/gate-classes-missing-declaration.txt"
+    ],
+    "provenance": "RULE (f) BINDS THIS SPEC AND THE REASON IS WORTH STATING RATHER THAN LEAVING TO BE INFERRED: every member below touches src/gates/gate-classes.ts, which contains spawnSync, so SPAWN_GREP matches the changed file. The spawnSync belongs to this module's OTHER gate id (typecheck), not to the class check; the obligation is file-granular, so it binds here anyway and is discharged honestly rather than argued away. The capture is verbatim stdout of `node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4`, and the same command for m3-p1, taken on 2026-09-17 against this branch, in a scratch tree holding byte COPIES of the two real declarations named and a copy of this repository's gate-registry.yaml. The named test reads its asserted detail sentences OUT OF this file rather than carrying hand-written strings, so an implementation that prints something else reddens instead of a literal being quietly updated to match (CLAUDE.md red-witness rule, T-003 lesson 4). THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT, which is what makes this a class rather than one witness: the first defangs the PER-CLASS judgement so an absent disposition reads as satisfied, and the second defangs the AGGREGATION so no set of per-class verdicts can ever produce a red record."
+  }
+}

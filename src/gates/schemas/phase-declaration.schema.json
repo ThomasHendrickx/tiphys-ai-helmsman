@@ -37,6 +37,51 @@
       "items": {
         "type": "string"
       }
+    },
+    "gateClasses": {
+      "description": "DR-0029 part 2a (M4-P14). The kernel requires a PHASE to declare at least one gate in each required CLASS and never says what the command is. THE SHAPE IS DECLARED HERE AND THE SEMANTICS ARE NOT, deliberately: an absent reason on a not-applicable class, or a missing establishing phase on a not-yet-establishable one, must reach a reader as a RED gate naming the phase and the class, and a schema rejection would instead surface as the gate's `error` status, which M2-C-3 reserves for a check that could not reach a verdict. So this property admits every shape src/gates/gate-classes.ts is able to report on, and that module refuses the ones DR-0029 forbids. The property is OPTIONAL because every declaration written before this phase lacks it and a required field would make all of them fail to load, turning a red verdict into an error for a defect this schema is not the right instrument for.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "correctness": {
+          "$ref": "#/$defs/classDeclaration"
+        },
+        "scope": {
+          "$ref": "#/$defs/classDeclaration"
+        },
+        "review": {
+          "$ref": "#/$defs/classDeclaration"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "classDeclaration": {
+      "description": "One class's disposition. EITHER `gates` names one or more gate ids that assert this class, OR `status` declares an escape: `not-applicable` carrying a `reason`, or `not-yet-establishable` carrying `establishedBy`, the phase id that will establish it. DR-0029: a phase may start from nothing and may never SILENTLY have nothing, so the escape is data, it is visible, and it is carried forward.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gates": {
+          "description": "Gate ids from this repository's own gate registry that assert this class for this phase.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "description": "The declared escape, when this phase asserts no gate in this class.",
+          "type": "string",
+          "enum": ["not-applicable", "not-yet-establishable"]
+        },
+        "reason": {
+          "description": "Required by src/gates/gate-classes.ts when status is not-applicable. Not required HERE: an empty or absent reason is a RED verdict naming the class, not a document that fails to load.",
+          "type": "string"
+        },
+        "establishedBy": {
+          "description": "Required by src/gates/gate-classes.ts when status is not-yet-establishable: the phase id that will establish this class. The IOU's due date.",
+          "type": "string"
+        }
+      }
     }
   }
 }

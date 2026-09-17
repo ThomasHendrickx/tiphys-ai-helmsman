@@ -1,0 +1,32 @@
+{
+  "id": "typecheck-units-derived-from-the-compiler",
+  "behavior": "typecheck-units-derived-from-the-compiler",
+  "tests": [
+    "the typecheck gate reports units the compiler printed and reddens naming the file when one deliberate type error is introduced"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  const units = reading.files.length;",
+      "replace": "  const units = 1;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  if (reading.errors.length > 0 || run.status !== 0) {",
+      "replace": "  if (reading.errors.length > 99999) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the TypeScript compiler, spawned by src/gates/gate-classes.ts as `tsc -b <projects> --force --listFiles`, whose stdout this gate parses into a file list and a diagnostic list",
+    "captures": [
+      "witness/captures/typecheck-tsc-listfiles-red.txt",
+      "witness/captures/typecheck-tsc-listfiles-green.txt"
+    ],
+    "provenance": "RULE (f) BINDS THIS SPEC AND THE REASON IS WORTH STATING RATHER THAN LEAVING TO BE INFERRED: every member below touches src/gates/gate-classes.ts, which contains spawnSync, so SPAWN_GREP matches the changed file. Here the rule is not merely satisfied, it is the point: this gate's whole verdict is a reading of another program's stdout. Both captures are verbatim combined output of the exact command the gate runs, taken on 2026-09-17 against a scratch project of two files; the red capture carries one deliberate type error and the green capture carries two runs of the same project at different sizes. The named test reads the compiler's own diagnostic line OUT OF the red capture and asserts the gate's detail reproduces it, and derives the expected unit count from a LIVE tsc run rather than pinning a number, because the count is a property of the installed compiler's lib set. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT: the first replaces the unit count with a CONSTANT, which is exactly what plan criterion 3 forbids and which no assertion about greenness would catch, and the second defangs the DIAGNOSTIC READING so a compiler that reported an error is reported green."
+  }
+}

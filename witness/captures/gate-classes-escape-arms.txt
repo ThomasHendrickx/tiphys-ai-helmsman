@@ -1,0 +1,30 @@
+# Verbatim stdout of the gate under test, captured 2026-09-17 against
+# src/gates/gate-classes.ts on branch claude/m4-p14-gate-classes.
+# Each declaration below is a COPY of the real delivery/plan/phase-declarations/m2-p4.json
+# with ONE class disposition replaced, so the only variable between the red
+# and green arm of each pair is the datum DR-0029 requires. Nothing here is
+# hand-written.
+
+### na-no-reason
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4
+gate-classes: red (3 declared gate classes checked)
+phase M2-P4 fails 1 of 3 required gate class(es) in declarations/m2-p4.json: review: not-applicable with no recorded reason; the reason is what makes it data rather than silence
+EXIT=1
+
+### na-with-reason
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4
+gate-classes: green (3 declared gate classes checked)
+phase M2-P4 declares all 3 required gate class(es) in declarations/m2-p4.json: correctness: asserted by suite; scope: asserted by scope; review: DECLARED not-applicable, reason: M2-P4 is a harness-only change reviewed under the M2 exit test; 1 class(es) satisfied by a DECLARED ESCAPE rather than a gate, which a reviewer signs off rather than the gate refusing: review
+EXIT=0
+
+### nye-no-phase
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4
+gate-classes: red (3 declared gate classes checked)
+phase M2-P4 fails 1 of 3 required gate class(es) in declarations/m2-p4.json: correctness: not-yet-establishable naming no establishing phase; an IOU with no due date is a waiver, which DR-0029 does not grant
+EXIT=1
+
+### nye-with-phase
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4
+gate-classes: green (3 declared gate classes checked)
+phase M2-P4 declares all 3 required gate class(es) in declarations/m2-p4.json: correctness: DECLARED not-yet-establishable, to be established by M4-P20; scope: asserted by scope; review: asserted by check-dual-review; 1 class(es) satisfied by a DECLARED ESCAPE rather than a gate, which a reviewer signs off rather than the gate refusing: correctness
+EXIT=0

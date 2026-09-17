@@ -1024,5 +1024,9 @@
   "cutover-entry-retirement-nonzero-exit-with-nothing-unported-is-unreachable": "a shape-clean retirement report exiting nonzero with nothing unported is unreachable",
   "cutover-entry-status-nonzero-exit-with-everything-clean-is-unreachable": "a shape-clean status exiting nonzero with everything clean is unreachable",
   "cutover-entry-switch-row-count-is-fixed-at-five": "a status report with the wrong number of SWITCH lines is unreachable",
-  "cutover-entry-shallow-clone-cannot-date-arm-d": "a shallow clone cannot date arm d and says so, rather than reporting not-yet"
+  "cutover-entry-shallow-clone-cannot-date-arm-d": "a shallow clone cannot date arm d and says so, rather than reporting not-yet",
+  "gate-classes-missing-declaration-red": "a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green",
+  "gate-classes-escape-needs-its-datum": "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied",
+  "typecheck-units-derived-from-the-compiler": "the typecheck gate reports units the compiler printed and reddens naming the file when one deliberate type error is introduced",
+  "gate-classes-unreadable-registry-is-error": "gate-classes reports error rather than green when the registry that defines the legal gate ids cannot be read"
 }
