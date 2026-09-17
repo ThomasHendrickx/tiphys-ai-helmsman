@@ -1,0 +1,24 @@
+{
+  "id": "M4-P21",
+  "branch": "claude/m4-p21-cross-environment-lease",
+  "filesToTouch": [
+    "src/exclusion.ts",
+    "src/lock.ts",
+    "src/commands/lock.ts",
+    "src/commands/init.ts",
+    "test/cross-environment-lock.test.ts",
+    "test/lock.test.ts",
+    "witness/"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p21.json",
+    "delivery/work-history/m4-p21.md"
+  ],
+  "citations": ["DR-0027", "DR-0031", "T-009", "T-032", "C-1", "C-2", "C-3"],
+  "gateClasses": {
+    "correctness": { "gates": ["suite", "typecheck", "red-witness"] },
+    "scope": { "gates": ["scope"] },
+    "review": { "gates": ["check-dual-review"] }
+  }
+}
