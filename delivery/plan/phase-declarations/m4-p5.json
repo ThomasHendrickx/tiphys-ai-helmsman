@@ -1,0 +1,48 @@
+{
+  "id": "M4-P5",
+  "branch": "claude/m4-p5-plugin-workspace",
+  "filesToTouch": [
+    "plugin/package.json",
+    "plugin/tsconfig.json",
+    "plugin/src/adapter.ts",
+    "plugin/src/index.ts",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.src.json",
+    "test/plugin-package.test.ts",
+    "test/plugin-adapter.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p5.json",
+    "delivery/work-history/m4-p5.md"
+  ],
+  "citations": [
+    "DR-0040",
+    "DR-0036",
+    "DR-0027",
+    "DR-0031",
+    "M4-D-05",
+    "C-1",
+    "C-2",
+    "C-3"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}

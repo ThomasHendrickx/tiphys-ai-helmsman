@@ -1,0 +1,31 @@
+{
+  "id": "doctor-lock-expiry-boundary-agrees-with-the-module",
+  "behavior": "doctor-lock-expiry-boundary-agrees-with-the-module",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "the lock check and the lock module agree at the inclusive expiry boundary"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/lock.ts",
+      "find": "export function expiryHasPassed(expiresAt: string, nowMs: number): boolean {\n  return Date.parse(expiresAt) <= nowMs;",
+      "replace": "export function expiryHasPassed(expiresAt: string, nowMs: number): boolean {\n  return Date.parse(expiresAt) < nowMs;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (expiryHasPassed(expiresAt, nowMs)) {",
+      "replace": "  if (Date.parse(expiresAt) < nowMs) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the tiphys CLI: `node bin/tiphys.ts doctor` over a fleet home",
+    "captures": [
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. STATED PLAINLY BECAUSE IT WOULD OTHERWISE READ AS A STRETCH: this witness's named test is a UNIT assertion over `lockCheckFor` and `isExpired` and consumes no program output of its own, because `Date.now()` cannot be driven to a chosen millisecond from outside a process and the boundary is therefore unreachable through the CLI. Rule (f) binds anyway, from member 1's file, and the capture cited is the one recording the verdict this boundary decides. The two members are the two failure modes criterion 2 names: member 0 moves the shared comparison off the inclusive boundary, and member 1 leaves it alone and gives doctor a SECOND comparison that disagrees with it by exactly one millisecond."
+  }
+}

@@ -1,0 +1,43 @@
+M4-P17 capture: tiphys doctor over a post-reclaim fleet.
+Taken 2026-09-17 on node v26.6.0, git version 2.43.0.
+Each block is the CHECK line the command printed and the exit code of the
+same invocation. Paths are absent from every recorded line by design, so
+a test can compare a live line against one of these byte for byte.
+
+== remote: pushed and in sync ==
+CHECK remote PASS in sync with origin/main (0 ahead, 0 behind) after fetching origin
+exit=0
+
+== branches: one pushed branch, merged ==
+CHECK branches PASS 1 pushed branch(es), none unmerged into origin/main
+exit=0
+
+== tasks: an empty fleet ==
+CHECK tasks PASS 0 open of 0
+exit=0
+
+== remote: two commits that have never been pushed ==
+CHECK remote WARN 2 unpushed, 0 behind origin/main
+exit=0
+
+== branches: a pushed branch that is not merged ==
+CHECK branches WARN 1 of 2 pushed branch(es) unmerged into origin/main: origin/task/t-unmerged
+exit=0
+
+== tasks: three tasks, one of them open ==
+CHECK tasks WARN 1 open of 3 (t-open)
+exit=0
+
+== tasks: one open, three whose state cannot be established ==
+CHECK tasks WARN 1 open of 4 (t-real); 3 not established: t-dirmeta (meta.json is a directory, not a regular file, so it was not opened), t-dirturn (turn-end is a directory, not a regular file, so it was not opened), t-nometa (meta.json is absent)
+exit=0
+
+== lock: a lease that expired at a fixed past instant ==
+CHECK lock FAIL lease held by orchestrator-p17 EXPIRED at 2026-01-01T00:00:00.000Z; a lease that has lapsed is no longer holding anything, so whatever it was protecting is unprotected
+exit=1
+
+== remote: the fetch itself fails ==
+CHECK remote FAIL git fetch origin did not succeed, so this fleet's push target could not be reached and nothing about it is established: fatal: '<LAB>/absent.git' does not appear to be a git repository
+exit=1
+(the absolute path of the absent remote is rendered <LAB>; nothing else
+in this line was altered)

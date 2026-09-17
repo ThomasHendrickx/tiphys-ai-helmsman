@@ -1,30 +1,29 @@
 {
-  "id": "M4-P17",
-  "branch": "claude/m4-p17-doctor-post-reclaim",
+  "id": "M4-P28",
+  "branch": "claude/m4-p28-coverage-instrument",
   "filesToTouch": [
-    "src/commands/doctor.ts",
-    "src/lock.ts",
-    "src/pool.ts",
-    "test/doctor.test.ts",
-    "witness/"
+    "src/gates/coverage.ts",
+    "test/coverage-gate.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",
-    "delivery/plan/phase-declarations/m4-p17.json",
-    "delivery/work-history/m4-p17.md"
+    "delivery/plan/phase-declarations/m4-p28.json",
+    "delivery/work-history/m4-p28.md"
   ],
   "citations": [
-    "DR-0029",
     "DR-0027",
     "DR-0031",
+    "T-009",
     "C-1",
-    "C-2"
+    "C-2",
+    "C-3"
   ],
   "gateClasses": {
     "correctness": {
       "gates": [
         "suite",
-        "typecheck"
+        "typecheck",
+        "red-witness"
       ]
     },
     "scope": {

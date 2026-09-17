@@ -1,0 +1,31 @@
+{
+  "id": "doctor-tasks-unestablished-is-not-a-pass",
+  "behavior": "doctor-tasks-unestablished-is-not-a-pass",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a task whose state cannot be established is named, never silently skipped"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (unusable.length > 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      unusable.push(`${entry.name} (meta.json ${unestablishedBecause(metaFile, meta)})`);",
+      "replace": "      total -= 1;"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "the tiphys CLI: `node bin/tiphys.ts doctor` over a fleet home",
+    "captures": [
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. The two members are the two shapes of the defect this criterion exists to stop, and they are structurally different: member 0 keeps the classification and drops the REPORT of it, so a fleet the check could not examine prints the same words as a healthy one; member 1 keeps the report and drops the SUBJECT, so the unusable candidates never enter the total and the count lies about how many tasks were looked at. The kernel carries a live instance of the second shape at the retention check, tracked at delivery/verification/tracked-doctor-charter-selection.md:1."
+  }
+}
