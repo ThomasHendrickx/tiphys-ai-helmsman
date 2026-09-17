@@ -1683,10 +1683,15 @@ test(
     assertNothingWasCreated(scratch, "t-needrole", before, "unmet requirement");
 
     /*
-     * THE OTHER DIRECTION, and the adapter differs in exactly one thing:
-     * the same declaration, with --role supplied, reaches launch. Without
-     * this arm the assertions above are satisfied by a kernel that refuses
-     * every spawn.
+     * THE OTHER DIRECTION, and the spawn differs in exactly one thing: the
+     * same declaration, with a role SUPPLIED, reaches launch. Without this
+     * arm the assertions above are satisfied by a kernel that refuses every
+     * spawn.
+     *
+     * The value is supplied as a spawnTask option rather than as `--role`,
+     * because `tiphys spawn` reaches exactly one adapter until M4-P4 ships
+     * --adapter and the shipped one declares `requires: []`. The flag's own
+     * path from argv into the record is covered by the CLI test below.
      */
     let seenRole: string | undefined;
     const observing: TestAdapter = {
@@ -1694,7 +1699,14 @@ test(
       requires: ["role"],
       async launch(request: TestRequest): Promise<TestOutcome> {
         seenRole = request.role;
-        writeFileSync(request.recordPath, `${JSON.stringify({ adapter: "role-requiring-test-adapter", launchedAt: new Date().toISOString() }, null, 2)}\n`);
+        writeFileSync(
+          request.recordPath,
+          `${JSON.stringify(
+            { adapter: "role-requiring-test-adapter", launchedAt: new Date().toISOString() },
+            null,
+            2,
+          )}\n`,
+        );
         invokeHook(request, 0);
         return { kind: "completed", exitCode: 0 };
       },
