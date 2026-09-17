@@ -1,0 +1,31 @@
+{
+  "id": "gate-cli-red-witness-report-survives-stdio",
+  "behavior": "gate-cli-red-witness-report-survives-stdio",
+  "tests": [
+    "the red-witness gate CLI delivers a report larger than a parent's stdio buffer without truncating it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "  process.exitCode = main(process.argv.slice(2));",
+      "replace": "  process.exit(main(process.argv.slice(2)));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "  // witness/captures/m4-p29-gate-cli-stdio.txt.\n  process.exitCode = main(process.argv.slice(2));",
+      "replace": "  // witness/captures/m4-p29-gate-cli-stdio.txt.\n  const status = main(process.argv.slice(2));\n  process.exitCode = status;\n  process.exit();"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/red-witness.ts (the gate CLI under test), which itself spawns git through the harness and reads what it prints",
+    "captures": [
+      "witness/captures/m4-p29-gate-cli-stdio.txt"
+    ],
+    "provenance": "The behaviour under test is what the gate CLI itself prints, and rule (f) binds this witness because the mutated file matches the spawn derivation. The cited capture is REAL output of these three gate CLIs taken 2026-09-17 on node v26.6.0 in the kernel container, with the commands and the before/after byte counts recorded beside each block. The named test reproduces the red-witness-error-stdout block live before asserting anything about a report that exceeds a stdio buffer; that arm is chosen because it is the only one of this gate stdout lines carrying no millisecond figure, so a byte comparison against the capture is a guard rather than a flake. Nothing in the assertions is a hand-written string chosen to match the implementation (CLAUDE.md red-witness rule, strong form; standing warning 10)."
+  }
+}

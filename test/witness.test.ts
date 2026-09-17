@@ -31,9 +31,48 @@ const gateModule = (await import(
   new URL("../src/gates/red-witness.ts", import.meta.url).href
 )) as typeof import("../src/gates/red-witness.ts");
 
+const resultModule = (await import(
+  new URL("../src/gates/result.ts", import.meta.url).href
+)) as typeof import("../src/gates/result.ts");
+
 const { deriveTextAssertions, parseTapStream, makeClone, SPAWN_GREP } = runModule;
 const { validateWitnessSpecDocument } = specModule;
 const { runRedWitnessGate } = gateModule;
+/** The SHIPPED exit-code table, so criterion 3 is a round trip (M4-P29). */
+const { exitCodeForStatus, statusForExitCode } = resultModule;
+type GateStatusName = Parameters<typeof exitCodeForStatus>[0];
+
+/**
+ * M4-P29 rule (f): the cited capture, and the block-extractor the named test
+ * uses to reproduce it live. The file is REAL captured output of the three
+ * gate CLIs this phase changed (witness/captures/m4-p29-gate-cli-stdio.txt),
+ * not a hand-written shape.
+ *
+ * THE PATH IS BOUND ONCE AND READ THROUGH THE BINDING, which is the spelling
+ * test/credentials-gate.test.ts and test/suite-gate.test.ts already use, and
+ * the choice is recorded rather than left to look accidental. `deriveTextAssertions`
+ * (src/witness/run.ts:610) flags a file as text-asserting from an INLINE
+ * document-path literal inside the read call; the same read through a bound
+ * `fileURLToPath(new URL(...))` is not flagged. Measured both ways on this
+ * file. Writing it inline flipped the whole file to text-asserting and
+ * reddened an unrelated stored witness that declares one member, so the
+ * spelling is load-bearing and the derivation's blindness to the bound form
+ * is a real gap, recorded in the work history rather than exploited quietly.
+ */
+const gateStdioCapturePath = fileURLToPath(
+  new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
+);
+
+function capturedGateStdio(block: string): string {
+  const body = readFileSync(gateStdioCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
 
 const gateEntryPath = fileURLToPath(
   new URL("../src/gates/red-witness.ts", import.meta.url),
@@ -2902,4 +2941,189 @@ test("a member this phase EDITED that touches a spawning changed file still owes
   const outcome = runGate(fixture);
   assert.equal(outcome.result.status, "red", reasonsOf(outcome));
   assert.match(outcome.result.detail, /rule \(f\): the phase diff touches src\/spare\.ts/);
+});
+
+// ---------------------------------------------------------------------------
+// M4-P29: the CLI entry point must not truncate its own report.
+// ---------------------------------------------------------------------------
+
+/**
+ * A head whose report is far larger than any stdio buffer a parent gives a
+ * gate subprocess, built out of the gate's OWN coverage reason so the bytes
+ * are the gate's and not a fixture's.
+ *
+ * The size is bought with PATH LENGTH rather than file count on purpose:
+ * `runRedWitnessGate` runs one `git show` per changed file for the rule (f)
+ * spawn derivation, so 200 files at roughly 2,180 bytes of path is about a
+ * second while the 900 short-path files that produce the same report size
+ * cost nearly four.
+ */
+function oversizeReportFixture(): Fixture {
+  const segment = "d".repeat(240);
+  const directory = `src/${Array.from({ length: 8 }, () => segment).join("/")}`;
+  const pad = "q".repeat(230);
+  const head: Record<string, string> = {};
+  for (let index = 0; index < 200; index += 1) {
+    head[`${directory}/f${String(index).padStart(4, "0")}${pad}.ts`] =
+      `export const x = ${String(index)};\n`;
+  }
+  return makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": fixtureBehaviors({}),
+      "src/a.ts": "export const a = 1;\n",
+    },
+    head,
+  );
+}
+
+test("the red-witness gate CLI delivers a report larger than a parent's stdio buffer without truncating it", () => {
+  /* CRITERION 2 (M4-P29), member one of three.
+   *
+   * THE DANGEROUS STATE IS `process.exit(main(...))` AT THE ENTRY POINT, not
+   * an absent feature: a write to a pipe or a socket is QUEUED rather than
+   * completed, and `process.exit` ends the process without draining the
+   * queue. The exit code survives, so the loss is silent and what is lost is
+   * evidence.
+   *
+   * Both sides of the comparison are the gate's OWN captured output. The
+   * expected length is read out of the result record the gate wrote to a
+   * FILE (which does not truncate, and is why this defect survives casual
+   * testing); the observed length is what this parent received over
+   * `spawnSync`'s stdio. Nothing here is a hand-written string.
+   *
+   * `spawnSync` is the registry runner's own invocation (src/gates/run.ts:1528),
+   * so this arm is the runner's real path. Measured at the pre-fix parent
+   * commit on node v26.6.0 in this container: 434,510 bytes of detail,
+   * 146,176 bytes delivered, three runs identical. The ceiling is the
+   * SOCKET send buffer (`spawnSync` gives the child socketpairs, not pipes;
+   * /proc/sys/net/core/wmem_default reads 212992 here), which is why this
+   * fixture is sized well past 400 KiB rather than just past the 64 KiB
+   * pipe buffer the credentials arm uses.
+   */
+  // Rule (f) first: the capture this witness cites is reproduced LIVE, at the
+  // size that fits in any buffer, before anything is asserted about a report
+  // that does not. If the gate's rendering changes, this fails here rather
+  // than silently changing what the oversize comparison means.
+  const recorded = capturedGateStdio("red-witness-error-stdout");
+  const smallDir = mkdtempSync(join(tmpdir(), "rw-capture-"));
+  const smallRun = spawnSync(
+    process.execPath,
+    [gateEntryPath, "--result", join(smallDir, "result.json")],
+    { cwd: smallDir, encoding: "utf8", timeout: 120000 },
+  );
+  assert.equal(smallRun.status, 21, smallRun.stderr);
+  assert.equal(smallRun.stdout, recorded);
+  rmSync(smallDir, { recursive: true, force: true });
+
+  const fixture = oversizeReportFixture();
+  const evidenceDir = mkdtempSync(join(tmpdir(), "rw-oversize-ev-"));
+  const resultPath = join(evidenceDir, "result.json");
+  const child = spawnSync(
+    process.execPath,
+    [
+      gateEntryPath,
+      "--result",
+      resultPath,
+      "--evidence",
+      evidenceDir,
+      "--base",
+      fixture.base,
+      "--head",
+      fixture.head,
+    ],
+    {
+      cwd: fixture.dir,
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: 120000,
+    },
+  );
+  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
+    status: string;
+    detail: string;
+  };
+  // The fixture must actually be oversize, or this test is green against a
+  // report that never needed draining: that is the "exercises a path where
+  // the hazard cannot occur" shape the red-witness rule forbids.
+  assert.ok(
+    record.detail.length > 400 * 1024,
+    `fixture too small to exercise the hazard: detail is ${String(record.detail.length)} bytes`,
+  );
+  const expected = `red-witness: ${record.status} (${record.detail})\n`;
+  const observed = child.stdout ?? "";
+  assert.equal(
+    Buffer.byteLength(observed),
+    Buffer.byteLength(expected),
+    `the gate wrote ${String(Buffer.byteLength(expected))} bytes and the parent ` +
+      `received ${String(Buffer.byteLength(observed))}`,
+  );
+  assert.equal(observed, expected);
+  // The verdict is unchanged by the fix, which is criterion 3 in miniature:
+  // the exit code always survived, and that is why the loss was silent.
+  assert.equal(child.status, 1);
+  assert.equal(record.status, "red");
+  rmSync(evidenceDir, { recursive: true, force: true });
+});
+
+test("every red-witness gate CLI arm exits the code its own result record implies", () => {
+  /* CRITERION 3 (M4-P29) for this entry point. The assertion is a ROUND TRIP
+   * against the shipped table rather than a list of literals, so it holds for
+   * every arm this gate can reach and cannot be satisfied by a table that
+   * agrees with a hand-copied expectation.
+   *
+   * A second property is asserted here because `process.exitCode` and
+   * `process.exit` differ in it: `process.exit` terminates whatever is
+   * pending, while `process.exitCode` lets the process end normally, so a
+   * lingering handle would HANG instead of exiting. `spawnSync`'s timeout
+   * turns that into a signal, and `signal` is asserted null for every arm.
+   */
+  // The green arm is `adderFixture`, the file's existing full-harness green,
+  // and NOT a diff that touches nothing: M2-C-2 makes green with zero units
+  // an ERROR, so a cheap no-op fixture reports `error` and would have made
+  // this arm assert the same thing twice. Measured while writing this test.
+  const green = adderFixture();
+  const red = makeFixture(
+    {
+      "gates.manifest.json": fixtureManifest([]),
+      "test/behaviors.json": fixtureBehaviors({}),
+      "src/a.ts": "export const a = 1;\n",
+    },
+    { "src/a.ts": "export const a = 2;\n" },
+  );
+  const arms: { name: string; args: string[]; cwd: string }[] = [
+    {
+      name: "green",
+      args: ["--base", green.base, "--head", green.head],
+      cwd: green.dir,
+    },
+    {
+      name: "red",
+      args: ["--base", red.base, "--head", red.head],
+      cwd: red.dir,
+    },
+    // error: a required run parameter absent (M2-C-3).
+    { name: "error", args: [], cwd: red.dir },
+  ];
+  const seen: string[] = [];
+  for (const arm of arms) {
+    const evidenceDir = mkdtempSync(join(tmpdir(), "rw-arm-ev-"));
+    const resultPath = join(evidenceDir, "result.json");
+    const child = spawnSync(
+      process.execPath,
+      [gateEntryPath, "--result", resultPath, "--evidence", evidenceDir, ...arm.args],
+      { cwd: arm.cwd, encoding: "utf8", timeout: 120000 },
+    );
+    assert.equal(child.signal, null, `${arm.name}: the CLI did not exit on its own`);
+    const record = JSON.parse(readFileSync(resultPath, "utf8")) as { status: string };
+    assert.equal(
+      child.status,
+      exitCodeForStatus(record.status as GateStatusName),
+      `${arm.name}: exit ${String(child.status)} against recorded status ${record.status}`,
+    );
+    assert.equal(statusForExitCode(child.status as number), record.status);
+    seen.push(record.status);
+    rmSync(evidenceDir, { recursive: true, force: true });
+  }
+  assert.deepEqual(seen, ["green", "red", "error"]);
 });
