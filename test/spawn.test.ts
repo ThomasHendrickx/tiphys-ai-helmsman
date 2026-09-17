@@ -286,6 +286,9 @@ test("spawn runs the payload in the task worktree and writes meta and brief", (t
     "baseSha",
     "branch",
     "createdAt",
+    // M4-P8 step 6: every spawn records its credential decision in the file
+    // the kernel already owns, so this key set gains one name.
+    "credentials",
     "id",
     "project",
     "shape",
@@ -711,6 +714,8 @@ test("a throw out of the executor adapter is reported without rollback and names
     exec: "/bin/true",
     deadlineSeconds: undefined,
     offline: false,
+    /* M4-P8: payloadClass is a required SpawnOptions field with no default. */
+    payloadClass: "project",
     adapter: {
       name: "throwing-test-adapter",
       requires: [],
@@ -864,6 +869,9 @@ async function spawnWithAdapter(
     exec: "/bin/true",
     deadlineSeconds: undefined,
     offline: false,
+    /* M4-P8: required, no default; a test that wants the other class or an
+       extension passes it through `extra`, which is spread after this. */
+    payloadClass: "project",
     ...extra,
     adapter,
   });

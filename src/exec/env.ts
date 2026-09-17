@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { GH_TOKEN_VARIABLES, isDangerousEnvName } from "../gates/credentials.ts";
 import { refuseOpenForWrite, runStep } from "../task.ts";
 
 /**
@@ -93,6 +94,114 @@ export const DEFAULT_CHILD_ENV_ALLOWLIST: readonly string[] = [
   "GIT_COMMITTER_DATE",
 ];
 
+/**
+ * ONE PER-INVOCATION ALLOWLIST EXTENSION, AND THE REASON IT WAS GRANTED
+ * (M4-P8 step 3). The reason is DATA, not a comment beside the call site:
+ * a widening whose justification lives in a source comment is invisible to
+ * the record a later reader opens, and "an extension with no recorded
+ * reason" is one of this phase's declared hazard items. An empty reason is
+ * therefore a REFUSAL and never a permitted shorthand.
+ */
+export interface ChildEnvExtension {
+  /** Exact variable name, same semantics as a default-allowlist entry. */
+  name: string;
+  /** Why this invocation may carry it. Non-empty; blank is refused. */
+  reason: string;
+}
+
+/**
+ * What an extension entry may be written as.
+ *
+ * THE BARE STRING IS THE PRE-M4-P8 FORM AND IT IS KEPT DELIBERATELY. The
+ * field has existed since M2-P8 as `readonly string[]` and the kernel's own
+ * tests model a widened allowlist with it (test/credentials-gate.test.ts).
+ * A string carries NO reason, so it cannot satisfy the audited route: the
+ * route's entry point is `SpawnOptions.extraAllowlist`, which is typed
+ * `ChildEnvExtension[]` and cannot express one. Both forms are refused
+ * identically for a dangerous NAME, which is the safety half; only the
+ * object form can carry the audit half.
+ */
+export type ChildEnvExtensionEntry = string | ChildEnvExtension;
+
+/** The variable name an entry names, whichever form it is written in. */
+export function extensionName(entry: ChildEnvExtensionEntry): string {
+  return typeof entry === "string" ? entry : entry.name;
+}
+
+/** The recorded reason, or undefined for the bare-string form. */
+export function extensionReason(
+  entry: ChildEnvExtensionEntry,
+): string | undefined {
+  return typeof entry === "string" ? undefined : entry.reason;
+}
+
+/**
+ * REFUSE AN EXTENSION THE CHILD MUST NOT CARRY (M4-P8 step 4, criteria 3
+ * and 4).
+ *
+ * Until this phase `buildChildEnv` spread the extension into the copy loop
+ * unconditionally, so an extension naming `GH_TOKEN` crossed into a child
+ * and the `credential-scrub` gate stayed green, because that gate builds
+ * its OWN environment with no extension and probes the CONSTRUCTION rather
+ * than a real spawn. The allowlist is still the defense and it gains no
+ * name here; what this adds is that WIDENING it per invocation is checked
+ * against the same vocabulary the gate walks.
+ *
+ * ONE VOCABULARY, NOT TWO. `GH_TOKEN_VARIABLES` and `isDangerousEnvName`
+ * are IMPORTED from src/gates/credentials.ts rather than copied here or
+ * moved: plan step 4 offers move-or-re-export and requires the choice be
+ * recorded, and duplicating the walked vocabulary would create two lists
+ * that drift silently in the direction that matters. The import makes
+ * src/exec/env.ts and src/gates/credentials.ts a cycle, which is this
+ * repository's existing shape rather than a new one (thirteen cycles in
+ * `src/` at this branch's merge base, one of them src/spawn.ts to
+ * src/adapters/load.ts and back). The one rule the cycle imposes: NOTHING
+ * in this module may read an imported binding at module-evaluation time,
+ * only inside a function body, or the module loaded second hits the
+ * temporal dead zone. `test/payload-credentials.test.ts` imports both
+ * modules in both orders so that rule is checked rather than remembered.
+ *
+ * The two refusals are ORDERED name-first: a dangerous name is refused
+ * whatever reason accompanies it, so a persuasive reason can never buy a
+ * credential into a child.
+ */
+export function refuseExtraAllowlist(
+  entries: readonly ChildEnvExtensionEntry[],
+): string | undefined {
+  for (const entry of entries) {
+    const name = extensionName(entry);
+    if (typeof name !== "string" || name.length === 0) {
+      return (
+        `an allowlist extension entry names no variable ` +
+        `(${JSON.stringify(entry)}); every entry carries an exact name and a reason`
+      );
+    }
+    if (GH_TOKEN_VARIABLES.includes(name)) {
+      return (
+        `the allowlist extension entry ${name} is a documented gh token variable ` +
+        `and may never cross into a child environment; the default allowlist ` +
+        `gains no credential name and neither may an extension`
+      );
+    }
+    if (isDangerousEnvName(name)) {
+      return (
+        `the allowlist extension entry ${name} is in the walked credential- or ` +
+        `code-execution-capable vocabulary (src/gates/credentials.ts) and may ` +
+        `never cross into a child environment`
+      );
+    }
+    const reason = extensionReason(entry);
+    if (reason !== undefined && reason.trim().length === 0) {
+      return (
+        `the allowlist extension entry ${name} carries no reason; an extension ` +
+        `is an audited widening and a blank reason records nothing a later ` +
+        `reader could check`
+      );
+    }
+  }
+  return undefined;
+}
+
 /** One redirected credential-store pointer. */
 export interface CredentialRedirection {
   /** The environment variable name. */
@@ -128,11 +237,11 @@ export function scrubRoot(taskDir: string): string {
  * allowlist, the per-invocation extension, and the redirected pointers.
  */
 export function permittedChildEnvNames(
-  extraAllowlist: readonly string[] = [],
+  extraAllowlist: readonly ChildEnvExtensionEntry[] = [],
 ): Set<string> {
   return new Set([
     ...DEFAULT_CHILD_ENV_ALLOWLIST,
-    ...extraAllowlist,
+    ...extraAllowlist.map(extensionName),
     ...CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => redirection.name),
     "GIT_CONFIG_NOSYSTEM",
   ]);
@@ -150,8 +259,12 @@ export interface ChildEnvSpec {
   /**
    * Per-invocation allowlist extension (step 9's only obligation to the
    * future). Exact names, same semantics as the default list.
+   *
+   * SINCE M4-P8 EVERY ENTRY IS CHECKED before anything is staged: see
+   * `refuseExtraAllowlist` for the two refusals and for why the bare-string
+   * form is still accepted here while the audited route cannot produce one.
    */
-  extraAllowlist?: readonly string[];
+  extraAllowlist?: readonly ChildEnvExtensionEntry[];
 }
 
 export type ChildEnvResult =
@@ -178,6 +291,16 @@ export type ChildEnvResult =
  * credential path, so there is no partial success here (fail closed).
  */
 export function buildChildEnv(spec: ChildEnvSpec): ChildEnvResult {
+  // THE EXTENSION IS CHECKED FIRST, BEFORE ANY DIRECTORY IS MADE (M4-P8
+  // criteria 3 and 4). A refusal that had already staged a scrub root would
+  // leave the caller's rollback holding something this call created, and
+  // the whole point of refusing here is that a rejected widening costs
+  // nothing and changes nothing.
+  const refusal = refuseExtraAllowlist(spec.extraAllowlist ?? []);
+  if (refusal !== undefined) {
+    return { ok: false, reason: refusal };
+  }
+
   const made = runStep(`creating the scrub root ${spec.scrubDir}`, () =>
     mkdirSync(spec.scrubDir, { recursive: true }),
   );
@@ -188,7 +311,7 @@ export function buildChildEnv(spec: ChildEnvSpec): ChildEnvResult {
   const env: Record<string, string> = {};
   const names = [
     ...DEFAULT_CHILD_ENV_ALLOWLIST,
-    ...(spec.extraAllowlist ?? []),
+    ...(spec.extraAllowlist ?? []).map(extensionName),
   ];
   for (const name of names) {
     const value = spec.parentEnv[name];
