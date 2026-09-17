@@ -2,21 +2,21 @@
   "id": "doctor-retention-not-applicable-without-a-charter",
   "behavior": "doctor-retention-not-applicable-without-a-charter",
   "tests": [
-    "doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created"
+    "doctor promotes a not-applicable retention to FAIL under --for full and leaves it a WARN under every profile below, in a fleet that tiphys init just created"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "        condition: \"retention-not-applicable\",",
-      "replace": "        condition: \"retention-undeclared\","
+      "find": "    \"retention-undeclared\",\n    \"retention-not-applicable\",\n",
+      "replace": "    \"retention-undeclared\",\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    \"retention-undeclared\",",
-      "replace": "    \"retention-undeclared\",\n    \"retention-not-applicable\","
+      "find": "  generic: [],",
+      "replace": "  generic: [\"retention-not-applicable\"],"
     },
     {
       "kind": "mutation",
@@ -32,6 +32,6 @@
     "captures": [
       "witness/captures/doctor-git-check-ignore-resolution.txt"
     ],
-    "provenance": "Rule (f) is derived per FILE: this witness mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms this test guards return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the test asserts that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per way the fix can be undone: folding the new condition id back into the promoted one (the original defect), promoting the new condition in the profile table instead (same outcome, different file region), and turning the not-applicable verdict into a silent PASS (the SC-011 shape the split must not reintroduce)."
+    "provenance": "Rule (f) is derived per FILE: every member below mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms these tests guard return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the tests assert that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per way the promotion can be undone: the condition removed from the `full` list (the state M4-P30 reversed, and the guard that cannot go red), the condition still in the table but attached to a profile below `full` (the promotion inverted rather than deleted, which reddens the arm that says a fresh fleet stays usable below full), and the not-applicable verdict turned into a silent PASS, which defeats the promotion without touching the table at all because only a WARN is ever promoted."
   }
 }

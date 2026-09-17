@@ -448,29 +448,49 @@ test("doctor FAILs naming a declared retention path that does not exist, and --f
   assert.equal(full.status, 1);
 });
 
-test("doctor reports retention not applicable, never FAIL under --for full, in a fleet that tiphys init just created", (t) => {
-  /* THE REAL USER PATH, and the one fix round 1 broke: install the kernel,
-     `tiphys init`, `tiphys doctor --for full`. init writes charter/.gitkeep and
-     no charter document, because charter authorship is an owner duty
-     (delivery/intake/orchestrated-delivery-v1.md:224), so folding "no charter"
-     into `retention-undeclared` made the promoted condition fire on every fresh
-     fleet. Measured: it failed step A2 of scripts/m1-exit-test.sh.
-     BOTH HALVES ARE ASSERTED, because a fix that only silences the FAIL would
-     reintroduce the SC-011 vacuity one door along: the line must NOT be FAIL
-     under `full`, and it must NOT be PASS under any profile. */
-  /* WHY THIS CAPTURE IS CITED HERE (red-witness rule (f)). The harness derives
-     the capture obligation per FILE: this witness mutates
-     src/commands/doctor.ts, and that file spawns `git check-ignore -q` to
-     reach its other retention verdicts. The arms THIS test guards must return
-     BEFORE that spawn, and the captured contract is what makes that a checkable
-     statement rather than an assumption: the three verdicts downstream of it
-     ("git-ignored", "does not exist", "present and tracked") are asserted
-     absent below, and the capture is where a reader learns those are the
-     verdicts the git-consulting loop produces. */
-  const captured = readFileSync(
+/*
+ * THE CHARTERLESS FLEET UNDER `full` (M4-P30 criteria 5 and 6).
+ *
+ * THIS TEST IS THE REVERSE OF THE ONE IT REPLACES, and the reversal is the
+ * phase. What stood here asserted that `--for full` must NEVER promote a
+ * not-applicable retention, because M3-P8 fix round 1 had folded "no charter"
+ * into `retention-undeclared` and thereby failed step A2 of
+ * scripts/m1-exit-test.sh on every freshly initialized fleet. Fix round 2 split
+ * the condition in two and left BOTH unpromoted under `full`.
+ *
+ * WHAT THAT COST, MEASURED ON THE KERNEL'S OWN FLEET HOME RATHER THAN ARGUED:
+ * a fleet with a configured remote, a cloned project and NO charter document
+ * printed thirteen CHECK lines, ZERO FAIL lines and exited 0 under
+ * `--for full` (delivery/evidence/m4-fleet-bringup/bringup.md:1, record
+ * `C5.1-arm5-before-charter-emptied`). `tiphys doctor --for full` exiting 0 was
+ * therefore not evidence that a charter existed, which is a guard that cannot
+ * go red against the one state it is read for.
+ *
+ * THE SPLIT SURVIVES THE PROMOTION, and that is what the sibling test below
+ * asserts: `retention-not-applicable` and `retention-undeclared` keep separate
+ * ids and separate detail lines, so promoting both does not make "nobody has
+ * written a charter yet" and "somebody put the wrong YAML in charter/" print
+ * one sentence.
+ *
+ * WHY THIS CAPTURE IS CITED HERE (red-witness rule (f)). The harness derives
+ * the capture obligation per FILE: this witness mutates
+ * src/commands/doctor.ts, and that file spawns `git check-ignore -q` to reach
+ * its other retention verdicts. The arms THIS test guards must return BEFORE
+ * that spawn, and the captured contract is what makes that a checkable
+ * statement rather than an assumption: the three verdicts downstream of it
+ * ("git-ignored", "does not exist", "present and tracked") are asserted absent
+ * below, and the capture is where a reader learns those are the verdicts the
+ * git-consulting loop produces.
+ */
+function gitCheckIgnoreCapture(): string {
+  return readFileSync(
     join(repoRoot, "witness", "captures", "doctor-git-check-ignore-resolution.txt"),
     "utf8",
   );
+}
+
+test("doctor promotes a not-applicable retention to FAIL under --for full and leaves it a WARN under every profile below, in a fleet that tiphys init just created", (t) => {
+  const captured = gitCheckIgnoreCapture();
   assert.match(captured, /unignored-path: git check-ignore -q -- \S+\n\s*exit 1/);
   assert.match(captured, /ignored-path: git check-ignore -q -- \S+\n\s*exit 0/);
 
@@ -485,39 +505,127 @@ test("doctor reports retention not applicable, never FAIL under --for full, in a
     "init is expected to write no charter document",
   );
 
-  const generic = runCli(["doctor"], { cwd: fresh });
-  const genericLine = /^CHECK retention (\S+) (.+)$/m.exec(generic.stdout);
-  assert.ok(genericLine !== null, generic.stdout);
-  assert.equal(genericLine[1], "WARN", genericLine[2]);
-  assert.match(genericLine[2] as string, /no charter document in .*retention is not applicable$/);
-
+  /* THE PROMOTED ARM. The detail must still NAME the reason, so the FAIL is
+     actionable rather than a bare refusal: an operator reading it learns that
+     the remedy is to write a charter, which is the property that makes this
+     promotion different from a check whose remedy the operator cannot reach. */
   const full = runCli(["doctor", "--for", "full"], { cwd: fresh });
   const fullLine = /^CHECK retention (\S+) (.+)$/m.exec(full.stdout);
   assert.ok(fullLine !== null, full.stdout);
-  assert.equal(fullLine[1], "WARN", `--for full promoted a not-applicable retention: ${fullLine[2] as string}`);
-  assert.doesNotMatch(fullLine[2] as string, /required for profile full/);
+  assert.equal(
+    fullLine[1],
+    "FAIL",
+    `--for full left a charterless fleet unpromoted: ${fullLine[2] as string}`,
+  );
+  assert.match(
+    fullLine[2] as string,
+    /no charter document in .*retention is not applicable \(required for profile full\)$/,
+  );
+  assert.equal(full.status, 1);
+
+  /* EVERY PROFILE BELOW `full` IS WALKED, not just the generic one, because
+     the half this phase must not break is that a fresh `tiphys init` fleet
+     stays usable outside full mode. Below `full` nothing resolves roles,
+     checklists or retention duties out of a charter, so a fleet that has none
+     is not broken there. A profile added later that promotes this condition
+     reddens here.
+     THE ASSERTION IS ON THE RETENTION LINE, NOT ON THE EXIT CODE, for every
+     profile but the generic one. `direct-pr` promotes `gh-missing`, so its
+     exit code depends on whether `gh` is on the PATH of whoever runs the
+     suite, and this repository's own toolchain has it absent locally and
+     present in CI (CLAUDE.md standing warning 6). Pinning the exit code here
+     would make the test measure the runner rather than the promotion. The
+     generic profile promotes NOTHING, so its exit code is a fact about the
+     fleet, and that is the one asserted. */
+  const unpromotedLines: string[] = [];
+  for (const profile of [[], ["--for", "local-only"], ["--for", "direct-pr"]]) {
+    const label = profile.length === 0 ? "generic" : (profile[1] as string);
+    const run = runCli(["doctor", ...profile], { cwd: fresh });
+    const line = /^CHECK retention (\S+) (.+)$/m.exec(run.stdout);
+    assert.ok(line !== null, `${label}: no retention line in ${run.stdout}`);
+    assert.equal(line[1], "WARN", `${label} promoted a not-applicable retention: ${line[2] as string}`);
+    assert.match(line[2] as string, /no charter document in .*retention is not applicable$/);
+    assert.doesNotMatch(line[2] as string, /required for profile/);
+    unpromotedLines.push(line[2] as string);
+  }
+
+  const generic = runCli(["doctor"], { cwd: fresh });
+  assert.equal(
+    generic.status,
+    nodeFloorMet ? 0 : 1,
+    `the generic profile promotes nothing, so a fresh fleet must still exit 0: ${generic.stdout}`,
+  );
+
+  /* IT IS NEVER A SILENT PASS UNDER ANY PROFILE, which is the SC-011 half the
+     promotion must not be mistaken for. WARN with a reason below `full`, FAIL
+     with the same reason under it; PASS appears nowhere. */
+  assert.doesNotMatch(full.stdout, /^CHECK retention PASS /m);
 
   /* THE CHECK RETURNED BEFORE THE GIT-CONSULTING LOOP: none of the three
      verdicts that loop can produce appears, so nothing was reported about
      paths nobody declared. */
-  for (const line of [genericLine[2] as string, fullLine[2] as string]) {
+  for (const line of [...unpromotedLines, fullLine[2] as string]) {
     assert.doesNotMatch(line, /git-ignored|does not exist|present and tracked/);
   }
+});
 
-  /* THE OTHER ABSENT STATE STAYS PROMOTED, asserted here rather than only in
-     the sibling test, so this test cannot be satisfied by deleting the
-     promotion outright: YAML in charter/ that carries no `kind: charter` is a
-     misconfigured fleet, not an unrealized one. */
+test("doctor keeps a charterless fleet and a charter directory holding the wrong YAML distinct under --for full, in one fleet with one variable changed", (t) => {
+  /* CRITERION 6, and it is the reason this phase is two tests rather than one.
+     Both states now FAIL under `full`, so the cheapest wrong fix is to make
+     them one condition with one message. The measurement that makes the two
+     worth separating: "nobody has written a charter yet" is a fleet waiting on
+     an owner duty, and "there is YAML in charter/ that is not a charter" is a
+     fleet somebody has configured wrongly. The remedies differ, so the lines
+     must.
+     ONE FLEET, ONE VARIABLE. Two fleets would print two different absolute
+     paths and the two detail strings would differ for a reason that has
+     nothing to do with the conditions; here the only thing that changes
+     between the two runs is the presence of one file. */
+  const captured = gitCheckIgnoreCapture();
+  assert.match(captured, /not-a-repository: git -C \/tmp check-ignore -q -- foo\n\s*exit 128/);
+
+  const fleet = initFleet(t);
+
+  const charterless = runCli(["doctor", "--for", "full"], { cwd: fleet });
+  const charterlessLine = /^CHECK retention (\S+) (.+)$/m.exec(charterless.stdout);
+  assert.ok(charterlessLine !== null, charterless.stdout);
+  assert.equal(charterlessLine[1], "FAIL", charterlessLine[2]);
+  assert.equal(charterless.status, 1);
+
   writeFileSync(
-    join(fresh, "charter", "notes.yaml"),
+    join(fleet, "charter", "notes.yaml"),
     ["kind: decision-record", ""].join("\n"),
   );
-  const misconfigured = runCli(["doctor", "--for", "full"], { cwd: fresh });
-  assert.match(
-    misconfigured.stdout,
-    /^CHECK retention FAIL .*none with kind: charter.*required for profile full/m,
-  );
+  const misconfigured = runCli(["doctor", "--for", "full"], { cwd: fleet });
+  const misconfiguredLine = /^CHECK retention (\S+) (.+)$/m.exec(misconfigured.stdout);
+  assert.ok(misconfiguredLine !== null, misconfigured.stdout);
+  assert.equal(misconfiguredLine[1], "FAIL", misconfiguredLine[2]);
   assert.equal(misconfigured.status, 1);
+
+  const charterlessDetail = charterlessLine[2] as string;
+  const misconfiguredDetail = misconfiguredLine[2] as string;
+
+  /* THE LOAD-BEARING ASSERTION: not that each matches its own pattern, which a
+     collapse could still satisfy if one pattern were a substring of the other,
+     but that each names its own reason AND NOT the other's, and that the two
+     lines are not the same string. */
+  assert.match(
+    charterlessDetail,
+    /no charter document in .*so no project is realized here yet and retention is not applicable \(required for profile full\)$/,
+  );
+  assert.doesNotMatch(charterlessDetail, /kind: charter/);
+
+  assert.match(
+    misconfiguredDetail,
+    /^1 YAML document\(s\) in .*none with kind: charter, so no retention paths are declared \(required for profile full\)$/,
+  );
+  assert.doesNotMatch(misconfiguredDetail, /retention is not applicable/);
+
+  assert.notEqual(
+    charterlessDetail,
+    misconfiguredDetail,
+    "the two conditions collapsed into one detail string",
+  );
 });
 
 /**
@@ -1842,6 +1950,23 @@ test("this phase's new doctor behaviors are registered in test/behaviors.json", 
     "doctor-remote-fetch-failure-is-not-a-pass",
     "doctor-remote-returns-against-a-silent-remote",
     "doctor-diagnosis-survives-a-failing-check",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+test("M4-P30's doctor behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). The registry is
+     append-only, so a count here would be a claim about every later phase. */
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "doctor-retention-not-applicable-without-a-charter",
+    "doctor-retention-not-applicable-and-undeclared-stay-distinct",
   ]) {
     assert.ok(
       Object.hasOwn(behaviors, id),
