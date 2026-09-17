@@ -281,3 +281,36 @@ Its `gateClasses` correctness disposition therefore names `suite` and `typecheck
 rather than `red-witness`. That is a real gap in the class vocabulary M4-P14 just
 shipped, recorded here rather than worked around: a phase can ship code that the
 red-witness gate structurally cannot see.
+
+## Wave 7, 2026-09-17: one unit into the slot M4-P17 freed
+
+Written BEFORE dispatch, per rule 5.
+
+| unit | files it may touch |
+|---|---|
+| M4-P5 (live) | `plugin/**`, `package.json`, `package-lock.json`, `tsconfig.src.json`, `test/plugin-package.test.ts`, `test/plugin-adapter.test.ts` |
+| M4-P28 | `src/gates/coverage.ts`, `test/coverage-gate.test.ts` |
+
+**Intersection: EMPTY**, and this pair is the cleanest in the milestone: M4-P28
+touches two files, neither under `plugin/` nor in the packaging chain.
+
+**Why this unit and not a larger one.** M4-P28 removes the 250ms WALL CLOCK
+budget at src/gates/coverage.ts:235 that is used as a catastrophic-backtracking
+proxy. That budget has produced false reds repeatedly in this milestone: it is
+named in the STATE record of the M4-P16 incident, where `suite` was RED inside
+the full bundle and GREEN when run alone at the same head, and it is named again
+in T-029's ruled-out section as the wall-clock family that the precondition flake
+is NOT a member of. Every wave that runs two agents makes the load that trips it.
+So this phase pays for itself in the waves that follow it, which is the argument
+for spending the free slot on a two-file phase rather than a larger one.
+
+**The generator check.** `src/gates/coverage.ts` is not rendered from anything
+and nothing is rendered from it. `coverage` is in the registry and the manifest
+already, so no drift chain moves. M4-P28 does change a shipped gate's behaviour,
+so `red-witness` IS applicable to it, unlike M4-P5, and its `gateClasses`
+correctness disposition names it.
+
+**Not dispatched.** M4-P29 is the natural sibling and collides with nothing here,
+but the owner's cap is two agents and M4-P5 holds the other slot. M4-P9 collides
+with M4-P5 on `package.json`. M4-P18, M4-P21, M4-P22, M4-P12, M4-P24 and M4-P25
+are all free of this pair and wait only on a slot.
