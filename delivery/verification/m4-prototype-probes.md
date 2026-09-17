@@ -300,11 +300,41 @@ Harness probed: `claude --version` 2.1.273 (Claude Code), binary
 `/opt/claude-code/bin/claude`, node v22.22.2 at `/opt/node22/bin/node`, one
 container, one account, 2026-09-15 into 2026-09-16.
 
+### Disposition of the four questions M4-P1's acceptance criterion names
+
+Added in fix round 1. The criterion at delivery/plan/kernel-plan-m4.md:291
+requires THIS document to state, for each of four named questions, whether the
+probe CLOSES it, NARROWS it, or LEAVES IT OPEN. Three were disposed in the
+sections below and in the surrounding document; the fourth, the M4-P5 manifest
+shape, had no disposition anywhere in this file, which a clean-room reviewer
+found by running `grep -n 'manifest' delivery/verification/m4-prototype-probes.md`
+and getting zero hits. All four are now here, so a reader who never opens the
+work history gets the whole answer.
+
+| question | disposition | where, and why |
+|---|---|---|
+| M4-D-01 | **CLOSED**, by the earlier probes, not by this amendment | the premise was measured at delivery/verification/m4-prototype-probes.md:93 and nothing in items 13 to 15 bears on it |
+| M4-D-06(b) | **NARROWED**, by this amendment | item 15 below: the observation channel exists, and it is neither stable under concurrency nor tamper-proof. It is narrowed rather than closed because the design consequence (what an M4-P7 resolver must do with an empty transcript) is stated but not decided |
+| M4-D-07 | **CLOSED**, by the earlier probes, not by this amendment | its premise was already measured false at delivery/verification/m4-prototype-probes.md:17 |
+| the M4-P5 manifest shape | **LEFT OPEN, and untouched** | this is the row that was missing. This probe BUILT plugin manifests (three of them, committed at test/fixtures/harness-probe/q1-bypass-permission-mode/plugin-manifest.json.txt:1) and USED them, and it never evaluated the shape of the manifest M4-P5 will SHIP. Nothing here narrows it in either direction. The one nearby measurement, that a nonexistent `--plugin-dir` fails open at exit 0 (item 13's second trap), is about plugin LOADING and not about manifest shape, and must not be read as evidence for this row |
+
+**No decision record is written**, because the criterion asks for one only for a
+question the probe CLOSES, and this amendment closes none of the four: the two
+marked CLOSED were closed before it by the earlier probes.
+
 ### 13. `PreToolUse` hooks DO fire under a bypass permission mode, and `exit 2` still blocks
 
-**This unblocks M4-P9 and the answer is the favourable one.** Item 10 above left
-it open in terms ("Not established: whether `PreToolUse` hooks fire at all under
-a bypass permission mode").
+**This unblocks M4-P9 and the answer is the favourable one, UNDER A CONDITION
+THAT IS PART OF THE ANSWER AND NOT A FOOTNOTE TO IT.** Every arm in the table
+below ran AS ROOT with `IS_SANDBOX=1` exported for the child, because the CLI's
+own root safety gate refuses a bypass mode otherwise. The gate was satisfied,
+not removed, and the declaration was true of this container; but the result is
+evidence about a root, sandbox-declared run and about nothing else. **Whether a
+`PreToolUse` hook fires under bypass at a DIFFERENT uid is NOT ESTABLISHED**,
+the attempt that failed is recorded in "What this amendment did NOT cover"
+below, and a non-root confirmation is owed BEFORE M4-P9's acceptance criteria
+are frozen. Item 10 above left it open in terms ("Not established: whether
+`PreToolUse` hooks fire at all under a bypass permission mode").
 
 Measured with a plugin whose hook writes a marker file and then exits with a
 chosen code, in a real `claude -p` session whose payload reports

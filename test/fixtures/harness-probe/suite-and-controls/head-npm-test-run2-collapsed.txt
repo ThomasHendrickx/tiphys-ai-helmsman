@@ -1,3 +1,25 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   0 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    7 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    8 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: the last three
+# aborted-file lines and the whole summary block. ELIDED: the failure and
+# abort records below 'x failing tests:' are a SAMPLE of three, taken with a
+# grep. The '--' separator lines have the shape grep prints between context
+# groups; that they came from grep rather than from a hand is NOT established
+# here, because the exact command was not recorded. The
+# rest were elided for length; the claim this file supports is the summary
+# block (tests 351, pass 322, fail 2, cancelled 27, exit 143), and the sample
+# is there to show the two failure SHAPES. The dropped records were not
+# retained, so this elision is not reversible from this file.
+#
 # HEAD, full suite, node v26.6.0, dist built, invocation: npm test, SECOND run.
 # The container was under load average ~45 on 4 CPUs. The run was SIGTERMed (exit 143)
 # and 27 test FILES aborted with the event-loop message.

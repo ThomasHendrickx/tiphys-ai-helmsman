@@ -1,3 +1,23 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   0 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    2 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    8 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: the last two aborted-file
+# lines and the whole summary block. ELIDED: the names of the 27 aborted test
+# files, replaced by the hand-written line 'count: 27'. They were elided for
+# length and because the claim this file supports is the COUNT (cancelled 27 at
+# the base, with fail 0), not which files they were. The 27 names were not
+# retained, so this elision is not reversible from this file; re-running the
+# command in the 'Reproducing the control runs' section regenerates a list, and
+# which files abort is load-dependent and will not necessarily be the same 27.
+#
 # BASE commit 6961186, full suite, node v26.6.0, dist built, invocation: npm test.
 # Same collapse shape as HEAD run 2, with NONE of this branch's commits present.
 

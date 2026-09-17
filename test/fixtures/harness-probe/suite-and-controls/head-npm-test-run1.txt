@@ -1,5 +1,22 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   6 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    3 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    8 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED: 6 of the 847 'ok' lines,
+# the whole summary block, and BOTH failure records in full including their
+# stack frames. The other 841 'ok' lines were dropped for length. Nothing was
+# elided from the summary block or from either failure record.
+#
 # HEAD, full suite, node v26.6.0, dist built, invocation: npm test
-# Summary block and the two failure records, verbatim except the declared transliteration.
+# Summary block, six of the run's 'ok' lines, and the two
+# failure records. Verbatim except the transliteration declared above.
 
 ok a work history claim filed under a kind the schema does not question is rejected through the shared definition (269.103096ms)
 ok the shipped warnings template placed as a fleet warnings file reaches an assembled brief verbatim (5332.87215ms)

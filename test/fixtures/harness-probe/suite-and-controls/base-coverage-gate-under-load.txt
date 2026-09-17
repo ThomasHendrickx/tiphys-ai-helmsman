@@ -1,3 +1,19 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   2 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    0 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    7 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED: the six guard failures' message lines, the
+# 2 surviving 'ok' lines and the summary block down to 'todo'. The
+# reporter's 'duration_ms' line and the per-failure stack frames were dropped
+# for length. Nothing was elided from the six message lines themselves.
+#
 # SAME base commit, SAME worktree, SAME invocation, ONE variable changed: eight busy node
 # processes running alongside. The identical guard message appears with no change of mine present.
 
