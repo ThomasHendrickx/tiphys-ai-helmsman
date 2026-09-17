@@ -1,0 +1,46 @@
+{
+  "id": "M4-P4",
+  "branch": "claude/m4-p4-adapter-selection",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/commands/spawn.ts",
+    "src/adapters/load.ts",
+    "src/index.ts",
+    "package.json",
+    "tsconfig.src.json",
+    "test/spawn.test.ts",
+    "test/adapter-load.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p4.json",
+    "delivery/work-history/m4-p4.md"
+  ],
+  "citations": [
+    "M4-D-05",
+    "DR-0036",
+    "DR-0027",
+    "DR-0031",
+    "C-1",
+    "C-2",
+    "C-3"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}
