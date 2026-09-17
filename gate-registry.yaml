@@ -181,6 +181,7 @@ gates:
       paths:
         - src/
         - bin/
+        - plugin/
 
   # NEW IN M3-P2, entry one of three.
   - id: agent-rules-drift
@@ -353,7 +354,7 @@ gates:
       assigned: `scripts/m2-exit-test.sh` declares the push arm's gate set once
       in MAIN_ONLY_GATES and this id is not in it, so the push arm cannot run
       it and test/gate-registry.test.ts asserts `events` against that harness.
-    command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json]
+    command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json, --project, plugin/tsconfig.json]
     unitLabel: source files type-checked
     applicability: required
     verified-by: script
