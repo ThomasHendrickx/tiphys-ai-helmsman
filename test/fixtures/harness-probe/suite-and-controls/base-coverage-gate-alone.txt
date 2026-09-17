@@ -1,0 +1,30 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   4 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    0 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    8 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED: 4 of the 17 'ok' lines
+# plus the whole summary block. The other 13 'ok' lines were dropped for length.
+# Nothing was elided from the summary block.
+#
+# BASE commit 6961186 in a separate worktree, node v26.6.0, invocation: node --test test/coverage-gate.test.ts
+# NO added load. This is the control that the file is green at the base.
+
+ok a refused or failed evidence write makes the gate error instead of a silent green (1775.415663ms)
+ok a malformed config pattern is a named config error with a written result record, never an uncaught exception (1547.449084ms)
+ok a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging (1701.466123ms)
+ok a bucket value matching more than one declared kind is red naming every match, never a silent first match (6.968865ms)
+i tests 17
+i suites 0
+i pass 17
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 13719.693189

@@ -1,0 +1,12 @@
+arm: D-abandon-sigkill
+command: timeout -s KILL 25 claude -p Run this shell command and wait for it to finish: sleep 200. Then reply DONE. --allowedTools Bash --output-format json --permission-mode acceptEdits
+exit-code: 0
+wall-seconds: 17
+stdout bytes: 2303
+stderr bytes: 0
+new transcript files: 1
+  transcript lines: 31  path-basename: 49c9c4fa-6f01-5020-aa81-c87700265964.jsonl
+--- stdout (first 1200 bytes) ---
+{"duration_api_ms":5874,"stop_reason":"end_turn","session_id":"49c9c4fa-6f01-5020-aa81-c87700265964","total_cost_usd":0.052391400000000005,"usage":{"input_tokens":6,"cache_creation_input_tokens":7356,"cache_read_input_tokens":99842,"output_tokens":202,"output_tokens_details":{"thinking_tokens":23},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":7356,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[{"input_tokens":2,"output_tokens":27,"cache_read_input_tokens":35706,"cache_creation_input_tokens":310,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":310},"type":"message"}],"speed":"standard"},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":912,"outputTokens":11,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.0009670000000000001,"contextWindow":200000,"maxOutputTokens":32000,"thinkingTokens":0,"canonicalModel":"claude-haiku-4-5","provider":"firstParty","costBasis":"list"},"claude-sonnet-5":{"inputTokens":6,"outputTokens":202,"cacheReadInputTokens":99842,"cacheCreationInputTokens":7356,"webSearc
+--- stderr (first 600 bytes) ---
+

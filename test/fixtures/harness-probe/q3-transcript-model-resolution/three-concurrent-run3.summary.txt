@@ -1,0 +1,15 @@
+arm: three-concurrent-run3
+claude-exit: 0
+expected mapping: alpha=haiku beta=sonnet gamma=opus
+--- resolver log (one line per SubagentStop) ---
+{"at":"2026-09-16T00:09:50.911Z","outcome":"resolved","agent_id":"ac3a0e4aa2effa44a","agent_type":"beta","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-ac3a0e4aa2effa44a.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-sonnet-5"],"assistant_rows":1,"last_assistant_message":"AGENT beta REPORTING"}
+{"at":"2026-09-16T00:09:52.087Z","outcome":"resolved","agent_id":"a24ac287686fa3362","agent_type":"gamma","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a24ac287686fa3362.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-opus-5"],"assistant_rows":1,"last_assistant_message":"AGENT gamma REPORTING"}
+{"at":"2026-09-16T00:10:07.582Z","outcome":"resolved","agent_id":"a73244fa7aa010d2f","agent_type":"alpha","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a73244fa7aa010d2f.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent-run3/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-haiku-4-5-20251001"],"assistant_rows":14,"last_assistant_message":"## Probe Summary\n\n**Status:** Empty working directory, ready for assignment.\n\n**Environment Details:**\n- Working Directo"}
+--- distinct agent_transcript_path count ---
+subagentstop events: 3
+distinct agent_id        : 3
+distinct agent_transcript: 3
+  type=beta   id=ac3a0e4aa2effa44a  models=['claude-sonnet-5'] rows=1 outcome=resolved
+  type=gamma  id=a24ac287686fa3362  models=['claude-opus-5'] rows=1 outcome=resolved
+  type=alpha  id=a73244fa7aa010d2f  models=['claude-haiku-4-5-20251001'] rows=14 outcome=resolved
+--- stderr ---

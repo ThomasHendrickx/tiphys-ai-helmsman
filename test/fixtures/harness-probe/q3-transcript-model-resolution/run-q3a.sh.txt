@@ -1,0 +1,41 @@
+#!/bin/bash
+# Q3a: several subagents IN FLIGHT. Three agent types, three DIFFERENT models,
+# launched in one message so they run concurrently. A path mix-up is visible
+# because the expected model differs per type.
+LAB="$(cd "$(dirname "$0")" && pwd)"
+ARM="$1"; shift
+OUT="$LAB/log/$ARM"; rm -rf "$OUT"; mkdir -p "$OUT"
+export TIPHYS_RESOLVE_LOG="$OUT/resolved.jsonl"
+mkdir -p "$LAB/work/$ARM"; cd "$LAB/work/$ARM"
+AGENTS='{
+ "alpha":{"description":"probe agent alpha","prompt":"Reply with exactly one line: AGENT alpha REPORTING","model":"haiku"},
+ "beta":{"description":"probe agent beta","prompt":"Reply with exactly one line: AGENT beta REPORTING","model":"sonnet"},
+ "gamma":{"description":"probe agent gamma","prompt":"Reply with exactly one line: AGENT gamma REPORTING","model":"opus"}
+}'
+set +e
+claude -p "Use the Task tool to launch the alpha, beta and gamma subagents. Issue all three Task calls in a SINGLE message so that they run at the same time. When all three have returned, reply with exactly the word DONE." \
+  --plugin-dir "$LAB/plugin" \
+  --agents "$AGENTS" \
+  --allowedTools "Task" \
+  --output-format json \
+  --permission-mode acceptEdits > "$OUT/stdout.json" 2> "$OUT/stderr.txt"
+RC=$?
+set -e
+{
+  echo "arm: $ARM"
+  echo "claude-exit: $RC"
+  echo "expected mapping: alpha=haiku beta=sonnet gamma=opus"
+  echo "--- resolver log (one line per SubagentStop) ---"
+  [ -f "$OUT/resolved.jsonl" ] && cat "$OUT/resolved.jsonl" || echo "(no resolver lines at all)"
+  echo "--- distinct agent_transcript_path count ---"
+  [ -f "$OUT/resolved.jsonl" ] && python3 -c "
+import json,sys
+rows=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+print('subagentstop events:',len(rows))
+print('distinct agent_id        :',len({r['agent_id'] for r in rows}))
+print('distinct agent_transcript:',len({r['agent_transcript_path'] for r in rows}))
+for r in rows:
+    print('  type=%-6s id=%-18s models=%s rows=%d outcome=%s' % (r['agent_type'],r['agent_id'],r['models'],r['assistant_rows'],r['outcome']))
+" "$OUT/resolved.jsonl"
+  echo "--- stderr ---"; head -c 400 "$OUT/stderr.txt"
+} | tee "$OUT/summary.txt"

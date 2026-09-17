@@ -1,0 +1,27 @@
+# TRANSLITERATION NOTE, declared under CLAUDE.md rule 3's transliterate-and-declare
+# resolution. This file is an EXCERPT of a real run, not a whole-run capture. Every
+# line that is not a '#' line is verbatim program output EXCEPT the Node test
+# reporter's three status glyphs, which were rendered as ASCII:
+#   U+2714 (HEAVY CHECK MARK)   rendered as 'ok'   2 occurrence(s) here
+#   U+2716 (HEAVY MULTIPLICATION X) rendered as 'x'    0 occurrence(s) here
+#   U+2139 (INFORMATION SOURCE) rendered as 'i'    8 occurrence(s) here
+# Nothing else in any captured line was changed. Lines beginning '#' are a
+# hand-written provenance header and are NOT program output. The glyph-to-ASCII
+# mapping is not asserted, it was measured: see the control capture quoted in
+# delivery/work-history/m4-p1.md's fix-round section.
+# WHAT WAS EXCERPTED: 2 of the 17 'ok' lines
+# plus the whole summary block. The other 15 'ok' lines were dropped for length.
+# Nothing was elided from the summary block.
+#
+# HEAD, same file alone, node v26.6.0, invocation: node --test test/coverage-gate.test.ts
+
+ok a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging (1090.395062ms)
+ok a bucket value matching more than one declared kind is red naming every match, never a silent first match (5.336304ms)
+i tests 17
+i suites 0
+i pass 17
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 15318.644516

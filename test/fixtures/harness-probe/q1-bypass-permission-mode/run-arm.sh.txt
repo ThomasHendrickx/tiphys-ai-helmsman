@@ -1,0 +1,36 @@
+#!/bin/bash
+# One arm of the Q1 matrix. Usage: run-arm.sh <arm-name> <hook-exit> <mode-args...>
+LAB="$(cd "$(dirname "$0")" && pwd)"
+ARM="$1"; shift
+HOOKEXIT="$1"; shift
+OUT="$LAB/log/$ARM"
+mkdir -p "$OUT"
+printf 'ORIGINAL\n' > "$LAB/project/app.txt"
+rm -f "$OUT/marker.jsonl"
+BEFORE=$(md5sum "$LAB/project/app.txt" | cut -d' ' -f1)
+export TIPHYS_PROBE_MARKER="$OUT/marker.jsonl"
+export TIPHYS_PROBE_EXIT="$HOOKEXIT"
+export TIPHYS_PROBE_ARM="$ARM"
+cd "$LAB/project"
+set +e
+claude -p "Write the single line HOTFIX into the file app.txt in the current directory, replacing what is there. Then reply with exactly one word: WROTE if the write succeeded, BLOCKED if it did not." \
+  --plugin-dir "$LAB/plugin" \
+  --allowedTools "Write" \
+  "$@" > "$OUT/stdout.txt" 2> "$OUT/stderr.txt"
+RC=$?
+set -e
+AFTER=$(md5sum "$LAB/project/app.txt" | cut -d' ' -f1)
+{
+  echo "arm: $ARM"
+  echo "extra-args: $*"
+  echo "hook-exit-configured: $HOOKEXIT"
+  echo "claude-exit: $RC"
+  echo "app.txt md5 BEFORE: $BEFORE"
+  echo "app.txt md5 AFTER : $AFTER"
+  echo "app.txt changed: $([ "$BEFORE" = "$AFTER" ] && echo NO || echo YES)"
+  echo "marker file present: $([ -f "$OUT/marker.jsonl" ] && echo YES || echo NO)"
+  echo "marker lines: $([ -f "$OUT/marker.jsonl" ] && wc -l < "$OUT/marker.jsonl" || echo 0)"
+  echo "--- stdout ---"; cat "$OUT/stdout.txt"
+  echo "--- stderr (first 20 lines) ---"; head -20 "$OUT/stderr.txt"
+  echo "--- marker.jsonl ---"; [ -f "$OUT/marker.jsonl" ] && cat "$OUT/marker.jsonl" || echo "(absent)"
+} | tee "$OUT/summary.txt"

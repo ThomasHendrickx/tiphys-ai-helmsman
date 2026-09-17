@@ -1,0 +1,14 @@
+arm: bypass-badplugindir-exit2
+extra-args: --permission-mode bypassPermissions
+hook-exit-configured: 2
+claude-exit: 0
+app.txt md5 BEFORE: ab0b884358ef3d28a8d0b7266a3c0345
+app.txt md5 AFTER : 737481f9969e4dad06398b4a0f6ea1cd
+app.txt changed: YES
+marker file present: NO
+marker lines: 0
+--- stdout ---
+WROTE
+--- stderr (first 20 lines) ---
+--- marker.jsonl ---
+(absent)

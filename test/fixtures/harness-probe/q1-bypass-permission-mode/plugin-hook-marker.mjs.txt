@@ -1,0 +1,28 @@
+// PreToolUse marker hook. Writes a marker line, then exits with the code named
+// in TIPHYS_PROBE_EXIT (default 0). The marker file is the beacon: its presence
+// is the ONLY evidence that the hook fired.
+import { appendFileSync } from 'node:fs'
+const marker = process.env.TIPHYS_PROBE_MARKER
+const wantExit = Number(process.env.TIPHYS_PROBE_EXIT ?? '0')
+let raw = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', (c) => { raw += c })
+process.stdin.on('end', () => {
+  let parsed = null
+  try { parsed = JSON.parse(raw) } catch { parsed = { PARSE_FAILED: raw.slice(0, 400) } }
+  const line = JSON.stringify({
+    fired_at: new Date().toISOString(),
+    arm: process.env.TIPHYS_PROBE_ARM ?? 'unset',
+    hook_event_name: parsed?.hook_event_name ?? null,
+    permission_mode: parsed?.permission_mode ?? null,
+    tool_name: parsed?.tool_name ?? null,
+    cwd: parsed?.cwd ?? null,
+    tool_input: parsed?.tool_input ?? null,
+    exiting_with: wantExit
+  })
+  if (marker) appendFileSync(marker, line + '\n')
+  if (wantExit === 2) {
+    process.stderr.write('TIPHYS-PROBE-BLOCK: the PreToolUse hook refused this tool call\n')
+  }
+  process.exit(wantExit)
+})

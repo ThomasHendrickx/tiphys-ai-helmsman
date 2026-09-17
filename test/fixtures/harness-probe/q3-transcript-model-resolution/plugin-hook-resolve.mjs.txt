@@ -1,0 +1,44 @@
+// SubagentStop resolver. Reads agent_transcript_path from the payload and
+// reports the DISTINCT message.model values over that transcript's assistant
+// rows. The outcome lives in ONE field, `outcome`, never in a prefix, which is
+// the defect the earlier model-observability probe reported against its own
+// script.
+import { appendFileSync, readFileSync, existsSync } from 'node:fs'
+const out = process.env.TIPHYS_RESOLVE_LOG
+let raw = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', (c) => { raw += c })
+process.stdin.on('end', () => {
+  let p = null
+  try { p = JSON.parse(raw) } catch { p = null }
+  const rec = {
+    at: new Date().toISOString(),
+    outcome: 'unset',
+    agent_id: p?.agent_id ?? null,
+    agent_type: p?.agent_type ?? null,
+    agent_transcript_path: p?.agent_transcript_path ?? null,
+    parent_transcript_path: p?.transcript_path ?? null,
+    models: [],
+    assistant_rows: 0,
+    last_assistant_message: typeof p?.last_assistant_message === 'string' ? p.last_assistant_message.slice(0, 120) : null
+  }
+  if (!p) rec.outcome = 'fail-unparseable-payload'
+  else if (!p.agent_transcript_path) rec.outcome = 'fail-no-agent-transcript-path'
+  else if (!existsSync(p.agent_transcript_path)) rec.outcome = 'fail-agent-transcript-path-not-readable'
+  else {
+    const seen = new Set()
+    let n = 0
+    for (const line of readFileSync(p.agent_transcript_path, 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      let row = null
+      try { row = JSON.parse(line) } catch { continue }
+      const m = row?.message?.model
+      if (row?.type === 'assistant' && typeof m === 'string') { n += 1; seen.add(m) }
+    }
+    rec.assistant_rows = n
+    rec.models = [...seen].sort()
+    rec.outcome = n === 0 ? 'fail-no-assistant-model-rows' : 'resolved'
+  }
+  if (out) appendFileSync(out, JSON.stringify(rec) + '\n')
+  process.exit(0)
+})

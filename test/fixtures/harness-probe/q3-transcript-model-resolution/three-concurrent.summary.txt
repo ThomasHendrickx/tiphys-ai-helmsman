@@ -1,0 +1,16 @@
+arm: three-concurrent
+claude-exit: 0
+expected mapping: alpha=haiku beta=sonnet gamma=opus
+--- resolver log (one line per SubagentStop) ---
+{"at":"2026-09-16T00:08:58.567Z","outcome":"resolved","agent_id":"a3f6b476cf2e93d63","agent_type":"beta","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a3f6b476cf2e93d63.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-sonnet-5"],"assistant_rows":1,"last_assistant_message":"AGENT beta REPORTING"}
+{"at":"2026-09-16T00:08:59.637Z","outcome":"resolved","agent_id":"ab847e4ab88452a3f","agent_type":"gamma","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-ab847e4ab88452a3f.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":["claude-opus-5"],"assistant_rows":1,"last_assistant_message":"AGENT gamma REPORTING"}
+{"at":"2026-09-16T00:08:59.906Z","outcome":"fail-no-assistant-model-rows","agent_id":"a2dc7fa5d0f6b5976","agent_type":"alpha","agent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964/subagents/agent-a2dc7fa5d0f6b5976.jsonl","parent_transcript_path":"/root/.claude/projects/-tmp-claude-0--home-user-49c9c4fa-6f01-5020-aa81-c87700265964-scratchpad-m4p1-q3-work-three-concurrent/49c9c4fa-6f01-5020-aa81-c87700265964.jsonl","models":[],"assistant_rows":0,"last_assistant_message":"AGENT alpha REPORTING"}
+--- distinct agent_transcript_path count ---
+subagentstop events: 3
+distinct agent_id        : 3
+distinct agent_transcript: 3
+  type=beta   id=a3f6b476cf2e93d63  models=['claude-sonnet-5'] rows=1 outcome=resolved
+  type=gamma  id=ab847e4ab88452a3f  models=['claude-opus-5'] rows=1 outcome=resolved
+  type=alpha  id=a2dc7fa5d0f6b5976  models=[] rows=0 outcome=fail-no-assistant-model-rows
+--- stderr ---
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
