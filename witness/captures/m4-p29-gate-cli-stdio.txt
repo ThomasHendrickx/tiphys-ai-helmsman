@@ -60,3 +60,17 @@ and `beta skipped`, and whose test/behaviors.json holds the single row
 "no-such-row": "no reported test is named this":
 
   node src/gates/suite.ts --result R --evidence E --base <the base commit>
+
+--- BEGIN red-witness-error-stdout ---
+red-witness: error (--base was not supplied; the phase diff cannot be computed (M2-C-3))
+--- END red-witness-error-stdout ---
+
+Command for the block above, exit 21, from any directory:
+
+  node src/gates/red-witness.ts --result R
+
+This is the arm chosen for the live reproduction because it is the only one
+of this gate's stdout lines that carries no timing figure: every other arm
+prints the stored-witness re-evaluation cost in milliseconds, which is not
+reproducible byte for byte and would make a comparison against a capture a
+flake rather than a guard.

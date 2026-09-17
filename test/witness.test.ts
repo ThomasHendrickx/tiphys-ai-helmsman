@@ -2969,6 +2969,32 @@ test("the red-witness gate CLI delivers a report larger than a parent's stdio bu
    * fixture is sized well past 400 KiB rather than just past the 64 KiB
    * pipe buffer the credentials arm uses.
    */
+  // Rule (f) first: the capture this witness cites is reproduced LIVE, at the
+  // size that fits in any buffer, before anything is asserted about a report
+  // that does not. If the gate's rendering changes, this fails here rather
+  // than silently changing what the oversize comparison means.
+  const capture = readFileSync(
+    fileURLToPath(
+      new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
+    ),
+    "utf8",
+  );
+  const begin = "--- BEGIN red-witness-error-stdout ---\n";
+  const from = capture.indexOf(begin);
+  assert.notEqual(from, -1, "capture block red-witness-error-stdout is absent");
+  const to = capture.indexOf("--- END red-witness-error-stdout ---", from);
+  assert.notEqual(to, -1, "capture block red-witness-error-stdout is unterminated");
+  const recorded = capture.slice(from + begin.length, to);
+  const smallDir = mkdtempSync(join(tmpdir(), "rw-capture-"));
+  const smallRun = spawnSync(
+    process.execPath,
+    [gateEntryPath, "--result", join(smallDir, "result.json")],
+    { cwd: smallDir, encoding: "utf8", timeout: 120000 },
+  );
+  assert.equal(smallRun.status, 21, smallRun.stderr);
+  assert.equal(smallRun.stdout, recorded);
+  rmSync(smallDir, { recursive: true, force: true });
+
   const fixture = oversizeReportFixture();
   const evidenceDir = mkdtempSync(join(tmpdir(), "rw-oversize-ev-"));
   const resultPath = join(evidenceDir, "result.json");
