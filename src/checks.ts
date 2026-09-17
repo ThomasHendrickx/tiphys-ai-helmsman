@@ -5120,6 +5120,109 @@ function blockingFindings(
 }
 
 /* ------------------------------------------------------------------ */
+/* model-resolution-subject-echo (M4-P7 criteria 1, 2 and 7)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE SUBJECT ECHO AGREES WITH THE RESOLUTION IT SITS BESIDE, THE RECORD WAS
+ * WRITTEN AFTER THE TURN ENDED, AND AN OVERRIDE WAS PERMITTED BEFORE IT WAS
+ * APPLIED.
+ *
+ * All three compare SIBLING FIELDS of one document, so all three are Kind B
+ * and none of them is reachable from a keyword (schemas/README.md's Kind A and
+ * Kind B section, DR-0013 clause 8). The schema next door can require that
+ * `subject`, `turnEnd` and `resolution` are all PRESENT, which is what makes a
+ * launch-time record unrepresentable, and it stops exactly there: it cannot
+ * say that two present values agree.
+ *
+ * WHY THE ECHO MATTERS AT ALL, since a record that echoes itself sounds
+ * circular. It is not the record checking itself against itself. `subject` is
+ * a VERBATIM copy of the launch request the adapter was handed and
+ * `resolution` is what the adapter's resolver actually consumed, and the
+ * hazard is that those two diverge silently: a resolver that read the wrong
+ * role's row produces a perfectly well-formed record whose family token is
+ * then attributed to a task it was never about. That is the misattribution
+ * guard src/gates/schemas/release-record.schema.json:26 exists for, one seam
+ * along, and the kernel-side half of it is in src/model-resolution.ts where
+ * the request is compared against a copy the kernel itself holds.
+ *
+ * THE OVERRIDE DIRECTION IS THE ONE MOST LIKELY TO BE GOT WRONG. M4-P7
+ * criterion 7 wants BOTH directions: a role whose `charter-override` is
+ * `allowed` takes the charter's tier, and a role whose permission is anything
+ * else does not. The second direction is the one a resolver written from the
+ * happy path silently drops, because nothing about it looks like a failure.
+ */
+export const modelResolutionSubjectEcho: DerivedCheck = {
+  id: "model-resolution-subject-echo",
+  type: "model-resolution",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const document = asRecord(instance);
+    if (document === undefined) {
+      return EMPTY;
+    }
+    const subject = asRecord(document["subject"]);
+    const resolution = asRecord(document["resolution"]);
+    if (subject === undefined || resolution === undefined) {
+      /* The schema requires both and runs first in `cmdValidate`, so this arm
+         is not reached through the command. It is kept fail-open rather than
+         inventing a second diagnostic for a missing field the schema already
+         names, which would print the same defect twice under two wordings. */
+      return EMPTY;
+    }
+    const violations: Diagnostic[] = [];
+
+    const echoedRole = subject["role"];
+    const resolvedRole = resolution["role"];
+    if (echoedRole !== resolvedRole) {
+      violations.push({
+        pointer: "#/resolution/role",
+        message: `the resolution is for role ${String(resolvedRole)} and the subject echo says the launch request named role ${String(echoedRole)}, so this record resolves a different subject than it claims`,
+      });
+    }
+
+    const overrideApplied = resolution["overrideApplied"];
+    const resolvedTier = resolution["tier"];
+    if (overrideApplied === false && resolvedTier !== subject["requestedTier"]) {
+      violations.push({
+        pointer: "#/resolution/tier",
+        message: `no charter override was applied and the resolved tier ${String(resolvedTier)} is not the requested tier ${String(subject["requestedTier"])}, so the tier changed with nothing recorded as having changed it`,
+      });
+    }
+    if (overrideApplied === true) {
+      if (resolvedTier !== resolution["charterTier"]) {
+        violations.push({
+          pointer: "#/resolution/tier",
+          message: `a charter override was applied and the resolved tier ${String(resolvedTier)} is not the charter tier ${String(resolution["charterTier"])}, so the record cites a charter it did not follow`,
+        });
+      }
+      const permission = asRecord(resolution["observation"])?.["configPermission"];
+      if (permission !== "allowed") {
+        violations.push({
+          pointer: "#/resolution/observation/configPermission",
+          message: `a charter override was applied while the role's charter-override permission was observed to be ${String(permission)}, so the override was taken where the role forbids it`,
+        });
+      }
+    }
+
+    const writtenAt = document["writtenAt"];
+    const endedAt = asRecord(document["turnEnd"])?.["endedAt"];
+    if (typeof writtenAt === "string" && typeof endedAt === "string") {
+      const written = Date.parse(writtenAt);
+      const ended = Date.parse(endedAt);
+      if (Number.isFinite(written) && Number.isFinite(ended) && written < ended) {
+        violations.push({
+          pointer: "#/writtenAt",
+          message: `the record says it was written at ${writtenAt}, before the turn ended at ${endedAt}, so it cannot carry what the turn resolved and is a restatement of the request`,
+        });
+      }
+    }
+
+    return { violations, reports: [] };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The registry                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -5165,6 +5268,10 @@ const registry: DerivedCheck[] = [
      the M3-P7 block above: `checksFor` filters by declared type and sorts by
      id, so this array's position carries no meaning any check reads. */
   verdictPairApproves,
+  /* M4-P7. Appended rather than inserted, for the reason recorded on the
+     M3-P7 block above: `checksFor` filters by declared type and sorts by id,
+     so this array's position carries no meaning any check reads. */
+  modelResolutionSubjectEcho,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

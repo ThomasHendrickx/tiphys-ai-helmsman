@@ -1,0 +1,31 @@
+{
+  "id": "model-resolution-observed-provenance-requires-observation",
+  "behavior": "model-resolution-observed-provenance-requires-observation",
+  "tests": [
+    "a record claiming observed provenance with no observation is refused by the schema"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/model-resolution.schema.json",
+      "find": "          \"required\": [\"provenance\", \"observation\", \"family\", \"model\"],\n",
+      "replace": "          \"required\": [\"provenance\", \"family\", \"model\"],\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "    const observation = asRecord(resolved?.[\"observation\"]);\n    if (observation === undefined) {\n",
+      "replace": "    const observation = asRecord(resolved?.[\"observation\"]) ?? {};\n    if (false) {\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the shipped tiphys CLI, node bin/tiphys.ts validate --type model-resolution <record>",
+    "captures": [
+      "witness/captures/m4-p7-model-resolution-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-17 from the repository root on node v26.6.0, one case per damaged record, by running the shipped CLI over records plugin/src/model-resolution.ts's own builder produced. The named test spawns the same command live and compares its whole stdout against the INVALID line this capture carries, through the helper capturedDiagnostic, which fails first when the capture does not carry the line at all. Required by rule (f) because a member of this witness mutates src/checks.ts, which the spawn/parse derivation matches."
+  }
+}

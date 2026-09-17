@@ -1,0 +1,30 @@
+{
+  "id": "model-resolution-family-token-reaches-verdict",
+  "behavior": "model-resolution-family-token-reaches-verdict",
+  "tests": [
+    "the family token copied into a verdict equals the record's byte for byte"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  return stringAt(asRecord(record[\"resolved\"]), \"family\");\n",
+      "replace": "  return stringAt(asRecord(record[\"resolved\"]), \"family\")?.toUpperCase();\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  return stringAt(asRecord(record[\"resolved\"]), \"family\");\n",
+      "replace": "  return stringAt(asRecord(record[\"resolved\"]), \"model\");\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  return stringAt(asRecord(record[\"resolved\"]), \"family\");\n",
+      "replace": "  return stringAt(asRecord(record[\"resolved\"]), \"family\") ?? \"unknown\";\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "model-resolution-validates",
+  "behavior": "model-resolution-validates",
+  "tests": [
+    "a model-resolution record the plugin wrote validates under its named type and under auto"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"model-resolution\", \"model-resolution.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "[\"model-resolution\", \"model-resolution.schema.json\"]",
+      "replace": "[\"model-resolution\", \"executor-record.schema.json\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
