@@ -2312,3 +2312,17 @@ are not comparable, so under DR-0016 there is nothing to escalate.
 The same line also has M4-P9 editing `package.json` for `workspaces` "only if
 the adapter phase has not already added it". M4-P5 did add it, so that clause
 resolves to no edit, and M4-P9's declaration should not carry `package.json`.
+
+**The plan answers this itself, which is why it is a decision and not a
+question.** delivery/plan/kernel-plan-m4.md:1192 raises "where does the plugin
+tree live" as an open item, recommends `plugin/`, gives the reason (`packages/`
+implies a third and fourth package and DR-0040 is explicit that the second one
+is "for now"), prices the cost of being wrong at one directory move, and hands
+it to the orchestrator with "no escalation". M4-P5 then shipped `plugin/`. So
+the two lines still naming `packages/claude-code-plugin/`, at
+delivery/plan/kernel-plan-m4.md:1581 for M4-P9 and
+delivery/plan/kernel-plan-m4.md:3203 for M4-P24, are stale echoes of the
+pre-decision recommendation rather than a second live proposal.
+
+DECIDED: the plugin tree is `plugin/`. Both briefs say so, and neither phase
+creates `packages/`.
