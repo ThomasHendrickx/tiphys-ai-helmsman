@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/model-resolution.ts",
-      "find": "    const observation = asRecord(resolved?.[\"observation\"]);\n    if (observation === undefined) {\n",
-      "replace": "    const observation = asRecord(resolved?.[\"observation\"]) ?? {};\n    if (false) {\n"
+      "find": "    const observation = asRecord(resolved?.[\"observation\"]);\n    if (observation === undefined) {\n      return {\n        kind: \"refused\",\n        reason:\n          \"the record claims provenance observed and carries no observation, so \" +\n          \"the claim is a self-report wearing the word observed\",\n      };\n    }\n",
+      "replace": "    const observation = asRecord(resolved?.[\"observation\"]);\n    if (observation === undefined) {\n      return { kind: \"accepted\", family, provenance };\n    }\n"
     }
   ],
   "deterministic": true,
