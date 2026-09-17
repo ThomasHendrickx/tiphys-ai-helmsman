@@ -1,0 +1,67 @@
+Real output of the SHIPPED tiphys validate command over model-resolution
+records, captured so that test/model-resolution.test.ts asserts against what
+the program really printed rather than against strings chosen to match the
+implementation (CLAUDE.md's red-witness rule, standing warning 10).
+
+WHY THIS CAPTURE EXISTS AT ALL, since the test spawns the CLI live. Rule (f) of
+the red-witness gate binds every witness whose members touch a changed file
+that the spawn/parse derivation matches, and src/checks.ts does
+(it carries child_process tokens). The witnesses whose dangerous states mutate
+src/checks.ts therefore owe a capture, and the honest one is this: the
+behaviour under test is a DIAGNOSTIC LINE, so the contract is the text, and the
+text belongs in a file a reviewer can read beside the assertion.
+
+Captured 2026-09-17, node v26.6.0, from the repository root, one case per
+record. The records are produced by plugin/src/model-resolution.ts's own
+builder and then damaged one field at a time; the two timestamps are fixed
+inputs, so every line below is stable across runs.
+
+  node bin/tiphys.ts validate --type model-resolution <record>
+
+case: self-reported
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 0
+  stdout:
+
+case: no-subject
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/subject required property subject is missing
+
+case: echo-mismatch
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/resolution/role the resolution is for role implementer and the subject echo says the launch request named role orchestrator, so this record resolves a different subject than it claims (check: model-resolution-subject-echo)
+
+case: no-vocabulary
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/resolved/vocabulary required property vocabulary is missing
+
+case: observed-no-observation
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/resolved value matches no permitted alternative here
+
+case: launch-time
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/writtenAt the record says it was written at 2026-09-17T09:59:00.000Z, before the turn ended at 2026-09-17T10:00:00.000Z, so it cannot carry what the turn resolved and is a restatement of the request (check: model-resolution-subject-echo)
+
+case: no-turn-end
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/turnEnd required property turnEnd is missing
+
+case: override-forbidden
+  command: node bin/tiphys.ts validate --type model-resolution <record>
+  exit: 1
+  stdout:
+    INVALID #/resolution/observation/configPermission a charter override was applied while the role's charter-override permission was observed to be forbidden, so the override was taken where the role forbids it (check: model-resolution-subject-echo)
+

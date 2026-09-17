@@ -1,0 +1,24 @@
+{
+  "id": "model-resolution-kernel-reads-identity-not-content",
+  "behavior": "model-resolution-kernel-reads-identity-not-content",
+  "tests": [
+    "the kernel-side reader dereferences a vocabulary's identity and never its content"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  const id = vocabulary[\"id\"];\n  const version = vocabulary[\"version\"];\n",
+      "replace": "  const { id, version } = { ...vocabulary };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  const leftFamily = stringAt(asRecord(left[\"resolved\"]), \"family\");\n",
+      "replace": "  const leftFamily =\n    (asRecord(asRecord(left[\"resolved\"])?.[\"vocabulary\"])?.[\"families\"] as\n      | string[]\n      | undefined)?.[0] ?? stringAt(asRecord(left[\"resolved\"]), \"family\");\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,31 @@
+{
+  "id": "model-resolution-absent-record-is-error",
+  "behavior": "model-resolution-absent-record-is-error",
+  "tests": [
+    "an adapter exiting zero with no model-resolution record is an error and never a clean result"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  if (read.kind === \"absent\") {\n    return {\n      kind: \"error\",\n      reason:\n        `fail-closed rule 1: adapter exited ${String(writerExitCode)} without ` +\n        `writing a model-resolution record at ${path}; exit 0 with no ` +\n        `record is error, not success`,\n    };\n  }\n",
+      "replace": "  if (read.kind === \"absent\") {\n    return { kind: \"read\", record: {} };\n  }\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  return join(taskDir(fleet, taskId), MODEL_RESOLUTION_RECORD_NAME);\n",
+      "replace": "  return join(fleet.tasksDir, \"..\", \"worktrees\", taskId, MODEL_RESOLUTION_RECORD_NAME);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the release-verification adapter loop, src/gates/release.ts runVerification, driven with a stub adapter that exits 0 writing nothing",
+    "captures": [
+      "witness/captures/m4-p7-model-resolution-cli.txt"
+    ],
+    "provenance": "The named test does not read a stored capture for the rule text: it DRIVES src/gates/release.ts live with a writes-nothing stub adapter, captures the verdict reason that program really produced, extracts the fail-closed rule 1 clause from it with a regular expression, and asserts the kernel-side reader's own reason carries the same clause. That is the strongest form of the rule: there is no second copy of the sentence to drift from the first. The stored capture cited here is the CLI capture the sibling witnesses use, kept so this spec names a file a reviewer can open; the live derivation is the assertion."
+  }
+}

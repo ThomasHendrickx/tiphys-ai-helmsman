@@ -1,0 +1,31 @@
+{
+  "id": "model-resolution-written-at-turn-end",
+  "behavior": "model-resolution-written-at-turn-end",
+  "tests": [
+    "the model-resolution record is written after the turn ended and a launch-time record is refused"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (Number.isFinite(written) && Number.isFinite(ended) && written < ended) {\n",
+      "replace": "      if (Number.isFinite(written) && Number.isFinite(ended) && false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/model-resolution.schema.json",
+      "find": "    \"turnEnd\",\n    \"subject\",\n",
+      "replace": "    \"subject\",\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the turn-end hook the kernel generates (src/hooks.ts:38), plus the shipped tiphys CLI, node bin/tiphys.ts validate --type model-resolution <record>",
+    "captures": [
+      "witness/captures/m4-p7-model-resolution-cli.txt"
+    ],
+    "provenance": "The named test RENDERS the shipped hook with renderTurnEndHook, runs it as a real child, and reads the endedAt instant out of the file that child wrote, so the timing comparison is against an instant the shipped generator really produced rather than a literal. The refusal half is compared against witness/captures/m4-p7-model-resolution-cli.txt, captured 2026-09-17 on node v26.6.0 by running the CLI over a record damaged one field at a time. Required by rule (f) because a member of this witness mutates src/checks.ts."
+  }
+}

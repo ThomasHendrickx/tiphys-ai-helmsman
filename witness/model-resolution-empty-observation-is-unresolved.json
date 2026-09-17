@@ -1,0 +1,32 @@
+{
+  "id": "model-resolution-empty-observation-is-unresolved",
+  "behavior": "model-resolution-empty-observation-is-unresolved",
+  "tests": [
+    "an observation channel that answers nothing is unresolved and never a fallback to the self-report"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/model-resolution.ts",
+      "find": "  if (models.length === 0) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/model-resolution.ts",
+      "find": "  if (models.length > 1) {\n",
+      "replace": "  if (false) {\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the Claude Code harness's own transcript writer, as read by M4-P1's SubagentStop resolver",
+    "captures": [
+      "test/fixtures/harness-probe/q3-transcript-model-resolution/plugin-hook-resolve.mjs.txt",
+      "test/fixtures/harness-probe/q3-transcript-model-resolution/three-concurrent.summary.txt"
+    ],
+    "provenance": "M4-P1 committed both files. plugin-hook-resolve.mjs.txt is the probe's resolver, and the named test asserts that this module's row selection (row.type assistant, row.message.model) is the one that capture really used, so the fixture shape is measured rather than invented. three-concurrent.summary.txt is a real fan-out run whose log carries the model ids used here and the fail-no-assistant-model-rows outcome that is the empty-transcript race this witness turns on; the test asserts both strings are present in it before exercising anything."
+  }
+}

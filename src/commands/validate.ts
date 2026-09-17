@@ -127,6 +127,25 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      phase that gives the record a `kind` reddens this comment instead of
      leaving it stale. */
   ["executor-record", "executor-record.schema.json"],
+  /* M4-P7 criterion 1. tasks/<id>/model-resolution.json, the record a harness
+     adapter writes at TURN END saying which tier was requested, which the
+     charter resolved, and which model family served the turn.
+
+     ONE ROW SERVES BOTH REGISTRATIONS, which is the property the brief for
+     this phase asks to be got right and the row above states the mechanism
+     for: `resolveAutoType` answers `--type auto` by reading the instance's
+     `kind` and looking it up in THIS MAP. The difference from the executor
+     record is that a model-resolution record DOES carry a `kind`, required and
+     `const`, so `--type auto` resolves a real record rather than raising the
+     usage error the row above documents. `test/model-resolution.test.ts`
+     asserts both halves against the shipped CLI rather than against this
+     comment.
+
+     THE DERIVED CHECKS COME WITH THE ROW AND ARE THE REASON IT MATTERS. The
+     schema is Kind A and reaches presence; `model-resolution-subject-echo` in
+     src/checks.ts is Kind B and reaches agreement between sibling fields, and
+     nothing runs it until the type resolves here. */
+  ["model-resolution", "model-resolution.schema.json"],
 ]);
 
 /**
