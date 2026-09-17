@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-project-clone-not-a-root",
+  "behavior": "spawn-adapter-project-clone-not-a-root",
+  "tests": [
+    "an adapter that exists only in the project clone is refused naming the fleet home, and the module is never evaluated"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  const requireFromFleet = createRequire(fleet.packageJsonPath);",
+      "replace": "  const requireFromFleet = createRequire(`${fleet.projectsDir}/demo/package.json`);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  } catch (error) {\n    const code = (error as NodeJS.ErrnoException).code ?? \"\";",
+      "replace": "  } catch (error) {\n    resolved = createRequire(`${fleet.projectsDir}/demo/package.json`).resolve(specifier);\n    return checkAdapterShape(await import(pathToFileURL(resolved).href), specifier, origin, resolved);\n    const code = (error as NodeJS.ErrnoException).code ?? \"\";"
+    }
+  ]
+}

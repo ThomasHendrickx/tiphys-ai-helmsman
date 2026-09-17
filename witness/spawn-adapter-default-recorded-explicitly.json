@@ -1,0 +1,31 @@
+{
+  "id": "spawn-adapter-default-recorded-explicitly",
+  "behavior": "spawn-adapter-default-recorded-explicitly",
+  "tests": [
+    "the launch record names the built-in adapter, the fleet home default, and the flag that outranks it"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "    const selection = await selectAdapter(fleet, options.adapterSpecifier);",
+      "replace": "    const selection = await selectAdapter(fleet, undefined);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  if (flagSpecifier !== undefined) {",
+      "replace": "  if (false && flagSpecifier !== undefined) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "MEMBER 0 MUTATES src/spawn.ts, which matches the spawn/parse derivation (it imports node:child_process and runs both the payload and the generated turn-end hook with spawnSync), so rule (f) binds this witness. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is the real output of the GENERATED turn-end hook, taken 2026-09-16 on node v26.6.0, and it is cited rather than a fresh one because this behavior consumes exactly the contract that capture records and adding a second identical capture would be a second thing to keep in step. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: arm 1 of the named test is the DEFAULT arm, which runs no loaded adapter at all, so the shipped subprocess adapter really launches /bin/true and really invokes the generated hook as a child; the test then reads the file that child wrote and asserts it against the capture's recorded contract (a string endedAt that parses as an instant, and an integer exitCode equal to the argument the hook was handed). A divergence between the live record and the recorded contract reddens rather than passing silently. The other two arms drive loaded fixture adapters, which invoke the same shipped hook through the same spawnSync path. MEMBER 0 drops the flag's specifier at the call site inside spawnTask, so the selection runs but can never see a flag; MEMBER 1 leaves the call site intact and inverts the precedence inside selectAdapter, so the flag is seen and loses. One route makes the flag invisible and the other makes it powerless, and both end with the launch record naming an adapter the operator did not ask for."
+  }
+}

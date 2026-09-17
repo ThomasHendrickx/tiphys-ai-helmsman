@@ -9,9 +9,9 @@ import type { TaskShape } from "../task.ts";
 /**
  * tiphys spawn --task <id> --project <path> --brief <file> --shape
  * ship|scout --exec <cmd> [--deadline <seconds>] [--offline]
- * [--role <name>] [--tier <name>] [--phase <id>]
- * (kernel plan v1, M1-P4 step 4; the last three added by M4-P3).
- * Runs in a fleet home (cwd).
+ * [--role <name>] [--tier <name>] [--phase <id>] [--adapter <specifier>]
+ * (kernel plan v1, M1-P4 step 4; --role, --tier and --phase added by
+ * M4-P3 and --adapter by M4-P4). Runs in a fleet home (cwd).
  *
  * --exec is REQUIRED in M1: spawn without it exits 64 with usage,
  * because the multiplexer-window adapter that would make an exec-less
@@ -30,7 +30,7 @@ import type { TaskShape } from "../task.ts";
 const USAGE =
   "usage: tiphys spawn --task <id> --project <path> --brief <file> " +
   "--shape ship|scout --exec <cmd> [--deadline <seconds>] [--offline] " +
-  "[--role <name>] [--tier <name>] [--phase <id>]";
+  "[--role <name>] [--tier <name>] [--phase <id>] [--adapter <specifier>]";
 
 interface SpawnArgs {
   task: string | undefined;
@@ -50,6 +50,14 @@ interface SpawnArgs {
   role: string | undefined;
   tier: string | undefined;
   phase: string | undefined;
+  /**
+   * The module specifier of the adapter to run this task through (M4-P4).
+   * Optional and deliberately unvalidated HERE: whether it names something
+   * loadable is answered by resolving it FROM THE FLEET HOME inside
+   * spawnTask, before anything is created, and a second opinion held at the
+   * CLI could only ever be a weaker one.
+   */
+  adapter: string | undefined;
 }
 
 function usageError(message?: string): number {
@@ -72,6 +80,7 @@ function parseFlags(args: string[]): SpawnArgs | undefined {
     role: undefined,
     tier: undefined,
     phase: undefined,
+    adapter: undefined,
   };
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
@@ -124,6 +133,16 @@ function parseFlags(args: string[]): SpawnArgs | undefined {
     } else if (flag === "--phase" && value !== undefined) {
       // CARRIED, never derived from the branch name (M4-D-22 is open).
       parsed.phase = value;
+      i += 1;
+    } else if (flag === "--adapter" && value !== undefined) {
+      // VERBATIM, and it is a MODULE SPECIFIER rather than a path: the
+      // kernel resolves it with Node module resolution rooted at the fleet
+      // home (src/adapters/load.ts), which is the one root that is
+      // owner-controlled. Nothing is checked here, because a check here
+      // would run against this process's own resolution root, which is the
+      // kernel checkout, and that is precisely the root this phase exists to
+      // keep out of the answer.
+      parsed.adapter = value;
       i += 1;
     } else if (flag === "--offline") {
       parsed.offline = true;
@@ -180,6 +199,7 @@ export async function cmdSpawn(args: string[]): Promise<number> {
     role: flags.role,
     declaredTier: flags.tier,
     phaseId: flags.phase,
+    adapterSpecifier: flags.adapter,
   });
   if (!result.ok) {
     // One reason line, structurally (CR-303): a reason may carry a

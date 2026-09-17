@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-shape-refused-creates-nothing",
+  "behavior": "spawn-adapter-shape-refused-creates-nothing",
+  "tests": [
+    "a module that is not an adapter is refused before a worktree, a branch, a task directory or a pool record exists"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  const where = `the adapter ${specifier} (${origin}), resolved to ${resolved},`;",
+      "replace": "  const where = `the adapter ${specifier} (${origin}), resolved to ${resolved},`;\n  return { ok: true, adapter: (module as { default: unknown }).default as ExecutorAdapter };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  if (typeof launch !== \"function\") {",
+      "replace": "  if (false) {"
+    }
+  ]
+}

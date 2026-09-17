@@ -9,26 +9,44 @@
     "package.json",
     "tsconfig.src.json",
     "test/spawn.test.ts",
-    "test/adapter-load.test.ts"
+    "test/adapter-load.test.ts",
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p4.json"
   ],
   "declaredExtras": [
+    "witness/spawn-adapter-flag-resolves-from-fleet-home.json",
+    "witness/spawn-adapter-project-clone-not-a-root.json",
+    "witness/spawn-adapter-fleet-home-wins-over-project.json",
+    "witness/spawn-adapter-shape-refused-creates-nothing.json",
+    "witness/spawn-adapter-name-collision-refused.json",
+    "witness/spawn-adapter-default-recorded-explicitly.json",
+    "witness/kernel-exports-do-not-widen-package.json",
     "test/behaviors.json",
     "delivery/plan/phase-declarations/m4-p4.json",
     "delivery/work-history/m4-p4.md"
   ],
   "citations": [
+    "M4-D-03",
+    "M4-D-23",
+    "DR-0007",
+    "DR-0012",
+    "DR-0029",
+    "DR-0031",
+    "DR-0040",
+    "C-2",
+    "C-3",
+    "T-003",
+    "T-008",
     "M4-D-05",
     "DR-0036",
     "DR-0027",
-    "DR-0031",
-    "C-1",
-    "C-2",
-    "C-3"
+    "C-1"
   ],
   "gateClasses": {
     "correctness": {
       "gates": [
         "suite",
+        "red-witness",
         "typecheck"
       ]
     },

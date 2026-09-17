@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { constants } from "node:os";
+import { BUILT_IN_ADAPTER_NAME, selectAdapter } from "./adapters/load.ts";
 import { assembleBrief } from "./brief.ts";
 import { buildChildEnv, scrubRoot } from "./exec/env.ts";
 import type { Fleet } from "./fleet.ts";
@@ -385,7 +386,13 @@ function payloadExitCode(status: number | null, signal: NodeJS.Signals | null): 
  * exactly that distinction.
  */
 export const subprocessAdapter: ExecutorAdapter = {
-  name: "subprocess",
+  /*
+   * THE NAME IS THE CONSTANT, not a second copy of the string (M4-P4
+   * criterion 5). The loader refuses a loaded adapter that claims this name,
+   * and a refusal compared against a literal spelled out in another file is
+   * a guard that goes quiet the day one of the two is edited.
+   */
+  name: BUILT_IN_ADAPTER_NAME,
   /*
    * NOTHING, and that is a statement rather than a default (M4-P3). This
    * adapter runs a command in a directory; it reads no brief, plays no role
@@ -398,7 +405,7 @@ export const subprocessAdapter: ExecutorAdapter = {
   async launch(request: ExecutorRequest): Promise<LaunchOutcome> {
     const launchedAt = new Date();
     const record: ExecutorRecord = {
-      adapter: "subprocess",
+      adapter: BUILT_IN_ADAPTER_NAME,
       launchedAt: launchedAt.toISOString(),
     };
     if (request.deadlineSeconds !== undefined) {
@@ -606,7 +613,27 @@ export interface SpawnOptions {
   role: string | undefined;
   declaredTier: string | undefined;
   phaseId: string | undefined;
+  /**
+   * AN ADAPTER OBJECT SUPPLIED DIRECTLY, which only the kernel's own tests
+   * do. It outranks `adapterSpecifier` because it is not a request to
+   * resolve anything: there is nothing to root, nothing to load, and no
+   * trust boundary to cross.
+   */
   adapter?: ExecutorAdapter;
+  /**
+   * THE `--adapter` SPECIFIER, verbatim as the operator typed it (M4-P4
+   * criterion 1). `undefined` means the flag was absent, which is NOT the
+   * same as an empty one: an absent flag falls through to the fleet home's
+   * declared default and then to the built-in adapter, and each of those
+   * three outcomes is named in the launch record rather than being silent
+   * (criterion 6).
+   *
+   * The specifier is not resolved here. It is handed to `selectAdapter`,
+   * which roots Node module resolution at the FLEET HOME and never at the
+   * project clone; see src/adapters/load.ts for why that root is the whole
+   * security property of this phase.
+   */
+  adapterSpecifier?: string;
 }
 
 export interface SpawnSuccess {
@@ -640,7 +667,29 @@ export async function spawnTask(
   // refuse before ANYTHING is created, and until this phase the adapter was
   // not named until the launch call site, which is after pool create has made
   // a worktree, a branch and a pool record.
-  const adapter = options.adapter ?? subprocessAdapter;
+  //
+  // M4-P4 PUTS THE LOAD IN THAT SAME WINDOW, and for the same reason one
+  // level out. Resolving, evaluating and shape-checking a module the kernel
+  // did not write are three more ways to discover that this spawn cannot
+  // happen, and every one of them must happen while there is still nothing to
+  // roll back: a malformed adapter found after pool create is criterion 4's
+  // dangerous state, which is M4-P3's refusal-after-creation shape with a
+  // different cause.
+  //
+  // A DIRECTLY SUPPLIED ADAPTER SHORT-CIRCUITS THE WHOLE SELECTION, including
+  // the fleet-home read. The kernel's own tests hand an object across this
+  // seam, and a test fleet that happened to declare a default would otherwise
+  // silently change which adapter those tests exercised.
+  let adapter: ExecutorAdapter;
+  if (options.adapter !== undefined) {
+    adapter = options.adapter;
+  } else {
+    const selection = await selectAdapter(fleet, options.adapterSpecifier);
+    if (!selection.ok) {
+      return { ok: false, reason: selection.reason };
+    }
+    adapter = selection.adapter ?? subprocessAdapter;
+  }
 
   // A requirement naming a field the contract does not have is a defect in
   // the adapter, refused as the adapter is taken up (criterion 3). It runs
