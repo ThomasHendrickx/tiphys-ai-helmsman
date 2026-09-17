@@ -516,9 +516,10 @@
           "src/gates/run.ts",
           "src/gates/suite.ts",
           "src/commands/gates.ts",
-          "gate-registry.yaml"
+          "gate-registry.yaml",
+          "src/gates/gate-classes.ts"
         ],
-        "read": "The claim is about ONE file, scripts/m2-exit-test.sh, and scripts/ is deliberately outside the widened surface. Every hit is the --registry FLAG being defined or used where it is supposed to be (the CLI parser, the runner, the rendered gate list), which is what makes its absence from the exit-test script the gap this row records rather than a typo. gate-registry.yaml:15 states the same absence independently."
+        "read": "The claim is about ONE file, scripts/m2-exit-test.sh, and scripts/ is deliberately outside the widened surface. Every hit is the --registry FLAG being defined or used where it is supposed to be (the CLI parser, the runner, the rendered gate list), which is what makes its absence from the exit-test script the gap this row records rather than a typo. gate-registry.yaml:15 states the same absence independently. M4-P14 ADDS A SEVENTH HIT, src/gates/gate-classes.ts:114 and :129, and it is the same kind as the six above: the new gate-classes gate takes a --registry flag because it has to know which gate ids this repository declares before it can say whether a phase's declared class names anything that runs. Line 114 is the usage string and line 129 is the flag table. The claim this row records is about ONE file and is re-verified unchanged at M4-P14: `grep -c -- '--registry' scripts/m2-exit-test.sh` exits 1 printing 0."
       }
     },
     {
@@ -1243,9 +1244,10 @@
       "widened": {
         "hit-paths": [
           "src/gates/run.ts",
-          "src/witness/run.ts"
+          "src/witness/run.ts",
+          "src/gates/gate-classes.ts"
         ],
-        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands. M4-P14 ADDS A THIRD HIT, src/gates/gate-classes.ts:509 and :529, where the new gate-classes gate PRINTS how many of a phase's required gate classes it judged. That is a line a program emits about its own units, which is the same category as src/gates/run.ts's emission above and not a statement of the log-reading procedure this rule sets out. The claim is re-verified unchanged at M4-P14: `grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml` exits 1 printing 0 for all three."
       }
     },
     {
@@ -1268,9 +1270,10 @@
       "widened": {
         "hit-paths": [
           "src/gates/run.ts",
-          "src/witness/run.ts"
+          "src/witness/run.ts",
+          "src/gates/gate-classes.ts"
         ],
-        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands. M4-P14 ADDS A THIRD HIT, src/gates/gate-classes.ts:509 and :529, where the new gate-classes gate PRINTS how many of a phase's required gate classes it judged. That is a line a program emits about its own units, which is the same category as src/gates/run.ts's emission above and not a statement of the log-reading procedure this rule sets out. The claim is re-verified unchanged at M4-P14: `grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml` exits 1 printing 0 for all three."
       }
     },
     {
@@ -1293,9 +1296,10 @@
       "widened": {
         "hit-paths": [
           "src/gates/run.ts",
-          "src/witness/run.ts"
+          "src/witness/run.ts",
+          "src/gates/gate-classes.ts"
         ],
-        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands. M4-P14 ADDS A THIRD HIT, src/gates/gate-classes.ts:509 and :529, where the new gate-classes gate PRINTS how many of a phase's required gate classes it judged. That is a line a program emits about its own units, which is the same category as src/gates/run.ts's emission above and not a statement of the log-reading procedure this rule sets out. The claim is re-verified unchanged at M4-P14: `grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml` exits 1 printing 0 for all three."
       }
     },
     {
@@ -1318,9 +1322,10 @@
       "widened": {
         "hit-paths": [
           "src/gates/run.ts",
-          "src/witness/run.ts"
+          "src/witness/run.ts",
+          "src/gates/gate-classes.ts"
         ],
-        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands."
+        "read": "The two hits are src/gates/run.ts:1720, where the RUNNER emits the string 'required gate(s) not applicable', and src/witness/run.ts:1290, a source comment M4-P11 added that NARRATES a measured incident: a required gate went red for every spec in a file's neighbourhood because one unrelated line was added. Neither is a kernel statement of the reading procedure this rule sets out. A line a program prints is the output the rule teaches a reader to interpret, not an instruction channel, and a comment recounting what one gate did on one day is not one either. The absence stands. M4-P14 ADDS A THIRD HIT, src/gates/gate-classes.ts:509 and :529, where the new gate-classes gate PRINTS how many of a phase's required gate classes it judged. That is a line a program emits about its own units, which is the same category as src/gates/run.ts's emission above and not a statement of the log-reading procedure this rule sets out. The claim is re-verified unchanged at M4-P14: `grep -c 'required gate' AGENTS.md roles/implementer.md checklists/clean-room.yaml` exits 1 printing 0 for all three."
       }
     },
     {

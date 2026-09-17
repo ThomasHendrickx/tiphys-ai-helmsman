@@ -22,7 +22,8 @@
     "witness/captures/typecheck-tsc-listfiles-red.txt",
     "witness/captures/typecheck-tsc-listfiles-green.txt",
     "witness/phase-declaration-carries-the-class-vocabulary.json",
-    "witness/phase-declaration-class-escape-vocabulary-is-closed.json"
+    "witness/phase-declaration-class-escape-vocabulary-is-closed.json",
+    "delivery/plan/cutover/retirement-inventory.json"
   ],
   "citations": [
     "DR-0028",
