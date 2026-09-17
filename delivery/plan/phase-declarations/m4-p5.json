@@ -10,7 +10,8 @@
     "package-lock.json",
     "tsconfig.src.json",
     "test/plugin-package.test.ts",
-    "test/plugin-adapter.test.ts"
+    "test/plugin-adapter.test.ts",
+    "test/license-gate.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",
