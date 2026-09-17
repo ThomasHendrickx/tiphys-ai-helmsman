@@ -315,6 +315,63 @@ but the owner's cap is two agents and M4-P5 holds the other slot. M4-P9 collides
 with M4-P5 on `package.json`. M4-P18, M4-P21, M4-P22, M4-P12, M4-P24 and M4-P25
 are all free of this pair and wait only on a slot.
 
+## Wave 8, 2026-09-17: both slots, M4-P8 and M4-P18
+
+Written BEFORE dispatch, per rule 5.
+
+| unit | files it may touch |
+|---|---|
+| M4-P8 | `src/spawn.ts`, `src/exec/env.ts`, `src/gates/credentials.ts`, `src/task.ts`, `scripts/credential-witness.mjs`, `test/payload-credentials.test.ts` |
+| M4-P18 | `src/commands/sync.ts`, `src/cli.ts`, `src/status.ts`, `src/commands/init.ts`, `test/sync.test.ts`, `test/status.test.ts`, `AGENTS.md` |
+
+**Intersection: EMPTY.** Both lists are taken verbatim from the plan, M4-P8 at
+delivery/plan/kernel-plan-m4.md:1463 and M4-P18 at
+delivery/plan/kernel-plan-m4.md:2761.
+
+**Checked against the two pull requests still in CI, because a merge that lands
+while these run is a conflict the intersection above does not see.** Measured
+with `git diff --name-only origin/main...<branch>`:
+
+- #175 (M4-P5) changes `plugin/**`, `package.json`, `package-lock.json`,
+  `test/license-gate.test.ts`, `test/plugin-package.test.ts`,
+  `test/plugin-adapter.test.ts`. No overlap with either unit.
+- #176 (M4-P28) changes `src/gates/coverage.ts`, `test/coverage-gate.test.ts`,
+  `witness/coverage-regex-interrupt-not-a-verdict.json`. No overlap with either
+  unit. M4-P8 edits a DIFFERENT file under `src/gates/`, `credentials.ts`.
+
+**The generator and drift checks, done separately from the intersection.**
+
+- `src/gates/credentials.ts` backs two registry gates, `credential-scrub` at
+  `gate-registry.yaml:79` and `credential-token` at `gate-registry.yaml:87`.
+  Those two are QUOTED, not cited, and the reason is a rule this document paid
+  for: the citations gate declares root-level `*.md` and `*.json` and nothing
+  else at the root, so a root-level `.yaml` path resolves against no declared
+  root and reddens. Measured 2026-09-17, run 35203631442 on this branch's first
+  head. The declared root list is at src/gates/citations.ts:201.
+  Both rows already exist in the registry AND the manifest, and M4-P8's plan line
+  says it exports the vocabulary only. So no gate row is added and no drift
+  chain moves. If M4-P8's step 4 turns out to need a NEW gate arm, that is an
+  escalation, not a quiet registry edit, because a registry-only gate does not
+  run in CI.
+- `AGENTS.md` is READ by three scripts: `scripts/check-clause-map.mjs`,
+  `scripts/check-agents-references.mjs` and
+  `scripts/check-retirement-inventory.mjs`. M4-P18 edits it, so M4-P18 owns
+  running all three. M4-P8 does not touch it, so this is a within-phase
+  obligation and not a cross-phase coupling.
+- `src/cli.ts` is M4-P18's alone. DR-0046 keeps the command table serialised
+  through M4; the other claimants (M4-P12, M4-P24, M4-P25) are not dispatched
+  and neither in-flight pull request touches it, measured as zero hits above.
+
+**Shared registries.** `test/behaviors.json` is append-only and resolved as a
+union against the merge base. It does not re-serialise the pair.
+
+**Not dispatched, and why.** M4-P9 needs the plugin package skeleton that M4-P5
+is landing in #175, so it waits for that merge. M4-P29 collides with M4-P8 on
+`src/gates/credentials.ts`. M4-P21 collides with M4-P18 on
+`src/commands/init.ts`. M4-P22 collides with M4-P8 on `src/spawn.ts`.
+M4-P12, M4-P24 and M4-P25 collide with M4-P18 on `src/cli.ts` under DR-0046.
+That leaves M4-P6, M4-P7 (both blocked on M4-P5) and M4-P30 as the only phases
+free of this pair, and the owner's cap is two agents.
 ## Wave 9, 2026-09-17: M4-P6 and M4-P30, written early and RE-CHECKED at dispatch
 
 This one is written before the wave it governs is dispatchable, because both

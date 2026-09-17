@@ -179,6 +179,19 @@ artifact behind it is treated as unknown.
    least one real `path:line`. And the count is whole-document, never
    hunk-scoped, so adding one anywhere in the file satisfies it.
 
+   **A PATH CAN ALSO FAIL BY ITS ROOT, AND THAT IS A DIFFERENT RED FROM AN
+   OUT-OF-RANGE LINE.** The gate resolves a citation only if its path matches a
+   DECLARED ROOT, and the root list at src/gates/citations.ts:201 is narrower
+   than the repository: at the top level it declares `*.md` and `*.json` and
+   NOTHING ELSE. So `gate-registry.yaml:79` reddens with "matches no declared
+   root" however correct the line number is, and so would any root-level
+   `.yaml`, `.yml`, `.sh` or `.ts`. Inside a declared tree (`src/`, `test/`,
+   `scripts/`, `delivery/`, `schemas/`, `roles/`, `tuition/`, `bin/*.ts`) the
+   extension does not matter. Measured 2026-09-17, run 35203631442: a wave
+   pre-pass citing two `gate-registry.yaml` lines took a red `citations` and a
+   round trip for it. Quote a root-level non-markdown path instead, and cite the
+   SOURCE that reads it when you need a resolving citation.
+
    Quoting is a real and useful tool, not a mistake to avoid: a path in backticks
    is how you name a file you are NOT asserting exists at that line, such as one
    on an unmerged branch. Use it deliberately, and know that it buys you nothing

@@ -87,11 +87,19 @@ const coverageModule = (await import(new URL("../src/gates/coverage.ts", import.
     findings: FindingOutcomeRow[],
   ) => FindingParityResult;
   isEmptyCell: (value: string) => boolean;
-  boundedExec: (compiled: RegExp, value: string) => RegExpExecArray | null;
+  boundedExec: (
+    compiled: RegExp,
+    value: string,
+    bounds?: { cpuBudgetMs?: number; wallBackstopMs?: number; maxAttempts?: number },
+  ) => RegExpExecArray | null;
   extractIdRows: (text: string, idPattern: string) => { id: string; cells: string[]; line: number }[];
   RegexBoundExceededError: new (message: string) => Error;
+  RegexBudgetUndeterminedError: new (message: string) => Error;
+  catastrophicShapeReason: (pattern: string) => string | undefined;
   validateConfigPatterns: (config: CoverageConfig) => string | undefined;
-  REGEX_EXEC_TIMEOUT_MS: number;
+  REGEX_EXEC_CPU_BUDGET_MS: number;
+  REGEX_EXEC_WALL_BACKSTOP_MS: number;
+  REGEX_EXEC_MAX_ATTEMPTS: number;
 };
 
 const manifestModule = (await import(new URL("../src/gates/manifest.ts", import.meta.url).href)) as {
@@ -778,47 +786,86 @@ test("a malformed config pattern is a named config error with a written result r
 });
 
 /**
- * CR-991: the ReDoS bound, staged with TWO structurally different
- * members. Member 1 calls the bounded executor DIRECTLY with the exact
- * pattern and input shape the hazard review measured (`(a+)+b`, `a`
- * repeated), with a REAL measured wall-clock bound: unbounded, this input
- * length does not return (the hazard review measured length 40 exceeding
- * a 180 SECOND timeout). Member 2 exercises the CLI's upfront static
- * rejection of the same shape, a structurally different code path (a
- * config error before any input is ever tested, rather than a runtime
- * interruption of a test that started).
+ * Run `fn`, expect it to throw, and hand the thrown value back. Node's
+ * `assert.throws` returns `undefined`, so it cannot be used to assert on
+ * the MESSAGE of what was thrown, and the messages are the point here:
+ * this phase is about a guard reporting the wrong cause.
  */
-test("a catastrophic-backtracking pattern is bounded by a measured wall-clock timeout instead of hanging", () => {
-  // MEMBER 1: the runtime bound, called directly, bypassing the static
-  // validator entirely, so this witnesses `boundedExec` itself rather
-  // than the config-time rejection.
+function captureThrow(fn: () => unknown): Error {
+  try {
+    fn();
+  } catch (error) {
+    return error as Error;
+  }
+  throw new assert.AssertionError({ message: "expected the call to throw, and it returned" });
+}
+
+/**
+ * M4-P28: the ReDoS bound measures CPU WORK, not elapsed wall clock.
+ *
+ * THE DEFECT THIS REPLACES. The bound used to be a 250ms wall-clock
+ * timeout and an interruption was reported as "did not complete within
+ * 250ms ... (possible catastrophic backtracking)". Elapsed time is
+ * complexity divided by available CPU, so that condition reddened for
+ * well-behaved patterns whenever the machine was busy. Five independent
+ * witnesses on six structurally different patterns are recorded in
+ * delivery/verification/wall-clock-budgets-are-load-dependent.md:1, one of
+ * them `^(?:parked)$`, a doubly anchored literal with nothing to backtrack
+ * over.
+ *
+ * THREE STRUCTURALLY DIFFERENT MEMBERS, per "one witness is not a class".
+ * Member 1 is a nested unbounded quantifier, `(a+)+b`, which the static
+ * shape screen also recognises. Member 2 is an AMBIGUOUS ALTERNATION,
+ * `(a|a)+b`, which the static screen does NOT recognise (asserted here, so
+ * the claim is checked rather than believed), so only the execution bound
+ * can catch it. Member 3 is the CLI's config-time rejection, a different
+ * code path entirely: an error before any input is tested.
+ */
+test("a catastrophic-backtracking pattern is bounded by measured CPU work rather than elapsed wall clock", () => {
   const dangerousInput = "a".repeat(30);
-  const start = Date.now();
-  assert.throws(
-    () => coverageModule.boundedExec(new RegExp("^(?:(a+)+b)$"), dangerousInput),
-    coverageModule.RegexBoundExceededError,
-  );
-  const elapsedMs = Date.now() - start;
-  // A REAL measured bound: interrupted at or shortly after the module's
-  // own timeout constant, never left to run to the multi-second (and at
-  // length 40, multi-minute) time the unbounded engine takes.
-  assert.ok(
-    elapsedMs >= coverageModule.REGEX_EXEC_TIMEOUT_MS,
-    `expected at least ${String(coverageModule.REGEX_EXEC_TIMEOUT_MS)}ms, measured ${String(elapsedMs)}ms`,
-  );
-  assert.ok(
-    elapsedMs < coverageModule.REGEX_EXEC_TIMEOUT_MS + 2000,
-    `expected the bound to hold, measured ${String(elapsedMs)}ms (unbounded, this shape exceeds 180s at length 40)`,
-  );
 
-  // BOTH DIRECTIONS: a safe pattern against the same executor is fast and
-  // unaffected.
-  const safeStart = Date.now();
-  const safeResult = coverageModule.boundedExec(new RegExp("^(?:R-[0-9]+[a-z]?)$"), "R-001a");
+  // MEMBER 1: a nested unbounded quantifier, called directly, bypassing
+  // the config-time validator, so this witnesses `boundedExec` itself.
+  const nested = captureThrow(() =>
+    coverageModule.boundedExec(new RegExp("^(?:(a+)+b)$"), dangerousInput),
+  );
+  assert.ok(
+    nested instanceof coverageModule.RegexBoundExceededError,
+    `expected RegexBoundExceededError, got ${nested.constructor.name}: ${nested.message}`,
+  );
+  // The message is about WORK. The old one named elapsed time, which is
+  // the substitution this phase exists to remove.
+  assert.match(nested.message, /consumed [0-9.]+ms of CPU time/);
+  assert.match(nested.message, /catastrophic backtracking/);
+  assert.doesNotMatch(nested.message, /did not complete within/);
+
+  // MEMBER 2: an ambiguous alternation. Structurally different from
+  // member 1: no nested quantifier at all, the blow-up comes from two
+  // alternatives matching the same text. The static screen is asserted
+  // blind to it FIRST, so a reader can see that the execution bound, and
+  // not the screen, is what produced the verdict.
+  assert.equal(coverageModule.catastrophicShapeReason("(a|a)+b"), undefined);
+  const alternation = captureThrow(() =>
+    coverageModule.boundedExec(new RegExp("^(?:(a|a)+b)$"), dangerousInput),
+  );
+  assert.ok(
+    alternation instanceof coverageModule.RegexBoundExceededError,
+    `expected RegexBoundExceededError, got ${alternation.constructor.name}: ${alternation.message}`,
+  );
+  assert.match(alternation.message, /consumed [0-9.]+ms of CPU time/);
+
+  // BOTH DIRECTIONS: a safe pattern against the same executor still
+  // matches, and consumes so little CPU that the budget is not on its
+  // critical path. `R-094a` against `^(?:R-[0-9]+[a-z]?)$` is one of the
+  // exact pattern/value pairs the verification document records being
+  // falsely reddened by the old wall-clock bound.
+  const safeResult = coverageModule.boundedExec(new RegExp("^(?:R-[0-9]+[a-z]?)$"), "R-094a");
   assert.notEqual(safeResult, null);
-  assert.ok(Date.now() - safeStart < 100);
+  assert.equal((safeResult as RegExpExecArray)[0], "R-094a");
+  const second = coverageModule.boundedExec(new RegExp("^(?:M([0-9]+)-P[0-9]+)$"), "M3-P1");
+  assert.notEqual(second, null);
 
-  // MEMBER 2: the CLI's static rejection of the same shape, before any
+  // MEMBER 3: the CLI's static rejection of the nested shape, before any
   // input is ever tested against it.
   const dir = scratch();
   try {
@@ -843,6 +890,129 @@ test("a catastrophic-backtracking pattern is bounded by a measured wall-clock ti
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/**
+ * M4-P28, the DANGEROUS STATE this phase exists for, made deterministic.
+ *
+ * The hazard is not "a catastrophic pattern is missed". It is the
+ * opposite: an execution that was INTERRUPTED reported as a finding about
+ * the pattern. Every recorded instance of the defect is this shape, and
+ * every one of them was a benign pattern on a busy machine.
+ *
+ * Forcing it without a busy machine. The only thing varied here is the
+ * PATIENCE, `wallBackstopMs`, dropped from 500ms to 1ms. A 1ms patience on
+ * this box is arithmetically the same situation as the shipped 500ms
+ * patience on a box giving this thread one five-hundredth of a CPU, which
+ * is the condition the verification document measured at load 46 to 67 on
+ * four CPUs. The VERDICT instrument, the CPU budget, is left at its
+ * shipped default, so this test cannot pass by weakening the thing under
+ * test.
+ *
+ * The input is 20 million characters against `^(?:[0-9a-z]*)$`: a linear,
+ * anchored, single-quantifier pattern with nothing to backtrack over, so
+ * every interruption here is a fact about the schedule and never about the
+ * pattern. Measured on this box, the full match needs about 27ms, and two
+ * attempts at 1ms and 2ms of patience accumulate 25 to 29ms of CPU,
+ * roughly nine times under the 250ms budget.
+ *
+ * Under the wall-clock instrument this replaces, this exact call threw
+ * `RegexBoundExceededError` saying the pattern "did not complete within
+ * 250ms ... (possible catastrophic backtracking)". That is the false red.
+ */
+test("an interrupted regex that consumed little CPU is reported as undetermined, never as catastrophic backtracking", () => {
+  const benign = new RegExp("^(?:[0-9a-z]*)$");
+  const longValue = "a".repeat(20_000_000);
+
+  const undetermined = captureThrow(() =>
+    coverageModule.boundedExec(benign, longValue, { wallBackstopMs: 1, maxAttempts: 2 }),
+  );
+  // Read the message and the two class memberships out BEFORE asserting
+  // on them. Both error classes reach this file through the same dynamic
+  // import cast, so a narrowing `instanceof` assertion would reduce the
+  // binding to `never` and the reads below would not compile.
+  const reported = undetermined.message;
+  const isUndetermined = undetermined instanceof coverageModule.RegexBudgetUndeterminedError;
+  const isBoundExceeded = undetermined instanceof coverageModule.RegexBoundExceededError;
+  assert.ok(
+    isUndetermined,
+    `expected RegexBudgetUndeterminedError, got ${undetermined.constructor.name}: ${reported}`,
+  );
+
+  // The two errors must not be confusable. `RegexBudgetUndeterminedError`
+  // is deliberately not a subclass, so a `catch` that means "the pattern
+  // is dangerous" cannot swallow "the machine was busy".
+  assert.ok(
+    !isBoundExceeded,
+    "an undetermined result must not be an instance of the catastrophic-backtracking error",
+  );
+  // It reports what it OBSERVED, and says outright that it reached no
+  // verdict about the pattern (M2-C-3).
+  assert.match(reported, /No verdict about the pattern was reached/);
+  assert.match(reported, /having consumed only [0-9.]+ms of CPU time/);
+  assert.match(reported, /load average/);
+  assert.doesNotMatch(reported, /catastrophic/);
+
+  // The CPU it reports having consumed is far below the budget. That gap
+  // is the whole discrimination: a pattern that is really backtracking
+  // burns CPU whenever it is scheduled, however little that is.
+  const consumed = Number(/having consumed only ([0-9.]+)ms/.exec(reported)?.[1]);
+  assert.ok(Number.isFinite(consumed), `no CPU figure in ${reported}`);
+  assert.ok(
+    consumed < coverageModule.REGEX_EXEC_CPU_BUDGET_MS,
+    `expected the consumed CPU ${String(consumed)}ms to stay under the ` +
+      `${String(coverageModule.REGEX_EXEC_CPU_BUDGET_MS)}ms budget`,
+  );
+
+  // BOTH DIRECTIONS: with the shipped patience the same pattern and the
+  // same input simply match. Nothing about them is dangerous, and the
+  // guard says nothing about them.
+  const matched = coverageModule.boundedExec(benign, longValue);
+  assert.notEqual(matched, null);
+
+  // THE DISCRIMINATION ITSELF: wall clock elapses, CPU does not.
+  //
+  // Everything above is true of a wall-clock instrument too, because a
+  // thread running a long benign match spends wall clock AND CPU at the
+  // same rate, so the two instruments agree. They part company only when
+  // the thread is NOT RUNNING, which is the condition a loaded machine
+  // creates and which a single-threaded test cannot create by computing.
+  //
+  // So the execution is handed a stand-in whose `exec` spends its time
+  // waiting on a child process instead of running JavaScript. That is a
+  // stand-in for the ENVIRONMENT, not for the code under test:
+  // `boundedExec` itself is the real shipped function, the bounds are the
+  // shipped defaults, and the only thing faked is the reason the thread
+  // stops running. `process.threadCpuUsage()` does not count a child
+  // process's time and neither does `process.cpuUsage()`, which measures
+  // RUSAGE_SELF, so the thread genuinely accrues wall clock without CPU,
+  // exactly as a descheduled one does.
+  const wallBurner = {
+    source: "stand-in-for-a-descheduled-thread",
+    exec(): RegExpExecArray | null {
+      spawnSync("sleep", ["0.8"]);
+      return null;
+    },
+  };
+  const burnerStart = Date.now();
+  const burnerResult = coverageModule.boundedExec(
+    wallBurner as unknown as RegExp,
+    "x",
+    { maxAttempts: 2 },
+  );
+  const burnerElapsedMs = Date.now() - burnerStart;
+  // If `sleep` were missing the stand-in would return instantly and this
+  // assertion would have proved nothing, so the elapsed time is checked
+  // rather than assumed. A guard whose condition cannot fail is worthless.
+  assert.ok(
+    burnerElapsedMs >= 500,
+    `the stand-in must really spend wall clock; measured ${String(burnerElapsedMs)}ms`,
+  );
+  // 1.6 seconds of wall clock, and no verdict about the pattern. Under a
+  // wall-clock instrument with the same 250ms budget this is a
+  // catastrophic-backtracking finding against something that executed no
+  // regex at all.
+  assert.equal(burnerResult, null);
 });
 
 /**

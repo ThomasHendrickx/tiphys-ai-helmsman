@@ -1,21 +1,25 @@
 {
-  "id": "M4-P28",
-  "branch": "claude/m4-p28-coverage-instrument",
+  "id": "M4-P18",
+  "branch": "claude/m4-p18-fleet-state-sync",
   "filesToTouch": [
-    "src/gates/coverage.ts",
-    "test/coverage-gate.test.ts",
-    "witness/coverage-regex-interrupt-not-a-verdict.json"
+    "src/commands/sync.ts",
+    "src/cli.ts",
+    "src/status.ts",
+    "src/commands/init.ts",
+    "test/sync.test.ts",
+    "test/status.test.ts",
+    "AGENTS.md"
   ],
   "declaredExtras": [
     "test/behaviors.json",
-    "delivery/plan/phase-declarations/m4-p28.json",
-    "delivery/work-history/m4-p28.md"
+    "delivery/plan/phase-declarations/m4-p18.json",
+    "delivery/work-history/m4-p18.md"
   ],
   "citations": [
+    "M4-D-13",
     "DR-0027",
     "DR-0031",
-    "M2-C-3",
-    "T-008",
+    "DR-0046",
     "T-009",
     "C-1",
     "C-2",
