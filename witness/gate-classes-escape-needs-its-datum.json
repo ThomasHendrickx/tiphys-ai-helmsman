@@ -1,0 +1,31 @@
+{
+  "id": "gate-classes-escape-needs-its-datum",
+  "behavior": "gate-classes-escape-needs-its-datum",
+  "tests": [
+    "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "    const reason = typeof entry.reason === \"string\" ? entry.reason.trim() : \"\";",
+      "replace": "    const reason = \"a reason this defang invented\";"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "    const by = typeof entry.establishedBy === \"string\" ? entry.establishedBy.trim() : \"\";",
+      "replace": "    const by = \"M0-P0\";"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "src/gates/gate-classes.ts itself, run as a gate subprocess, whose stdout and GateResult record the named test ingests",
+    "captures": [
+      "witness/captures/gate-classes-escape-arms.txt"
+    ],
+    "provenance": "RULE (f) BINDS THIS SPEC AND THE REASON IS WORTH STATING RATHER THAN LEAVING TO BE INFERRED: every member below touches src/gates/gate-classes.ts, which contains spawnSync, so SPAWN_GREP matches the changed file. The capture is verbatim stdout of four consecutive runs of `node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4`, taken on 2026-09-17 against this branch, over four COPIES of the real delivery/plan/phase-declarations/m2-p4.json that differ from each other in one class disposition only. The named test reads its four asserted detail sentences OUT OF this file. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT, which is what DR-0029's escape clause actually quantifies over: the first supplies a REASON the declaration did not, so `not-applicable` passes with nothing recorded, and the second supplies an ESTABLISHING PHASE ID the declaration did not, so `not-yet-establishable` becomes the waiver DR-0029 refuses to grant. One of them alone would leave the other arm unguarded (CLAUDE.md, one witness is not a class)."
+  }
+}

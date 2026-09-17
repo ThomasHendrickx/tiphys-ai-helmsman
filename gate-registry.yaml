@@ -331,6 +331,69 @@ gates:
     modes: [full, direct-pr, local-only]
     events: [pull_request, push]
 
+  # NEW IN M4-P14, entry one of two (R-041, DR-0028, DR-0029, M4-P13).
+  - id: typecheck
+    $comment: >-
+      R-041, retargeted by M4-P13 under DR-0028. The kernel ships the gate
+      CLASS and no command; the project ships the command. This repository is
+      the project, so this is the kernel dogfooding the extension point rather
+      than being exempt from it (DR-0029: "the kernel becomes just another
+      project under the scheme, with its own registry"). The subject is the one
+      M4 has, package.json's build script, which CLAUDE.md already calls the
+      type gate. WHY IT IS NOT THE SAME THING AS THE `build` PREFLIGHT STEP:
+      preflight is an ordered local command with no record, no units and no
+      vacuity protection, so nothing downstream can tell a build that checked
+      the whole project from one that checked nothing. This entry produces a
+      GateResult whose `units` is the count of distinct paths `tsc --listFiles`
+      PRINTED, so a compiler that read no file is error rather than green.
+      WHY `--force` IS IN THE COMMAND: without it `tsc -b` is incremental and
+      the printed file list depends on the state of `dist/`, which would make
+      the unit count a property of the runner's working directory instead of
+      the code. `events: [pull_request]` alone, and it is derived rather than
+      assigned: `scripts/m2-exit-test.sh` declares the push arm's gate set once
+      in MAIN_ONLY_GATES and this id is not in it, so the push arm cannot run
+      it and test/gate-registry.test.ts asserts `events` against that harness.
+    command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json]
+    unitLabel: source files type-checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request]
+
+  # NEW IN M4-P14, entry two of two (DR-0029 part 2a, M4-P13).
+  - id: gate-classes
+    $comment: >-
+      DR-0029 part 2a made executable. A PHASE declares at least one gate in
+      each required class (`correctness`, `scope`, `review`), or declares an
+      escape that is DATA: `not-applicable` WITH a recorded reason, or
+      `not-yet-establishable` NAMING the phase that will establish it. The
+      requirement attaches to the phase and not to the project, because "this
+      project must have a correctness gate" is unsatisfiable on day zero while
+      "this phase either asserts correctness or declares when it will" is
+      satisfiable from the first commit. The property protected, in DR-0029's
+      words: you can start from nothing; you can never SILENTLY have nothing.
+      THE ESCAPES ARE PRINTED ON THE GREEN ARM, not merely permitted, which is
+      the same disclosure trade src/gates/scope.ts makes for a declaration
+      addition under M3-P11 change B: a reviewer who does not read the printed
+      line gets no protection from it. The PRECONDITION is branch-matches, the
+      same one `scope` carries and for the same reason: a phase declaration is
+      selected by phase id, and a non-phase branch has none, so the gate
+      reports not-applicable with an evaluated precondition rather than a
+      vacuous green (SC-011, M2-C-3). `events: [pull_request]` alone because
+      the push arm of scripts/m2-exit-test.sh passes no `--phase` at all, so
+      there is no declaration for it to select.
+    command: [node, src/gates/gate-classes.ts, gate-classes, --declarations, delivery/plan/phase-declarations, --registry, gate-registry.yaml]
+    unitLabel: declared gate classes checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [phase]
+    precondition:
+      id: gate-classes-branch-is-a-phase-branch
+      kind: branch-matches
+      pattern: claude/m[0-9]+-p[0-9]+-.*
+
   # NEW IN M3-P2, entry two of three (R-043, D-11).
   - id: unit-tests-for-changed-service-methods
     $comment: >-

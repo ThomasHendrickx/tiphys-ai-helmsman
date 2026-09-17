@@ -181,6 +181,19 @@ fi
 # stay "green|not-applicable" on every run because each CAN be legitimately N/A
 # on a head that does not touch its trigger.
 #
+# TWO GATES READ THAT PLACEHOLDER, NOT ONE (M4-P14). `gate-classes` carries the
+# SAME branch-matches precondition as `scope`, for the same reason: it selects a
+# phase declaration by phase id, and a non-phase branch has none. So its
+# expected status is RESOLVED from the same run property rather than assigned a
+# second time, because a second copy of a resolution is the thing that stops
+# matching. The substitution below is global (${VAR//pattern/value}), so both
+# rows take the resolved value from one computation.
+#
+# `typecheck` gets NO row, deliberately. It has no precondition and cannot be
+# legitimately not-applicable, so the strict default for an unlisted gate
+# (required, green) is exactly right for it, and a row would be a relaxation
+# with nothing to relax.
+#
 # The PR bundle runs the WHOLE manifest (no --only), so nothing is absent from
 # it and its absent list is the empty one, written literally.
 PR_EXPECT_JSON='{
@@ -190,6 +203,7 @@ PR_EXPECT_JSON='{
     {"id": "red-witness", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "suite", "expect": "green", "required": true},
     {"id": "scope", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
+    {"id": "gate-classes", "expect": "__SCOPE_EXPECT__", "required": true, "diffScoped": true},
     {"id": "citations", "expect": "green|not-applicable", "required": true, "diffScoped": true},
     {"id": "coverage", "expect": "green", "required": true},
     {"id": "clause-map", "expect": "green", "required": true},

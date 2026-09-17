@@ -1,0 +1,31 @@
+{
+  "id": "phase-declaration-class-escape-vocabulary-is-closed",
+  "behavior": "phase-declaration-class-escape-vocabulary-is-closed",
+  "tests": [
+    "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/phase-declaration.schema.json",
+      "find": "          \"enum\": [\"not-applicable\", \"not-yet-establishable\"]",
+      "replace": "          \"enum\": [\"not-applicable\"]"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/phase-declaration.schema.json",
+      "find": "        \"reason\": {\n          \"description\": \"Required by src/gates/gate-classes.ts when status is not-applicable. Not required HERE: an empty or absent reason is a RED verdict naming the class, not a document that fails to load.\",\n          \"type\": \"string\"\n        },",
+      "replace": "        \"reason\": {\n          \"description\": \"Required by src/gates/gate-classes.ts when status is not-applicable. Not required HERE: an empty or absent reason is a RED verdict naming the class, not a document that fails to load.\",\n          \"type\": \"integer\"\n        },"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "src/gates/gate-classes.ts, run as a gate subprocess, whose stdout and GateResult record the named test ingests",
+    "captures": [
+      "witness/captures/gate-classes-escape-arms.txt"
+    ],
+    "provenance": "A SPEC'S MEMBERS MUST REDDEN EVERY TEST IT NAMES, not merely one of them: src/witness/run.ts:932 computes a run as red only when the exit code is nonzero AND failed.length === tests.length. The first version of this witness named both class tests in one spec and was correctly rejected, because narrowing the status vocabulary cannot reach a test that only uses `gates`. So the schema is covered by two specs of one test each rather than one spec of two, and that is a property of the harness rather than a preference. The capture is verbatim stdout of four consecutive runs of the gate under test, taken on 2026-09-17 against this branch over four copies of one real phase declaration differing in a single class disposition; the named test reads its four asserted detail sentences out of it. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT: the first removes `not-yet-establishable` from the STATUS VOCABULARY, so DR-0029's IOU escape stops being expressible at all, and the second changes the TYPE of the `reason` datum, so `not-applicable` stays expressible and the recorded reason that makes it data rather than silence stops being. One attacks which escapes exist, the other attacks what an escape must carry."
+  }
+}

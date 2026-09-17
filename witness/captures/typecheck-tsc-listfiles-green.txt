@@ -1,0 +1,79 @@
+# Verbatim combined output of the TypeScript compiler this gate consumes,
+# captured 2026-09-17. Two runs of the command the gate itself runs,
+# over the SAME scratch project differing only in how many files the project
+# includes. The two file counts differ, which is what makes the gate's unit
+# count a number the compiler printed rather than a constant.
+
+$ node node_modules/typescript/bin/tsc -b tsconfig.one.json --force --listFiles | wc -l
+64
+
+$ node node_modules/typescript/bin/tsc -b tsconfig.probe.json --force --listFiles | wc -l
+65
+
+$ node node_modules/typescript/bin/tsc -b tsconfig.probe.json --force --listFiles   # full output
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es5.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.iterable.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.asynciterable.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.webworker.importscripts.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.scripthost.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.core.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.collection.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.generator.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.iterable.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.promise.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.proxy.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.reflect.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.symbol.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.symbol.wellknown.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.array.include.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.arraybuffer.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.date.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.object.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.sharedmemory.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.string.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.typedarrays.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.asyncgenerator.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.asynciterable.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.promise.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.regexp.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.array.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.object.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.string.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.symbol.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.bigint.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.date.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.promise.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.sharedmemory.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.string.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.symbol.wellknown.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.number.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.promise.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.string.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.weakref.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.array.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.error.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.intl.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.object.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.string.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.regexp.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.decorators.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.decorators.legacy.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/clone/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.full.d.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/captc/one.ts
+/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w4-m4-p14/captc/two.ts
+EXIT=0

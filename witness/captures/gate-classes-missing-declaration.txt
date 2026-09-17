@@ -1,0 +1,15 @@
+# Verbatim stdout of the gate under test, captured 2026-09-17 against
+# src/gates/gate-classes.ts on branch claude/m4-p14-gate-classes.
+# Working directory is a scratch tree holding COPIES of two real phase
+# declarations from delivery/plan/phase-declarations, unmodified, plus a copy
+# of the repository's own gate-registry.yaml. Nothing here is hand-written.
+
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m2-p4
+gate-classes: red (3 declared gate classes checked)
+phase M2-P4 fails 3 of 3 required gate class(es) in declarations/m2-p4.json: correctness: MISSING, the declaration names no disposition for this required class; scope: MISSING, the declaration names no disposition for this required class; review: MISSING, the declaration names no disposition for this required class
+EXIT=1
+
+$ node src/gates/gate-classes.ts gate-classes --declarations declarations --registry registry.yaml --result result.json --phase m3-p1
+gate-classes: red (3 declared gate classes checked)
+phase M3-P1 fails 3 of 3 required gate class(es) in declarations/m3-p1.json: correctness: MISSING, the declaration names no disposition for this required class; scope: MISSING, the declaration names no disposition for this required class; review: MISSING, the declaration names no disposition for this required class
+EXIT=1

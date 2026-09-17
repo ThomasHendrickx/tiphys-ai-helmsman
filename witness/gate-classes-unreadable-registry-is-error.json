@@ -1,0 +1,31 @@
+{
+  "id": "gate-classes-unreadable-registry-is-error",
+  "behavior": "gate-classes-unreadable-registry-is-error",
+  "tests": [
+    "gate-classes reports error rather than green when the registry that defines the legal gate ids cannot be read"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  const registryIds = registryGateIds(",
+      "replace": "  const registryIds = { ok: true, ids: new Set([\"suite\", \"scope\", \"check-dual-review\"]) } as ReturnType<typeof registryGateIds>;\n  const unusedRegistryIds = registryGateIds("
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/gate-classes.ts",
+      "find": "  const decoded = decodeDocument(read.body, path);",
+      "replace": "  const decoded = { ok: true as const, value: { gates: [{ id: \"suite\" }, { id: \"scope\" }, { id: \"check-dual-review\" }] } };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "src/gates/gate-classes.ts itself, run as a gate subprocess, whose stdout and GateResult record the named test ingests",
+    "captures": [
+      "witness/captures/gate-classes-escape-arms.txt"
+    ],
+    "provenance": "RULE (f) BINDS THIS SPEC AND THE REASON IS WORTH STATING RATHER THAN LEAVING TO BE INFERRED: every member below touches src/gates/gate-classes.ts, which contains spawnSync, so SPAWN_GREP matches the changed file. The cited capture is the same verbatim run collection the escape witness cites, and it is cited here because it carries the GREEN detail sentence this behaviour's dangerous state would produce: a declaration whose three classes all name gates, reported green, with nothing having checked that any of those names is a gate this repository declares. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT: the first substitutes a hard-coded id set for the registry LOAD, so a registry that is absent entirely is never noticed, and the second substitutes one for the DECODE, so a registry that is present but unparseable is never noticed. M2-C-3's distinction is what both attack: an instrument that cannot establish the legal ids has reached no verdict, and a green there is the vacuous pass."
+  }
+}
