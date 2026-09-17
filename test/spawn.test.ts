@@ -713,6 +713,7 @@ test("a throw out of the executor adapter is reported without rollback and names
     offline: false,
     adapter: {
       name: "throwing-test-adapter",
+      requires: [],
       launch(): never {
         throw new Error("simulated adapter crash: the payload state is unknown");
       },
@@ -808,6 +809,11 @@ interface TestRequest {
   recordPath: string;
   deadlineSeconds: number | undefined;
   env: Record<string, string> | undefined;
+  /* M4-P3: briefPath is not optional, the other three are. */
+  briefPath: string;
+  role: string | undefined;
+  declaredTier: string | undefined;
+  phaseId: string | undefined;
 }
 
 type TestOutcome =
@@ -817,6 +823,14 @@ type TestOutcome =
 
 interface TestAdapter {
   name: string;
+  /**
+   * M4-P3. Every adapter DECLARES what it cannot launch without, and the
+   * kernel refuses before it creates anything. `[]` is the declaration an
+   * adapter that needs nothing makes; it is not a default, which is why the
+   * production interface makes the field required and why every literal in
+   * this file states it.
+   */
+  requires: readonly string[];
   launch(request: TestRequest): Promise<TestOutcome>;
 }
 
@@ -833,6 +847,8 @@ async function spawnWithAdapter(
   scratch: Scratch,
   taskId: string,
   adapter: TestAdapter,
+  /* M4-P3: the three caller-supplied request fields, when a test supplies any. */
+  extra: Record<string, unknown> = {},
 ): Promise<SpawnOutcome> {
   const spawnLib = (await import(new URL("../src/spawn.ts", import.meta.url).href)) as {
     spawnTask(fleet: unknown, options: Record<string, unknown>): Promise<SpawnOutcome>;
@@ -848,6 +864,7 @@ async function spawnWithAdapter(
     exec: "/bin/true",
     deadlineSeconds: undefined,
     offline: false,
+    ...extra,
     adapter,
   });
 }
@@ -991,6 +1008,7 @@ test(
 
     const fabricating: TestAdapter = {
       name: "fabricating-test-adapter",
+      requires: [],
       // Resolves completed on a later microtask, having invoked nothing.
       launch: async () => ({ kind: "completed", exitCode: 0 }),
     };
@@ -1021,6 +1039,7 @@ test(
     // contract has always required of it.
     const honest: TestAdapter = {
       name: "honest-test-adapter",
+      requires: [],
       launch: async (request) => {
         invokeHook(request, 0);
         return { kind: "completed", exitCode: 0 };
@@ -1060,6 +1079,7 @@ test(
 
     const garbage: TestAdapter = {
       name: "garbage-writing-test-adapter",
+      requires: [],
       launch: async (request) => {
         writeFileSync(join(dirname(request.recordPath), "turn-end"), "{;");
         return { kind: "completed", exitCode: 0 };
@@ -1074,6 +1094,7 @@ test(
 
     const wrongShape: TestAdapter = {
       name: "wrong-shape-test-adapter",
+      requires: [],
       launch: async (request) => {
         writeFileSync(
           join(dirname(request.recordPath), "turn-end"),
@@ -1137,6 +1158,7 @@ test(
 
     const rejecting: TestAdapter = {
       name: "rejecting-test-adapter",
+      requires: [],
       launch: async (request) => {
         // The payload started and left work behind before the failure.
         writeFileSync(join(request.worktree, "implementer-work.txt"), "four rounds of it\n");
@@ -1184,6 +1206,7 @@ test(
     // which is the one claim that authorizes destroying the worktree.
     const failing: TestAdapter = {
       name: "launch-failing-test-adapter",
+      requires: [],
       launch: async () => ({ kind: "launch-failed", reason: "the program is not on PATH" }),
     };
     const failed = await spawnWithAdapter(scratch, "t-launchfailed", failing);
@@ -1225,6 +1248,7 @@ test(
 
     const awaiting: TestAdapter = {
       name: "awaiting-test-adapter",
+      requires: [],
       launch: async (request) => {
         const exitCode = await new Promise<number>((resolve, reject) => {
           const child = spawn(
@@ -1266,6 +1290,7 @@ test(
     const scratch = makeScratch(t);
     const deferred: TestAdapter = {
       name: "deferred-test-adapter",
+      requires: [],
       launch: async (request) => {
         await new Promise((resolve) => setImmediate(resolve));
         invokeHook(request, 7);
@@ -1415,6 +1440,7 @@ test(
 
     const failing: TestAdapter = {
       name: "launch-failing-test-adapter",
+      requires: [],
       launch: async () => ({ kind: "launch-failed", reason: "the program is not on PATH" }),
     };
 
@@ -1516,3 +1542,465 @@ test(
     );
   },
 );
+
+/* ------------------------------------------------------------------ */
+/* M4-P3: the request contract widens, and a declared requirement that  */
+/* is unmet creates NOTHING. Every test below drives spawnTask through  */
+/* the ExecutorAdapter seam for the reason the M4-P2 block above gives: */
+/* `tiphys spawn` reaches exactly one adapter until M4-P4 ships         */
+/* --adapter, and the whole subject here is what the kernel does with   */
+/* an adapter it did not write.                                         */
+/* ------------------------------------------------------------------ */
+
+/** The basename the requirement witnesses cite, named once. */
+const GIT_STATE_CAPTURE = "spawn-requirement-refusal-git-state.txt";
+
+/** The basename the executor-record witness cites, named once. */
+const VALIDATE_CAPTURE = "executor-record-validate-cli.txt";
+
+/**
+ * The project clone's git-visible state: what `git worktree list` and
+ * `git branch --list` print, as those two programs print it.
+ *
+ * TWO OF CRITERION 2's FOUR POST-CONDITIONS ARE NOT FILES, and that is the
+ * point of reading them from git rather than from the filesystem. A refusal
+ * that left a branch and a worktree behind would still satisfy "the task
+ * directory does not exist" and "no pool record exists", which is half a
+ * check and the half that has been wrong here before (F-2's orphaned
+ * worktree, branch and pool record).
+ */
+function gitVisibleState(scratch: Scratch): { worktrees: string; branches: string } {
+  return {
+    worktrees: gitOk(scratch.clone, ["worktree", "list"]),
+    branches: gitOk(scratch.clone, ["branch", "--list"]),
+  };
+}
+
+/**
+ * The four post-conditions of criterion 2, asserted together because
+ * "exited nonzero" is compatible with having created three of them.
+ */
+function assertNothingWasCreated(
+  scratch: Scratch,
+  taskId: string,
+  before: { worktrees: string; branches: string },
+  label: string,
+): void {
+  assert.equal(
+    existsSync(taskDirOf(scratch, taskId)),
+    false,
+    `${label}: the task directory was created`,
+  );
+  assert.equal(
+    existsSync(join(scratch.fleet, "worktrees", `${taskId}.pool.json`)),
+    false,
+    `${label}: a pool record was created`,
+  );
+  const after = gitVisibleState(scratch);
+  assert.equal(after.worktrees, before.worktrees, `${label}: git worktree list changed`);
+  assert.equal(after.branches, before.branches, `${label}: git branch --list changed`);
+  assert.equal(
+    existsSync(worktreeOf(scratch, taskId)),
+    false,
+    `${label}: the worktree directory was created`,
+  );
+}
+
+/**
+ * The captured contract for the two git programs, read out of
+ * witness/captures/ rather than retyped (CLAUDE.md's red-witness rule: where
+ * a behavior consumes another program's output, assert on the real output).
+ *
+ * WHAT IS ASSERTED AGAINST THE CAPTURE. The capture records that a spawned
+ * task ADDS one line to each listing, that the added worktree line carries
+ * the task's worktree path and a bracketed `[task/<id>]`, and that the added
+ * branch line is marked `+` rather than `*` or a bare indent, because the
+ * branch is checked out in another worktree. The live control arm below
+ * reproduces all three, so the "unchanged" assertions above cannot be
+ * vacuous: something demonstrably DOES change these two outputs.
+ */
+function assertGitStateMatchesCapture(
+  before: { worktrees: string; branches: string },
+  after: { worktrees: string; branches: string },
+  scratch: Scratch,
+  taskId: string,
+): void {
+  const captured = readCapture(GIT_STATE_CAPTURE);
+  assert.match(captured, /\+ task\/t-cap/, GIT_STATE_CAPTURE);
+  assert.match(captured, /\[task\/t-cap\]/, GIT_STATE_CAPTURE);
+
+  const addedWorktrees = after.worktrees.split("\n").length - before.worktrees.split("\n").length;
+  const addedBranches = after.branches.split("\n").length - before.branches.split("\n").length;
+  assert.equal(addedWorktrees, 1, `captured contract: one worktree line is added\n${after.worktrees}`);
+  assert.equal(addedBranches, 1, `captured contract: one branch line is added\n${after.branches}`);
+
+  const worktreeLine = after.worktrees
+    .split("\n")
+    .find((line) => line.startsWith(realpathSync(worktreeOf(scratch, taskId))));
+  assert.ok(worktreeLine !== undefined, `no worktree line for ${taskId}:\n${after.worktrees}`);
+  assert.match(worktreeLine as string, new RegExp(`\\[task/${taskId}\\]$`), worktreeLine);
+
+  const branchLine = after.branches.split("\n").find((line) => line.endsWith(`task/${taskId}`));
+  assert.ok(branchLine !== undefined, `no branch line for ${taskId}:\n${after.branches}`);
+  assert.equal(
+    (branchLine as string).startsWith("+ "),
+    true,
+    `captured contract: a branch checked out elsewhere is marked +, not: ${String(branchLine)}`,
+  );
+}
+
+test(
+  "an adapter requirement the spawn cannot meet refuses before a worktree, a branch, a task directory or a pool record exists",
+  async (t) => {
+    /*
+     * DANGEROUS STATE: not "an adapter received undefined". It is an adapter
+     * DISCOVERING the undefined and failing after pool create has already
+     * made a worktree, a branch and a pool record, which is the measured
+     * --deadline defect (src/commands/spawn.ts:81, "a usage error creates
+     * nothing") with a new field. So the refusal is asserted together with
+     * all four post-conditions, because exiting nonzero is compatible with
+     * having created three of them.
+     */
+    const scratch = makeScratch(t);
+    const before = gitVisibleState(scratch);
+
+    let launched = false;
+    const needsRole: TestAdapter = {
+      name: "role-requiring-test-adapter",
+      requires: ["role"],
+      async launch(): Promise<TestOutcome> {
+        launched = true;
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+
+    const refused = await spawnWithAdapter(scratch, "t-needrole", needsRole);
+    const reason = reasonOf(refused);
+    assert.match(reason, /role-requiring-test-adapter/, reason);
+    assert.match(reason, /requires role/, reason);
+    assert.match(reason, /nothing was created/, reason);
+    assert.equal(launched, false, "the adapter was reached despite an unmet requirement");
+    assertNothingWasCreated(scratch, "t-needrole", before, "unmet requirement");
+
+    /*
+     * THE OTHER DIRECTION, and the adapter differs in exactly one thing:
+     * the same declaration, with --role supplied, reaches launch. Without
+     * this arm the assertions above are satisfied by a kernel that refuses
+     * every spawn.
+     */
+    let seenRole: string | undefined;
+    const observing: TestAdapter = {
+      name: "role-requiring-test-adapter",
+      requires: ["role"],
+      async launch(request: TestRequest): Promise<TestOutcome> {
+        seenRole = request.role;
+        writeFileSync(request.recordPath, `${JSON.stringify({ adapter: "role-requiring-test-adapter", launchedAt: new Date().toISOString() }, null, 2)}\n`);
+        invokeHook(request, 0);
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const accepted = await spawnWithAdapter(scratch, "t-haverole", observing, {
+      role: "implementer",
+    });
+    assert.equal(accepted.ok, true, accepted.ok ? "" : accepted.reason);
+    assert.equal(seenRole, "implementer", "the request did not carry the supplied role");
+
+    /*
+     * AND THE CONTROL THAT KEEPS THE FOUR ASSERTIONS FROM BEING VACUOUS: the
+     * successful spawn DOES change both git listings, in the shapes the
+     * capture records. A test that only ever compared an unchanged state
+     * against itself would pass on a kernel that created nothing ever.
+     */
+    assertGitStateMatchesCapture(before, gitVisibleState(scratch), scratch, "t-haverole");
+    assertTurnEndMatchesCapture(join(taskDirOf(scratch, "t-haverole"), "turn-end"), 0);
+  },
+);
+
+test(
+  "an adapter requiring a field the request contract has no name for is refused as a contract defect, not as a missing value",
+  async (t) => {
+    /*
+     * THE SECOND MEMBER OF THE CLASS, and it is structurally different from
+     * the one above rather than a second instance of it. There the field
+     * EXISTS and is absent; here the field is not in the contract at all.
+     * A check written as `request[name] === undefined` cannot tell them
+     * apart, because an unknown key also reads undefined, and it would
+     * answer an adapter DEFECT with a message about a missing flag, sending
+     * an operator to look for a --modelName the kernel can never accept.
+     *
+     * So this test asserts the two refusals SAY DIFFERENT THINGS, not merely
+     * that both refuse. The conflated implementation is green on "it exits
+     * nonzero" and red here.
+     */
+    const scratch = makeScratch(t);
+    const before = gitVisibleState(scratch);
+
+    let launched = false;
+    const needsUnknown: TestAdapter = {
+      name: "model-requiring-test-adapter",
+      requires: ["modelName"],
+      async launch(): Promise<TestOutcome> {
+        launched = true;
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const refused = await spawnWithAdapter(scratch, "t-unknownfield", needsUnknown);
+    const reason = reasonOf(refused);
+    assert.match(reason, /model-requiring-test-adapter/, reason);
+    assert.match(reason, /modelName/, reason);
+    assert.match(reason, /the executor request contract has no field for/, reason);
+    /* The discrimination itself: this is NOT the unmet-value sentence. */
+    assert.equal(
+      /supplied no value/.test(reason),
+      false,
+      `an unknown field was reported as a missing value: ${reason}`,
+    );
+    /* And the refusal names what CAN be required, so the defect is fixable. */
+    assert.match(reason, /the requirable fields are .*briefPath/, reason);
+    assert.equal(launched, false, "the adapter was reached despite an unknown requirement");
+    assertNothingWasCreated(scratch, "t-unknownfield", before, "unknown requirement");
+
+    /*
+     * THE CONTRAST ARM, the same spawn one character different: a field that
+     * IS in the contract and is absent produces the OTHER sentence. Both
+     * arms in one test because the property under test is the distinction,
+     * and a distinction needs both sides to be observable at once.
+     */
+    const needsAbsent: TestAdapter = {
+      name: "tier-requiring-test-adapter",
+      requires: ["declaredTier"],
+      async launch(): Promise<TestOutcome> {
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const other = reasonOf(await spawnWithAdapter(scratch, "t-absentfield", needsAbsent));
+    assert.match(other, /supplied no value/, other);
+    assert.equal(
+      /has no field for/.test(other),
+      false,
+      `an absent value was reported as a contract defect: ${other}`,
+    );
+    assertNothingWasCreated(scratch, "t-absentfield", before, "absent value");
+
+    /* A malformed declaration is refused too, rather than raised as a
+       TypeError out of spawnTask: from M4-P4 the adapter is foreign code. */
+    const malformed = reasonOf(
+      await spawnWithAdapter(scratch, "t-malformed", {
+        name: "malformed-test-adapter",
+        requires: undefined as unknown as readonly string[],
+        async launch(): Promise<TestOutcome> {
+          return { kind: "completed", exitCode: 0 };
+        },
+      }),
+    );
+    assert.match(malformed, /does not declare requires as an array/, malformed);
+    assertNothingWasCreated(scratch, "t-malformed", before, "malformed declaration");
+  },
+);
+
+test(
+  "the executor request carries the assembled brief path, and the adapter reads a real file at it",
+  async (t) => {
+    /*
+     * DANGEROUS STATE: an adapter reading `undefined` where the brief should
+     * be and launching an agent with no input at all. The brief IS the agent
+     * payload's entire input, and until this phase the request did not carry
+     * it although the call site had it in hand.
+     *
+     * The assertion is on the FILE at the path, not on the path's shape: a
+     * kernel that passed any string would satisfy "briefPath is a string",
+     * and a kernel that passed the hook path would satisfy "the file exists".
+     */
+    const scratch = makeScratch(t);
+    let seen: TestRequest | undefined;
+    const reader: TestAdapter = {
+      name: "brief-reading-test-adapter",
+      requires: ["briefPath"],
+      async launch(request: TestRequest): Promise<TestOutcome> {
+        seen = request;
+        writeFileSync(
+          request.recordPath,
+          `${JSON.stringify({ adapter: "brief-reading-test-adapter", launchedAt: new Date().toISOString() }, null, 2)}\n`,
+        );
+        invokeHook(request, 0);
+        return { kind: "completed", exitCode: 0 };
+      },
+    };
+    const result = await spawnWithAdapter(scratch, "t-brief", reader, {
+      role: "implementer",
+      declaredTier: "strongest",
+      phaseId: "M4-P3",
+    });
+    assert.equal(result.ok, true, result.ok ? "" : result.reason);
+    const request = seen as TestRequest;
+    assert.equal(typeof request.briefPath, "string", "briefPath is not a string");
+    assert.equal(
+      readFileSync(request.briefPath, "utf8").includes("Do the thing."),
+      true,
+      `the briefPath does not name the assembled brief: ${request.briefPath}`,
+    );
+    assert.notEqual(request.briefPath, request.hookPath, "briefPath is the hook path");
+    assert.equal(request.briefPath, join(taskDirOf(scratch, "t-brief"), "brief.md"));
+    /* The three optional fields cross verbatim, including the phase id,
+       which is CARRIED and never derived from a branch name (M4-D-22). */
+    assert.equal(request.role, "implementer");
+    assert.equal(request.declaredTier, "strongest");
+    assert.equal(request.phaseId, "M4-P3");
+    assertTurnEndMatchesCapture(join(taskDirOf(scratch, "t-brief"), "turn-end"), 0);
+
+    /*
+     * THE DRIFT GUARD, and it is the "registered in one place and not the
+     * other" shape this repository keeps paying for. `requires` is checked
+     * against a closed list of field names; that list and the object an
+     * adapter is actually handed are two things that can drift, and the
+     * drift is silent in both directions (a request field nobody can
+     * require, or a requirable name nothing can satisfy). DERIVED from the
+     * real request rather than restated, so a field added to either side
+     * reddens here.
+     */
+    const spawnLib = (await import(new URL("../src/spawn.ts", import.meta.url).href)) as {
+      requirableRequestFields(): readonly string[];
+    };
+    assert.deepEqual(
+      [...spawnLib.requirableRequestFields()].sort(),
+      Object.keys(request).sort(),
+      "the requirable field list and the request an adapter is handed have drifted",
+    );
+  },
+);
+
+test(
+  "the launch record echoes the requested tier and role byte for byte from the flags",
+  (t) => {
+    /*
+     * THROUGH THE CLI, deliberately, because the two values travel from a
+     * flag through the parser, through SpawnOptions, through the request and
+     * into the record, and a test that handed spawnTask the values directly
+     * would leave the first two of those four steps unwitnessed. The
+     * measured defect shape is a flag that parses and whose value is
+     * dropped: the command then exits 0 and the record is silently poorer.
+     *
+     * BYTE EQUALITY, not equivalence: the kernel holds no tier vocabulary
+     * and no role vocabulary, so a value it normalised would be a
+     * vocabulary it was not supposed to have. The value below carries mixed
+     * case and a hyphen for exactly that reason.
+     */
+    const scratch = makeScratch(t);
+    const stub = writeStub(scratch.tmp, "payload.sh", "#!/bin/sh\nexit 0\n");
+    const tier = "Strongest-Available";
+    const role = "clean-room-Reviewer";
+
+    const run = spawnCli(scratch, "t-echo", stub, [
+      "--tier",
+      tier,
+      "--role",
+      role,
+      "--phase",
+      "M4-P3",
+    ]);
+    assert.equal(run.status, 0, run.stderr);
+    const record = JSON.parse(
+      readFileSync(join(taskDirOf(scratch, "t-echo"), "executor.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal(record["requestedTier"], tier);
+    assert.equal(record["requestedRole"], role);
+    assert.equal(record["adapter"], "subprocess");
+
+    /* NO RESOLVED MODEL, and no phase id either: the record is written
+       before the payload starts, so a resolved model here would be a value
+       nobody could have observed (M4-P7 carries that half). */
+    assert.deepEqual(
+      Object.keys(record).sort(),
+      ["adapter", "launchedAt", "requestedRole", "requestedTier"],
+      "the launch record grew a field this phase did not put in it",
+    );
+
+    /* The other direction: no flags, no echoed fields, and no key written
+       with an undefined value. */
+    assert.equal(spawnCli(scratch, "t-noecho", stub).status, 0);
+    const bare = JSON.parse(
+      readFileSync(join(taskDirOf(scratch, "t-noecho"), "executor.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal("requestedTier" in bare, false, "a tier was recorded without --tier");
+    assert.equal("requestedRole" in bare, false, "a role was recorded without --role");
+
+    /* The command ran for real, so the hook wrote the turn-end record this
+       file's capture describes. */
+    assertTurnEndMatchesCapture(join(taskDirOf(scratch, "t-echo"), "turn-end"), 0);
+  },
+);
+
+test(
+  "the launch record a real spawn wrote validates under --type executor-record, one missing adapter is refused naming the field, and --type auto cannot resolve it",
+  (t) => {
+    /*
+     * CAPTURED FROM A REAL SPAWN, never hand-written (criterion 4). A schema
+     * validated only against a fixture an author typed is a schema validated
+     * against the author's belief about the writer, and the writer is
+     * `subprocessAdapter`, twenty lines of another module.
+     */
+    const scratch = makeScratch(t);
+    const stub = writeStub(scratch.tmp, "payload.sh", "#!/bin/sh\nexit 0\n");
+    assert.equal(spawnCli(scratch, "t-valid", stub, ["--deadline", "300"]).status, 0);
+    const recordPath = join(taskDirOf(scratch, "t-valid"), "executor.json");
+
+    const good = runCli(["validate", "--type", "executor-record", recordPath]);
+    assert.equal(good.status, 0, `${good.stdout}${good.stderr}`);
+
+    /* The captured CLI contract, read rather than retyped. */
+    const captured = readCapture(VALIDATE_CAPTURE);
+    assert.match(captured, /INVALID #\/adapter required property adapter is missing/, VALIDATE_CAPTURE);
+
+    const broken = JSON.parse(readFileSync(recordPath, "utf8")) as Record<string, unknown>;
+    delete broken["adapter"];
+    const brokenPath = join(scratch.tmp, "executor-no-adapter.json");
+    writeFileSync(brokenPath, `${JSON.stringify(broken, null, 2)}\n`);
+    const bad = runCli(["validate", "--type", "executor-record", brokenPath]);
+    assert.equal(bad.status, 1, `${bad.stdout}${bad.stderr}`);
+    assert.match(
+      bad.stdout,
+      /^INVALID #\/adapter required property adapter is missing$/m,
+      `${bad.stdout}${bad.stderr}`,
+    );
+
+    /*
+     * AND THE HALF THE ROW CANNOT DO, asserted rather than left in a comment.
+     * `resolveAutoType` reads `kind` off the decoded instance and looks it up
+     * in the same table, so the row IS the auto resolver's registration; what
+     * it cannot do is resolve a document that does not say what it is. An
+     * executor record carries no `kind`, so --type auto on one is a usage
+     * error. A later phase that gives the record a `kind` reddens this and
+     * has to come back and read the comment beside the row.
+     */
+    const auto = runCli(["validate", "--type", "auto", recordPath]);
+    assert.equal(auto.status, 64, `${auto.stdout}${auto.stderr}`);
+    assert.match(auto.stderr, /needs a kind field naming a registered type/, auto.stderr);
+  },
+);
+
+test("every spawn behavior in the registry still resolves by name to a test title", () => {
+  /*
+   * BY NAME, NEVER BY COUNT (criterion 8, binding convention 5). The set is
+   * DERIVED from the registry at run time by prefix, and the search covers
+   * EVERY test file rather than this one, because three spawn behaviors are
+   * implemented in test/credentials-gate.test.ts and a check scoped to this
+   * file would have reported them missing. Nothing here pins a number, so a
+   * later phase appending spawn rows cannot redden it.
+   */
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(testDir, "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  const sources = readdirSync(testDir)
+    .filter((name) => name.endsWith(".test.ts"))
+    .map((name) => readFileSync(join(testDir, name), "utf8"));
+  const spawnIds = Object.keys(behaviors).filter((id) => id.startsWith("spawn-"));
+  assert.ok(
+    spawnIds.length > 0,
+    "no spawn behavior was enumerated, so this check is vacuous",
+  );
+  const unresolved = spawnIds.filter(
+    (id) => !sources.some((source) => source.includes(`"${behaviors[id] as string}"`)),
+  );
+  assert.deepEqual(unresolved, []);
+});

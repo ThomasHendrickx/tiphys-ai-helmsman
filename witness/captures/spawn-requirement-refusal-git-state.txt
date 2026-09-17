@@ -1,0 +1,54 @@
+Real output of `git worktree list` and `git branch --list`, run in a task's
+PROJECT CLONE, before and after one successful `tiphys spawn`.
+
+WHY THIS CAPTURE EXISTS. M4-P3 criterion 2 says that an unmet adapter
+requirement must leave four things untouched, and two of them are not files
+this repository writes: they are git's own idea of which worktrees and which
+branches exist. A test that asserted "nothing was created" by checking only
+the two paths under the fleet home would be green while a branch and a
+worktree sat in the project clone, which is the exact residue M1-P3's F-2
+left. So the assertions are anchored on what git actually prints.
+
+Captured 2026-09-17, node v26.6.0, git 2.x, in a scratch fleet built by the
+same helpers test/spawn.test.ts uses (`tiphys init`, an upstream repository,
+a clone of it under projects/, one commit). The absolute scratch prefix is
+rendered <tmp> below because it is a mkdtemp path and differs per run; the
+STABLE contract is the line COUNT and the shape of the added lines.
+
+  git -C <clone> worktree list
+  git -C <clone> branch --list
+
+BEFORE any spawn:
+
+  git worktree list: exit 0
+    | <tmp>/fleet/projects/demo  11e041b [main]
+    |
+  git branch --list: exit 0
+    | * main
+    |
+
+AFTER one successful spawn, task id t-cap:
+
+  git worktree list: exit 0
+    | <tmp>/fleet/projects/demo    11e041b [main]
+    | <tmp>/fleet/worktrees/t-cap  11e041b [task/t-cap]
+    |
+  git branch --list: exit 0
+    | * main
+    | + task/t-cap
+    |
+
+THE TWO DETAILS A HAND-WRITTEN STRING WOULD HAVE GOT WRONG, and they are why
+this file is a capture rather than a sentence. First, `git worktree list`
+RE-PADS its first column when a longer path joins, so the pre-existing line
+for the clone itself is not byte-identical before and after; only its path,
+sha and bracketed branch are. Second, a branch that is checked out in ANOTHER
+worktree is printed by `git branch --list` with a `+` marker, not the `*` of
+the current branch and not a bare two-space indent. A test comparing against
+an invented `  task/t-cap` line would have been red for the wrong reason.
+
+WHAT THIS CAPTURE DOES NOT COVER: a detached worktree, a worktree whose
+branch was deleted underneath it, `--porcelain` output (which this project
+does not use here), any locale other than the runner's, and any git version
+other than the one above. The line SHAPES are what the tests assert; the
+scratch path and the abbreviated sha are not.

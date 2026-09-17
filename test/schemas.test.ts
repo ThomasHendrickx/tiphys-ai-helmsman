@@ -642,3 +642,208 @@ test("an addressed-by outside the four admissible forms is rejected by the patte
   assert.equal(lines.length, 1);
   assert.match(lines[0] as string, /^INVALID #\/phases\/0\/hazard-classes\/0\/addressed-by value "the reviewer will notice" does not match the required pattern /);
 });
+
+/* ------------------------------------------------------------------ */
+/* M4-P3: the executor launch record's schema, and the property that    */
+/* keeps a vendor model name out of the kernel                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The real `tiphys validate` session this phase captured, read rather than
+ * retyped (CLAUDE.md's red-witness rule: where a behavior consumes another
+ * program's output, the assertions use that program's real output).
+ */
+const EXECUTOR_CAPTURE = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "executor-record-validate-cli.txt",
+);
+
+/** The record `subprocessAdapter` actually wrote, lifted out of the capture. */
+function capturedExecutorRecord(): Record<string, unknown> {
+  const text = readFileSync(EXECUTOR_CAPTURE, "utf8");
+  const start = text.indexOf("THE RECORD, verbatim, exit 0:");
+  assert.notEqual(start, -1, "the capture no longer carries the record block");
+  const body = text
+    .slice(start)
+    .split("\n")
+    .filter((line) => line.startsWith("  | "))
+    .map((line) => line.slice(4))
+    .join("\n");
+  return JSON.parse(body) as Record<string, unknown>;
+}
+
+test(
+  "an executor record carrying an undeclared model field is refused, and is accepted once additionalProperties is removed",
+  () => {
+    /*
+     * KIND A DANGEROUS-INSTANCE WITNESS (criterion 5), and the dangerous
+     * state is a FUTURE one rather than a present bug: an adapter nobody has
+     * written yet smuggling a vendor model name into the launch record. M4-P7
+     * relies on that not being possible, and the only thing in this document
+     * that stops it is `additionalProperties: false`. No rule anywhere knows
+     * the word `model`, so a schema that merely listed the five permitted
+     * fields would accept a sixth in silence.
+     *
+     * Removing the keyword and watching the same instance become ACCEPTED is
+     * what makes this a witness rather than a restatement of the schema.
+     */
+    const schema = readSchema(join(schemasDir, "executor-record.schema.json"));
+    const record = capturedExecutorRecord();
+    assert.equal(record["adapter"], "subprocess", "the capture's record is not the real one");
+    assert.deepEqual(validateModule.validateToLines(schema, record), []);
+
+    const smuggled = { ...record, model: "some-vendor-model" };
+    const expected = ["INVALID #/model property model is not permitted here"];
+    /* The wording is the CLI's own, read out of the capture. */
+    assert.ok(
+      readFileSync(EXECUTOR_CAPTURE, "utf8").includes(expected[0] as string),
+      "the capture does not carry the diagnostic this test asserts",
+    );
+    assert.deepEqual(validateModule.validateToLines(schema, smuggled), expected);
+
+    /* THE DANGEROUS INSTANCE: the same record, the keyword removed. */
+    const defanged = { ...schema };
+    delete defanged["additionalProperties"];
+    assert.deepEqual(
+      validateModule.validateToLines(defanged, smuggled),
+      [],
+      "the undeclared field was refused by something other than additionalProperties",
+    );
+
+    /* And the second direction of criterion 4, at the schema level: a record
+       with no adapter is refused naming the field, with the capture's own
+       wording. */
+    const orphaned = { ...record };
+    delete orphaned["adapter"];
+    assert.deepEqual(validateModule.validateToLines(schema, orphaned), [
+      "INVALID #/adapter required property adapter is missing",
+    ]);
+  },
+);
+
+/**
+ * THE SINGLE DECLARED CONSTANT criterion 7 asks for: the vendor MODEL-family
+ * tokens whose absence from the kernel's shipped surface is the property
+ * being protected.
+ *
+ * WHY THESE ELEVEN, AND WHY NOT `claude`. The intake states the property
+ * narrowly enough to be checkable: no vendor MODEL name appears in `src/`,
+ * `bin/`, `schemas/` or `roles/` (delivery/plan/m4-intake.md:374). It states
+ * in the same paragraph that the wider zero-vendor-NAMES property is NOT true
+ * and names the two shipped schemas carrying a vendor-derived BRANCH PREFIX.
+ * So a token list that included `claude` would be asserting a property this
+ * repository does not have, and would be red on the day it was written; the
+ * branch prefix has its own baseline below, which is where "the same hits as
+ * before this phase" is actually enforced.
+ *
+ * `cursor` is deliberately absent although it names a harness: it is an
+ * ordinary English word and it matches a comment in src/commands/gates.ts
+ * about terminal output, which is a false positive and not a vendor name.
+ */
+const VENDOR_MODEL_TOKENS: readonly string[] = [
+  "opus",
+  "sonnet",
+  "haiku",
+  "gpt",
+  "codex",
+  "gemini",
+  "llama",
+  "mistral",
+  "grok",
+  "deepseek",
+  "qwen",
+];
+
+/**
+ * The files that carry the vendor-derived BRANCH PREFIX today, named rather
+ * than counted. This is the baseline criterion 7's "the same hits as before
+ * this phase" is about, and naming the files means a NEW one reddens while a
+ * later phase adding an unrelated file does not.
+ */
+const VENDOR_BRANCH_PREFIX_FILES: readonly string[] = [
+  "gate-registry.yaml",
+  "schemas/plan.schema.json",
+  "src/gates/run.ts",
+  "src/gates/schemas/gate-manifest.schema.json",
+  "src/gates/schemas/phase-declaration.schema.json",
+];
+
+/** Every shipped file criterion 7's grep covers, repo-relative and sorted. */
+function shippedSurfaceFiles(): string[] {
+  const found: string[] = [];
+  const walk = (relative: string): void => {
+    const absolute = join(repoRoot, relative);
+    for (const entry of readdirSync(absolute, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : 1,
+    )) {
+      const next = `${relative}/${entry.name}`;
+      if (entry.isDirectory()) {
+        walk(next);
+      } else if (entry.isFile()) {
+        found.push(next);
+      }
+    }
+  };
+  for (const root of ["src", "bin", "schemas", "roles"]) {
+    walk(root);
+  }
+  for (const name of readdirSync(repoRoot).sort()) {
+    if (name.endsWith(".yaml")) {
+      found.push(name);
+    }
+  }
+  return found.sort();
+}
+
+test(
+  "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration",
+  () => {
+    /*
+     * THE PROPERTY M4-P7 DEPENDS ON, checked by a test rather than promised
+     * in prose (criterion 7). The request carries a DECLARED TIER and the
+     * tier-to-model mapping lives in the plugin; a mapping in `src/` is what
+     * would close off every harness that is not the one it names.
+     *
+     * DERIVED, never pinned: the file set is walked at run time, so a source
+     * file a later phase adds is covered without anyone remembering to list
+     * it, and the result is asserted as a NAMED set rather than a count.
+     */
+    const files = shippedSurfaceFiles();
+    assert.ok(files.length > 50, `only ${String(files.length)} shipped files were walked`);
+
+    const pattern = new RegExp(VENDOR_MODEL_TOKENS.join("|"), "i");
+    const hits: string[] = [];
+    for (const file of files) {
+      const text = readFileSync(join(repoRoot, file), "utf8");
+      for (const [index, line] of text.split("\n").entries()) {
+        if (pattern.test(line)) {
+          hits.push(`${file} line ${String(index + 1)}: ${line.trim()}`);
+        }
+      }
+    }
+    assert.deepEqual(hits, [], "a vendor model name entered the kernel's shipped surface");
+
+    /*
+     * THE NON-VACUITY CONTROL, and it is not decorative. An empty result and
+     * a broken matcher are the same observation, and this project has been
+     * bitten three times by a search whose scope was wrong returning an empty
+     * result indistinguishable from an absence of defects. So the same
+     * pattern is run against text that DOES carry a token.
+     */
+    assert.equal(pattern.test("model: claude-3-OPUS-20240229"), true, "the matcher is broken");
+    assert.equal(pattern.test("model: a-tier-name"), false, "the matcher over-matches");
+
+    /*
+     * THE BRANCH PREFIX, which is the part of the shipped surface that DOES
+     * carry a vendor-derived string, named file by file. The intake records
+     * this as a known exception to the wider property rather than a defect,
+     * so the test's job is to stop the set GROWING, not to empty it.
+     */
+    const prefixed = files.filter((file) =>
+      readFileSync(join(repoRoot, file), "utf8").includes("claude/m"),
+    );
+    assert.deepEqual([...prefixed].sort(), [...VENDOR_BRANCH_PREFIX_FILES].sort());
+  },
+);

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/executor-record.schema.json",
+  "title": "Tiphys executor launch record",
+  "description": "tasks/<id>/executor.json, the record an ExecutorAdapter writes at launch (DR-0006 for the format, PR-207 for the shape, M4-P3 for the contract). Until M4-P3 this document was written by the kernel and validated by nothing, which is the state delivery/plan/m4-intake.md:272 names. It is written BEFORE the payload starts, which is what makes a failure to write it provably a launch failure and therefore safe to roll back.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["adapter", "launchedAt"],
+  "properties": {
+    "adapter": {
+      "$comment": "The adapter that wrote this record, by its own `name`. REQUIRED: a launch record that does not say what launched it cannot be attributed, and attribution is the whole reason an operator opens this file.",
+      "type": "string",
+      "minLength": 1
+    },
+    "launchedAt": {
+      "$comment": "RFC 3339 UTC, the same spelling every other Tiphys record uses, so two records from two machines sort. Written from `new Date().toISOString()`.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "deadline": {
+      "$comment": "PR-207. The absolute instant by which the task must have completed, present ONLY when --deadline was passed. Recorded as an instant rather than as raw seconds so the watcher compares it against the clock directly instead of re-deriving it from launchedAt.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "requestedTier": {
+      "$comment": "M4-P3 criterion 6. THE DECLARED TIER THE REQUEST CARRIED, VERBATIM, AND NEVER A MODEL NAME. Whatever role-model-config.yaml declares crosses the seam unaltered; the tier-to-model mapping lives in the plugin and never in src/, which is what keeps a harness that is not the one named possible at all (delivery/plan/m4-intake.md:377). The schema does not enum this value, because the vocabulary belongs to the plugin and an enum here would be that mapping's first half.",
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedRole": {
+      "$comment": "M4-P3 criterion 6. The role the request carried, verbatim. Not enumerated here for the same reason requestedTier is not: roles/ is a shipped directory and the role-to-brief mapping is the plugin's.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
