@@ -36,17 +36,29 @@
     "C-2",
     "C-3",
     "T-003",
-    "T-008"
+    "T-008",
+    "M4-D-05",
+    "DR-0036",
+    "DR-0027",
+    "C-1"
   ],
   "gateClasses": {
     "correctness": {
-      "gates": ["suite", "red-witness", "typecheck"]
+      "gates": [
+        "suite",
+        "red-witness",
+        "typecheck"
+      ]
     },
     "scope": {
-      "gates": ["scope"]
+      "gates": [
+        "scope"
+      ]
     },
     "review": {
-      "gates": ["check-dual-review"]
+      "gates": [
+        "check-dual-review"
+      ]
     }
   }
 }

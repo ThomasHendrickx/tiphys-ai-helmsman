@@ -1,0 +1,40 @@
+{
+  "id": "M4-P17",
+  "branch": "claude/m4-p17-doctor-post-reclaim",
+  "filesToTouch": [
+    "src/commands/doctor.ts",
+    "src/lock.ts",
+    "src/pool.ts",
+    "test/doctor.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p17.json",
+    "delivery/work-history/m4-p17.md"
+  ],
+  "citations": [
+    "DR-0029",
+    "DR-0027",
+    "DR-0031",
+    "C-1",
+    "C-2"
+  ],
+  "gateClasses": {
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
+  }
+}
