@@ -1,0 +1,32 @@
+{
+  "id": "doctor-remote-reports-unpushed",
+  "behavior": "doctor-remote-reports-unpushed",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "doctor CHECK remote reports unpushed commits where it used to name the configured remote"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (ahead === 0 && behind === 0) {",
+      "replace": "  if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  const behind = Number(fields[0]);\n  const ahead = Number(fields[1]);",
+      "replace": "  const behind = Number(fields[1]);\n  const ahead = Number(fields[0]);"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git rev-list --left-right --count <upstream>...HEAD, and the tiphys CLI that reports it",
+    "captures": [
+      "witness/captures/m4-p17-git-remote-comparison.txt",
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. The git capture records the commands the check PARSES, with their exit codes and their real separators: `git rev-list --left-right --count` answers two counts separated by a TAB, `git fetch` exits 0 against a remote that is there and 128 against one that is not, and `git merge-base --is-ancestor` exits 0 for merged and 1 for unmerged. Those are facts about git, not about this kernel, and the named test reproduces each of them live before believing the verdict built on them. The two members are structurally different: member 0 never reaches the divergence arm at all, and member 1 reaches it having read git's two counts in the wrong order, which is the failure a hand-written `0 2` expectation would never catch because it is a claim about which count comes first rather than about the separator."
+  }
+}

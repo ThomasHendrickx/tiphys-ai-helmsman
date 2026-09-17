@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../fleet.ts";
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
-import { poolList } from "../pool.ts";
+import { expiryHasPassed } from "../lock.ts";
+import { poolList, resolveNetworkTimeoutMs } from "../pool.ts";
 import { classifyEntry, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument } from "../validate.ts";
 import {
@@ -56,6 +58,17 @@ export const PROFILES: Record<string, readonly string[]> = {
      ready for full mode. It is NOT promoted below full, deliberately: the
      commands that resolve those artifacts are full mode's, and promoting
      everywhere is how a check fails a fleet that never needed it. */
+  /* M4-P17: `branches-unmerged`, `tasks-open`, `tasks-not-established`,
+     `branches-not-established`, `remote-diverged`, `remote-untracked` and
+     `remote-not-a-fleet` are NOT promoted here, and the branch one is the
+     case the plan argues at length (criterion 5). Deleting a remote ref is
+     refused in the container this kernel is built in, and the delete dry run
+     exits 0 either way (CLAUDE.md standing warning 14), so a promoted branch
+     check would make this profile unpassable on the kernel's own fleet with
+     no remedy its operator could reach, and an unpassable check is one that
+     gets switched off. The others are states a fleet legitimately sits in
+     between a spawn and a teardown, or immediately after a reclaim. A test
+     walks every profile and asserts none of them promotes any of these. */
   full: [
     "gh-missing",
     "remote-missing",
@@ -194,6 +207,114 @@ function checkLayout(root: string): CheckResult {
   return { name: "layout", status: "PASS", detail: "all layout entries present" };
 }
 
+/**
+ * A git invocation for the reporting paths in this file, with the two
+ * properties a REPORT needs and a write does not.
+ *
+ * `LC_ALL`/`LANG` are pinned so a translated git cannot change what this
+ * module reads back, the same reason src/pool.ts:143 pins them.
+ * `GIT_TERMINAL_PROMPT=0` turns a credential prompt into an error: doctor is
+ * run non-interactively (by a watcher, by an exit test, by CI), and a git that
+ * stops to ask for a password is a command that never returns.
+ */
+function runGitHere(
+  root: string,
+  args: string[],
+  timeoutMs?: number,
+): { status: number | null; stdout: string; stderr: string; timedOut: boolean } {
+  const result = spawnSync("git", ["-C", root, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C", LANG: "C", GIT_TERMINAL_PROMPT: "0" },
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  });
+  if (result.error !== undefined) {
+    const timedOut =
+      timeoutMs !== undefined &&
+      (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+    return {
+      status: null,
+      stdout: "",
+      stderr: timedOut
+        ? `git ${args.join(" ")} did not answer within ${String(timeoutMs)}ms and was killed`
+        : String(result.error),
+      timedOut,
+    };
+  }
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    timedOut: false,
+  };
+}
+
+/** The first non-empty line of git's own stderr, for a one-line detail. */
+function firstStderrLine(stderr: string): string {
+  const line = stderr
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry !== "");
+  return line ?? "no stderr";
+}
+
+/** git's answer, or undefined when it did not answer. */
+function gitValue(root: string, args: string[]): string | undefined {
+  const run = runGitHere(root, args);
+  if (run.status !== 0) {
+    return undefined;
+  }
+  const value = run.stdout.trim();
+  return value === "" ? undefined : value;
+}
+
+/**
+ * CHECK remote (M4-P17 criterion 6): FETCH, then COMPARE.
+ *
+ * WHAT IT USED TO DO, and why that was the H-B shape. It listed the
+ * configured remotes and printed `PASS remote configured (origin)` whenever
+ * the list was non-empty. That condition is TRUE OF THE DANGEROUS STATE in
+ * two separate ways, and both are ordinary rather than exotic: a fleet whose
+ * whole history has never been pushed, and a fleet whose remote URL points at
+ * something that is not there. Both printed PASS. Nothing the check did could
+ * have told them from a healthy fleet, because `git remote` reads a config
+ * file and never touches the remote.
+ *
+ * SO THE FETCH IS THE CHECK. Without it, "is the fleet's work somewhere other
+ * than this disk" is answered by reading a string the operator typed. With it,
+ * the answer is ahead/behind counts against a ref the remote actually
+ * advertised.
+ *
+ * THE FETCH IS BOUNDED, AND THIS IS A DELIBERATE DEPARTURE FROM THE
+ * CLASSIFICATION M4-P19 WROTE (test/pool.test.ts's
+ * `pool-network-calls-are-classified`). That classification leaves object
+ * transfers (`clone`, `fetch`, `pull`, `push`) unbounded, on the reasoning
+ * that a legitimate transfer's duration is set by how much data there is, so a
+ * wall-clock bound would kill real work. That reasoning is right where it was
+ * written, and it does not reach here: this fetch moves no work an operator
+ * asked for, it is a PROBE inside a REPORT. Killing it costs one diagnostic
+ * line; not killing it costs the whole diagnosis, because doctor is the
+ * command someone runs when a fleet is already misbehaving and a remote that
+ * accepts and never answers would hang it with zero output. The bound reads
+ * the same `TIPHYS_GIT_NETWORK_TIMEOUT_MS` override as the pool's ref probe,
+ * so a witness can shorten it instead of waiting out the shipped twenty
+ * seconds; a bound no test can drive is a bound no test will guard.
+ *
+ * A FETCH THAT DID NOT RUN IS NOT A PASS AND IS NOT A WARN. It is FAIL,
+ * naming git's own first stderr line. The alternative a reviewer should look
+ * for, and which this code deliberately does not do, is to swallow the failure
+ * and fall back to the old non-empty-list test: that is green in exactly the
+ * state the check exists to catch, which is the guard-that-cannot-go-red shape.
+ * FAIL is also what this command already does everywhere else an input could
+ * not be established (an unreadable lease, an undecodable charter), so the
+ * three states a reader might confuse (in sync, diverged, could not ask) never
+ * print the same word.
+ *
+ * OUTSIDE A FLEET HOME THERE IS NOTHING TO FETCH FOR. The subject of this
+ * check is the FLEET's push target (SC-002), so in a git repository that is
+ * not a fleet home it reports that and stops, exactly as CHECK worktrees does.
+ * That is a verdict with its reason, not a silent pass, and it means doctor
+ * run inside some unrelated checkout never reaches for that checkout's remote.
+ */
 function checkRemote(root: string): CheckResult {
   if (!existsSync(join(root, ".git"))) {
     return {
@@ -203,10 +324,10 @@ function checkRemote(root: string): CheckResult {
       condition: "remote-missing",
     };
   }
-  const result = spawnSync("git", ["-C", root, "remote"], { encoding: "utf8" });
+  const listed = runGitHere(root, ["remote"]);
   const remotes =
-    result.status === 0
-      ? (result.stdout ?? "").split("\n").filter((line) => line !== "")
+    listed.status === 0
+      ? listed.stdout.split("\n").filter((line) => line !== "")
       : [];
   if (remotes.length === 0) {
     return {
@@ -216,10 +337,100 @@ function checkRemote(root: string): CheckResult {
       condition: "remote-missing",
     };
   }
+  try {
+    loadFleet(root);
+  } catch {
+    return {
+      name: "remote",
+      status: "WARN",
+      detail:
+        `${root} is a git repository with a remote (${remotes.join(", ")}) but it is not a ` +
+        "fleet home, so there is no fleet state to compare against it",
+      condition: "remote-not-a-fleet",
+    };
+  }
+  const branch = gitValue(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const remote =
+    (branch === undefined || branch === "HEAD"
+      ? undefined
+      : gitValue(root, ["config", "--get", `branch.${branch}.remote`])) ??
+    (remotes.includes("origin") ? "origin" : (remotes[0] as string));
+
+  const fetched = runGitHere(
+    root,
+    ["fetch", "--quiet", remote],
+    resolveNetworkTimeoutMs(process.env["TIPHYS_GIT_NETWORK_TIMEOUT_MS"]),
+  );
+  if (fetched.status !== 0) {
+    return {
+      name: "remote",
+      status: "FAIL",
+      detail:
+        `git fetch ${remote} did not succeed, so this fleet's push target could not be ` +
+        `reached and nothing about it is established: ${firstStderrLine(fetched.stderr)}`,
+    };
+  }
+
+  if (branch === undefined || branch === "HEAD") {
+    return {
+      name: "remote",
+      status: "WARN",
+      detail:
+        `fetched ${remote}, but HEAD is detached, so there is no tracked remote ` +
+        "ref to compare it against",
+      condition: "remote-untracked",
+    };
+  }
+  const tracked =
+    gitValue(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) ??
+    (gitValue(root, ["rev-parse", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`]) ===
+    undefined
+      ? undefined
+      : `${remote}/${branch}`);
+  if (tracked === undefined) {
+    return {
+      name: "remote",
+      status: "WARN",
+      detail:
+        `fetched ${remote}, which carries no ref for branch ${branch}, so the whole of ` +
+        "this branch is unpushed",
+      condition: "remote-untracked",
+    };
+  }
+  const counted = runGitHere(root, ["rev-list", "--left-right", "--count", `${tracked}...HEAD`]);
+  if (counted.status !== 0) {
+    return {
+      name: "remote",
+      status: "FAIL",
+      detail:
+        `git rev-list could not count HEAD against ${tracked}, so the ahead and behind ` +
+        `counts are not established: ${firstStderrLine(counted.stderr)}`,
+    };
+  }
+  const fields = counted.stdout.trim().split(/\s+/);
+  const behind = Number(fields[0]);
+  const ahead = Number(fields[1]);
+  if (fields.length !== 2 || !Number.isInteger(behind) || !Number.isInteger(ahead)) {
+    return {
+      name: "remote",
+      status: "FAIL",
+      detail:
+        `git rev-list answered ${JSON.stringify(counted.stdout.trim())} for ` +
+        `${tracked}...HEAD, which is not two counts`,
+    };
+  }
+  if (ahead === 0 && behind === 0) {
+    return {
+      name: "remote",
+      status: "PASS",
+      detail: `in sync with ${tracked} (0 ahead, 0 behind) after fetching ${remote}`,
+    };
+  }
   return {
     name: "remote",
-    status: "PASS",
-    detail: `remote configured (${remotes.join(", ")})`,
+    status: "WARN",
+    detail: `${String(ahead)} unpushed, ${String(behind)} behind ${tracked}`,
+    condition: "remote-diverged",
   };
 }
 
@@ -261,19 +472,63 @@ function checkLock(root: string): CheckResult {
       detail: "lease file is missing holderId or expiresAt",
     };
   }
-  const expiresMs = Date.parse(lease.expiresAt);
-  if (Number.isNaN(expiresMs)) {
+  return lockCheckFor(lease.holderId, lease.expiresAt, Date.now());
+}
+
+/**
+ * THE VERDICT OVER A LEASE THAT HAS BEEN READ (M4-P17 criteria 1 and 2).
+ *
+ * AN EXPIRED LEASE IS A FAIL. Until this phase it was a PASS carrying the
+ * word `(expired)` inside the detail, and that is the H-B shape this
+ * repository keeps paying for: the check's condition was TRUE OF THE
+ * DANGEROUS STATE, so a fleet whose orchestrator died holding the lease
+ * reported `CHECK lock PASS` and doctor exited 0. AGENTS.md's resume clause
+ * says doctor reports "which leases are expired and who last held them"; a
+ * green line with a parenthesis in it is not that report, and an operator
+ * scanning for FAIL lines never saw it.
+ *
+ * The holder id and the expiry are both in the detail because the remedy
+ * needs both: WHO to ask before breaking the lease, and WHEN it lapsed.
+ *
+ * `nowMs` IS A PARAMETER, and that is what makes criterion 2's boundary
+ * member testable at all. `Date.now()` cannot be driven to a chosen
+ * millisecond from outside the process, so a lease whose expiry is exactly
+ * the current instant is unreachable through the CLI: by the time doctor
+ * runs, the instant has passed and the case under test is the interior one
+ * again. The caller above passes the clock; the witness passes an instant.
+ *
+ * THE COMPARISON IS NOT MADE HERE. `expiryHasPassed` (src/lock.ts) owns it,
+ * so doctor and the lock module cannot return two verdicts about one lease.
+ * That is the same rule checkBeacon follows for `judgeBeacon`, and it was
+ * written down there after a delta review found doctor carrying its own copy
+ * of the beacon comparison and missing a floor the module had.
+ */
+export function lockCheckFor(
+  holderId: string,
+  expiresAt: string,
+  nowMs: number,
+): CheckResult {
+  if (Number.isNaN(Date.parse(expiresAt))) {
     return {
       name: "lock",
       status: "FAIL",
-      detail: `lease expiresAt "${lease.expiresAt}" is not a parseable timestamp`,
+      detail: `lease expiresAt "${expiresAt}" is not a parseable timestamp`,
     };
   }
-  const expired = expiresMs <= Date.now();
+  if (expiryHasPassed(expiresAt, nowMs)) {
+    return {
+      name: "lock",
+      status: "FAIL",
+      detail:
+        `lease held by ${holderId} EXPIRED at ${expiresAt}; a lease that has ` +
+        "lapsed is no longer holding anything, so whatever it was protecting " +
+        "is unprotected",
+    };
+  }
   return {
     name: "lock",
     status: "PASS",
-    detail: `lease held by ${lease.holderId}, expires ${lease.expiresAt}${expired ? " (expired)" : ""}`,
+    detail: `lease held by ${holderId}, expires ${expiresAt}`,
   };
 }
 
@@ -829,6 +1084,300 @@ export function checkKernelArtifacts(
 }
 
 /**
+ * CHECK tasks (M4-P17 criterion 3): how many tasks are OPEN, and which.
+ *
+ * THE DEFINITION IS THE PLAN'S AND IT IS DELIBERATELY NARROW. A task is open
+ * when `tasks/<id>/meta.json` is there and `tasks/<id>/turn-end` is not. Two
+ * file existences, both under `tasks/`, and nothing else. No log is read
+ * (constraint C-1: currency never comes off the tail of an append-only
+ * stream), and nothing is probed for being alive (constraint C-2: liveness is
+ * lease freshness, never a process). A test in test/doctor.test.ts greps this
+ * function's own source for the four tokens that would mean either constraint
+ * had been broken, because a violation of either is invisible in the output.
+ *
+ * ESTABLISHED, ABSENT, UNUSABLE, AND THEY NEVER PRINT THE SAME WORD. This is
+ * the one thing this check must not get wrong. The kernel already carries a
+ * live instance of the opposite, tracked at
+ * delivery/verification/tracked-doctor-charter-selection.md:1: the retention
+ * check selects charter documents by a raw `kind` read, so a document whose
+ * `kind` cannot be read is SKIPPED, and skipping is indistinguishable from
+ * absence, so the command reports PASS over a fleet it could not examine. A
+ * fourth check with that shape would be worse than no check.
+ *
+ * So every candidate under `tasks/` lands in exactly one of three buckets and
+ * the third is reported by name:
+ *
+ *   - open      meta.json is a regular file, turn-end is absent
+ *   - closed    meta.json is a regular file, turn-end is a regular file
+ *   - UNUSABLE  anything else: no meta.json at all, a meta.json or a turn-end
+ *               that is a directory, a named pipe, a dangling link, or a path
+ *               `lstat` itself could not answer about
+ *
+ * An UNUSABLE candidate is a WARN carrying its own condition, never folded
+ * into "closed" and never dropped from the total. A directory under `tasks/`
+ * with no `meta.json` is the common real shape of it, a task half created or
+ * half removed, and the honest report is that the check could not establish
+ * what it is.
+ *
+ * NO PATH HERE IS OPENED. `classifyEntry` (src/task.ts) lstats, stats and
+ * answers a kind; a named pipe at `tasks/<id>/meta.json` is therefore a named
+ * WARN in bounded time rather than a doctor that hangs with no output, which
+ * is the defect CR-520 recorded at the lease path and which this check would
+ * otherwise reintroduce one directory along.
+ */
+export function checkTasks(root: string): CheckResult {
+  const tasksDir = join(root, "tasks");
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(tasksDir, { withFileTypes: true });
+  } catch (error) {
+    /* CHECK layout owns a missing tasks/ and FAILs on it (FLEET_DIRS in
+       src/fleet.ts), so this arm names the condition and leaves the verdict
+       to the check that owns it. */
+    return {
+      name: "tasks",
+      status: "WARN",
+      detail: `tasks/ under ${root} could not be listed (${String(error)}), so no task is established`,
+      condition: "tasks-not-established",
+    };
+  }
+  const open: string[] = [];
+  const unusable: string[] = [];
+  let total = 0;
+  for (const entry of [...entries].sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    if (entry.isFile()) {
+      /* `tasks/.gitkeep` and anything else a plain file: a task is a
+         DIRECTORY, so this is not a candidate rather than a broken one. */
+      continue;
+    }
+    total += 1;
+    if (!entry.isDirectory()) {
+      unusable.push(`${entry.name} (not a directory)`);
+      continue;
+    }
+    const metaFile = join(tasksDir, entry.name, "meta.json");
+    const meta = classifyEntry(metaFile);
+    if (meta.kind !== "regular") {
+      unusable.push(`${entry.name} (meta.json ${unestablishedBecause(metaFile, meta)})`);
+      continue;
+    }
+    const turnEndFile = join(tasksDir, entry.name, "turn-end");
+    const turnEnd = classifyEntry(turnEndFile);
+    if (turnEnd.kind === "absent") {
+      open.push(entry.name);
+      continue;
+    }
+    if (turnEnd.kind !== "regular") {
+      unusable.push(
+        `${entry.name} (turn-end ${unestablishedBecause(turnEndFile, turnEnd)})`,
+      );
+    }
+  }
+  const counted =
+    `${String(open.length)} open of ${String(total)}` +
+    (open.length === 0 ? "" : ` (${open.join(", ")})`);
+  if (unusable.length > 0) {
+    return {
+      name: "tasks",
+      status: "WARN",
+      detail: `${counted}; ${String(unusable.length)} not established: ${unusable.join(", ")}`,
+      condition: "tasks-not-established",
+    };
+  }
+  if (open.length > 0) {
+    return { name: "tasks", status: "WARN", detail: counted, condition: "tasks-open" };
+  }
+  return { name: "tasks", status: "PASS", detail: counted };
+}
+
+/**
+ * Why a path under `tasks/` could not be established, WITHOUT the absolute
+ * path in it.
+ *
+ * `classifyEntry` prefixes its reason with the path it examined, which is
+ * right for a diagnostic naming one file and wrong inside a line that has
+ * already named the task. Stripping it also makes the line reproducible: a
+ * detail carrying a temporary directory differs on every run, so no capture
+ * could record it and no test could compare against one.
+ */
+function unestablishedBecause(
+  path: string,
+  entry: ReturnType<typeof classifyEntry>,
+): string {
+  if (entry.kind === "absent") {
+    return "is absent";
+  }
+  if (entry.kind === "dangling" || entry.kind === "regular") {
+    return entry.kind === "dangling"
+      ? "is a link that resolves to nothing"
+      : "is a regular file";
+  }
+  const reason = entry.reason;
+  return reason.startsWith(`${path} `) ? reason.slice(path.length + 1) : reason;
+}
+
+/**
+ * CHECK branches (M4-P17 criterion 5): which branches are PUSHED and NOT YET
+ * MERGED. AGENTS.md's resume clause names this as one of the three things
+ * doctor reports after a reclaim, and it was the one with no implementation.
+ *
+ * PUSHED means a remote-tracking ref exists for it, which is the only
+ * evidence available locally that the branch is somewhere other than this
+ * disk. UNMERGED means the trunk does not already contain it.
+ *
+ * IT REPORTS EVERY PUSHED REF RATHER THAN FILTERING TO A NAMING PATTERN, and
+ * that is a decision rather than an omission. At least two branch spellings
+ * are in use across the repositories this kernel runs over: the pool names
+ * task branches `task/<id>` (src/pool.ts:54), and a delivery process running
+ * on this kernel names phase branches with its own harness prefix followed by
+ * a milestone and phase segment. A filter written for either is blind to the
+ * other, and a check that is blind to a branch is worse than one that names a
+ * branch the reader already knew about. A superset prints rows a reader can
+ * skip; a filter that misses a branch prints nothing at all, and nothing is
+ * what a healthy fleet prints too.
+ *
+ * NO BRANCH PREFIX IS SPELLED OUT HERE, and that is not a style choice.
+ * test/schemas.test.ts:800 asserts by name which shipped files carry the
+ * harness-derived branch prefix and exists to stop that set GROWING; writing
+ * the literal prefix into this comment added src/commands/doctor.ts to it and
+ * reddened that test. The spelling belongs in the delivery process that uses
+ * it, not in the kernel that reports over any of them.
+ *
+ * WARN, AND NO PROFILE PROMOTES IT TO FAIL. The reason is measured and is not
+ * a preference. Deleting a remote ref is REFUSED in the container this kernel
+ * is built in, and `git push --dry-run --delete` exits 0 whether deletion is
+ * allowed or not, so the dry run cannot tell an operator whether the remedy is
+ * even available (CLAUDE.md standing warning 14). A promotable branch check
+ * would therefore make `tiphys doctor --for full` unpassable on the kernel's
+ * own fleet, with no action its operator could take, and an unpassable check
+ * is a check that gets switched off. The count is printed; the exit code does
+ * not move. A test walks every profile in PROFILES and asserts that, so a
+ * later profile cannot promote it by accident.
+ *
+ * AND IT NEVER PRINTS PASS FOR A QUESTION IT COULD NOT ASK. If git refuses to
+ * list the refs, or the trunk cannot be resolved, the check says so under its
+ * own condition instead of reporting an empty list as a clean bill of health.
+ * An empty result from a query that failed is indistinguishable from an empty
+ * result from a query that succeeded, which is the third way this repository
+ * has shipped a guard that could not go red.
+ */
+export function checkBranches(root: string): CheckResult {
+  if (!existsSync(join(root, ".git"))) {
+    return {
+      name: "branches",
+      status: "WARN",
+      detail: "fleet home is not a git repository, so no branch can be reported",
+      condition: "branches-not-established",
+    };
+  }
+  /* THE FORMAT ASKS FOR THE FULL REFNAME, AND THAT IS THE WHOLE POINT OF THIS
+     LINE. `%(refname:short)` renders refs/remotes/origin/HEAD as `origin`, not
+     as `origin/HEAD`, because git shortens a remote's HEAD to the remote's own
+     name. A filter written as `endsWith("/HEAD")` over the SHORT name is
+     therefore dead on exactly the ref it exists to drop, which is the shape
+     this repository keeps paying for: a guard whose condition does not test
+     the property that matters. The short name is recovered below by stripping
+     the prefix, which is what `:short` does for every ref that is not a HEAD.
+
+     `%(symref)` is the second half and is not redundant. Since git 2.48.0,
+     `git fetch` creates refs/remotes/<name>/HEAD when the remote advertises one
+     and the local side has none: `remote.<name>.followRemoteHEAD` documents
+     `create` as its default. It creates it as a SYMBOLIC ref, so dropping
+     symbolic refs is the direct statement of "an alias is not a branch". A HEAD
+     written as an ordinary ref carries no symref target and is caught by the
+     name test instead; both members occur and each half catches one of them. */
+  const listed = runGitHere(root, [
+    "for-each-ref",
+    "--format=%(refname)%09%(symref)",
+    "refs/remotes",
+  ]);
+  if (listed.status !== 0) {
+    return {
+      name: "branches",
+      status: "WARN",
+      detail:
+        "git could not list the remote-tracking refs, so no branch is established: " +
+        firstStderrLine(listed.stderr),
+      condition: "branches-not-established",
+    };
+  }
+  const REMOTES_PREFIX = "refs/remotes/";
+  const refs: string[] = [];
+  for (const row of listed.stdout.split("\n")) {
+    const [refname = "", symref = ""] = row.split("\t");
+    if (!refname.startsWith(REMOTES_PREFIX)) {
+      continue;
+    }
+    /* TWO TESTS, TWO STATEMENTS. They are not one condition with an `||`
+       because they are two different properties with two different witnesses,
+       and a witness member that defangs one of them must be distinguishable
+       from one that defangs the other. */
+    if (symref !== "") {
+      continue;
+    }
+    if (refname.endsWith("/HEAD")) {
+      continue;
+    }
+    refs.push(refname.slice(REMOTES_PREFIX.length));
+  }
+  if (refs.length === 0) {
+    return { name: "branches", status: "PASS", detail: "no pushed branches" };
+  }
+  /* The trunk, in the order the evidence is strongest: what the remote
+     itself advertises as its default, then what this branch tracks, and
+     only then this checkout's own HEAD. */
+  const trunk =
+    gitValue(root, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]) ??
+    gitValue(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) ??
+    "HEAD";
+  if (gitValue(root, ["rev-parse", "--verify", "--quiet", `${trunk}^{commit}`]) === undefined) {
+    return {
+      name: "branches",
+      status: "WARN",
+      detail: `${trunk} does not resolve to a commit, so no branch can be compared against it`,
+      condition: "branches-not-established",
+    };
+  }
+  const unmerged: string[] = [];
+  for (const ref of refs) {
+    if (ref === trunk) {
+      continue;
+    }
+    const ancestor = runGitHere(root, ["merge-base", "--is-ancestor", ref, trunk]);
+    if (ancestor.status === 0) {
+      continue;
+    }
+    if (ancestor.status !== 1) {
+      return {
+        name: "branches",
+        status: "WARN",
+        detail:
+          `git merge-base --is-ancestor ${ref} ${trunk} exited ` +
+          `${String(ancestor.status)}, so whether ${ref} is merged is not established: ` +
+          firstStderrLine(ancestor.stderr),
+        condition: "branches-not-established",
+      };
+    }
+    unmerged.push(ref);
+  }
+  if (unmerged.length === 0) {
+    return {
+      name: "branches",
+      status: "PASS",
+      detail: `${String(refs.length)} pushed branch(es), none unmerged into ${trunk}`,
+    };
+  }
+  return {
+    name: "branches",
+    status: "WARN",
+    detail:
+      `${String(unmerged.length)} of ${String(refs.length)} pushed branch(es) unmerged ` +
+      `into ${trunk}: ${unmerged.join(", ")}`,
+    condition: "branches-unmerged",
+  };
+}
+
+/**
  * CHECK worktrees (M4-P19): every entry in the worktree pool, and whether a
  * pool record still exists beside it.
  *
@@ -908,6 +1457,8 @@ export function runChecks(root: string): CheckResult[] {
     checkBeacon(root),
     checkIdentity(root),
     checkRetention(root),
+    checkTasks(root),
+    checkBranches(root),
     checkWorktrees(root),
     checkKernelArtifacts(),
   ];
