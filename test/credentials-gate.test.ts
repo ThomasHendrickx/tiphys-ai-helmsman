@@ -37,6 +37,33 @@ const appleGitPrefixHelperCapture = fileURLToPath(
   new URL("../witness/captures/macos-apple-git-prefix-helper.txt", import.meta.url),
 );
 
+const resultModule = (await import(
+  new URL("../src/gates/result.ts", import.meta.url).href
+)) as typeof import("../src/gates/result.ts");
+/** The SHIPPED exit-code table, so M4-P29 criterion 3 is a round trip. */
+const { exitCodeForStatus, statusForExitCode } = resultModule;
+type GateStatusName = Parameters<typeof exitCodeForStatus>[0];
+
+/**
+ * M4-P29 rule (f): the cited capture, and the block-extractor the named tests
+ * use to reproduce it live. The file is REAL captured output of these gate
+ * CLIs (witness/captures/m4-p29-gate-cli-stdio.txt), not a hand-written shape.
+ */
+const gateStdioCapturePath = fileURLToPath(
+  new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
+);
+
+function capturedGateStdio(block: string): string {
+  const body = readFileSync(gateStdioCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
+
 interface ChildEnvModule {
   DEFAULT_CHILD_ENV_ALLOWLIST: readonly string[];
   CREDENTIAL_STORE_REDIRECTIONS: readonly {
@@ -66,6 +93,9 @@ interface CredentialsModule {
   GH_TOKEN_VARIABLES: readonly string[];
   DANGEROUS_ENV_VOCABULARY: readonly string[];
   isDangerousEnvName: (name: string) => boolean;
+  /** M4-P29: the walked proxy vocabulary and its membership test. */
+  EGRESS_ENV_VOCABULARY: readonly string[];
+  isEgressEnvName: (name: string) => boolean;
   CREDENTIAL_SOURCES: readonly string[];
   probeCredentialSources: (
     env: Record<string, string | undefined>,
@@ -910,4 +940,320 @@ test("credentials gate usage errors exit 64", (t) => {
     { encoding: "utf8", env: { PATH: bin } },
   );
   assert.equal(unknownFlag.status, 64);
+});
+
+// ---------------------------------------------------------------------------
+// M4-P29: the CLI entry point must not truncate its own report.
+// ---------------------------------------------------------------------------
+
+test("the credentials gate CLI delivers a report larger than one pipe buffer intact through a pipe", (t) => {
+  /* CRITERION 2 (M4-P29), member three of three, and the member that is
+   * structurally unlike the other two in both axes that matter.
+   *
+   *   STREAM. This module writes NOTHING to stdout (`grep -n
+   *   'process.stdout' src/gates/credentials.ts` has no hits), so its
+   *   report is on STDERR. The plan section states in as many words that
+   *   only stdout was measured for truncation; this arm measures the other
+   *   half and finds the same defect.
+   *
+   *   STDIO FLAVOUR. `spawnSync` hands a child SOCKETPAIRS, whose send
+   *   buffer here is 212,992 bytes, so the other two members have to exceed
+   *   roughly 146 KiB before anything is lost. A shell PIPE holds 65,536,
+   *   and a pipe is what the gate gets under `tiphys gates run ... | tee`,
+   *   under a CI log collector, and under any shell pipeline. This arm runs
+   *   the CLI through `/bin/sh -c '... | cat'` so the pipe is a real one.
+   *
+   * BOTH SIDES ARE THE PROGRAM'S OWN CAPTURED OUTPUT. The same invocation is
+   * run twice, differing only in where fd 2 points: once to a regular file,
+   * once to a pipe. A file does not truncate, which is exactly why this
+   * defect survives casual testing, so the file arm is what the gate meant
+   * to write and the pipe arm is what a reader received. Nothing is
+   * hand-written to match the implementation.
+   */
+  const tmp = makeTempDir(t);
+  const bin = ghFreeBinDir(t);
+  // The gh-free bin holds only git and node, and the pipe arm needs a
+  // READER on the other end. `cat` is symlinked in rather than widening
+  // PATH to /usr/bin, which would put gh back on it (environment warning 6).
+  for (const program of ["cat", "sleep"]) {
+    const real = spawnSync("sh", ["-c", `command -v ${program}`], {
+      encoding: "utf8",
+    }).stdout.trim();
+    assert.notEqual(real, "", `a real ${program} must exist to stage the pipe arm`);
+    symlinkSync(real, join(bin, program));
+  }
+  // Rule (f) first: the capture this witness cites is reproduced LIVE, at the
+  // size that fits in any buffer, before anything is asserted about a report
+  // that does not. If the gate's refusal text changes, this fails here rather
+  // than silently changing what the oversize comparison means.
+  const recorded = capturedGateStdio("credential-scrub-usage-stderr");
+  const smallRun = spawnSync(
+    process.execPath,
+    [
+      credentialsGateEntry,
+      "credential-scrub",
+      "--result",
+      join(tmp, "small-result.json"),
+      "--evidence",
+      tmp,
+      "--frob",
+    ],
+    { encoding: "utf8", env: { PATH: bin } },
+  );
+  assert.equal(smallRun.status, 64);
+  assert.equal(smallRun.stderr, recorded);
+
+  // One argument, just under the kernel's 131,072-byte per-argument ceiling
+  // (MAX_ARG_STRLEN), echoed back by the gate's own usage refusal. This is
+  // the cheapest real way to make this module's report exceed a pipe buffer.
+  const oversizeArgument = `--z${"y".repeat(130000)}`;
+  const fileCapture = join(tmp, "stderr-to-a-file.txt");
+  const shellEnv: Record<string, string> = {
+    PATH: bin,
+    NODE: process.execPath,
+    GATE: credentialsGateEntry,
+    RESULT: join(tmp, "result.json"),
+    EVIDENCE: tmp,
+    BIG: oversizeArgument,
+    CAPTURE: fileCapture,
+  };
+  const invocation =
+    '"$NODE" "$GATE" credential-scrub --result "$RESULT" --evidence "$EVIDENCE" "$BIG"';
+
+  const toFile = spawnSync("/bin/sh", ["-c", `${invocation} 2>"$CAPTURE" >/dev/null`], {
+    encoding: "utf8",
+    env: shellEnv,
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  assert.equal(toFile.status, 64, "the file arm must reach the same usage refusal");
+  const intended = readFileSync(fileCapture, "utf8");
+  // The report must actually exceed a pipe buffer, or this test exercises a
+  // path where the hazard cannot occur: green, registered and worthless.
+  assert.ok(
+    Buffer.byteLength(intended) > 65536,
+    `report too small to exercise the hazard: ${String(Buffer.byteLength(intended))} bytes`,
+  );
+
+  // THE READER SLEEPS BEFORE IT READS, AND THAT IS WHAT MAKES THIS ARM
+  // DETERMINISTIC RATHER THAN A COIN FLIP. Measured: with a plain `| cat`
+  // the red-witness harness scored this witness red in 1 of 2 repetitions,
+  // although the same command truncated 12 times out of 12 on an idle
+  // machine. The cause is libuv's write loop: `uv__write` keeps calling
+  // `writev` until it gets EAGAIN, so a reader that happens to be scheduled
+  // mid-loop lets the child push more than one buffer before it exits, and
+  // whether that happens depends on machine load. A reader that provably is
+  // not reading for the first fraction of a second removes the race without
+  // weakening anything: the pipe fills, the remainder is queued, and the
+  // pre-fix entry point discards it. It is also the more faithful shape,
+  // because a `tee` or a CI log collector that is briefly busy is exactly
+  // this.
+  const toPipe = spawnSync("/bin/sh", ["-c", `${invocation} 2>&1 >/dev/null | { sleep 0.5; cat; }`], {
+    encoding: "utf8",
+    env: shellEnv,
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const received = toPipe.stdout ?? "";
+  assert.equal(
+    Buffer.byteLength(received),
+    Buffer.byteLength(intended),
+    `the gate wrote ${String(Buffer.byteLength(intended))} bytes to a file and a ` +
+      `reader on a pipe received ${String(Buffer.byteLength(received))}`,
+  );
+  assert.equal(received, intended);
+});
+
+test("every credentials gate CLI arm exits the code its own result record implies", (t) => {
+  /* CRITERION 3 (M4-P29) for this entry point, and the only one of the three
+   * that can reach `not-applicable`, which is why the four-status walk the
+   * criterion asks for is completed here.
+   *
+   *   green           credential-scrub against the constructed child.
+   *   not-applicable  credential-token with no TIPHYS_IMPLEMENTER_TOKEN
+   *                   (owner action A-3 outstanding).
+   *   error           credential-token WITH the token present: the probe's
+   *                   assertion contract is not yet derived from captured
+   *                   responses, so the gate fails closed (M2-C-3).
+   *
+   * `red` for this gate needs a credential reachable from inside the
+   * constructed child and is covered by the probe-level tests above rather
+   * than by a CLI arm here; the CLI's own mapping is asserted as a ROUND
+   * TRIP against the shipped table, so it holds for a status this walk does
+   * not reach.
+   *
+   * `signal` is null in every arm because `process.exitCode` lets the
+   * process end normally where `process.exit` terminates it: a lingering
+   * handle would hang rather than exit, and that is the regression this
+   * assertion catches.
+   */
+  const bin = ghFreeBinDir(t);
+  const arms: {
+    name: string;
+    gate: string;
+    env: Record<string, string>;
+  }[] = [
+    { name: "green", gate: "credential-scrub", env: { PATH: bin } },
+    { name: "not-applicable", gate: "credential-token", env: { PATH: bin } },
+    {
+      name: "error",
+      gate: "credential-token",
+      env: { PATH: bin, TIPHYS_IMPLEMENTER_TOKEN: "not-a-real-token" },
+    },
+  ];
+  const seen: string[] = [];
+  for (const arm of arms) {
+    const dir = makeTempDir(t);
+    const resultPath = join(dir, "result.json");
+    const child = spawnSync(
+      process.execPath,
+      [credentialsGateEntry, arm.gate, "--result", resultPath, "--evidence", dir],
+      { encoding: "utf8", env: arm.env, timeout: 120000 },
+    );
+    assert.equal(child.signal, null, `${arm.name}: the CLI did not exit on its own`);
+    const record = JSON.parse(readFileSync(resultPath, "utf8")) as { status: string };
+    assert.equal(
+      child.status,
+      exitCodeForStatus(record.status as GateStatusName),
+      `${arm.name}: exit ${String(child.status)} against recorded status ${record.status}`,
+    );
+    assert.equal(statusForExitCode(child.status as number), record.status);
+    seen.push(record.status);
+  }
+  assert.deepEqual(seen, ["green", "not-applicable", "error"]);
+});
+
+// ---------------------------------------------------------------------------
+// M4-P29: the egress tripwire (the measured verdict inversion).
+// ---------------------------------------------------------------------------
+
+test("credential-scrub reddens on a permitted network-egress variable, which is the name the gate used to green", (t) => {
+  /* THE DANGEROUS STATE IS A GREEN VERDICT OVER A CAPABLE CHILD, not an
+   * absent feature. delivery/verification/m4-prototype-probes.md:46 recorded
+   * that this gate reddens `GIT_CONFIG_*` and greens `HTTPS_PROXY`, and
+   * M4-P8 measured the same thing from the other side: four arms through
+   * `spawnTask` differing only in the allowlist extension, arm A HTTP 403
+   * from `api.github.com/user` with ten variables and arm B HTTP 200 with
+   * the same ten plus `HTTPS_PROXY` (delivery/work-history/m4-p8.md:116).
+   *
+   * THE NAME IS PASSED AS PERMITTED ON PURPOSE, through the SHIPPED
+   * `permittedChildEnvNames` extension seam rather than through a
+   * hand-built set. Handing it in as a stray would redden through the
+   * allowlist-dependent stray branch and prove nothing: that branch was
+   * always there and is not the hole. The hole is a name the allowlist has
+   * been WIDENED to carry, which is the "allowlist widened by an
+   * implementer to turn a red gate green" hazard this module's own comment
+   * declares, and only an allowlist-INDEPENDENT tripwire reaches it.
+   */
+  const tmp = makeTempDir(t);
+  const bin = ghFreeBinDir(t);
+  const emptyHome = join(tmp, "egress-empty-home");
+  mkdirSync(emptyHome);
+  const base: Record<string, string> = { PATH: bin, HOME: emptyHome };
+
+  /* THE CONTROL ASSERTS A DELTA, NEVER A MACHINE-WIDE ABSENCE (fix round 1).
+   *
+   * `green` in this module means every one of the seven probed sources came
+   * back clean, and five of them read state that `base` does not create:
+   * `git-system-config` and `git-resolved-config` ask git itself, and with
+   * no `GIT_CONFIG_NOSYSTEM` in this hand-built environment git answers from
+   * the machine's system configuration. src/exec/env.ts:355 is where the
+   * SHIPPED scrub pins that variable to "1", naming the Apple Git prefix
+   * config as the reason, and a hand-built `base` bypasses it. So the
+   * assertion that used to stand here was a claim about the whole runner.
+   *
+   * What the control is FOR is attribution, and attribution is a delta. The
+   * two properties below are both pure functions of the names in `env`:
+   *
+   *   (1) the environment source is clean here and resolvable in each
+   *       member, and every OTHER source is byte-identical between the two
+   *       walks, so whatever the machine contributes it contributes to both
+   *       sides and cannot explain the difference;
+   *   (2) the shipped fold over the environment probe ALONE goes green here
+   *       and red there, which is the resolvable-implies-red arm the old
+   *       whole-set assertion was reaching for.
+   */
+  const controlProbes = credentialsModule.probeCredentialSources(base);
+  const control = controlProbes.find((entry) => entry.source === "environment");
+  assert.equal(control?.outcome, "clean", control?.detail ?? "no environment probe");
+  assert.ok(control, "the control walk produced no environment probe");
+  assert.equal(credentialsModule.verdictFromProbes([control]).status, "green");
+  const otherSources = (walk: SourceProbe[]): SourceProbe[] =>
+    walk.filter((entry) => entry.source !== "environment");
+
+  // THREE structurally different members, because one witness is not a
+  // class: the upper-case spelling curl(1) documents, the lower-case
+  // spelling git(1) documents, and a name that is not an https proxy at all.
+  for (const name of ["HTTPS_PROXY", "https_proxy", "ALL_PROXY"]) {
+    const env = { ...base, [name]: "http://proxy.invalid:8080" };
+    const probes = credentialsModule.probeCredentialSources(env, {
+      permittedNames: envModule.permittedChildEnvNames([name]),
+    });
+    const environment = probes.find((entry) => entry.source === "environment");
+    assert.equal(
+      environment?.outcome,
+      "resolvable",
+      `${name}: ${environment?.detail ?? "no environment probe"}`,
+    );
+    assert.match(environment?.detail ?? "", /network-egress variable\(s\)/);
+    assert.ok(
+      (environment?.detail ?? "").includes(name),
+      `${name} is not named in the detail: ${environment?.detail ?? ""}`,
+    );
+    // (1) The delta: nothing but the environment source moved.
+    assert.deepEqual(
+      otherSources(probes),
+      otherSources(controlProbes),
+      `${name}: a source other than environment differs between the control ` +
+        `walk and this one, so the member is not attributable to the variable`,
+    );
+    // (2) The shipped fold, scoped to the source under test. Over one probe
+    // it is a pure function of the names in `env`, so it holds on a runner
+    // carrying a system credential helper as readily as on one that is bare.
+    assert.ok(environment, `${name}: this walk produced no environment probe`);
+    assert.equal(credentialsModule.verdictFromProbes([environment]).status, "red");
+    // The same fold over the WHOLE walk. This one is not attributable on its
+    // own (a machine with its own resolvable source would redden it anyway),
+    // which is what the two assertions above are for; it is kept because it
+    // is the call the gate main actually makes.
+    const verdict = credentialsModule.verdictFromProbes(probes);
+    assert.equal(verdict.status, "red", verdict.detail);
+    assert.equal(credentialsModule.isEgressEnvName(name), true);
+  }
+});
+
+test("the egress vocabulary excludes the names measured to grant no reach, and does not widen the extension refusal", () => {
+  /* TWO absences, both measured rather than assumed, and one invariant that
+   * is the whole reason the egress walk is a SEPARATE list.
+   *
+   * `NO_PROXY` / `no_proxy` NARROW a child's reach, so listing them would
+   * redden a child that is strictly less capable than one without them.
+   *
+   * `CURL_CA_BUNDLE` is a TLS-trust channel and not an egress grant: M4-P8's
+   * arm C added it on top of arm B and measured the same HTTP 200 arm B
+   * already had (delivery/work-history/m4-p8.md:117).
+   *
+   * THE INVARIANT. `src/exec/env.ts` imports `isDangerousEnvName` and
+   * REFUSES any allowlist extension naming a member of it. Folding the proxy
+   * names into that list would therefore have refused M4-P8's one audited,
+   * reasoned extension as a side effect of a data edit in a module that
+   * phase does not touch. This asserts the two vocabularies stay disjoint,
+   * so a later editor moving a name between them faces that consequence
+   * rather than taking it by accident.
+   */
+  for (const name of ["NO_PROXY", "no_proxy", "CURL_CA_BUNDLE"]) {
+    assert.equal(
+      credentialsModule.isEgressEnvName(name),
+      false,
+      `${name} is in the egress vocabulary and was measured to grant no reach`,
+    );
+  }
+  for (const name of credentialsModule.EGRESS_ENV_VOCABULARY) {
+    assert.equal(
+      credentialsModule.isDangerousEnvName(name),
+      false,
+      `${name} is in BOTH vocabularies, so the allowlist-extension refusal in ` +
+        `src/exec/env.ts silently widened`,
+    );
+  }
+  assert.ok(credentialsModule.EGRESS_ENV_VOCABULARY.includes("HTTPS_PROXY"));
+  assert.ok(credentialsModule.EGRESS_ENV_VOCABULARY.includes("https_proxy"));
 });

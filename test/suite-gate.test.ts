@@ -801,3 +801,182 @@ test("suite direct entry runs through an aliased path and writes its result", ()
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(readFileSync(resultPath, "utf8")).status, "green");
 });
+
+// ---------------------------------------------------------------------------
+// M4-P29: the CLI entry point must not truncate its own report.
+// ---------------------------------------------------------------------------
+
+const resultModule = (await import(
+  new URL("../src/gates/result.ts", import.meta.url).href
+)) as typeof import("../src/gates/result.ts");
+/** The SHIPPED exit-code table, so criterion 3 is a round trip (M4-P29). */
+const { exitCodeForStatus, statusForExitCode } = resultModule;
+type GateStatusName = Parameters<typeof exitCodeForStatus>[0];
+
+/**
+ * M4-P29 rule (f): the cited capture, and the block-extractor the named tests
+ * use to reproduce it live. The file is REAL captured output of these gate
+ * CLIs (witness/captures/m4-p29-gate-cli-stdio.txt), not a hand-written shape.
+ */
+const gateStdioCapturePath = fileURLToPath(
+  new URL("../witness/captures/m4-p29-gate-cli-stdio.txt", import.meta.url),
+);
+
+function capturedGateStdio(block: string): string {
+  const body = readFileSync(gateStdioCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
+
+test("the suite gate CLI delivers a report larger than a parent's stdio buffer without truncating it", () => {
+  /* CRITERION 2 (M4-P29), member two of three, and the member the plan names
+   * as the plausible future trigger: this gate's `detail` carries up to ten
+   * findings, and every finding quotes text this gate read out of ANOTHER
+   * PROGRAM'S report.
+   *
+   * THE DANGEROUS STATE IS `process.exit(runSuiteGate(...))` at the entry
+   * point, not an absent feature. A write to the stdio a parent hands a
+   * subprocess is QUEUED, and `process.exit` ends the process without
+   * draining the queue. The exit code survives, so the loss is silent.
+   *
+   * THE SIZE IS BOUGHT THE WAY THE GATE ITSELF BUYS IT. Ten registry rows
+   * that no reported test resolves produce ten findings, each of which
+   * embeds the row's description verbatim, so the bytes on stdout are the
+   * gate's own rendering of its own findings rather than a fixture string
+   * echoed through it. Both sides of the comparison are captured output: the
+   * expected length comes from the result record the gate wrote to a FILE
+   * (files do not truncate, which is why this defect survives casual
+   * testing), the observed length is what this parent received.
+   */
+  // Rule (f) first: the capture this witness cites is reproduced LIVE, in a
+  // fixture whose shape the capture's own provenance names, before anything
+  // is asserted about report size. If the gate's rendering changes, this
+  // fails here rather than silently changing what the oversize comparison
+  // means.
+  const recorded = capturedGateStdio("suite-red-stdout");
+  const small = makeFixture({
+    files: { "test/a.test.ts": ALPHA_TEST },
+    registry: { "no-such-row": "no reported test is named this" },
+  });
+  const smallEvidence = mkdtempSync(join(tmpdir(), "tiphys-suite-capture-"));
+  const smallRun = spawnSync(
+    process.execPath,
+    [
+      gatePath,
+      "--result",
+      join(smallEvidence, "result.json"),
+      "--evidence",
+      smallEvidence,
+      "--base",
+      small.base,
+    ],
+    { cwd: small.dir, encoding: "utf8", env: scrubbedEnv(), timeout: 300000 },
+  );
+  assert.equal(smallRun.status, 1, smallRun.stderr);
+  assert.equal(smallRun.stdout, recorded);
+
+  const filler = "z".repeat(45000);
+  const registry: Record<string, string> = {};
+  for (let index = 0; index < 10; index += 1) {
+    registry[`oversize-row-${String(index)}`] =
+      `no test is named this: ${String(index)} ${filler}`;
+  }
+  const fixture = makeFixture({
+    files: { "test/a.test.ts": ALPHA_TEST },
+    registry,
+  });
+  const evidenceDir = mkdtempSync(join(tmpdir(), "tiphys-suite-oversize-"));
+  const resultPath = join(evidenceDir, "result.json");
+  const child = spawnSync(
+    process.execPath,
+    [
+      gatePath,
+      "--result",
+      resultPath,
+      "--evidence",
+      evidenceDir,
+      "--base",
+      fixture.base,
+    ],
+    {
+      cwd: fixture.dir,
+      encoding: "utf8",
+      env: scrubbedEnv(),
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: 300000,
+    },
+  );
+  const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateRecord;
+  // The fixture must actually be oversize, or the test exercises a path
+  // where the hazard cannot occur: green, registered and worthless.
+  assert.ok(
+    record.detail.length > 400 * 1024,
+    `fixture too small to exercise the hazard: detail is ${String(record.detail.length)} bytes`,
+  );
+  const expected =
+    `suite: ${record.status} (${String(record.units)} tests reported)\n` +
+    `${record.detail}\n`;
+  const observed = child.stdout ?? "";
+  assert.equal(
+    Buffer.byteLength(observed),
+    Buffer.byteLength(expected),
+    `the gate wrote ${String(Buffer.byteLength(expected))} bytes and the parent ` +
+      `received ${String(Buffer.byteLength(observed))}`,
+  );
+  assert.equal(observed, expected);
+  assert.equal(record.status, "red");
+  assert.equal(child.status, 1);
+});
+
+test("every suite gate CLI arm exits the code its own result record implies", () => {
+  /* CRITERION 3 (M4-P29) for this entry point, as a ROUND TRIP against the
+   * shipped table rather than against hand-copied literals.
+   *
+   * `signal` is asserted null in every arm because `process.exitCode` and
+   * `process.exit` differ in exactly that property: `process.exit`
+   * terminates whatever is pending, while `process.exitCode` lets the
+   * process end normally, so a lingering handle would HANG rather than exit
+   * and `spawnSync`'s timeout would return a signal instead of a status.
+   */
+  const green = greenFixture();
+  const red = makeFixture({
+    files: { "test/a.test.ts": ALPHA_TEST },
+    registry: { "no-such-row": "no reported test is named this" },
+  });
+  const arms: { name: string; dir: string; base?: string }[] = [
+    { name: "green", dir: green.dir, base: green.base },
+    { name: "red", dir: red.dir, base: red.base },
+    // error: --base is a required run parameter (M2-C-3).
+    { name: "error", dir: red.dir },
+  ];
+  const seen: string[] = [];
+  for (const arm of arms) {
+    const evidenceDir = mkdtempSync(join(tmpdir(), "tiphys-suite-arm-"));
+    const resultPath = join(evidenceDir, "result.json");
+    const args = [gatePath, "--result", resultPath, "--evidence", evidenceDir];
+    if (arm.base !== undefined) {
+      args.push("--base", arm.base);
+    }
+    const child = spawnSync(process.execPath, args, {
+      cwd: arm.dir,
+      encoding: "utf8",
+      env: scrubbedEnv(),
+      timeout: 300000,
+    });
+    assert.equal(child.signal, null, `${arm.name}: the CLI did not exit on its own`);
+    const record = JSON.parse(readFileSync(resultPath, "utf8")) as GateRecord;
+    assert.equal(
+      child.status,
+      exitCodeForStatus(record.status as GateStatusName),
+      `${arm.name}: exit ${String(child.status)} against recorded status ${record.status}`,
+    );
+    assert.equal(statusForExitCode(child.status as number), record.status);
+    seen.push(record.status);
+  }
+  assert.deepEqual(seen, ["green", "red", "error"]);
+});

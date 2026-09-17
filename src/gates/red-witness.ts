@@ -592,5 +592,30 @@ const invokedDirectly = (() => {
 })();
 
 if (invokedDirectly) {
-  process.exit(main(process.argv.slice(2)));
+  // `process.exitCode`, NEVER `process.exit(main(...))` (M4-P29). This gate
+  // runs as a SUBPROCESS, so fd 1 is a buffered stream the parent owns and a
+  // write to one is QUEUED rather than completed. `process.exit` ends the
+  // process without draining that queue, so everything past the buffer is
+  // DISCARDED, while the exit code survives and the loss is silent.
+  //
+  // BE EXACT ABOUT WHICH STREAM, because the ceiling differs by a factor of
+  // two and the obvious word is the wrong one. `spawnSync`, which is how the
+  // registry runner invokes gates (src/gates/run.ts:1528), hands a child
+  // SOCKETPAIRS, not pipes; a shell pipeline, a `tee` or a CI log collector
+  // hands it a real pipe. Measured at the pre-fix parent commit on this
+  // container, same invocation, only the reader changed:
+  //
+  //   reader            wrote     delivered
+  //   regular file      176,530   176,530
+  //   shell pipe        176,530    65,536   (one pipe buffer)
+  //   spawnSync         434,530   146,176   (the socket send buffer)
+  //
+  // A regular file never truncates, which is why this survives casual
+  // testing. This gate is the measured instance rather than a hypothetical
+  // one: its single stdout line carries the whole `detail`, and `detail`
+  // grows with the number of uncovered sources and of red witnesses.
+  // Assigning `process.exitCode` lets the process end normally, which drains
+  // the queue first, and the full capture is
+  // witness/captures/m4-p29-gate-cli-stdio.txt.
+  process.exitCode = main(process.argv.slice(2));
 }
