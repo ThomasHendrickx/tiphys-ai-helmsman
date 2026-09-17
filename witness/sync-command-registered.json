@@ -1,0 +1,24 @@
+{
+  "id": "sync-command-registered",
+  "behavior": "sync-command-registered",
+  "tests": [
+    "sync is registered in the command table and its own handler is what runs"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"sync\", cmdSync],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"sync\", cmdSync],",
+      "replace": "  [\"sync\", cmdStatus],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,31 @@
+{
+  "id": "sync-unstaged-lease-not-committed",
+  "behavior": "sync-unstaged-lease-not-committed",
+  "tests": [
+    "member A: an unstaged tracked lease is not committed, and the commit names no path under the ephemeral prefix"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/sync.ts",
+      "find": "  const run = runGit(root, [\"check-ignore\", \"--no-index\", \"-v\", \"-z\", \"--stdin\"], {",
+      "replace": "  const run = runGit(root, [\"check-ignore\", \"-v\", \"-z\", \"--stdin\"], {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/sync.ts",
+      "find": "        .filter((path) => !ephemeral.has(path)),",
+      "replace": "        .filter(() => true),"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git status and check-ignore, spawned by src/commands/sync.ts",
+    "captures": [
+      "witness/captures/m4-p18-git-contracts.txt"
+    ],
+    "provenance": "src/commands/sync.ts spawns git for every step it takes (status --porcelain=v1 -z, check-ignore --no-index -v -z --stdin, add, commit, push) and PARSES the first two, so red-witness rule (f) binds this witness: SPAWN_GREP matches the changed file. witness/captures/m4-p18-git-contracts.txt records those contracts from real runs on 2026-09-17 against git 2.43.0 in a fleet home built by tiphys init: the NUL record shape of porcelain v1, the four-field NUL quadruple check-ignore emits per MATCHING path, the three exit codes 0, 1 and 128 that probe can return, and the stderr of a push to a URL that is not a repository. The named tests do not read expectations out of that file and stop there: they drive real git in a real fleet home and, for the push arm, run the SAME failing push themselves and require the command to carry THAT run's first stderr line, with the capture as the recorded contract the live line is checked against (T-003, CLAUDE.md standing warning 10). RESIDUE, stated rather than left to be found: the capture fixes one git version and one filesystem remote. It does not cover a push refused by a server over the network, whose first stderr line is a different sentence, and nothing here claims it does."
+  }
+}

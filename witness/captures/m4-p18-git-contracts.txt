@@ -1,0 +1,109 @@
+Real git output the M4-P18 sync command consumes, captured rather than typed.
+
+CAPTURED 2026-09-17, git version 2.43.0, in a fleet home created by
+tiphys init whose .gitignore is the three-line FLEET_IGNORED set, holding a
+TRACKED state/orchestrator.lock (git add -f, then committed: the dangerous
+state this command exists for) modified in the worktree, and an untracked
+decisions/DR-0001.md.
+
+Non-ASCII bytes do not occur in any of this output; the NUL separators are
+rendered by od -c as the two characters backslash zero, which is why every
+NUL separated block below is shown through od.
+
+-------------------------------------------------------------------
+1. git status --porcelain=v1 -z --untracked-files=all
+-------------------------------------------------------------------
+
+  0000000       M       s   t   a   t   e   /   o   r   c   h   e   s   t
+  0000020   r   a   t   o   r   .   l   o   c   k  \0   ?   ?       d   e
+  0000040   c   i   s   i   o   n   s   /   D   R   -   0   0   0   1   .
+  0000060   m   d  \0
+  0000063
+  exit 0
+
+  Each record is the two status columns, a space, then the path, and the
+  record is terminated by NUL. The index column is the first character:
+  a space for an unstaged change, ? for an untracked path.
+
+-------------------------------------------------------------------
+2. git check-ignore --no-index -v -z --stdin
+-------------------------------------------------------------------
+
+  input (NUL separated): decisions/DR-0001.md, state/orchestrator.lock
+
+  0000000   .   g   i   t   i   g   n   o   r   e  \0   1  \0   s   t   a
+  0000020   t   e   /  \0   s   t   a   t   e   /   o   r   c   h   e   s
+  0000040   t   r   a   t   o   r   .   l   o   c   k  \0
+  0000054
+  exit 0
+
+  FOUR NUL separated fields per MATCHING path: source, line number,
+  pattern, pathname. decisions/DR-0001.md matches no rule and is ABSENT
+  from the output entirely rather than reported as unmatched, so the
+  output is a SET of the ephemeral paths and not a verdict per input.
+
+-------------------------------------------------------------------
+3. THE SAME PROBE WITHOUT --no-index, on the same TRACKED lease
+-------------------------------------------------------------------
+
+  0000000
+  exit 1
+
+  Empty output, exit 1: NOT IGNORED. A tracked file is never ignored
+  whatever .gitignore says, so without --no-index git answers 1 for
+  exactly the path this command must exclude. That is why the flag is
+  load bearing and not a detail.
+
+-------------------------------------------------------------------
+4. THE THIRD EXIT CODE: check-ignore where git cannot answer
+-------------------------------------------------------------------
+
+  fatal: not a git repository (or any of the parent directories): .git
+  exit 128
+
+  0, 1 and 128 are three answers and not two. Folding 128 into "nothing
+  is ephemeral" is how a command reports a clean sync while committing a
+  lease, so the command refuses on it and names the code.
+
+-------------------------------------------------------------------
+5. git push to a remote URL that is not a repository
+-------------------------------------------------------------------
+
+  fatal: '/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w8-m4-p18/lab3/no-such-remote.git' does not appear to be a git repository
+  fatal: Could not read from remote repository.
+  
+  Please make sure you have the correct access rights
+  and the repository exists.
+  exit 128
+
+  THE FIRST LINE IS THE ONE THE COMMAND RELAYS, and the absolute path
+  inside it varies per run, so the STABLE substring is
+
+    does not appear to be a git repository
+
+  test/sync.test.ts does not trust that sentence: it runs this same
+  failing push itself, takes ITS first stderr line, and requires the
+  command's stderr to carry that line. This block is the recorded
+  contract the live run is compared against (T-003, CLAUDE.md standing
+  warning 10: never derive a signature from a hand-written example).
+
+-------------------------------------------------------------------
+6. THE BOOTSTRAP FACTS test/status.test.ts CONSUMES
+-------------------------------------------------------------------
+
+  A second fleet home, created by tiphys init and not touched since, so
+  these are init's own bootstrap commit and not this capture's edits.
+
+  git -C fresh ls-files -- status
+    status/.gitkeep
+    exit 0
+
+  git clone fresh clone-of-fresh, then what the clone carries:
+    exit 0
+    status/ PRESENT
+    state/ ABSENT
+    charter/ PRESENT
+
+  The durable status directory comes across because a tracked .gitkeep
+  holds it; state/ does not, because it is ignored. That pair is the
+  whole of M4-D-13 as a clone sees it.
