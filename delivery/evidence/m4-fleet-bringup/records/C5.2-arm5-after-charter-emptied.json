@@ -1,0 +1,21 @@
+{
+  "stage": "C5.2-arm5-after-charter-emptied",
+  "expectation": "this branch: exit 1, CHECK retention FAIL ... (required for profile full)",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone/bin/tiphys.ts",
+    "doctor",
+    "--for",
+    "full"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T12:53:33.614Z",
+  "endedAt": "2026-09-17T12:53:34.741Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "CHECK node PASS v26.6.0 satisfies kernel engines \">=26\"\nCHECK git PASS git version 2.43.0\nCHECK gh PASS gh version 2.63.2 (2024-12-05)\nCHECK layout PASS all layout entries present\nCHECK remote PASS in sync with origin/main (0 ahead, 0 behind) after fetching origin\nCHECK lock PASS lease held by dc64baa0-78eb-42e5-beeb-a1c5397e91c7, expires 2026-09-17T17:47:32.401Z\nCHECK beacon WARN watcher not running or not scheduled\nCHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)\nCHECK retention FAIL no charter document in /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet/charter, so no project is realized here yet and retention is not applicable (required for profile full)\nCHECK tasks PASS 0 open of 0\nCHECK branches WARN 6 of 7 pushed branch(es) unmerged into origin/main: origin/probe-fleet-home, origin/probe-lease-a, origin/tiphys/lease, origin/tiphys/lease-r1, origin/tiphys/lease-r2, origin/tiphys/lease-r3\nCHECK worktrees PASS no pool worktrees\nCHECK kernel-artifacts PASS the kernel install at /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone carries roles/, schemas/, checklists/ and AGENTS.md\n",
+  "stderr": ""
+}

@@ -1,0 +1,22 @@
+{
+  "stage": "C1.2-charter-negative",
+  "expectation": "nonzero, stderr naming the deleted property",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone/bin/tiphys.ts",
+    "validate",
+    "--type",
+    "charter",
+    "delivery/evidence/m4-fleet-bringup/charter-negative-no-escalation-contract.yaml"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T12:53:09.243Z",
+  "endedAt": "2026-09-17T12:53:09.577Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "INVALID #/escalation-contract required property escalation-contract is missing\n",
+  "stderr": ""
+}

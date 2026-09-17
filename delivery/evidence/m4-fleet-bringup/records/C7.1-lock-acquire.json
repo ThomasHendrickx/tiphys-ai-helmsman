@@ -1,0 +1,22 @@
+{
+  "stage": "C7.1-lock-acquire",
+  "expectation": "exit 0",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone/bin/tiphys.ts",
+    "lock",
+    "acquire",
+    "--duration",
+    "21600"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T11:47:32.239Z",
+  "endedAt": "2026-09-17T11:47:32.411Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "acquired dc64baa0-78eb-42e5-beeb-a1c5397e91c7 expires 2026-09-17T17:47:32.401Z\n",
+  "stderr": ""
+}
