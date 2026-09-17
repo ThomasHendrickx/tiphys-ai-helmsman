@@ -9,8 +9,9 @@
 # hand-written provenance header and are NOT program output. The glyph-to-ASCII
 # mapping is not asserted, it was measured: see the control capture quoted in
 # delivery/work-history/m4-p1.md's fix-round section.
-# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: the last three
-# aborted-file lines and the whole summary block. ELIDED: the failure and
+# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: three of the
+# aborted-file lines and the whole summary block. Which three, and whether they
+# were the last the reporter printed, is not established. ELIDED: the failure and
 # abort records below 'x failing tests:' are a SAMPLE of three, taken with a
 # grep. The '--' separator lines have the shape grep prints between context
 # groups; that they came from grep rather than from a hand is NOT established

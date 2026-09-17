@@ -9,8 +9,9 @@
 # hand-written provenance header and are NOT program output. The glyph-to-ASCII
 # mapping is not asserted, it was measured: see the control capture quoted in
 # delivery/work-history/m4-p1.md's fix-round section.
-# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: the last two aborted-file
-# lines and the whole summary block. ELIDED: the names of the 27 aborted test
+# WHAT WAS EXCERPTED, AND WHAT WAS ELIDED. Excerpted: two of the aborted-file
+# lines and the whole summary block. Which two, and whether they were the last
+# the reporter printed, is not established: the selection was not recorded. ELIDED: the names of the 27 aborted test
 # files, replaced by the hand-written line 'count: 27'. They were elided for
 # length and because the claim this file supports is the COUNT (cancelled 27 at
 # the base, with fail 0), not which files they were. The 27 names were not
