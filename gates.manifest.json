@@ -171,7 +171,8 @@
         "kind": "diff-touches",
         "paths": [
           "src/",
-          "bin/"
+          "bin/",
+          "plugin/"
         ]
       }
     },
@@ -194,7 +195,9 @@
         "--project",
         "tsconfig.src.json",
         "--project",
-        "tsconfig.test.json"
+        "tsconfig.test.json",
+        "--project",
+        "plugin/tsconfig.json"
       ],
       "unitLabel": "source files type-checked",
       "applicability": "required"
