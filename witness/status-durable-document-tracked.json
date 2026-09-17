@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/status.ts",
-      "find": "export const STREAM_FILE = join(STATUS_DIR, \"stream.jsonl\");",
-      "replace": "export const STREAM_FILE = join(DURABLE_STATUS_DIR, \"stream.jsonl\");"
+      "find": "export const DURABLE_STATUS_DIR = \"status\";",
+      "replace": "export const DURABLE_STATUS_DIR = join(\"state\", \"status-durable\");"
     }
   ],
   "deterministic": true,

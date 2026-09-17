@@ -512,8 +512,15 @@ test("sync usage errors exit 64 and name the option", (t) => {
 
 test("the two porcelain parsers read git's real captured output rather than a hand-written shape", (t) => {
   const { root } = fleetWithRemote(t);
+  /* TWO ephemeral paths, not one, and the second is the point. A NUL stream
+     carrying one record parses identically under several wrong strides, so a
+     one-record fixture is green against a parser that cannot read a second
+     record at all. The red-witness gate found exactly that here: the stride
+     mutation stayed green until this fixture grew its second path. */
   trackUnderIgnoredPrefix(root, join("state", "orchestrator.lock"), "held\n");
+  trackUnderIgnoredPrefix(root, join("state", "watcher.beacon"), "beat\n");
   appendFileSync(join(root, "state", "orchestrator.lock"), "renewed\n");
+  appendFileSync(join(root, "state", "watcher.beacon"), "beat again\n");
   writeFileSync(join(root, "decisions", "DR-0009-a-decision.md"), "decided\n");
 
   /* The payloads are produced by git in this fixture, with the NUL
@@ -529,6 +536,8 @@ test("the two porcelain parsers read git's real captured output rather than a ha
   const byPath = new Map(changed.map((entry) => [entry.path, entry]));
   assert.equal(byPath.get("state/orchestrator.lock")?.index, " ");
   assert.equal(byPath.get("state/orchestrator.lock")?.worktree, "M");
+  assert.equal(byPath.get("state/watcher.beacon")?.index, " ");
+  assert.equal(byPath.get("state/watcher.beacon")?.worktree, "M");
   assert.equal(byPath.get("decisions/DR-0009-a-decision.md")?.index, "?");
 
   const ignore = spawnSync(
@@ -537,16 +546,17 @@ test("the two porcelain parsers read git's real captured output rather than a ha
     {
       encoding: "utf8",
       env: GIT_IDENTITY,
-      input: "state/orchestrator.lock\0decisions/DR-0009-a-decision.md\0",
+      input: "state/orchestrator.lock\0state/watcher.beacon\0decisions/DR-0009-a-decision.md\0",
     },
   );
   assert.equal(ignore.status, 0, ignore.stderr);
   const rules = syncModule.parseCheckIgnore(ignore.stdout);
-  assert.deepEqual(rules.get("state/orchestrator.lock"), {
-    source: ".gitignore",
-    line: "1",
-    pattern: "state/",
-  });
+  const expectedRule = { source: ".gitignore", line: "1", pattern: "state/" };
+  assert.deepEqual(rules.get("state/orchestrator.lock"), expectedRule);
+  /* THE SECOND RECORD IS THE ONE THAT DISCRIMINATES: every field of it comes
+     from a different offset in the stream than the first record's did. */
+  assert.deepEqual(rules.get("state/watcher.beacon"), expectedRule);
+  assert.equal(rules.size, 2, "the stream carried two matching paths");
   assert.equal(
     rules.has("decisions/DR-0009-a-decision.md"),
     false,
