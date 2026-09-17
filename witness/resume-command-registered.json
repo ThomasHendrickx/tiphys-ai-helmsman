@@ -1,0 +1,18 @@
+{
+  "id": "resume-command-registered",
+  "behavior": "resume-command-registered",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "resume is registered in the command table and is reachable by name"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"resume\", cmdResume],\n",
+      "replace": ""
+    }
+  ]
+}

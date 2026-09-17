@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -61,7 +62,7 @@ interface CliResult {
 
 function runCli(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {},
 ): CliResult {
   const result = spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
@@ -1075,4 +1076,608 @@ test("pool subcommand usage errors exit 64 and non-fleet cwd exits 1", (t) => {
   );
   assert.equal(badId.status, 1);
   assert.match(badId.stderr, /not a safe path segment/);
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19: post-reclaim pool-record reconstruction.
+ *
+ * THE STATE UNDER TEST. A reclaim takes worktrees/ with it, because that
+ * prefix is gitignored, while tasks/ is tracked and survives. Every
+ * fixture below reaches that state by deleting worktrees/<id>.pool.json
+ * and leaving the task record standing, which is the smallest fixture
+ * that exhibits it: the reporting paths cannot tell a deleted record from
+ * a reclaimed one, and the teardown gates this phase is really about need
+ * the worktree to still be there in order to refuse to destroy it.
+ * ------------------------------------------------------------------ */
+
+/** Spawn a real ship task, which is the only way a pool record exists. */
+function spawnShipTask(scratch: Scratch, taskId: string): CliResult {
+  const brief = join(scratch.fleet, `${taskId}-brief.md`);
+  writeFileSync(brief, "# Brief\n\nDo the thing.\n");
+  const stub = join(scratch.fleet, `${taskId}-payload.sh`);
+  writeFileSync(stub, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  return runCli(
+    [
+      "spawn",
+      "--task",
+      taskId,
+      "--project",
+      scratch.clone,
+      "--brief",
+      brief,
+      "--shape",
+      "ship",
+      "--exec",
+      stub,
+    ],
+    { cwd: scratch.fleet },
+  );
+}
+
+/** Delete the pool record, leaving the worktree: the post-reclaim shape. */
+function reclaimRecord(scratch: Scratch, taskId: string): void {
+  rmSync(recordOf(scratch, taskId));
+  assert.equal(
+    existsSync(recordOf(scratch, taskId)),
+    false,
+    "precondition: the pool record is gone",
+  );
+}
+
+/** Every *.pool.json currently under worktrees/, for criterion 6. */
+function recordFilesIn(scratch: Scratch): string[] {
+  return readdirSync(join(scratch.fleet, "worktrees"))
+    .filter((name) => name.endsWith(".pool.json"))
+    .sort();
+}
+
+test("pool list marks an entry whose record did not survive a reclaim", (t) => {
+  // Criterion 1. The reconstruction is derived from meta.json and git, so
+  // the HEAD sha it reports is the worktree's real one and never a
+  // remembered value: it is compared against git's own answer.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-recon").status, 0);
+  const head = gitOk(worktreeOf(scratch, "t-recon"), ["rev-parse", "HEAD"]);
+
+  const before = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(before.status, 0, before.stderr);
+  assert.equal(
+    before.stdout.trim(),
+    `t-recon ${head}`,
+    "precondition: an original record lists with no marker",
+  );
+
+  reclaimRecord(scratch, "t-recon");
+  const after = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(after.status, 0, after.stderr);
+  assert.equal(after.stdout.trim(), `t-recon ${head} reconstructed`);
+  // Criterion 6: nothing was written back.
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("pool list reports a reconstruction that cannot resolve remote and branch", (t) => {
+  // The INCOMPLETE arm. A plausible default is not filled in quietly: the
+  // unresolved PoolRecord field names are printed, and they are what the
+  // teardown refusal later keys off.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-noremote").status, 0);
+  reclaimRecord(scratch, "t-noremote");
+  // Remove the clone's only remote. Both fields live there, so both go.
+  gitOk(scratch.clone, ["remote", "remove", "origin"]);
+
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.match(
+    listed.stdout,
+    /^t-noremote \S+ unreconstructable \(unresolved: remote, branch\)$/m,
+    listed.stdout,
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("pool list does not resurrect a closed task as a pool entry", (t) => {
+  // A closed task is not in the pool. Without this the report grows by one
+  // permanent line per finished task and stops being readable.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-closed").status, 0);
+  reclaimRecord(scratch, "t-closed");
+  const metaFile = join(scratch.fleet, "tasks", "t-closed", "meta.json");
+  const meta = JSON.parse(readFileSync(metaFile, "utf8")) as Record<string, unknown>;
+  assert.equal(meta.status, "open", "precondition: the task is open");
+  const open = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.match(open.stdout, /t-closed \S+ reconstructed/, open.stdout);
+
+  meta.status = "closed";
+  writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
+  const closed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(closed.status, 0, closed.stderr);
+  assert.equal(closed.stdout.trim(), "");
+});
+
+test("doctor CHECK worktrees names a task whose pool record did not survive", (t) => {
+  // Criterion 1's doctor half. The check WARNs and the exit code does not
+  // move: a rehydrated fleet is EXPECTED to be in this state, so a FAIL
+  // would make the tool unpassable on the one fleet the remedy exists for.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-doc").status, 0);
+
+  const healthy = runCli(["doctor"], { cwd: scratch.fleet });
+  const healthyLine = healthy.stdout
+    .split("\n")
+    .find((line) => line.startsWith("CHECK worktrees "));
+  assert.ok(healthyLine !== undefined, healthy.stdout);
+  assert.match(healthyLine, /^CHECK worktrees PASS /, healthyLine);
+
+  reclaimRecord(scratch, "t-doc");
+  const reclaimed = runCli(["doctor"], { cwd: scratch.fleet });
+  const line = reclaimed.stdout
+    .split("\n")
+    .find((entry) => entry.startsWith("CHECK worktrees "));
+  assert.ok(line !== undefined, reclaimed.stdout);
+  assert.match(line, /^CHECK worktrees WARN /, line);
+  assert.match(line, /t-doc \(reconstructed\)/, line);
+  assert.equal(
+    reclaimed.status,
+    healthy.status,
+    "the worktrees check moved doctor's exit code",
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("the worktrees check reads task files and git, never a log tail or a process", () => {
+  // C-1 and C-2, asserted over the source this phase added rather than
+  // over its output, because a violation of either is invisible in output.
+  const source = readFileSync(
+    fileURLToPath(new URL("../src/commands/doctor.ts", import.meta.url)),
+    "utf8",
+  );
+  const start = source.indexOf("export function checkWorktrees(");
+  const end = source.indexOf("export function runChecks(");
+  assert.ok(start > 0 && end > start, "checkWorktrees could not be located");
+  const body = source.slice(start, end);
+  for (const forbidden of ["/proc", "process.kill", "stream.jsonl", "pid"]) {
+    assert.equal(
+      body.includes(forbidden),
+      false,
+      `checkWorktrees mentions ${forbidden}`,
+    );
+  }
+});
+
+test("this phase's new pool behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-list-marks-reconstructed",
+    "pool-list-marks-unreconstructable",
+    "pool-list-excludes-closed-tasks",
+    "doctor-check-worktrees-names-reconstructed",
+    "doctor-check-worktrees-no-process-probe",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19 FIX ROUND: A REPORTING PATH DOES NOT OPEN A SOCKET.
+ *
+ * THE MECHANISM, not the finding. The reconstruction rebuilds `branch`
+ * through the same `resolveDefaultBranch` that `poolCreate` uses, and
+ * that resolver falls back to `git ls-remote` when `<remote>/HEAD` is
+ * unset locally. `poolCreate` is a write the operator invoked and may
+ * wait; `pool list` and `doctor` are reports and may not. The helper was
+ * reused on the new callers with the old caller's licence, and nothing
+ * tested the difference.
+ *
+ * `<remote>/HEAD` unset is the NORMAL state of a clone built by
+ * `git init` + `git remote add` + `git fetch`, so this is not an exotic
+ * arm. Measured at head abde402 with the remote pointed at a TCP
+ * listener that accepts and never speaks: `tiphys pool list` and
+ * `tiphys doctor` were still running when killed at 25s, exit 124, where
+ * the phase base exited 0 in about a second.
+ *
+ * The first two fixtures DELETE `refs/remotes/origin/HEAD` and leave
+ * origin pointing at a remote that WOULD answer. That is deliberate and
+ * it is the whole strength of the witness: a refusal in a fixture where
+ * the network could not have answered proves nothing about whether the
+ * network was consulted. Here it could, and the control asserts it
+ * could, so the refusal is a policy and not an inability.
+ * ------------------------------------------------------------------ */
+
+/** Drop the clone's local default-branch pointer, leaving origin usable. */
+function unsetOriginHead(scratch: Scratch): void {
+  gitOk(scratch.clone, ["symbolic-ref", "-d", "refs/remotes/origin/HEAD"]);
+}
+
+test("pool list does not consult the network to reconstruct, even when it would answer", (t) => {
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-nonet").status, 0);
+  reclaimRecord(scratch, "t-nonet");
+  unsetOriginHead(scratch);
+
+  // THE CONTROL. The network is reachable and does advertise a default
+  // branch, so "unresolved: branch" below is a decision not to ask.
+  //
+  // The expected shape is not written here by hand. It is read from
+  // witness/captures/m4-p19-git-default-branch-resolution.txt, a real
+  // `git ls-remote --symref` run recorded against git 2.43.0, and the
+  // live run is asserted to reproduce a line that capture contains. The
+  // separator in that line is a TAB, which is exactly the kind of byte a
+  // hand-written expectation gets wrong (CLAUDE.md warning 10).
+  const capture = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../witness/captures/m4-p19-git-default-branch-resolution.txt",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+  const advertised = gitOk(scratch.clone, ["ls-remote", "--symref", "origin", "HEAD"]);
+  const refLine = advertised.split("\n")[0] ?? "";
+  assert.ok(
+    capture.includes(refLine) && /^ref:/.test(refLine),
+    `live ls-remote said ${JSON.stringify(refLine)}, which the recorded capture does not contain`,
+  );
+
+  const listed = runCli(["pool", "list"], { cwd: scratch.fleet });
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.match(
+    listed.stdout,
+    /^t-nonet \S+ unreconstructable \(unresolved: branch\)$/m,
+    listed.stdout,
+  );
+  assert.doesNotMatch(
+    listed.stdout,
+    /t-nonet \S+ reconstructed/,
+    "pool list resolved the default branch off the remote; reporting reached the network",
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("doctor's worktrees check does not consult the network either", (t) => {
+  // The SECOND reporting caller. `checkWorktrees` reaches the same
+  // reconstruction through `poolList`, so a fix applied at one caller and
+  // not the other is exactly the shape this round exists to close.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-docnet").status, 0);
+  reclaimRecord(scratch, "t-docnet");
+  unsetOriginHead(scratch);
+
+  const reclaimed = runCli(["doctor"], { cwd: scratch.fleet });
+  const line = reclaimed.stdout
+    .split("\n")
+    .find((entry) => entry.startsWith("CHECK worktrees "));
+  assert.ok(line !== undefined, reclaimed.stdout);
+  assert.match(line, /^CHECK worktrees WARN /, line);
+  assert.match(line, /t-docnet \(unreconstructable: branch\)/, line);
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+/**
+ * A TCP listener that accepts a connection and then says nothing, ever.
+ * This is the shape that hangs `git ls-remote` over the git:// protocol:
+ * the client completes the connection, sends its request and waits for
+ * an advertisement that never comes. A CLOSED port fails fast instead
+ * and would leave this test green against the dangerous state, which is
+ * why the listener is real rather than a made-up address.
+ */
+async function silentListener(t: {
+  after(fn: () => void | Promise<void>): void;
+}): Promise<number> {
+  const net = await import("node:net");
+  const sockets: Array<{ destroy(): void }> = [];
+  const server = net.createServer((socket) => {
+    sockets.push(socket);
+  });
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      done();
+    });
+  });
+  t.after(
+    () =>
+      new Promise<void>((done) => {
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+        server.close(() => {
+          done();
+        });
+      }),
+  );
+  const address = server.address();
+  assert.ok(
+    address !== null && typeof address === "object",
+    "the silent listener reported no address",
+  );
+  return address.port;
+}
+
+/**
+ * THE SPAWN BOUND ON THE CHILD, named rather than written twice as a
+ * literal. It is not the bound under test: it is the thing that makes a
+ * FAILURE of the bound under test show up as a killed child with a null
+ * status instead of as a test run that never ends. A witness that hangs
+ * when its behaviour is absent is a guard that cannot go red, in the most
+ * literal way available.
+ *
+ * Its sibling in test/teardown.test.ts carries the same value for the
+ * same reason. Twenty seconds is the shipped NETWORK_TIMEOUT_MS
+ * (src/pool.ts:111), and the bound here is generous against it because
+ * the fixture also builds a fleet: these tests measure whether the
+ * process TERMINATES, never how fast it is.
+ */
+const SPAWN_BOUND_MS = 20_000;
+
+test("pool list returns against a remote that accepts and never answers", async (t) => {
+  // The measured hang itself, as a witness. The child is given a spawn
+  // timeout, so the DANGEROUS state shows up as a killed child with a
+  // null status rather than as a test run that never ends.
+  const scratch = makeScratch(t);
+  assert.equal(spawnShipTask(scratch, "t-hang").status, 0);
+  reclaimRecord(scratch, "t-hang");
+  unsetOriginHead(scratch);
+  const port = await silentListener(t);
+  gitOk(scratch.clone, [
+    "remote",
+    "set-url",
+    "origin",
+    `git://127.0.0.1:${String(port)}/nope.git`,
+  ]);
+
+  const listed = runCli(["pool", "list"], {
+    cwd: scratch.fleet,
+    timeout: SPAWN_BOUND_MS,
+  });
+  assert.equal(
+    listed.status,
+    0,
+    `pool list did not return against a silent remote (status ${String(listed.status)})`,
+  );
+  assert.match(
+    listed.stdout,
+    /^t-hang \S+ unreconstructable \(unresolved: branch\)$/m,
+    listed.stdout,
+  );
+  assert.deepEqual(recordFilesIn(scratch), []);
+});
+
+test("this fix round's new pool behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-list-reconstruction-is-network-free",
+    "doctor-check-worktrees-is-network-free",
+    "pool-list-returns-against-a-silent-remote",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * M4-P19 FIX ROUND, SECOND PASS: the CLASSIFICATION itself is checked.
+ *
+ * The first pass derived which git verbs open a socket, split them into
+ * "ref advertisement, so bound it" and "object transfer, so do not",
+ * decided which callers may reach the network, and wrote all of that
+ * down in the work history as a TABLE. A table is prose. The mechanism
+ * this whole round is about is A BOUNDARY STATED IN PROSE THAT NOTHING
+ * WALKS, so leaving the classification in a document repeats the defect
+ * one level up: the next person to add a `git fetch` to a reporting path,
+ * or to drop the bound from `ls-remote`, gets no red anywhere.
+ *
+ * The two tests below execute the table. They assert over SOURCE TEXT,
+ * which is the right altitude for a classification: the behavioural
+ * tests above already prove that TODAY's reporting paths stay off the
+ * network, and these prove that a call added TOMORROW has to be
+ * classified before it can land.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Git verbs that open a socket, split by whether a legitimate one is
+ * bounded by round-trip latency or by how much data there is to move.
+ * `clone` and `pull` appear although neither module uses one: the point
+ * of a classification is to have an answer ready for the call that has
+ * not been written yet.
+ */
+const REF_ADVERTISEMENT_VERBS = new Set(["ls-remote"]);
+const OBJECT_TRANSFER_VERBS = new Set(["clone", "fetch", "pull", "push"]);
+
+interface NetworkCall {
+  where: string;
+  verb: string;
+  text: string;
+}
+
+/** Every literal network verb handed to a git runner in the named files. */
+function scanNetworkCalls(repoRoot: string, relatives: string[]): NetworkCall[] {
+  const found: NetworkCall[] = [];
+  for (const relative of relatives) {
+    const lines = readFileSync(join(repoRoot, relative), "utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      // BOTH runners. src/pool.ts reaches the network through
+      // `runGitRetrying` as well as `runGit`, and a scan that looked only
+      // for the second would return an empty result indistinguishable
+      // from an absence of defects.
+      const opened = /\brunGit(?:Retrying)?\(/.exec(lines[index] as string);
+      if (opened === null) {
+        continue;
+      }
+      const window = lines.slice(index, index + 16).join("\n");
+      const call = window.slice(window.indexOf(opened[0]));
+      const verbs = call.matchAll(/"([a-z-]+)"/g);
+      for (const match of verbs) {
+        const verb = match[1] as string;
+        if (REF_ADVERTISEMENT_VERBS.has(verb) || OBJECT_TRANSFER_VERBS.has(verb)) {
+          found.push({
+            where: `${relative}:${String(index + 1)}`,
+            verb,
+            text: call,
+          });
+          break;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * The premise the whole classification rests on is a claim about ANOTHER
+ * PROGRAM: that git does not give up on a stalled peer by itself. That is
+ * measured, not reasoned, and the measurement is this capture. Reading it
+ * here is what stops the two source-text tests below from being
+ * assertions about a belief.
+ */
+function requireStalledRemoteCapture(repoRoot: string): void {
+  const capture = readFileSync(
+    join(repoRoot, "witness", "captures", "m4-p19-git-ls-remote-silent-listener.txt"),
+    "utf8",
+  );
+  for (const wait of ["timeout 5 git ls-remote", "timeout 20 git ls-remote"]) {
+    assert.ok(
+      capture.includes(wait),
+      `the capture no longer records the "${wait}" arm, so the premise that git ` +
+        `does not give up on its own is no longer measured anywhere`,
+    );
+  }
+  assert.equal(
+    (capture.match(/exit: 124/g) ?? []).length,
+    2,
+    "the capture no longer records git still waiting at BOTH measured waits",
+  );
+}
+
+test("every socket-opening git call is classified, and the ref probe carries its bound", () => {
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  requireStalledRemoteCapture(repoRoot);
+  const calls = scanNetworkCalls(repoRoot, ["src/pool.ts", "src/teardown.ts"]);
+  const bounded = calls.filter((call) => REF_ADVERTISEMENT_VERBS.has(call.verb));
+  const transfer = calls.filter((call) => OBJECT_TRANSFER_VERBS.has(call.verb));
+
+  // THE SCAN MUST FIND BOTH CLASSES, or it is a guard that cannot go red.
+  // A rename of the runner, or of the verbs, leaves it green and empty
+  // otherwise, which is the shape T-008's postscript names.
+  assert.ok(
+    bounded.length >= 1 && transfer.length >= 2,
+    `the scan found ${String(bounded.length)} ref-advertisement and ` +
+      `${String(transfer.length)} object-transfer call(s), so it is no longer ` +
+      `looking at the right thing: ${calls.map((c) => `${c.where} ${c.verb}`).join(", ")}`,
+  );
+
+  // A ref advertisement is bounded by round-trip latency, so a legitimate
+  // one cannot run long and a wall-clock bound cannot abort real work.
+  const unboundedProbes = bounded
+    .filter((call) => !call.text.includes("networkTimeoutMs"))
+    .map((call) => `${call.where} git ${call.verb}`);
+  assert.deepEqual(
+    unboundedProbes,
+    [],
+    `a ref-advertisement call with no bound: ${unboundedProbes.join(", ")}`,
+  );
+
+  // An object transfer's legitimate duration is set by how much data
+  // there is, so a wall-clock bound on one would kill real work. They are
+  // deliberately unbounded, and the test says so rather than leaving a
+  // reader to wonder whether they were missed.
+  const boundedTransfers = transfer
+    .filter((call) => call.text.includes("networkTimeoutMs"))
+    .map((call) => `${call.where} git ${call.verb}`);
+  assert.deepEqual(
+    boundedTransfers,
+    [],
+    `an object-transfer call carries a wall-clock bound, which would abort a ` +
+      `legitimate large transfer: ${boundedTransfers.join(", ")}`,
+  );
+
+  // AND THE BOUND MUST STAY EXERCISABLE. A bound no test can shorten is a
+  // bound no test can drive: every behavioural witness for it would have
+  // to wait out the shipped twenty seconds, so in practice none would be
+  // written and the guard would go unwatched. That is the same
+  // cannot-go-red shape one level down, so the override read is part of
+  // the classification rather than a convenience beside it.
+  const poolSource = readFileSync(join(repoRoot, "src", "pool.ts"), "utf8");
+  assert.match(
+    poolSource,
+    /function networkTimeoutMs\(\): number \{\n\s*return resolveNetworkTimeoutMs\(process\.env\[/,
+    "the bound handed to the ref probe no longer reads its override, so no test " +
+      "can shorten it and the guard can no longer be exercised",
+  );
+});
+
+test("only the destroying caller holds the network licence for reconstruction", () => {
+  /*
+   * The other half of the classification. `reconstructPoolRecord` takes a
+   * REQUIRED `network` flag with no default, and which callers may set it
+   * true is the decision this round made. Reporting paths may not, and
+   * the behavioural tests above prove that of the two that exist today.
+   * This proves it of every caller there will ever be, by reading them
+   * all rather than by naming the two.
+   */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  requireStalledRemoteCapture(repoRoot);
+  const callers: Array<{ where: string; networkTrue: boolean }> = [];
+  for (const relative of ["src/pool.ts", "src/teardown.ts", "src/commands/pool.ts",
+                          "src/commands/teardown.ts", "src/commands/doctor.ts"]) {
+    const lines = readFileSync(join(repoRoot, relative), "utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index] as string;
+      // The DEFINITION is not a call. It is the only occurrence followed
+      // by a newline rather than an argument list on the same line.
+      if (!line.includes("reconstructPoolRecord(fleet")) {
+        continue;
+      }
+      const call = lines.slice(index, index + 4).join("\n");
+      callers.push({
+        where: `${relative}:${String(index + 1)}`,
+        networkTrue: /network:\s*true/.test(call),
+      });
+    }
+  }
+  assert.ok(
+    callers.length >= 2,
+    `the scan found ${String(callers.length)} reconstruction call site(s), so it is ` +
+      `no longer looking at the right thing`,
+  );
+  const licensed = callers.filter((caller) => caller.networkTrue).map((c) => c.where);
+  assert.deepEqual(
+    licensed,
+    licensed.filter((where) => where.startsWith("src/teardown.ts:")),
+    `a caller outside src/teardown.ts holds the network licence: ${licensed.join(", ")}`,
+  );
+  assert.equal(
+    licensed.length,
+    1,
+    `expected exactly one licensed caller, found: ${licensed.join(", ") || "none"}`,
+  );
+});
+
+test("this fix round's classification behaviors are registered in test/behaviors.json", () => {
+  /* BY NAME, NEVER BY COUNT (binding convention 5). */
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  const behaviors = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  for (const id of [
+    "pool-network-calls-are-classified",
+    "pool-reconstruction-network-licence-is-single",
+  ]) {
+    assert.ok(
+      Object.hasOwn(behaviors, id),
+      `behavior ${id} does not resolve in test/behaviors.json`,
+    );
+  }
 });

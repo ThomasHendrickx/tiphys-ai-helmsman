@@ -1,0 +1,21 @@
+diff --git a/src/commands/resume.ts b/src/commands/resume.ts
+index f40a7e5..1f7f834 100644
+--- a/src/commands/resume.ts
++++ b/src/commands/resume.ts
+@@ -1,4 +1,4 @@
+-import { mkdirSync } from "node:fs";
++import { mkdirSync, rmSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ import { EX_USAGE } from "../cli.ts";
+ import {
+@@ -134,9 +134,7 @@ export function cmdResume(args: string[]): number {
+      rebuilding the set because one member is missing is how a live worktree
+      that survived the reclaim gets reported as rebuilt when it was not. */
+   for (const step of planned.steps) {
+-    if (!step.rebuild) {
+-      continue;
+-    }
++    rmSync(join(root, step.name), { recursive: true, force: true });
+     mkdirSync(join(root, step.name));
+     process.stdout.write(`REBUILT ${step.name}/\n`);
+   }

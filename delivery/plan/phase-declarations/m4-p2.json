@@ -1,0 +1,50 @@
+{
+  "id": "M4-P2",
+  "branch": "claude/m4-p2-async-launch",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/task.ts",
+    "src/watcher.ts",
+    "test/spawn.test.ts",
+    "test/watcher.test.ts",
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p2.json",
+    "src/pool.ts",
+    "src/path-identity.ts",
+    "src/gates/suite.ts",
+    "src/gates/citations.ts",
+    "src/gates/coverage.ts",
+    "src/gates/red-witness.ts",
+    "scripts/check-agents-references.mjs",
+    "scripts/check-authored-bytes.mjs",
+    "scripts/check-clause-map.mjs",
+    "scripts/check-dual-review.mjs",
+    "scripts/license-gate.mjs",
+    "test/coverage-gate.test.ts"
+  ],
+  "declaredExtras": [
+    "test/credentials-gate.test.ts",
+    "witness/captures/spawn-launch-failure-vs-payload-exit.txt",
+    "witness/captures/spawn-turn-end-hook-record.txt",
+    "witness/spawn-async-launch-awaited.json",
+    "witness/spawn-completed-without-turn-end-is-incomplete.json",
+    "witness/spawn-rejected-launch-rolls-nothing-back.json",
+    "witness/spawn-returns-after-payload-sentinel.json",
+    "witness/spawn-unparseable-turn-end-is-incomplete.json",
+    "witness/watcher-signal-surfaced-once.json",
+    "witness/spawn-launch-failed-rolls-back-through-a-symlink.json",
+    "witness/patches/m4-p2-canonicalise-the-caller-argument-instead.patch",
+    "witness/captures/git-worktree-list-canonicalises-paths.txt",
+    "witness/coverage-gate-main-module-guard-survives-a-symlink.json",
+    "witness/patches/m4-p2-normalise-but-still-compare-strings.patch",
+    "test/suite-gate.test.ts",
+    "test/citation-gate.test.ts",
+    "test/witness.test.ts"
+  ],
+  "citations": [
+    "C-3",
+    "T-005",
+    "M4-D-04",
+    "DR-0007"
+  ]
+}

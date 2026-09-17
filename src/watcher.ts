@@ -27,6 +27,7 @@ import {
   readRegularFileIfPresent,
   refuseOpenForWrite,
   runStep,
+  runStepAsync,
   turnEndPath,
 } from "./task.ts";
 
@@ -834,19 +835,6 @@ function loadOrInitCadence(fleet: Fleet, nowMs: number): CadenceState {
   };
   writeCadenceState(fleet, fresh);
   return fresh;
-}
-
-/** runStep's shape for an async step (src/task.ts covers the sync one). */
-async function runStepAsync<T>(
-  what: string,
-  step: () => Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false; reason: string }> {
-  try {
-    return { ok: true, value: await step() };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return { ok: false, reason: `${what} failed: ${detail}` };
-  }
 }
 
 /**

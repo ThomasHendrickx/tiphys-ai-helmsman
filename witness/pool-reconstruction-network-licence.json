@@ -1,0 +1,27 @@
+{
+  "id": "pool-reconstruction-network-licence",
+  "behavior": "pool-reconstruction-network-licence-is-single",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": ["only the destroying caller holds the network licence for reconstruction"],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "reconstructPoolRecord(fleet, taskId, { network: false })",
+      "replace": "reconstructPoolRecord(fleet, taskId, { network: true })"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "reconstructPoolRecord(fleet, taskId, { network: true })",
+      "replace": "reconstructPoolRecord(fleet, taskId, { network: false })"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git, as `git ls-remote --symref <remote> HEAD` against a TCP listener that accepts and never speaks",
+    "captures": ["witness/captures/m4-p19-git-ls-remote-silent-listener.txt"],
+    "provenance": "Rule (f) binds because both mutated modules match the spawn grep. The named test reads source text; what makes the licence worth guarding at all is a fact about git, that an unbounded call to a stalled remote never returns on its own, and that fact is this capture (2026-09-16, git 2.43.0, exit 124 at both a 5s and a 20s wait, empty output both times). The named test requires both waits to still be recorded before concluding. The two members point in OPPOSITE directions and neither is the other's inverse in effect. The first hands a REPORTING caller the licence, whose harm is `pool list` and doctor hanging, finding F-1 restored; the first fix round's behavioural witness already covers that arm from the outside, and this covers it structurally so a caller added in a file no behavioural test exercises is caught too. The second takes the licence away from the DESTROYING caller, whose harm is quieter and has no behavioural witness anywhere: a teardown on a rehydrated clone that can no longer resolve its default branch and refuses work that should proceed. A witness with only the first member would be green on a round that over-corrected F-1 by removing the licence everywhere, which is the obvious over-correction and the one nothing else here would catch."
+  }
+}

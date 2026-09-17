@@ -1,0 +1,22 @@
+{
+  "id": "M4-P27",
+  "branch": "claude/m4-p27-cutover-entry-trigger",
+  "filesToTouch": [
+    "delivery/plan/cutover/entry-trigger.md",
+    "scripts/check-cutover-entry.mjs",
+    "scripts/probe-pilot-readonly.mjs",
+    "test/cutover-entry.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p27.json",
+    "delivery/work-history/m4-p27.md"
+  ],
+  "citations": [
+    "DR-0041",
+    "DR-0042",
+    "DR-0037",
+    "DR-0016",
+    "M4-D-15"
+  ]
+}

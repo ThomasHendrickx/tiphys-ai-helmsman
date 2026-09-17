@@ -2,6 +2,7 @@
 # entry point and its contract, and was produced on the SAME model family.
 kind: verdict
 phase: M3-P9
+head: dcbe6704813e861736c8d394dca35f7dc31b4f93
 verdict: APPROVE
 produced-by: family-a
 framing: destructive-paths

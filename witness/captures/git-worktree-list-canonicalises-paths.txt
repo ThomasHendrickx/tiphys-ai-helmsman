@@ -1,0 +1,41 @@
+REAL CAPTURED OUTPUT of git worktree list --porcelain, taken 2026-09-16.
+git version: git version 2.43.0
+node version: v26.6.0
+Platform: Linux 6.18.44-fc-v33
+
+WHY THIS CAPTURE EXISTS. src/pool.ts decides whether the branch it is
+about to delete is checked out in some OTHER worktree by reading this
+program's output and comparing it with a path the kernel composed
+itself. The decision is therefore only as good as the assumption that
+git echoes the spelling it was given. It does not: git records the
+CANONICAL path. Both spellings below name one directory.
+
+$ ln -s $R/real $R/link
+$ git -C $R/link/clone worktree add -b task/x $R/link/wt
+Preparing worktree (new branch 'task/x')
+HEAD is now at ea60bb4 one
+
+$ git -C $R/link/clone worktree list --porcelain
+worktree $R/real/clone
+HEAD ea60bb458346a1640b00f6b1a2786895f19d882b
+branch refs/heads/main
+
+worktree $R/real/wt
+HEAD ea60bb458346a1640b00f6b1a2786895f19d882b
+branch refs/heads/task/x
+
+asked-for-worktree: $R/link/wt
+reported-worktree:  $R/real/wt
+
+The same fact one command along, so the comparison is anchored on the
+field the kernel actually reads rather than on the human-readable form:
+$ git -C $R/link/clone worktree list --porcelain | grep ^worktree
+worktree $R/real/clone
+worktree $R/real/wt
+
+AND THE SAME SHAPE ON macOS WITHOUT ANY SYMLINK BEING CREATED BY HAND:
+there /tmp is a symlink to /private/tmp and os.tmpdir() returns a path
+under /var/folders, where /var is a symlink to /private/var, so every
+scratch fleet a test builds is reached through a symlink by default.
+That is why the macOS smoke job of pull request #155 was the only arm
+of CI that saw this, and why every Linux run was green.

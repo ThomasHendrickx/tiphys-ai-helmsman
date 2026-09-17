@@ -463,3 +463,42 @@ export function runStep<T>(what: string, step: () => T): StepResult<T> {
     return { ok: false, reason: `${what} failed: ${detail}` };
   }
 }
+
+/**
+ * runStep's shape for a step that returns a PROMISE (M4-P2 step 2).
+ *
+ * This is a PROMOTION, not a new function. It lived module-private in
+ * src/watcher.ts, where its own comment said "src/task.ts covers the sync
+ * one"; spawn's launch call site needs the same shape now that
+ * `ExecutorAdapter.launch` returns a promise, and T-005's one-mechanism
+ * rule makes copying it a third time the wrong answer. The promotion was
+ * measured before it was made: the two functions were run side by side over
+ * six `what`/thrown-error pairs covering an ordinary Error, an Error with an
+ * empty message, a thrown string, a thrown object with a custom toString, an
+ * Error subclass and a multi-line pair, and their reason strings were
+ * compared as buffers. All six were byte-identical, so no watcher message
+ * changes on any of those six. The capture is in the M4-P2 work history
+ * under `delivery/work-history/m4-p2.md`.
+ *
+ * WHY A SEPARATE FUNCTION RATHER THAN WIDENING runStep. `runStep` returns
+ * `{ok: true, value}` the instant its callback returns, and a callback that
+ * returns a promise returns one IMMEDIATELY. So `runStep` over an async
+ * step is not merely imprecise: its `ok: true` is a claim that the step
+ * SUCCEEDED when nothing has run yet, and a later rejection escapes the
+ * result type entirely as an unhandled rejection. That is the exact defect
+ * this phase's criterion 4 witness reddens against.
+ *
+ * It never swallows, on the same terms as the sync one: the caller gets a
+ * reason naming the step and still decides what to do about it.
+ */
+export async function runStepAsync<T>(
+  what: string,
+  step: () => Promise<T>,
+): Promise<StepResult<T>> {
+  try {
+    return { ok: true, value: await step() };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `${what} failed: ${detail}` };
+  }
+}

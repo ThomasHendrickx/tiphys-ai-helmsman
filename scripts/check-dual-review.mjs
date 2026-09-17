@@ -16,7 +16,15 @@
  * there is then nothing left that would object to it, and that is the shape
  * section 2.3 rule 3 asks a Kind B criterion to be falsified by.
  *
- * IT RUNS EXACTLY ONE CHECK, BY ID, AND THAT IS DELIBERATE. `runChecks` would
+ * IT RUNS TWO CHECKS, BY ID, AND THAT IS DELIBERATE. M4-P10 added the second,
+ * `verdict-pair-approves`, which is DR-0012 condition 2 made into a predicate.
+ * Before it this gate could not see a verdict's VALUE at all, so two properly
+ * decorrelated reviews that both REFUSED the merge passed green. The two counts
+ * are printed SEPARATELY, because deregistering either one is its own Kind B
+ * witness and a reader must be able to tell which guard was absent.
+ *
+ * BY ID, AND NOT THROUGH `runChecks`, is the older half of the same decision.
+ * `runChecks` would
  * run every check registered for `verdict`, including the three cross-document
  * COMPLETENESS checks M3-P7 ships, which resolve `plan.yaml` and
  * `work-history.yaml` out of the context. Those are real rules and they are not
@@ -26,13 +34,14 @@
  * is PRINTED, because "the guard ran and found nothing" and "no guard ran" must
  * not print the same line (SC-011).
  *
- * THE DIRECTORY IS WHAT SCOPES A SET OF VERDICTS TO ONE HEAD. Criterion 7 says
- * "two verdicts for one head", and `schemas/verdict.schema.json` carries no head
- * field: its join key is `phase`, and that schema belongs to M3-P7 and is not on
- * this phase's declaration. So the operator points this at the directory holding
- * one head's committed reviews and verdicts are grouped inside it by `phase`.
- * That reading is declared in delivery/work-history/m3-p9.md rather than
- * absorbed silently.
+ * THE DIRECTORY NO LONGER SCOPES A SET OF VERDICTS TO ONE HEAD, AND THAT IS
+ * M4-P10's FIRST CHANGE. Until then `schemas/verdict.schema.json` carried no
+ * head field, so the join key was `phase` and the operator's choice of directory
+ * was the only thing tying a pair to one commit, a reading declared in
+ * delivery/work-history/m3-p9.md rather than absorbed. The schema now REQUIRES
+ * `head`, forty lowercase hex digits, and the derived check groups by
+ * `(phase, head)`. Two verdicts for two different heads in one directory are
+ * now two groups of one and are refused; they used to be compared as a pair.
  *
  * TWO ARMS, and the second exists because of the gate contract rather than the
  * criterion. `--precondition <dir>` answers only "is there any verdict document
@@ -42,7 +51,7 @@
  * which is M2-C-3 and SC-011 applied to M3's own check.
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -55,25 +64,56 @@ const resultModule = await import(
 const taskModule = await import(
   pathToFileURL(join(repoRoot, "src", "task.ts")).href
 );
-const validateModule = await import(
-  pathToFileURL(join(repoRoot, "src", "validate.ts")).href
-);
 const checksModule = await import(
   pathToFileURL(join(repoRoot, "src", "checks.ts")).href
 );
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
-const { refuseOpenForWrite, classifyEntry } = taskModule;
-const { decodeDocument, readOperatorPath } = validateModule;
-const { registeredChecks } = checksModule;
+const { refuseOpenForWrite } = taskModule;
+const {
+  registeredChecks,
+  readReviewFamilies,
+  reviewFamiliesProvenanceLine,
+  loadCommittedVerdicts,
+  describeVerdictCorpusSource,
+  missingRegimeDocument,
+  REVIEW_FAMILIES_FIELD,
+  CHARTER_DOCUMENT,
+} = checksModule;
 
 const GATE_ID = "check-dual-review";
 const UNIT_LABEL = "review verdicts examined for decorrelation";
 const CHECK_ID = "dual-review-decorrelation";
+/* M4-P10 step 6. DR-0012 condition 2's predicate, run ALONGSIDE the
+   decorrelation check rather than instead of it, and counted separately.
+   Separately is the point: `0 registered check(s) named verdict-pair-approves`
+   beside a green is what tells a reader that the deregistration witness is
+   running rather than that the pair was examined and found clean, which is
+   the same SC-011 distinction the existing line draws for its sibling. */
+const PAIR_CHECK_ID = "verdict-pair-approves";
 const EXIT_NOT_APPLICABLE = 20;
 const EXIT_GATE_ERROR = 21;
 
-/** Where a project's committed review verdicts live (DR-0012 condition 1). */
-const REVIEW_DIRECTORY = join("delivery", "review");
+/* M4-P11, DR-0038. THE PRECONDITION ID FOR THE DECLARED SINGLE-FAMILY ARM, AND
+   IT IS A NEW ID RATHER THAN THE EXISTING ONE ON PURPOSE. This gate already has
+   a not-applicable arm, for a directory carrying NO verdicts, and its reason
+   says there is no pair of reviews to compare. Routing the exception through
+   that arm would have made the record assert something false: there ARE two
+   reviews here, they were read, and what is unmet is the CROSS-FAMILY part of
+   DR-0012 condition 1. Two facts, two ids. */
+const SINGLE_FAMILY_PRECONDITION = "single-family-declared";
+
+/* THE MARKER THAT MAKES A DECLARED EXCEPTION VISIBLE AT BUNDLE LEVEL.
+   `src/gates/release.ts:1050` already writes this exact string as a
+   precondition-evidence entry for the sibling declared-none case, and
+   `src/gates/run.ts` reads it to name declaring gates in the aggregate reason
+   line. It is an EXACT ELEMENT of a structured array, never a pattern over the
+   detail prose, and `test/single-family-exception.test.ts` asserts that the
+   producer's constant and the runner's constant are the same string, so the two
+   ends cannot drift apart silently. A boolean on `PreconditionRecord` would be
+   the better home; `src/gates/schemas/gate-result.schema.json` is
+   `additionalProperties: false` on that object and is not on this phase's
+   files-to-touch list, so that is recorded as residue rather than done here. */
+const DECLARED_EVIDENCE = "declared: true";
 
 function usage() {
   return (
@@ -119,60 +159,54 @@ function parseArgs(argv) {
 }
 
 /**
- * Every verdict document committed under `<dir>/delivery/review/`.
+ * Every verdict document in the directory's committed record, and every
+ * candidate in it that could not be examined.
  *
- * Deliberately the same selection rule the derived check uses: a `.yaml`,
- * `.yml` or `.json` file that decodes and carries `kind: verdict`. That
- * directory also holds prose reviews in this repository, so anything else is
- * skipped rather than reported.
+ * THIS NO LONGER RE-IMPLEMENTS THE SELECTION RULE, AND THAT IS THE POINT
+ * (M4-P11 fix round 1, CR-M4P11-001). Until this round there were TWO
+ * enumerations of the corpus, one here and one in `loadCommittedVerdicts`, and
+ * the comment above this function said they were "deliberately the same
+ * selection rule". Deliberate sameness maintained by hand is exactly how the
+ * two halves of one decision drift, and both copies shared the same defect:
+ * they read the WORKING TREE, out of one hard-coded directory, while the
+ * declaration they are checked against is read from the git object database.
+ *
+ * So the second copy is gone. This calls the shipped loader, which decides
+ * commit-or-worktree ONCE, reads every candidate blob of the whole subtree out
+ * of the commit when there is one, and returns the source it used, so this
+ * script prints WHICH set it examined instead of naming a directory it may not
+ * have read.
+ *
+ * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
+ * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
+ * documents the checks are RUN OVER and, through `--precondition`, whether the
+ * gate RUNS AT ALL. A directory whose only review documents fail to decode
+ * therefore reported `0 verdict document(s)`, the precondition exited 1, and the
+ * gate was NOT-APPLICABLE: the merge evidence was unreadable and the gate said
+ * there was nothing to compare. So a candidate that passed the extension filter
+ * and could not be read or decoded is carried out of here, the precondition
+ * counts it as a reason to run, and `evaluate` refuses the directory with status
+ * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
+ * screen down: at this layer, could-not-determine is `error` and never green.
  */
 export function committedVerdictPaths(directory) {
-  const reviewDirectory = join(directory, REVIEW_DIRECTORY);
-  const entry = classifyEntry(reviewDirectory);
-  if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { ok: true, paths: [] };
+  const loaded = loadCommittedVerdicts(directory);
+  if (!loaded.ok) {
+    return { ok: false, reason: loaded.reason };
   }
-  if (entry.kind === "unexaminable") {
-    return { ok: false, reason: entry.reason };
-  }
-  let names;
-  try {
-    names = readdirSync(reviewDirectory);
-  } catch (error) {
-    if (entry.kind === "regular") {
-      return {
-        ok: false,
-        reason: `${reviewDirectory} is a regular file, not a directory`,
-      };
-    }
-    return { ok: false, reason: `${reviewDirectory} could not be listed: ${String(error)}` };
-  }
-  const paths = [];
-  for (const name of names.sort()) {
-    if (!/\.(ya?ml|json)$/i.test(name)) {
-      continue;
-    }
-    const path = join(reviewDirectory, name);
-    const read = readOperatorPath(path);
-    if (!read.ok) {
-      continue;
-    }
-    const decoded = decodeDocument(read.body, path);
-    if (!decoded.ok) {
-      continue;
-    }
-    const value = decoded.value;
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      value["kind"] !== "verdict"
-    ) {
-      continue;
-    }
-    paths.push({ path, instance: value });
-  }
-  return { ok: true, paths };
+  return {
+    ok: true,
+    paths: loaded.verdicts.map((entry) => ({ path: entry.path, instance: entry.record })),
+    /* M4-P10 FIX ROUND 2's CHANNEL, NOW READ OFF THE SHIPPED LOADER INSTEAD OF
+       OFF THIS FILE'S OWN LOOP. The loop is gone (see above), so the candidates
+       that could not be examined arrive as `Diagnostic` records and this layer
+       wants their sentences. Dropping the channel with the loop would have
+       reverted the fail-closed rule: a directory whose only review documents
+       fail to decode reported `0 verdict document(s)`, the precondition exited 1,
+       and the gate was NOT-APPLICABLE. */
+    unexaminable: loaded.unexaminable.map((diagnostic) => diagnostic.message),
+    source: loaded.source,
+  };
 }
 
 /**
@@ -183,40 +217,95 @@ export function committedVerdictPaths(directory) {
  * re-implemented the loop in the test would be asserting about a copy.
  */
 /**
- * The documents that say WHICH merge-authority regime is in force, and which
- * this caller therefore cannot proceed without.
+ * THIS IS WHERE THE FAIL-CLOSED TEETH LIVE, and it is a deliberate placement
+ * rather than the original design. The derived check treats an ABSENT charter
+ * as "this context declares no delivery mode" and reports it, because it runs
+ * on any verdict with any context and a verdict fixture directory is not a
+ * project workspace. THIS caller is different: it is the command DR-0012's
+ * grant runs through, and a merge check that cannot determine the regime must
+ * never report green. So the refusal is here, where the merge decision is
+ * made, and not in a check that has to be usable somewhere else.
  *
- * THIS IS WHERE THE FAIL-CLOSED TEETH LIVE, and it is a deliberate move rather
- * than the original design. The derived check treats an ABSENT charter as
- * "this context declares no delivery mode" and reports it, because it runs on
- * any verdict with any context and a verdict fixture directory is not a project
- * workspace. THIS caller is different: it is the command DR-0012's grant runs
- * through, and a merge check that cannot determine the regime must never report
- * green. So the refusal is here, where the merge decision is made, and not in a
- * check that has to be usable somewhere else.
+ * THE LIST AND THE PROBE ARE NO LONGER THIS FILE'S (FIX ROUND 2, DV-001).
+ * Until this round `REGIME_DOCUMENTS` was a second copy of the list and
+ * `classifyEntry` was a second probe of the fact, and that probe read the
+ * WORKING TREE while `establishDelegatedRegime` read the COMMIT. Both answered
+ * correctly about their own source, so the disagreement was never reported: a
+ * `charter.yaml` written into a working tree and committed nowhere passed this
+ * refusal, reached a check that found no charter in the commit, and was
+ * reported GREEN on a committed pair sharing one `produced-by`. Measured, one
+ * context, one variable changed (the head this script is run from): red exit 1
+ * before the round that introduced it, green exit 0 after. So the list and the
+ * probe now live once, in `src/checks.ts`, beside the check that consumes the
+ * answer, and this file calls them.
+ *
+ * ORDERED AFTER THE DECLARATION READING, DELIBERATELY. Both are `error` and a
+ * context with nothing committed satisfies both, so the order decides only
+ * which reason a reader is given. DR-0038's "an exception read from an
+ * uncommitted file is error, never permission" is the more specific of the
+ * two, and it is the one that names what the operator actually did.
+ *
+ * THE SOURCE IS THE ONE THE CORPUS WAS READ FROM, passed rather than
+ * re-resolved, so this refusal cannot be about a different commit than the
+ * verdicts it is refusing to judge.
  */
-const REGIME_DOCUMENTS = ["charter.yaml", "assurance-modes.yaml"];
-
 export function evaluate(directory) {
-  for (const document of REGIME_DOCUMENTS) {
-    if (classifyEntry(join(directory, document)).kind === "absent") {
-      return {
-        status: "error",
-        units: 0,
-        checksRun: 0,
-        lines: [
-          `${join(directory, document)} does not exist, so the declared mode's merge-authority ` +
-            `is unknown and no decorrelation verdict can be reached; a merge check that cannot ` +
-            `determine the regime reports error, never green`,
-        ],
-      };
-    }
-  }
   const found = committedVerdictPaths(directory);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
   }
-  const selected = registeredChecks().filter((check) => check.id === CHECK_ID);
+  /* M4-P11. THE DECLARATION IS READ HERE AS WELL AS IN THE CHECK, THROUGH THE
+     SAME EXPORTED READER, and that is one reader with two callers rather than
+     two readers. This caller needs the reading for a different purpose: the
+     check decides whether `produced-by` must differ, and this decides what the
+     GATE RECORD says. An unreadable declaration is ERROR here rather than red,
+     because a merge gate that cannot establish whether an exception applies has
+     not reached a verdict (M2-C-3), and red would be a verdict. */
+  const familyReading = readReviewFamilies(directory);
+  if (familyReading.kind === "error") {
+    return { status: "error", units: 0, lines: [familyReading.reason], checksRun: 0 };
+  }
+  const missingRegime = missingRegimeDocument(directory, found.source);
+  if (missingRegime !== undefined) {
+    return { status: "error", units: 0, checksRun: 0, lines: [missingRegime.reason] };
+  }
+  const singleFamily =
+    familyReading.kind === "declared" && familyReading.families.length === 1
+      ? familyReading
+      : undefined;
+
+  /* THE SECOND FAIL-CLOSED REFUSAL AT THIS LAYER, AND IT IS THE SAME RULE AS
+     THE ONE ABOVE RATHER THAN A NEW ONE. `REGIME_DOCUMENTS` refuses a directory
+     whose merge regime cannot be determined; this refuses one whose review
+     evidence cannot be READ. Both are could-not-determine, and the status for
+     could-not-determine at the layer DR-0012's grant runs through is `error`,
+     never green and never not-applicable. The paths are named, because the
+     reported defect was that the dropped document appeared nowhere in the
+     gate's output.
+
+     THE SET IS NAMED BY ITS SOURCE RATHER THAN BY A HARD-CODED DIRECTORY
+     (M4-P11). M4-P10 wrote `join(directory, REVIEW_DIRECTORY)` because there
+     was one arm and it read the working tree. There are two arms now, this
+     file no longer imports `REVIEW_DIRECTORY`, and a sentence that named a
+     directory while the corpus had been read out of a commit would be the
+     same unfalsifiable record `describeVerdictCorpusSource` exists to stop. */
+  if (found.unexaminable.length > 0) {
+    return {
+      status: "error",
+      units: 0,
+      checksRun: 0,
+      lines: [
+        `${String(found.unexaminable.length)} document(s) ` +
+          `${describeVerdictCorpusSource(found.source)} could not be examined, so whether a review ` +
+          `refusing this head is among them is unknown and no merge verdict can be reached: ` +
+          found.unexaminable.join("; "),
+      ],
+    };
+  }
+  const registered = registeredChecks();
+  const selected = registered.filter((check) => check.id === CHECK_ID);
+  const pairSelected = registered.filter((check) => check.id === PAIR_CHECK_ID);
+  const running = [...selected, ...pairSelected];
   /* DEDUPLICATED, and the reason is a property of the rule rather than tidiness.
      Decorrelation is a property of a SET, so every verdict in a group reports
      the same violation about the same pair, and a two-verdict group would print
@@ -228,7 +317,7 @@ export function evaluate(directory) {
   const lines = [];
   const violations = new Set();
   for (const { path, instance } of found.paths) {
-    for (const check of selected) {
+    for (const check of running) {
       const outcome = check.run(instance, directory);
       for (const violation of outcome.violations) {
         const line = `INVALID ${violation.pointer} ${violation.message} (check: ${check.id}) [${path}]`;
@@ -247,12 +336,103 @@ export function evaluate(directory) {
     }
   }
   lines.sort();
+
+  /* M4-P11, AND THIS BLOCK IS A RE-MEASUREMENT RATHER THAN A PRECAUTION.
+     delivery/verification/m4-prototype-probes.md:123 flagged one claim it had
+     NOT run: that a VACUOUS third status looked constructible, because the
+     never-green-by-omission rewrite in `makeGateResult` fires only for
+     `status === "green"`. Re-measured here, and the reading was right on both
+     arms and worse than it said:
+
+       ARM 1, the constructor, handed not-applicable with units 0:
+         status=not-applicable units=0 vacuous=undefined. No rewrite. A gate CAN
+         report an exception having examined nothing.
+       ARM 2, both derived checks deregistered against a real declared context:
+         checksRun=0 pairChecksRun=0 status=green units=2, and the declaration
+         still in force. `main` would have emitted "not-applicable by
+         declaration" with two units while ZERO guards ran, so neither falsifier
+         had been evaluated.
+
+     Arm 2 is the dangerous one: an exception GRANTED with nothing checked is
+     the same fact as a green gate that never looked, one status along, and
+     M2-C-2's rewrite cannot see it because the status is not green.
+
+     BOTH REFUSALS ARE ERROR, NEVER RED AND NEVER not-applicable (M2-C-3). This
+     path has not reached a verdict about decorrelation; it has failed to run
+     one, and those are different facts. */
+  if (singleFamily !== undefined && violations.size === 0) {
+    if (found.paths.length < 2) {
+      return {
+        status: "error",
+        units: found.paths.length,
+        source: found.source,
+        lines: [
+          `${CHARTER_DOCUMENT} declares a single review family and only ${String(found.paths.length)} verdict ` +
+            `document(s) were read ${describeVerdictCorpusSource(found.source)} ; DR-0038 relaxes WHICH FAMILIES ` +
+            `produced the two reviews and never HOW MANY reviews there are, so an exception reported over fewer ` +
+            `than two reviews would assert that a pair was examined when it was not`,
+          ...lines,
+        ],
+        checksRun: selected.length,
+        pairChecksRun: pairSelected.length,
+      };
+    }
+    if (selected.length === 0) {
+      return {
+        status: "error",
+        units: found.paths.length,
+        source: found.source,
+        lines: [
+          `${CHARTER_DOCUMENT} declares a single review family and ${String(selected.length)} registered check(s) ` +
+            `named ${CHECK_ID} ran, so neither of DR-0038's two falsifiers was evaluated; the falsifiers live inside ` +
+            `that check, and an exception granted by a guard that did not run is the never-green-by-omission shape ` +
+            `with a different status word`,
+          ...lines,
+        ],
+        checksRun: selected.length,
+        pairChecksRun: pairSelected.length,
+      };
+    }
+  }
+
   return {
     status: violations.size > 0 ? "red" : "green",
     units: found.paths.length,
     lines,
+    /* THE SOURCE TRAVELS WITH THE RESULT (M4-P11 fix round 1). `main`'s
+       not-applicable arm has to name the set it found empty, and the only
+       honest name for that set is the one the loader actually used. */
+    source: found.source,
+    /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
+       "relied on" is derived rather than asserted. Both falsifiers live inside
+       the derived check and each produces a violation, so a single-family
+       declaration that survives to a zero-violation run is one whose falsifiers
+       passed, which can only happen when every committed verdict carries the one
+       declared family. Two verdicts with DIFFERENT families under a one-family
+       declaration is falsifier 1 and is red, so there is no arm where the
+       declaration exists, the run is clean, and the exception was NOT the reason
+       produced-by stopped mattering. */
+    singleFamily: violations.size === 0 ? singleFamily : undefined,
     distinctViolations: violations.size,
     checksRun: selected.length,
+    pairChecksRun: pairSelected.length,
+    /* THE VALUES, NOT ONLY THE COUNT (M4-P10 step 6). A gate that printed only
+       "2 verdict(s) examined" was the shape that let two REFUSING reviews read
+       as a satisfied precondition, and it is also what keeps the one unchecked
+       dimension invisible: `produced-by` is compared as a STRING, so two values
+       naming ONE vendor pass as decorrelated. Nothing here refuses that, and
+       refusing it is M4-P11's declared scope; what this line buys is that a
+       reader of the gate's own output can SEE both values and judge, rather
+       than having to open two files to find out what was compared. */
+    read: found.paths.map((entry) => ({
+      path: entry.path,
+      verdict: typeof entry.instance["verdict"] === "string" ? entry.instance["verdict"] : "(unreadable)",
+      producedBy:
+        typeof entry.instance["produced-by"] === "string"
+          ? entry.instance["produced-by"]
+          : "(unreadable)",
+      head: typeof entry.instance["head"] === "string" ? entry.instance["head"] : "(unreadable)",
+    })),
     verdicts: found.paths.map((entry) => entry.path),
   };
 }
@@ -288,6 +468,7 @@ function emit(options, fields) {
     startedAt: fields.startedAt,
     endedAt: new Date().toISOString(),
     detail: fields.detail,
+    ...(fields.precondition === undefined ? {} : { precondition: fields.precondition }),
     evidence: writeEvidence(options, fields.evidenceLines ?? [fields.detail]),
   });
   process.stdout.write(
@@ -325,10 +506,18 @@ function main(argv) {
       process.stderr.write(`tiphys ${GATE_ID}: ${found.reason}\n`);
       return 1;
     }
+    /* AN UNEXAMINABLE CANDIDATE MAKES THE GATE APPLICABLE, WHICH IS THE
+       OPPOSITE OF WHAT DROPPING IT DID. Exit 1 here means "no pair of reviews
+       exists, do not run me", and answering that about a directory whose
+       documents could not be read is a not-applicable reached by not looking.
+       The gate runs and `evaluate` then refuses it with `error`. */
+    const unexaminable = found.unexaminable.length;
     process.stdout.write(
-      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) under ${join(options.directory, REVIEW_DIRECTORY)}\n`,
+      `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}` +
+        (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
+        "\n",
     );
-    return found.paths.length > 0 ? 0 : 1;
+    return found.paths.length + unexaminable > 0 ? 0 : 1;
   }
 
   const run = evaluate(options.directory);
@@ -349,7 +538,7 @@ function main(argv) {
       status: "not-applicable",
       units: 0,
       startedAt,
-      detail: `no verdict document exists under ${join(options.directory, REVIEW_DIRECTORY)}, so there is no pair of reviews to compare`,
+      detail: `no verdict document is ${describeVerdictCorpusSource(run.source)}, so there is no pair of reviews to compare`,
     });
   }
 
@@ -361,8 +550,86 @@ function main(argv) {
   process.stdout.write(
     `${GATE_ID}: ${String(run.checksRun)} registered check(s) named ${CHECK_ID} ran over ${String(run.units)} verdict(s)\n`,
   );
+  process.stdout.write(
+    `${GATE_ID}: ${String(run.pairChecksRun)} registered check(s) named ${PAIR_CHECK_ID} ran over ${String(run.units)} verdict(s)\n`,
+  );
+  for (const entry of run.read ?? []) {
+    process.stdout.write(
+      `${GATE_ID}: verdict ${entry.verdict} at head ${entry.head} produced-by ${entry.producedBy} [${entry.path}]\n`,
+    );
+  }
   for (const line of run.lines) {
     process.stdout.write(`${line}\n`);
+  }
+
+  /* M4-P11, DR-0038's ARM. The owner's decision, implemented rather than
+     redesigned: the check reports a status that is NEITHER GREEN NOR RED and
+     states plainly that the reviews were two and the families were one.
+
+     THE STATUS WORD IS `not-applicable`, AND IT IS NOT A FIFTH ONE. The
+     vocabulary at src/gates/result.ts:47 is four words with a closed exit-code
+     table, and the M4 probe measured what adding a fifth costs: one type error,
+     eleven lines, and a bundle that printed "every applicable gate is green"
+     and exited 0 with the new status present, because the aggregation is `if`
+     chains and not an exhaustive switch
+     (delivery/verification/m4-prototype-probes.md:109). A word the aggregate
+     silently counts as green is the exact thing DR-0038 forbids. `not-applicable`
+     is already neither green nor red, already has an exit code, and is already
+     excluded from the green bucket by every arm of `decideAggregate`. What was
+     MISSING is visibility, and that is the runner change this phase makes:
+     `src/gates/run.ts` now names every gate whose not-applicable carries a
+     declaration, in the aggregate reason line and in summary.json.
+
+     `met: false` READS ODDLY AND IS RIGHT. The precondition of RUNNING the
+     cross-family comparison is that the environment has more than one family.
+     The declaration is what establishes that it does not. So the precondition
+     was EVALUATED and found UNMET, which is exactly what SC-011 says
+     not-applicable asserts, and the id names the declaration so a reader is
+     never left to guess which precondition that was. */
+  if (run.singleFamily !== undefined) {
+    const provenance = reviewFamiliesProvenanceLine(run.singleFamily.provenance);
+    const family = run.singleFamily.declaredAs.join(", ");
+    return emit(options, {
+      status: "not-applicable",
+      units: run.units,
+      startedAt,
+      detail:
+        `not-applicable by declaration (${DECLARED_EVIDENCE}): ${String(run.units)} verdict(s) were read and ` +
+        `compared on framing and review-contract, and ${CHARTER_DOCUMENT} declares that exactly one model family ` +
+        `(${family}) is available here, so DR-0012 condition 1's CROSS-FAMILY requirement was not evaluated: ` +
+        `the reviews were two and the families were one; reason: ${run.singleFamily.reason}; ${provenance}`,
+      precondition: {
+        id: SINGLE_FAMILY_PRECONDITION,
+        met: false,
+        reason:
+          `${CHARTER_DOCUMENT} declares ${REVIEW_FAMILIES_FIELD}.available with exactly one entry (${family}), so ` +
+          `two reviews on different model families are not obtainable in this environment and the cross-family ` +
+          `requirement of DR-0012 condition 1 was not evaluated`,
+        evidence: [
+          DECLARED_EVIDENCE,
+          `declaration: ${CHARTER_DOCUMENT} at ${run.singleFamily.provenance.refSha}`,
+          `blob sha256: ${run.singleFamily.provenance.sha256}`,
+          `declared families: ${family}`,
+          `verdicts read: ${String(run.units)}`,
+          ...(run.read ?? []).map(
+            (entry) => `  ${entry.path}: produced-by ${entry.producedBy}`,
+          ),
+        ],
+      },
+      evidenceLines: [
+        `directory: ${options.directory}`,
+        DECLARED_EVIDENCE,
+        `declaration: ${CHARTER_DOCUMENT} at ${run.singleFamily.provenance.refSha}`,
+        `blob sha256: ${run.singleFamily.provenance.sha256}`,
+        `declared families: ${family}`,
+        `reason: ${run.singleFamily.reason}`,
+        `verdicts examined: ${String(run.units)}`,
+        ...(run.read ?? []).map(
+          (entry) => `  ${entry.path}: verdict ${entry.verdict}, head ${entry.head}, produced-by ${entry.producedBy}`,
+        ),
+        ...run.lines,
+      ],
+    });
   }
 
   return emit(options, {
@@ -371,19 +638,41 @@ function main(argv) {
     startedAt,
     detail:
       run.status === "green"
-        ? `${String(run.units)} verdict(s) examined by ${String(run.checksRun)} registered check(s); no decorrelation violation`
+        ? `${String(run.units)} verdict(s) examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves`
         : run.lines.filter((line) => line.startsWith("INVALID")).join("; "),
     evidenceLines: [
       `directory: ${options.directory}`,
       `registered checks named ${CHECK_ID}: ${String(run.checksRun)}`,
+      `registered checks named ${PAIR_CHECK_ID}: ${String(run.pairChecksRun)}`,
       `verdicts examined: ${String(run.units)}`,
-      ...(run.verdicts ?? []).map((path) => `  ${path}`),
+      ...(run.read ?? []).map(
+        (entry) => `  ${entry.path}: verdict ${entry.verdict}, head ${entry.head}, produced-by ${entry.producedBy}`,
+      ),
       ...run.lines,
     ],
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). Measured on
+// node v26.6.0: invoked through a symlinked directory in the path, or
+// through a symlink to this file, process.argv[1] carries the caller's
+// spelling while import.meta.url carries the canonical one, so the bare
+// comparison is false and this gate silently does nothing and exits 0. A
+// guard that cannot go red is the T-008 shape. This is the same form
+// src/gates/deploy.ts:27 already uses, not a second dialect.
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (entry === undefined) {
+    return false;
+  }
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
@@ -394,4 +683,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
 }
 
-export { EXIT_NOT_APPLICABLE, REVIEW_DIRECTORY, CHECK_ID };
+export {
+  EXIT_NOT_APPLICABLE,
+  CHECK_ID,
+  PAIR_CHECK_ID,
+  SINGLE_FAMILY_PRECONDITION,
+  DECLARED_EVIDENCE,
+};

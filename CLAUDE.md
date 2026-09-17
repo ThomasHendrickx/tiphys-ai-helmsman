@@ -58,8 +58,12 @@ artifact behind it is treated as unknown.
 - `delivery/` is the build's own paperwork. It is not shipped in the npm
   package and is not a kernel deliverable.
 - `src/`, `bin/`, `test/` are the kernel itself.
-- `schemas/`, `roles/`, `tuition/` at the repository root are reserved for
-  M3 kernel deliverables. Do not populate them early; placeholders only.
+- `schemas/`, `roles/`, `tuition/` at the repository root are SHIPPED M3
+  kernel deliverables. The do-not-populate-early instruction that stood here
+  until 2026-09-16 was FALSE from the day M3 landed, and M4-P23's re-verification
+  pass removed it rather than carrying it into the kernel briefs. Measured:
+  `roles/` holds 7 entries, `schemas/` 17 and `tuition/` 17, none of them
+  placeholders. Extend them through the phase that owns them, never casually.
   The root `tuition/` directory is the future cross-project tuition feed
   and is not the same thing as `delivery/tuition/`, which is this build's
   own failure log.
@@ -517,6 +521,30 @@ Answer these three IN WRITING in the dispatch turn, before arming anything:
    One that cannot tell them apart must SAY so rather than print a number
    implying it can.
 
+**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six
+implementers were dispatched; five were given worktree isolation and one was not,
+because its files-to-touch list looked like documents only. Within minutes the
+main clone read `branch: claude/m4-p1-harness-probe`: the unisolated agent had
+checked out its own branch IN THE ORCHESTRATOR'S CLONE. Nothing was lost, and
+only because the orchestrator's work was already pushed.
+
+Two rules follow, both cheap:
+
+1. **Isolate EVERY dispatched implementer, including the ones that only write
+   documents.** An agent told to commit on its own branch will create that
+   branch wherever it is standing.
+2. **The orchestrator takes its own worktree before dispatching**, so its
+   working tree is not the one an agent moves:
+
+   ```
+   git worktree add -f <scratch>/orch <orchestrator-branch>
+   ```
+
+This also breaks the watchdog rule above in a way worth naming: the unisolated
+agent's freshness is NOT visible in `.claude/worktrees/`, so a watchdog watching
+only those directories reads quiet at full speed for that one agent. Either
+isolate it, or watch its path too and say which agents the watchdog covers.
+
 **Exclude the orchestrator's own worktrees from any agent watchdog.** Including
 them keeps it green regardless of the agent, and a watchdog that cannot go red
 is worse than none because it is trusted. Full account in
@@ -763,10 +791,32 @@ Genuinely CI-only, measured, and it is a short list: the macOS smoke job
 here, standing warning 6). Everything else in the bundle runs locally on the
 floor-satisfying toolchain.
 
-**Not yet fully available, stated so nobody reports the rule as met.** Scope
-declaration grants still need their own pull request until M3-P11 ships the
-both-declarations read, because the scope gate reads the declaration from the
-MERGE BASE only. Three of the day's ten pull requests existed for nothing else.
+**CORRECTED 2026-09-16 BY MEASUREMENT (M4-P23): the rule that stood here was
+FALSE and is withdrawn.** It said scope declaration grants still need their own
+pull request, because the scope gate reads the declaration from the MERGE BASE
+only. M3-P11 shipped the both-declarations read. src/gates/scope.ts:110 records
+it: from that phase on the declaration is read from BOTH the merge base and the
+head, an entry ADDED on the head is allowed, and the protection against it is
+that the addition is PRINTED BY NAME for a reviewer to sign off. A removal is
+still refused outright, so the grant is additive only.
+
+So a declaration GRANT lands WITH the phase that needs it. The three extra pull
+requests that rule cost in a single day are not owed again.
+
+**BE EXACT ABOUT WHAT CHANGED, because the correction is easy to over-read and
+the over-reading is a second false rule.** The relaxation is about ENTRIES
+inside a declaration. The declaration FILE itself must still exist at the merge
+base: src/gates/scope.ts:877 reddens a phase branch whose
+`delivery/plan/phase-declarations/<phase-id>.json` is absent there, with "the
+declaration must be committed to main before the phase branch is created".
+Measured 2026-09-16 against this phase's own branch: scope red, exactly that
+reason. So a NEW phase still needs its declaration on `main` first, and only the
+amendment stopped costing a pull request.
+
+This is the worked example of why a retirement re-verifies every rule against
+`src/` rather than carrying it across: an uncorrected rule here would have become
+a false constraint in a kernel brief, where nobody would have a scope gate to
+check it against.
 
 ## Standing environment warnings
 
