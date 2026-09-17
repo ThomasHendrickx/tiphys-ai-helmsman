@@ -1,0 +1,22 @@
+/**
+ * THE PLUGIN'S ENTRY POINT (kernel plan M4, M4-P5 criterion 7).
+ *
+ * THE DEFAULT EXPORT IS THE WHOLE CONTRACT WITH THE LOADER. The kernel's
+ * adapter loader refuses a module with no `default` export, a default that is
+ * not an object, a default with no `launch`, a `launch` that is not callable,
+ * and a default with no usable `name` (src/adapters/load.ts:241 onward). Each
+ * of those refusals exists because the alternative is a `TypeError` thrown out
+ * of `spawnTask` AFTER a worktree, a branch and a pool record have been
+ * created. So the default export is the adapter object itself and nothing is
+ * wrapped around it.
+ *
+ * THE NAMED EXPORTS ARE THE SAME OBJECT, not a second surface. A consumer that
+ * wants the adapter by name gets the identical reference; there is no factory,
+ * no configuration argument and no state, because an adapter the kernel loads
+ * into its own process is the last place to put any.
+ */
+export { ADAPTER_NAME, ADAPTER_REQUIRES, claudeCodeAdapter } from "./adapter.ts";
+
+import { claudeCodeAdapter } from "./adapter.ts";
+
+export default claudeCodeAdapter;

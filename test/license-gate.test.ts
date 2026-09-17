@@ -342,6 +342,44 @@ const M3_P10_ADDED = new Map<string, string>([
   ["minimist", "MIT"],
 ]);
 
+/**
+ * WHAT M4-P5 ADDED, AND IT IS THIS REPOSITORY'S OWN CODE RATHER THAN A
+ * SUPPLY-CHAIN EVENT.
+ *
+ * DR-0040 made the Claude Code plugin a second npm package in this repository,
+ * so `package.json` declares `workspaces` and npm links every workspace into
+ * the root `node_modules`. The inventory above reads
+ * `node_modules/.package-lock.json` and takes every entry that npm has not
+ * marked `dev`, which is the same traversal `npm run build:runtime-deps` uses;
+ * a workspace link is such an entry, so two names appear that were never
+ * fetched from a registry:
+ *
+ *   `@tiphys/claude-code-plugin`  the new workspace, linked to `plugin/`
+ *   `@tiphys/kernel`              this package, linked to the repository root
+ *                                 by the `overrides` entry that keeps the
+ *                                 plugin's own `@tiphys/kernel` devDependency
+ *                                 resolving to the workspace instead of to the
+ *                                 published 0.1.0 tarball
+ *
+ * THE DISTINCTION THIS MAP IS SEPARATE FOR: the two maps above record packages
+ * that ENTERED THE PRODUCTION TREE FROM OUTSIDE, which is the supply-chain
+ * surface DR-0013 clause 5 exists for. These two are the repository's own
+ * source, under the repository's own Apache-2.0 licence, reached through a
+ * symlink that never leaves the working copy. Folding them into
+ * `M3_P10_ADDED` would blur a real distinction; leaving the test red would
+ * train a reader to wave the check through, which is worse.
+ *
+ * Neither reaches a consumer. `npm pack` does not list symlinks, the kernel's
+ * `files` array excludes `dist/node_modules`, and `build:runtime-deps` skips
+ * link entries since this phase. test/plugin-package.test.ts asserts the
+ * tarball direction directly. The derivation and both red witnesses are in
+ * delivery/work-history/m4-p5.md:1.
+ */
+const M4_P5_ADDED = new Map<string, string>([
+  ["@tiphys/claude-code-plugin", "Apache-2.0"],
+  ["@tiphys/kernel", "Apache-2.0"],
+]);
+
 test("the inventory is the transitive production set, compared by name against what M3-P1 recorded", () => {
   const result = runGate(["--inventory"]);
   assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
@@ -364,7 +402,7 @@ test("the inventory is the transitive production set, compared by name against w
      and not the other is named, whichever side it is missing from. Asserting
      only that the expected set is a SUBSET would let the tree grow silently,
      which is the exact event this criterion exists to catch. */
-  const expected = new Map([...M3_P1_RECORDED, ...M3_P10_ADDED]);
+  const expected = new Map([...M3_P1_RECORDED, ...M3_P10_ADDED, ...M4_P5_ADDED]);
   const missing = [...expected.keys()].filter((name) => !found.has(name)).sort();
   const unexpected = [...found.keys()].filter((name) => !expected.has(name)).sort();
   assert.deepEqual(
