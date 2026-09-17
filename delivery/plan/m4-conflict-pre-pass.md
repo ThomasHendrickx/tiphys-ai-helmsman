@@ -531,3 +531,49 @@ M4-P9 owns running all three, and M4-P21 touches none of them.
 and is the phase that integrates what M4-P21 builds, so it follows rather than
 runs beside it. M4-P12, M4-P24 and M4-P25 share `src/cli.ts` under DR-0046 and
 are the last three, to be serialised among themselves.
+
+## Wave 12, 2026-09-17: M4-P22 and M4-P12, the last pair that can run together
+
+Written BEFORE dispatch, per rule 5.
+
+| unit | files it may touch |
+|---|---|
+| M4-P22 | `src/commands/doctor.ts`, `src/spawn.ts`, `src/teardown.ts`, `src/exclusion.ts`, `test/doctor.test.ts`, `test/spawn.test.ts`, `test/teardown.test.ts`, `delivery/verification/two-environment-rehearsal.md`, `witness/` |
+| M4-P12 | `src/gates/merge-preconditions.ts`, `test/merge-preconditions.test.ts`, `gate-registry.yaml`, `gates.manifest.json`, `CLAUDE.md`, `roles/implementer.md`, `src/cli.ts`, `witness/` |
+
+**Intersection: EMPTY except `witness/`**, settled by the wave-10 pre-pass. Both
+lists read from the plan, M4-P22 at delivery/plan/kernel-plan-m4.md:3055 and
+M4-P12 at delivery/plan/kernel-plan-m4.md:1921.
+
+**`src/cli.ts` IS THE FILE THAT DECIDES THIS PAIRING, AND THE PLAN MAKES IT
+CONDITIONAL.** M4-P12's line reads `src/cli.ts` (edit only if gate registration
+requires it; verify first). M4-P22 does NOT touch `src/cli.ts` at all, so the
+conditional resolves either way without affecting this wave. It is on M4-P12's
+declaration because a phase that needs a file and has not declared it costs a
+round, while a declared path left untouched costs one printed line.
+
+**M4-P12 MOVES THE WHOLE DRIFT CHAIN and it is the only phase left that does.**
+Four files travel together: `gate-registry.yaml` is the source,
+`CLAUDE.md`'s gate block is RENDERED from it, `roles/implementer.md` carries
+the same relationship through `scripts/check-brief-drift.mjs`, and
+`gates.manifest.json` is what CI actually invokes, so a registry-only gate is
+declared and never executed. `roles/implementer.md` is added to the declaration
+here because the plan's line omits it and the brief-drift gate does not.
+
+**Checked against what is in flight.** Nothing: M4-P9 and M4-P21 are merged and
+no pull request is open. Re-check at dispatch.
+
+**M4-P22 IS UNBLOCKED BY M4-P21, WHICH MERGED MINUTES AGO.** It integrates the
+`src/exclusion.ts` that phase created and runs the two-environment rehearsal
+over it, so its dependency is satisfied rather than assumed.
+
+**The last two are serial and it is not a preference.** M4-P24 creates
+`src/commands/next.ts` and M4-P25 creates `src/cutover.ts` and
+`src/commands/cutover.ts`; BOTH register their command in `src/cli.ts`
+unconditionally, so under DR-0046 they run one after the other. That makes the
+remaining shape: this wave of two, then M4-P24, then M4-P25.
+
+**One stale path to correct when M4-P24 is declared.** Its files-to-touch line
+names `packages/claude-code-plugin/`, the same out-of-date path M4-P9's carried.
+The tree is `plugin/`. Recorded here so the correction is made once, in that
+phase's declaration, rather than discovered by its implementer.
