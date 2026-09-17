@@ -1149,13 +1149,35 @@ test("credential-scrub reddens on a permitted network-egress variable, which is 
   mkdirSync(emptyHome);
   const base: Record<string, string> = { PATH: bin, HOME: emptyHome };
 
-  // Control: the same environment WITHOUT the egress name is clean at the
-  // environment source AND green overall, so everything below is
-  // attributable to the one added variable.
+  /* THE CONTROL ASSERTS A DELTA, NEVER A MACHINE-WIDE ABSENCE (fix round 1).
+   *
+   * `green` in this module means every one of the seven probed sources came
+   * back clean, and five of them read state that `base` does not create:
+   * `git-system-config` and `git-resolved-config` ask git itself, and with
+   * no `GIT_CONFIG_NOSYSTEM` in this hand-built environment git answers from
+   * the machine's system configuration. src/exec/env.ts:355 is where the
+   * SHIPPED scrub pins that variable to "1", naming the Apple Git prefix
+   * config as the reason, and a hand-built `base` bypasses it. So the
+   * assertion that used to stand here was a claim about the whole runner.
+   *
+   * What the control is FOR is attribution, and attribution is a delta. The
+   * two properties below are both pure functions of the names in `env`:
+   *
+   *   (1) the environment source is clean here and resolvable in each
+   *       member, and every OTHER source is byte-identical between the two
+   *       walks, so whatever the machine contributes it contributes to both
+   *       sides and cannot explain the difference;
+   *   (2) the shipped fold over the environment probe ALONE goes green here
+   *       and red there, which is the resolvable-implies-red arm the old
+   *       whole-set assertion was reaching for.
+   */
   const controlProbes = credentialsModule.probeCredentialSources(base);
   const control = controlProbes.find((entry) => entry.source === "environment");
   assert.equal(control?.outcome, "clean", control?.detail ?? "no environment probe");
-  assert.equal(credentialsModule.verdictFromProbes(controlProbes).status, "green");
+  assert.ok(control, "the control walk produced no environment probe");
+  assert.equal(credentialsModule.verdictFromProbes([control]).status, "green");
+  const otherSources = (walk: SourceProbe[]): SourceProbe[] =>
+    walk.filter((entry) => entry.source !== "environment");
 
   // THREE structurally different members, because one witness is not a
   // class: the upper-case spelling curl(1) documents, the lower-case
@@ -1176,6 +1198,22 @@ test("credential-scrub reddens on a permitted network-egress variable, which is 
       (environment?.detail ?? "").includes(name),
       `${name} is not named in the detail: ${environment?.detail ?? ""}`,
     );
+    // (1) The delta: nothing but the environment source moved.
+    assert.deepEqual(
+      otherSources(probes),
+      otherSources(controlProbes),
+      `${name}: a source other than environment differs between the control ` +
+        `walk and this one, so the member is not attributable to the variable`,
+    );
+    // (2) The shipped fold, scoped to the source under test. Over one probe
+    // it is a pure function of the names in `env`, so it holds on a runner
+    // carrying a system credential helper as readily as on one that is bare.
+    assert.ok(environment, `${name}: this walk produced no environment probe`);
+    assert.equal(credentialsModule.verdictFromProbes([environment]).status, "red");
+    // The same fold over the WHOLE walk. This one is not attributable on its
+    // own (a machine with its own resolvable source would redden it anyway),
+    // which is what the two assertions above are for; it is kept because it
+    // is the call the gate main actually makes.
     const verdict = credentialsModule.verdictFromProbes(probes);
     assert.equal(verdict.status, "red", verdict.detail);
     assert.equal(credentialsModule.isEgressEnvName(name), true);
