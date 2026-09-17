@@ -9,20 +9,20 @@
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,\n        condition: \"retention-not-applicable\",",
-      "replace": "        detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,\n        condition: \"retention-undeclared\","
+      "find": "      /* NO YAML AT ALL in charter/, which is what `tiphys init` leaves. WARN\n         below `full`, promoted there. */\n      return {\n        name: \"retention\",\n        status: \"WARN\",\n        detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,\n        condition: \"retention-not-applicable\",",
+      "replace": "      /* NO YAML AT ALL in charter/, which is what `tiphys init` leaves. WARN\n         below `full`, promoted there. */\n      return {\n        name: \"retention\",\n        status: \"WARN\",\n        detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,\n        condition: \"retention-undeclared\","
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "      status: \"WARN\",\n      detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,",
-      "replace": "      status: \"WARN\",\n      detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,"
+      "find": "    /* YAML IS PRESENT AND NONE OF IT IS A CHARTER. The count is in the detail\n       because it is the difference between one stray file and a directory\n       somebody filled with the wrong documents. */\n    return {\n      name: \"retention\",\n      status: \"WARN\",\n      detail: `${String(candidates)} YAML document(s) in ${charterDir}, none with kind: charter, so no retention paths are declared`,",
+      "replace": "    /* YAML IS PRESENT AND NONE OF IT IS A CHARTER. The count is in the detail\n       because it is the difference between one stray file and a directory\n       somebody filled with the wrong documents. */\n    return {\n      name: \"retention\",\n      status: \"WARN\",\n      detail: `no charter document in ${charterDir}, so no project is realized here yet and retention is not applicable`,"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    if (candidates === 0) {",
-      "replace": "    if (candidates === -1) {"
+      "find": "       changed. */\n    if (candidates === 0) {",
+      "replace": "       changed. */\n    if (candidates === -1) {"
     }
   ],
   "deterministic": true,
@@ -32,6 +32,6 @@
     "captures": [
       "witness/captures/doctor-git-check-ignore-resolution.txt"
     ],
-    "provenance": "Rule (f) is derived per FILE: every member below mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms these tests guard return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the tests assert that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per direction the collapse can be made: the charterless arm made to print the undeclared sentence, the undeclared arm made to print the charterless sentence, and the branch condition defeated so one arm is unreachable and both states take the other. Each is a plausible tidy-up now that `full` promotes both conditions, and each destroys the distinction an operator reads the FAIL line for."
+    "provenance": "Rule (f) is derived per FILE: every member below mutates src/commands/doctor.ts, which spawns `git check-ignore -q` to reach its other retention verdicts, so the capture obligation binds even though the arms these tests guard return BEFORE that spawn. The citation is load-bearing rather than ceremonial: the tests assert that none of the three verdicts downstream of the git-consulting loop (git-ignored, does not exist, present and tracked) appears in the not-applicable line, and the capture is where those verdicts' external contract is recorded (ignored 0, unignored 1, outside a repository 128, git 2.43.0, 2026-08-13). THREE STRUCTURALLY DIFFERENT MEMBERS, one per direction the collapse can be made now that `full` promotes both conditions and the cheapest tidy-up is to make them one. Member 0 makes the charterless arm print the undeclared sentence and carry the undeclared id. Member 1 makes the undeclared arm print the charterless sentence. Member 2 edits neither message: it defeats the branch condition, so one arm becomes unreachable and both states take the other, which is the collapse an author would reach for first."
   }
 }
