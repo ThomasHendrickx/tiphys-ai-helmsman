@@ -1,0 +1,37 @@
+{
+  "id": "model-resolution-family-token-reaches-verdict",
+  "behavior": "model-resolution-family-token-reaches-verdict",
+  "tests": [
+    "the family token copied into a verdict equals the record's byte for byte"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  return stringAt(asRecord(record[\"resolved\"]), \"family\");\n",
+      "replace": "  return stringAt(asRecord(record[\"resolved\"]), \"family\")?.toUpperCase();\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/model-resolution.ts",
+      "find": "    return {\n      vocabulary,\n      family,\n      model: observation.model,\n      provenance: \"observed\",\n",
+      "replace": "    return {\n      vocabulary,\n      family: \" \",\n      model: observation.model,\n      provenance: \"observed\",\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/model-resolution.ts",
+      "find": "    return { vocabulary, provenance: \"unresolved\", reason: observation.reason };\n",
+      "replace": "    return { vocabulary, family: \"unknown\", model: \"unknown\", provenance: \"unresolved\", reason: observation.reason };\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the shipped tiphys validate command over the record, and the shipped verdict schema the copied token must survive",
+    "captures": [
+      "witness/captures/m4-p7-model-resolution-cli.txt"
+    ],
+    "provenance": "Required by rule (f) because a member of this witness mutates plugin/src/model-resolution.ts alongside src/model-resolution.ts and the named test spawns the CLI. The capture was taken 2026-09-17 on node v26.6.0 by running node bin/tiphys.ts validate --type model-resolution over records the plugin's own builder produced; the named test reads it through capturedDiagnostic."
+  }
+}

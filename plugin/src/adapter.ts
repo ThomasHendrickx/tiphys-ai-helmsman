@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type {
   ExecutorAdapter,
   ExecutorRecord,
@@ -7,6 +8,12 @@ import type {
   LaunchOutcome,
 } from "@tiphys/kernel";
 import { invokeTurnEndHook, payloadExitCode } from "./hooks/turn-end.ts";
+import {
+  buildModelResolutionRecord,
+  modelResolutionPathBeside,
+  readTurnEnd,
+  writeModelResolutionRecord,
+} from "./model-resolution.ts";
 import {
   deliverStatus,
   fleetRootFromTaskPath,
@@ -65,6 +72,20 @@ import {
  * second copy of the string.
  */
 export const ADAPTER_NAME = "claude-code";
+
+/**
+ * The turn-end record's file name inside the task directory.
+ *
+ * NOT IMPORTED FROM THE KERNEL, and the reason is the one this file already
+ * records for `128 + signal`: `@tiphys/kernel` publishes the adapter CONTRACT
+ * and nothing else, so `turnEndPath` is not reachable through the package
+ * name, and a relative import climbing out of this package compiles inside
+ * this workspace and breaks for every consumer who installs the two packages
+ * from npm. The constant is named here so the duplication is visible in one
+ * place, and `test/model-resolution.test.ts` compares it against the path the
+ * kernel's own `turnEndPath` produces rather than against a second literal.
+ */
+export const TURN_END_RECORD_NAME = "turn-end";
 
 /**
  * WHAT THIS ADAPTER CANNOT LAUNCH WITHOUT (M4-P3 criteria 2 and 3).
@@ -225,9 +246,68 @@ export const claudeCodeAdapter: ExecutorAdapter = {
           `task directory are left in place${statusSuffix(delivery)}`,
       };
     }
+
+    // THE MODEL-RESOLUTION RECORD IS WRITTEN HERE AND THE POSITION IS THE
+    // WHOLE OF M4-P7 CRITERION 2. It is after `invokeTurnEndHook` returned
+    // `ok`, which is the one point in this function where the turn-end record
+    // is known to exist on disk, and it is therefore the earliest instant at
+    // which anything can be said about what the turn RESOLVED rather than
+    // about what was requested. Moved up to the launch record's write, the
+    // same code would still produce a valid-looking document, and every field
+    // in it would be a copy of the request.
+    recordModelResolution(request);
+
     return { kind: "completed", exitCode };
   },
 };
+
+/**
+ * Write the turn's model-resolution record, and report nothing.
+ *
+ * EVERY ARM RETURNS `void` AND THAT IS DELIBERATE, for the reason
+ * `deliverStatusForTurn` above is separated out: the payload has run, so
+ * nothing here may change the outcome the adapter is about to report. The
+ * guard against the record silently not existing is not here and could not
+ * usefully be here; it is on the CONSUMER, where an absent record is an ERROR
+ * and never green and never not-applicable (src/model-resolution.ts, the rule
+ * src/gates/release.ts:609 states for the release seam).
+ *
+ * THE TWO SKIPS ARE STATED RATHER THAN HIDDEN. A request carrying no role or
+ * no declared tier has no tier to resolve, and a record whose subject echo
+ * invented either value would be a false echo, which is worse than no record:
+ * the consumer's absent-record error is loud and a fabricated echo is not. The
+ * same applies to an unreadable turn-end record, where writing anyway would
+ * mean claiming to have been written after an end nobody observed.
+ *
+ * NO OBSERVATION IS PASSED, AND THE RECORD THEREFORE RANKS ITSELF
+ * `self-reported`. The observation channel M4-P1 measured is a hook payload's
+ * `transcript_path` (delivery/verification/m4-prototype-probes.md:209) and an
+ * adapter owns a child process, not a hook payload: it has no path to pass.
+ * `observeServedModel` in plugin/src/model-resolution.ts is the resolver for
+ * a caller that does have one, and wiring a hook to it is a later phase's.
+ * Passing anything else here, or letting the absence quietly become an
+ * `observed` claim, is the laundering this whole record exists against.
+ */
+function recordModelResolution(request: ExecutorRequest): void {
+  const { role, declaredTier } = request;
+  if (role === undefined || declaredTier === undefined) {
+    return;
+  }
+  const taskDirectory = dirname(request.recordPath);
+  const turnEnd = readTurnEnd(join(taskDirectory, TURN_END_RECORD_NAME));
+  if (turnEnd === undefined) {
+    return;
+  }
+  const record = buildModelResolutionRecord({
+    writer: ADAPTER_NAME,
+    taskId: request.taskId,
+    role,
+    requestedTier: declaredTier,
+    turnEnd,
+    writtenAt: new Date(),
+  });
+  writeModelResolutionRecord(modelResolutionPathBeside(request.recordPath), record);
+}
 
 /**
  * Emit the turn's status line, and report only whether it went out.

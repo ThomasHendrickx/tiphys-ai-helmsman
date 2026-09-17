@@ -1,0 +1,24 @@
+{
+  "id": "model-resolution-cross-vocabulary-refused",
+  "behavior": "model-resolution-cross-vocabulary-refused",
+  "tests": [
+    "two model-resolution records from different vocabularies refuse to compare and two from one vocabulary compare"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "  if (leftIdentity.id !== rightIdentity.id) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "        `the two records name different vocabularies, ${leftIdentity.id} and ` +\n        `${rightIdentity.id}, so their family tokens are not comparable and no ` +\n        `decorrelation claim can be made from them`,\n",
+      "replace": "        `the two records name different vocabularies, so their family tokens ` +\n        `are not comparable and no decorrelation claim can be made from them`,\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,31 @@
+{
+  "id": "model-resolution-subject-echo-required",
+  "behavior": "model-resolution-subject-echo-required",
+  "tests": [
+    "a record with no subject echo, a mismatched echo or no vocabulary identity is refused naming the field"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (echoedRole !== resolvedRole) {\n",
+      "replace": "    if (false && echoedRole !== resolvedRole) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/model-resolution.schema.json",
+      "find": "    \"subject\",\n    \"resolution\",\n",
+      "replace": "    \"resolution\",\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the shipped tiphys CLI, node bin/tiphys.ts validate --type model-resolution <record>",
+    "captures": [
+      "witness/captures/m4-p7-model-resolution-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-17 from the repository root on node v26.6.0, one case per damaged record, by running the shipped CLI over records plugin/src/model-resolution.ts's own builder produced. The named test spawns the same command live and compares its whole stdout against the INVALID line this capture carries, through the helper capturedDiagnostic, which fails first when the capture does not carry the line at all. Required by rule (f) because a member of this witness mutates src/checks.ts, which the spawn/parse derivation matches."
+  }
+}

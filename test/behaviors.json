@@ -1103,5 +1103,16 @@
   "gate-cli-credentials-report-survives-pipe": "the credentials gate CLI delivers a report larger than one pipe buffer intact through a pipe",
   "gate-cli-credentials-exit-codes-round-trip": "every credentials gate CLI arm exits the code its own result record implies",
   "credential-scrub-egress-tripwire": "credential-scrub reddens on a permitted network-egress variable, which is the name the gate used to green",
-  "credential-scrub-egress-vocabulary-bounds": "the egress vocabulary excludes the names measured to grant no reach, and does not widen the extension refusal"
+  "credential-scrub-egress-vocabulary-bounds": "the egress vocabulary excludes the names measured to grant no reach, and does not widen the extension refusal",
+  "model-resolution-validates": "a model-resolution record the plugin wrote validates under its named type and under auto",
+  "model-resolution-subject-echo-required": "a record with no subject echo, a mismatched echo or no vocabulary identity is refused naming the field",
+  "model-resolution-written-at-turn-end": "the model-resolution record is written after the turn ended and a launch-time record is refused",
+  "model-resolution-cross-vocabulary-refused": "two model-resolution records from different vocabularies refuse to compare and two from one vocabulary compare",
+  "model-resolution-kernel-reads-identity-not-content": "the kernel-side reader dereferences a vocabulary's identity and never its content",
+  "model-resolution-absent-record-is-error": "an adapter exiting zero with no model-resolution record is an error and never a clean result",
+  "model-resolution-observed-provenance-requires-observation": "a record claiming observed provenance with no observation is refused by the schema",
+  "model-resolution-observed-provenance-must-agree": "a record whose observation contradicts the echoed request is refused by the reader",
+  "model-resolution-empty-observation-is-unresolved": "an observation channel that answers nothing is unresolved and never a fallback to the self-report",
+  "model-resolution-charter-override-resolved": "a charter overrides the tier of a role that allows it and not of a role that forbids it",
+  "model-resolution-family-token-reaches-verdict": "the family token copied into a verdict equals the record's byte for byte"
 }
