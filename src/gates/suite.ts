@@ -1164,13 +1164,21 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   // `process.exitCode`, NEVER `process.exit(runSuiteGate(...))` (M4-P29).
-  // The registry invokes this gate as a SUBPROCESS, so its stdout is a
-  // PIPE, and a write to a pipe is queued rather than completed:
-  // `process.exit` terminates without draining that queue, so everything
-  // past the first pipe buffer is DISCARDED. This gate is the one the plan
-  // names as the plausible future trigger, because its `detail` carries up
-  // to ten findings and every finding quotes text this gate read out of
-  // another program's report. Assigning `process.exitCode` lets the process
-  // end normally, which drains the queue first.
+  // This gate runs as a SUBPROCESS, so fd 1 is a buffered stream the parent
+  // owns and a write to one is QUEUED rather than completed. `process.exit`
+  // ends the process without draining that queue, so everything past the
+  // buffer is DISCARDED, while the exit code survives and the loss is
+  // silent. The plan names this gate as the plausible future trigger because
+  // its `detail` carries up to ten findings and every finding quotes text
+  // this gate read out of another program's report.
+  //
+  // Measured at the pre-fix parent commit on this container, through
+  // `spawnSync`, which is how the registry runner invokes gates
+  // (src/gates/run.ts:1528) and which hands a child SOCKETPAIRS rather than
+  // pipes: 451,014 bytes written, 182,750 delivered. A regular file never
+  // truncates, which is why this survives casual testing. Assigning
+  // `process.exitCode` lets the process end normally, which drains the queue
+  // first, and the full capture is
+  // witness/captures/m4-p29-gate-cli-stdio.txt.
   process.exitCode = runSuiteGate(process.argv.slice(2));
 }

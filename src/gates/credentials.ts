@@ -805,25 +805,28 @@ function gateMain(argv: string[]): number {
 
 // Main guard: run as a gate subprocess when executed directly, inert on
 // import (tests import the probe functions without running a gate).
-//
-// `process.exitCode`, NEVER `process.exit(gateMain(...))` (M4-P29). The
-// registry invokes this gate as a SUBPROCESS, so its stderr is a PIPE, and
-// a write to a pipe is queued rather than completed: `process.exit`
-// terminates without draining that queue, so everything past the first
-// pipe buffer is DISCARDED. This module writes NOTHING to stdout, so the
-// measured instance here is STDERR, which the plan section states it did
-// not examine: a 131,143-byte usage refusal from `gateMain` arrived as
-// 65,536 bytes through `| cat` at the pre-fix parent commit and arrives
-// whole after this change, one pipe buffer exactly. It arrives whole
-// through a file redirection either way, which is why the defect survives
-// casual testing. Assigning `process.exitCode` lets the process end
-// normally, which drains the queue first. The same rule holds for stdout
-// and is why src/gates/citations.ts, src/gates/scope.ts and
-// src/gates/gate-classes.ts already read this way.
 const entry = process.argv[1];
 if (entry !== undefined) {
   const isMain = pathsIdentifySameObject(fileURLToPath(import.meta.url), entry);
   if (isMain) {
+    // `process.exitCode`, NEVER `process.exit(gateMain(...))` (M4-P29). This
+    // gate runs as a SUBPROCESS, so its output goes to a buffered stream the
+    // parent owns and a write to one is QUEUED rather than completed.
+    // `process.exit` ends the process without draining that queue, so
+    // everything past the buffer is DISCARDED, while the exit code survives
+    // and the loss is silent.
+    //
+    // THE MEASURED INSTANCE HERE IS STDERR, which the plan section states in
+    // as many words it did not examine: this module writes nothing to
+    // stdout. A 130,143-byte usage refusal from `gateMain` arrived as 65,536
+    // bytes through `| cat` at the pre-fix parent commit, one pipe buffer
+    // exactly, and arrives whole after this change. It arrives whole through
+    // a file redirection either way, which is why the defect survives casual
+    // testing. Assigning `process.exitCode` lets the process end normally,
+    // which drains the queue first. The same rule holds for stdout and is
+    // why src/gates/citations.ts, src/gates/scope.ts and
+    // src/gates/gate-classes.ts already read this way; the full capture is
+    // witness/captures/m4-p29-gate-cli-stdio.txt.
     process.exitCode = gateMain(process.argv.slice(2));
   }
 }
