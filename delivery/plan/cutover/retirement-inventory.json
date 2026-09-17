@@ -6260,6 +6260,25 @@
       }
     },
     {
+      "id": "next-script:planunread",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:237",
+      "kind": "binding",
+      "text": "let planUnread = null;",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "The sibling of next-script:harderrors one scope out. That row says a count which could not be TAKEN must not be rendered as zero; this one says a source which could not be READ must not be rendered as absent. T-036 records why the binding exists: the four original sources were all evidence of work, so the denominator was phases someone had STARTED, and the script printed 24/24 with six phases unbuilt. The plan is the fifth source and a plan that cannot be read is reported rather than silently dropping the phases it would have named.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
       "id": "next-script:done",
       "root": ".claude/orchestrator-next.mjs",
       "rule": ".claude/orchestrator-next.mjs:381",
