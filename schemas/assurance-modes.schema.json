@@ -248,7 +248,7 @@
       ],
       "properties": {
         "max-fix-rounds-after-review": {
-          "description": "How many fix rounds may follow the first dual review before the bound fires. DR-0012: \"more than two fix rounds after its first dual review\", so two.",
+          "description": "How many fix rounds may follow the first dual review before the bound fires. DR-0012 set two; DR-0035 replaced the single bound with a table running from one round (a zero or small subject) to three (a large subject at high impact), so what a mode records here is that table's CEILING rather than one phase's budget.",
           "type": "integer"
         },
         "recurrence-of-high-in-one-component": {

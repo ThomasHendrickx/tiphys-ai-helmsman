@@ -158,7 +158,7 @@ TIPHYS="${repo_root}/dist/bin/tiphys.js"
 step_registry() {
   cat <<'STEPS'
 A1	A	local-substitute	preconditions: kernel npm ci, npm run build, npm test; sandbox repo seeded (local mode seeds a scratch bare repo the harness creates)
-A2	A	both	tiphys init a fresh fleet, provision the fleet's throwaway file:// remote, tiphys doctor and tiphys doctor --for full
+A2	A	both	tiphys init a fresh fleet, provision the fleet's throwaway file:// remote, tiphys doctor, tiphys doctor --for full refusing the charterless fleet, then the same profile green once a charter is placed
 A3	A	both	tiphys lock acquire, record the lease duration, export TIPHYS_HOLDER_ID, renew before stage B
 A4	A	both	clone the sandbox repository into the fleet's projects/ area
 A5	A	both	tiphys watch --once reports the no-wake exit code 3, then a harness-owned resident tiphys watch writes the beacon
@@ -548,6 +548,47 @@ stage_a() {
   # reader can tell "no FAIL lines" from "no output at all".
   assert_step A2 "doctor printed no FAIL line" "0 FAIL lines" \
     "$(grep -c " FAIL " "${LAST_OUTPUT}" || true) FAIL lines out of $(grep -c "^CHECK " "${LAST_OUTPUT}" || true) CHECK lines" pass
+
+  # M4-P30: A FLEET WITH NO CHARTER IS NOT READY FOR FULL MODE, AND THIS IS
+  # WHERE THE HARNESS WITNESSES IT RATHER THAN ASSUMING IT. `tiphys init`
+  # deliberately writes no charter document, because charter authorship is an
+  # owner duty, so the fleet provisioned above is exactly the charterless
+  # state. Until M4-P30 the `full` profile left that state a WARN and exited
+  # 0, which made "tiphys doctor --for full exits 0" no evidence at all that a
+  # charter existed. The refusal must name RETENTION and must not be the
+  # remote check: asserting both is what keeps this step a witness of the new
+  # promotion rather than of a fleet that was never provisioned.
+  run_step A2 nonzero "${fleet}" "tiphys doctor --for full refuses the charterless fleet (M4-P30)" -- \
+    node "${TIPHYS}" doctor --for full
+  retention_fails=$(grep -c "^CHECK retention FAIL .*retention is not applicable (required for profile full)$" "${LAST_OUTPUT}" || true)
+  remote_fails=$(grep -c "^CHECK remote FAIL " "${LAST_OUTPUT}" || true)
+  outcome="fail"
+  if [ "${retention_fails}" = "1" ] && [ "${remote_fails}" = "0" ]; then outcome="pass"; fi
+  assert_step A2 "the charterless fleet is refused for the retention reason, and the provisioned remote is not why" \
+    "1 CHECK retention FAIL naming a not-applicable retention, 0 CHECK remote FAIL" \
+    "${retention_fails} retention FAIL lines, ${remote_fails} remote FAIL lines" "${outcome}"
+
+  # THE OWNER'S STEP, PERFORMED BY THE HARNESS: place a charter. It carries
+  # only the fields the retention check reads, because this step certifies
+  # doctor rather than charter authorship, and `tiphys validate --type charter`
+  # is E1.1's job in the M3 exit test. The declared paths are created FIRST:
+  # the check FAILs, with its own distinct reason, on a declared path that does
+  # not exist, and again on one that is git-ignored and so would not survive a
+  # clone. They are left untracked deliberately, which the `remote` check is
+  # indifferent to: untracked files move neither the ahead nor the behind count.
+  for retained in notes/work-history notes/evidence notes/tuition; do
+    mkdir -p "${fleet}/${retained}"
+    printf '# kept\n' >"${fleet}/${retained}/keep.md"
+  done
+  cat >"${fleet}/charter/charter.yaml" <<'CHARTER'
+kind: charter
+identity:
+  name: exit-test-subject
+retention:
+  work-history: notes/work-history
+  evidence: notes/evidence
+  tuition: notes/tuition
+CHARTER
 
   # doctor --for full promotes gh-missing and remote-missing to FAIL. The
   # fleet remote provisioned above is what makes remote-missing pass
