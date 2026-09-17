@@ -975,11 +975,13 @@ test("the credentials gate CLI delivers a report larger than one pipe buffer int
   // The gh-free bin holds only git and node, and the pipe arm needs a
   // READER on the other end. `cat` is symlinked in rather than widening
   // PATH to /usr/bin, which would put gh back on it (environment warning 6).
-  const realCat = spawnSync("sh", ["-c", "command -v cat"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  assert.notEqual(realCat, "", "a real cat must exist to drain the pipe arm");
-  symlinkSync(realCat, join(bin, "cat"));
+  for (const program of ["cat", "sleep"]) {
+    const real = spawnSync("sh", ["-c", `command -v ${program}`], {
+      encoding: "utf8",
+    }).stdout.trim();
+    assert.notEqual(real, "", `a real ${program} must exist to stage the pipe arm`);
+    symlinkSync(real, join(bin, program));
+  }
   // Rule (f) first: the capture this witness cites is reproduced LIVE, at the
   // size that fits in any buffer, before anything is asserted about a report
   // that does not. If the gate's refusal text changes, this fails here rather
@@ -1032,7 +1034,20 @@ test("the credentials gate CLI delivers a report larger than one pipe buffer int
     `report too small to exercise the hazard: ${String(Buffer.byteLength(intended))} bytes`,
   );
 
-  const toPipe = spawnSync("/bin/sh", ["-c", `${invocation} 2>&1 >/dev/null | cat`], {
+  // THE READER SLEEPS BEFORE IT READS, AND THAT IS WHAT MAKES THIS ARM
+  // DETERMINISTIC RATHER THAN A COIN FLIP. Measured: with a plain `| cat`
+  // the red-witness harness scored this witness red in 1 of 2 repetitions,
+  // although the same command truncated 12 times out of 12 on an idle
+  // machine. The cause is libuv's write loop: `uv__write` keeps calling
+  // `writev` until it gets EAGAIN, so a reader that happens to be scheduled
+  // mid-loop lets the child push more than one buffer before it exits, and
+  // whether that happens depends on machine load. A reader that provably is
+  // not reading for the first fraction of a second removes the race without
+  // weakening anything: the pipe fills, the remainder is queued, and the
+  // pre-fix entry point discards it. It is also the more faithful shape,
+  // because a `tee` or a CI log collector that is briefly busy is exactly
+  // this.
+  const toPipe = spawnSync("/bin/sh", ["-c", `${invocation} 2>&1 >/dev/null | { sleep 0.5; cat; }`], {
     encoding: "utf8",
     env: shellEnv,
     maxBuffer: 256 * 1024 * 1024,
