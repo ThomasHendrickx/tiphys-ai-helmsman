@@ -1066,5 +1066,13 @@
   "plugin-adapter-record-before-payload": "the launch record is on disk before the payload starts, and the payload says so",
   "plugin-adapter-launch-failure-is-launch-failed": "a launch record that cannot be written is launch-failed and the payload never ran",
   "plugin-spawn-writes-turn-end-both-exit-codes": "tiphys spawn through the plugin adapter writes turn-end for a zero and a nonzero payload exit code",
-  "plugin-manifest-parses-and-matches-package": "the plugin manifest parses and its version matches the package"
+  "plugin-manifest-parses-and-matches-package": "the plugin manifest parses and its version matches the package",
+  "plugin-turn-end-always-integer-exit-code": "a turn that ends with no exit code still hands the generated turn-end hook an integer",
+  "plugin-turn-end-signal-convention": "a turn that ends by signal reports 128 plus that signal and never reports success",
+  "plugin-turn-end-invoked-by-adapter": "the turn-end record is written by a process the adapter spawned, and no Stop hook is declared",
+  "plugin-observer-blocks-nothing": "the observer lets a tool call through and records it, and removing it changes only the record",
+  "plugin-observer-records-payload-verbatim": "the observer's line round-trips the captured hook payload and adds only a receipt",
+  "plugin-observer-log-never-read-as-state": "the compiled plugin appends to the tool-call log and never reads it",
+  "plugin-status-line-delivered-and-valid": "an agent turn delivers a status record that validates, and the current document is the read path",
+  "plugin-status-failure-does-not-fail-turn": "a status emit that fails leaves the turn outcome unchanged and the turn-end record written"
 }

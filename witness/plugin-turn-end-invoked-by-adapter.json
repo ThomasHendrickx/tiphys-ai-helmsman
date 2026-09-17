@@ -1,0 +1,32 @@
+{
+  "id": "plugin-turn-end-invoked-by-adapter",
+  "behavior": "plugin-turn-end-invoked-by-adapter",
+  "tests": [
+    "the turn-end record is written by a process the adapter spawned, and no Stop hook is declared"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/turn-end.ts",
+      "find": "    hooked = spawnSync(process.execPath, [request.hookPath, argument], {\n",
+      "replace": "    hooked = spawnSync(process.execPath, [\"-e\", \"const{spawnSync}=require('node:child_process');const a=process.argv.slice(-2);spawnSync(process.execPath,[a[0],a[1]],{stdio:'inherit'});\", request.hookPath, argument], {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/.claude-plugin/plugin.json",
+      "find": "    \"PreToolUse\": [\n",
+      "replace": "    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"node turn-end\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the turn-end hook the kernel generates, instrumented to report its own ppid and argv",
+    "captures": [
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/D-abandon-sigkill.summary.txt",
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/E-abandon-sigterm.summary.txt"
+    ],
+    "provenance": "The generated hook text is used verbatim and only APPENDED to, so the process reporting its ppid is the shipped script plus three lines. The cited captures are the abandonment runs that make an adapter-owned invocation necessary at all."
+  }
+}
