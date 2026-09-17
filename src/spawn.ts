@@ -84,6 +84,176 @@ export interface ExecutorRequest {
    * declared escape hatch; an adapter must never widen it on its own.
    */
   env: Record<string, string> | undefined;
+  /**
+   * THE ASSEMBLED BRIEF, and it is NOT optional (M4-P3 criterion 1).
+   *
+   * The brief is the agent payload's entire input, and until this phase the
+   * request did not carry it at all, although the call site already had it:
+   * `assembleBrief` returns the path and `spawnTask` pushes it onto
+   * `createdFiles` before the launch. So an optional `briefPath` would be an
+   * optionality the kernel never exercises, which is a field that cannot go
+   * red: every production path supplies it and no test could construct the
+   * absent case without inventing one.
+   *
+   * The three fields below it are `string | undefined` for the opposite
+   * reason: nothing in the kernel produces them, they arrive from the caller,
+   * and an adapter that needs one says so through `requires` rather than
+   * hoping.
+   */
+  briefPath: string;
+  /**
+   * The role the payload is being asked to play, verbatim as the caller named
+   * it. The kernel neither interprets it nor holds a vocabulary for it; the
+   * role briefs are a shipped artifact and the mapping from a role to a brief
+   * is the plugin's business.
+   */
+  role: string | undefined;
+  /**
+   * THE DECLARED TIER, VERBATIM, AND NEVER A MODEL NAME (M4-P3, the
+   * zero-vendor-names requirement). Whatever `role-model-config.yaml`
+   * declares, `strongest` or `cheaper` or anything else, crosses this seam
+   * unaltered. The tier-to-model mapping lives in the plugin: a mapping in
+   * `src/` is what would close off every harness that is not the one it names
+   * (delivery/plan/m4-intake.md:377).
+   */
+  declaredTier: string | undefined;
+  /**
+   * The delivery phase this task belongs to, CARRIED and never DERIVED.
+   *
+   * The scope gate derives a phase id from a branch name, and M4-D-22 leaves
+   * open whether that convention is the kernel's or the delivering project's.
+   * A kernel that derived the phase id from a branch here would settle
+   * M4-D-22 by accident, and a shipped constant is the hardest kind of
+   * decision to renumber.
+   */
+  phaseId: string | undefined;
+}
+
+/**
+ * THE FIELDS AN ADAPTER MAY NAME IN `requires`, AND WHETHER EACH ONE CAN BE
+ * ABSENT (M4-P3 criteria 2 and 3).
+ *
+ * This is the ONE source for both halves of the requirement check, and it is
+ * one source on purpose: a list of legal names maintained beside a separate
+ * list of presence tests is two things that drift, and the drift is silent in
+ * exactly the direction that matters (a new request field nobody can require,
+ * or a requirable name nothing can satisfy). `requirableRequestFields` reads
+ * its answer back out of this function, so there is nothing to keep in step.
+ *
+ * The six names set to `true` unconditionally are the ones the KERNEL
+ * produces: it has a task id because it was given one, a worktree and a
+ * record path because it computed them, a command because it refused an empty
+ * one, a hook path because it wrote the hook, and a brief path because
+ * `assembleBrief` returned one. None of them can be absent by the time the
+ * request is built, and `test/spawn.test.ts` checks that claim against the
+ * request an adapter is actually handed rather than leaving it asserted here.
+ */
+function requestFieldPresence(options: SpawnOptions): Map<string, boolean> {
+  const presence = new Map<string, boolean>();
+  for (const name of ["taskId", "worktree", "command", "hookPath", "recordPath", "briefPath"]) {
+    presence.set(name, true);
+  }
+  presence.set("deadlineSeconds", options.deadlineSeconds !== undefined);
+  presence.set("env", options.allowPrCredentials !== true);
+  presence.set("role", options.role !== undefined);
+  presence.set("declaredTier", options.declaredTier !== undefined);
+  presence.set("phaseId", options.phaseId !== undefined);
+  return presence;
+}
+
+/** The closed set of names an adapter may name in `requires`, in field order. */
+export function requirableRequestFields(): readonly string[] {
+  return [
+    ...requestFieldPresence({
+      taskId: "",
+      project: "",
+      briefFile: "",
+      shape: "ship",
+      exec: "",
+      deadlineSeconds: undefined,
+      offline: false,
+      role: undefined,
+      declaredTier: undefined,
+      phaseId: undefined,
+    }).keys(),
+  ];
+}
+
+/**
+ * THE ADAPTER CONTRACT CHECK (M4-P3 criterion 3): a requirement naming a
+ * field that does not exist is a DEFECT IN THE ADAPTER, refused when the
+ * adapter is taken up and before anything is created.
+ *
+ * IT IS A DIFFERENT QUESTION FROM `checkAdapterRequirements` BELOW, AND THE
+ * ORDER IS LOAD-BEARING. The presence test there answers "is this field
+ * absent", and an unknown key is absent too, so a single check written that
+ * way would answer a defect in the adapter with a message about a missing
+ * flag: an operator would go looking for a `--modelName` that the kernel has
+ * no field for and could never accept. Running this one FIRST is what keeps
+ * the two answers distinct, and `test/spawn.test.ts` asserts that they say
+ * structurally different things rather than merely both refusing.
+ */
+export function checkAdapterContract(
+  adapter: ExecutorAdapter,
+): { ok: true } | { ok: false; reason: string } {
+  const known = requirableRequestFields();
+  // THE DECLARATION IS FOREIGN INPUT, not a value this module produced. From
+  // M4-P4 an adapter is resolved from the fleet home, so `requires` arrives
+  // from a module the kernel did not write and the TYPE IS A PROMISE, not a
+  // guarantee. A missing or non-array declaration reaching `.filter` would be
+  // a TypeError raised out of `spawnTask` with no reason line, which is the
+  // same "refusal that arrives as a crash" shape the rest of this check
+  // exists to prevent, one level lower.
+  if (!Array.isArray(adapter.requires)) {
+    return {
+      ok: false,
+      reason:
+        `the ${adapter.name} adapter does not declare requires as an array, so the ` +
+        `kernel cannot tell what it needs; an adapter that needs nothing declares []`,
+    };
+  }
+  const unknown = adapter.requires.filter((name) => !known.includes(name));
+  if (unknown.length === 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason:
+      `the ${adapter.name} adapter declares a requirement on ${unknown.join(", ")}, ` +
+      `which the executor request contract has no field for; the requirable ` +
+      `fields are ${known.join(", ")}`,
+  };
+}
+
+/**
+ * THE DECLARED-REQUIREMENT CHECK (M4-P3 criterion 2): a field the adapter
+ * declared it needs, and the spawn was not given, is a USAGE ERROR, and a
+ * usage error creates nothing.
+ *
+ * THE DANGEROUS STATE THIS EXISTS FOR is not "an adapter gets undefined". It
+ * is an adapter DISCOVERING that it got undefined, and raising, after pool
+ * create has already made a worktree, a branch and a pool record. That is the
+ * measured `--deadline` defect at src/commands/spawn.ts:81 with a new field:
+ * a value the kernel could not represent used to raise inside the adapter,
+ * after the creation, and the repair was to refuse at parse time. This is the
+ * same repair one field along, and it is the reason the check runs at the top
+ * of `spawnTask` rather than beside the launch where the request is built.
+ */
+export function checkAdapterRequirements(
+  adapter: ExecutorAdapter,
+  options: SpawnOptions,
+): { ok: true } | { ok: false; reason: string } {
+  const presence = requestFieldPresence(options);
+  const unmet = adapter.requires.filter((name) => presence.get(name) !== true);
+  if (unmet.length === 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason:
+      `the ${adapter.name} adapter requires ${unmet.join(", ")}, and this spawn ` +
+      `supplied no value for ${unmet.length === 1 ? "it" : "them"}; nothing was created`,
+  };
 }
 
 /**
@@ -108,6 +278,20 @@ export type LaunchOutcome =
  */
 export interface ExecutorAdapter {
   readonly name: string;
+  /**
+   * WHAT THIS ADAPTER CANNOT LAUNCH WITHOUT (M4-P3 criteria 2 and 3).
+   *
+   * Every name is a field of `ExecutorRequest`. The kernel cannot know what
+   * a given adapter needs, so the adapter DECLARES it and the kernel refuses
+   * BEFORE it creates anything, rather than handing over an `undefined` that
+   * the adapter discovers once a worktree, a branch and a pool record exist.
+   *
+   * REQUIRED, never optional: an optional declaration would let an adapter
+   * omit it and get the old behaviour back silently, which is the thing this
+   * field exists to stop. An adapter that needs nothing declares `[]`, and
+   * that is a statement rather than a default.
+   */
+  readonly requires: readonly string[];
   /**
    * ASYNCHRONOUS since M4-P2. An agent turn is long and a subprocess is
    * short: a window adapter or a cloud-session adapter cannot express
@@ -144,6 +328,25 @@ export interface ExecutorRecord {
    * choice, recorded rather than assumed.
    */
   deadline?: string;
+  /**
+   * WHAT WAS REQUESTED, NOT WHAT WAS RESOLVED (M4-P3 criterion 6).
+   *
+   * The declared tier the request carried, copied verbatim. Optional in the
+   * same sense `deadline` is: present exactly when the request carried one,
+   * absent otherwise, never the string "undefined".
+   *
+   * THERE IS NO RESOLVED MODEL HERE, and the absence is a decision rather
+   * than an omission. This record is written BEFORE the payload starts,
+   * which is the whole basis of the launch-failed-versus-incomplete
+   * distinction, while a harness that requests one model and is served
+   * another resolves mid-turn. A resolved model in a launch record would
+   * therefore be a value nobody could have observed at the moment it was
+   * written. M4-P7 carries the resolved half, at turn end, where it can be
+   * true.
+   */
+  requestedTier?: string;
+  /** The role the request carried, copied verbatim. See `requestedTier`. */
+  requestedRole?: string;
 }
 
 /**
@@ -183,6 +386,15 @@ function payloadExitCode(status: number | null, signal: NodeJS.Signals | null): 
  */
 export const subprocessAdapter: ExecutorAdapter = {
   name: "subprocess",
+  /*
+   * NOTHING, and that is a statement rather than a default (M4-P3). This
+   * adapter runs a command in a directory; it reads no brief, plays no role
+   * and asks for no tier, so declaring anything here would be a requirement
+   * the adapter does not have. The empty declaration is what makes the
+   * refusal path exercisable ONLY by an adapter that genuinely needs
+   * something, which is the state the check exists for.
+   */
+  requires: [],
   async launch(request: ExecutorRequest): Promise<LaunchOutcome> {
     const launchedAt = new Date();
     const record: ExecutorRecord = {
@@ -193,6 +405,17 @@ export const subprocessAdapter: ExecutorAdapter = {
       record.deadline = new Date(
         launchedAt.getTime() + request.deadlineSeconds * 1000,
       ).toISOString();
+    }
+    // VERBATIM (M4-P3 criterion 6): the value the caller supplied, byte for
+    // byte, with no normalisation, no lowercasing and no vocabulary check.
+    // The kernel holds no tier vocabulary and no role vocabulary, so there is
+    // nothing here it could legitimately validate against; a kernel that
+    // "tidied" either value would be holding one.
+    if (request.declaredTier !== undefined) {
+      record.requestedTier = request.declaredTier;
+    }
+    if (request.role !== undefined) {
+      record.requestedRole = request.role;
     }
     // The record write happens BEFORE the payload, so a failure here is
     // provably a launch failure and is safe to roll back. Everything
@@ -375,6 +598,14 @@ export interface SpawnOptions {
    * payload; default is false and the scrub is on.
    */
   allowPrCredentials?: boolean;
+  /**
+   * The three caller-supplied request fields (M4-P3 criterion 1, M4-D-05).
+   * Each is `string | undefined` because nothing in the kernel produces one;
+   * `briefPath` is not here because `assembleBrief` does produce it.
+   */
+  role: string | undefined;
+  declaredTier: string | undefined;
+  phaseId: string | undefined;
   adapter?: ExecutorAdapter;
 }
 
@@ -403,6 +634,30 @@ export async function spawnTask(
   options: SpawnOptions,
 ): Promise<SpawnResult> {
   const { taskId } = options;
+
+  // THE ADAPTER IS RESOLVED FIRST (M4-P3), earlier than it used to be, and
+  // the move is the point rather than a tidy-up: both checks below must
+  // refuse before ANYTHING is created, and until this phase the adapter was
+  // not named until the launch call site, which is after pool create has made
+  // a worktree, a branch and a pool record.
+  const adapter = options.adapter ?? subprocessAdapter;
+
+  // A requirement naming a field the contract does not have is a defect in
+  // the adapter, refused as the adapter is taken up (criterion 3). It runs
+  // BEFORE the presence check because an unknown name is also an absent one,
+  // and answering a contract defect with a message about a missing value
+  // sends the operator looking for a flag that cannot exist.
+  const contract = checkAdapterContract(adapter);
+  if (!contract.ok) {
+    return { ok: false, reason: contract.reason };
+  }
+
+  // A declared requirement the spawn cannot meet is a usage error, and a
+  // usage error creates nothing (criterion 2).
+  const requirements = checkAdapterRequirements(adapter, options);
+  if (!requirements.ok) {
+    return { ok: false, reason: requirements.reason };
+  }
 
   const liveness = livenessGuard(fleet);
   if (!liveness.ok) {
@@ -511,7 +766,8 @@ export async function spawnTask(
   if (!brief.value.ok) {
     return rollback(brief.value.reason);
   }
-  createdFiles.push(brief.value.value);
+  const briefPath = brief.value.value;
+  createdFiles.push(briefPath);
 
   const meta: TaskMeta = {
     id: taskId,
@@ -564,7 +820,6 @@ export async function spawnTask(
     childEnv = built.value.env;
   }
 
-  const adapter = options.adapter ?? subprocessAdapter;
   // AWAITED (M4-P2 step 4), and `runStepAsync` rather than `runStep` is
   // load-bearing rather than cosmetic. `runStep` over a promise-returning
   // callback returns {ok: true, value: <a pending promise>} before the
@@ -583,6 +838,13 @@ export async function spawnTask(
         recordPath,
         deadlineSeconds: options.deadlineSeconds,
         env: childEnv,
+        // THE BRIEF THE ADAPTER LAUNCHES AGAINST (M4-P3 criterion 1). The
+        // path `assembleBrief` returned, which is already on `createdFiles`
+        // and so is already inside the rollback window.
+        briefPath,
+        role: options.role,
+        declaredTier: options.declaredTier,
+        phaseId: options.phaseId,
       }),
   );
   if (!launched.ok) {

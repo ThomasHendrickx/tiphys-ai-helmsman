@@ -1,0 +1,24 @@
+{
+  "id": "kernel-carries-no-vendor-model-names",
+  "behavior": "kernel-carries-no-vendor-model-names",
+  "tests": [
+    "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration"
+  ],
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/spawn.ts",
+      "find": "      // VERBATIM, and deliberately unvalidated: this is the DECLARED TIER,",
+      "replace": "      // VERBATIM: this is the tier that maps to sonnet or opus,"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/executor-record.schema.json",
+      "find": "\"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"requestedRole\"",
+      "replace": "\"type\": \"string\",\n      \"enum\": [\"gpt-4\", \"strongest\"]\n    },\n    \"requestedRole\""
+    }
+  ]
+}

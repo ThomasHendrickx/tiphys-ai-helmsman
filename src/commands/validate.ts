@@ -106,6 +106,27 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      `mechanism-rule-evidence-resolves` are registered for type `tuition` and
      nothing runs them until the type resolves. */
   ["tuition", "tuition.schema.json"],
+  /* M4-P3 criterion 4. tasks/<id>/executor.json, the launch record an
+     ExecutorAdapter writes.
+
+     THIS ROW IS THE WHOLE REGISTRATION, AND `resolveAutoType` IS NOT A SECOND
+     PLACE TO EDIT: that function answers `--type auto` by reading the
+     instance's `kind` and looking it up in THIS MAP, so a row added here is
+     the auto resolver's source of truth as well. M3R-001's requirement that a
+     shipped schema not arrive without its `--type` row is satisfied by the
+     row; nothing else in this module holds a type list.
+
+     WHAT THE ROW CANNOT DO, stated here rather than left to be discovered.
+     An executor record carries no `kind` field, because M4-P3's criterion 6
+     fixes the record's fields and `kind` is not among them, so `--type auto`
+     on a real executor.json is a USAGE error naming the missing kind. That is
+     the `role-brief` situation above reached by a different route: there the
+     document cannot be decoded before the type is known, here the decoded
+     document does not say what it is. Both are types a caller must NAME. The
+     property is asserted by a registered test rather than trusted, so a later
+     phase that gives the record a `kind` reddens this comment instead of
+     leaving it stale. */
+  ["executor-record", "executor-record.schema.json"],
 ]);
 
 /**

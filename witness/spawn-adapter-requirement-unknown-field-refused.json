@@ -1,0 +1,31 @@
+{
+  "id": "spawn-adapter-requirement-unknown-field-refused",
+  "behavior": "spawn-adapter-requirement-unknown-field-refused",
+  "tests": [
+    "an adapter requiring a field the request contract has no name for is refused as a contract defect, not as a missing value"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const contract = checkAdapterContract(adapter);\n  if (!contract.ok) {\n    return { ok: false, reason: contract.reason };\n  }\n\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const contract = checkAdapterContract(adapter);\n  if (!contract.ok) {\n    return { ok: false, reason: contract.reason };\n  }\n",
+      "replace": "  const requirements0 = checkAdapterRequirements(adapter, options);\n  if (!requirements0.ok) {\n    return { ok: false, reason: requirements0.reason };\n  }\n  const contract = checkAdapterContract(adapter);\n  if (!contract.ok) {\n    return { ok: false, reason: contract.reason };\n  }\n"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git -C <clone> worktree list; git -C <clone> branch --list",
+    "captures": [
+      "witness/captures/spawn-requirement-refusal-git-state.txt"
+    ],
+    "provenance": "THE REFUSAL MUST ARRIVE BEFORE ANYTHING IS CREATED, and two of the four things that must not exist are reported by git rather than by this repository. The capture at witness/captures/spawn-requirement-refusal-git-state.txt:1, taken 2026-09-17 on node v26.6.0, records what those two listings print before any spawn and after a successful one. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test reads both listings live and asserts them byte-identical across the unknown-field refusal, the absent-value refusal and the malformed-declaration refusal, using the same helper whose control arm is anchored on the capture in the sibling witness. MEMBER 0 deletes the contract check, so an unknown name falls through to the presence test and is reported as a missing value. MEMBER 1 keeps both checks and SWAPS THEIR ORDER, which is the subtler defect and the one the code comment calls load-bearing: the presence test answers `undefined` for an unknown key too, so running it first turns an adapter DEFECT into a message about a flag the kernel could never accept. Both members leave a program that refuses; what they destroy is the DISTINCTION, which is why the test asserts the two sentences differ rather than that both exit nonzero."
+  }
+}

@@ -9,7 +9,8 @@
     "CLAUDE.md",
     "roles/implementer.md",
     "test/gate-registry.test.ts",
-    "scripts/m2-exit-test.sh"
+    "scripts/m2-exit-test.sh",
+    "src/gates/scope.ts"
   ],
   "declaredExtras": [
     "delivery/plan/phase-declarations/m4-p14.json",
@@ -23,7 +24,9 @@
     "witness/captures/typecheck-tsc-listfiles-green.txt",
     "witness/phase-declaration-carries-the-class-vocabulary.json",
     "witness/phase-declaration-class-escape-vocabulary-is-closed.json",
-    "delivery/plan/cutover/retirement-inventory.json"
+    "delivery/plan/cutover/retirement-inventory.json",
+    "test/behaviors.json",
+    "delivery/work-history/m4-p14.md"
   ],
   "citations": [
     "DR-0028",
@@ -36,7 +39,9 @@
     "M2-C-3",
     "M2-C-6",
     "D-11",
-    "T-009"
+    "T-009",
+    "DR-0027",
+    "DR-0031"
   ],
   "gateClasses": {
     "correctness": {
