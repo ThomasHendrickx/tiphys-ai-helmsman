@@ -1,0 +1,91 @@
+M4-P9: THE FOUR SETTLING PROBES
+
+Each block below settles one sentence in delivery/work-history/m4-p9.md that the
+claim grep flagged. Nothing here is hand-written output.
+
+======================================================================
+=== PROBE A: can the fail-open state be passed as an empty list? ===
+
+The claim it settles: "I could not find out which trees are projects" cannot be
+passed as an empty list. The probe compiles three spellings of that mistake plus
+one CONTROL that must succeed, against the shipped module.
+
+--- the probe source ---
+import { decideWrite } from "../plugin/src/hooks/project-write-block.ts";
+const at = "2026-09-17T12:00:00Z";
+const req = { tool: "Write", targetPath: "/x" };
+// ARM 1: "I could not find out" expressed as an empty list.
+decideWrite(req, { kind: "unresolved", roots: [] }, undefined, at);
+// ARM 2: the same state with no reason at all.
+decideWrite(req, { kind: "unresolved" }, undefined, at);
+// ARM 3: a bare empty array, no discriminant at all.
+decideWrite(req, [], undefined, at);
+// ARM 4 (CONTROL): the honest spelling, which must COMPILE.
+decideWrite(req, { kind: "unresolved", reason: "projects/ could not be listed" }, undefined, at);
+--- command ---
+./node_modules/.bin/tsc --noEmit --strict --module nodenext --moduleResolution nodenext \
+  --target es2024 --types node --allowImportingTsExtensions \
+  --rewriteRelativeImportExtensions .probe-a/probe-a.ts
+--- output ---
+.probe-a/probe-a.ts(5,40): error TS2353: Object literal may only specify known properties, and 'roots' does not exist in type '{ kind: "unresolved"; reason: string; }'.
+.probe-a/probe-a.ts(7,18): error TS2345: Argument of type '{ kind: "unresolved"; }' is not assignable to parameter of type 'ProjectRoots'.
+  Property 'reason' is missing in type '{ kind: "unresolved"; }' but required in type '{ kind: "unresolved"; reason: string; }'.
+.probe-a/probe-a.ts(9,18): error TS2345: Argument of type 'never[]' is not assignable to parameter of type 'ProjectRoots'.
+tsc exit: 1
+Three errors, at lines 5, 7 and 9, which are arms 1, 2 and 3. Line 11, the
+control, produced NO error, so the compiler is discriminating rather than
+rejecting every call.
+
+======================================================================
+=== PROBE B: are the eleven specs' member pairs distinct? ===
+
+The claim it settles: each pair is two structurally different members, never two
+spellings of one mutation.
+
+--- command ---
+node -e '<the pairwise comparison over witness/*.json, printed below>'
+--- output ---
+project-write-block-agent-turn-leaves-the-clone-unchanged: m0 plugin/src/hooks/project-write-block.ts find@"  if (isGitInternal(root, target)) {\n" | m1 plugin/src/hooks/project-write-block.ts find@"  const root = containingProjectRoot(project"
+project-write-block-bash-payload-carries-no-target: m0 plugin/src/hooks/project-write-block.ts find@"  if (typeof filePath === \"string\" && filePa" | m1 plugin/src/hooks/project-write-block.ts find@"      ? (input as Record<string, unknown>)[\""
+project-write-block-evidence-log-is-never-read: m0 plugin/src/hooks/project-write-block.ts find@"  const path = join(fleetRoot, BYPASS_BASENA" | m1 plugin/src/hooks/project-write-block.ts find@"export const BYPASS_EVIDENCE_BASENAME = \"wri"
+project-write-block-expired-bypass-does-not-permit: m0 plugin/src/hooks/project-write-block.ts find@"  if (expiry <= at) {\n" | m1 plugin/src/hooks/project-write-block.ts find@"  const at = instantOf(now);\n"
+project-write-block-git-carve-out-is-segment-wise: m0 plugin/src/hooks/project-write-block.ts find@"  return firstSegmentUnder(root, path) === \"" | m1 plugin/src/hooks/project-write-block.ts find@"  const segments = rest.split(sep);\n  return"
+project-write-block-manifest-matcher-matches-adjudicated-tools: m0 plugin/.claude-plugin/plugin.json find@"        \"matcher\": \"Write|Edit|MultiEdit|Not" | m1 plugin/src/hooks/project-write-block.ts find@"export const ADJUDICATED_TOOLS = [\"Write\", \""
+project-write-block-out-of-scope-bypass-does-not-permit: m0 plugin/src/hooks/project-write-block.ts find@"  if (!covers) {\n" | m1 plugin/src/hooks/project-write-block.ts find@"    return isInside(projectRoot, listed) && "
+project-write-block-permits-ref-update: m0 plugin/src/hooks/project-write-block.ts find@"  return firstSegmentUnder(root, path) === \"" | m1 plugin/src/hooks/project-write-block.ts find@"  const segments = rest.split(sep);\n  return"
+project-write-block-refuses-working-tree-write: m0 plugin/src/hooks/project-write-block.ts find@"    return { verdict: \"refuse\", reason: `${r" | m1 plugin/src/hooks/project-write-block.ts find@"  return firstSegmentUnder(root, path) === \""
+project-write-block-unresolvable-root-is-refused: m0 plugin/src/hooks/project-write-block.ts find@"  if (projectRoots.kind === \"unresolved\") {\n" | m1 plugin/src/hooks/project-write-block.ts find@"    return {\n      exitCode: EXIT_REFUSE,\n  "
+write-bypass-type-is-registered-and-requires-an-expiry: m0 src/commands/validate.ts find@"  [\"write-bypass\", \"write-bypass.schema.json" | m1 schemas/write-bypass.schema.json find@"    \"expiresAt\",\n    \"declaredBy\",\n"
+pairs compared: 11 collapses: 0
+
+======================================================================
+=== PROBE C: is the unlistable-projects arm reachable, and does it refuse? ===
+
+The claim it settles: the hook refuses rather than permits when
+<fleet>/projects cannot be listed.
+
+--- setup ---
+a fleet home under /tmp with projects/ chmod 000, and a payload whose cwd is
+<fleet>/worktrees/t1 (a worktree, which is NOT a project, so a permit here
+would be the ordinary answer if the listing succeeded)
+--- output ---
+ARM 1, as root: root ignores the mode bits, so the listing SUCCEEDS and the
+worktree write is permitted. This is the control, and it is why arm 2 needs
+a different uid to reach the arm at all.
+wrapper exit: 0
+
+ARM 2, as nobody:
+tiphys project-write block: the project root could not be resolved for this Write call: /tmp/m4p9probeM6fT/f/projects could not be listed: Error: EACCES: permission denied, scandir '/tmp/m4p9probeM6fT/f/projects'
+wrapper exit: 2
+
+======================================================================
+=== PROBE D: does <fleet>/projects being a FILE also fail closed? ===
+
+A second, structurally different way the root set can fail to resolve. The
+answer names a different failure from probe C, which is the point: the hook
+distinguishes "this is not a fleet home" from "the projects directory could not
+be listed".
+
+--- output ---
+tiphys project-write block: the project root could not be resolved for this Write call: no fleet home was found at or above /tmp/tmp.iYeYVuRjt7/f/worktrees/t1 (a fleet home carries charter/, decisions/, state/, tasks/, worktrees/, projects/)
+wrapper exit: 2

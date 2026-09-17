@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-expired-bypass-does-not-permit",
+  "behavior": "project-write-block-expired-bypass-does-not-permit",
+  "tests": [
+    "an expired bypass does not permit a write its path list covers and names the declaration"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (expiry <= at) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const at = instantOf(now);\n",
+      "replace": "  const at = instantOf(bypass.declaredAt);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,7 +1,7 @@
 {
   "name": "tiphys",
   "version": "0.1.0",
-  "description": "Tiphys kernel delivery under Claude Code: the executor adapter, and the tool-call observer that records every tool call and blocks nothing.",
+  "description": "Tiphys kernel delivery under Claude Code: the executor adapter, the tool-call observer that records every tool call and blocks nothing, and the project-write block that refuses a working-tree write in a project clone.",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,6 +9,15 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/src/hooks/tool-call-observer.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/src/hooks/project-write-block.js\""
           }
         ]
       }

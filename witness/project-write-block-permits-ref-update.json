@@ -1,0 +1,32 @@
+{
+  "id": "project-write-block-permits-ref-update",
+  "behavior": "project-write-block-permits-ref-update",
+  "tests": [
+    "a real git merge --ff-only moves the ref and the block permits every path it wrote"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  return firstSegmentUnder(root, path) === \".git\";\n",
+      "replace": "  return false;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const segments = rest.split(sep);\n  return segments[0];\n",
+      "replace": "  const segments = rest.split(sep);\n  return segments[segments.length - 1];\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, run for real: a repository is created, a merge --ff-only is executed, and the paths it wrote are derived from the filesystem",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt",
+      "witness/captures/m4-p9-end-to-end-agent-turn.txt"
+    ],
+    "provenance": "The ref-update paths are not a list of strings that look like refs: the test snapshots the clone, runs the merge, and takes the difference, so the carve-out is asserted against what git actually wrote. The cited captures are the harness payload shapes the same test feeds to the wrapper."
+  }
+}

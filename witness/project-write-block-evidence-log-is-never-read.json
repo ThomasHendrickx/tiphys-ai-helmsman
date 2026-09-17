@@ -1,0 +1,24 @@
+{
+  "id": "project-write-block-evidence-log-is-never-read",
+  "behavior": "project-write-block-evidence-log-is-never-read",
+  "tests": [
+    "deleting the entire evidence log changes no decision over the bypass fixture set"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const path = join(fleetRoot, BYPASS_BASENAME);\n",
+      "replace": "  const path = join(fleetRoot, BYPASS_EVIDENCE_BASENAME);\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "export const BYPASS_EVIDENCE_BASENAME = \"write-bypass-evidence.jsonl\";\n",
+      "replace": "export const BYPASS_EVIDENCE_BASENAME = \"write-bypass.json\";\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
