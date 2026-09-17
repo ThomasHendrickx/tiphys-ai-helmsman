@@ -22,7 +22,7 @@ import { constants } from "node:os";
  * one named place so a witness can mutate it and so a reader can find it.
  *
  * `128 + signal` IS THE SHELL'S CONVENTION AND THE KERNEL'S OWN
- * (src/spawn.ts:359). It is reimplemented here rather than imported because
+ * (src/spawn.ts:481). It is reimplemented here rather than imported because
  * the kernel does not publish it: `src/index.ts` exports the adapter CONTRACT
  * and nothing else, and reaching past the published surface with a relative
  * import that climbs out of this package compiles inside this workspace and

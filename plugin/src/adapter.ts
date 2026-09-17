@@ -207,7 +207,7 @@ export const claudeCodeAdapter: ExecutorAdapter = {
     // emit is placed BEFORE the turn-end invocation on purpose: if anything
     // here could throw or could return early, the turn-end record would not
     // be written and the witness would see it. `deliverStatus` swallows every
-    // failure by contract (plugin/src/status.ts:150) and its outcome is read
+    // failure by contract (plugin/src/status.ts:163) and its outcome is read
     // for the record's sake and never for the turn's.
     const delivery = deliverStatusForTurn(request, exitCode);
 

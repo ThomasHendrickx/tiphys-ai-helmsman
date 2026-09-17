@@ -78,10 +78,10 @@ function isRegularFile(path: string): boolean {
  * Where the kernel's command line is, resolved through the PACKAGE NAME.
  *
  * `@tiphys/kernel` publishes `./package.json` in its exports map deliberately
- * (package.json:22), which is the one subpath a consumer may resolve, so the
+ * (package.json:24), which is the one subpath a consumer may resolve, so the
  * `bin` entry is readable without reaching into the package's internals. That
  * matters more than it looks: the kernel's exports map has no wildcard
- * subpath ON PURPOSE (src/index.ts:16), so there is no supported spelling for
+ * subpath ON PURPOSE (src/index.ts:15), so there is no supported spelling for
  * importing `emitStatus` directly, and a relative import climbing out of this
  * package would compile in this workspace and break for everyone who installs
  * the two packages from npm.

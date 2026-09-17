@@ -18,7 +18,7 @@ the arms that phase committed:
 | `pretooluse-write-acceptedits.json` | test/fixtures/harness-probe/q1-bypass-permission-mode/control-acceptEdits-exit2.summary.txt:14 |
 
 **PROJECTION, and the word is exact.** M4-P1's marker
-(test/fixtures/harness-probe/q1-bypass-permission-mode/plugin-hook-marker.mjs.txt:11)
+(test/fixtures/harness-probe/q1-bypass-permission-mode/plugin-hook-marker.mjs.txt:13)
 wrote a JSON line carrying five fields it read off the payload
 (`hook_event_name`, `permission_mode`, `tool_name`, `cwd`, `tool_input`) plus
 three of its own (`fired_at`, `arm`, `exiting_with`). So the five payload
