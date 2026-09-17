@@ -343,6 +343,39 @@ test(
       { name: "GH_TOKEN", value: "ghp_extension_canary" },
       { name: "NODE_OPTIONS", value: "--require /tmp/evil.js" },
     ];
+    // THE BARE-STRING FORM IS THE ONE THE PRE-M4-P8 FIELD ACCEPTED, and it is
+    // exercised separately BECAUSE OF THAT. `extraAllowlist` was
+    // `readonly string[]`, so an object entry reaching that code is used as a
+    // key and coerces to "[object Object]", which crosses nothing: a witness
+    // written only in the object shape would be red against the old signature
+    // rather than against the old BEHAVIOUR. In this shape the old code copies
+    // the parent's value straight into the child.
+    for (const member of members) {
+      const parentEnv: Record<string, string> = {
+        PATH: process.env["PATH"] ?? "",
+        [member.name]: member.value,
+      };
+      const built = envModule.buildChildEnv({
+        parentEnv,
+        scrubDir: join(tmp, `scrub-string-${member.name}`),
+        extraAllowlist: [member.name],
+      });
+      const crossed = built.ok ? built.env[member.name] : undefined;
+      assert.equal(
+        crossed,
+        undefined,
+        `${member.name} crossed into the child environment through the bare-string extension`,
+      );
+      assert.equal(
+        built.ok,
+        false,
+        `the bare-string extension naming ${member.name} was accepted`,
+      );
+      assert.match(
+        envModule.refuseExtraAllowlist([member.name]) ?? "",
+        new RegExp(member.name),
+      );
+    }
     for (const member of members) {
       const parentEnv: Record<string, string> = {
         PATH: process.env["PATH"] ?? "",
@@ -355,11 +388,13 @@ test(
           { name: member.name, reason: "a widening this test asks for" },
         ],
       });
-      // AGAINST HEAD~1 BOTH NAMES APPEAR IN THE RETURNED ENV: the extension
-      // was spread into the copy loop unconditionally. The assertion is
-      // written over the returned object so it states exactly that, and it is
-      // read out BEFORE the refusal is asserted so the reading is over the
-      // whole result type rather than over an already-narrowed one.
+      // THE OBJECT SHAPE IS THE AUDITED ROUTE'S OWN, and it is checked for
+      // the same two properties. It is deliberately NOT the shape the
+      // HEAD~1 red witness above uses: against HEAD~1 this shape is refused
+      // by accident rather than by policy, because the old signature took
+      // strings and an object reaching it coerces to a key that matches
+      // nothing. The value is read out BEFORE the refusal is asserted so the
+      // reading is over the whole result type rather than a narrowed one.
       const crossed = built.ok ? built.env[member.name] : undefined;
       assert.equal(
         crossed,
@@ -380,15 +415,6 @@ test(
         existsSync(join(tmp, `scrub-${member.name}`)),
         false,
         `the refusal staged a scrub root for ${member.name}`,
-      );
-    }
-
-    // The bare-string form of the same entries is refused identically: the
-    // safety half does not depend on which shape the caller wrote.
-    for (const member of members) {
-      assert.match(
-        envModule.refuseExtraAllowlist([member.name]) ?? "",
-        new RegExp(member.name),
       );
     }
   },
@@ -448,6 +474,27 @@ test(
     const scratch = makeScratch(t);
     const honestReport = join(scratch.tmp, "honest-witness.json");
     const widenedReport = join(scratch.tmp, "widened-witness.json");
+
+    // THE ARM THAT MUST STAY CLEAN, and it runs FIRST so that a mutation of
+    // the SHIPPED adapter reddens here, on the assertion the criterion is
+    // about, rather than somewhere downstream. Mutating subprocessAdapter to
+    // widen a copy of the environment after the handover fails exactly this
+    // line, while every kernel-side check in this file stays green.
+    const honestSpawn = await spawnWith(scratch, "witness-honest", {
+      payloadClass: "project",
+      exec: `${process.execPath} ${witnessPayload} ${honestReport}`,
+    });
+    assert.equal(honestSpawn.ok, true, honestSpawn.ok ? "" : honestSpawn.reason);
+    const honestWitness = readWitness(honestReport);
+    assert.equal(
+      honestWitness.envNames.includes("GH_TOKEN"),
+      false,
+      "a token reached the child under the built-in adapter",
+    );
+    const honestEnvProbe = honestWitness.probes.find(
+      (probe) => probe.source === "environment",
+    );
+    assert.equal(honestEnvProbe?.outcome, "clean", honestEnvProbe?.detail ?? "");
 
     // THE DISHONEST ADAPTER IS THE DANGEROUS STATE, and it is carried here
     // rather than described: it takes the kernel's environment, ADDS a gh
@@ -517,24 +564,6 @@ test(
     assert.match(widenedEnvProbe?.detail ?? "", /GH_TOKEN/);
     assert.equal(widenedWitness.verdict, "red");
 
-    // THE GREEN ARM, same payload, the honest built-in adapter: the assertion
-    // that reddens above is the same one that passes here, which is what makes
-    // it a witness rather than a one-sided check.
-    const honestSpawn = await spawnWith(scratch, "witness-honest", {
-      payloadClass: "project",
-      exec: `${process.execPath} ${witnessPayload} ${honestReport}`,
-    });
-    assert.equal(honestSpawn.ok, true, honestSpawn.ok ? "" : honestSpawn.reason);
-    const honestWitness = readWitness(honestReport);
-    assert.equal(
-      honestWitness.envNames.includes("GH_TOKEN"),
-      false,
-      "a token reached the child under the built-in adapter",
-    );
-    const honestEnvProbe = honestWitness.probes.find(
-      (probe) => probe.source === "environment",
-    );
-    assert.equal(honestEnvProbe?.outcome, "clean", honestEnvProbe?.detail ?? "");
   },
 );
 
