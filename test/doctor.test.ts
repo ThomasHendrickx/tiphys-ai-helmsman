@@ -1108,12 +1108,13 @@ function remoteRefNames(repo: string): string[] {
  * THE TOTAL IS THE ONE TOKEN IN THAT LINE THIS FIXTURE DOES NOT OWN, and
  * pinning it is how this test failed in CI while passing locally at the same
  * commit (M4-P17 fix round 1). The total counts the refs under refs/remotes,
- * and git maintains that set on its own account: git >= 2.48 writes
- * refs/remotes/origin/HEAD during a default-refspec fetch, under
- * fetch.followRemoteHEAD, whose documented default is `create`. CI ran git
- * 2.55.0 and this container runs 2.43.0, so one honest run saw two refs and
- * the other saw one. Binding convention 5 states the rule this breaks: an
- * exact count is assertable only over a set the test itself fully controls.
+ * and git maintains that set on its own account: since git 2.48.0 `git fetch`
+ * writes refs/remotes/origin/HEAD when the remote advertises one and the local
+ * side has none, which `remote.<name>.followRemoteHEAD` documents as its
+ * default `create`. CI ran git 2.55.0 and this container runs 2.43.0, so one
+ * honest run saw two refs and the other saw one. Binding convention 5 states
+ * the rule this breaks: an exact count is assertable only over a set the test
+ * itself fully controls.
  *
  * Everything else in the line stays compared BYTE FOR BYTE against the
  * recorded capture, including the count of UNMERGED branches and their names,
@@ -1467,10 +1468,10 @@ test("doctor CHECK branches names a pushed branch that is not merged", (t) => {
  * --format=%(refname:short) refs/remotes` prints `origin` and `origin/main`.
  *
  * THE DANGEROUS STATE IS THE REF BEING PRESENT, not a feature being absent:
- * git >= 2.48 creates it unaided on any default-refspec fetch
- * (fetch.followRemoteHEAD, documented default `create`), so on a current git
- * every operator read a branch total one too high per remote, and doctor ran
- * `merge-base --is-ancestor` over an alias as though it were a branch.
+ * since git 2.48.0 `git fetch` creates it unaided (`remote.<name>.followRemoteHEAD`,
+ * documented default `create`), so on a current git every operator read a branch
+ * total one too high per remote, and doctor ran `merge-base --is-ancestor` over
+ * an alias as though it were a branch.
  *
  * THREE STRUCTURALLY DIFFERENT MEMBERS, because one is not a class, and they
  * are chosen so that neither half of the fix is left unwitnessed. The fix
@@ -1533,7 +1534,7 @@ test("a remote-tracking ref that is not a branch is not counted as one", (t) => 
 
   const members = [
     {
-      name: "the symbolic ref git >= 2.48 writes on fetch",
+      name: "the symbolic ref git 2.48.0 and later write on fetch",
       extra: "refs/remotes/origin/HEAD",
       heading: `git for-each-ref --format=${REF_FORMAT} refs/remotes, a symbolic remote HEAD`,
       stage: (): void => {

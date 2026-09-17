@@ -1279,13 +1279,13 @@ export function checkBranches(root: string): CheckResult {
      the property that matters. The short name is recovered below by stripping
      the prefix, which is what `:short` does for every ref that is not a HEAD.
 
-     `%(symref)` is the second half and is not redundant. git >= 2.48 creates
-     refs/remotes/<name>/HEAD on a default-refspec fetch (fetch.followRemoteHEAD,
-     whose default is `create`), and it creates it as a SYMBOLIC ref, so
-     dropping symbolic refs is the direct statement of "an alias is not a
-     branch". A HEAD written as an ordinary ref carries no symref target and is
-     caught by the name test instead; both members occur and each half catches
-     one of them. */
+     `%(symref)` is the second half and is not redundant. Since git 2.48.0,
+     `git fetch` creates refs/remotes/<name>/HEAD when the remote advertises one
+     and the local side has none: `remote.<name>.followRemoteHEAD` documents
+     `create` as its default. It creates it as a SYMBOLIC ref, so dropping
+     symbolic refs is the direct statement of "an alias is not a branch". A HEAD
+     written as an ordinary ref carries no symref target and is caught by the
+     name test instead; both members occur and each half catches one of them. */
   const listed = runGitHere(root, [
     "for-each-ref",
     "--format=%(refname)%09%(symref)",
