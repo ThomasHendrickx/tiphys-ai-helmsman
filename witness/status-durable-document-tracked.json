@@ -1,0 +1,24 @@
+{
+  "id": "status-durable-document-tracked",
+  "behavior": "status-durable-document-tracked",
+  "tests": [
+    "the durable status document is tracked and the stream stays ignored, which is the whole of M4-D-13"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "export const CURRENT_FILE = join(DURABLE_STATUS_DIR, \"current.json\");",
+      "replace": "export const CURRENT_FILE = join(STATUS_DIR, \"current.json\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/status.ts",
+      "find": "export const STREAM_FILE = join(STATUS_DIR, \"stream.jsonl\");",
+      "replace": "export const STREAM_FILE = join(DURABLE_STATUS_DIR, \"stream.jsonl\");"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

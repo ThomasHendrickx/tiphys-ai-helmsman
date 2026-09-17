@@ -8,7 +8,9 @@
     "src/commands/init.ts",
     "test/sync.test.ts",
     "test/status.test.ts",
-    "AGENTS.md"
+    "AGENTS.md",
+    "witness/",
+    "src/commands/status.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",

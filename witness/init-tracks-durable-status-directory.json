@@ -1,0 +1,31 @@
+{
+  "id": "init-tracks-durable-status-directory",
+  "behavior": "init-tracks-durable-status-directory",
+  "tests": [
+    "init tracks the durable status directory in the bootstrap commit, so a clone of a fleet home carries it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "const DURABLE_KEEP_DIRS = [\"charter\", \"decisions\", \"tasks\", DURABLE_STATUS_DIR] as const;",
+      "replace": "const DURABLE_KEEP_DIRS = [\"charter\", \"decisions\", \"tasks\"] as const;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  for (const name of [...FLEET_DIRS, DURABLE_STATUS_DIR]) {",
+      "replace": "  for (const name of FLEET_DIRS) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git init, git add -A and git commit, spawned by src/commands/init.ts",
+    "captures": [
+      "witness/captures/m4-p18-git-contracts.txt"
+    ],
+    "provenance": "src/commands/init.ts spawns git init, git add -A and git commit and reads their exit codes, so rule (f) binds this witness (SPAWN_GREP matches the changed file). Section 6 of witness/captures/m4-p18-git-contracts.txt records what that bootstrap produces for the durable status directory, captured 2026-09-17 against git 2.43.0: git ls-files -- status prints status/.gitkeep and exits 0, and a clone of that fleet home carries status/ and charter/ while state/ is absent. The named test asserts the same two facts against a fleet home it builds live, and reads the capture so the recorded contract is anchored to a run rather than standing alone. RESIDUE: the capture covers a local filesystem clone only; it says nothing about a clone over a network transport."
+  }
+}
