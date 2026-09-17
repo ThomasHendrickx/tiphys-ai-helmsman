@@ -1,0 +1,7 @@
+Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)
+Define hooks in the plugin's own hooks/hooks.json (or its plugin.json), or inline them here as an object mapping hook event names to matcher arrays.C
+ ships hooks/hooks.json: 
+. The standard hooks/hooks.json is loaded automatically, so manifest.hooks should only reference additional hook files.
+The hooks provided by the plugin, in the same format as the one used for settings
+Path to file with additional hooks (in addition to those in hooks/hooks.json, if it exists), relative to the plugin rootI
+Additional hooks (in addition to those in hooks/hooks.json, if it exists)

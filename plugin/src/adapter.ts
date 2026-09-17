@@ -1,12 +1,18 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { constants } from "node:os";
 import type {
   ExecutorAdapter,
   ExecutorRecord,
   ExecutorRequest,
   LaunchOutcome,
 } from "@tiphys/kernel";
+import { invokeTurnEndHook, payloadExitCode } from "./hooks/turn-end.ts";
+import {
+  deliverStatus,
+  fleetRootFromTaskPath,
+  resolveKernelCli,
+  stateForExitCode,
+} from "./status.ts";
 
 /**
  * THE CLAUDE CODE EXECUTOR ADAPTER (kernel plan M4, M4-P5; DR-0040 at
@@ -85,24 +91,13 @@ export const ADAPTER_REQUIRES: readonly string[] = ["briefPath"];
  * hiding the real outcome behind a plumbing failure
  * (src/hooks.ts:47, delivery/plan/kernel-plan-m4.md:909).
  *
- * So the shell's 128-plus-signal convention is applied here, matching the
- * kernel's own `payloadExitCode` (src/spawn.ts:359). It is reimplemented
- * rather than imported because the kernel does not publish it: `src/index.ts`
- * exports the adapter CONTRACT and nothing else, and reaching past the
- * published surface for it is exactly the relative import criterion 6
- * forbids.
+ * M4-P6 MOVED THE CONVERSION AND THIS RE-EXPORT IS THE WHOLE OF WHAT IS LEFT.
+ * It now lives beside the invocation it feeds, in
+ * `plugin/src/hooks/turn-end.ts`, because that is the file a witness mutates
+ * and the file a second adapter author would read. The name stays exported
+ * here so nothing that resolved it through the adapter has to move.
  */
-export function payloadExitCode(
-  status: number | null,
-  signal: NodeJS.Signals | null,
-): number {
-  if (status !== null) {
-    return status;
-  }
-  const signals = constants.signals as unknown as Record<string, number | undefined>;
-  const number = signal === null ? undefined : signals[signal];
-  return 128 + (number ?? 0);
-}
+export { payloadExitCode } from "./hooks/turn-end.ts";
 
 /** The launch record this adapter writes, built from the request it was handed. */
 function launchRecord(request: ExecutorRequest, launchedAt: Date): ExecutorRecord {
@@ -206,32 +201,65 @@ export const claudeCodeAdapter: ExecutorAdapter = {
     // THE PAYLOAD HAS RUN. Every failure from here down is `incomplete`,
     // because the worktree may hold real work now.
     const exitCode = payloadExitCode(started.status, started.signal);
-    let hooked;
-    try {
-      hooked = spawnSync(process.execPath, [request.hookPath, String(exitCode)], {
-        stdio: "inherit",
-        ...(request.env === undefined ? {} : { env: request.env }),
-      });
-    } catch (error) {
-      return {
-        kind: "incomplete",
-        reason:
-          `the payload exited ${String(exitCode)} but the ${ADAPTER_NAME} adapter ` +
-          `could not invoke the turn-end hook ${request.hookPath} ` +
-          `(${singleLine(error)}); the worktree and the task directory are left in place`,
-      };
-    }
-    if (hooked.error !== undefined || hooked.status !== 0) {
-      const detail =
-        hooked.error === undefined ? `exit ${String(hooked.status)}` : singleLine(hooked.error);
+
+    // STATUS DELIVERY GOES FIRST, AND THE ORDER IS THE ASSERTION (M4-P6
+    // criterion 8). Telemetry that can fail a delivery is the hazard, so the
+    // emit is placed BEFORE the turn-end invocation on purpose: if anything
+    // here could throw or could return early, the turn-end record would not
+    // be written and the witness would see it. `deliverStatus` swallows every
+    // failure by contract (plugin/src/status.ts:163) and its outcome is read
+    // for the record's sake and never for the turn's.
+    const delivery = deliverStatusForTurn(request, exitCode);
+
+    const hooked = invokeTurnEndHook({
+      hookPath: request.hookPath,
+      termination: { status: started.status, signal: started.signal },
+      env: request.env,
+    });
+    if (!hooked.ok) {
       return {
         kind: "incomplete",
         reason:
           `the payload exited ${String(exitCode)} but the turn-end hook ` +
-          `${request.hookPath} failed (${detail}); the worktree and the task ` +
-          `directory are left in place`,
+          `${request.hookPath} failed (${hooked.detail}); the worktree and the ` +
+          `task directory are left in place${statusSuffix(delivery)}`,
       };
     }
     return { kind: "completed", exitCode };
   },
 };
+
+/**
+ * Emit the turn's status line, and report only whether it went out.
+ *
+ * SEPARATED FROM `launch` SO THE SWALLOW IS VISIBLE IN ONE PLACE. Every arm
+ * of this function returns a string; none of them can change the outcome the
+ * adapter is about to report, and none of them can prevent the turn-end
+ * record from being written. That is criterion 8 stated as code rather than
+ * as a comment, and the witness drives it by removing the directory the emit
+ * writes into.
+ */
+function deliverStatusForTurn(request: ExecutorRequest, exitCode: number): string {
+  const cli = resolveKernelCli();
+  if (!cli.ok) {
+    return cli.reason;
+  }
+  const delivered = deliverStatus({
+    cliPath: cli.path,
+    fleetRoot: fleetRootFromTaskPath(request.recordPath),
+    run: request.taskId,
+    state: stateForExitCode(exitCode),
+    detail:
+      `the ${ADAPTER_NAME} adapter finished task ${request.taskId} ` +
+      `with exit code ${String(exitCode)}`,
+    env: request.env,
+  });
+  return delivered.delivered ? "" : delivered.reason;
+}
+
+/** A failed status delivery is REPORTED, never escalated, in an incomplete
+ * reason that already exists. Silence about an undelivered status line is the
+ * shape this repository keeps paying for, and a suffix costs nothing. */
+function statusSuffix(delivery: string): string {
+  return delivery === "" ? "" : ` (the status line was not delivered: ${delivery})`;
+}

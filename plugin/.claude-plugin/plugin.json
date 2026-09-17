@@ -1,5 +1,17 @@
 {
   "name": "tiphys",
   "version": "0.1.0",
-  "description": "Tiphys kernel delivery under Claude Code: the executor adapter, and the hooks that follow in M4-P6."
+  "description": "Tiphys kernel delivery under Claude Code: the executor adapter, and the tool-call observer that records every tool call and blocks nothing.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/src/hooks/tool-call-observer.js\""
+          }
+        ]
+      }
+    ]
+  }
 }
