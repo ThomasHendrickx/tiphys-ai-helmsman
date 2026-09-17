@@ -20,7 +20,8 @@
     "witness/captures/gate-classes-missing-declaration.txt",
     "witness/captures/gate-classes-escape-arms.txt",
     "witness/captures/typecheck-tsc-listfiles-red.txt",
-    "witness/captures/typecheck-tsc-listfiles-green.txt"
+    "witness/captures/typecheck-tsc-listfiles-green.txt",
+    "witness/phase-declaration-carries-the-class-vocabulary.json"
   ],
   "citations": [
     "DR-0028",

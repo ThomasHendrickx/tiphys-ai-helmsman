@@ -1,0 +1,33 @@
+{
+  "id": "phase-declaration-carries-the-class-vocabulary",
+  "behavior": "phase-declaration-carries-the-class-vocabulary",
+  "tests": [
+    "a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green",
+    "a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/phase-declaration.schema.json",
+      "find": "    \"gateClasses\": {",
+      "replace": "    \"gateClassesUnderAnotherName\": {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/phase-declaration.schema.json",
+      "find": "          \"enum\": [\"not-applicable\", \"not-yet-establishable\"]",
+      "replace": "          \"enum\": [\"not-applicable\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "src/gates/gate-classes.ts, run as a gate subprocess, whose stdout and GateResult record the named tests ingest",
+    "captures": [
+      "witness/captures/gate-classes-missing-declaration.txt",
+      "witness/captures/gate-classes-escape-arms.txt"
+    ],
+    "provenance": "Both captures are verbatim stdout of the gate under test, taken on 2026-09-17 against this branch over COPIES of real phase declarations; the two named tests read their asserted detail sentences out of them rather than carrying hand-written strings. Rule (f) does not bind this spec, because its members touch only the schema document and the spawn derivation does not match it; the declaration is made anyway because these tests DO assert on another program's captured output and saying so is cheaper than leaving a reader to check. THE TWO MEMBERS ARE STRUCTURALLY DIFFERENT, and they attack the schema at two different granularities. The first RENAMES the whole gateClasses property, so `additionalProperties: false` rejects every declaration that carries the field and the green arm of the first test becomes a red verdict about a document that does not validate. The second NARROWS the status vocabulary so `not-yet-establishable` is no longer a legal value, which leaves the first test untouched and kills only the second test's not-yet-establishable arms. A witness carrying the first alone would leave the value vocabulary unguarded, which is CLAUDE.md's one-witness-is-not-a-class in the small."
+  }
+}
