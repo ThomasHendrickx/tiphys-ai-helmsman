@@ -17,14 +17,14 @@
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    if (symref !== \"\" || refname.endsWith(\"/HEAD\")) {",
-      "replace": "    if (symref !== \"\") {"
+      "find": "    if (symref !== \"\") {",
+      "replace": "    if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/commands/doctor.ts",
-      "find": "    if (symref !== \"\" || refname.endsWith(\"/HEAD\")) {",
-      "replace": "    if (refname.endsWith(\"/HEAD\")) {"
+      "find": "    if (refname.endsWith(\"/HEAD\")) {",
+      "replace": "    if (false) {"
     }
   ],
   "consumesExternalOutput": {
@@ -32,6 +32,6 @@
     "captures": [
       "witness/captures/m4-p17-git-remote-comparison.txt"
     ],
-    "provenance": "Red-witness rule (f) binds because every member here mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep matches. The capture blocks this witness rests on were appended to the phase's git capture on 2026-09-17, git version 2.43.0, over the same fixture the named test builds, and they record what git ACTUALLY prints for four ref states: one pushed branch, a symbolic refs/remotes/origin/HEAD, the same path written as an ordinary ref, and a symbolic ref under another name. The TAB separator and the empty trailing symref field are recorded rather than described, because they are exactly the bytes a hand-written expectation loses. The named test reproduces each block live and compares it before believing any verdict built on it, and it reads the shipped filter's own rendering out of the capture too: git shortens refs/remotes/origin/HEAD to `origin`, never to `origin/HEAD`, which is the whole defect and is a fact about git rather than about this kernel. The three members are structurally different and no two are caught by the same half of the fix: member 0 asks git for the short rendering, so no row is recognised as a remote-tracking ref at all; member 1 keeps only the symref test, so the ordinary refs/remotes/origin/HEAD is still counted; member 2 keeps only the name test, so a symbolic ref under another name is still counted. Measured against checkBranches over the three staged ref states, the shipped filter reports a total of 2 for every one of them and the corrected filter reports 1 for every one of them."
+    "provenance": "Red-witness rule (f) binds because every member here mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep matches. The capture blocks this witness rests on were appended to the phase's git capture on 2026-09-17, git version 2.43.0, over the same fixture the named test builds, and they record what git ACTUALLY prints for four ref states: one pushed branch, a symbolic refs/remotes/origin/HEAD, the same path written as an ordinary ref, and a symbolic ref under another name. The TAB separator and the empty trailing symref field are recorded rather than described, because they are exactly the bytes a hand-written expectation loses. The named test reproduces each block live and compares it before believing any verdict built on it, and it reads the shipped filter's own rendering out of the capture too: git shortens refs/remotes/origin/HEAD to `origin`, never to `origin/HEAD`, which is the whole defect and is a fact about git rather than about this kernel. The three members are structurally different and no two are caught by the same half of the fix: member 0 asks git for the short rendering, so no row is recognised as a remote-tracking ref at all; member 1 removes the name test, so the ordinary refs/remotes/origin/HEAD is still counted; member 2 removes the symref test, so a symbolic ref under another name is still counted. The two tests are separate statements in the source for exactly this reason, so the two members mutate different text and rule (g) does not collapse them. Measured against checkBranches over the three staged ref states, the shipped filter reports a total of 2 for every one of them and the corrected filter reports 1 for every one of them."
   }
 }

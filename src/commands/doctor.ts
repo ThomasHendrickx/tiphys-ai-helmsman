@@ -1308,7 +1308,14 @@ export function checkBranches(root: string): CheckResult {
     if (!refname.startsWith(REMOTES_PREFIX)) {
       continue;
     }
-    if (symref !== "" || refname.endsWith("/HEAD")) {
+    /* TWO TESTS, TWO STATEMENTS. They are not one condition with an `||`
+       because they are two different properties with two different witnesses,
+       and a witness member that defangs one of them must be distinguishable
+       from one that defangs the other. */
+    if (symref !== "") {
+      continue;
+    }
+    if (refname.endsWith("/HEAD")) {
       continue;
     }
     refs.push(refname.slice(REMOTES_PREFIX.length));
