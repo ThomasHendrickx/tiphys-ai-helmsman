@@ -5,7 +5,8 @@
     "src/commands/doctor.ts",
     "src/lock.ts",
     "src/pool.ts",
-    "test/doctor.test.ts"
+    "test/doctor.test.ts",
+    "witness/"
   ],
   "declaredExtras": [
     "test/behaviors.json",

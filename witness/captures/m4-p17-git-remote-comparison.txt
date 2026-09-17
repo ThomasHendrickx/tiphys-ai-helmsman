@@ -1,0 +1,66 @@
+M4-P17 capture: the git commands CHECK remote and CHECK branches parse.
+Taken 2026-09-17, git version 2.43.0.
+Every block records the command, its stdout with byte-for-byte separators
+(the rev-list counts are TAB separated), and its exit code.
+
+== git rev-list --left-right --count origin/main...HEAD, in sync ==
+0	0
+exit: 0
+
+== git rev-list --left-right --count origin/main...HEAD, two commits ahead ==
+0	2
+exit: 0
+
+== git fetch --quiet origin, a remote that is there ==
+exit: 0
+
+== git fetch --quiet origin, a remote that is not there ==
+fatal: '<LAB>/absent.git' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+exit: 128
+
+== git merge-base --is-ancestor origin/task/t-unmerged origin/main ==
+exit: 1
+
+== git merge-base --is-ancestor origin/main origin/main ==
+exit: 0
+
+== git for-each-ref --format=%(refname:short) refs/remotes ==
+origin/main
+origin/task/t-unmerged
+exit: 0
+
+M4-P17 FIX ROUND 1 appended the blocks below, taken the same day on the
+same git, over the same fixture with one remote-tracking ref added to it.
+The `%(refname:short)` block is the defect in one line: git renders
+refs/remotes/origin/HEAD short as `origin`, so a filter testing for a
+`/HEAD` suffix over that rendering never fires. The `%(refname)%09%(symref)`
+blocks are what the corrected check reads; the TAB is present on every row
+and the symref field is empty for a ref that is not symbolic.
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, one pushed branch ==
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname:short) refs/remotes, with a remote HEAD present ==
+origin
+origin/main
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, a symbolic remote HEAD ==
+refs/remotes/origin/HEAD	refs/remotes/origin/main
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, an ordinary remote HEAD ==
+refs/remotes/origin/HEAD	
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, a symbolic ref under another name ==
+refs/remotes/origin/main	
+refs/remotes/origin/trunk	refs/remotes/origin/main
+exit: 0

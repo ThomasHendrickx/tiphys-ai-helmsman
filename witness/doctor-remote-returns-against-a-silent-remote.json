@@ -1,0 +1,32 @@
+{
+  "id": "doctor-remote-returns-against-a-silent-remote",
+  "behavior": "doctor-remote-returns-against-a-silent-remote",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "doctor returns against a remote that accepts and never answers"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    resolveNetworkTimeoutMs(process.env[\"TIPHYS_GIT_NETWORK_TIMEOUT_MS\"]),",
+      "replace": "    undefined,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "    resolveNetworkTimeoutMs(process.env[\"TIPHYS_GIT_NETWORK_TIMEOUT_MS\"]),\n  );\n  if (fetched.status !== 0) {",
+      "replace": "    600_000,\n  );\n  if (fetched.status !== 0) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git fetch --quiet <remote> against a TCP listener that accepts and never speaks",
+    "captures": [
+      "witness/captures/m4-p17-git-remote-comparison.txt",
+      "witness/captures/m4-p17-doctor-cli.txt"
+    ],
+    "provenance": "red-witness rule (f) binds because a member of this witness mutates src/commands/doctor.ts, which spawns git through spawnSync and which the spawn grep therefore matches. The capture is the output of the program this behaviour reports THROUGH, the tiphys CLI itself, recorded on 2026-09-17 against node v26.6.0 and git 2.43.0 over a fleet built by `tiphys init` with a file:// remote it had been pushed to. Every recorded CHECK line is path-free by construction, so the named test compares a live line against a recorded one byte for byte rather than against a sentence written to match the implementation. The one alteration is stated inside the capture: the lab's absolute path is rendered <LAB> in the two lines that carried it. The git capture records the commands the check PARSES, with their exit codes and their real separators: `git rev-list --left-right --count` answers two counts separated by a TAB, `git fetch` exits 0 against a remote that is there and 128 against one that is not, and `git merge-base --is-ancestor` exits 0 for merged and 1 for unmerged. Those are facts about git, not about this kernel, and the named test reproduces each of them live before believing the verdict built on them. The premise this witness rests on is a claim about ANOTHER program, that git does not give up on a stalled peer by itself, and it is measured rather than reasoned: witness/captures/m4-p19-git-ls-remote-silent-listener.txt records git still waiting at both a five second and a twenty second wait. The two members are structurally different: member 0 removes the bound entirely, and member 1 keeps a bound but makes it one no test can shorten, which is the same cannot-be-exercised shape test/pool.test.ts's classification names one level down. Both leave doctor running past the witness's own spawn bound, so the dangerous state shows up as a killed child rather than as a test run that never ends."
+  }
+}

@@ -150,8 +150,28 @@ export function observeLease(lockPath: string): ObservedLease {
   return { kind: "present", raw, lease: parseLease(raw) };
 }
 
+/**
+ * THE ONE EXPIRY COMPARISON IN THE KERNEL (M4-P17 criterion 2).
+ *
+ * `isExpired` below needs a whole `Lease`, and doctor's lock check does not
+ * have one: it reads the lease file defensively and holds only `holderId` and
+ * `expiresAt`, because a lease file that fails `parseLease` must still produce
+ * a diagnosis rather than nothing. Before this phase that forced doctor to
+ * carry its own `Date.parse(...) <= Date.now()`, which is a SECOND comparison
+ * of the same property, free to drift from this one. The boundary is where
+ * that drift shows: `<=` makes expiry INCLUSIVE, so a lease whose `expiresAt`
+ * is exactly the current millisecond is expired, and a second copy written
+ * with `<` disagrees for exactly one millisecond and agrees everywhere else.
+ * A disagreement that narrow is not something a reviewer finds by reading.
+ *
+ * So the comparison lives here once and both callers reach it.
+ */
+export function expiryHasPassed(expiresAt: string, nowMs: number): boolean {
+  return Date.parse(expiresAt) <= nowMs;
+}
+
 export function isExpired(lease: Lease, nowMs: number): boolean {
-  return Date.parse(lease.expiresAt) <= nowMs;
+  return expiryHasPassed(lease.expiresAt, nowMs);
 }
 
 /** The renew-by deadline (half-life of the current term), for holders. */
