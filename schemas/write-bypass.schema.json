@@ -50,7 +50,7 @@
       "pattern": "\\S"
     },
     "expiresAt": {
-      "$comment": "THE ABSOLUTE EXPIRY INSTANT, and it is the single most load-bearing field in this document. The plan's hazard class opens with 'a bypass with no expiry, so the first hotfix disables the block permanently'; making this required is how that state stops being representable. It is an instant and never a duration, because a duration has to be added to something and the thing it would be added to is the clock the declaration cannot see.",
+      "$comment": "THE ABSOLUTE EXPIRY INSTANT, and it is the single most load-bearing field in this document. The plan's hazard class opens with 'a bypass with no expiry, so the first hotfix disables the block permanently'; making this required is how that state stops being representable. It is an instant and never a duration, because a duration has to be added to something and the thing it would be added to is a clock this document has no way to read.",
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
     },
