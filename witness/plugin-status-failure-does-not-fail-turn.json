@@ -1,0 +1,31 @@
+{
+  "id": "plugin-status-failure-does-not-fail-turn",
+  "behavior": "plugin-status-failure-does-not-fail-turn",
+  "tests": [
+    "a status emit that fails leaves the turn outcome unchanged and the turn-end record written"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/status.ts",
+      "find": "  if (emitted.status !== 0) {\n    return {\n      delivered: false,\n",
+      "replace": "  if (emitted.status !== 0) {\n    throw new Error(`tiphys status emit exited ${String(emitted.status)}`);\n    return {\n      delivered: false,\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/adapter.ts",
+      "find": "    const delivery = deliverStatusForTurn(request, exitCode);\n",
+      "replace": "    const delivery = deliverStatusForTurn(request, exitCode);\n    if (delivery !== \"\") {\n      return { kind: \"incomplete\", reason: `the status line was not delivered: ${delivery}` };\n    }\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys status emit, made to fail against a fleet whose state directory has been replaced by a regular file",
+    "captures": [
+      "test/fixtures/plugin-hook-payloads/hook-json-output-contract.txt"
+    ],
+    "provenance": "The failure is produced by breaking the emitter's target on disk and letting the real command fail, so the reason the adapter swallows is the kernel's own rather than a stub's."
+  }
+}

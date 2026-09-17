@@ -1,0 +1,32 @@
+{
+  "id": "plugin-turn-end-always-integer-exit-code",
+  "behavior": "plugin-turn-end-always-integer-exit-code",
+  "tests": [
+    "a turn that ends with no exit code still hands the generated turn-end hook an integer"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/turn-end.ts",
+      "find": "  return 128 + (number ?? 0);\n",
+      "replace": "  return 128 + (number as number);\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/turn-end.ts",
+      "find": "  return { exitCode, argument: String(exitCode) };\n",
+      "replace": "  return { exitCode, argument: String(termination.status) };\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the turn-end hook the kernel generates (src/hooks.ts:38), plus the claude runs M4-P1 abandoned",
+    "captures": [
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/D-abandon-sigkill.summary.txt",
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/E-abandon-sigterm.summary.txt"
+    ],
+    "provenance": "The hook text is produced by calling renderTurnEndHook and written to the lab unmodified, so the exit-64 refusal this witness turns on is the shipped refusal rather than a restatement of it. The cited captures are M4-P1's real abandonment runs, which is what establishes that a turn ending with no exit code is a measured mode and not an invented one."
+  }
+}

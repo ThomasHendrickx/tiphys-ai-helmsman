@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "acceptEdits",
+  "tool_name": "Write",
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/m4p1/q1/project",
+  "tool_input": {
+    "file_path": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/m4p1/q1/project/app.txt",
+    "content": "HOTFIX\n"
+  }
+}

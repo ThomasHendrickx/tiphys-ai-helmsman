@@ -239,13 +239,15 @@ test("the plugin manifest parses and its version matches the package", () => {
   assert.equal(manifest["version"], pkg["version"]);
   assert.equal(typeof manifest["description"], "string");
 
-  // M4-P6 declares the hooks. Until it does, a `hooks` pointer here would name
-  // a file that does not exist, which is the manifest equivalent of a guard
-  // that cannot go red, so its ABSENCE is asserted rather than assumed.
+  // M4-P6 DECLARED THE HOOKS, AND THIS IS THE ASSERTION MOVING WITH THAT EDIT
+  // rather than being deleted, which is what the sentence that stood here
+  // asked for. The manifest now CARRIES hooks; what it carries, and that no
+  // `Stop` hook is among them, is asserted in test/plugin-hooks.test.ts, which
+  // is where the hooks themselves live.
   assert.equal(
     Object.hasOwn(manifest, "hooks"),
-    false,
-    "the manifest declares hooks; M4-P6 owns that edit and this assertion moves with it",
+    true,
+    "the manifest declares no hooks; M4-P6 declares them and this assertion moved with that edit",
   );
 });
 

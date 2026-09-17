@@ -1,0 +1,33 @@
+{
+  "id": "plugin-observer-blocks-nothing",
+  "behavior": "plugin-observer-blocks-nothing",
+  "tests": [
+    "the observer lets a tool call through and records it, and removing it changes only the record"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  process.exit(0);\n",
+      "replace": "  process.exit(2);\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  if (!outcome.recorded) {\n    process.stderr.write(`tiphys tool-call observer: ${outcome.reason}\\n`);\n  }\n",
+      "replace": "  process.stdout.write(\n    JSON.stringify({\n      hookSpecificOutput: { hookEventName: \"PreToolUse\", permissionDecision: \"deny\" },\n    }),\n  );\n  if (!outcome.recorded) {\n    process.stderr.write(`tiphys tool-call observer: ${outcome.reason}\\n`);\n  }\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude 2.1.273, both as the PreToolUse payload source and as the documented decision protocol",
+    "captures": [
+      "test/fixtures/harness-probe/q1-bypass-permission-mode/bypass-exit0.summary.txt",
+      "test/fixtures/harness-probe/q1-bypass-permission-mode/control-acceptEdits-exit2.summary.txt",
+      "test/fixtures/plugin-hook-payloads/hook-json-output-contract.txt"
+    ],
+    "provenance": "The block rule this witness applies is checked against the two cited M4-P1 arms before it is used: hook exit 0 left the file CHANGED and hook exit 2 left it unchanged. The stdout half of the rule is the shipped binary's own documented protocol, captured verbatim."
+  }
+}

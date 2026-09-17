@@ -1,0 +1,31 @@
+{
+  "id": "plugin-status-line-delivered-and-valid",
+  "behavior": "plugin-status-line-delivered-and-valid",
+  "tests": [
+    "an agent turn delivers a status record that validates, and the current document is the read path"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/adapter.ts",
+      "find": "    const delivery = deliverStatusForTurn(request, exitCode);\n",
+      "replace": "    const delivery = \"\";\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/status.ts",
+      "find": "  return exitCode === 0 ? STATE_DONE : STATE_FAILED;\n",
+      "replace": "  return exitCode === 0 ? \"progress\" : STATE_FAILED;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys status emit, tiphys status show and tiphys validate, run as real subprocesses",
+    "captures": [
+      "test/fixtures/plugin-hook-payloads/hook-json-output-contract.txt"
+    ],
+    "provenance": "Every status assertion reads what the kernel's own commands wrote or printed. The status paths are imported from src/status.ts rather than spelled in the test, so the M4-D-13 move cannot leave this witness asserting about a file nothing writes."
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "plugin-observer-records-payload-verbatim",
+  "behavior": "plugin-observer-records-payload-verbatim",
+  "tests": [
+    "the observer's line round-trips the captured hook payload and adds only a receipt"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  return { receivedAt: at, payloadSha256, payload };\n",
+      "replace": "  const summary =\n    typeof payload === \"object\" && payload !== null\n      ? { tool_name: (payload as { tool_name?: unknown }).tool_name }\n      : payload;\n  return { receivedAt: at, payloadSha256, payload: summary };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  const payloadSha256 = createHash(\"sha256\").update(raw, \"utf8\").digest(\"hex\");\n",
+      "replace": "  const payloadSha256 = createHash(\"sha256\")\n    .update(JSON.stringify(JSON.parse(raw)), \"utf8\")\n    .digest(\"hex\");\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude 2.1.273, whose PreToolUse payloads M4-P1 captured",
+    "captures": [
+      "test/fixtures/harness-probe/q1-bypass-permission-mode/bypass-exit0.summary.txt",
+      "test/fixtures/harness-probe/q1-bypass-permission-mode/control-acceptEdits-exit2.summary.txt"
+    ],
+    "provenance": "The fixtures are re-derived from the cited captures inside the test on every run, so the round-trip is against what the harness actually sent and not against a document that could drift away from it."
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "plugin-turn-end-signal-convention",
+  "behavior": "plugin-turn-end-signal-convention",
+  "tests": [
+    "a turn that ends by signal reports 128 plus that signal and never reports success"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/turn-end.ts",
+      "find": "  if (status !== null) {\n    return status;\n  }\n  const signals = constants.signals as unknown as Record<string, number | undefined>;\n  const number = signal === null ? undefined : signals[signal];\n  return 128 + (number ?? 0);\n",
+      "replace": "  return status ?? 0;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/turn-end.ts",
+      "find": "  return 128 + (number ?? 0);\n",
+      "replace": "  return 64 + (number ?? 0);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude, terminated by timeout -s KILL and timeout -s TERM (M4-P1 Q2)",
+    "captures": [
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/D-abandon-sigkill.summary.txt",
+      "test/fixtures/harness-probe/q2-launch-failed-vs-incomplete/E-abandon-sigterm.summary.txt"
+    ],
+    "provenance": "The two signal names this witness drives are PARSED out of the cited captures' own command lines rather than written down, and the expected value is read from os.constants.signals, so neither the termination mode nor the number is hand-written."
+  }
+}
