@@ -479,3 +479,55 @@ beside it. M4-P21 and M4-P22 collide on `src/exclusion.ts`, and M4-P22 also
 collides with the merged M4-P8 on `src/spawn.ts`, which is a merge-order
 constraint rather than a concurrency one now. M4-P12, M4-P24 and M4-P25 share
 `src/cli.ts` under DR-0046.
+
+## Wave 11, 2026-09-17: M4-P9 and M4-P21
+
+Written BEFORE dispatch, per rule 5.
+
+| unit | files it may touch |
+|---|---|
+| M4-P9 | `plugin/src/hooks/project-write-block.ts`, `plugin/.claude-plugin/plugin.json`, `schemas/write-bypass.schema.json`, `src/commands/validate.ts`, `test/project-write-block.test.ts`, `AGENTS.md`, `witness/` |
+| M4-P21 | `src/exclusion.ts`, `src/lock.ts`, `src/commands/lock.ts`, `src/commands/init.ts`, `test/cross-environment-lock.test.ts`, `test/lock.test.ts`, `witness/` |
+
+**Intersection: EMPTY except `witness/`**, which the wave-10 pre-pass settled:
+a witness spec is a whole file named after the behaviour it guards, so two
+phases append disjoint filenames and never edit a shared document.
+
+M4-P21's list is read from the plan at delivery/plan/kernel-plan-m4.md:2987.
+M4-P9's is read from delivery/plan/kernel-plan-m4.md:1581 **with two
+corrections, both stated rather than applied silently**, because that line is
+the most out-of-date files-to-touch line left in the plan:
+
+1. It says `packages/claude-code-plugin/` (create, whole tree). The plugin tree
+   is `plugin/` and it exists: the plan itself recommends `plugin/` at
+   delivery/plan/kernel-plan-m4.md:1192 and hands the choice to the
+   orchestrator with "no escalation", and M4-P5 shipped it. M4-P9 creates no
+   tree; it adds a hook module to the one that is there.
+2. It says `package.json` (edit, `workspaces`, only if the adapter phase has
+   not already added it). M4-P5 added it, so that clause resolves to no edit
+   and `package.json` is not on the declaration.
+
+**A THIRD CORRECTION, AND IT IS ONE THE ORCHESTRATOR GOT WRONG FIRST.** The
+plan's M4-P7 line said `src/validate.ts (edit: type table and auto resolver)`
+and the M4-P7 declaration carried that spelling, so the scope gate reported a
+declared path the phase never touched. The orchestrator then wrote in the pull
+request that the file "does not exist". **It exists.** src/validate.ts:1 is the
+kernel's schema validation ENGINE from M3-P1; the `--type` table is in
+src/commands/validate.ts and M4-P7 registered its row there correctly at
+src/commands/validate.ts:148. So the plan names the wrong file and the phase
+edited the right one. M4-P9 also registers a type, and its declaration names
+`src/commands/validate.ts` so the same round trip is not paid twice.
+
+**Checked against the pull request still in CI.** #187 changes
+`src/gates/red-witness.ts` and one tuition document. No overlap with either
+unit.
+
+**The generator check.** Neither unit adds a gate row, so no drift chain moves.
+M4-P9 edits `AGENTS.md`, which is READ by `scripts/check-agents-references.mjs`,
+`scripts/check-clause-map.mjs` and `scripts/check-retirement-inventory.mjs`;
+M4-P9 owns running all three, and M4-P21 touches none of them.
+
+**Not dispatched, and why.** M4-P22 collides with M4-P21 on `src/exclusion.ts`
+and is the phase that integrates what M4-P21 builds, so it follows rather than
+runs beside it. M4-P12, M4-P24 and M4-P25 share `src/cli.ts` under DR-0046 and
+are the last three, to be serialised among themselves.
