@@ -1,4 +1,4 @@
-# T-033: the stop condition reported a finished milestone with six phases unbuilt
+# T-036: the stop condition reported a finished milestone with six phases unbuilt
 
 **Measured:** 2026-09-17, on `main` at `d938557`.
 
