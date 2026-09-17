@@ -1026,7 +1026,7 @@ interface LeaseShape {
   durationSeconds: number;
   token: string;
 }
-const { lockCheckFor, PROFILES } = (await import(
+const { lockCheckFor, PROFILES, checkBranches } = (await import(
   new URL("../src/commands/doctor.ts", import.meta.url).href
 )) as {
   lockCheckFor: (
@@ -1035,6 +1035,9 @@ const { lockCheckFor, PROFILES } = (await import(
     nowMs: number,
   ) => { name: string; status: string; detail: string; condition?: string };
   PROFILES: Record<string, readonly string[]>;
+  checkBranches: (
+    root: string,
+  ) => { name: string; status: string; detail: string; condition?: string };
 };
 const { isExpired } = (await import(
   new URL("../src/lock.ts", import.meta.url).href
@@ -1047,15 +1050,28 @@ const P17_IDENTITY = {
   GIT_COMMITTER_EMAIL: "doctor-test@tiphys.invalid",
 };
 
-/** git in a scratch repository, with a command-scoped identity (warning 5). */
-function git(cwd: string, args: string[]): string {
+/**
+ * git in a scratch repository, with a command-scoped identity (warning 5),
+ * stdout UNTRIMMED.
+ *
+ * The trimming sibling below is the one nearly every caller wants. This one
+ * exists because `--format=%(refname)%09%(symref)` ends every non-symbolic row
+ * with a TAB and an empty field, and trimming would delete exactly the byte a
+ * capture comparison is there to check.
+ */
+function gitRaw(cwd: string, args: string[]): string {
   const result = spawnSync("git", args, {
     cwd,
     encoding: "utf8",
     env: { ...process.env, ...P17_IDENTITY },
   });
   assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
-  return (result.stdout ?? "").trim();
+  return result.stdout ?? "";
+}
+
+/** git in a scratch repository, with a command-scoped identity (warning 5). */
+function git(cwd: string, args: string[]): string {
+  return gitRaw(cwd, args).trim();
 }
 
 /** A fleet home with a file:// remote it has been pushed to, in sync. */
@@ -1076,6 +1092,46 @@ function fleetWithRemote(t: { after(fn: () => void): void }): {
 /** One CHECK line by name, or undefined when doctor did not print it. */
 function checkLine(stdout: string, name: string): string | undefined {
   return stdout.split("\n").find((line) => line.startsWith(`CHECK ${name} `));
+}
+
+/** Every remote-tracking ref in a repository, by full refname, sorted. */
+function remoteRefNames(repo: string): string[] {
+  return git(repo, ["for-each-ref", "--format=%(refname)", "refs/remotes"])
+    .split("\n")
+    .filter((line) => line !== "")
+    .sort();
+}
+
+/**
+ * A `CHECK branches` line with its pushed-branch TOTAL rendered `<total>`.
+ *
+ * THE TOTAL IS THE ONE TOKEN IN THAT LINE THIS FIXTURE DOES NOT OWN, and
+ * pinning it is how this test failed in CI while passing locally at the same
+ * commit (M4-P17 fix round 1). The total counts the refs under refs/remotes,
+ * and git maintains that set on its own account: git >= 2.48 writes
+ * refs/remotes/origin/HEAD during a default-refspec fetch, under
+ * fetch.followRemoteHEAD, whose documented default is `create`. CI ran git
+ * 2.55.0 and this container runs 2.43.0, so one honest run saw two refs and
+ * the other saw one. Binding convention 5 states the rule this breaks: an
+ * exact count is assertable only over a set the test itself fully controls.
+ *
+ * Everything else in the line stays compared BYTE FOR BYTE against the
+ * recorded capture, including the count of UNMERGED branches and their names,
+ * which this fixture does create and therefore does own. The same transform is
+ * applied to both sides, so no expectation here is hand-written.
+ *
+ * The `notEqual` is the guard on the guard: if the line's wording ever stops
+ * carrying a total in this shape, the replace becomes an identity and this
+ * helper would quietly go back to pinning a moving number, which is a check
+ * that cannot go red (CLAUDE.md, T-008's postscript).
+ */
+function branchLineWithoutTotal(line: string): string {
+  const relaxed = line.replace(
+    /(^CHECK branches (?:PASS|WARN) (?:\d+ of )?)\d+( pushed branch\(es\))/,
+    "$1<total>$2",
+  );
+  assert.notEqual(relaxed, line, `no pushed-branch total to relax in: ${line}`);
+  return relaxed;
 }
 
 /** An expired lease record, written at the lease path. */
@@ -1346,7 +1402,13 @@ test("doctor CHECK branches names a pushed branch that is not merged", (t) => {
   const { fleet } = fleetWithRemote(t);
   const mergedRecorded = capturedCheck("branches: one pushed branch, merged");
   const merged = runCli(["doctor"], { cwd: fleet });
-  assert.equal(checkLine(merged.stdout, "branches"), mergedRecorded.line, merged.stdout);
+  const mergedLine = checkLine(merged.stdout, "branches");
+  assert.ok(mergedLine !== undefined, merged.stdout);
+  assert.equal(
+    branchLineWithoutTotal(mergedLine),
+    branchLineWithoutTotal(mergedRecorded.line),
+    merged.stdout,
+  );
 
   git(fleet, ["checkout", "--quiet", "-b", "task/t-unmerged"]);
   writeFileSync(join(fleet, "backlog.md"), "an unmerged change\n");
@@ -1379,9 +1441,140 @@ test("doctor CHECK branches names a pushed branch that is not merged", (t) => {
   const result = runCli(["doctor"], { cwd: fleet });
   const line = checkLine(result.stdout, "branches");
   assert.ok(line !== undefined, result.stdout);
-  assert.equal(line, recorded.line, result.stdout);
+  assert.equal(
+    branchLineWithoutTotal(line),
+    branchLineWithoutTotal(recorded.line),
+    result.stdout,
+  );
+  /* THE PROPERTY THIS TEST IS NAMED FOR, asserted on its own rather than left
+     to fall out of a whole-line comparison: the unmerged branch is NAMED, and
+     the count of unmerged branches is 1 because this fixture pushed exactly
+     one. Both are things the test owns, unlike the total above. */
+  assert.ok(line.includes("origin/task/t-unmerged"), line);
+  assert.match(line, /^CHECK branches WARN 1 of /, line);
   assert.equal(result.status, merged.status, "the branches check moved doctor's exit code");
   assert.equal(result.status, recorded.exit, result.stdout);
+});
+
+/*
+ * CRITERION 5's COUNT, and the defect a CI-only failure exposed (fix round 1).
+ *
+ * `CHECK branches` counted refs/remotes/origin/HEAD as a pushed branch. The
+ * filter meant to drop it read `endsWith("/HEAD")` over `%(refname:short)`,
+ * and git renders refs/remotes/origin/HEAD short as `origin`, never
+ * `origin/HEAD`, so the filter was dead on exactly the ref it was written for.
+ * Measured on git 2.43.0 over this fixture, `git for-each-ref
+ * --format=%(refname:short) refs/remotes` prints `origin` and `origin/main`.
+ *
+ * THE DANGEROUS STATE IS THE REF BEING PRESENT, not a feature being absent:
+ * git >= 2.48 creates it unaided on any default-refspec fetch
+ * (fetch.followRemoteHEAD, documented default `create`), so on a current git
+ * every operator read a branch total one too high per remote, and doctor ran
+ * `merge-base --is-ancestor` over an alias as though it were a branch.
+ *
+ * THREE STRUCTURALLY DIFFERENT MEMBERS, because one is not a class, and they
+ * are chosen so that neither half of the fix is left unwitnessed. The fix
+ * drops a row when the FULL refname ends in `/HEAD` or when the row carries a
+ * symref target, and the members are: refs/remotes/origin/HEAD as the symbolic
+ * ref git writes (both halves catch it), the same path written as an ORDINARY
+ * ref (only the name half catches it), and a symbolic remote-tracking ref
+ * under another name (only the symref half catches it). Every member is red
+ * against the shipped filter, and each half alone leaves one member counted.
+ *
+ * THE COUNT IS PINNED HERE AND RELAXED IN THE TEST ABOVE, deliberately. This
+ * test calls checkBranches directly rather than running the CLI, so nothing
+ * fetches and no git version can add a ref behind its back; the ref set is
+ * asserted before every call and is exactly what this test wrote. A fully
+ * controlled set is the condition binding convention 5 names for an exact
+ * count being assertable at all.
+ */
+test("a remote-tracking ref that is not a branch is not counted as one", (t) => {
+  const { fleet } = fleetWithRemote(t);
+  /* THE FIXTURE OWNS ITS REF SET, and it says so rather than assuming it. The
+     push and fetch that built this fleet may already have written
+     refs/remotes/origin/HEAD on a git that does that, and an exact count is
+     assertable only over a set the test itself controls, so anything the test
+     did not write is removed before the baseline is taken. */
+  for (const ref of remoteRefNames(fleet)) {
+    if (ref !== "refs/remotes/origin/main") {
+      git(fleet, ["update-ref", "--no-deref", "-d", ref]);
+    }
+  }
+  const expected = "1 pushed branch(es), none unmerged into origin/main";
+  const REF_FORMAT = "%(refname)%09%(symref)";
+  const liveRows = (format: string): string[] =>
+    gitRaw(fleet, ["for-each-ref", `--format=${format}`, "refs/remotes"])
+      .split("\n")
+      .filter((row) => row !== "");
+  const recordedRows = (heading: string): string[] =>
+    capturedBlock(P17_GIT_CAPTURE, heading).filter((entry) => !entry.startsWith("exit: "));
+
+  assert.deepEqual(
+    liveRows(REF_FORMAT),
+    recordedRows(
+      "git for-each-ref --format=%(refname)%09%(symref) refs/remotes, one pushed branch",
+    ),
+    "the baseline fixture no longer matches the recorded one",
+  );
+  assert.equal(checkBranches(fleet).detail, expected, "the baseline fixture");
+
+  /* THE DEFECT IN ONE LINE, read out of a real capture and reproduced live
+     rather than asserted from the implementation: the rendering the shipped
+     filter tested `/HEAD` against does not contain `/HEAD`. */
+  git(fleet, ["remote", "set-head", "origin", "-a"]);
+  assert.deepEqual(
+    liveRows("%(refname:short)"),
+    recordedRows(
+      "git for-each-ref --format=%(refname:short) refs/remotes, with a remote HEAD present",
+    ),
+    "git no longer shortens refs/remotes/origin/HEAD to origin",
+  );
+  git(fleet, ["update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD"]);
+
+  const members = [
+    {
+      name: "the symbolic ref git >= 2.48 writes on fetch",
+      extra: "refs/remotes/origin/HEAD",
+      heading: `git for-each-ref --format=${REF_FORMAT} refs/remotes, a symbolic remote HEAD`,
+      stage: (): void => {
+        git(fleet, ["remote", "set-head", "origin", "-a"]);
+      },
+    },
+    {
+      name: "the same path written as an ordinary ref",
+      extra: "refs/remotes/origin/HEAD",
+      heading: `git for-each-ref --format=${REF_FORMAT} refs/remotes, an ordinary remote HEAD`,
+      stage: (): void => {
+        git(fleet, [
+          "update-ref",
+          "--no-deref",
+          "refs/remotes/origin/HEAD",
+          git(fleet, ["rev-parse", "origin/main"]),
+        ]);
+      },
+    },
+    {
+      name: "a symbolic remote-tracking ref under another name",
+      extra: "refs/remotes/origin/trunk",
+      heading: `git for-each-ref --format=${REF_FORMAT} refs/remotes, a symbolic ref under another name`,
+      stage: (): void => {
+        git(fleet, ["symbolic-ref", "refs/remotes/origin/trunk", "refs/remotes/origin/main"]);
+      },
+    },
+  ];
+  for (const member of members) {
+    member.stage();
+    /* THE FIXTURE REALLY CARRIES THE EXTRA REF, and what git wrote is compared
+       against the recorded capture rather than described, so this arm cannot
+       be green over a state that never occurred. */
+    assert.deepEqual(liveRows(REF_FORMAT), recordedRows(member.heading), member.name);
+    const result = checkBranches(fleet);
+    assert.equal(result.status, "PASS", `${member.name}: ${result.detail}`);
+    assert.equal(result.detail, expected, member.name);
+    // Back to the baseline, so the next member is staged on its own.
+    git(fleet, ["update-ref", "--no-deref", "-d", member.extra]);
+    assert.deepEqual(remoteRefNames(fleet), ["refs/remotes/origin/main"], member.name);
+  }
 });
 
 /*
@@ -1641,6 +1834,8 @@ test("this phase's new doctor behaviors are registered in test/behaviors.json", 
     "doctor-tasks-unestablished-is-not-a-pass",
     "doctor-tasks-no-log-tail-or-process-probe",
     "doctor-branches-unmerged-named",
+    /* M4-P17 fix round 1. */
+    "doctor-branches-remote-head-is-not-a-branch",
     "doctor-new-conditions-are-never-promoted",
     "doctor-remote-reports-unpushed",
     "doctor-remote-fetch-failure-is-not-a-pass",

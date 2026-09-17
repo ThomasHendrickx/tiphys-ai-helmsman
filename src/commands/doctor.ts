@@ -1270,7 +1270,27 @@ export function checkBranches(root: string): CheckResult {
       condition: "branches-not-established",
     };
   }
-  const listed = runGitHere(root, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]);
+  /* THE FORMAT ASKS FOR THE FULL REFNAME, AND THAT IS THE WHOLE POINT OF THIS
+     LINE. `%(refname:short)` renders refs/remotes/origin/HEAD as `origin`, not
+     as `origin/HEAD`, because git shortens a remote's HEAD to the remote's own
+     name. A filter written as `endsWith("/HEAD")` over the SHORT name is
+     therefore dead on exactly the ref it exists to drop, which is the shape
+     this repository keeps paying for: a guard whose condition does not test
+     the property that matters. The short name is recovered below by stripping
+     the prefix, which is what `:short` does for every ref that is not a HEAD.
+
+     `%(symref)` is the second half and is not redundant. git >= 2.48 creates
+     refs/remotes/<name>/HEAD on a default-refspec fetch (fetch.followRemoteHEAD,
+     whose default is `create`), and it creates it as a SYMBOLIC ref, so
+     dropping symbolic refs is the direct statement of "an alias is not a
+     branch". A HEAD written as an ordinary ref carries no symref target and is
+     caught by the name test instead; both members occur and each half catches
+     one of them. */
+  const listed = runGitHere(root, [
+    "for-each-ref",
+    "--format=%(refname)%09%(symref)",
+    "refs/remotes",
+  ]);
   if (listed.status !== 0) {
     return {
       name: "branches",
@@ -1281,10 +1301,18 @@ export function checkBranches(root: string): CheckResult {
       condition: "branches-not-established",
     };
   }
-  const refs = listed.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.endsWith("/HEAD"));
+  const REMOTES_PREFIX = "refs/remotes/";
+  const refs: string[] = [];
+  for (const row of listed.stdout.split("\n")) {
+    const [refname = "", symref = ""] = row.split("\t");
+    if (!refname.startsWith(REMOTES_PREFIX)) {
+      continue;
+    }
+    if (symref !== "" || refname.endsWith("/HEAD")) {
+      continue;
+    }
+    refs.push(refname.slice(REMOTES_PREFIX.length));
+  }
   if (refs.length === 0) {
     return { name: "branches", status: "PASS", detail: "no pushed branches" };
   }

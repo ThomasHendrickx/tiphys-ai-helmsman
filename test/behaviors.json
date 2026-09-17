@@ -1044,6 +1044,7 @@
   "doctor-tasks-unestablished-is-not-a-pass": "a task whose state cannot be established is named, never silently skipped",
   "doctor-tasks-no-log-tail-or-process-probe": "the tasks check reads meta.json and turn-end only, never a log tail or a process",
   "doctor-branches-unmerged-named": "doctor CHECK branches names a pushed branch that is not merged",
+  "doctor-branches-remote-head-is-not-a-branch": "a remote-tracking ref that is not a branch is not counted as one",
   "doctor-new-conditions-are-never-promoted": "no profile promotes this phase's new conditions to FAIL",
   "doctor-remote-reports-unpushed": "doctor CHECK remote reports unpushed commits where it used to name the configured remote",
   "doctor-remote-fetch-failure-is-not-a-pass": "a fetch that fails is its own verdict and never PASS",

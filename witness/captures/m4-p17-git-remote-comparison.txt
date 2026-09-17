@@ -32,3 +32,35 @@ exit: 0
 origin/main
 origin/task/t-unmerged
 exit: 0
+
+M4-P17 FIX ROUND 1 appended the blocks below, taken the same day on the
+same git, over the same fixture with one remote-tracking ref added to it.
+The `%(refname:short)` block is the defect in one line: git renders
+refs/remotes/origin/HEAD short as `origin`, so a filter testing for a
+`/HEAD` suffix over that rendering never fires. The `%(refname)%09%(symref)`
+blocks are what the corrected check reads; the TAB is present on every row
+and the symref field is empty for a ref that is not symbolic.
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, one pushed branch ==
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname:short) refs/remotes, with a remote HEAD present ==
+origin
+origin/main
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, a symbolic remote HEAD ==
+refs/remotes/origin/HEAD	refs/remotes/origin/main
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, an ordinary remote HEAD ==
+refs/remotes/origin/HEAD	
+refs/remotes/origin/main	
+exit: 0
+
+== git for-each-ref --format=%(refname)%09%(symref) refs/remotes, a symbolic ref under another name ==
+refs/remotes/origin/main	
+refs/remotes/origin/trunk	refs/remotes/origin/main
+exit: 0
