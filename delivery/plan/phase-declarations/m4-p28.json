@@ -15,12 +15,17 @@
     "DR-0027",
     "DR-0031",
     "M2-C-3",
-    "T-008"
+    "T-008",
+    "T-009",
+    "C-1",
+    "C-2",
+    "C-3"
   ],
   "gateClasses": {
     "correctness": {
       "gates": [
         "suite",
+        "typecheck",
         "red-witness"
       ]
     },
