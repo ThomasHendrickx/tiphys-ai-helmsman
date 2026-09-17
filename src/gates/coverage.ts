@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import { Script, createContext } from "node:vm";
+import { cpus, loadavg } from "node:os";
 import {
   readRegularFileIfPresent,
   refuseOpenForWrite,
@@ -117,10 +118,13 @@ import type { SchemaDocument } from "./validate.ts";
  * config-supplied pattern (both `idPattern`s and every `bucketKinds[].pattern`)
  * is VALIDATED (compiles, and is rejected if it matches a known
  * catastrophic-backtracking shape) before it is ever executed, and every
- * EXECUTION of a config-supplied pattern is BOUNDED by a wall-clock timeout
- * (`boundedExec`, below), so neither a malformed pattern (CR-990, used to
+ * EXECUTION of a config-supplied pattern is BOUNDED (`boundedExec`, below),
+ * so neither a malformed pattern (CR-990, used to
  * throw with no result record written) nor a ReDoS pattern (CR-991, used
- * to hang indefinitely) can defeat this gate; CR-992 (overlapping kinds)
+ * to hang indefinitely) can defeat this gate. M4-P28 changed WHAT that
+ * bound measures, from elapsed wall clock to CPU work, because the first
+ * one reddened for well-behaved patterns whenever the machine was busy.
+ * CR-992 (overlapping kinds)
  * is folded into the same fix because it is the same "a config string is
  * trusted further than its syntax justifies" mechanism one property over.
  */
@@ -228,43 +232,194 @@ export function isEmptyCell(value: string): boolean {
  */
 const regexSandbox = createContext(Object.create(null) as Record<string, unknown>);
 
-/** Wall-clock bound on one regex execution. Measured (this round): a real
- * catastrophic pattern, `(a+)+b` against 30 a's, which never returns on
- * its own, is interrupted within 251-267ms under this mechanism; a safe
- * pattern executes in under a millisecond, so the bound is not on the
- * critical path for any pattern this repository's own config uses. */
-export const REGEX_EXEC_TIMEOUT_MS = 250;
+/**
+ * THE VERDICT-PRODUCING BOUND IS CPU WORK, NOT ELAPSED TIME (M4-P28).
+ *
+ * What this constant replaces, and why the replacement is not a bigger
+ * number. Until this phase the bound was `REGEX_EXEC_TIMEOUT_MS = 250`,
+ * handed to `vm` as a WALL-CLOCK timeout, and exceeding it was reported as
+ * "did not complete within 250ms ... (possible catastrophic
+ * backtracking)". Elapsed wall time is complexity DIVIDED BY available
+ * CPU, so that condition did not test the property it named: it reddened
+ * whenever the machine was busy. Measured and recorded in
+ * delivery/verification/wall-clock-budgets-are-load-dependent.md:1, five
+ * independent witnesses hit it on six structurally different patterns,
+ * including `^(?:parked)$`, a doubly anchored literal with no quantifier,
+ * no character class and no alternation, which has nothing to backtrack
+ * over at any input length. One million executions of
+ * `^(?:R-[0-9]+[a-z]?)$` against `R-094a` take 154.2ms in total, so ONE is
+ * roughly 1.6 million times under the old budget; for one of them to
+ * exceed it the thread must be descheduled for a quarter of a second,
+ * which is a fact about the machine.
+ *
+ * Raising 250 to a larger number was considered and is REJECTED by the
+ * plan (delivery/plan/kernel-plan-m4.md:3784): it keeps the same
+ * instrument and only moves the load at which it lies.
+ *
+ * WHAT IS MEASURED NOW. `process.threadCpuUsage()` reports the CPU time
+ * this thread has consumed, in microseconds. Another process being busy
+ * does not add to it, because a descheduled thread consumes no CPU while
+ * it is not running. The regex runs on THIS thread inside
+ * `runInContext`, so the delta across that call is the work the regex
+ * did, and nothing else. On an interpreter without
+ * `process.threadCpuUsage` (added in Node 22.15; the package floor is 26)
+ * the fallback is `process.cpuUsage()`, which is process-wide and
+ * therefore an over-estimate, never an under-estimate, so the fallback
+ * cannot let a catastrophic pattern through.
+ */
+export const REGEX_EXEC_CPU_BUDGET_MS = 250;
 
+/**
+ * HOW LONG ONE ATTEMPT IS WILLING TO WAIT. This is PATIENCE, not a
+ * verdict: nothing is ever reported about a pattern because this elapsed.
+ * A wall-clock interrupt is still needed, because a catastrophic match
+ * never returns on its own and `vm`'s `timeout` is the only mechanism
+ * here that can stop one (v8 checks for the termination request during a
+ * regex match, not only between statements).
+ *
+ * It is set to TWICE the CPU budget so that a thread receiving at least
+ * half of one CPU reaches the budget inside a single attempt; measured on
+ * an unloaded box, `(a+)+b` against 30 a's consumes 230.6ms of CPU in a
+ * 252ms wall window, so a backstop equal to the budget would have needed
+ * a second attempt to reach a verdict it had nearly earned.
+ */
+export const REGEX_EXEC_WALL_BACKSTOP_MS = 500;
+
+/**
+ * How many interrupted attempts before this module admits it cannot
+ * reach a verdict. Each attempt doubles its own patience, and the CPU
+ * consumed ACCUMULATES across attempts, so a genuinely spinning pattern
+ * is still caught on a loaded machine (it burns CPU whenever it runs)
+ * while a benign one accumulates microseconds however often it is
+ * interrupted.
+ */
+export const REGEX_EXEC_MAX_ATTEMPTS = 4;
+
+/** The pattern did too much WORK. A verdict about the pattern. */
 export class RegexBoundExceededError extends Error {}
 
 /**
- * Execute `compiled.exec(value)` inside a v8 context with a wall-clock
- * timeout. `node:vm`'s `timeout` option interrupts synchronous JavaScript
- * execution, INCLUDING regex backtracking (v8 checks for the termination
- * request during a regex match, not only between statements), which is
- * why this bound can stop a hung `.exec()` where a plain try/catch around
- * a synchronous call cannot: a catastrophic match never throws on its
- * own, it simply never returns. Measured directly (this round): the same
- * `(a+)+b` pattern against inputs of length 18 through 40 completes in
- * under 40ms up to length 22, then 63ms, 302ms, and is interrupted at the
- * 250ms bound from length 26 onward, rather than running to the multi-
- * second and then multi-minute times the unbounded engine produces at
- * length 26 and 40.
+ * No verdict was reached: every attempt was interrupted before the
+ * pattern finished, and the CPU it consumed never came near the budget,
+ * which is the signature of a thread that is not being scheduled rather
+ * than one that is spinning. Under M2-C-3 a check that cannot reach a
+ * verdict reports ERROR, never a verdict it did not earn, so this is
+ * deliberately NOT a subclass of `RegexBoundExceededError`: the two must
+ * not be confusable by a `catch` or an `instanceof`.
  */
-export function boundedExec(compiled: RegExp, value: string): RegExpExecArray | null {
-  Object.assign(regexSandbox, { __pattern: compiled, __value: value, __out: undefined });
-  try {
-    new Script("__out = __pattern.exec(__value);").runInContext(regexSandbox, {
-      timeout: REGEX_EXEC_TIMEOUT_MS,
-    });
-  } catch {
-    throw new RegexBoundExceededError(
-      `pattern ${compiled.source} did not complete within ${String(REGEX_EXEC_TIMEOUT_MS)}ms ` +
-        `against a value of length ${String(value.length)} (possible catastrophic backtracking)`,
-    );
+export class RegexBudgetUndeterminedError extends Error {}
+
+interface CpuSample {
+  user: number;
+  system: number;
+}
+
+/** Thread CPU time where the interpreter has it, process CPU otherwise. */
+function cpuSample(): CpuSample {
+  const threadReader = (process as unknown as { threadCpuUsage?: () => CpuSample }).threadCpuUsage;
+  if (typeof threadReader === "function") {
+    return threadReader.call(process);
   }
-  const out = (regexSandbox as { __out?: RegExpExecArray | null }).__out;
-  return out ?? null;
+  return process.cpuUsage();
+}
+
+/** Milliseconds of CPU (user plus system) between two samples. */
+function cpuMillisBetween(before: CpuSample, after: CpuSample): number {
+  return (after.user - before.user + (after.system - before.system)) / 1000;
+}
+
+/** Overrides for one call, used by the witness tests to stand in for a
+ * machine slower or busier than this one. Only the PATIENCE is varied
+ * there; the verdict instrument stays the CPU budget. */
+export interface RegexExecBounds {
+  cpuBudgetMs?: number;
+  wallBackstopMs?: number;
+  maxAttempts?: number;
+}
+
+/**
+ * Execute `compiled.exec(value)` inside a v8 context, bounded by the CPU
+ * WORK it does rather than by the time it takes.
+ *
+ * One attempt runs the match with a wall-clock interrupt. Whatever
+ * happens, the CPU consumed by this thread during that call is added to a
+ * running total:
+ *
+ *   - total CPU at or above the budget: the thread really did burn that
+ *     much CPU on this one match, which no anchored non-backtracking
+ *     pattern can do, so `RegexBoundExceededError` is thrown. A busy
+ *     machine cannot cause this, because a descheduled thread accumulates
+ *     no CPU.
+ *   - the match finished: return its result, which is the only path that
+ *     produces a match.
+ *   - interrupted with the total still far below the budget: the machine
+ *     was busy, not the pattern. Double the patience and try again.
+ *
+ * After `maxAttempts` interruptions with the CPU total still under
+ * budget, `RegexBudgetUndeterminedError` is thrown, naming the CPU
+ * consumed, the wall clock spent and the load average, so the record says
+ * what it observed instead of asserting something about the pattern.
+ *
+ * An error from `runInContext` that is NOT the timeout is also
+ * undetermined rather than a finding: the old code funnelled every throw
+ * into the catastrophic-backtracking message, which is the same
+ * substitution one cause over.
+ */
+export function boundedExec(
+  compiled: RegExp,
+  value: string,
+  bounds: RegexExecBounds = {},
+): RegExpExecArray | null {
+  const cpuBudgetMs = bounds.cpuBudgetMs ?? REGEX_EXEC_CPU_BUDGET_MS;
+  const maxAttempts = bounds.maxAttempts ?? REGEX_EXEC_MAX_ATTEMPTS;
+  let patienceMs = bounds.wallBackstopMs ?? REGEX_EXEC_WALL_BACKSTOP_MS;
+  let cpuSpentMs = 0;
+  let wallSpentMs = 0;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    Object.assign(regexSandbox, { __pattern: compiled, __value: value, __out: undefined });
+    const cpuBefore = cpuSample();
+    const wallBefore = Date.now();
+    let failure: unknown;
+    let interrupted = false;
+    try {
+      new Script("__out = __pattern.exec(__value);").runInContext(regexSandbox, {
+        timeout: patienceMs,
+      });
+    } catch (error) {
+      failure = error;
+      interrupted = (error as { code?: string }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT";
+    }
+    cpuSpentMs += cpuMillisBetween(cpuBefore, cpuSample());
+    wallSpentMs += Date.now() - wallBefore;
+    if (cpuSpentMs >= cpuBudgetMs) {
+      throw new RegexBoundExceededError(
+        `pattern ${compiled.source} consumed ${cpuSpentMs.toFixed(1)}ms of CPU time ` +
+          `(budget ${String(cpuBudgetMs)}ms) against a value of length ${String(value.length)} ` +
+          `over ${String(attempt)} attempt(s) spanning ${String(wallSpentMs)}ms of wall clock ` +
+          "(catastrophic backtracking)",
+      );
+    }
+    if (failure !== undefined && !interrupted) {
+      throw new RegexBudgetUndeterminedError(
+        `pattern ${compiled.source} against a value of length ${String(value.length)} ` +
+          `failed to execute: ${String((failure as Error).message ?? failure)}; no verdict ` +
+          "about the pattern was reached",
+      );
+    }
+    if (!interrupted) {
+      const out = (regexSandbox as { __out?: RegExpExecArray | null }).__out;
+      return out ?? null;
+    }
+    patienceMs *= 2;
+  }
+  throw new RegexBudgetUndeterminedError(
+    `pattern ${compiled.source} against a value of length ${String(value.length)} was ` +
+      `interrupted on all ${String(maxAttempts)} attempts after ${String(wallSpentMs)}ms of wall ` +
+      `clock, having consumed only ${cpuSpentMs.toFixed(1)}ms of CPU time against a budget of ` +
+      `${String(cpuBudgetMs)}ms; load average ${loadavg()[0]?.toFixed(2) ?? "unknown"} on ` +
+      `${String(cpus().length)} cpu(s). No verdict about the pattern was reached: this record ` +
+      "reports that the machine was too busy to establish one, not that the pattern is dangerous",
+  );
 }
 
 /**

@@ -1,0 +1,30 @@
+{
+  "id": "coverage-regex-interrupt-not-a-verdict",
+  "behavior": "coverage-regex-interrupt-not-a-verdict",
+  "tests": [
+    "an interrupted regex that consumed little CPU is reported as undetermined, never as catastrophic backtracking"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/coverage.ts",
+      "find": "    if (cpuSpentMs >= cpuBudgetMs) {\n",
+      "replace": "    if (interrupted || cpuSpentMs >= cpuBudgetMs) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/coverage.ts",
+      "find": "  throw new RegexBudgetUndeterminedError(\n    `pattern ${compiled.source} against a value of length ${String(value.length)} was ` +\n",
+      "replace": "  throw new RegexBoundExceededError(\n    `pattern ${compiled.source} against a value of length ${String(value.length)} was ` +\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/coverage.ts",
+      "find": "    cpuSpentMs += cpuMillisBetween(cpuBefore, cpuSample());\n",
+      "replace": "    cpuSpentMs += Date.now() - wallBefore;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
