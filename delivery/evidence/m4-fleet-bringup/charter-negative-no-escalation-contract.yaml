@@ -103,38 +103,6 @@ constraints:
     A gate result is evidence only for the configuration that produced it: the
     CI event and the head sha are part of the sentence, never omitted from it.
 
-escalation-contract:
-  stop-for:
-    # The two SHIPPED DEFAULTS, kept verbatim from templates/charter.example.yaml
-    # so this charter does not quietly drop a default the kernel ships. The
-    # second is what makes turning release verification off an owner decision
-    # rather than an implementer's edit.
-    - any irreversible choice the charter is silent on
-    - a change from a declared release verification to `none`
-    # NO BARE NUMBER HERE, AND THE OMISSION IS DELIBERATE. The exit-test charter
-    # said "more than two fix rounds", which is DR-0012's limit. DR-0035 has
-    # since made the ceiling a function of declared subject size and impact,
-    # from one round to three, so any single number written here would be wrong
-    # for some phases.
-    # THE OPEN ITEM THIS COMMENT CARRIED IS CLOSED. It said
-    # `assurance-modes.yaml` still carried `max-fix-rounds-after-review: 2`,
-    # DR-0012's number, and that the disagreement was recorded in
-    # delivery/work-history/m4-p15.md rather than resolved, because that file
-    # was not M4-P15's to touch. M4-P30 owns it and has moved it to DR-0035's
-    # ceiling of 3 (assurance-modes.yaml:218). The two documents now agree, and
-    # this one still names the BUDGET rather than a number, because a per-phase
-    # budget and a ceiling are different facts.
-    - >-
-      a phase that exceeds the fix-round budget DR-0035 sets for its declared
-      subject size and impact, or a high-severity finding that recurs in one
-      component
-  route: >-
-    The orchestrator records a decision record with its recommendation and
-    notifies the owner asynchronously; the phase does not wait on the owner
-    unless a third round also fails (DR-0016). Escalation is for a choice that
-    is genuinely comparable and costly to reverse, or for access an agent does
-    not hold; a question whose answer is already obvious is not escalated.
-
 release-verification:
   # RESERVED THROUGH M4, WITH THE REASON WRITTEN DOWN RATHER THAN LEFT AS
   # SILENCE. The schema admits only `none` and `reserved` here, and `none`

@@ -1,0 +1,21 @@
+{
+  "stage": "C3.2-doctor-full-as-init-leaves-it-no-gh",
+  "expectation": "recorded as observed, whatever it is",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone/bin/tiphys.ts",
+    "doctor",
+    "--for",
+    "full"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T11:45:33.615Z",
+  "endedAt": "2026-09-17T11:45:33.808Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "CHECK node PASS v26.6.0 satisfies kernel engines \">=26\"\nCHECK git PASS git version 2.43.0\nCHECK gh FAIL gh not found on PATH, PR modes unavailable (required for profile full)\nCHECK layout PASS all layout entries present\nCHECK remote FAIL no remote configured, fleet state has no push target (SC-002) (required for profile full)\nCHECK lock PASS no lease present\nCHECK beacon WARN watcher not running or not scheduled\nCHECK identity PASS git commit identity configured (Claude <noreply@anthropic.com>)\nCHECK retention WARN no charter document in /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet/charter, so no project is realized here yet and retention is not applicable\nCHECK tasks PASS 0 open of 0\nCHECK branches PASS no pushed branches\nCHECK worktrees PASS no pool worktrees\nCHECK kernel-artifacts PASS the kernel install at /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone carries roles/, schemas/, checklists/ and AGENTS.md\n",
+  "stderr": ""
+}

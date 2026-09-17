@@ -5,7 +5,12 @@
     "src/commands/doctor.ts",
     "test/doctor.test.ts",
     "assurance-modes.yaml",
-    "delivery/evidence/m4-fleet-bringup/"
+    "delivery/evidence/m4-fleet-bringup/",
+    "witness/",
+    "scripts/m1-exit-test.sh",
+    "charter.yaml",
+    "schemas/assurance-modes.schema.json",
+    "test/assurance-modes.test.ts"
   ],
   "declaredExtras": [
     "test/behaviors.json",

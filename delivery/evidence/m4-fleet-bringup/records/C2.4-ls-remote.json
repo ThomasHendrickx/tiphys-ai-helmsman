@@ -1,0 +1,19 @@
+{
+  "stage": "C2.4-ls-remote",
+  "expectation": "exit 0, shows refs/heads/main at the pushed sha",
+  "command": [
+    "git",
+    "ls-remote",
+    "origin"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T11:45:48.797Z",
+  "endedAt": "2026-09-17T11:45:49.431Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "ddc5b1030535d47dc113778aef6e193aa477ae24\tHEAD\n20584905c5c3ad9d0c707aa3df8f2eb549a0e275\trefs/heads/main\n970cd5bdc98686c8bf89973cdbe41d6b67507c7f\trefs/heads/probe-fleet-home\nddc5b1030535d47dc113778aef6e193aa477ae24\trefs/heads/probe-lease-a\nddc5b1030535d47dc113778aef6e193aa477ae24\trefs/heads/tiphys/lease\n302528d5b4b00c7e587d8a69b105a62b2701980c\trefs/heads/tiphys/lease-r1\n4b1c3bd2229f58c291008453680ef660954df8d7\trefs/heads/tiphys/lease-r2\ne3df60c000a7117b553c9816305697b4caa05abf\trefs/heads/tiphys/lease-r3\n",
+  "stderr": ""
+}

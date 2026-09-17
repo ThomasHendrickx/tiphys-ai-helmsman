@@ -1,0 +1,20 @@
+{
+  "stage": "C7.2-lock-status",
+  "expectation": "exit 0, reports held with holder id and expiry",
+  "command": [
+    "node",
+    "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/clone/bin/tiphys.ts",
+    "lock",
+    "status"
+  ],
+  "cwd": "/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/w9-m4-p30/fleet",
+  "nodeVersion": "v26.6.0",
+  "nodeExecPath": "/tmp/claude-0/n26/bin/node",
+  "startedAt": "2026-09-17T12:53:10.956Z",
+  "endedAt": "2026-09-17T12:53:11.199Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "held holder dc64baa0-78eb-42e5-beeb-a1c5397e91c7 acquired 2026-09-17T11:47:32.401Z expires 2026-09-17T17:47:32.401Z\n",
+  "stderr": ""
+}
