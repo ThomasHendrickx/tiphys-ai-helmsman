@@ -174,7 +174,8 @@ function runWrapper(payload: string): { exitCode: number; stderr: string } {
  *
  * The exit-code half was measured from the outside: hook exit 0 left the file
  * CHANGED and hook exit 2 left it unchanged
- * (delivery/work-history/m4-p1.md:236). `runHookFirst` FALSE is the hook
+ * (delivery/work-history/m4-p1.md:134 and delivery/work-history/m4-p1.md:135,
+ * the two BYPASS rows of that phase's matrix). `runHookFirst` FALSE is the hook
  * ABSENT, which is the dangerous state criterion 2 requires this test to
  * exercise rather than describe.
  */
@@ -716,6 +717,21 @@ test("the captured agent turn changed nothing in the project clone and its paylo
   );
   assert.equal(/tracked file shas unchanged: NO/.test(control as string), true, control as string);
   assert.equal(/^WROTE$/m.test(control as string), true, control as string);
+
+  /* THE RESIDUAL ARM, asserted rather than left as prose. Same clone, same
+     fleet home, same installed hook, a Bash write: it LANDS. A reader who takes
+     the two blocked arms as coverage of the project clone has this in front of
+     them, and a later phase that starts adjudicating shell calls reddens here
+     instead of leaving a stale sentence in a work history. */
+  const residual = arms.find((arm) => /^\s*arm: bash-not-adjudicated\b/m.test(arm));
+  assert.notEqual(residual, undefined, "the capture carries no Bash residual arm");
+  assert.equal(
+    /git status --porcelain AFTER is empty: NO/.test(residual as string),
+    true,
+    residual as string,
+  );
+  assert.equal(/^WROTE$/m.test(residual as string), true, residual as string);
+  assert.equal(block.ADJUDICATED_TOOLS.includes("Bash"), false);
 
   /* And the captured wrapper invocations: the working-tree write exits 2 and
      the ref update exits 0, in the same capture, against the same clone. */

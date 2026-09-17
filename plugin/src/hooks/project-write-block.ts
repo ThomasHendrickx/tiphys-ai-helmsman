@@ -694,7 +694,8 @@ export function readStdin(): Promise<string> {
  * `hookSpecificOutput.permissionDecision`. This hook blocks with the EXIT CODE
  * instead, which M4-P1 measured from the outside: hook exit 0 left the file
  * changed and hook exit 2 left it unchanged
- * (delivery/work-history/m4-p1.md:236). One channel, one mechanism, and the
+ * (delivery/work-history/m4-p1.md:134 and delivery/work-history/m4-p1.md:135).
+ * One channel, one mechanism, and the
  * reason travels on stderr where it cannot be mistaken for a decision.
  */
 export async function main(): Promise<void> {
