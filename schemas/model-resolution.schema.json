@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/model-resolution.schema.json",
+  "title": "Tiphys model-resolution record",
+  "$comment": "R-075, and this is the half role-model-config.yaml reserved for the harness adapter: that document ships a TIER and a charter-override permission and says the adapter resolves them at M4. Kernel plan M4, M4-P7 (delivery/plan/kernel-plan-m4.md:1018), discharging M4-D-06's four parts (delivery/plan/m4-intake.md:732). THE SHAPE IS THE RELEASE RECORD'S, DELIBERATELY: src/gates/schemas/release-record.schema.json:26 requires a verbatim subject echo as a misattribution guard, and the same guard is required here because a family token attributed to the wrong task makes check-dual-review's decorrelation assertion an assertion about nothing. WHAT THIS DOCUMENT CANNOT REACH, and each has its instrument. (a) Whether the subject echo AGREES with the resolution field by field: that compares sibling fields and is Kind B, the derived check model-resolution-subject-echo in src/checks.ts (DR-0013 clause 8). (b) Whether an observation agrees with the echoed request: also Kind B, and it is enforced by the kernel-side reader in src/model-resolution.ts rather than here, because a schema-only guard passes exactly the half of M4-P7 criterion 6 that matters. (c) Whether the record EXISTS at all: an absent record is the consumer's error and is src/model-resolution.ts's, mirroring src/gates/release.ts:609. NO VENDOR NAME APPEARS HERE and none may: the family vocabulary lives in the plugin (plugin/src/vocabulary.ts) and this document dereferences only its IDENTITY.",
+  "description": "What a harness adapter writes to tasks/<id>/model-resolution.json when a turn ENDS, recording which model tier was requested, which the charter resolved, and which model family actually served the turn. Written at turn end and never at launch: a launch-time record can only carry what was REQUESTED and is a restatement of the request wearing the word resolved.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "contractVersion",
+    "writer",
+    "writtenAt",
+    "turnEnd",
+    "subject",
+    "resolution",
+    "resolved"
+  ],
+  "properties": {
+    "kind": {
+      "$comment": "The artifact type, so `tiphys validate --type auto` resolves this document without being told. It is also what makes the ONE row in src/commands/validate.ts's TYPE_TABLE serve the `--type` table and the auto resolver at once.",
+      "type": "string",
+      "const": "model-resolution"
+    },
+    "contractVersion": {
+      "$comment": "A closed set rather than a minimum, for the same reason as every other shipped schema: the authoring vocabulary has no `minimum` keyword.",
+      "type": "string",
+      "enum": ["1"]
+    },
+    "writer": {
+      "$comment": "The adapter that wrote the record, verbatim. The only artifact that ever says which harness resolved the turn.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "writtenAt": {
+      "$comment": "M4-P7 criterion 2. The instant the record was written, which is AFTER the turn ended. The comparison against turnEnd.endedAt is a sibling-field comparison, so it is Kind B and lives in the derived check; what this document buys is that neither instant can be absent.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "turnEnd": {
+      "$ref": "#/$defs/turnEnd"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "resolution": {
+      "$ref": "#/$defs/resolution"
+    },
+    "resolved": {
+      "$ref": "#/$defs/resolved"
+    }
+  },
+  "$defs": {
+    "turnEnd": {
+      "$comment": "M4-P7 criterion 2, and REQUIRED is the whole of what it buys. This is the turn-end record the generated hook wrote (src/hooks.ts:38), echoed verbatim. A record written at LAUNCH cannot carry it, because the turn has not ended and the file does not exist, so requiring it makes the dangerous state unrepresentable rather than merely discouraged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endedAt", "exitCode"],
+      "properties": {
+        "endedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+        },
+        "exitCode": {
+          "type": "integer"
+        }
+      }
+    },
+    "subject": {
+      "$comment": "THE VERBATIM ECHO OF THE LAUNCH REQUEST, and it is the misattribution guard (src/gates/schemas/release-record.schema.json:26). Every field is copied from the ExecutorRequest the adapter was handed, with no normalisation: requestedTier crosses this seam exactly as role-model-config.yaml declared it. The echo is compared field by field against `resolution` BEFORE anything reads `resolved`, which is the order src/gates/release.ts applies to a release record and the order src/model-resolution.ts applies here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "role", "requestedTier"],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "requestedTier": {
+          "$comment": "NAMES A TIER, NEVER A MODEL, for the reason role-model-config.schema.json records: a model id in a versioned kernel artifact goes stale in weeks and puts a vendor's product name inside the package. The vocabulary is NOT an enum here: role-model-config.yaml owns the tier vocabulary and a second copy of it in this document is a second thing to drift.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "resolution": {
+      "$comment": "M4-P7 criterion 7: the charter override is RESOLVED, not assumed. `tier` is the tier the resolver actually consumed; when a charter overrode the request it is the CHARTER's tier and `charterPath` says which document said so. The override CONDITION is two file reads (the role's charter-override permission and the charter's own tier for the role), so it is genuinely OBSERVED and the observation is recorded rather than asserted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "tier", "overrideApplied", "provenance", "observation"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "overrideApplied": {
+          "type": "boolean"
+        },
+        "charterPath": {
+          "$comment": "Required exactly when the override applied, through the `oneOf` below. Echoed rather than summarised, so a reader can go and look at the document that changed the tier.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "charterTier": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "provenance": {
+          "$comment": "The override condition is readable from files, so `observed` is the only honest value here and the enum says so. That is NOT true of the resolved model identity, which is why `resolved.provenance` carries a wider vocabulary.",
+          "type": "string",
+          "enum": ["observed"]
+        },
+        "observation": {
+          "$ref": "#/$defs/overrideObservation"
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "Branch A: the charter overrode the role's configured tier, so the document that did it and the tier it named are both required. `overrideApplied` is restated in a sibling `properties` because ajv 8.20.0 under strict mode fails COMPILATION when `required` names a property not declared in `properties` at the same level, which is the pattern schemas/verdict.schema.json's root `oneOf` records.",
+          "required": ["overrideApplied", "charterPath", "charterTier"],
+          "properties": {
+            "overrideApplied": {
+              "type": "boolean",
+              "const": true
+            },
+            "charterPath": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "charterTier": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        {
+          "$comment": "Branch B: no override, so no charter document may be cited. A record that claims both is a contradiction and the reader cannot tell which it meant, which is exactly how schemas/verdict.schema.json's hazardClassAddressed branches are written.",
+          "required": ["overrideApplied"],
+          "properties": {
+            "overrideApplied": {
+              "type": "boolean",
+              "const": false
+            }
+          }
+        }
+      ]
+    },
+    "overrideObservation": {
+      "$comment": "WHAT WAS ACTUALLY READ to decide the override, named by path so the claim is checkable rather than asserted. `consulted` IS THE HONEST HALF AND IT IS REQUIRED. A harness that has no tier-policy document in front of it has not observed a permission, and a record that reported `configPermission: allowed` in that state would be inventing a reading of a document it never opened, which is the laundering this whole record exists against one field over. The branch below therefore admits `consulted: false` with a reason in `detail` and NO configuration citation at all.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consulted", "detail"],
+      "properties": {
+        "consulted": {
+          "type": "boolean"
+        },
+        "configPath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "configPermission": {
+          "$comment": "The role's own `charter-override` value, from role-model-config.yaml's closed enum. It is a copy of that document's vocabulary rather than a new one, so a reader comparing the record against the configuration compares like with like.",
+          "type": "string",
+          "enum": ["allowed", "forbidden"]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "Branch A: a tier-policy document was read, so the record says which one and what it said. `consulted` is restated in a sibling `properties` for the strictRequired reason recorded on the `resolution` branches.",
+          "required": ["consulted", "configPath", "configPermission"],
+          "properties": {
+            "consulted": {
+              "type": "boolean",
+              "const": true
+            },
+            "configPath": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "configPermission": {
+              "type": "string",
+              "enum": ["allowed", "forbidden"]
+            }
+          }
+        },
+        {
+          "$comment": "Branch B: nothing was consulted, and the record says so in `detail`. This is the shipped adapter's state today and it is recorded rather than papered over. A record in this branch can never carry `overrideApplied: true`, because the derived check model-resolution-subject-echo requires an observed `configPermission` of `allowed` before an override may be applied, and this branch cannot carry one.",
+          "required": ["consulted"],
+          "properties": {
+            "consulted": {
+              "type": "boolean",
+              "const": false
+            }
+          }
+        }
+      ]
+    },
+    "vocabulary": {
+      "$comment": "M4-P7 criteria 3 and 4, AND IT IS AN IDENTITY RATHER THAN A CONTENT. The kernel compares two records' family tokens only when both name the SAME vocabulary id, and it never looks inside one: a tier-to-model or model-to-family mapping in src/ is what would close off every harness that is not the one it names. The mapping lives in plugin/src/vocabulary.ts, which is where a vendor name is allowed to be.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "version": {
+          "type": "integer"
+        }
+      }
+    },
+    "observation": {
+      "$comment": "M4-P7 criterion 6. The captured evidence behind an `observed` identity. `taskId` and `model` are what the reader compares against the echoed request and the claimed identity: an observation naming another task, or naming a model other than the one claimed, is a self-report wearing the word observed and is REFUSED by src/model-resolution.ts. `source` names the channel, and M4-P1 measured that the only channel here is harness-written and neither concurrency-stable nor tamper-proof, so nothing in this vocabulary implies attestation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "taskId", "model", "detail"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "resolved": {
+      "$comment": "M4-P7 criteria 1, 3, 4 and 6. THE IDENTITY, AND ITS PROVENANCE IS PART OF IT. M4-D-06 was written to survive either answer to 'is the served model readable after the fact', and M4-P1 measured that it IS, through a harness-written transcript, while also measuring that the transcript can be EMPTY at hook time under load and that a process at the agent's uid can rewrite it. So `observed` is a real level above `self-reported` and below any notion of attestation, and `unresolved` exists because a resolver that falls back to the self-report on an empty transcript is green whenever the race does not fire and silently accepts a forgeable value when it does.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vocabulary", "provenance"],
+      "properties": {
+        "vocabulary": {
+          "$ref": "#/$defs/vocabulary"
+        },
+        "family": {
+          "$comment": "The vocabulary's family token, verbatim. This is the value the closeout copies into a verdict's `produced-by` byte for byte (criterion 8).",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "provenance": {
+          "type": "string",
+          "enum": ["observed", "self-reported", "unresolved"]
+        },
+        "observation": {
+          "$ref": "#/$defs/observation"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "oneOf": [
+        {
+          "$comment": "Branch A, `observed`: M4-P7 criterion 6 member one, and it is a SCHEMA rule on purpose. A record claiming `observed` with no observation field is a self-report laundered into a measurement, and the laundering is exactly the thing that must be unrepresentable rather than merely reviewed. Member TWO, an observation that CONTRADICTS the echoed request, is present-but-inconsistent and no keyword reaches it; it is the reader's.",
+          "required": ["provenance", "observation", "family", "model"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "const": "observed"
+            },
+            "observation": {
+              "$ref": "#/$defs/observation"
+            },
+            "family": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        {
+          "$comment": "Branch B, `self-reported`: the writer says which model it asked for and does not claim to have seen it. STATED PRECISELY BECAUSE THE OBVIOUS READING IS WRONG: this branch does NOT forbid an observation field. A branch that merely declines to require a property still admits it, and no keyword in the authoring vocabulary expresses an absence, so a self-reported record carrying an observation validates here. Refusing it is the reader's, in src/model-resolution.ts, and that division is the same one criterion 6 draws: a missing field is the schema's and a present-but-inconsistent one is not.",
+          "required": ["provenance", "family", "model"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "const": "self-reported"
+            },
+            "family": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        {
+          "$comment": "Branch C, `unresolved`: the observation channel was consulted and answered nothing. M4-P1 measured that arm happening twice in twelve resolutions, so it is a mode rather than a defensive flourish, and it must be LOUD. A reason is required. Whether a family or a model is also claimed is NOT reachable from here, for the reason recorded on branch B, so the reader refuses an unresolved record that names either; between them that is what stops an empty transcript from becoming a quiet fallback to the forgeable value.",
+          "required": ["provenance", "reason"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "const": "unresolved"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

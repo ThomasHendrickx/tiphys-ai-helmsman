@@ -1,0 +1,24 @@
+{
+  "id": "model-resolution-observed-provenance-must-agree",
+  "behavior": "model-resolution-observed-provenance-must-agree",
+  "tests": [
+    "a record whose observation contradicts the echoed request is refused by the reader"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "    if (observedTask !== subject.taskId) {\n",
+      "replace": "    if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/model-resolution.ts",
+      "find": "    if (observedModel !== model) {\n",
+      "replace": "    if (false) {\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
