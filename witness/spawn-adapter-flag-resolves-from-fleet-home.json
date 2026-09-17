@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-flag-resolves-from-fleet-home",
+  "behavior": "spawn-adapter-flag-resolves-from-fleet-home",
+  "tests": [
+    "the --adapter flag resolves the adapter from the fleet home and the launch record names it"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  const requireFromFleet = createRequire(fleet.packageJsonPath);",
+      "replace": "  const requireFromFleet = createRequire(import.meta.url);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/spawn.ts",
+      "find": "      parsed.adapter = value;",
+      "replace": "      parsed.adapter = undefined;"
+    }
+  ]
+}
