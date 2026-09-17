@@ -2361,3 +2361,46 @@ have to be held at once.** A squash-merged phase branch is NOT an ancestor of
 work landed; the branch ref is what carries it. Ask the branch, not `main`, and
 confirm the LANDING separately by looking for the phase's own artifacts in
 `main`'s tree.
+
+### Correction: pull request 177's description overstated what it carried
+
+Recorded here rather than only in a comment, because the merge commit on `main`
+carries the same overstatement and a later reader will meet that first.
+
+Pull request 177 merged as `9d0a6b8` with the title "Wave 8 and wave 9
+paperwork" and a body claiming four declarations: `m4-p8.json`, `m4-p18.json`,
+`m4-p6.json` and `m4-p30.json`. **It carried two.** Measured on `main` at
+`9d0a6b8`:
+
+```
+ls delivery/plan/phase-declarations/ | grep -E 'm4-p(6|8|18|30)\.json'
+  m4-p18.json
+  m4-p8.json
+grep -c '^## Wave 9' delivery/plan/m4-conflict-pre-pass.md
+  0
+```
+
+The wave 9 pre-pass and the two missing declarations were committed on a
+different branch, `claude/state-2026-09-17`, along with this file's updates.
+The pull request body was written from memory of what had been authored that
+hour, not from the branch's diff.
+
+**This is the same defect as the one recorded for pull request 161**, where a
+merge message described an inode hotfix whose code was on an unpushed commit.
+Twice now the failure is identical: the description was composed from what the
+author had written, and the branch is what the reader gets.
+
+**The mechanism, and it is mechanical to close.** A pull request body is a claim
+about a DIFF, so it is checked against the diff before opening:
+
+```
+git diff --name-status origin/main...<branch>
+```
+
+Every artifact the body names must appear in that output. Reading the branch's
+own commit log is NOT the check, because a commit made on a sibling branch in
+the same hour reads exactly like one made here.
+
+Nothing was lost: the missing paperwork is in this pull request. What was
+briefly wrong is the record, which is the thing this project treats as the
+deliverable.
