@@ -1,0 +1,72 @@
+Real output of `tiphys validate` against the launch record `subprocessAdapter`
+ACTUALLY WROTE, taken from a real `tiphys spawn` rather than hand-authored.
+
+WHY THIS CAPTURE EXISTS. M4-P3 criterion 4 asks for validation of a record a
+real spawn produced, not of a fixture an author typed, because a fixture is
+the author's belief about the writer and the writer is another module. The
+diagnostic lines below are also the public contract wording (the INVALID
+<json-pointer> <message> form of DR-0013), so a test that retyped them could
+drift from what the validator prints while staying green.
+
+Captured 2026-09-17, node v26.6.0, in a scratch fleet built the way
+test/spawn.test.ts builds one. The command that produced the record:
+
+  tiphys spawn --task t-valid --project <clone> --brief <brief> --shape ship
+    --exec <stub> --deadline 300 --tier Strongest-Available
+    --role clean-room-Reviewer --phase M4-P3
+
+THE RECORD, verbatim, exit 0:
+
+  | {
+  |   "adapter": "subprocess",
+  |   "launchedAt": "2026-09-17T01:43:10.900Z",
+  |   "deadline": "2026-09-17T01:48:10.900Z",
+  |   "requestedTier": "Strongest-Available",
+  |   "requestedRole": "clean-room-Reviewer"
+  | }
+
+Two things to read off it. The tier and the role are BYTE-IDENTICAL to the
+flag values, mixed case and hyphens included; the kernel holds no vocabulary
+for either and normalises neither. And `--phase M4-P3` was supplied and is
+NOT in the record: the phase id is carried in the REQUEST, and criterion 6
+fixes what the record echoes.
+
+FOUR ARMS, all four run against that record or a copy of it:
+
+  tiphys validate --type executor-record <the record above>
+    exit 0
+    stdout: (empty)
+    stderr: (empty)
+
+  tiphys validate --type executor-record <the same record, adapter deleted>
+    exit 1
+    stdout: "INVALID #/adapter required property adapter is missing\n"
+    stderr: (empty)
+
+  tiphys validate --type executor-record <the same record, plus "model">
+    exit 1
+    stdout: "INVALID #/model property model is not permitted here\n"
+    stderr: (empty)
+
+  tiphys validate --type auto <the record above>
+    exit 64
+    stdout: (empty)
+    stderr: "tiphys validate: --type auto needs a kind field naming a
+             registered type, and <path> has none\n"
+
+THE THIRD ARM IS THE ONE THAT MATTERS BEYOND THIS PHASE. `model` is refused
+by `additionalProperties: false` and by nothing else: there is no rule
+anywhere that knows the word. That keyword is therefore the whole of what
+stops a future adapter smuggling a vendor model name into the launch record,
+which is the property M4-P7 is going to rely on, so it is witnessed rather
+than asserted.
+
+THE FOURTH ARM records a REAL LIMIT rather than a feature. An executor record
+carries no `kind`, so the type must be NAMED; `--type auto` is a usage error
+(64), not a validation failure (1). The stderr path is elided above because it
+is a mkdtemp path that differs per run.
+
+WHAT THIS CAPTURE DOES NOT COVER: a record written by any adapter other than
+the shipped subprocess one (none exists yet); a record under a non-UTF-8
+locale; the YAML decode path, which no executor record takes; and the exact
+byte offsets of the instants, which vary per run.

@@ -1,0 +1,31 @@
+{
+  "id": "spawn-request-carries-brief-path",
+  "behavior": "spawn-request-carries-brief-path",
+  "tests": [
+    "the executor request carries the assembled brief path, and the adapter reads a real file at it"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "        briefPath,\n        role: options.role,",
+      "replace": "        briefPath: hookPath,\n        role: options.role,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "        // and so is already inside the rollback window.\n        briefPath,\n",
+      "replace": "        // and so is already inside the rollback window.\n"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "src/spawn.ts runs the generated turn-end hook as a child with spawnSync and then reads the file that child wrote, so rule (f) binds every witness whose members mutate this module. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is that hook's real output, taken 2026-09-16 on node v26.6.0. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test's adapter records the request it was handed, invokes the REAL hook as a child, and returns completed; the kernel's completion precondition then reads what that child wrote, and the test checks the same record against the captured contract (a string endedAt that parses as an instant, and the exit code the hook was handed). So the spawn only succeeds because a real external program ran, and the brief-path assertions are made on a request from a completed launch rather than from a stub. MEMBER 0 supplies a path that EXISTS and is the wrong file, which is the defect a test asserting only `typeof briefPath === 'string'` or `existsSync(briefPath)` would pass. MEMBER 1 omits the field, which is the `undefined` an adapter would read and launch an agent with no input at all. A wrong value and an absent one are the two structurally different members of this class."
+  }
+}

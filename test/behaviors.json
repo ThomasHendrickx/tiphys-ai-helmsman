@@ -1024,5 +1024,12 @@
   "cutover-entry-retirement-nonzero-exit-with-nothing-unported-is-unreachable": "a shape-clean retirement report exiting nonzero with nothing unported is unreachable",
   "cutover-entry-status-nonzero-exit-with-everything-clean-is-unreachable": "a shape-clean status exiting nonzero with everything clean is unreachable",
   "cutover-entry-switch-row-count-is-fixed-at-five": "a status report with the wrong number of SWITCH lines is unreachable",
-  "cutover-entry-shallow-clone-cannot-date-arm-d": "a shallow clone cannot date arm d and says so, rather than reporting not-yet"
+  "cutover-entry-shallow-clone-cannot-date-arm-d": "a shallow clone cannot date arm d and says so, rather than reporting not-yet",
+  "spawn-request-carries-brief-path": "the executor request carries the assembled brief path, and the adapter reads a real file at it",
+  "spawn-adapter-requirement-unmet-creates-nothing": "an adapter requirement the spawn cannot meet refuses before a worktree, a branch, a task directory or a pool record exists",
+  "spawn-adapter-requirement-unknown-field-refused": "an adapter requiring a field the request contract has no name for is refused as a contract defect, not as a missing value",
+  "executor-record-validates": "the launch record a real spawn wrote validates under --type executor-record, one missing adapter is refused naming the field, and --type auto cannot resolve it",
+  "executor-record-rejects-undeclared-fields": "an executor record carrying an undeclared model field is refused, and is accepted once additionalProperties is removed",
+  "executor-record-echoes-requested-tier": "the launch record echoes the requested tier and role byte for byte from the flags",
+  "kernel-carries-no-vendor-model-names": "no vendor model name appears in the kernel's shipped source, schemas, roles or configuration"
 }

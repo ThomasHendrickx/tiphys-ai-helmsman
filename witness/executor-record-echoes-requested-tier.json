@@ -1,0 +1,31 @@
+{
+  "id": "executor-record-echoes-requested-tier",
+  "behavior": "executor-record-echoes-requested-tier",
+  "tests": [
+    "the launch record echoes the requested tier and role byte for byte from the flags"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/spawn.ts",
+      "find": "      parsed.tier = value;",
+      "replace": "      parsed.tier = undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "    if (request.declaredTier !== undefined) {\n      record.requestedTier = request.declaredTier;\n    }\n",
+      "replace": ""
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "This behavior's named test runs the SHIPPED command end to end, so the spawn it makes launches a real payload with spawnSync and runs the real generated turn-end hook as a second child; the command only exits 0 because that hook wrote a record the completion precondition accepted. The capture at witness/captures/spawn-turn-end-hook-record.txt:1 is that hook's real output, taken 2026-09-16 on node v26.6.0. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: after asserting the echoed tier and role, the test reads the turn-end record the hook child wrote and checks it against the captured contract, so a run that reached exit 0 without the external program having produced its record is red rather than green. MEMBER 0 is at the CLI boundary: the flag still parses, and its value is dropped, so the command exits 0 and the record is silently poorer, which is the flag-accepted-and-ignored shape. MEMBER 1 is at the record boundary: the request carries the value and the adapter does not copy it. Two structurally different places for the same value to go missing, and the test also pins the record's key set so a resolved model arriving here, which M4-P7 owns and this phase must not, reddens."
+  }
+}

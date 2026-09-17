@@ -9,7 +9,9 @@ import type { TaskShape } from "../task.ts";
 /**
  * tiphys spawn --task <id> --project <path> --brief <file> --shape
  * ship|scout --exec <cmd> [--deadline <seconds>] [--offline]
- * (kernel plan v1, M1-P4 step 4). Runs in a fleet home (cwd).
+ * [--role <name>] [--tier <name>] [--phase <id>]
+ * (kernel plan v1, M1-P4 step 4; the last three added by M4-P3).
+ * Runs in a fleet home (cwd).
  *
  * --exec is REQUIRED in M1: spawn without it exits 64 with usage,
  * because the multiplexer-window adapter that would make an exec-less
@@ -27,7 +29,8 @@ import type { TaskShape } from "../task.ts";
 
 const USAGE =
   "usage: tiphys spawn --task <id> --project <path> --brief <file> " +
-  "--shape ship|scout --exec <cmd> [--deadline <seconds>] [--offline]";
+  "--shape ship|scout --exec <cmd> [--deadline <seconds>] [--offline] " +
+  "[--role <name>] [--tier <name>] [--phase <id>]";
 
 interface SpawnArgs {
   task: string | undefined;
@@ -37,6 +40,16 @@ interface SpawnArgs {
   exec: string | undefined;
   deadlineSeconds: number | undefined;
   offline: boolean;
+  /**
+   * The three request fields M4-P3 adds. All three are OPTIONAL at the CLI
+   * and none of them is validated against a vocabulary here: whether a given
+   * adapter can launch without one is the ADAPTER's declaration (`requires`),
+   * checked inside spawnTask before anything is created, and a second opinion
+   * held here would be a vocabulary in `src/` that nothing else honours.
+   */
+  role: string | undefined;
+  tier: string | undefined;
+  phase: string | undefined;
 }
 
 function usageError(message?: string): number {
@@ -56,6 +69,9 @@ function parseFlags(args: string[]): SpawnArgs | undefined {
     exec: undefined,
     deadlineSeconds: undefined,
     offline: false,
+    role: undefined,
+    tier: undefined,
+    phase: undefined,
   };
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
@@ -94,6 +110,20 @@ function parseFlags(args: string[]): SpawnArgs | undefined {
         return undefined;
       }
       parsed.deadlineSeconds = seconds;
+      i += 1;
+    } else if (flag === "--role" && value !== undefined) {
+      parsed.role = value;
+      i += 1;
+    } else if (flag === "--tier" && value !== undefined) {
+      // VERBATIM, and deliberately unvalidated: this is the DECLARED TIER,
+      // whatever role-model-config.yaml declares, and the tier-to-model
+      // mapping lives in the plugin. A kernel that checked this value
+      // against a list would be holding the vocabulary the plugin owns.
+      parsed.tier = value;
+      i += 1;
+    } else if (flag === "--phase" && value !== undefined) {
+      // CARRIED, never derived from the branch name (M4-D-22 is open).
+      parsed.phase = value;
       i += 1;
     } else if (flag === "--offline") {
       parsed.offline = true;
@@ -147,6 +177,9 @@ export async function cmdSpawn(args: string[]): Promise<number> {
     exec: flags.exec,
     deadlineSeconds: flags.deadlineSeconds,
     offline: flags.offline,
+    role: flags.role,
+    declaredTier: flags.tier,
+    phaseId: flags.phase,
   });
   if (!result.ok) {
     // One reason line, structurally (CR-303): a reason may carry a
