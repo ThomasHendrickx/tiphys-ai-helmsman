@@ -7,10 +7,12 @@
  *
  * Runs in a fleet home (cwd). `emit` composes a record, VALIDATES it against
  * the shipped `status-line` schema before writing anything, appends one line
- * to `state/status/stream.jsonl`, then rewrites `state/status/current.json`
- * atomically. `show` reads `current.json` ONLY and never opens the stream
- * (constraint C-1: never read current state from the tail of an append-only
- * log).
+ * to `state/status/stream.jsonl`, then rewrites the DURABLE
+ * `status/current.json` atomically. `show` reads `current.json` ONLY and
+ * never opens the stream (constraint C-1: never read current state from the
+ * tail of an append-only log). The two documents sit on opposite sides of the
+ * fleet `.gitignore` since M4-D-13, which is why the paths differ in prefix;
+ * src/status.ts carries the reasoning.
  *
  * The state vocabulary is closed and is enforced, not requested: `--state
  * progress` is refused naming the permitted values, because R-084's

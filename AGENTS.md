@@ -245,11 +245,30 @@ conversation memory is a cache and the files are the truth, and a cache that is
 never written back is lost at the next restart, which is a routine event and not
 an incident.
 
+HOW: `tiphys sync`, which is the mechanism this clause is discharged by. It is
+not a reminder to run git carefully. It enumerates what changed, asks git which
+of those paths the fleet `.gitignore` covers, commits exactly the rest, and
+pushes. The partition above is therefore DERIVED from the fleet's own ignore
+rules rather than from a reader's judgment about which of two files is durable,
+and a prefix added to that ignore set is honoured by the same derivation with
+no further edit anywhere.
+
+TWO THINGS IT REFUSES RATHER THAN GUESSES, because both are states where being
+helpful would be destructive. An ephemeral path that is ALREADY STAGED stops the
+run: git commits the index, not the pathspec it was handed, so committing at all
+would commit that path, and unstaging on your behalf is a change to work the
+command did not create. A fleet home with no remote stops the run BEFORE the
+commit, because the discipline is commit AND push and a command that did the
+first half here would have done the half that gets dropped and reported the half
+that does not.
+
 AND PUSHED, WHICH IS THE HALF THAT GETS DROPPED. Evidence that lives only on a
 long-lived side branch dies with that branch. Process paperwork reaches the
 default branch through a pull request like everything else, batched rather than
 one request per file, and it is not allowed to accumulate unpushed while the
-code it proves lands ahead of it.
+code it proves lands ahead of it. A failed push is a NONZERO exit carrying git's
+own first stderr line, never a warning printed beside a success: the work is
+committed locally and still owed to the remote, and you are the one who owes it.
 
 ## clause merge-authority: the declared mode says who signs, and for a delegated grant the signature is dual clean review
 
@@ -295,9 +314,17 @@ every later check assumes.
 ## clause fleet-resume-specification: what survives reclamation, what is rebuilt, and what doctor reports
 
 Assigned to this document by plan v1 PR-201. THIS CLAUSE IS A SPECIFICATION AND
-NOT A MECHANISM, and it says so at the top rather than reading as a description
-of something that runs. The machinery is deferred to a later milestone; what is
-settled here is what that machinery will have to do.
+NOT A MECHANISM: what is settled here is what the machinery has to do, and the
+commands that do it are named below rather than described here.
+
+WHICH PHASES DELIVERED IT, replacing the sentence that deferred the machinery to
+"a later milestone" and gave a reader no way to tell whether that milestone had
+arrived. `tiphys resume` (M4-P16) rebuilds the ephemeral half a clone does not
+carry, creating only what is absent and never removing anything. `tiphys sync`
+(M4-P18) commits and pushes the durable half, which is what makes "everything
+committed and pushed" below a reachable state rather than a hope. What remains
+deferred is the doctor reporting in the third paragraph, which is owned by its
+own phase; nothing else in this clause is waiting on a milestone.
 
 WHAT MUST SURVIVE a cloud fleet being reclaimed: everything committed and pushed
 under `fleet-state-commit-discipline` above. Nothing else is promised, and

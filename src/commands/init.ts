@@ -9,6 +9,7 @@ import {
 import { join, resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
 import { FLEET_DIRS, FLEET_IGNORED } from "../fleet.ts";
+import { DURABLE_STATUS_DIR } from "../status.ts";
 import { readOwnVersion } from "../version.ts";
 
 /**
@@ -43,8 +44,17 @@ export const MACHINE_IDENTITY_EMAIL = "fleet@tiphys.invalid";
  * the durable layout (SC-002) would not survive a clone of the fleet repo.
  * The ignored ephemera (state/, worktrees/, projects/) get no keep file:
  * they are recreated locally and are deliberately not repository content.
+ *
+ * `status` JOINED THIS LIST AT M4-P18 AND IT IS THE HALF OF M4-D-13 THAT IS
+ * VISIBLE IN THE LAYOUT. The status pointer used to live beside its stream
+ * under the ignored `state/` prefix, where the sentence that says where the
+ * pipeline stands could be neither committed nor pushed; the split moved it
+ * here. It is created at init rather than on first emit so that a fleet home
+ * carries the durable directory from its bootstrap commit, and so a CLONE of
+ * one carries it too: `tiphys resume` rebuilds the EPHEMERAL three and does
+ * not, and must not, fabricate durable content (src/commands/resume.ts).
  */
-const DURABLE_KEEP_DIRS = ["charter", "decisions", "tasks"] as const;
+const DURABLE_KEEP_DIRS = ["charter", "decisions", "tasks", DURABLE_STATUS_DIR] as const;
 
 function runGit(
   cwd: string,
@@ -104,7 +114,7 @@ export function cmdInit(args: string[]): number {
     mkdirSync(root, { recursive: true });
   }
 
-  for (const name of FLEET_DIRS) {
+  for (const name of [...FLEET_DIRS, DURABLE_STATUS_DIR]) {
     mkdirSync(join(root, name), { recursive: true });
   }
   for (const name of DURABLE_KEEP_DIRS) {

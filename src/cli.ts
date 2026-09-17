@@ -10,6 +10,7 @@ import { cmdPool } from "./commands/pool.ts";
 import { cmdResume } from "./commands/resume.ts";
 import { cmdSpawn } from "./commands/spawn.ts";
 import { cmdStatus } from "./commands/status.ts";
+import { cmdSync } from "./commands/sync.ts";
 import { cmdTeardown } from "./commands/teardown.ts";
 import { cmdTuition } from "./commands/tuition.ts";
 import { cmdValidate } from "./commands/validate.ts";
@@ -38,6 +39,7 @@ const commands = new Map<string, CommandHandler>([
   ["resume", cmdResume],
   ["spawn", cmdSpawn],
   ["status", cmdStatus],
+  ["sync", cmdSync],
   ["teardown", cmdTeardown],
   ["tuition", cmdTuition],
   ["validate", cmdValidate],
