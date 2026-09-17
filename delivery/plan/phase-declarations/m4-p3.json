@@ -1,0 +1,33 @@
+{
+  "id": "M4-P3",
+  "branch": "claude/m4-p3-request-contract",
+  "filesToTouch": [
+    "src/spawn.ts",
+    "src/commands/spawn.ts",
+    "schemas/executor-record.schema.json",
+    "src/validate.ts",
+    "src/commands/validate.ts",
+    "test/spawn.test.ts",
+    "test/schemas.test.ts",
+    "package.json",
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m4-p3.json"
+  ],
+  "declaredExtras": [
+    "witness/spawn-request-carries-brief-path.json",
+    "witness/spawn-adapter-requirement-unmet-creates-nothing.json",
+    "witness/spawn-adapter-requirement-unknown-field-refused.json",
+    "witness/executor-record-validates.json",
+    "witness/executor-record-echoes-requested-tier.json",
+    "witness/kernel-carries-no-vendor-model-names.json",
+    "witness/captures/spawn-requirement-refusal-git-state.txt",
+    "witness/captures/executor-record-validate-cli.txt"
+  ],
+  "citations": [
+    "M4-D-05",
+    "M4-D-06",
+    "M4-D-22",
+    "DR-0007",
+    "PR-207"
+  ]
+}

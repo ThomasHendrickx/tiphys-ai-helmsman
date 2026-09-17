@@ -1,0 +1,31 @@
+{
+  "id": "executor-record-validates",
+  "behavior": "executor-record-validates",
+  "tests": [
+    "the launch record a real spawn wrote validates under --type executor-record, one missing adapter is refused naming the field, and --type auto cannot resolve it"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"executor-record\", \"executor-record.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"executor-record\", \"executor-record.schema.json\"],",
+      "replace": "  [\"executor-record\", \"charter.schema.json\"],"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "tiphys validate --type executor-record <file>",
+    "captures": [
+      "witness/captures/executor-record-validate-cli.txt"
+    ],
+    "provenance": "The named test spawns the shipped CLI and classifies its exit code and its stdout, which is another program's output whatever module the test happens to mutate. The capture at witness/captures/executor-record-validate-cli.txt:1 was taken 2026-09-17 on node v26.6.0 and carries the record `subprocessAdapter` ACTUALLY wrote in a real `tiphys spawn`, together with four real arms of `tiphys validate` against it: the named type exits 0, a copy with `adapter` deleted exits 1 printing `INVALID #/adapter required property adapter is missing`, a copy carrying `model` exits 1 printing `INVALID #/model property model is not permitted here`, and `--type auto` exits 64 because an executor record carries no `kind`. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test runs its own real spawn, validates the record that spawn produced rather than a fixture, and asserts the diagnostic line it expects is the one the capture recorded, so a change to the public diagnostic wording reddens instead of drifting. MEMBER 0 removes the type row, so the type is unnameable; MEMBER 1 leaves the row and points it at another shipped schema, so the type is nameable and means the wrong thing. An absent registration and a mis-registration are the two structurally different members, and only the second survives a test that merely checks the command exits nonzero on bad input."
+  }
+}

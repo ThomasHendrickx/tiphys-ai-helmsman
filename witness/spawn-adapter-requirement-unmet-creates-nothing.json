@@ -1,0 +1,32 @@
+{
+  "id": "spawn-adapter-requirement-unmet-creates-nothing",
+  "behavior": "spawn-adapter-requirement-unmet-creates-nothing",
+  "tests": [
+    "an adapter requirement the spawn cannot meet refuses before a worktree, a branch, a task directory or a pool record exists"
+  ],
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const unmet = adapter.requires.filter((name) => presence.get(name) !== true);",
+      "replace": "  const unmet: string[] = [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "  const requirements = checkAdapterRequirements(adapter, options);\n  if (!requirements.ok) {\n    return { ok: false, reason: requirements.reason };\n  }\n",
+      "replace": "  const requirements = checkAdapterRequirements(adapter, options);\n  if (!requirements.ok) {\n    process.stderr.write(`tiphys spawn: ${requirements.reason}\\n`);\n  }\n"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git -C <clone> worktree list; git -C <clone> branch --list",
+    "captures": [
+      "witness/captures/spawn-requirement-refusal-git-state.txt",
+      "witness/captures/spawn-turn-end-hook-record.txt"
+    ],
+    "provenance": "TWO OF THE FOUR POST-CONDITIONS THIS BEHAVIOR ASSERTS ARE NOT FILES. Criterion 2 requires that an unmet requirement leave the task directory, the pool record, `git worktree list` and `git branch --list` all unchanged, and the last two are another program's output. The capture at witness/captures/spawn-requirement-refusal-git-state.txt:1 was taken 2026-09-17 on node v26.6.0 in a scratch fleet built by the same helpers test/spawn.test.ts uses, printing both listings BEFORE any spawn and AFTER one successful spawn. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test reads both listings live before the refusal, asserts them byte-identical after it, and then runs a SUCCESSFUL spawn whose listings it checks against the captured contract (one line added to each, the worktree line ending in a bracketed task branch, the branch line marked `+` because it is checked out elsewhere). That control arm is what stops the unchanged-state assertions being satisfied by a kernel that creates nothing at all. The hook capture at witness/captures/spawn-turn-end-hook-record.txt:1 is cited because the same test drives that successful spawn to completion through the real generated turn-end hook, which src/spawn.ts runs with spawnSync, and asserts the record that child wrote against what the capture records. MEMBER 0 empties the derivation, so the check runs and finds nothing; MEMBER 1 leaves the derivation intact and downgrades the refusal to a warning, so the kernel knows and proceeds anyway. One is a blind check and the other is an ignored one, and both produce the same dangerous state by different routes."
+  }
+}
