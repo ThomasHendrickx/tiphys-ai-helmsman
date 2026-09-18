@@ -1,0 +1,24 @@
+{
+  "id": "cutover-status-shape",
+  "behavior": "cutover-status-five-switch-lines-and-one-drain-line",
+  "tests": [
+    "cutover status prints exactly five SWITCH lines with the closed name list and one DRAIN line"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  return CUTOVER_SWITCHES.map((name) => `SWITCH ${name} ${state.switches[name].state}`);",
+      "replace": "  return CUTOVER_SWITCHES.slice(0, 4).map((name) => `SWITCH ${name} ${state.switches[name].state}`);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  lines.push(items.length === 0 ? \"DRAIN clean\" : `DRAIN ${String(items.length)} in flight`);",
+      "replace": "  lines.push(items.length === 0 ? \"DRAIN ok\" : `DRAIN ${String(items.length)} in flight`);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

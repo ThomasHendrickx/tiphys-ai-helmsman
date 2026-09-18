@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/cutover-state.schema.json",
+  "title": "Cutover state",
+  "description": "The fleet's cutover.json: the five freeze switches and what each of them records. Kernel plan M4, M4-P25 acceptance criterion 4.",
+  "$comment": "THE WIRE NAMES ARE camelCase AND THAT IS ESTABLISHED, NOT CHOSEN HERE. The M4 plan section spells the fields flipped-at, flipped-by, reason and restore-to; the document M4-P26 already writes and reads spells them flippedAt, flippedBy, reason and restoreTo (src/cutover.ts:98 declares the interface and src/cutover.ts:152 validates it). A schema that pinned the kebab spelling would refuse every document the shipped writer produces, so this pins what the document uses and the plan's spelling is read as prose naming the four fields rather than as their serialised keys.",
+  "type": "object",
+  "required": ["switches"],
+  "properties": {
+    "switches": {
+      "type": "object",
+      "description": "One record per switch. The five names are a CLOSED list: a sixth name is a plan revision, not a document edit, because every rollback trigger enumerates them.",
+      "required": [
+        "planning-and-scope",
+        "review-and-arbitration",
+        "credentials-and-refs",
+        "salvage-and-recovery",
+        "closeout"
+      ],
+      "properties": {
+        "planning-and-scope": { "$ref": "#/$defs/switchRecord" },
+        "review-and-arbitration": { "$ref": "#/$defs/switchRecord" },
+        "credentials-and-refs": { "$ref": "#/$defs/switchRecord" },
+        "salvage-and-recovery": { "$ref": "#/$defs/switchRecord" },
+        "closeout": { "$ref": "#/$defs/switchRecord" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "switchRecord": {
+      "$comment": "additionalProperties is TRUE here and at the document level, against the schemas/README.md preference for false at every object level, and the deviation is deliberate rather than an omission. M4-P26 shipped a rollback that CARRIES document keys it does not own, at both levels, and registered that behaviour as a guarded test (test/cutover.test.ts:974). Closing either level would make the shipped writer refuse its own preserved keys, so this document is open by decision and the closed half is the switch NAME list one level up, which is the vocabulary that actually has to be closed.",
+      "type": "object",
+      "required": ["state", "flippedAt", "flippedBy", "reason", "restoreTo"],
+      "properties": {
+        "state": {
+          "description": "Which process holds the authority this switch governs.",
+          "enum": ["current", "kernel"]
+        },
+        "flippedAt": {
+          "description": "When the switch was last written, as an ISO 8601 instant.",
+          "type": "string",
+          "minLength": 1
+        },
+        "flippedBy": {
+          "description": "Who or what performed the write.",
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "description": "Why the switch was written.",
+          "type": "string",
+          "minLength": 1
+        },
+        "restoreTo": {
+          "description": "The value the switch held BEFORE the write. It is what makes rollback a matter of reading a recorded value rather than reconstructing an intent, and a record without it cannot be rolled back at all.",
+          "enum": ["current", "kernel"]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
