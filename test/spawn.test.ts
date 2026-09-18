@@ -2362,6 +2362,12 @@ test("spawn refuses while the shared register names another environment although
 
   /* ARM ONE: the dangerous state, with the layer declared. */
   const refused = spawnIn("t-shared-other-env");
+  assert.notEqual(
+    refused.status,
+    0,
+    "spawn succeeded while the shared register named another environment as " +
+      `holding this fleet: ${refused.stdout}${refused.stderr}`,
+  );
   const expected = capturedRefusal("spawn: the register names another environment", {
     lab: root,
     envA,
@@ -2452,6 +2458,11 @@ test("spawn refuses and creates nothing when the declared shared register cannot
     { cwd: homeA, env: { ...baseEnv(), TIPHYS_HOLDER_ID: holderA } },
   );
 
+  assert.notEqual(
+    refused.status,
+    0,
+    `spawn succeeded with the declared register unreachable: ${refused.stdout}${refused.stderr}`,
+  );
   const expected = capturedRefusal("spawn: the declared register cannot be read", { lab: root });
   assert.equal(soleReasonLine(refused.stderr), expected.line);
   assert.equal(refused.status, expected.exit);

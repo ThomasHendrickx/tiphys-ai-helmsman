@@ -1785,7 +1785,12 @@ test("teardown refuses and removes nothing while the shared register names anoth
 
   /* ARM ONE. */
   const refused = runCli(["teardown", "--task", "s-shared"], { cwd: homeA, env: holderEnv });
-  assert.notEqual(refused.status, 0, `${refused.stdout}${refused.stderr}`);
+  assert.notEqual(
+    refused.status,
+    0,
+    "teardown succeeded while the shared register named another environment as " +
+      `holding this fleet: ${refused.stdout}${refused.stderr}`,
+  );
   const lines = refused.stderr.split("\n").filter((entry) => entry.trim() !== "");
   assert.equal(lines.length, 1, `expected exactly one reason line, got:\n${refused.stderr}`);
   const expected = capturedRefusal("teardown: the register names another environment", {
@@ -1878,7 +1883,11 @@ test("teardown refuses and removes nothing when the declared shared register can
   registerGitOk(homeA, ["remote", "set-url", "origin", join(root, "not-a-repository.git")]);
 
   const refused = runCli(["teardown", "--task", "s-unreachable"], { cwd: homeA });
-  assert.notEqual(refused.status, 0, `${refused.stdout}${refused.stderr}`);
+  assert.notEqual(
+    refused.status,
+    0,
+    `teardown succeeded with the declared register unreachable: ${refused.stdout}${refused.stderr}`,
+  );
   const lines = refused.stderr.split("\n").filter((entry) => entry.trim() !== "");
   assert.equal(lines.length, 1, `expected exactly one reason line, got:\n${refused.stderr}`);
   const expected = capturedRefusal("teardown: the declared register cannot be read", { lab: root });
