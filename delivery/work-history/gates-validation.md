@@ -665,3 +665,73 @@ the root `gate-registry.yaml` is QUOTED rather than cited, because the citation
 gate's declared roots at src/gates/citations.ts:201 admit only `*.md` and
 `*.json` at the top level, so a root-level `.yaml` line reference reddens with
 "matches no declared root" however correct the line number is.
+
+## 11. The gate run, and the three errors it reports
+
+Run at the committed head of this branch, not from a staged tree:
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --evidence <scratch> --base origin/main --head HEAD
+
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 11 verdict 11 green 11 red 0 not-applicable 5 error 3 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set ...
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; ...
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1353 test(s) from 66 file(s) (pass 1353, fail 0, skipped 0, todo 0, did-not-run 0); discovered 66 file(s) walking test for .test.ts; 1229 behavior(s) resolve; merge base ad2428b76ef6
+gates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md
+gates: scope: error: gate scope requires --phase, which was not supplied
+gates: deploy: not-applicable: precondition deploy-release-verification-declared ... evaluated and unmet
+gates: migrations: not-applicable: precondition migrations-release-verification-declared ... evaluated and unmet
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: green: 55 witness(es) evaluated (0 own, 55 stored re-evaluated in 696367ms); every witness red against every declared dangerous state and green at head
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved ...
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried ...
+gates: typecheck: green: tsc -b ... exited 0 and reported 448 distinct file(s)
+gates: gate-classes: error: gate gate-classes requires --phase, which was not supplied
+gates: merge-preconditions: error: gate merge-preconditions requires --phase, which was not supplied
+gates: 3 gate(s) reported error: scope, gate-classes, merge-preconditions
+```
+
+**The three errors are an artefact of the invocation, not of the branch, and
+that is established rather than asserted.** They are exactly the three gates
+whose evaluation needs `--phase`: `scope` through its `branch-matches`
+precondition, `gate-classes` and `merge-preconditions` through their declared
+`parameters`. The invocation above supplied `--base` and `--head` and not
+`--phase`. Re-run with one, the two that can be checked locally report
+not-applicable with a reason rather than red:
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --only scope --only gate-classes --evidence <scratch> \
+  --base origin/main --head HEAD --phase m4-p23
+
+gates: declared 2 applicable 0 verdict 0 green 0 red 0 not-applicable 2 error 0 vacuous 0
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-gates-validation does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-gates-validation does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+```
+
+That is the branch-naming rule working as written: this is a sweep branch and
+not a phase's one branch, so its name deliberately does not match the pattern
+the scope auditor derives a phase id from. `merge-preconditions` was not re-run,
+because it reaches the GitHub API and this round establishes nothing about that.
+
+**`check-dual-review` is not-applicable on this very branch, and that is the
+honest state rather than a regression.** This repository has committed no verdict
+pair, which is what T-040 records. The precondition now asks the anchored
+question, and the answer at this head is still zero.
+
+**`red-witness` is green with 55 witnesses, 0 vacuous**, which is the coverage
+obligation this round's `src/` changes take.
+
+**WHAT THIS GATE RUN DOES NOT ESTABLISH.** It is one configuration: the registry,
+mode full, this base and head, no `--phase`, run locally on the floor-satisfying
+toolchain. It says nothing about the `push` arm, nothing about the macOS smoke
+job, and nothing about the direct workflow STEP that runs `check-dual-review` in
+CI, which takes neither `--result` nor `--head` and is in a file outside this
+round's declared set.
