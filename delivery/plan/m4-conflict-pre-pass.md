@@ -577,3 +577,38 @@ remaining shape: this wave of two, then M4-P24, then M4-P25.
 names `packages/claude-code-plugin/`, the same out-of-date path M4-P9's carried.
 The tree is `plugin/`. Recorded here so the correction is made once, in that
 phase's declaration, rather than discovered by its implementer.
+
+## Wave 13, 2026-09-18: M4-P24 alone, and why it is alone
+
+Written BEFORE dispatch, per rule 5. **This wave has ONE unit, and that is the
+finding rather than a shortfall.**
+
+| unit | files it may touch |
+|---|---|
+| M4-P24 | `src/commands/next.ts`, `src/cli.ts`, `plugin/src/`, `test/next.test.ts`, `witness/` |
+
+**M4-P25 is the only other phase left and it CANNOT run beside this one.** Both
+register a new command in `src/cli.ts` unconditionally: M4-P24 adds
+`src/commands/next.ts` and M4-P25 adds `src/commands/cutover.ts`. DR-0046 keeps
+that dispatch table serialised through M4, so the pair is refused and the two
+run in sequence. Recorded here so a later reader sees a deliberate single-unit
+wave rather than an agent slot left idle.
+
+**Its files-to-touch line carries the stale plugin path, as the wave-12 pre-pass
+predicted.** delivery/plan/kernel-plan-m4.md:3202 names
+`packages/claude-code-plugin/` with the note that the exact paths are owned by
+workstream 1's declaration and cross-referenced rather than duplicated. The tree
+is `plugin/`, M4-P5 created it and M4-P6, M4-P7 and M4-P9 all built in it. The
+declaration therefore names `plugin/src/` as a directory prefix, which is the
+honest form of "cross-referenced, not duplicated": the plan declines to
+enumerate the paths, so the declaration grants the tree and the scope gate
+PRINTS the prefix as the wider grant it is.
+
+**Checked against what is in flight.** #195 (M4-P22) changes `src/exclusion.ts`,
+`src/spawn.ts`, `src/teardown.ts`, `src/commands/doctor.ts`, their tests, the
+rehearsal document and `witness/`. No overlap with this unit beyond `witness/`,
+which is append-only by filename and settled by the wave-10 pre-pass.
+
+**The generator check.** M4-P24 adds no gate row, so no drift chain moves.
+It DOES add a command to `src/cli.ts`, and the only other claimant left is
+M4-P25, which is why they are sequenced rather than paired.
