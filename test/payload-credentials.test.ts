@@ -1350,6 +1350,30 @@ function exportedVocabularies(): Map<string, readonly string[]> {
   return found;
 }
 
+/**
+ * THE REAL CAPTURED OUTPUT the two vocabulary tests are anchored to.
+ * `credential-vocabulary-walk.txt` is the stdout of a SEPARATE PROCESS,
+ * witness/captures/credential-vocabulary-walk.mjs, run at this head on node
+ * v26.6.0: it prints what the default scrubbed child actually carries, the
+ * refusal verdict for every member of every declared vocabulary, and the
+ * gate's environment-probe outcome for a child carrying an egress name and one
+ * carrying the ssh agent socket. Asserting the live modules still reproduce a
+ * recorded real run is the T-003 lesson-4 form; a hand-written expectation
+ * chosen to match the implementation would assert nothing.
+ */
+const VOCABULARY_CAPTURE = "credential-vocabulary-walk.txt";
+const vocabularyCapture = readFileSync(
+  fileURLToPath(new URL(`../witness/captures/${VOCABULARY_CAPTURE}`, import.meta.url)),
+  "utf8",
+);
+
+function captureLines(prefix: string): string[][] {
+  return vocabularyCapture
+    .split("\n")
+    .filter((line) => line.startsWith(`${prefix} `))
+    .map((line) => line.split(" "));
+}
+
 test(
   "the child-environment refusal walks every declared credential vocabulary, on both reason requirements",
   () => {
@@ -1400,6 +1424,41 @@ test(
         `${name} crossed the audited route`,
       );
     }
+    /*
+     * AGAINST THE REAL CAPTURED RUN. Every MEMBER row the separate process
+     * recorded must still be refused by the live predicate and claimed by the
+     * same vocabulary, and every name in the capture must be one this test
+     * drove. A capture with rows this run does not reproduce is a narrowing of
+     * the walk since it was taken.
+     */
+    const memberRows = captureLines("MEMBER");
+    assert.ok(memberRows.length > 0, `${VOCABULARY_CAPTURE} carries no MEMBER rows`);
+    for (const [, constantName, name, verdict, claimedBy] of memberRows) {
+      assert.equal(verdict, "REFUSED", `${VOCABULARY_CAPTURE} records ${name} as ${verdict}`);
+      assert.ok(
+        refusedNames.includes(name as string),
+        `${name}, refused in the captured run of ${constantName}, is in no vocabulary this run drove`,
+      );
+      assert.equal(
+        credentialsModule.refusedEnvVocabulary(name as string)?.id,
+        claimedBy,
+        `${name} is claimed by a different vocabulary than the captured run recorded`,
+      );
+    }
+    /*
+     * DR-0048's own argument, checked against the capture rather than quoted:
+     * refusing these names withdraws nothing the default child was granted.
+     */
+    const defaultNames = (captureLines("DEFAULT-CHILD-NAMES")[0] ?? []).slice(1);
+    assert.ok(defaultNames.length > 0, `${VOCABULARY_CAPTURE} carries no default child names`);
+    for (const name of refusedNames) {
+      assert.equal(
+        defaultNames.includes(name),
+        false,
+        `${name} is refused as an extension and the default child carries it anyway`,
+      );
+    }
+
     // THE GREEN CONTROL. Without it a predicate that refused every name would
     // satisfy everything above.
     assert.equal(
@@ -1433,6 +1492,21 @@ test(
           `does not consult it and no member of it would be refused`,
       );
     }
+    /*
+     * THE CAPTURED PROBE ARMS, which are what makes this registry worth
+     * walking. The separate process recorded the gate's environment probe
+     * reporting `clean` for the default child and `resolvable` for a child
+     * carrying an egress name and for one carrying the ssh agent socket. A
+     * registry row whose vocabulary claimed no name in those arms would be a
+     * row that cannot redden anything.
+     */
+    const probeRows = captureLines("PROBE");
+    const probeOutcome = (arm: string): string =>
+      (probeRows.find((row) => row[1] === arm) ?? [])[2] ?? "";
+    assert.equal(probeOutcome("default"), "clean", `${VOCABULARY_CAPTURE} default arm`);
+    assert.equal(probeOutcome("egress"), "resolvable", `${VOCABULARY_CAPTURE} egress arm`);
+    assert.equal(probeOutcome("ssh"), "resolvable", `${VOCABULARY_CAPTURE} ssh arm`);
+
     // Every row must also name a constant that EXISTS, or the coverage above
     // is satisfied by a typo.
     const exported = exportedVocabularies();
@@ -1596,6 +1670,52 @@ test(
       "the refusal sentence claims a child-side observation the kernel did not verify",
     );
     assert.match(hookedReason, /turn-end record/);
+
+    /*
+     * THE TWO ARMS AS REAL CAPTURED BYTES. handover-turn-end-arms.txt is the
+     * stdout of witness/captures/handover-turn-end-arms.mjs, a separate
+     * process that RAN the kernel's generated hook as a child in a reverted
+     * environment and then wrote the same path the way an adapter that never
+     * invokes the hook would. What the kernel reads is the record's shape, and
+     * the capture is what settles that the two shapes are the same.
+     */
+    const ARMS_CAPTURE = "handover-turn-end-arms.txt";
+    const armsCapture = readFileSync(
+      fileURLToPath(new URL(`../witness/captures/${ARMS_CAPTURE}`, import.meta.url)),
+      "utf8",
+    );
+    const armBytes = (arm: string): Record<string, unknown> => {
+      const line = armsCapture
+        .split("\n")
+        .find((candidate) => candidate.startsWith(`ARM ${arm} bytes `));
+      assert.ok(line !== undefined, `${ARMS_CAPTURE} carries no ${arm} arm`);
+      return JSON.parse(
+        (line as string).slice(`ARM ${arm} bytes `.length).replace(/\\n/g, "\n"),
+      ) as Record<string, unknown>;
+    };
+    const hookRecord = armBytes("hook");
+    const adapterRecord = armBytes("adapter");
+    assert.deepEqual(
+      Object.keys(hookRecord).sort(),
+      Object.keys(adapterRecord).sort(),
+      `${ARMS_CAPTURE}: the two records differ in their top-level shape`,
+    );
+    assert.deepEqual(
+      Object.keys(hookRecord["env"] as Record<string, unknown>).sort(),
+      Object.keys(adapterRecord["env"] as Record<string, unknown>).sort(),
+      `${ARMS_CAPTURE}: the two records observe different pointer sets`,
+    );
+    assert.equal(
+      (hookRecord["env"] as Record<string, unknown>)["HOME"],
+      "/root",
+      `${ARMS_CAPTURE}: the hook arm did not record the reverted HOME it ran with`,
+    );
+    assert.match(
+      armsCapture,
+      /HOOK-NAMES-ITS-OWN-OUTPUT true/,
+      `${ARMS_CAPTURE}: the generated hook no longer names its own output path, ` +
+        "so the nonce refusal below rests on a stale premise",
+    );
 
     // WHY A NONCE DOES NOT CLOSE THIS, measured rather than argued. The
     // adapter is HANDED hookPath, and the generated hook is a readable file,

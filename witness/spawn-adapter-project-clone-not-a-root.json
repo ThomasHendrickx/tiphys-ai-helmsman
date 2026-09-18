@@ -12,7 +12,7 @@
       "kind": "mutation",
       "file": "src/adapters/load.ts",
       "find": "  const requireFromFleet = createRequire(fleet.packageJsonPath);",
-      "replace": "  const requireFromFleet = createRequire(`${fleet.projectsDir}/demo/package.json`);"
+      "replace": "  const requireFromFleet = createRequire(`${fleet.projectsDir}/demo/package.json`);\n  const refuseResolvedAdapterPath = (\n    _fleet: Fleet,\n    _specifier: string,\n    _origin: string,\n    _resolved: string,\n  ): string | undefined => undefined;"
     },
     {
       "kind": "mutation",

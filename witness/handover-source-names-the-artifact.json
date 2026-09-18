@@ -20,5 +20,12 @@
       "find": "    return \"read from the turn-end record, which the kernel generates the hook for and an adapter can also write\";",
       "replace": "    return \"observed child-side\";"
     }
-  ]
+  ],
+  "consumesExternalOutput": {
+    "program": "node <task>/turn-end-hook.mjs <exit-code>",
+    "captures": [
+      "witness/captures/handover-turn-end-arms.txt"
+    ],
+    "provenance": "The pointer evidence the handover record names is PARSED from another program's output: src/hooks.ts renders the turn-end hook, a child process runs it, and src/spawn.ts turnEndEvidence reads the record it wrote. The capture at witness/captures/handover-turn-end-arms.txt:1 is the REAL stdout of witness/captures/handover-turn-end-arms.mjs, run from the repository root on node v26.6.0 on 2026-09-18 by `node witness/captures/handover-turn-end-arms.mjs <work-dir>`. It carries two arms: ARM hook is the bytes the generated hook wrote when it was RUN AS A CHILD with HOME reverted to /root, and ARM adapter is the bytes one writeFileSync produces carrying the values the kernel handed over. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test parses both captured records and asserts they have the same top-level keys and the same pointer set, which is the property that makes the two indistinguishable to the kernel, and it asserts the captured HOOK-NAMES-ITS-OWN-OUTPUT row so the nonce refusal in src/hooks.ts rests on a measured premise rather than on a stale one. The two members are structurally different: member 0 restores the record VALUE that named a party, and member 1 restores the operator-facing SENTENCE that named one, which are the two places the same over-claim lived."
+  }
 }
