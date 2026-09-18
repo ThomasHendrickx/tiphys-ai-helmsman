@@ -393,3 +393,169 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     );
   }
 });
+
+/* -------------------------------------------------------------------- */
+/* CR-A-002: a package resolved at RUN TIME needs a CONSUMER-INSTALLED   */
+/* declaration, and the check is the DERIVATION rather than one name     */
+/* -------------------------------------------------------------------- */
+
+/**
+ * Every bare module specifier the plugin resolves, as npm's own resolver would
+ * see it.
+ *
+ * `importedSpecifiers` above is deliberately not reused: it covers `import`,
+ * `export ... from`, dynamic `import()` and `require()`, and the specifier that
+ * actually broke is NONE of those. plugin/src/status.ts resolves the kernel
+ * through `createRequire(import.meta.url).resolve(...)`, which survives
+ * compilation into plugin/dist/src/status.js and is invisible to a search for
+ * import syntax. That is the whole reason CR-A-002 reached `main`: the phase
+ * that chose `devDependencies` reasoned about IMPORTS, and this is a
+ * resolution that is not one.
+ *
+ * `.resolve(` is matched on any receiver, which in principle also matches
+ * `path.resolve("literal")`. Measured over the compiled plugin at this head it
+ * produces no such hit, so no exclusion is carried; an exclusion added on
+ * suspicion is a hole nobody would later be able to tell from a rule.
+ */
+function bareSpecifiers(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const patterns = [
+    /(?:^|[\s;}])(?:import|export)\s[^;'"]*?\sfrom\s*["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+    /(?:^|[\s;}])import\s+["']([^"']+)["']/g,
+    /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
+    /\.resolve\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  const found: string[] = [];
+  for (const pattern of patterns) {
+    for (const match of code.matchAll(pattern)) {
+      const specifier = match[1];
+      if (specifier === undefined) {
+        continue;
+      }
+      if (
+        specifier.startsWith(".") ||
+        specifier.startsWith("/") ||
+        specifier.startsWith("node:")
+      ) {
+        continue;
+      }
+      found.push(specifier);
+    }
+  }
+  return found;
+}
+
+/** `@scope/name/sub/path` and `name/sub/path` both name the package `...`. */
+function packageNameOf(specifier: string): string {
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string);
+}
+
+/**
+ * THE MECHANISM, AS A TEST: every package the shipped plugin resolves is
+ * declared in a stanza npm installs for a CONSUMER.
+ *
+ * This names no package. It derives the set from the code and compares it to
+ * the manifest, so the next runtime dependency is covered on the day it is
+ * added rather than on the day someone installs the tarball and finds the
+ * feature dead. `devDependencies` is not a consumer-installed stanza: npm
+ * omits it for anyone who installs this package, which is exactly why
+ * `resolveKernelCli()` returned `{ok:false}` on a clean install of the 19-file
+ * tarball while every test in this repository was green.
+ *
+ * BOTH THE MANIFEST AND THE CODE ARE READ OUT OF THE REAL TARBALL, not out of
+ * the workspace, because the tarball is what a consumer receives. The source
+ * tree is inspected as well, and never instead: `verbatimModuleSyntax` erases
+ * a type-only import from the emitted JavaScript, so the compiled arm alone
+ * cannot see a declaration a TypeScript consumer still needs
+ * (plugin/dist/src/adapter.d.ts carries exactly such a specifier).
+ */
+test("every package the shipped plugin resolves is declared in a consumer-installed stanza", (t) => {
+  const staging = mkdtempSync(join(tmpdir(), "tiphys-plugin-pack-"));
+  t.after(() => {
+    rmSync(staging, { recursive: true, force: true });
+  });
+
+  const packed = spawnSync(
+    "npm",
+    [
+      "pack",
+      "--ignore-scripts",
+      "--pack-destination",
+      staging,
+      "-w",
+      "@tiphys/claude-code-plugin",
+    ],
+    { encoding: "utf8", cwd: repoRoot },
+  );
+  assert.equal(packed.status, 0, `npm pack: ${packed.stderr}`);
+  const tarball = readdirSync(staging).find((name) => name.endsWith(".tgz"));
+  assert.ok(tarball !== undefined, `npm pack produced no tarball in ${staging}`);
+
+  const extracted = join(staging, "extracted");
+  mkdirSync(extracted, { recursive: true });
+  const untar = spawnSync("tar", ["-xzf", join(staging, tarball as string), "-C", extracted], {
+    encoding: "utf8",
+  });
+  assert.equal(untar.status, 0, untar.stderr);
+  const packageDir = join(extracted, "package");
+
+  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as Record<
+    string,
+    Record<string, string> | undefined
+  >;
+  const installedForConsumers = new Set([
+    ...Object.keys(manifest["dependencies"] ?? {}),
+    ...Object.keys(manifest["peerDependencies"] ?? {}),
+    ...Object.keys(manifest["optionalDependencies"] ?? {}),
+  ]);
+
+  /* THE DERIVATION. The packed code is the authority for what a consumer runs;
+     the source tree is added because a type-only specifier leaves the emitted
+     JavaScript entirely and is still a thing a consumer must be able to
+     resolve. Both arms are enumerated, neither is a fallback for the other. */
+  const arms: { label: string; files: string[] }[] = [
+    { label: "plugin source", files: filesUnder(join(pluginRoot, "src"), [".ts"]) },
+  ];
+  const packedDist = join(packageDir, "dist");
+  if (existsSync(packedDist)) {
+    arms.push({ label: "packed tarball", files: filesUnder(packedDist, [".js", ".d.ts"]) });
+  }
+
+  let inspected = 0;
+  const undeclared: string[] = [];
+  const seen = new Set<string>();
+  for (const arm of arms) {
+    assert.ok(arm.files.length > 0, `no files were found to inspect in the ${arm.label}`);
+    for (const file of arm.files) {
+      inspected += 1;
+      for (const specifier of bareSpecifiers(readFileSync(file, "utf8"))) {
+        const name = packageNameOf(specifier);
+        seen.add(name);
+        if (!installedForConsumers.has(name)) {
+          undeclared.push(
+            `${relative(repoRoot, file).replace(staging, "<staging>")} resolves ${specifier}, ` +
+              `and ${name} is in none of dependencies, peerDependencies or ` +
+              `optionalDependencies (${arm.label})`,
+          );
+        }
+      }
+    }
+  }
+
+  assert.ok(inspected > 0, "nothing was inspected, so this test asserted nothing");
+  /* THE POSITIVE CONTROL. An empty `undeclared` is also what a plugin that
+     resolved NOTHING would report, and a derivation that found nothing is
+     indistinguishable from an absence of defects. The plugin does resolve the
+     kernel, so the set must be non-empty. */
+  assert.ok(
+    seen.has("@tiphys/kernel"),
+    `the derivation found no bare specifier for the kernel, so it searched the wrong thing; it found ${[...seen].join(", ") || "nothing at all"}`,
+  );
+  assert.deepEqual(
+    undeclared,
+    [],
+    `the plugin resolves packages a consumer install would not have:\n${undeclared.join("\n")}`,
+  );
+});

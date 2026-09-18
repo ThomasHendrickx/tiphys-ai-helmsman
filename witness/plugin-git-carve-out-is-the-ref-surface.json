@@ -1,0 +1,31 @@
+{
+  "id": "plugin-git-carve-out-is-the-ref-surface",
+  "behavior": "plugin-git-carve-out-is-the-ref-surface",
+  "tests": [
+    "the .git carve-out permits the ref surface and refuses hooks, config and info"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (isGitRefSurface(root, target)) {\n",
+      "replace": "  if (isGitInternal(root, target)) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "const GIT_REF_SURFACE_DIRS = new Set([\"refs\", \"logs\", \"objects\"]);\n",
+      "replace": "const GIT_REF_SURFACE_DIRS = new Set([\"refs\", \"logs\", \"objects\", \"info\", \"worktrees\", \"modules\"]);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git, through a real fetch and a real merge --ff-only in a real clone; the permitted set is the set of paths that run actually created or rewrote under .git",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt"
+    ],
+    "provenance": "The allowlist was derived by snapshotting a clone's .git, running git fetch and git merge --ff-only, and diffing, rather than from a memory of what a ref update touches. The standing wide-enough proof is the sibling test 'a real git merge --ff-only moves the ref and the block permits every path it wrote', which selects on the FIRST SEGMENT and not on the predicate under test."
+  }
+}

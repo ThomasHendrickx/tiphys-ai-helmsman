@@ -1,0 +1,24 @@
+{
+  "id": "plugin-tool-call-log-is-ephemeral-by-git",
+  "behavior": "plugin-tool-call-log-is-ephemeral-by-git",
+  "tests": [
+    "git itself reports the tool-call log ephemeral in a real tiphys init fleet, and the task directory durable"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  const logDir = join(fleetRoot, ...TOOL_CALL_LOG_DIR);\n",
+      "replace": "  const logDir = taskDir;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\n",
+      "replace": "export const TOOL_CALL_LOG_DIR = [\"status\", \"tool-calls\"] as const;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

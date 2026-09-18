@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFileSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -25,12 +25,32 @@ import { pathToFileURL } from "node:url";
  * writes NOTHING to stdout and exits 0 on every path, including every failure
  * path, and that pair is the whole of the claim.
  *
- * CONSTRAINT C-1 BINDS THE OUTPUT. `tasks/<id>/tool-calls.jsonl` is
+ * CONSTRAINT C-1 BINDS THE OUTPUT. `state/tool-calls/<id>.jsonl` is
  * append-only and is EVIDENCE, never state. Nothing in the kernel or in this
  * plugin reads current state from its tail, and this module is the only place
  * in either package that names the file at all: it opens the path for APPEND
  * and has no read path to it, which criterion 6 asserts over the COMPILED
  * output rather than over a grep pasted into a work history.
+ *
+ * THE LOG LIVES IN THE FLEET'S EPHEMERAL TREE AND THAT IS A SECURITY
+ * PROPERTY, NOT A TIDINESS ONE (CR-A-003). A `PreToolUse` payload carries
+ * `tool_input.command` for `Bash` and `tool_input.content` for `Write`, so
+ * "the payload verbatim" is "whatever secret the agent was handling". Until
+ * this fix the log was written into `<fleet>/tasks/<id>/`, which is DURABLE:
+ * `FLEET_IGNORED` (src/fleet.ts:29) is exactly `state/`, `worktrees/` and
+ * `projects/`, `tiphys sync` stages every changed path the fleet `.gitignore`
+ * does not cover (src/commands/sync.ts:293), and a real sync against a real
+ * remote was observed committing and pushing a synthetic credential, which was
+ * then read back out of the remote's own tree.
+ *
+ * The capture stays VERBATIM, because a redacted corpus is the one thing the
+ * observer must not produce (criterion 5, and the record's `payloadSha256` is
+ * over the ARRIVING bytes). What changes is WHERE it lands: `state/` is the
+ * tree the kernel already declares ephemeral, so the log is covered by the
+ * ignore rule `tiphys init` writes from `FLEET_IGNORED` itself and nothing
+ * else stops being synced. The two are kept one source by
+ * test/plugin-hooks.test.ts, which asks a real `git check-ignore` in a real
+ * `tiphys init` fleet rather than comparing two string constants.
  *
  * WHERE THE LOG LIVES IS DERIVED FROM THE PAYLOAD, NOT FROM THE ENVIRONMENT,
  * and that is forced rather than chosen. The kernel builds the EXACT
@@ -45,8 +65,20 @@ import { pathToFileURL } from "node:url";
  * nothing, and still exits 0.
  */
 
-/** The append-only evidence log's basename, inside the task directory. */
-export const TOOL_CALL_LOG_BASENAME = "tool-calls.jsonl";
+/**
+ * The append-only evidence log's directory, RELATIVE TO THE FLEET ROOT.
+ *
+ * `state/` is the first segment on purpose: it is one of the three entries of
+ * `FLEET_IGNORED` (src/fleet.ts:29), so every path under it is already
+ * gitignored by the file `tiphys init` writes, and `tiphys sync` both excludes
+ * it and refuses by name if an operator forces it into the index.
+ */
+export const TOOL_CALL_LOG_DIR = ["state", "tool-calls"] as const;
+
+/** One log per task, named for the task. */
+export function toolCallLogBasename(taskId: string): string {
+  return `${taskId}.jsonl`;
+}
 
 export type LogResolution =
   | { ok: true; path: string }
@@ -55,10 +87,14 @@ export type LogResolution =
 /**
  * The evidence log for the task whose worktree is `payloadCwd`, or a reason.
  *
- * The check is that `<fleet>/tasks/<taskId>` IS AN EXISTING DIRECTORY. A hook
- * that created the directory would be inventing a task, and a hook that wrote
- * without checking would scatter `tool-calls.jsonl` files through whatever
- * tree an agent happened to be standing in.
+ * THE EXISTENCE CHECK IS STILL ON `<fleet>/tasks/<taskId>` AND THE WRITE IS
+ * SOMEWHERE ELSE, which is deliberate and is the one subtle part. The check is
+ * what stops the hook inventing a task or scattering logs through whatever
+ * tree an agent was standing in, and it has to be a directory the KERNEL
+ * created, so it cannot be the log's own directory: a hook that tested the
+ * place it is about to create would be testing nothing. So the task directory
+ * is the evidence that this is a real task, and `<fleet>/state/tool-calls/`
+ * is where the record goes, because that tree is ephemeral (CR-A-003 above).
  */
 export function resolveToolCallLog(payloadCwd: unknown): LogResolution {
   if (typeof payloadCwd !== "string" || payloadCwd === "") {
@@ -72,7 +108,8 @@ export function resolveToolCallLog(payloadCwd: unknown): LogResolution {
       reason: `${payloadCwd} is not a fleet worktree, so no task directory follows from it`,
     };
   }
-  const taskDir = join(dirname(worktreesDir), "tasks", taskId);
+  const fleetRoot = dirname(worktreesDir);
+  const taskDir = join(fleetRoot, "tasks", taskId);
   let isDirectory = false;
   try {
     isDirectory = statSync(taskDir).isDirectory();
@@ -82,7 +119,16 @@ export function resolveToolCallLog(payloadCwd: unknown): LogResolution {
   if (!isDirectory) {
     return { ok: false, reason: `${taskDir} is not a directory` };
   }
-  return { ok: true, path: join(taskDir, TOOL_CALL_LOG_BASENAME) };
+  const logDir = join(fleetRoot, ...TOOL_CALL_LOG_DIR);
+  try {
+    mkdirSync(logDir, { recursive: true });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `${logDir} could not be created: ${String(error).replace(/\s+/g, " ").trim()}`,
+    };
+  }
+  return { ok: true, path: join(logDir, toolCallLogBasename(taskId)) };
 }
 
 /**

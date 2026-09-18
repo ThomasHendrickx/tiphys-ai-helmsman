@@ -320,6 +320,23 @@ function recordModelResolution(request: ExecutorRequest): void {
  * writes into.
  */
 function deliverStatusForTurn(request: ExecutorRequest, exitCode: number): string {
+  const delivery = attemptStatusDelivery(request, exitCode);
+  /* CR-A-007: REPORTED ON EVERY ARM, NOT ONLY THE RARE ONE. `statusSuffix`
+     below reaches exactly one caller, the `incomplete` reason, and the normal
+     `completed` return drops this value on the floor. That is why CR-A-002,
+     a status line that is undeliverable on every consumer install, produced no
+     output anywhere and was found by reading the manifest rather than by
+     running the thing. stderr is chosen because the captured hook contract
+     shows stdout is the decision channel and stderr is not, so writing here
+     cannot change the outcome the adapter is about to report, which is
+     criterion 8's property and the reason this function exists at all. */
+  if (delivery !== "") {
+    process.stderr.write(`tiphys ${ADAPTER_NAME} adapter: the status line was not delivered: ${delivery}\n`);
+  }
+  return delivery;
+}
+
+function attemptStatusDelivery(request: ExecutorRequest, exitCode: number): string {
   const cli = resolveKernelCli();
   if (!cli.ok) {
     return cli.reason;

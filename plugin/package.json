@@ -28,6 +28,9 @@
   "scripts": {
     "build": "tsc -b tsconfig.json"
   },
+  "peerDependencies": {
+    "@tiphys/kernel": "^0.1.0"
+  },
   "devDependencies": {
     "@tiphys/kernel": "0.1.0"
   }
