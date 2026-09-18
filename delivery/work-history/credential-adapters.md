@@ -391,13 +391,18 @@ recorded shape. The test asserts the PREMISE, which is the readability of the
 generated hook and the fact that it names its own output path as a literal, so
 the refusal is checkable rather than argued.
 
-**What (a) would buy, said plainly so the arbitration can disagree.** A nonce
-would catch an adapter that forges the record WITHOUT reading the hook, which is
-a real class of accident and a real class of lazy attacker. It would not catch
-the measured adversary. Buying tamper-EVIDENCE while the record's word claims
-tamper-RESISTANCE is the same substitution one layer along, so this round
-changes the word first. A later round may add the nonce on top; it would not
-then be standing in for a guarantee.
+**What (a) would buy, stated as an OPEN QUESTION because this round did not
+build it.** My reading is that a nonce would reject a record forged by an
+adapter that did not read the hook, and that is a class of accident and of lazy
+attacker worth something. I did not build it and I did not measure it, so that
+sentence is a prediction about an unbuilt design and is marked as one rather
+than asserted. What IS measured is the premise that bounds it: the generated
+hook is readable and names its own output path
+(witness/captures/handover-turn-end-arms.txt:1, row
+`HOOK-NAMES-ITS-OWN-OUTPUT true`, produced by a real run of
+witness/captures/handover-turn-end-arms.mjs:1). Buying tamper-EVIDENCE while
+the record's word claims tamper-RESISTANCE is the same substitution one layer
+along, so this round changes the word first.
 
 ### 4.3 The derivation
 
@@ -825,3 +830,157 @@ list can contain it. It is declared here rather than done quietly, and section 8
 repeats it as an escalation for the reviewer to overrule if that reading is
 wrong.
 
+## 7. The complete suite sentence, and the run it took to get there
+
+**Interpreter node v26.6.0** (`node --version` in the shell that ran it),
+**`dist/` BUILT** (`npm run build` exit 0 immediately before), **invocation
+`npm test`**, which is `node --test "test/**/*.test.ts"`, clone under
+`/tmp/claude-0/.../scratchpad/fix-credential-adapters/clone`, `/tmp/claude-0`
+granted `o+rx` for the run and restored to `700` after it:
+
+```
+tests 1347
+pass  1347
+fail  0
+skipped 0
+todo 0
+duration_ms 321320.597151
+EXIT=0
+```
+
+**The skipped count is zero and it is quoted deliberately**, because a bare
+pass count does not distinguish a passing test from a skipped one, and the
+nine dist-dependent tests skip silently without a build.
+
+**test/gates.test.ts:3571 did NOT fail here**, which is the known local flake
+this round was told not to chase. The `chmod o+rx /tmp/claude-0` grant was in
+place for the whole run and was restored afterwards. That is reported as what
+happened rather than as a claim about the test.
+
+**The first run of this suite exited 1, and the cause was mine.** It reported
+`tests 1347, pass 1346, fail 1, skipped 0` with
+test/retirement-inventory.test.ts:134 red:
+
+```
+UNRESOLVED claude-md:this-file: widened absence: src/gates/credentials.ts
+  carries "precedence" and is not in the row's reviewed hit-paths
+```
+
+A comment I had written in src/gates/credentials.ts used the word "precedence",
+which that inventory tracks as a CLAUDE.md rule anchor, so a new file carrying
+it reads as a rule that has spread to an unreviewed path. The comment was
+reworded and that test is green:
+`node --test test/retirement-inventory.test.ts` -> `tests 34, pass 34, fail 0,
+skipped 0`. It is recorded rather than quietly fixed, because the next person
+to add a comment to a shipped source file will hit it too.
+
+## 8. Findings disposition, and the escalations
+
+### 8.1 Disposition
+
+| finding | disposition |
+|---|---|
+| CH-001 (high) | FIXED at the mechanism: the refusal walks a declared registry of every vocabulary the owning module exports, and a drift test reddens on an export with no row. |
+| CR-F-CRED-003 (low) | FIXED by the same change for the refusal half. The reviewer's OTHER half, that the extension record is write-only and no gate reads it, is REFUSED for this round: see 8.2. |
+| CR-F-CRED-004 (low) | DECIDED and fixed: `SSH_AUTH_SOCK` joins the dangerous vocabulary. The ssh(1) documentation half is UNVERIFIED and the source comment says so. |
+| CR-F-CRED-002 / CH-002 (medium) | FIXED at the mechanism: containment is judged on the resolved real path, for every specifier shape, before the import. The module comment is narrowed in the same commit. |
+| CR-F-CRED-001 (medium) | FIXED on the record, with the reviewer's nonce proposal REFUSED and the refusal measured. The refuted cost sentence at src/hooks.ts is withdrawn. |
+| CR-F02 (medium) | FIXED UPSTREAM only. `classifyTaskMeta` keeps the four apart; the two sites that report a failed read as an absence are in src/pool.ts and belong to another implementer this round. |
+
+### 8.2 One half refused, with the reason a reviewer can check
+
+CR-F-CRED-003's concrete fix has two halves. The first, refusing the name, is
+done. The second asks for a boolean on the credential record plus a NEW GATE in
+`gates.manifest.json` walking `tasks/*/meta.json`. That half is refused here,
+and the reason is not effort:
+
+1. DR-0048 already judged this trade and went the other way, in writing: "refuse
+   at the predicate rather than audit after the fact... an audit whose output
+   nothing reads is the weaker half of a control, and adding a second gate to
+   read a record is more machinery than declining the name." A decided record
+   is not reopened by an implementer.
+2. After the refusal, an egress extension does not reach `meta.json` on the
+   audited route at all, so a gate reading the record for one would be a gate
+   over a case the predicate now refuses.
+3. `gates.manifest.json` and `gate-registry.yaml` are outside this round's file
+   list, and a new gate id is a registry change with its own drift obligations.
+
+What a reviewer should check about this refusal: whether any route still writes
+an egress name into `meta.json`. The capture at
+witness/captures/credential-vocabulary-walk.txt:1 records every member of the
+egress vocabulary as REFUSED through `refuseExtraAllowlist` under
+`reason-required`, which is the argument `checkCredentialPolicy` passes.
+
+### 8.3 Escalations
+
+1. **src/pool.ts:425 and src/pool.ts:768 still report a failed task-record read
+   as an absence**, which is CR-F02's reported instance. `reconstructPoolRecord`
+   returns `kind: "absent"` and the pool walk `continue`s, so a task whose
+   `meta.json` was truncated mid-write vanishes from `pool list`.
+   `classifyTaskMeta` is available upstream for both. The other implementer owns
+   that file in this round; if their change does not consume it, this is open.
+2. **src/teardown.ts:255 refuses on all four causes**, so it acts correctly, and
+   its reason sentence says "no readable task meta" for a truncated record. That
+   is a wording gap rather than a wrong action. The file is in nobody's list
+   this round.
+3. **I edited `witness/spawn-adapter-project-clone-not-a-root.json`**, which is
+   outside the file list I was given. Section 6.6 has the reason: my containment
+   rule defanged that stored witness, the gate reported it red, and the file
+   belongs to src/adapters/load.ts, which is mine. Overrule it if that reading
+   is wrong.
+4. **`witness/` generally.** Five new spec files and two capture files were
+   added there. `test/behaviors.json` was named as mine and the red-witness gate
+   requires a spec per behavior, so this is treated as part of registering a
+   behavior rather than as a separate file list.
+5. **The ssh(1) walk could not be run here** (no ssh binary, no manual page).
+   The `SSH_AUTH_SOCK` row rests on capability reasoning and says so in the
+   source. A machine with the page should confirm or move it.
+6. **No CI arm was observed.** Everything in this document is local, on Linux,
+   on one interpreter, on one day. Nothing here is evidence about the `push`
+   arm or about macOS.
+
+## 9. The claim grep, both binding forms
+
+Both forms were run, because this prose is hard-wrapped and a phrase straddling
+a wrap is invisible to the line-based one.
+
+```
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/credential-adapters.md
+152:src/checks.ts:5029: ... so it cannot be read as an authorisation however it is spelled
+672:src/adapters/load.ts:125: * READ THROUGH `readRegularFileIfPresent`, never `readFileSync`: the fleet
+
+$ tr '\n' ' ' < delivery/work-history/credential-adapters.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | sort | uniq -c
+      1 cannot be
+      1 never
+```
+
+Two hits, both forms agree, so nothing was hidden by a wrap.
+
+**Both hits are inside QUOTED derivation output**, which is the verbatim stdout
+of the two greps in sections 4.3 and 5.2 and is another file's source text
+rather than a claim of mine. Altering them would falsify the capture. They are
+listed here rather than excluded silently.
+
+**One hit was removed rather than defended.** An earlier draft of section 4.2
+said a nonce "would catch an adapter that forges the record without reading the
+hook". That is a prediction about a design this round did not build, so it is
+now written as an open question with the one premise that IS measured attached.
+Both grep forms found it, which is the mechanism working.
+
+## 10. Files touched, and one that was not
+
+Mine, and changed:
+
+- src/exec/env.ts, src/gates/credentials.ts (mechanism 1)
+- src/adapters/load.ts (mechanism 2)
+- src/spawn.ts, src/task.ts, src/hooks.ts (mechanisms 3 and 4)
+- test/payload-credentials.test.ts, test/adapter-load.test.ts,
+  test/task-record.test.ts (new), test/behaviors.json
+- witness/ (five new specs, two new captures, one stored spec repointed; see
+  section 8.3)
+- this document
+
+Read and deliberately NOT changed, each named with its reason: src/pool.ts and
+src/liveness.ts and src/commands/next.ts and src/teardown.ts (section 5.2 and
+the escalations), plugin/src/model-resolution.ts (section 4.3),
+`gates.manifest.json` and `gate-registry.yaml` (section 8.2).
